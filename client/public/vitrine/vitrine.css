@@ -363,3 +363,8 @@ dd{margin:0;color:var(--encre);font-weight:500;text-align:right}
   .cycle>li::before{background:var(--encre)}
   .mots .m{color:var(--encre)}
 }
+
+/* Impression · tout ce qui se révèle au défilement est montré dans son état final. */
+@media print{
+  [data-reveal],.tete h1,.tete-cote>*{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
+}

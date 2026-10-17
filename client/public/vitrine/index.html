@@ -14,8 +14,8 @@
 <link rel="icon" href="/icone.svg" type="image/svg+xml">
 <link rel="preload" href="/polices/ibm-plex-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/polices/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="vitrine.css?v=20261017">
-<script src="vitrine.js?v=20261017" defer></script>
+<link rel="stylesheet" href="vitrine.css?v=20261018">
+<script src="vitrine.js?v=20261018" defer></script>
 </head>
 <body>
 <a class="evitement" href="#principal">Aller au contenu</a>
@@ -39,7 +39,7 @@
   <div class="tete-cote">
     <p class="chapeau">OmegaX est le logiciel de comptabilité SYCEBNL et SYSCOHADA des associations, ONG, projets de développement et entreprises de RDC. Il refuse ce qui ne boucle pas et produit les états financiers avec leurs notes annexes. Édité par VMG Consulting.</p>
     <p class="actions">
-      <a class="bouton bouton-plein" href="/#/essai" data-essai hidden>Essayer gratuitement 30 jours</a>
+      <a class="bouton bouton-plein" href="/#/essai" data-essai hidden>Essayer gratuitement</a>
       <a class="bouton bouton-plein" href="/#/connexion" data-connexion>Se connecter</a>
     </p>
     <p class="pour">Pour les associations, ONG, ordres professionnels, projets de développement, sociétés et entreprises.</p>
@@ -59,12 +59,12 @@
           </thead>
           <tbody>
             <tr>
-              <th scope="row" class="code">6611<span class="lib">Salaires du mois</span></th>
+              <th scope="row" class="code">6611<span class="lib">Libellé · salaires du mois</span></th>
               <td class="num"><input id="m-debit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="1&#8239;250&#8239;000,00" aria-label="Montant au débit du compte 6611" readonly></td>
               <td class="num partage"></td>
             </tr>
             <tr>
-              <th scope="row" class="code">422<span class="lib">Salaires du mois</span></th>
+              <th scope="row" class="code">422<span class="lib">Libellé · salaires du mois</span></th>
               <td class="num"></td>
               <td class="num partage"><input id="m-credit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="1&#8239;250&#8239;000,00" aria-label="Montant au crédit du compte 422" readonly></td>
             </tr>
@@ -142,7 +142,7 @@
     <li>
       <div class="cycle-texte">
         <h3>États financiers et notes annexes</h3>
-        <p>Bilan, compte de résultat, tableau des flux de trésorerie et notes annexes, avec la colonne de l'exercice précédent. Export de la liasse en Excel, montants liés à la balance.</p>
+        <p>Bilan, compte de résultat, tableau des flux de trésorerie ou journal de trésorerie selon le jeu d'états, et notes annexes, avec la colonne de l'exercice précédent. Export de la liasse en Excel, montants liés à la balance.</p>
       </div>
       <div class="fig fig-etats" role="img" aria-label="Exemple : bilan dont le total de l'actif égale le total du passif">
         <div class="et-ligne"><span>Total de l'actif</span><b>8&#8239;640&#8239;000,00</b></div>
@@ -170,7 +170,7 @@
     </li>
     <li>
       <h3>TVA et fiscalité</h3>
-      <p>Déclaration de TVA, prorata, exigibilité à l'encaissement, facturation, devis, impôt sur les sociétés, retenues et échéances fiscales de la RDC.</p>
+      <p>Déclaration de TVA, prorata, exigibilité à l'encaissement, facturation, retenues et échéances fiscales de la RDC. Au SYSCOHADA seulement : devis et impôt sur les sociétés.</p>
     </li>
     <li>
       <h3>Paie</h3>
@@ -280,7 +280,7 @@
     </details>
     <details>
       <summary>Qui voit les données de mon dossier ?</summary>
-      <div><p>Les utilisateurs de votre dossier, selon leur rôle. VMG Consulting ne consulte pas le contenu des dossiers de ses clients. Le mot de passe provisoire d'un administrateur est tiré au sort par le serveur et envoyé à son seul courriel.</p></div>
+      <div><p>Les utilisateurs de votre dossier, selon leur rôle. VMG Consulting ne consulte pas le contenu des dossiers de ses clients ; ses accès techniques se limitent à la sauvegarde chiffrée, à sa restauration de contrôle et à des requêtes de maintenance qui ne rendent que des identifiants et des nombres. Le mot de passe provisoire d'un administrateur est tiré au sort par le serveur et envoyé à son seul courriel.</p></div>
     </details>
     <details>
       <summary>OmegaX est-il homologué pour la facture normalisée ?</summary>
@@ -300,7 +300,7 @@
       <p>Pour ouvrir un dossier ou poser une question, écrivez à <a href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>. Si vous avez déjà un dossier, connectez-vous.</p>
     </div>
     <div data-avec-essai hidden>
-      <h2 id="t-appel-essai">Essayez OmegaX pendant <span data-jours>30</span> jours</h2>
+      <h2 id="t-appel-essai">Essayez OmegaX pendant <span data-jours></span> jours</h2>
       <p>Créez un dossier d'essai avec votre adresse e-mail. Le mot de passe provisoire vous y est envoyé.</p>
     </div>
     <p class="actions">

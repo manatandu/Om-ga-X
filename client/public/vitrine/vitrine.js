@@ -34,7 +34,7 @@
     if (connexion) connexion.classList.remove('bouton-plein');
   }
   if (window.fetch) {
-    fetch('/api/auth/inscription-essai/etat', { method: 'GET', credentials: 'omit', headers: { Accept: 'application/json' } })
+    fetch('/api/auth/inscription-essai/etat', { method: 'GET', credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (e) { if (essaiOuvert(e)) montrerEssai(e.joursEssai); })
       .catch(function () { /* lecture impossible : l'essai n'est pas annoncé */ });
@@ -124,7 +124,9 @@
   function enCentimes(texte) {
     var t = String(texte).replace(/[\s  ]/g, '').replace(',', '.');
     if (t === '' || !/^\d+(\.\d{0,2})?$/.test(t)) return null;
-    return Math.round(Number(t) * 100);
+    var c = Math.round(Number(t) * 100);
+    // Au-delà de 2^53 centimes deux montants distincts se confondent : illisible, jamais « boucle ».
+    return Number.isSafeInteger(c) ? c : null;
   }
   function ecrire(c) { return format.format(c / 100); }
 
@@ -143,9 +145,9 @@
 
     var MESSAGES = {
       boucle: 'La pièce boucle : le débit égale le crédit. Elle peut être validée.',
-      illisible: 'Saisissez un montant lisible, par exemple 1 250 000,00.',
-      nul: 'Une pièce sans montant n\'est pas enregistrée.',
-      validee: 'Pièce validée. Elle est inscrite au livre-journal et ne se modifie plus.'
+      illisible: 'Saisissez un montant positif à deux décimales au plus, par exemple 1 250 000,00.',
+      nul: 'Dans cet exemple, une pièce à zéro ne se valide pas.',
+      validee: 'Pièce validée pour l\'exemple. Dans OmegaX, elle serait inscrite au livre-journal et ne se modifierait plus.'
     };
 
     function majPiece() {
