@@ -80,7 +80,7 @@ scripts/         extracteurs des compétences (règles par compte, schémas des
 docs/            plan de construction, audits, guides pilote, notes de droit
                  · historique/ range les documents révolus, sous bandeau (F267)
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
-.claude/skills/  la compétence sage-i7, versionnée avec le dépôt (§ 1)
+.claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max (§ 11)
 ```
 
 ## 3. Commandes
@@ -5468,6 +5468,27 @@ dossiers qui n'ont pas activé l'option. Rien n'est dévalidé rétroactivement.
 Les compétences (`skills`) ne sont déployées que par **Manasse**, à la main,
 via Réglages → Compétences. Ne pas tenter de les installer, modifier ou
 publier depuis une session.
+EXCEPTION ÉCRITE (2026-10-17, demande expresse de Manasse · « Installe dans le
+dépôt ») · la compétence `ui-ux-pro-max` (conseils de design d'interface,
+recherche locale dans ses tables par `scripts/search.py`) est COPIÉE dans
+`.claude/skills/ui-ux-pro-max/`, seul dossier retenu de l'archive reçue (les
+galeries, la CLI et les exemples ne sont pas repris). Deux retouches, et pas
+d'autres · les tirets cadratins des fichiers texte sont remplacés par « · »
+(§ 4, `cadratins.spec.ts` relit ce dossier), et rien n'est exécuté à
+l'installation. Ses conseils ne priment JAMAIS sur ce fichier · la charte
+OmegaX (§ 9 bis), le modèle Sage (§ 9 ter) et « aucun paragraphe explicatif à
+l'écran » l'emportent là où elle les contredit. Elle ne remplace pas son
+déploiement par Réglages → Compétences, que Manasse tient seul.
+
+SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
+« Installe ce MCP ») · déclaré dans `.mcp.json` à la racine, composants Magic UI
+pour l'interface. VERSION ÉPINGLÉE (`@magicuidesign/mcp@2.0.0`, paquet
+d'éditeur public, aucun script d'installation, deux dépendances) au lieu de
+`@latest` demandé · un `@latest` exécuterait à chaque démarrage le code que
+l'éditeur publiera demain. Monter de version est un geste daté, comme une
+dépendance. Il ne reçoit AUCUN secret ni variable d'environnement du dépôt ;
+ses suggestions de composants ne priment pas sur la charte (§ 9 bis) ni sur
+le § 9 ter (rendu de Sage, mouvement sobre).
 
 Ce fichier-ci, en revanche, est un fichier du dépôt : il se modifie et se
 committe comme le reste, et il doit être tenu à jour quand une règle change.
