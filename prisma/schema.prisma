@@ -776,6 +776,7 @@ model Tenant {
 
   licence                   Licence?
   abonnementEditeur         AbonnementCabinet?              @relation("AbonnementDuCabinet")
+  rappelSuppressionEssai    RappelSuppressionEssai?         @relation("RappelSuppressionDuCabinet")
   comptes                   Compte[]
   exercices                 Exercice[]
   ecritures                 Ecriture[]
@@ -1058,6 +1059,51 @@ model FactureAbonnement {
 
   @@unique([abonnementId, periode])
   @@map("factures_abonnement")
+}
+
+/// Le rappel de suppression envoyé à l'administrateur d'un dossier d'ESSAI échu
+/// (décision de Manasse du 2026-10-17 · le dossier non souscrit est conservé
+/// cent quatre-vingts jours après son terme, puis supprimé ; un courriel part au
+/// moins trente jours avant). Suivi de l'ÉDITEUR sur son client, hors dossier
+/// comme `AbonnementCabinet` (`cabinetId` et non `tenantId`) : il n'est pas une
+/// donnée du client et ne figure pas dans sa restitution. Une seule ligne par
+/// dossier (la clé unique ferme le doublon), qui part avec lui (cascade) ; la
+/// trace durable est `DossierEssaiSupprime`.
+model RappelSuppressionEssai {
+  id            String    @id @default(uuid())
+  cabinetId     String    @unique
+  cabinet       Tenant    @relation("RappelSuppressionDuCabinet", fields: [cabinetId], references: [id], onDelete: Cascade)
+  /// Le message dans la file du dossier (sans clé étrangère · la file appartient
+  /// au dossier). Le rappel n'est « parti » que quand ce message l'est.
+  messageId     String
+  misEnFileLe   DateTime  @default(now())
+  /// Renseigné quand le message est CONSTATÉ envoyé · null tant qu'il attend.
+  envoyeLe      DateTime?
+  /// Le premier jour où la suppression est permise, tel que dit au client.
+  supprimableLe DateTime  @db.Date
+  parOperateur  String
+  createdAt     DateTime  @default(now())
+
+  @@map("rappels_suppression_essai")
+}
+
+/// La trace d'un dossier d'essai supprimé · SANS clé étrangère (le dossier n'existe
+/// plus), AUCUNE donnée du client : ni nom d'entité, ni courriel, ni montant, des
+/// dates et des NOMBRES seulement. Écrite dans la transaction de la suppression.
+model DossierEssaiSupprime {
+  id                     String   @id @default(uuid())
+  ancienTenantId         String   @unique
+  creeLe                 DateTime
+  termeLe                DateTime @db.Date
+  rappelEnvoyeLe         DateTime
+  supprimeLe             DateTime @default(now())
+  parOperateur           String
+  nombreUtilisateurs     Int
+  nombreExercices        Int
+  nombreEcritures        Int
+  nombreLignesSupprimees Int
+
+  @@map("dossiers_essai_supprimes")
 }
 
 enum RoleUtilisateur {
