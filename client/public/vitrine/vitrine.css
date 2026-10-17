@@ -91,8 +91,6 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .pour{margin-top:20px;font-size:.9rem;color:var(--discret);max-width:34em}
 
 .feuille{grid-column:1 / -1;position:relative;border:1px solid var(--regle);border-radius:10px;background:#fff}
-.feuille::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;background:conic-gradient(from var(--angle),transparent 0 74%,var(--encre) 92%,transparent 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);animation:tracer 2.6s .5s var(--sortie) 1 both}
-@keyframes tracer{from{--angle:0deg;opacity:1}85%{opacity:1}to{--angle:360deg;opacity:0}}
 .feuille-haut{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 24px;padding:14px 20px;border-bottom:1px solid var(--filet);font:400 13px/1.3 'IBM Plex Sans',sans-serif;color:var(--discret)}
 .feuille-corps{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);margin:0}
 .piece{position:relative;padding:8px 20px 20px}
@@ -240,7 +238,7 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 }
 .plan+.plan{margin-top:48px}
 .plan.entre{animation:entrer .3s var(--sortie)}
-@keyframes entrer{from{opacity:0;transform:translateY(8px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes entrer{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none}}
 .plan h3{font-size:1.5rem;font-weight:500;letter-spacing:-.01em}
 .plan h3 small{display:block;margin-top:2px;font:400 .95rem/1.4 'IBM Plex Sans',sans-serif;color:var(--discret);letter-spacing:0}
 .extrait{width:100%;margin-top:22px;border-collapse:collapse;max-width:44rem}
@@ -285,8 +283,8 @@ dd{margin:0;color:var(--encre);font-weight:500;text-align:right}
 .pied a{display:inline-block;padding:10px 0;text-underline-offset:3px}
 
 /* Révélation (blur-fade) · posée par le script, seulement sous la ligne de flottaison */
-[data-reveal]{opacity:0;transform:translateY(10px);filter:blur(5px);transition:opacity .45s var(--sortie),transform .45s var(--sortie),filter .45s var(--sortie)}
-[data-reveal].vu{opacity:1;transform:none;filter:blur(0)}
+[data-reveal]{opacity:0;transform:translateY(10px);transition:opacity .45s var(--sortie),transform .45s var(--sortie)}
+[data-reveal].vu{opacity:1;transform:none}
 
 /* Entrée de la première vue · un seul mouvement composé */
 .tete h1,.tete-cote>*{opacity:0;transform:translateY(12px);animation:monter .55s var(--sortie) forwards}
