@@ -30,3 +30,13 @@ describe('optionsCors · le cache du contrôle préalable', () => {
     expect(source).toContain('app.enableCors(optionsCors(origines))');
   });
 });
+
+describe('le domaine du cabinet est une origine du site (2026-10-17)', () => {
+  it('admis d’office par le serveur et par le workflow, comme les deux adresses Firebase', () => {
+    const racine = join(__dirname, '..');
+    expect(readFileSync(join(racine, 'src/bootstrap.ts'), 'utf8')).toContain("'https://omegax.vmgconsulting.net'];");
+    expect(readFileSync(join(racine, '.github/workflows/deploy-cloud-run.yml'), 'utf8')).toContain(
+      'CORS_ORIGIN: https://oomega.web.app,https://oomega.firebaseapp.com,https://omegax.vmgconsulting.net',
+    );
+  });
+});

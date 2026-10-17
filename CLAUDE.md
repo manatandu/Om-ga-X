@@ -214,7 +214,11 @@ dit, numéroté et daté, période dans un exercice ; et le même jour le
 JOURNAL EXPORTÉ COMME L'ÉDITION DE SAGE, choisi par Manasse sur aperçu
 (« Comme Sage »), une demande expresse valant levée du gel pour elle seule ;
 puis, le 2026-10-17, l'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI de trente
-jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu.
+jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu ; et le même
+jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
+(« Oui tu peux modifier selon ce style »), avec le bandeau de consentement
+que la loi impose à la mesure de l'interface, et le domaine
+`omegax.vmgconsulting.net` admis comme origine du site.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4997,7 +5001,15 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   spec fait tourner le vrai SDK et relit l'enveloppe émise. PostHog par
   `posthog-js/no-external` (aucun script tiers), `$pageview` manuel seul,
   autocapture et enregistrement coupés, aucun `identify` (rôle et référentiel
-  seulement), `$geoip_disable`, stockage local ou mémoire, jamais de cookie. Les SDK se chargent
+  seulement), `$geoip_disable`, stockage local ou mémoire, jamais de cookie.
+  DANS LE NAVIGATEUR, RIEN NE PART SANS ACCORD (décision par la loi du
+  2026-10-17 · Code du numérique, art. 192, consentement ou obligation légale,
+  seuls fondements ; art. 196, retirer aussi simplement que donner) ·
+  `lib/consentement-mesure.ts`, bandeau à deux boutons de même poids
+  (`BandeauConsentementMesure`), rouvert par « Préférences relatives aux
+  témoins » ; `null` n'est pas un accord, un retrait recharge la page. Les
+  erreurs du SERVEUR n'en dépendent pas · elles partent de Cloud Run sans
+  l'adresse de la personne. Les SDK se chargent
   À LA DEMANDE et seulement actifs · sur site (`MODE_INSTALLATION=SUR_SITE`,
   ou interface construite en `meme-origine`), ils ne sont jamais chargés.
 - **Restitution du dossier** (`src/modules/exports/restitution/`) · une

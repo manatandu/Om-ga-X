@@ -80,7 +80,11 @@ export function configurerApplication(app: INestApplication) {
   // signifiait qu'une variable oubliée sur une cible de déploiement coupait
   // le site entier · panne muette côté navigateur (le serveur répond, le
   // navigateur jette la réponse), donc longue à diagnostiquer.
-  const ORIGINES_SITE = ['https://oomega.web.app', 'https://oomega.firebaseapp.com'];
+  // Le domaine du cabinet (demande de Manasse du 2026-10-17) · même site
+  // Firebase, rattaché par un domaine personnalisé. Le site appelle l'API sous
+  // sa propre adresse (relais `/api/**`), sans CORS ; l'origine est admise
+  // pour qu'un appel direct au service depuis ce domaine ne soit pas jeté.
+  const ORIGINES_SITE = ['https://oomega.web.app', 'https://oomega.firebaseapp.com', 'https://omegax.vmgconsulting.net'];
   const configurees = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean);
   // En production, l'absence de CORS_ORIGIN ne doit JAMAIS vouloir dire
   // « tout le monde » : le repli est la liste fermée des domaines du site.

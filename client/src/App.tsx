@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
 import { pageVue } from './lib/telemetrie';
+import { BandeauConsentementMesure } from './components/BandeauConsentementMesure';
 import { AuthProvider, useAuth } from './lib/auth';
 import { ExerciceProvider } from './lib/exercice';
 import { FenetresProvider } from './lib/fenetres';
@@ -112,6 +113,7 @@ export function App() {
       <AuthProvider>
         <SuiviDesPages />
         <Routage />
+        <BandeauConsentementMesure />
       </AuthProvider>
     </HashRouter>
   );

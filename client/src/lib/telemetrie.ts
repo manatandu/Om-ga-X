@@ -8,6 +8,7 @@ import {
   regimesInterface,
 } from './telemetrie-interface';
 import { identiteConstruction } from './version';
+import { lireConsentement, mesureAutorisee } from './consentement-mesure';
 
 /**
  * TÉLÉMÉTRIE DE L'INTERFACE · Sentry (pannes) et PostHog (pages vues),
@@ -51,7 +52,26 @@ function chargementManque(service: string) {
   console.warn(`[OmegaX] ${service} n’a pas pu être chargé · aucune donnée n’est envoyée.`);
 }
 
+/** Une clé au moins est posée sur cette construction, hors installation sur site · le bandeau n'a de sens qu'alors. */
+export function mesureDisponible(): boolean {
+  return regimes.sentry.actif || regimes.posthog.actif;
+}
+
+let demarree = false;
+
+/** Les SDK tournent-ils dans cette page ? Un retrait d'accord recharge alors la page, seul moyen sûr de les arrêter. */
+export function telemetrieDemarree(): boolean {
+  return demarree;
+}
+
+/**
+ * Démarre Sentry et PostHog dans le navigateur, SUR ACCORD LU seulement
+ * (`lib/consentement-mesure.ts`, Code du numérique, art. 192). Appelée au
+ * démarrage, puis par le bandeau quand la personne accepte.
+ */
 export function demarrerTelemetrieInterface(): void {
+  if (demarree || !mesureAutorisee(lireConsentement(() => window.localStorage))) return;
+  demarree = true;
   if (regimes.sentry.actif) {
     import('@sentry/react')
       .then((sdk) => {
@@ -88,7 +108,9 @@ export function signalerErreurInterface(erreur: unknown): void {
 
 /** Une page vue · le chemin seul, normalisé, avec le rôle et le référentiel. */
 export function pageVue(chemin: string, role: string | undefined, referentiel: string | undefined): void {
-  if (!regimes.posthog.actif) return;
+  // Sans accord, aucune vue n'est gardée en attente · elle partirait au premier
+  // accord avec la date d'un écran vu avant lui.
+  if (!regimes.posthog.actif || !demarree) return;
   const proprietes = proprietesPageVue(chemin, role, referentiel, environnement);
   if (posthog) posthog.capture('$pageview', proprietes);
   else vueEnAttente = proprietes;

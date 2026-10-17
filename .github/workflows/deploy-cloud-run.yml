@@ -316,7 +316,7 @@ jobs:
           DATABASE_URL: ${{ secrets.API_DATABASE_URL_POOLED || secrets.API_DATABASE_URL }}
           JWT_SECRET: ${{ secrets.API_JWT_SECRET }}
           JWT_EXPIRES_IN: ${{ secrets.API_JWT_EXPIRES_IN }}
-          CORS_ORIGIN: https://oomega.web.app,https://oomega.firebaseapp.com
+          CORS_ORIGIN: https://oomega.web.app,https://oomega.firebaseapp.com,https://omegax.vmgconsulting.net
           # Adresses e-mail des opérateurs de la plateforme (console
           # « Administration VMG Consulting »), séparées par des virgules.
           # Doit passer par ICI et non par la console Cloud Run :

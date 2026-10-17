@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { essaiOuvert } from '../lib/essai';
+import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -377,16 +378,29 @@ export function AuthPage() {
             veut mis à la disposition de la clientèle (art. 53, al. 1er), et
             pour les questions fréquentes · « comment obtenir un accès » se lit
             avant d'en avoir un. */}
+        {/* Sur le modèle de l'écran de connexion des grands éditeurs (demande
+            de Manasse du 2026-10-17, d'après Cloudflare) · une phrase qui
+            renvoie aux textes, chacun dans un NOUVEL ONGLET pour ne pas perdre
+            ce qui est saisi. Elle ne dit pas « j'accepte » · l'acceptation du
+            contrat est un acte enregistré par le serveur (art. 55 et 56 du
+            Code du numérique, AcceptationConditionsLicence), pas un effet de
+            la connexion. */}
+        <p className="mt-3 text-[11px] text-text-dim leading-relaxed">
+          L’utilisation d’OmegaX est régie par le{' '}
+          <a href="#/contrat-de-licence" target="_blank" rel="noopener" className="underline">
+            contrat de licence
+          </a>
+          . Le traitement de vos données est décrit dans la{' '}
+          <a href="#/confidentialite" target="_blank" rel="noopener" className="underline">
+            politique de confidentialité
+          </a>
+          , qui dit aussi l’usage des témoins.
+        </p>
         <div className="mt-2 text-[11px] text-text-dim flex flex-wrap gap-x-3 gap-y-1">
-          <a href="#/questions-frequentes" className="underline">
+          <a href="#/questions-frequentes" target="_blank" rel="noopener" className="underline">
             Questions fréquentes
           </a>
-          <a href="#/contrat-de-licence" className="underline">
-            Contrat de licence
-          </a>
-          <a href="#/confidentialite" className="underline">
-            Politique de confidentialité
-          </a>
+          <LienPreferencesMesure />
         </div>
       </div>
           </div>
