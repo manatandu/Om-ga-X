@@ -212,7 +212,9 @@ l'EXPORT PAR PÉRIODE de la balance et du grand livre, à l'écran et en Excel
 quatre conditions proposées et acceptées · solde de départ gardé, extrait
 dit, numéroté et daté, période dans un exercice ; et le même jour le
 JOURNAL EXPORTÉ COMME L'ÉDITION DE SAGE, choisi par Manasse sur aperçu
-(« Comme Sage »), une demande expresse valant levée du gel pour elle seule.
+(« Comme Sage »), une demande expresse valant levée du gel pour elle seule ;
+puis, le 2026-10-17, l'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI de trente
+jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4773,6 +4775,26 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   `INSCRIPTION_PUBLIQUE=true`. Un dossier naît depuis la console VMG ou par le
   siège d'un groupe. `AuthService.register` reste le pipeline commun de toutes
   les créations : ne pas en écrire un second.
+  **L'ESSAI EN LIBRE-SERVICE EST UNE AUTRE PORTE, FERMÉE PAR SA PROPRE
+  VARIABLE** (2026-10-17, `src/modules/auth/inscription-essai.ts`) ·
+  `POST /auth/inscription-essai` n'ouvre que si `INSCRIPTION_ESSAI` vaut
+  exactement `true` (variable du dépôt GitHub, pas un secret, passée par
+  `deploy-cloud-run.yml` ; `GET /auth/inscription-essai/etat` dit l'état et
+  l'écran `#/essai` n'offre son lien que sur une porte lue ouverte).
+  `register` reste fermé, et il reste le seul pipeline de création
+  (`inscrireEnEssai` l'appelle). L'essai est une licence `ABONNEMENT` de trente
+  jours (`JOURS_ESSAI`), jamais un autre type ; échu, le dossier passe en
+  lecture seule (`LicenceGuard`). Le mot de passe provisoire est TIRÉ AU SORT
+  par le serveur et part au seul courriel saisi, directement, jamais par la
+  file en clair (`CourrierService.envoyerUnSecret`) ; aucune session n'est
+  rendue, `doitChangerMotDePasse` est posé. La réponse est la même pour une
+  adresse neuve et pour une adresse connue ; un renvoi n'est servi qu'à
+  l'administrateur d'un dossier d'essai de moins de 72 heures, dix minutes
+  après le dernier envoi. Sans messagerie, 503 · aucun dossier ne naît sans
+  pouvoir être ouvert. Cinq demandes par heure et par adresse. Limites
+  écrites · l'écart de durée entre adresse neuve et adresse connue n'est pas
+  supprimé ; l'acceptation du contrat de licence n'est pas encore branchée sur
+  l'essai ; le CI ne peut pas le rejouer de bout en bout (aucune messagerie).
 - `estOperateurPlateforme` n'apparaît dans **aucun** DTO. Il s'accorde au
   démarrage depuis `OPERATEURS_PLATEFORME`, en accord seulement, jamais en
   retrait.
