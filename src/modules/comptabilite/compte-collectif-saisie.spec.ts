@@ -104,6 +104,35 @@ function service(
   return new EcritureService(prisma as never, {} as never, {} as never, {} as never);
 }
 
+describe('la recherche des collectifs est bornée au dossier', () => {
+  // Test de charge k6 (2026-10-17) · `individuels: { some: {} }` devient pour
+  // PostgreSQL `id IN (SELECT collectifId FROM comptes WHERE collectifId IS NOT
+  // NULL)`, un balayage de la table des comptes de tous les cabinets à chaque
+  // saisie. Le sous-filtre doit porter le dossier pour se lire par l'index.
+  async function filtreEnvoye(compteQuiSEndort?: string) {
+    const prisma = {
+      tenant: { findFirst: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
+      compte: { findMany: jest.fn(async () => []) },
+      ligneEcriture: { findMany: jest.fn(async () => []) },
+      creanceDouteuse: { findMany: jest.fn(async () => []) },
+      ecartInventaire: { findMany: jest.fn(async () => []) },
+    };
+    const s = new EcritureService(prisma as never, {} as never, {} as never, {} as never);
+    await s.verifierComptesCollectifs('t1', [{ compteId: 'c4111' }], undefined, compteQuiSEndort);
+    const appels = prisma.compte.findMany.mock.calls as unknown as { where: { individuels?: { some: Record<string, unknown> } } }[][];
+    const avecIndividuels = appels.map((a) => a[0]).find((a) => a.where.individuels);
+    return avecIndividuels?.where.individuels;
+  }
+
+  it('le sous-filtre « porte des individuels » porte le dossier', async () => {
+    expect(await filtreEnvoye()).toEqual({ some: { tenantId: 't1' } });
+  });
+
+  it('le compte qui s’endort est écarté TOUT EN gardant le dossier', async () => {
+    expect(await filtreEnvoye('c4111')).toEqual({ some: { tenantId: 't1', id: { not: 'c4111' } } });
+  });
+});
+
 describe('saisie sur un compte collectif', () => {
   it('refuse le collectif qui porte des comptes de tiers, en nommant ces comptes', async () => {
     await expect(service().verifierComptesCollectifs('t1', [{ compteId: 'c4111' }, { compteId: 'vente' }])).rejects.toThrow(

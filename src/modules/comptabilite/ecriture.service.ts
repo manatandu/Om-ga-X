@@ -850,7 +850,18 @@ export class EcritureService {
       if (toutes.every((id) => deja.has(id))) return;
     }
     const ids = toutes;
-    const individuelsJuges = compteQuiSEndort ? { some: { id: { not: compteQuiSEndort } } } : { some: {} };
+    // LE SOUS-FILTRE PORTE LE DOSSIER (test de charge k6, 2026-10-17) · Prisma
+    // traduit `individuels: { some: {} }` en `id IN (SELECT collectifId FROM
+    // comptes WHERE collectifId IS NOT NULL)`, sans borne de dossier et sans
+    // index sur `collectifId` : un balayage de la table des comptes de TOUS les
+    // cabinets à chaque saisie (280 ms et 33 000 pages lues pour 737 000 comptes,
+    // et le coût croît avec chaque cabinet inscrit). Avec `tenantId`, le
+    // sous-filtre se lit par l'index (tenantId, numero), au plus les comptes du
+    // dossier. Même résultat : les individuels d'un collectif sont toujours du
+    // dossier du collectif.
+    const individuelsJuges = compteQuiSEndort
+      ? { some: { tenantId, id: { not: compteQuiSEndort } } }
+      : { some: { tenantId } };
     // Les numéros de TOUTE la pièce · le report d'un solde se reconnaît à ce
     // qu'elle ne porte que le compte et ses sous-comptes.
     const [collectifs, dossier, numerosDeLaPiece] = await Promise.all([
