@@ -357,6 +357,15 @@ jobs:
           # compte créé (le bootstrap des opérateurs ne court qu'au démarrage).
           # Pour rouvrir un jour un canal libre-service, poser ici
           # `INSCRIPTION_PUBLIQUE: 'true'` et l'ajouter aux variables ci-dessous.
+          #
+          # L'INSCRIPTION AVEC ESSAI est une AUTRE porte, et c'est elle qui sert
+          # le libre-service (`POST /auth/inscription-essai` · dossier d'essai
+          # de trente jours, mot de passe au seul courriel donné). FERMÉE tant
+          # que la VARIABLE de dépôt `INSCRIPTION_ESSAI` (Settings, Secrets and
+          # variables, Variables) n'est pas « true » · l'ouvrir ou la fermer est
+          # un geste de VMG, jamais du code. Elle passe par ICI, comme toute
+          # variable du service (`--env-vars-file` REMPLACE tout).
+          INSCRIPTION_ESSAI: ${{ vars.INSCRIPTION_ESSAI }}
         run: |
           python3 - <<'PY' > /tmp/env-vars.yaml
           import json, os, sys
@@ -462,6 +471,14 @@ jobs:
                          "SMTP_SECURE", "COURRIER_EXPEDITEUR"):
               if os.environ.get(secret):
                   variables[secret] = os.environ[secret]
+
+          # Fermée par défaut · posée seulement si la variable de dépôt vaut
+          # « true », et dite dans le journal du déploiement (jamais une clé).
+          if os.environ.get("INSCRIPTION_ESSAI") == "true":
+              variables["INSCRIPTION_ESSAI"] = "true"
+              print("::notice::L'inscription avec essai est OUVERTE (INSCRIPTION_ESSAI)", file=sys.stderr)
+          else:
+              print("::notice::L'inscription avec essai est FERMÉE (variable INSCRIPTION_ESSAI absente ou autre que true)", file=sys.stderr)
 
           print(json.dumps(variables))
           PY

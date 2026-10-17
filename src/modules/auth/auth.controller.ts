@@ -4,6 +4,8 @@ import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
+import { JOURS_ESSAI } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
 import { ChangerMotDePasseDto } from './dto/changer-mot-de-passe.dto';
 import { ChangerAdresseDto } from './dto/changer-adresse.dto';
@@ -73,6 +75,38 @@ export class AuthController {
       );
     }
     return this.poserSession(res, await this.authService.register(dto));
+  }
+
+  /**
+   * L'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI · fermée à clé tant que
+   * `INSCRIPTION_ESSAI` n'est pas posée (variable du workflow, jamais la
+   * console Google), pour que VMG l'ouvre en connaissance de cause. Ne rouvre
+   * PAS `POST /auth/register`, dont le dossier sans échéance reste refusé.
+   * Sur site, jamais (le premier dossier se crée par `register`, les suivants
+   * par le dossier d'installation).
+   */
+  private inscriptionEssaiOuverte(): boolean {
+    return !estSurSite() && this.config.get<string>('INSCRIPTION_ESSAI') === 'true';
+  }
+
+  /** L'écran n'offre « Essayer gratuitement » que si la porte est ouverte · jamais un lien voué au refus. */
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @Get('inscription-essai/etat')
+  etatInscriptionEssai() {
+    return { ouverte: this.inscriptionEssaiOuverte(), joursEssai: JOURS_ESSAI };
+  }
+
+  // Cinq demandes par heure et par adresse publique · un cabinet derrière un
+  // NAT en fait une ou deux, un script qui sème des dossiers fantômes est coupé.
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
+  @Post('inscription-essai')
+  async inscrireEnEssai(@Body() dto: InscriptionEssaiDto) {
+    if (!this.inscriptionEssaiOuverte()) {
+      throw new ForbiddenException(
+        "L'ouverture d'un dossier OmegaX se fait avec VMG Consulting · écrivez à admin@vmgconsulting.net pour démarrer.",
+      );
+    }
+    return this.authService.inscrireEnEssai(dto);
   }
 
   // 20 essais de mot de passe par minute et par adresse (partagée derrière
