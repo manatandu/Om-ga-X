@@ -1,4 +1,4 @@
-import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { Referentiel, RoleUtilisateur } from '@prisma/client';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -9,6 +9,7 @@ import {
   finDeLEssai,
   JOURS_ESSAI,
   renvoiPossible,
+  estUnDossierDEssai,
 } from './inscription-essai';
 
 /**
@@ -19,7 +20,7 @@ import {
 const MINUTE = 60_000;
 const HEURE = 3_600_000;
 
-function monter(options: { transport?: boolean; utilisateur?: Record<string, unknown> | null; envoiEchoue?: boolean } = {}) {
+function monter(options: { transport?: boolean; utilisateur?: Record<string, unknown> | null; envoiEchoue?: boolean; licence?: Record<string, unknown> | null; conflit?: boolean } = {}) {
   const envois: { tenantId: string; message: { destinataire: string; corps: string }; corpsGarde: string }[] = [];
   const mises: Record<string, unknown>[] = [];
   const courrier = {
@@ -30,7 +31,14 @@ function monter(options: { transport?: boolean; utilisateur?: Record<string, unk
       return { id: 'm1', statut: 'ENVOYE', erreur: null };
     },
   };
+  const debut = new Date('2026-10-10T08:00:00Z');
   const prisma = {
+    licence: {
+      findUnique: async () =>
+        options.licence === undefined
+          ? { type: 'ABONNEMENT', dateDebut: debut, dateExpiration: new Date(debut.getTime() + 30 * 86_400_000) }
+          : options.licence,
+    },
     user: {
       findUnique: async () => options.utilisateur ?? null,
       update: async (arg: { data: Record<string, unknown> }) => {
@@ -43,6 +51,7 @@ function monter(options: { transport?: boolean; utilisateur?: Record<string, unk
   const appels: { dto: Record<string, unknown>; options: Record<string, unknown> }[] = [];
   jest.spyOn(service, 'register').mockImplementation((async (dto: never, opts: never) => {
     appels.push({ dto, options: opts });
+    if (options.conflit) throw new ConflictException('Un compte existe déjà avec cet email');
     return { tenant: { id: 'T-neuf' }, exercice: {}, accessToken: 'NE-DOIT-JAMAIS-SORTIR' };
   }) as never);
   return { service, envois, mises, appels };
@@ -65,6 +74,16 @@ describe('briques pures', () => {
     expect(corpsGarde.includes(corps)).toBe(false);
     expect(sujet).toMatch(/essai/i);
     expect(avisInscriptionEssai('x1', new Date(), false).sujet).not.toMatch(/dossier d'essai/);
+  });
+
+  it("seul un dossier à licence d'essai de trente jours se rouvre", () => {
+    const d = new Date('2026-10-10T08:00:00Z');
+    const fin = (jours: number) => new Date(d.getTime() + jours * 86_400_000);
+    expect(estUnDossierDEssai({ type: 'ABONNEMENT', dateDebut: d, dateExpiration: fin(30) })).toBe(true);
+    expect(estUnDossierDEssai({ type: 'ABONNEMENT', dateDebut: d, dateExpiration: fin(365) })).toBe(false);
+    expect(estUnDossierDEssai({ type: 'ABONNEMENT', dateDebut: d, dateExpiration: null })).toBe(false);
+    expect(estUnDossierDEssai({ type: 'PROPRIETAIRE', dateDebut: d, dateExpiration: fin(30) })).toBe(false);
+    expect(estUnDossierDEssai(null)).toBe(false);
   });
 
   it('le renvoi : titulaire à changer, né depuis moins de 72 h, dernier envoi il y a 10 minutes au moins', () => {
@@ -162,6 +181,20 @@ describe('AuthService.inscrireEnEssai', () => {
       expect(envois).toHaveLength(0);
       expect(mises).toHaveLength(0);
     }
+  });
+
+  it("un cabinet ouvert autrement (licence qui n'est pas un essai de trente jours) n'est jamais touché", async () => {
+    const utilisateur = { id: 'u1', tenantId: 't1', role: RoleUtilisateur.ADMIN_CABINET, doitChangerMotDePasse: true, createdAt: new Date(Date.now() - HEURE), sessionsInvalidesAvant: null };
+    const { service, envois, mises } = monter({ utilisateur, licence: { type: 'ABONNEMENT', dateDebut: new Date('2026-10-10'), dateExpiration: new Date('2027-10-10') } });
+    await service.inscrireEnEssai(demande);
+    expect(envois).toHaveLength(0);
+    expect(mises).toHaveLength(0);
+  });
+
+  it("deux demandes simultanées pour la même adresse neuve · la perdante reçoit la réponse commune, pas un refus", async () => {
+    const { service } = monter({ conflit: true });
+    const neutre = await monter().service.inscrireEnEssai(demande);
+    await expect(service.inscrireEnEssai(demande)).resolves.toEqual(neutre);
   });
 
   it('un courriel qui ne part pas laisse un refus qui dit de recommencer, jamais un succès', async () => {

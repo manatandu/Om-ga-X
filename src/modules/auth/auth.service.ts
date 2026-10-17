@@ -18,7 +18,7 @@ import { AnalytiqueService } from '../analytique/analytique.service';
 import { RelancesService } from '../relances/relances.service';
 import { RegisterDto } from './dto/register.dto';
 import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
-import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, renvoiPossible } from './inscription-essai';
+import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, estUnDossierDEssai, renvoiPossible } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
 import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
 import { ajouterMaillon } from '../../common/audit/extension-audit';
@@ -281,7 +281,7 @@ export class AuthService {
    * LA RÉPONSE EST LA MÊME pour une adresse neuve, une adresse déjà prise et un
    * renvoi · elle n'apprend pas qui a un compte. (Elle ne cache pas la DURÉE
    * de la réponse, la création d'un dossier prenant plus de temps : limite
-   * écrite, la route est limitée en débit par adresse.)
+   * écrite, la route est limitée en débit par adresse IP.)
    *
    * SANS MESSAGERIE, RIEN N'EST CRÉÉ · le mot de passe n'aurait aucun chemin
    * vers son titulaire, et l'adresse serait prise pour rien.
@@ -298,7 +298,7 @@ export class AuthService {
     const reponse = {
       message:
         "Si l'adresse est valide, un courriel part dans quelques instants avec votre mot de passe provisoire. " +
-        'Pensez à regarder le dossier des courriers indésirables.',
+        "Pensez à regarder le dossier des courriers indésirables. Rien après un quart d'heure · écrivez à admin@vmgconsulting.net.",
       joursEssai: JOURS_ESSAI,
     };
 
@@ -308,7 +308,10 @@ export class AuthService {
     if (existant) {
       // Adresse déjà prise · rien n'est créé. Seul le dossier d'un titulaire qui
       // n'a rien reçu se rouvre, et seulement vers SA propre adresse.
-      if (existant.role === RoleUtilisateur.ADMIN_CABINET && renvoiPossible(existant, maintenant)) {
+      const licenceExistante = await horsCloisonnement("inscription d'essai · la licence du dossier du courriel donné", () =>
+        this.prisma.licence.findUnique({ where: { tenantId: existant.tenantId } }),
+      );
+      if (existant.role === RoleUtilisateur.ADMIN_CABINET && estUnDossierDEssai(licenceExistante) && renvoiPossible(existant, maintenant)) {
         const mot = motDePasseTireAuSort();
         const avis = avisInscriptionEssai(mot, maintenant, false);
         await horsCloisonnement("inscription d'essai · mot de passe renvoyé au seul titulaire", async () => {
@@ -334,17 +337,27 @@ export class AuthService {
 
     const mot = motDePasseTireAuSort();
     const finEssai = finDeLEssai(maintenant);
-    const { tenant } = await this.register(
-      {
-        nomEntite: dto.nomEntite.trim(),
-        referentiel: dto.referentiel,
-        email,
-        motDePasse: mot,
-        jeuEtatsFinanciersSycebnl: dto.jeuEtatsFinanciersSycebnl,
-        systemeComptableSyscohada: dto.systemeComptableSyscohada,
-      },
-      { dateExpirationLicence: finEssai, motDePasseProvisoire: true },
-    );
+    let tenant;
+    try {
+      ({ tenant } = await this.register(
+        {
+          nomEntite: dto.nomEntite.trim(),
+          referentiel: dto.referentiel,
+          email,
+          motDePasse: mot,
+          jeuEtatsFinanciersSycebnl: dto.jeuEtatsFinanciersSycebnl,
+          systemeComptableSyscohada: dto.systemeComptableSyscohada,
+        },
+        { dateExpirationLicence: finEssai, motDePasseProvisoire: true },
+      ));
+    } catch (erreur) {
+      // Deux demandes simultanées pour la même adresse neuve · la seconde perd
+      // la course à l'unicité et reçoit la réponse commune, pas un refus qui
+      // dirait que l'adresse est prise.
+      const conflit = erreur instanceof ConflictException || (erreur as { code?: string })?.code === 'P2002';
+      if (conflit) return reponse;
+      throw erreur;
+    }
     const avis = avisInscriptionEssai(mot, finEssai, true);
     try {
       await horsCloisonnement("inscription d'essai · mot de passe remis au seul courriel donné", () =>

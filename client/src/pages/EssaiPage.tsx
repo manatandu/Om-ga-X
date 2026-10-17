@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { messageOuDefaut } from '../lib/message-refus';
+import { messageOuDefaut, statutDe } from '../lib/message-refus';
 import { corpsEssai, essaiOuvert, TYPES_ENTITE_ESSAI, type EtatEssai, type TypeEntiteEssai } from '../lib/essai';
 import { LogotypeOmegaX, SymboleOmegaX } from '../components/chrome/Logo';
 
@@ -15,7 +15,9 @@ import { LogotypeOmegaX, SymboleOmegaX } from '../components/chrome/Logo';
  * ouverte sur la foi d'un lien.
  */
 export function EssaiPage() {
-  const [etat, setEtat] = useState<EtatEssai | 'fermee' | null>(null);
+  const [etat, setEtat] = useState<EtatEssai | 'fermee' | 'indisponible' | null>(null);
+  const enCours = useRef(false);
+  const confirmation = useRef<HTMLParagraphElement>(null);
   const [type, setType] = useState<TypeEntiteEssai | ''>('');
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
@@ -23,28 +25,45 @@ export function EssaiPage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [lecture, setLecture] = useState(0);
   useEffect(() => {
     let vivant = true;
+    setEtat(null);
     api
       .get<unknown>('/auth/inscription-essai/etat')
       .then((e) => vivant && setEtat(essaiOuvert(e) ? e : 'fermee'))
-      .catch(() => vivant && setEtat('fermee'));
+      // Une lecture qui échoue n'est PAS une porte fermée · elle se dit et se relit.
+      .catch(() => vivant && setEtat('indisponible'));
     return () => {
       vivant = false;
     };
-  }, []);
+  }, [lecture]);
+
+  useEffect(() => {
+    if (message !== null) confirmation.current?.focus();
+  }, [message]);
 
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
-    if (type === '' || envoi) return;
+    if (type === '' || enCours.current) return;
+    if (nom.trim().length < 2) {
+      setErreur("Le nom de l'entité compte au moins 2 caractères.");
+      return;
+    }
+    enCours.current = true;
     setEnvoi(true);
     setErreur(null);
     try {
       const r = await api.post<{ message?: string }>('/auth/inscription-essai', corpsEssai(type, nom, email));
       setMessage(typeof r?.message === 'string' && r.message.trim() !== '' ? r.message : 'Demande reçue. Consultez votre boîte de réception.');
     } catch (err) {
-      setErreur(messageOuDefaut(err, "La demande n'a pas pu être envoyée. Réessayez dans un instant."));
+      setErreur(
+        statutDe(err) === 429
+          ? 'Trop de demandes depuis cette connexion. Réessayez dans une heure, ou écrivez à admin@vmgconsulting.net.'
+          : messageOuDefaut(err, "La demande n'a pas pu être envoyée. Réessayez dans un instant."),
+      );
     } finally {
+      enCours.current = false;
       setEnvoi(false);
     }
   };
@@ -66,7 +85,15 @@ export function EssaiPage() {
               L'essai en libre-service n'est pas ouvert. Écrivez à admin@vmgconsulting.net pour démarrer.
             </p>
           )}
-          {etat !== null && etat !== 'fermee' && message === null && (
+          {etat === 'indisponible' && (
+            <div role="alert" className="text-[12px]">
+              <p>L'état de l'essai n'a pas pu être lu. Vérifiez votre connexion.</p>
+              <button type="button" onClick={() => setLecture((n) => n + 1)} className="mt-2 underline">
+                Relire
+              </button>
+            </div>
+          )}
+          {etat !== null && etat !== 'fermee' && etat !== 'indisponible' && message === null && (
             <form onSubmit={envoyer} className="flex flex-col gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-text-dim">Votre entité</span>
@@ -81,7 +108,7 @@ export function EssaiPage() {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-text-dim">Nom de l'entité</span>
-                <input required minLength={2} maxLength={120} value={nom} onChange={(e) => setNom(e.target.value)} className={champ} />
+                <input required minLength={2} maxLength={120} autoComplete="organization" value={nom} onChange={(e) => setNom(e.target.value)} className={champ} />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-text-dim">Adresse e-mail</span>
@@ -98,7 +125,7 @@ export function EssaiPage() {
             </form>
           )}
           {message !== null && (
-            <p role="status" className="text-[12px]">
+            <p ref={confirmation} tabIndex={-1} role="status" className="text-[12px] outline-none">
               {message}
             </p>
           )}

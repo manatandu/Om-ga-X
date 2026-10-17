@@ -47,6 +47,20 @@ export function renvoiPossible(
   return maintenant.getTime() - dernierEnvoi.getTime() >= ATTENTE_ENTRE_DEUX_ENVOIS_MINUTES * 60_000;
 }
 
+/**
+ * Seul le dossier né de CETTE porte se rouvre par elle · son essai dure
+ * exactement `JOURS_ESSAI` jours de sa licence (`finDeLEssai`, posée dans la
+ * transaction de `register`). Un cabinet ouvert par la console ou par un siège,
+ * même avec un mot de passe provisoire encore actif, n'est jamais touché par un
+ * inconnu qui connaît son adresse. Tolérance d'une minute pour l'écart entre
+ * les deux horloges de la transaction.
+ */
+export function estUnDossierDEssai(licence: { type: string; dateDebut: Date; dateExpiration: Date | null } | null | undefined): boolean {
+  if (!licence || licence.type !== 'ABONNEMENT' || !licence.dateExpiration) return false;
+  const ecart = licence.dateExpiration.getTime() - licence.dateDebut.getTime();
+  return Math.abs(ecart - JOURS_ESSAI * 86_400_000) <= 60_000;
+}
+
 const jour = (d: Date) =>
   new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Kinshasa', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
 

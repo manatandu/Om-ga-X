@@ -4791,7 +4791,7 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   adresse neuve et pour une adresse connue ; un renvoi n'est servi qu'à
   l'administrateur d'un dossier d'essai de moins de 72 heures, dix minutes
   après le dernier envoi. Sans messagerie, 503 · aucun dossier ne naît sans
-  pouvoir être ouvert. Cinq demandes par heure et par adresse. Limites
+  pouvoir être ouvert. Cinq demandes par heure et par adresse IP. Limites
   écrites · l'écart de durée entre adresse neuve et adresse connue n'est pas
   supprimé ; l'acceptation du contrat de licence n'est pas encore branchée sur
   l'essai ; le CI ne peut pas le rejouer de bout en bout (aucune messagerie).

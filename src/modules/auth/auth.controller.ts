@@ -96,7 +96,7 @@ export class AuthController {
     return { ouverte: this.inscriptionEssaiOuverte(), joursEssai: JOURS_ESSAI };
   }
 
-  // Cinq demandes par heure et par adresse publique · un cabinet derrière un
+  // Cinq demandes par heure et par adresse IP · un cabinet derrière un
   // NAT en fait une ou deux, un script qui sème des dossiers fantômes est coupé.
   @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   @Post('inscription-essai')
