@@ -4145,6 +4145,61 @@ l'éditeur, refus. (4) Cellules alignées sur la mère (audit final F46,
 « Lecture simple ») · `LicenceGuard` laisse passer GET et HEAD, refuse toute
 écriture en le disant ; une licence SUSPENDUE reste fermée en entier.
 
+**Dossiers d'essai échus · conservés cent quatre-vingts jours, puis supprimés PAR
+L'OPÉRATEUR (ligne suppression-essais, décision de Manasse du 2026-10-17).**
+`plateforme/essais-echus/`. (1) Un dossier d'ESSAI non souscrit (licence
+`ABONNEMENT` de trente jours née de l'inscription en libre-service, reconnue par
+`estUnDossierDEssai` ET par le courriel d'inscription retrouvé dans sa file) reste
+en lecture seule CENT QUATRE-VINGTS JOURS après son terme · un nombre de JOURS au
+jour de Kinshasa, jamais « six mois calendaires » (`JOURS_CONSERVATION_ESSAI`,
+conservé jusqu'au terme + 180 inclus, supprimable le lendemain). Un rappel part à
+l'adresse de l'administrateur AU MOINS TRENTE jours avant la suppression
+(`JOURS_RAPPEL_AVANT_SUPPRESSION`, compté du jour de l'ENVOI, un rappel tardif
+repousse la suppression et ne raccourcit jamais le préavis), avec la voie
+d'exportation (Fichier > Restituer le dossier complet). Fenêtre d'envoi du rappel
+· du soixantième au trentième jour avant la première date de suppression,
+convention d'OmegaX (`JOURS_FENETRE_RAPPEL`). (2) LA SUPPRESSION EST UN GESTE DE
+L'OPÉRATEUR, JAMAIS UNE TÂCHE PLANIFIÉE · Cloud Run n'a pas d'ordonnanceur dans ce
+dépôt et un effacement irréversible gagne à rester une décision humaine ; la
+console de l'éditeur liste (`GET /plateforme/essais-echus`), envoie les rappels
+(`POST …/rappels`) et supprime (`POST …/:tenantId/supprimer`), l'opérateur
+RETAPANT l'identifiant. Le serveur ne se fie pas à la liste · il relit TOUT dans
+la transaction, sous le verrou consultatif et le `FOR UPDATE` du dossier, et
+refuse (409) si l'état n'est pas `SUPPRIMABLE` (rappel constaté ENVOYÉ depuis
+trente jours, terme + 180 dépassés), si une licence a été prolongée, si un
+abonnement ou un groupe vise le dossier. EN CAS DE DOUTE, NON CONCERNÉ · licence
+autre qu'un essai exact, éditeur, vitrine, mère ou cellule d'un groupe, abonnement
+enregistré (`AbonnementCabinet`), suspendue, courriel d'inscription absent. (3) UN
+RAPPEL N'EST « PARTI » QUE QUAND SON MESSAGE L'EST · la ligne de suivi
+(`RappelSuppressionEssai`, `cabinetId` unique, hors dossier comme l'abonnement)
+est RÉSERVÉE avant l'envoi, ce qui ferme le doublon ; un message en file reste
+sans date d'envoi et se RETENTE par lui-même (`CourrierService.retenter`, jamais
+la reprise générale, qui rejouerait les relances que le dossier avait mises en
+file) ; sans messagerie, rien n'est fait. (4) LA PURGE (`purger-dossier.ts`) est
+LUE DANS LE SCHÉMA (DMMF) · toutes les tables qui portent `tenantId` et celles que
+leur parent porte, feuilles d'abord, cycles dénoués en annulant d'abord la clé
+NULLABLE qui les ferme, en SQL borné `WHERE "tenantId" = $1` ou par la
+sous-requête du parent, dans la transaction de l'acte. Le client Prisma n'est PAS
+employé, et c'est voulu · son cloisonnement refuserait de toucher un autre dossier
+que celui de la session, et son journal d'audit écrirait un maillon par ligne
+dans la chaîne en cours de destruction. `purger-dossier.spec.ts` fait tomber le
+test si un modèle du schéma n'est ni purgé ni exclu AVEC SON MOTIF
+(`MODELES_EXCLUS_DE_LA_PURGE`). Les utilisateurs partent avec le dossier. (5) LA
+TRACE (`DossierEssaiSupprime`, sans clé étrangère, hors dossier, journalisée dans
+la chaîne du dossier de l'OPÉRATEUR) ne porte que l'identifiant, des dates et des
+NOMBRES · aucun nom d'entité, aucune adresse, aucun montant ; la liste de la
+console non plus (VMG ne voit jamais les informations d'un client). Les
+sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu'à leur propre
+terme (la politique de confidentialité le dit). (6) `essais-echus.service.ts`
+est dans la liste GELÉE des fichiers qui sortent du cloisonnement
+(`cloisonnement.spec.ts`). Preuve sur vraie base ·
+`scripts/rejouer-suppression-essais.cjs` (base jetable, serveur compilé, boîte
+SMTP de poche) ouvre un essai par l'API, le peuple à travers une clôture, envoie
+le rappel, vieillit, supprime, et prouve zéro ligne résiduelle (tables avec
+`tenantId` comptées, les autres par différence exacte), un voisin intact, le
+dossier de l'opérateur intact, la trace écrite, deux suppressions simultanées
+dont une seule passe.
+
 **Factures et licences par courriel (2026-09-26).**
 `abonnements/courriels-editeur.ts`, `CourrielsEditeurService`. (1) File
 (`CourrierService.mettreEnFile`) · SANS_TRANSPORT, « en file », jamais « envoyé ».

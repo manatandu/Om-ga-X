@@ -459,10 +459,13 @@ export function ContenuConfidentialite() {
         {!surSite && (
           <P>
             Un <strong>dossier d’essai</strong> arrivé à son terme passe en lecture seule · ses données restent
-            consultables et exportables, rien ne s’y écrit plus. VMG Consulting a arrêté sa conservation à{' '}
-            <strong>quatre-vingt-dix jours après le terme</strong> de l’essai, sauf souscription d’un abonnement ;
-            la suppression automatique du dossier n’est pas encore en service. Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre
-            terme (ci-dessous).
+            consultables et exportables, rien ne s’y écrit plus. Sauf souscription d’un abonnement, VMG Consulting le
+            conserve <strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime. Un courriel
+            de rappel part à l’adresse de l’administrateur du dossier <strong>au moins trente jours avant</strong> la
+            suppression, avec la voie d’exportation (Fichier &gt; Restituer le dossier complet). La suppression est
+            faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche
+            automatique · elle est irréversible. Les sauvegardes chiffrées de la nuit gardent une trace du dossier
+            jusqu’à leur propre terme (ci-dessus).
           </P>
         )}
 

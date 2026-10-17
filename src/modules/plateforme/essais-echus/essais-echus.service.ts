@@ -273,7 +273,7 @@ export class EssaisEchusService {
       );
     }
     return horsCloisonnement('console · rappels de suppression des dossiers d’essai échus', async () => {
-      const { ids } = await this.candidats(this.prisma, maintenant);
+      const { ids, total } = await this.candidats(this.prisma, maintenant);
       const lus = await this.lire(this.prisma, ids);
       const resultats: ResultatRappel[] = [];
       for (const id of ids) {
@@ -297,6 +297,9 @@ export class EssaisEchusService {
         envoyes: compte('ENVOYE') + compte('DEJA_ENVOYE'),
         enFile: compte('EN_FILE'),
         echecs: compte('ECHEC') + compte('SANS_ADMINISTRATEUR'),
+        // Une tranche qui se dit (§ 8 bis) · les dossiers au-delà de la borne n'ont pas été examinés,
+        // et « aucun rappel à envoyer » ne doit jamais couvrir ce silence.
+        ...tranche(ids.length, total),
       };
     });
   }
