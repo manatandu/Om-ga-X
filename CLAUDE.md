@@ -5321,6 +5321,16 @@ contre le workflow.
    WebKit, le moteur de l'iPhone, une fois installé par
    `npx playwright install webkit`.
 
+**TEST DE CHARGE k6 (`e2e/k6/`, 2026-10-17).** Le scénario d'un cabinet complet
+contre un serveur et une base JETABLES montés comme en production (un cœur, tas
+de 460 Mio, pool de 10) · JAMAIS la production (`e2e/k6/README.md`) ; chiffres
+et constats dans `docs/test-de-charge-k6.md`, mesurés hors Cloud Run. Il a
+trouvé trois défauts que les Prisma factices et les bases neuves ne voient pas,
+corrigés et gelés par `journal-audit.spec.ts` et `compte-collectif-saisie.spec.ts` :
+la pré-image du journal d'audit prenait une seconde connexion du pool, le maillon
+précédent se lisait par un balayage de toute la table, et la recherche des
+collectifs balayait les comptes de tous les cabinets.
+
 **UN TEST DE SOURCE S'ANCRE SUR UNE STRUCTURE, JAMAIS SUR UNE DISTANCE.** Le
 2026-09-18, un test du journal gelait « appliquer AJOUTE à la pièce » par
 `/appliquerModele[\s\S]{0,400}setLignes\(\(prev\) => \[/`. Il est tombé le jour

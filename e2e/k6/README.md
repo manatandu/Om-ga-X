@@ -51,6 +51,8 @@ les constats sont dans `docs/test-de-charge-k6.md` ; ce fichier dit seulement
    ```bash
    # fumée : un cabinet, pour vérifier que le scénario passe
    k6 run -e PROFIL=fumee -e THINK=0.2 e2e/k6/usage-complet.js
+   # palier : N cabinets simultanés tenus 150 s (un point de courbe par lancement)
+   k6 run -e PROFIL=palier -e VUS=20 -e DUREE=150s -e SINK=http://127.0.0.1:2526 e2e/k6/usage-complet.js
    # nominal : 20 cabinets simultanés, 5 minutes
    k6 run -e PROFIL=nominal -e SINK=http://127.0.0.1:2526 e2e/k6/usage-complet.js
    # montée jusqu'à 120 cabinets, puis stress, puis débit maximal brut
@@ -59,7 +61,7 @@ les constats sont dans `docs/test-de-charge-k6.md` ; ce fichier dit seulement
    k6 run -e PROFIL=pic -e THINK=0 e2e/k6/usage-complet.js
    # inscriptions : 20 cabinets dans la même seconde, ou un flux régulier
    k6 run -e PROFIL=rafale -e RAFALE=20 e2e/k6/usage-complet.js
-   k6 run -e PROFIL=inscriptions -e TAUX=0.5,1,2,3 e2e/k6/usage-complet.js
+   k6 run -e PROFIL=inscriptions -e TAUX=30,60,120,180 e2e/k6/usage-complet.js
    ```
 
    `--summary-export=resultat.json` garde les chiffres bruts (ne les committez

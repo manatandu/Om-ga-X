@@ -31,8 +31,8 @@
 //   VUS, DUREE   pour le profil `palier` : nombre de cabinets simultanés (défaut
 //                20) et durée du palier une fois monté (défaut 3m)
 //   RAFALE       pour le profil `rafale` : nombre d'inscriptions SIMULTANÉES (défaut 20)
-//   TAUX         pour le profil `inscriptions` : paliers d'inscriptions par seconde,
-//                séparés par des virgules (défaut 0.5,1,2,3,5)
+//   TAUX         pour le profil `inscriptions` : paliers d'inscriptions PAR MINUTE,
+//                séparés par des virgules (défaut 30,60,120,180,300)
 //   PARCOURS     complet | entree  (défaut complet ; `entree` s'arrête après
 //                l'inscription, la connexion et l'ouverture du dossier, c'est
 //                le parcours des profils `rafale` et `inscriptions`)
@@ -69,7 +69,7 @@ const RUN = __ENV.RUN || String(Date.now());
 const RAFALE = Number(__ENV.RAFALE || 20);
 const VUS = Number(__ENV.VUS || 20);
 const DUREE = __ENV.DUREE || '3m';
-const TAUX = (__ENV.TAUX || '0.5,1,2,3,5').split(',').map(Number);
+const TAUX = (__ENV.TAUX || '30,60,120,180,300').split(',').map(Number);
 const PARCOURS = __ENV.PARCOURS || (['rafale', 'inscriptions'].includes(PROFIL) ? 'entree' : 'complet');
 const MDP = 'MotDePasse-k6-1234';
 
@@ -253,7 +253,7 @@ const scenarios = {
   inscriptions: {
     executor: 'ramping-arrival-rate',
     startRate: 0,
-    timeUnit: '1s',
+    timeUnit: '1m',
     preAllocatedVUs: 60,
     maxVUs: 400,
     stages: TAUX.map((t) => ({ duration: '60s', target: t })),
@@ -736,8 +736,9 @@ export default function (sentinelle) {
       `/tiers/${sentinelle.tiersId}`,
       `/comptes/${sentinelle.compteTiersId}/lettrage`,
       `${baseSync}/bilan?exerciceId=${sentinelle.exerciceId}`,
-      `/immobilisations/tableau?exerciceId=${sentinelle.exerciceId}`,
     ];
+    // (Le tableau des immobilisations n'est PAS sondé : la route ne lit aucun exercice,
+    // elle rend le registre du cabinet qui l'appelle · un 200 y serait normal et ne prouverait rien.)
     const fuite = (res, quoi) => {
       const corps = String(res.body || '');
       if (corps.includes(sentinelle.marqueur) || corps.includes(sentinelle.tenantId)) {
