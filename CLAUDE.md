@@ -82,7 +82,7 @@ docs/            plan de construction, audits, guides pilote, notes de droit
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
 .claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
                  et ses six compagnes, impeccable (§ 11)
-.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max et d'impeccable (§ 11)
+.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max, d'impeccable et de free-llm-apis (§ 11)
 ```
 
 ## 3. Commandes
@@ -5495,6 +5495,17 @@ il est rangé en `.claude/settings-impeccable.EXEMPLE.json`, comme les crochets
 d'ECC, et ne s'active que si Manasse le demande (copie dans
 `.claude/settings.json`). Son lanceur peut télécharger un programme
 (`scripts/impeccable`) · raison de plus.
+**Guide des API de modèles gratuites (`free-llm-apis`, 2026-10-17, demande de
+Manasse).** Archive `awesome-free-llm-apis` (licence CC0), un répertoire de
+fournisseurs de modèles à offre gratuite. Compétence VIVANTE sous
+`.claude/skills/free-llm-apis/` (guide de choix et de réglage d'une clé), source
+AMONT intacte sous `.claude/amont/awesome-free-llm-apis/` (son `.gitignore`
+renommé `gitignore.amont`, son flux de travail GitHub non repris, ses scripts
+de vérification JAMAIS lancés d'ici · ils appellent des services tiers). Ce
+n'est PAS une source du logiciel · OmegaX n'appelle aucun modèle et ne reçoit
+aucune clé de ce genre ; aucune offre gratuite n'entre dans le produit, et les
+limites et conditions (usage non commercial, durée) y sont celles d'un jour
+donné, à relire chez le fournisseur avant toute décision.
 Les conseils de ces compétences ne priment JAMAIS sur ce fichier · la charte
 OmegaX (§ 9 bis), le modèle Sage (§ 9 ter) et « aucun paragraphe explicatif à
 l'écran » l'emportent là où elles les contredisent. Cela ne remplace pas leur
