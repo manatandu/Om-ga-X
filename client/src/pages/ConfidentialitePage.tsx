@@ -67,7 +67,7 @@ const ancre = (id: IdSection) => `politique-${id}`;
 
 function Titre({ id, children }: { id: IdSection; children: React.ReactNode }) {
   return (
-    <h2 id={ancre(id)} className="text-[12px] font-bold mt-5 mb-1.5 scroll-mt-4">
+    <h2 id={ancre(id)} tabIndex={-1} className="text-[12px] font-bold mt-5 mb-1.5 scroll-mt-4 outline-none">
       {children}
     </h2>
   );
@@ -82,7 +82,12 @@ function Sommaire() {
           <li key={s.id}>
             <button
               type="button"
-              onClick={() => document.getElementById(ancre(s.id))?.scrollIntoView({ block: 'start' })}
+              onClick={() => {
+                const titre = document.getElementById(ancre(s.id));
+                titre?.scrollIntoView({ block: 'start' });
+                // Le focus suit · au clavier, Tab entre dans la section choisie.
+                titre?.focus({ preventScroll: true });
+              }}
               className="text-sel underline text-left"
             >
               {s.titre}
@@ -150,7 +155,7 @@ export function ContenuConfidentialite() {
           <p className="text-[11.5px] leading-relaxed">
             Vos dossiers comptables vous appartiennent. Nous ne vendons ni ne louons aucune donnée, nous n’en faisons
             aucun usage publicitaire, et nous ne consultons pas le contenu de vos dossiers. Nous ne communiquons vos
-            données qu’aux prestataires nommés à la section 6, pour vous rendre le service, ou sur réquisition
+            données qu’aux prestataires désignés à la section 6, pour vous rendre le service, ou sur réquisition
             judiciaire. Cette page dit ce que le logiciel fait réellement · chaque affirmation y est vérifiable dans
             son code.
           </p>
@@ -210,8 +215,13 @@ export function ContenuConfidentialite() {
         <P>
           <strong>La demande d’essai</strong> · le type de l’entité, son nom et l’adresse de courriel donnée. Ils
           servent à ouvrir le dossier d’essai et à envoyer à cette adresse, et à elle seule, le mot de passe
-          provisoire. L’adresse réseau d’où part la demande sert à limiter leur nombre · le serveur la garde en
-          mémoire une heure au plus et ne l’écrit nulle part.
+          provisoire. L’adresse réseau d’où part la demande sert à limiter leur nombre · le serveur d’application ne l’inscrit
+          dans aucune table ; son limiteur en garde une empreinte en mémoire tant que le service tourne. Comme pour
+          toute requête, l’hébergeur (Google Cloud Run) inscrit l’adresse dans ses journaux techniques.{' '}
+          <em>
+            La durée de conservation de ces journaux doit être arrêtée par VMG Consulting et portée ici avant toute
+            publication de cette page sur un magasin d’applications.
+          </em>
         </P>
 
         <Titre id="fondements">3. Pourquoi, et sur quel fondement</Titre>
@@ -265,8 +275,8 @@ export function ContenuConfidentialite() {
           </table>
         </div>
         <P>
-          Sans adresse de courriel, aucun compte ne peut être ouvert ni aucun accès remis · c’est la seule réponse
-          obligatoire (article 220, 7°). Refuser la mesure de fréquentation ne change rien au fonctionnement du
+          Sans adresse de courriel, aucun compte ne peut être ouvert ni aucun accès remis ; la demande d’essai exige en
+          outre le type et le nom de l’entité (article 220, 7°). Refuser la mesure de fréquentation ne change rien au fonctionnement du
           logiciel.
         </P>
 
@@ -275,7 +285,7 @@ export function ContenuConfidentialite() {
           OmegaX ne dépose <strong>aucun traceur publicitaire</strong>.
           {surSite
             ? ' Sur cette installation, il ne mesure pas la fréquentation et ne signale aucune erreur à un service extérieur.'
-            : ' Il peut mesurer la fréquentation de son interface de façon anonyme et signaler ses erreurs techniques (section 6), seulement si vous l’acceptez · la question vous est posée par un bandeau avant tout envoi. Avec votre accord, le navigateur garde dans son stockage local un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier.'}{' '}
+            : ' Il peut mesurer la fréquentation de son interface, sans votre nom ni le contenu de vos dossiers, et signaler ses erreurs techniques (section 6), seulement si vous l’acceptez · la question vous est posée par un bandeau avant tout envoi. Avec votre accord, le navigateur garde dans son stockage local un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier.'}{' '}
           Le seul témoin de connexion déposé est celui de votre session : il est strictement nécessaire au
           fonctionnement du logiciel, et il n’est pas lisible par le code de la page. Sans l’option « Rester
           connecté sur cet appareil », il se ferme avec le navigateur, et la session prend fin au plus tard au terme
@@ -364,7 +374,7 @@ export function ContenuConfidentialite() {
               </li>
               <li>
                 <strong>PostHog</strong>, dans sa région de données de l’<strong>Union européenne</strong>, reçoit les
-                pages vues de l’interface, de façon anonyme et avec votre accord seulement (section 4) · l’écran ouvert, le rôle de l’utilisateur (comptable,
+                pages vues de l’interface, sans votre nom ni le contenu de vos dossiers et avec votre accord seulement (section 4) · l’écran ouvert, le rôle de l’utilisateur (comptable,
                 administrateur…), le référentiel du dossier (SYCEBNL ou SYSCOHADA), le navigateur et la taille de
                 l’écran. S’y ajoutent le système d’exploitation, le fuseau horaire, le type d’appareil, l’adresse du
                 site et des identifiants de session tirés au hasard ; aucune localisation n’est déduite de l’adresse
@@ -537,10 +547,13 @@ export function ContenuConfidentialite() {
           comme le veut l’article 229 du Code du numérique.
         </P>
         <P>
-          Pour toute autre demande, écrivez au cabinet VMG Consulting. <em>L’adresse postale du cabinet et l’adresse
-          de courriel dédiée à ces demandes doivent être arrêtées par VMG Consulting et portées ici avant toute
-          publication de cette page sur un magasin d’applications.</em> Elles ne sont pas inscrites d’office : une
-          adresse inventée dirigerait vos demandes vers le vide.
+          Pour toute autre demande, écrivez à VMG Consulting à l’adresse{' '}
+          <a href="mailto:admin@vmgconsulting.net" className="text-sel underline">
+            admin@vmgconsulting.net
+          </a>{' '}
+          (adresse arrêtée par VMG Consulting le 17 octobre 2026). <em>L’adresse postale du cabinet doit être arrêtée
+          par VMG Consulting et portée ici avant toute publication de cette page sur un magasin d’applications.</em>{' '}
+          Elle n’est pas inscrite d’office : une adresse inventée dirigerait vos demandes vers le vide.
         </P>
         <P>
           <strong>Délais.</strong> Nous vous disons la suite donnée à votre demande dans les{' '}
@@ -574,7 +587,13 @@ export function ContenuConfidentialite() {
           <p className="font-bold">VMG Consulting</p>
           <p>Responsable du traitement des données de compte et de traçabilité</p>
           <p className="mt-1">
-            <em>Adresse postale et adresse de courriel dédiée aux demandes · à arrêter par VMG Consulting (section 10).</em>
+            Courriel ·{' '}
+            <a href="mailto:admin@vmgconsulting.net" className="text-sel underline">
+              admin@vmgconsulting.net
+            </a>
+          </p>
+          <p>
+            <em>Adresse postale · à arrêter par VMG Consulting (section 10).</em>
           </p>
         </div>
         <P>

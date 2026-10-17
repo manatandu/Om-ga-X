@@ -56,11 +56,18 @@ export function lireConsentement(stockage: () => Pick<Storage, 'getItem'>): Cons
 
 /** Écrit le choix · rend faux si le stockage le refuse (le choix ne vaut alors que pour cette page). */
 export function enregistrerConsentement(
-  stockage: () => Pick<Storage, 'setItem'>,
+  stockage: () => Pick<Storage, 'setItem' | 'removeItem'>,
   choix: ChoixMesure,
   politique: string,
   maintenant: Date,
 ): boolean {
+  // L'ancien choix part D'ABORD · un quota plein qui refuserait l'écriture
+  // laisserait sinon un ancien accord, que le rechargement relancerait.
+  try {
+    stockage().removeItem(CLE_CONSENTEMENT_MESURE);
+  } catch {
+    // Stockage inaccessible · l'écriture qui suit échouera aussi, et le dira.
+  }
   try {
     const valeur: ConsentementMesure = { choix, le: maintenant.toISOString(), politique };
     stockage().setItem(CLE_CONSENTEMENT_MESURE, JSON.stringify(valeur));
@@ -70,12 +77,17 @@ export function enregistrerConsentement(
   }
 }
 
-/** La mesure ne démarre que sur un accord LU · `null` et le refus valent non. */
-export function mesureAutorisee(consentement: ConsentementMesure | null): boolean {
-  return consentement?.choix === 'accepte';
+/**
+ * La mesure ne démarre que sur un accord LU, donné sur la politique EN
+ * VIGUEUR · `null`, le refus et un accord donné sur une version antérieure
+ * valent non (relecture, m1 · une politique qui ajoute un prestataire repose
+ * la question au lieu de s'appuyer sur un accord donné à l'ancienne).
+ */
+export function mesureAutorisee(consentement: ConsentementMesure | null, politique: string): boolean {
+  return consentement?.choix === 'accepte' && consentement.politique === politique;
 }
 
-/** Le bandeau se montre quand la mesure existe sur cette construction et que personne n'a encore répondu. */
-export function bandeauAMontrer(mesureDisponible: boolean, consentement: ConsentementMesure | null): boolean {
-  return mesureDisponible && consentement === null;
+/** Le bandeau se montre quand la mesure existe sur cette construction et que la question n'a pas reçu de réponse sur la politique en vigueur. */
+export function bandeauAMontrer(mesureDisponible: boolean, consentement: ConsentementMesure | null, politique: string): boolean {
+  return mesureDisponible && (consentement === null || consentement.politique !== politique);
 }

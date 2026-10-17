@@ -123,7 +123,7 @@ export function EssaiPage() {
                   tard, lors de la collecte ». Nouvel onglet, pour ne pas perdre
                   le formulaire. */}
               <p className="text-[11px] text-text-dim leading-relaxed">
-                Ces données servent à ouvrir votre dossier d’essai et à vous envoyer l’accès, rien d’autre.{' '}
+                Ces données servent à ouvrir votre dossier d’essai, à vous envoyer l’accès et à vous identifier ensuite ; l’adresse réseau sert à limiter les demandes.{' '}
                 <a href="#/confidentialite" target="_blank" rel="noopener" className="underline">
                   Politique de confidentialité
                 </a>

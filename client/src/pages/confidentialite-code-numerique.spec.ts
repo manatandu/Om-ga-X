@@ -67,8 +67,10 @@ describe('la politique cite le Code du numérique', () => {
     expect(page).not.toMatch(/conforme au Code du numérique|autorisation de l’Autorité a été/i);
   });
 
-  it('laisse les deux adresses en blanc plutôt que d’en inventer', () => {
-    expect(deplie).toContain('doivent être arrêtées par VMG Consulting');
+  it('donne le courriel que VMG a arrêté, et laisse l’adresse postale en blanc plutôt que d’en inventer', () => {
+    // Courriel donné par Manasse le 2026-10-17 · l'adresse postale reste à arrêter.
+    expect(deplie).toContain('href="mailto:admin@vmgconsulting.net"');
+    expect(deplie).toContain('L’adresse postale du cabinet doit être arrêtée par VMG Consulting');
     expect(deplie).toContain('adresse inventée dirigerait vos demandes vers le vide');
   });
 
@@ -170,7 +172,7 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
     expect(deplie).toContain('<strong>Sentry</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
     expect(deplie).toContain('<strong>PostHog</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
     expect(deplie).toContain('reçoit les erreurs techniques du serveur et, avec votre accord seulement (section 4), de l’interface');
-    expect(deplie).toContain('reçoit les pages vues de l’interface, de façon anonyme et avec votre accord seulement (section 4)');
+    expect(deplie).toContain('reçoit les pages vues de l’interface, sans votre nom ni le contenu de vos dossiers et avec votre accord seulement (section 4)');
     expect(deplie).toContain('Ni Sentry ni PostHog ne reçoivent <strong>jamais</strong> de donnée de vos dossiers : aucun montant, aucun nom, aucune adresse de courriel, aucun contenu saisi');
     expect(deplie).toContain('Sept prestataires interviennent');
     expect(deplie).toContain('le fil des dernières requêtes réduit à leur méthode, leur adresse sans identifiants ni paramètres et leur statut, les écrans ouverts juste avant, et la version publiée du logiciel');
@@ -181,7 +183,7 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
 
   it('sur site, dit que rien ne part, et ne prétend plus à l’absence de mesure en ligne', () => {
     expect(deplie).toContain('Aucune erreur technique ni aucune page vue ne quitte cette installation');
-    expect(deplie).toContain('Il peut mesurer la fréquentation de son interface de façon anonyme et signaler ses erreurs techniques (section 6), seulement si vous l’acceptez');
+    expect(deplie).toContain('Il peut mesurer la fréquentation de son interface, sans votre nom ni le contenu de vos dossiers, et signaler ses erreurs techniques (section 6), seulement si vous l’acceptez');
     expect(deplie).toContain('un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier');
   });
 });
@@ -262,7 +264,11 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
 
   it('nomme la demande d’essai et ce qu’elle garde, l’adresse réseau en mémoire seulement', () => {
     expect(deplie).toContain('<strong>La demande d’essai</strong> · le type de l’entité, son nom et l’adresse de courriel donnée');
-    expect(deplie).toContain('le serveur la garde en mémoire une heure au plus et ne l’écrit nulle part');
+    // Relecture « échecs silencieux », M4 · le limiteur garde une empreinte tant que l'instance tourne,
+    // et Cloud Run journalise l'adresse de toute requête · « une heure, nulle part » était faux.
+    expect(deplie).toContain('le serveur d’application ne l’inscrit dans aucune table ; son limiteur en garde une empreinte en mémoire tant que le service tourne');
+    expect(deplie).toContain('l’hébergeur (Google Cloud Run) inscrit l’adresse dans ses journaux techniques');
+    expect(page).not.toMatch(/de façon anonyme/);
     // Cinq demandes par heure · la durée de la limite est celle que la route porte.
     expect(serveur('src/modules/auth/auth.controller.ts')).toContain('@Throttle({ default: { ttl: 3_600_000, limit: 5 } })');
     expect(deplie).toContain('La durée au-delà de laquelle un dossier d’essai non souscrit est supprimé doit être arrêtée par VMG Consulting');
@@ -270,6 +276,6 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
 
   it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {
     expect(deplie).toContain('<LienPreferencesMesure className="text-sel underline" />');
-    expect(deplie).toContain('à arrêter par VMG Consulting (section 10)');
+    expect(deplie).toContain('<em>Adresse postale · à arrêter par VMG Consulting (section 10).</em>');
   });
 });
