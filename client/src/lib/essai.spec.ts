@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
 import { corpsEssai, essaiOuvert, TYPES_ENTITE_ESSAI } from './essai';
+
+// Pas d'import de « vitest » · convention du dépôt (le jest de la racine lit aussi ce fichier).
 
 describe('inscription avec essai · le corps envoyé', () => {
   it("une association prend le jeu des associations, un projet celui des projets", () => {
