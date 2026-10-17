@@ -1,8 +1,8 @@
 // Page publique d'OmegaX · aucune donnée du dossier, un seul appel en lecture (l'état de l'essai).
 // Tout ce qui bouge est une amélioration : sans script, sans IntersectionObserver ou sous
 // prefers-reduced-motion, la page est complète et lisible dans son état final.
-// Les effets s'inspirent des composants Magic UI (MIT) : blur-fade, text-reveal, number-ticker,
-// scroll-progress, animated-beam, border-beam. Écrits à neuf, sans dépendance.
+// Les effets portent le nom de composants Magic UI (MIT) dont ils reprennent l'effet, pas le code :
+// blur-fade, text-reveal, number-ticker, scroll-progress, animated-beam, border-beam. Écrits à neuf.
 (function () {
   'use strict';
   var racine = document.documentElement;
@@ -28,6 +28,8 @@
     tous('[data-jours]').forEach(function (s) { s.textContent = String(jours); });
     tous('[data-avec-essai]').forEach(function (b) { b.hidden = false; });
     tous('[data-sans-essai]').forEach(function (b) { b.hidden = true; });
+    var appel = document.querySelector('.appel');
+    if (appel) appel.setAttribute('aria-labelledby', 't-appel-essai');
     var connexion = document.querySelector('.tete .actions [data-connexion]');
     if (connexion) connexion.classList.remove('bouton-plein');
   }
@@ -46,19 +48,16 @@
       });
     }, { rootMargin: '0px 0px -8% 0px' });
     var bas = window.innerHeight || 800;
-    tous('.bloc > h2, .bloc > .intro, .cycle-texte, .fig, .registre li, .bascule, .plans, .partage-deux article, .questions, .appel-corps').forEach(function (b, n) {
+    tous('.bloc > h2, .bloc > .intro, .cycle-texte, .fig, .registre li, .bascule, .plans, .partage-deux article, .questions, .appel-corps').forEach(function (b) {
       if (b.getBoundingClientRect().top > bas) {
         b.setAttribute('data-reveal', '');
-        if (b.matches('.registre li')) b.style.transitionDelay = (n % 2) * 60 + 'ms';
         vus.observe(b);
       }
     });
     // Les figures dont l'animation est propre (faisceaux, lien de clôture) se lancent à la vue.
-    tous('.fig-rap, .fig-cloture, .registre li').forEach(function (f) {
-      if (!f.classList.contains('vu') || f.matches('.registre li')) vus.observe(f);
-    });
+    tous('.fig-rap, .fig-cloture').forEach(function (f) { vus.observe(f); });
   } else {
-    tous('.fig-rap, .fig-cloture, .registre li').forEach(function (f) { f.classList.add('vu'); });
+    tous('.fig-rap, .fig-cloture').forEach(function (f) { f.classList.add('vu'); });
   }
 
   // ---- Text-reveal · les mots de l'affirmation passent à l'encre au fil du défilement.
@@ -66,12 +65,10 @@
   var motsListe = [];
   if (mots && !reduit) {
     var texte = mots.textContent.trim().split(/\s+/);
-    mots.setAttribute('aria-label', texte.join(' '));
     mots.textContent = '';
     texte.forEach(function (m, i) {
       var s = document.createElement('span');
       s.className = 'm';
-      s.setAttribute('aria-hidden', 'true');
       s.textContent = m;
       mots.appendChild(s);
       if (i < texte.length - 1) mots.appendChild(document.createTextNode(' '));
