@@ -1,0 +1,186 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const common_1 = require("@nestjs/common");
+const etats_financiers_syscohada_service_1 = require("../etats-financiers-syscohada/etats-financiers-syscohada.service");
+const cumul_consolidation_1 = require("./cumul-consolidation");
+const etats_consolides_service_1 = require("./etats-consolides.service");
+const flux_capitaux_consolides_1 = require("./flux-capitaux-consolides");
+const note_perimetre_1 = require("./note-perimetre");
+const T = 'dossier';
+const b = (l) => l.map(([numero, solde]) => ({ numero, intitule: numero, solde, mouvementDebit: Math.max(solde, 0), mouvementCredit: Math.max(-solde, 0) }));
+const mere = (actif) => ({
+    id: T,
+    nom: 'Mère',
+    estConsolidante: true,
+    methode: 'IG',
+    pctInteret: 100,
+    balance: b([['24100000', actif], ['10100000', -actif]]),
+});
+const EX = { dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
+const cumul = (actif) => ({ ...(0, cumul_consolidation_1.cumulerConsolidation)(EX, [mere(actif)], [], []), reserves: [] });
+const res = (nom, methode, pct, estConsolidante = false) => ({
+    id: nom,
+    nom,
+    estConsolidante,
+    pctControle: pct,
+    pctInteret: pct,
+    natureControle: 'EXCLUSIF_DE_DROIT',
+    methode,
+    fondement: 'art. 78',
+    aJustifierEnNotes: [],
+    exclusion: null,
+    dateCloture: null,
+});
+function monter(opts) {
+    const prisma = {
+        exercice: {
+            findFirst: jest.fn(async ({ where }) => {
+                if (where.id)
+                    return { dateDebut: EX.dateDebut };
+                return opts.precedent ? { id: opts.precedent } : null;
+            }),
+        },
+    };
+    const cumuls = {
+        cumul: jest.fn(async (_t, ex) => {
+            if (ex === 'N')
+                return cumul(1000);
+            if (opts.cumulN1 === 'refus')
+                throw new common_1.BadRequestException('Coût d’acquisition non déclaré');
+            return cumul(800);
+        }),
+        lignesConsolidante: jest.fn(async (_t, ex) => [{ numero: '10100000', marque: ex }]),
+    };
+    const perimetre = {
+        etat: jest.fn(async (_t, ex) => ex === 'N'
+            ? {
+                entites: [{ id: 'F', secteurActivite: 'Ciment' }],
+                resultats: [res('Mère', 'IG', 100, true), res('F', 'IG', 80)],
+                faits: { entitesControleHorsOhada: 'Holding SA (Luxembourg)' },
+            }
+            : { entites: Array.from({ length: opts.entitesN1 }, () => ({ id: 'x' })), resultats: [res('Mère', 'IG', 100, true), res('F', 'IG', opts.pctN1 ?? 60)] }),
+    };
+    const individuels = new etats_financiers_syscohada_service_1.EtatsFinanciersSyscohadaService(null, null);
+    const flux = jest.spyOn(individuels, 'resoudreFluxSurLignes');
+    const svc = new etats_consolides_service_1.EtatsConsolidesService(prisma, cumuls, perimetre, individuels);
+    return { svc, cumuls, prisma, flux };
+}
+describe('EtatsConsolidesService · la colonne N-1', () => {
+    it('N-1 est l’exercice qui commence juste avant, lu par date décroissante', async () => {
+        const { svc, prisma, cumuls } = monter({ precedent: 'P', entitesN1: 1 });
+        const r = await svc.etats(T, 'N');
+        const appel = prisma.exercice.findFirst.mock.calls.find((c) => !c[0].where.id)[0];
+        expect(appel).toMatchObject({ where: { tenantId: T, dateDebut: { lt: EX.dateDebut } }, orderBy: { dateDebut: 'desc' } });
+        expect(cumuls.cumul).toHaveBeenCalledWith(T, 'P');
+        expect(r.comparatif.disponible).toBe(true);
+        expect(r.bilan.actif.find((l) => l.cle === 'TOTAL_GENERAL_ACTIF')).toMatchObject({ net: 1000, netN1: 800 });
+    });
+    it('premier exercice · colonne vide et motif, jamais des zéros', async () => {
+        const { svc } = monter({ precedent: null, entitesN1: 0 });
+        const r = await svc.etats(T, 'N');
+        expect(r.comparatif).toEqual({ disponible: false, motif: expect.stringMatching(/Premier exercice/) });
+        expect(r.bilan.actif.every((l) => l.netN1 === null)).toBe(true);
+    });
+    it('un exercice précédent sans périmètre ne se consolide pas sur la seule mère', async () => {
+        const { svc, cumuls } = monter({ precedent: 'P', entitesN1: 0 });
+        const r = await svc.etats(T, 'N');
+        expect(cumuls.cumul).not.toHaveBeenCalledWith(T, 'P');
+        expect(r.comparatif.motif).toMatch(/Aucun périmètre déclaré/);
+    });
+    it('un refus du moteur sur N-1 vide la colonne et dit pourquoi, sans faire tomber N', async () => {
+        const { svc } = monter({ precedent: 'P', entitesN1: 1, cumulN1: 'refus' });
+        const r = await svc.etats(T, 'N');
+        expect(r.comparatif.motif).toMatch(/ne se consolide pas · Coût d’acquisition non déclaré/);
+        expect(r.compteDeResultat.every((l) => l.netN1 === null)).toBe(true);
+    });
+    it('la note du périmètre reçoit le secteur déclaré et les pourcentages de N-1', async () => {
+        const { svc } = monter({ precedent: 'P', entitesN1: 1 });
+        const r = await svc.etats(T, 'N');
+        expect(r.notePerimetre.lignes.find((l) => l.denomination === 'F')).toMatchObject({ secteurActivite: 'Ciment', pctControleN: 80, pctControleN1: 60 });
+    });
+});
+describe('EtatsConsolidesService · tableau des flux et variation des capitaux propres', () => {
+    it('premier exercice · ni tableau des flux ni variation, et le motif est celui du comparatif', async () => {
+        const { svc, cumuls } = monter({ precedent: null, entitesN1: 0 });
+        const r = await svc.etats(T, 'N');
+        expect(r.tableauDesFlux.lignes).toBeNull();
+        expect(r.tableauDesFlux.obstacles).toEqual([expect.stringMatching(/Premier exercice/)]);
+        expect(r.variationCapitauxPropres).toBeNull();
+        expect(cumuls.lignesConsolidante).not.toHaveBeenCalled();
+    });
+    it('un pourcentage d’intérêt qui bouge refuse le tableau et nomme l’entité', async () => {
+        const { svc } = monter({ precedent: 'P', entitesN1: 1, pctN1: 60 });
+        const r = await svc.etats(T, 'N');
+        expect(r.tableauDesFlux.lignes).toBeNull();
+        expect(r.tableauDesFlux.obstacles).toEqual([expect.stringMatching(/^F change de pourcentage d’intérêt \(60 % en N-1, 80 % en N\)/)]);
+    });
+    it('les comptes propres de la consolidante N et N-1 vont au résolveur individuel', async () => {
+        const { svc, cumuls, flux } = monter({ precedent: 'P', entitesN1: 1, pctN1: 80 });
+        const r = await svc.etats(T, 'N');
+        expect(cumuls.lignesConsolidante).toHaveBeenCalledWith(T, 'N');
+        expect(cumuls.lignesConsolidante).toHaveBeenCalledWith(T, 'P');
+        expect(flux).toHaveBeenCalledWith([{ numero: '10100000', marque: 'N' }], [{ numero: '10100000', marque: 'P' }]);
+        expect(r.tableauDesFlux.lignes).not.toBeNull();
+        expect(r.variationCapitauxPropres?.lignes.find((l) => l.cle === 'CLOTURE_N')?.montants.capital).toBe(1000);
+    });
+});
+describe('variationsDuPerimetre', () => {
+    const e = (nom, methode, pctInteret, estConsolidante = false) => ({ nom, methode, pctInteret, estConsolidante });
+    it('entrée, sortie et changement de méthode sont nommés · une entité exclue n’en fait pas', () => {
+        const m = (0, flux_capitaux_consolides_1.variationsDuPerimetre)([e('Mère', 'IG', 100, true), e('A', 'IG', 80), e('B', 'EXCLUE', 70), e('C', 'ME', 30)], [e('Mère', 'IG', 100, true), e('A', 'IP', 80), e('D', 'ME', 25), e('B', 'NC', 10)]);
+        expect(m.map((x) => x.split(' L’incidence')[0])).toEqual([
+            'A change de méthode (IP en N-1, IG en N).',
+            'C entre dans le périmètre en N (ME).',
+            'D sort du périmètre en N.',
+        ]);
+    });
+    it('même périmètre, mêmes pourcentages · rien à dire, la casse de la dénomination ne compte pas', () => {
+        expect((0, flux_capitaux_consolides_1.variationsDuPerimetre)([e('Mère', 'IG', 100, true), e('Filiale', 'IG', 80)], [e('Mère', 'IG', 100, true), e('FILIALE ', 'IG', 80)])).toEqual([]);
+    });
+});
+describe('EtatsConsolidesService · le jeu est un tout indissociable (D4C ch. XII-8 § 1)', () => {
+    it('sans tableau des flux ni notes, le jeu n’est pas publiable, et chaque document manquant est nommé', async () => {
+        const { svc } = monter({ precedent: null, entitesN1: 0 });
+        const r = await svc.etats(T, 'N');
+        expect(r.publiable).toBe(false);
+        expect(r.motifsNonPubliable.join(' ')).toContain('Tableau consolidé des flux de trésorerie non établi');
+        expect(r.motifsNonPubliable.join(' ')).toContain('Notes annexes consolidées non produites');
+    });
+    it('un pourcentage d’intérêt qui change depuis N-1 n’est pas joué (ch. XII-7) · motif du jeu', async () => {
+        const { svc } = monter({ precedent: 'P', entitesN1: 1, pctN1: 60 });
+        const motifs = (await svc.etats(T, 'N')).motifsNonPubliable.join(' ');
+        expect(motifs).toContain('Variation de périmètre ou de pourcentage d’intérêt non jouée (D4C ch. XII-7)');
+        const stable = monter({ precedent: 'P', entitesN1: 1, pctN1: 80 });
+        expect((await stable.svc.etats(T, 'N')).motifsNonPubliable.join(' ')).not.toContain('ch. XII-7');
+    });
+});
+describe('noteDuPerimetre', () => {
+    const n = [res('Mère', 'IG', 100, true), res('A', 'IG', 80), res('B', 'EXCLUE', 70), res('C', 'ME', 30)];
+    const n1 = [res('Mère', 'IG', 100, true), res('A', 'IP', 50), res('D', 'ME', 25)];
+    it('une entité exclue est « NC », le seul code que le D4C connaisse pour elle', () => {
+        expect((0, note_perimetre_1.noteDuPerimetre)(n, new Map(), n1).lignes.find((l) => l.denomination === 'B')?.methodeN).toBe('NC');
+    });
+    it('N et N-1 s’apparient par la dénomination · entrées et sorties nommées', () => {
+        const note = (0, note_perimetre_1.noteDuPerimetre)(n, new Map(), n1);
+        expect(note.lignes.find((l) => l.denomination === 'A')).toMatchObject({ methodeN: 'IG', methodeN1: 'IP', pctInteretN1: 50, entree: false });
+        expect(note.lignes.find((l) => l.denomination === 'C')).toMatchObject({ methodeN1: null, pctControleN1: null, entree: true });
+        expect(note.sorties).toEqual(['D']);
+    });
+    it('sans périmètre N-1, rien n’est une entrée', () => {
+        const note = (0, note_perimetre_1.noteDuPerimetre)(n, new Map(), null);
+        expect(note.comparatifDisponible).toBe(false);
+        expect(note.lignes.some((l) => l.entree)).toBe(false);
+    });
+    it('art. 76 · l’entité hors OHADA qui contrôle la consolidante est signalée, sinon null', () => {
+        expect((0, note_perimetre_1.noteDuPerimetre)(n, new Map(), null, ' Holding SA ').controleHorsOhada).toBe('Holding SA');
+        expect((0, note_perimetre_1.noteDuPerimetre)(n, new Map(), null).controleHorsOhada).toBeNull();
+    });
+    it('art. 76 · le service la lit dans les faits de l’exercice', async () => {
+        const { svc } = monter({ precedent: null, entitesN1: 0 });
+        expect((await svc.etats(T, 'N')).notePerimetre.controleHorsOhada).toBe('Holding SA (Luxembourg)');
+    });
+    it('la consolidante n’a rien à justifier', () => {
+        expect((0, note_perimetre_1.noteDuPerimetre)(n, new Map(), null).justifications.map((j) => j.denomination)).toEqual(['A', 'B', 'C']);
+    });
+});
+//# sourceMappingURL=etats-consolides.service.spec.js.map

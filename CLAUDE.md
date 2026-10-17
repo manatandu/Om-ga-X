@@ -80,7 +80,9 @@ scripts/         extracteurs des compétences (règles par compte, schémas des
 docs/            plan de construction, audits, guides pilote, notes de droit
                  · historique/ range les documents révolus, sous bandeau (F267)
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
-.claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max (§ 11)
+.claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
+                 et ses six compagnes, impeccable (§ 11)
+.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max et d'impeccable (§ 11)
 ```
 
 ## 3. Commandes
@@ -5468,16 +5470,34 @@ dossiers qui n'ont pas activé l'option. Rien n'est dévalidé rétroactivement.
 Les compétences (`skills`) ne sont déployées que par **Manasse**, à la main,
 via Réglages → Compétences. Ne pas tenter de les installer, modifier ou
 publier depuis une session.
-EXCEPTION ÉCRITE (2026-10-17, demande expresse de Manasse · « Installe dans le
-dépôt ») · la compétence `ui-ux-pro-max` (conseils de design d'interface,
-recherche locale dans ses tables par `scripts/search.py`) est COPIÉE dans
-`.claude/skills/ui-ux-pro-max/`, seul dossier retenu de l'archive reçue (les
-galeries, la CLI et les exemples ne sont pas repris). Deux retouches, et pas
-d'autres · les tirets cadratins des fichiers texte sont remplacés par « · »
-(§ 4, `cadratins.spec.ts` relit ce dossier), et rien n'est exécuté à
-l'installation. Ses conseils ne priment JAMAIS sur ce fichier · la charte
+EXCEPTION ÉCRITE (2026-10-17, demandes expresses de Manasse · « Installe dans le
+dépôt », puis « Installe tout. Et impeccable aussi ») · deux projets tiers sont
+COPIÉS dans le dépôt, et rien n'y est exécuté à l'installation.
+(1) COMPÉTENCES VIVANTES, chargées à l'ouverture d'une session · `ui-ux-pro-max`
+(conseils de design d'interface, recherche locale par `scripts/search.py`) et
+les six que son archive porte (`banner-design`, `brand`, `design`,
+`design-system`, `slides`, `ui-styling`), puis `impeccable` et ses quatre
+agents (`.claude/agents/impeccable-*.md`, modèle hérité de la session). Une
+seule retouche · les tirets cadratins des fichiers sont remplacés par « · »
+(§ 4, `cadratins.spec.ts` relit ces dossiers).
+(2) SOURCES AMONT, en entier, sous `.claude/amont/ui-ux-pro-max-skill/` (tout
+l'archive reçue) et `.claude/amont/impeccable/` (tout, sauf les dix-huit copies
+que son archive engendre pour d'AUTRES outils · Cursor, Gemini, Trae, Kiro et
+autres, 2,3 Mo chacune, que `skill/` régénère). Trois retouches · le
+`CLAUDE.md` et l'`AGENTS.md` de chaque projet sont renommés en `.amont.md` et
+leur `settings.json` en `settings.amont.json`, pour ne pas être lus comme les
+nôtres. Ce dossier est EXCLU de la relecture des cadratins (le caractère y est
+parfois une donnée que le détecteur d'impeccable cherche) et de l'envoi à Cloud
+Build (`.gcloudignore`, le Dockerfile ne copie que `src` et ce qu'il nomme).
+(3) LES CROCHETS D'IMPECCABLE SONT ÉTEINTS · son `settings.json` lance un
+programme à chaque écriture de fichier, à l'ouverture et à l'arrêt de session ;
+il est rangé en `.claude/settings-impeccable.EXEMPLE.json`, comme les crochets
+d'ECC, et ne s'active que si Manasse le demande (copie dans
+`.claude/settings.json`). Son lanceur peut télécharger un programme
+(`scripts/impeccable`) · raison de plus.
+Les conseils de ces compétences ne priment JAMAIS sur ce fichier · la charte
 OmegaX (§ 9 bis), le modèle Sage (§ 9 ter) et « aucun paragraphe explicatif à
-l'écran » l'emportent là où elle les contredit. Elle ne remplace pas son
+l'écran » l'emportent là où elles les contredisent. Cela ne remplace pas leur
 déploiement par Réglages → Compétences, que Manasse tient seul.
 
 SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
