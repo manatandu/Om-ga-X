@@ -557,6 +557,53 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     ).rejects.toThrow(/Maillon d'audit NON écrit dans la transaction · User\.create/);
   });
 
+  it('la pré-image d’une mise à jour se lit par la transaction, jamais par une seconde connexion', async () => {
+    // LE DÉFAUT DU 2026-10-17 (test de charge k6) · lue par `base`, la
+    // pré-image prenait une seconde connexion du pool pendant que la
+    // transaction tenait la première. Avec autant de transactions que de
+    // connexions (dix en production), chacune attendait dix secondes la
+    // connexion que les autres retenaient, et le `catch` avalait l'échec.
+    const { tx, base, maillons } = transactionFactice(null);
+    (tx as any).journal = { findFirst: jest.fn().mockResolvedValue({ id: 'j-1', tenantId: 'd-1', intitule: 'Avant' }) };
+    base.journal = { findFirst: jest.fn().mockRejectedValue(new Error('pool épuisé : ne doit pas être lue')) };
+    await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+      journaliserDansTransaction(tx, () =>
+        intercepterEcriture(base, {
+          model: 'Journal',
+          operation: 'update',
+          args: { where: { id: 'j-1' }, data: { intitule: 'Après' } },
+          query: async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }),
+        }),
+      ),
+    );
+    expect((tx as any).journal.findFirst).toHaveBeenCalledTimes(1);
+    expect(base.journal.findFirst).not.toHaveBeenCalled();
+    expect(maillons).toHaveLength(1);
+    expect(maillons[0].avant).toMatchObject({ intitule: 'Avant' });
+    expect(maillons[0].apres).toMatchObject({ intitule: 'Après' });
+  });
+
+  it('hors transaction, la pré-image se lit toujours par la connexion de base', async () => {
+    const base: any = {
+      journal: { findFirst: jest.fn().mockResolvedValue({ id: 'j-1', tenantId: 'd-1', intitule: 'Avant' }) },
+      $transaction: jest.fn().mockImplementation(async (f: any) =>
+        f({
+          $executeRaw: jest.fn().mockResolvedValue(1),
+          evenementAudit: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+        }),
+      ),
+    };
+    await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+      intercepterEcriture(base, {
+        model: 'Journal',
+        operation: 'update',
+        args: { where: { id: 'j-1' }, data: { intitule: 'Après' } },
+        query: async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }),
+      }),
+    );
+    expect(base.journal.findFirst).toHaveBeenCalledTimes(1);
+  });
+
   it('la création du dossier ouvre SA chaîne, pas celle de l’acteur', async () => {
     const { tx, base, maillons } = transactionFactice(null);
     await dansContexteAudit({ acteurEmail: 'operateur@vmg.cd', tenantId: 'editeur' }, () =>

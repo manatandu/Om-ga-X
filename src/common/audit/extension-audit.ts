@@ -244,9 +244,26 @@ export async function intercepterEcriture(
   const cible = ['update', 'delete', 'upsert'].includes(operation);
   if (cible && a.where) {
     try {
-      avant = await (base as unknown as Record<string, { findFirst: (x: unknown) => Promise<unknown> }>)[
-        model.charAt(0).toLowerCase() + model.slice(1)
-      ].findFirst({ where: a.where, ...selectPreImage(model) });
+      // LA PRÉ-IMAGE SE LIT PAR LA CONNEXION DE LA TRANSACTION QUAND IL Y EN A
+      // UNE (test de charge k6, 2026-10-17). Lue par `base`, elle prenait une
+      // SECONDE connexion du pool pendant que la transaction tenait la
+      // première · dès que le nombre de transactions simultanées atteignait la
+      // taille du pool (dix en production), chacune attendait la connexion que
+      // les autres retenaient, dix secondes par opération (le délai du pool),
+      // et le `catch` ci-dessous AVALAIT l'échec pour laisser passer
+      // l'opération sans pré-image. Dix inscriptions simultanées finissaient
+      // en 31 secondes dont quatre en 500, et tous les autres cabinets de
+      // l'instance attendaient avec elles. Lue dans la transaction, la
+      // pré-image est aussi la bonne : celle que la transaction voit, non
+      // l'état validé avant elle.
+      const lecteur = (transactionAuditee() ?? base) as unknown as Record<
+        string,
+        { findFirst: (x: unknown) => Promise<unknown> }
+      >;
+      avant = await lecteur[model.charAt(0).toLowerCase() + model.slice(1)].findFirst({
+        where: a.where,
+        ...selectPreImage(model),
+      });
     } catch {
       // Une lecture de pré-image impossible ne doit pas empêcher l'opération ·
       // l'événement sera simplement moins riche.

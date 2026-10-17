@@ -26,7 +26,14 @@
 //
 // VARIABLES (toutes facultatives)
 //   BASE         adresse du serveur            (défaut http://localhost:8080)
-//   PROFIL       fumee | nominal | montee | stress | pic   (défaut fumee)
+//   PROFIL       fumee | nominal | montee | stress | pic | rafale | inscriptions
+//                (défaut fumee)
+//   RAFALE       pour le profil `rafale` : nombre d'inscriptions SIMULTANÉES (défaut 20)
+//   TAUX         pour le profil `inscriptions` : paliers d'inscriptions par seconde,
+//                séparés par des virgules (défaut 0.5,1,2,3,5)
+//   PARCOURS     complet | entree  (défaut complet ; `entree` s'arrête après
+//                l'inscription, la connexion et l'ouverture du dossier, c'est
+//                le parcours des profils `rafale` et `inscriptions`)
 //   REFERENTIEL  SYCEBNL | SYSCOHADA | MIX     (défaut MIX : un cabinet sur deux)
 //   THINK        temps de réflexion moyen en secondes entre deux gestes
 //                (défaut 1 ; 0 = marteler, c'est le profil `pic`)
@@ -57,6 +64,9 @@ const SINK = __ENV.SINK || '';
 const ESSAI = __ENV.ESSAI !== undefined ? Number(__ENV.ESSAI) : SINK ? 0.3 : 0;
 const LIASSE = (__ENV.LIASSE || '1') !== '0';
 const RUN = __ENV.RUN || String(Date.now());
+const RAFALE = Number(__ENV.RAFALE || 20);
+const TAUX = (__ENV.TAUX || '0.5,1,2,3,5').split(',').map(Number);
+const PARCOURS = __ENV.PARCOURS || (['rafale', 'inscriptions'].includes(PROFIL) ? 'entree' : 'complet');
 const MDP = 'MotDePasse-k6-1234';
 
 // Un 4xx est un REFUS (sonde de sécurité, règle métier), pas une panne : seuls
@@ -161,7 +171,19 @@ const parcours = new Trend('duree_parcours_cabinet', true);
 // ---------------------------------------------------------------------------
 const scenarios = {
   fumee: { executor: 'shared-iterations', vus: 1, iterations: 1, maxDuration: '10m' },
-  nominal: { executor: 'constant-vus', vus: 20, duration: '5m', gracefulStop: '2m' },
+  // Montée en une minute (jamais 20 inscriptions dans la même seconde : c'est le
+  // profil `rafale`, mesuré à part), puis palier de cinq minutes.
+  nominal: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '1m', target: 20 },
+      { duration: '5m', target: 20 },
+      { duration: '30s', target: 0 },
+    ],
+    gracefulRampDown: '2m',
+    gracefulStop: '2m',
+  },
   montee: {
     executor: 'ramping-vus',
     startVUs: 5,
@@ -190,7 +212,30 @@ const scenarios = {
     gracefulRampDown: '1m',
     gracefulStop: '3m',
   },
-  pic: { executor: 'constant-vus', vus: 20, duration: '3m', gracefulStop: '2m' },
+  pic: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '30s', target: 20 },
+      { duration: '3m', target: 20 },
+    ],
+    gracefulRampDown: '2m',
+    gracefulStop: '2m',
+  },
+  // N inscriptions dans la MÊME seconde (lancement, courriel de masse, article
+  // de presse) · une seule itération par VU, tous partis ensemble.
+  rafale: { executor: 'per-vu-iterations', vus: RAFALE, iterations: 1, maxDuration: '5m' },
+  // Débit soutenu d'inscriptions, par paliers de 60 s · jusqu'où le serveur
+  // suit-il un flux régulier de nouveaux cabinets ?
+  inscriptions: {
+    executor: 'ramping-arrival-rate',
+    startRate: 0,
+    timeUnit: '1s',
+    preAllocatedVUs: 60,
+    maxVUs: 400,
+    stages: TAUX.map((t) => ({ duration: '60s', target: t })),
+    gracefulStop: '2m',
+  },
 };
 
 export const options = {
@@ -358,6 +403,7 @@ export default function (sentinelle) {
       if (!mot) {
         refusInattendus.add(1, { etape: 'inscription_essai' });
         console.error(`essai · aucun courriel reçu pour ${email}`);
+        sleep(10);
         return;
       }
       const c = appel('connexion', 'POST', '/auth/login', { email, motDePasse: mot });
@@ -370,6 +416,7 @@ export default function (sentinelle) {
       const r = appel('inscription', 'POST', '/auth/register', { nomEntite: `Cabinet ${tag}`, referentiel, email, motDePasse: MDP });
       attendu(r, 'inscription', 'inscription');
       csrf = (json(r) || {}).csrfToken || '';
+      if (!csrf) return; // inscription refusée : pas de compte à connecter
       reflechir();
       // Une seconde connexion, comme le lendemain matin : mesure le hachage seul.
       const c = appel('connexion', 'POST', '/auth/login', { email, motDePasse: MDP });
@@ -379,7 +426,11 @@ export default function (sentinelle) {
   });
   if (!csrf) {
     refusInattendus.add(1, { etape: 'connexion' });
-    return; // pas de session : rien d'autre à jouer
+    // Pas de session : rien d'autre à jouer. Un humain qui voit un échec attend
+    // avant de réessayer · sans pause, la boucle martèlerait l'inscription et
+    // fabriquerait la panique qu'elle prétend mesurer.
+    sleep(10);
+    return;
   }
 
   // ---- 2. Ouverture du dossier : ce que l'écran charge au démarrage -----
@@ -403,6 +454,12 @@ export default function (sentinelle) {
   });
   if (!exerciceId || journaux.length === 0 || plan.length === 0) {
     refusInattendus.add(1, { etape: 'ouverture' });
+    sleep(10);
+    return;
+  }
+  if (PARCOURS === 'entree') {
+    cabinetsTermines.add(1);
+    parcours.add(Date.now() - debut);
     return;
   }
   const numero = (n) => plan.find((c) => c.numero === n);
@@ -436,6 +493,7 @@ export default function (sentinelle) {
   const comptesOk = [chargeN, produitN, banqueN, caisseN, '66110000', '42200000'].every((n) => numero(n)) && tiers.F.length === 2 && tiers.C.length === 2 && tiers.F.every((t) => t) && tiers.C.every((t) => t);
   if (!comptesOk) {
     refusInattendus.add(1, { etape: 'structure' });
+    sleep(10);
     return;
   }
 
