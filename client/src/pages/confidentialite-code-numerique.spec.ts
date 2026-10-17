@@ -67,11 +67,13 @@ describe('la politique cite le Code du numérique', () => {
     expect(page).not.toMatch(/conforme au Code du numérique|autorisation de l’Autorité a été/i);
   });
 
-  it('donne le courriel que VMG a arrêté, et laisse l’adresse postale en blanc plutôt que d’en inventer', () => {
-    // Courriel donné par Manasse le 2026-10-17 · l'adresse postale reste à arrêter.
+  it('donne le courriel et la ville que VMG a arrêtés, sans inventer une adresse de rue', () => {
+    // Donnés par Manasse le 2026-10-17 · « Mets juste Kinshasa/RDC » · aucune rue n'est publiée.
     expect(deplie).toContain('href="mailto:admin@vmgconsulting.net"');
-    expect(deplie).toContain('L’adresse postale du cabinet doit être arrêtée par VMG Consulting');
-    expect(deplie).toContain('adresse inventée dirigerait vos demandes vers le vide');
+    expect(deplie).toContain('Le cabinet est établi à Kinshasa, en République démocratique du Congo');
+    expect(deplie).toContain('l’adresse de la rue n’étant pas encore publiée');
+    // Aucune rue n'est publiée · l'inventer dirigerait les demandes vers le vide.
+    expect(deplie).not.toMatch(/\b(avenue|boulevard|quartier)\b/i);
   });
 
   it('numérote ses sections sans doublon', () => {
@@ -276,6 +278,6 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
 
   it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {
     expect(deplie).toContain('<LienPreferencesMesure className="text-sel underline" />');
-    expect(deplie).toContain('<em>Adresse postale · à arrêter par VMG Consulting (section 10).</em>');
+    expect(deplie).toContain('Adresse · Kinshasa, République démocratique du Congo');
   });
 });

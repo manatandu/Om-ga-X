@@ -139,8 +139,8 @@ describe('la politique de confidentialité est PUBLIÉE', () => {
     // Une adresse inventée dirigerait les demandes d'exercice des droits vers
     // le vide, et rendrait le document faux plutôt qu'incomplet.
     const page = lire('src/pages/ConfidentialitePage.tsx');
-    // Le courriel est arrêté (Manasse, 2026-10-17) · l'adresse postale reste en blanc.
-    expect(page).toContain('L’adresse postale du cabinet doit être arrêtée');
+    // Le courriel est arrêté (Manasse, 2026-10-17) · la ville est donnée, aucune rue n'est inventée.
+    expect(page).toContain('l’adresse de la rue n’étant pas encore publiée');
     expect(page).toContain('mailto:admin@vmgconsulting.net');
   });
 

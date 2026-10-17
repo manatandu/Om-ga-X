@@ -17,11 +17,13 @@ import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
  * décrirait un traitement que le logiciel ne fait pas serait pire qu'aucune
  * politique : elle serait fausse, et opposable.
  *
- * DEUX POINTS APPELLENT UNE DÉCISION DE VMG CONSULTING et sont dits comme tels
- * dans le texte plutôt que remplis d'office · l'adresse postale du responsable
- * de traitement, et l'adresse de contact pour l'exercice des droits. Inventer
- * un contact ferait passer un document juridique pour complet alors qu'il
- * dirigerait les demandes vers le vide.
+ * CE QUE VMG CONSULTING A ARRÊTÉ ET CE QUI RESTE À ARRÊTER · le courriel des
+ * demandes (admin@vmgconsulting.net) et la ville (Kinshasa, RDC) sont donnés
+ * par Manasse le 17 octobre 2026 ; aucune adresse de rue n'est inscrite, et
+ * le texte dit qu'elle n'est pas encore publiée. Inventer une rue ferait
+ * passer un document juridique pour complet alors qu'il dirigerait les
+ * demandes vers le vide. Restent à arrêter, et dits comme tels dans le texte,
+ * le prestataire de messagerie et quelques durées.
  */
 
 // Mise à jour du 15 octobre 2026 (ligne pages-legales) · la console de
@@ -550,10 +552,9 @@ export function ContenuConfidentialite() {
           Pour toute autre demande, écrivez à VMG Consulting à l’adresse{' '}
           <a href="mailto:admin@vmgconsulting.net" className="text-sel underline">
             admin@vmgconsulting.net
-          </a>{' '}
-          (adresse arrêtée par VMG Consulting le 17 octobre 2026). <em>L’adresse postale du cabinet doit être arrêtée
-          par VMG Consulting et portée ici avant toute publication de cette page sur un magasin d’applications.</em>{' '}
-          Elle n’est pas inscrite d’office : une adresse inventée dirigerait vos demandes vers le vide.
+          </a>
+          . Le cabinet est établi à Kinshasa, en République démocratique du Congo ; vous pouvez aussi lui écrire par voie
+          postale à cette ville, l’adresse de la rue n’étant pas encore publiée.
         </P>
         <P>
           <strong>Délais.</strong> Nous vous disons la suite donnée à votre demande dans les{' '}
@@ -593,7 +594,7 @@ export function ContenuConfidentialite() {
             </a>
           </p>
           <p>
-            <em>Adresse postale · à arrêter par VMG Consulting (section 10).</em>
+            Adresse · Kinshasa, République démocratique du Congo
           </p>
         </div>
         <P>
