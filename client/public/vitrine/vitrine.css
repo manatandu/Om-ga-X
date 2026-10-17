@@ -82,7 +82,7 @@ main>section,main>.filet{margin-left:var(--gouttiere);margin-right:var(--gouttie
 main>section.appel{margin-left:0;margin-right:0}
 
 /* Première vue · le titre, puis la feuille de journal à essayer */
-.tete{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.8fr);column-gap:56px;row-gap:56px;align-items:end;padding-top:72px;padding-bottom:72px}
+.tete{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.95fr);column-gap:56px;row-gap:56px;align-items:end;padding-top:72px;padding-bottom:72px}
 .tete>*{min-width:0}
 h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter-spacing:-.03em;text-wrap:balance}
 .chapeau{font-size:1.0625rem;max-width:34em}
@@ -112,7 +112,7 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .piece tfoot th{font-family:'IBM Plex Sans',sans-serif;font-size:14px}
 .piece tfoot td{padding-right:18px}
 
-.cachet{position:absolute;right:16px;top:-6px;transform:rotate(-8deg);pointer-events:none;opacity:0}
+.cachet{position:absolute;right:26px;top:70px;transform:rotate(-8deg);pointer-events:none;opacity:0}
 .cachet span{display:inline-block;border:2px solid var(--encre);border-radius:4px;padding:6px 14px;font:600 15px/1 'IBM Plex Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--encre);background:rgba(255,255,255,.7)}
 .valide .cachet{animation:poser .26s cubic-bezier(.2,.8,.3,1) forwards}
 @keyframes poser{from{opacity:0;transform:rotate(-8deg) scale(1.4)}to{opacity:.92;transform:rotate(-8deg) scale(1)}}
@@ -127,7 +127,10 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .gestes{display:flex;flex-wrap:wrap;gap:10px}
 .controle-note{font-size:.85rem;color:var(--discret);margin-top:auto}
 .feuille.desequilibre .ecart b{color:var(--signal)}
+.etat .i-ko{display:none}
 .feuille.desequilibre .etat svg{color:var(--signal)}
+.feuille.desequilibre .i-ok{display:none}
+.feuille.desequilibre .i-ko{display:block}
 .feuille.desequilibre .piece tfoot td{color:var(--signal)}
 .feuille.valide .piece input{border-color:transparent;background:transparent}
 
@@ -155,7 +158,7 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .cycle::before,.cycle::after{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1px}
 .cycle::before{background:var(--filet)}
 .cycle::after{background:var(--encre);transform:scaleY(var(--avance));transform-origin:top}
-.cycle>li{position:relative;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:24px 48px;align-items:center;padding:0 0 64px}
+.cycle>li{position:relative;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:24px 48px;align-items:start;padding:0 0 64px}
 .cycle>li:last-child{padding-bottom:0}
 .cycle>li::before{content:"";position:absolute;left:-36px;top:7px;width:11px;height:11px;border-radius:50%;border:1px solid var(--encre);background:#fff;transition:background-color .3s ease}
 .cycle>li.actif::before{background:var(--encre)}
@@ -172,7 +175,7 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .fig-rap{padding-top:6px}
 .rap-tete{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:10px 0;font:500 11.5px/1 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em;color:var(--discret);border-bottom:1px solid var(--encre)}
 .rap-tete span:last-child{text-align:right}
-.rap-paire{display:grid;grid-template-columns:minmax(0,1fr) minmax(40px,.5fr) minmax(0,1fr);align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--filet)}
+.rap-paire{display:grid;grid-template-columns:minmax(0,1fr) minmax(32px,.3fr) minmax(0,1.15fr);align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--filet)}
 .rap-paire:last-child{border-bottom:0}
 .rap-paire .g{display:flex;flex-direction:column;gap:2px}
 .rap-paire .g b{font:500 14px/1.2 'IBM Plex Mono',monospace;color:var(--encre)}
@@ -229,6 +232,14 @@ h1{font-size:clamp(2.4rem,6.3vw,4.75rem);font-weight:500;line-height:1.02;letter
 .bascule input:focus-visible+label{outline:2px solid var(--encre);outline-offset:3px}
 .plans{margin-top:28px}
 .plan{padding-top:4px}
+@media (min-width:981px){
+  .plan{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:64px;align-items:start}
+  .plan>h3,.plan>.propre{grid-column:1 / -1}
+  .plan .extrait{margin-top:22px;max-width:none}
+  .plan dl{margin-top:58px;max-width:none}
+  .plan dl>div:first-child{border-top:1px solid var(--encre)}
+  .plan .propre{margin-top:28px}
+}
 .plan+.plan{margin-top:48px}
 .plan.entre{animation:entrer .3s var(--sortie)}
 @keyframes entrer{from{opacity:0;transform:translateY(8px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
@@ -292,7 +303,8 @@ dd{margin:0;color:var(--encre);font-weight:500;text-align:right}
   .entete nav{display:none}
   .entete .bouton{margin-left:auto}
   .tete{grid-template-columns:1fr;padding-top:44px;padding-bottom:48px;row-gap:32px}
-  .feuille-corps{grid-template-columns:1fr}
+  .feuille-corps{grid-template-columns:minmax(0,1fr)}
+  .piece{overflow-x:auto}
   .controle{border-left:0;border-top:1px solid var(--filet);border-radius:0 0 9px 9px}
   .cycle>li{grid-template-columns:1fr;gap:20px;padding-bottom:48px}
 }
@@ -321,7 +333,11 @@ dd{margin:0;color:var(--encre);font-weight:500;text-align:right}
   .rap-paire .faisceau::before{display:none}
   .fig-rap.vu .faisceau::after{animation-name:relier-v}
   .rap-paire.sans .faisceau{background:repeating-linear-gradient(180deg,var(--regle) 0 4px,transparent 4px 8px)}
-  .rap-tete{grid-template-columns:1fr 1fr;gap:8px;font-size:10.5px}
+  .rap-tete{display:none}
+  .rap-paire .g::before,.rap-paire .d::before{display:block;font:500 10.5px/1.2 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em;color:var(--discret);margin-bottom:2px}
+  .rap-paire .g::before{content:"Relevé de la banque"}
+  .rap-paire .d::before{content:"Écriture du dossier"}
+  .rap-paire.sans .d::before{content:"Écriture du dossier"}
   .fig-statuts li{grid-template-columns:minmax(0,1fr) auto}
   .fig-statuts li .puce{grid-column:2;grid-row:1}
   .fig-statuts li b{grid-column:1}

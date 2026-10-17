@@ -14,8 +14,8 @@
 <link rel="icon" href="/icone.svg" type="image/svg+xml">
 <link rel="preload" href="/polices/ibm-plex-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/polices/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="vitrine.css">
-<script src="vitrine.js" defer></script>
+<link rel="stylesheet" href="vitrine.css?v=20261017">
+<script src="vitrine.js?v=20261017" defer></script>
 </head>
 <body>
 <a class="evitement" href="#principal">Aller au contenu</a>
@@ -79,7 +79,8 @@
         <p class="controle-titre">Contrôle de la pièce</p>
         <p class="ecart" id="ecart-ligne"><span>Écart</span><b id="ecart">0,00</b></p>
         <p class="etat" id="etat" role="status" aria-live="polite">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="i-ok" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="i-ko" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           <span id="etat-texte">La pièce boucle : le débit égale le crédit. Elle peut être validée.</span>
         </p>
         <p class="gestes">

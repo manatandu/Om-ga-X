@@ -160,7 +160,7 @@
       var ec = libre ? Math.abs(d - c) : null;
       ecart.textContent = libre ? ecrire(ec) : '·';
       var boucle = libre && ec === 0 && d > 0;
-      feuille.classList.toggle('desequilibre', libre && ec !== 0);
+      feuille.classList.toggle('desequilibre', !boucle);
       if (validee) return;
       if (!libre) etatTexte.textContent = MESSAGES.illisible;
       else if (ec !== 0) etatTexte.textContent = 'Écart de ' + ecrire(ec) + ' : OmegaX refuse une écriture dont le débit et le crédit diffèrent.';
