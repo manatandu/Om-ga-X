@@ -134,13 +134,27 @@ async function ecrireMaillon(
     // `$executeRaw` ne lit aucune colonne, seulement un nombre de lignes.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cle}))`;
 
+    // `IS NOT DISTINCT FROM` EST ILLISIBLE POUR L'INDEX (test de charge k6,
+    // 2026-10-17) · PostgreSQL ne s'en sert pas : chaque maillon écrit dans une
+    // transaction lisait TOUTE la table des événements, tous dossiers confondus,
+    // pour trier (12 ms à 50 000 événements contre 0,35 ms par l'index, et le
+    // temps croît avec la table : une inscription écrit des centaines de
+    // maillons). Pire, ce balayage posait un verrou de prédicat sur la RELATION
+    // entière sous SERIALIZABLE : chaque maillon d'un autre dossier entrait en
+    // conflit avec lui, d'où des refus 409 « au même instant » entre cabinets
+    // qui ne se connaissent pas. Un dossier se lit par égalité (index
+    // `evenements_audit_tenantId_rang_key`), la chaîne de la plateforme
+    // (tenantId nul) par `IS NULL`, que l'index lit aussi.
     const precedent = lectureBrute
-      ? ((
-          await tx.$queryRaw<{ rang: number; empreinte: string }[]>`
-            SELECT rang, empreinte FROM evenements_audit
-            WHERE "tenantId" IS NOT DISTINCT FROM ${evenement.tenantId}::text
-            ORDER BY rang DESC LIMIT 1`
-        )[0] ?? null)
+      ? ((evenement.tenantId === null
+          ? await tx.$queryRaw<{ rang: number; empreinte: string }[]>`
+              SELECT rang, empreinte FROM evenements_audit
+              WHERE "tenantId" IS NULL
+              ORDER BY rang DESC LIMIT 1`
+          : await tx.$queryRaw<{ rang: number; empreinte: string }[]>`
+              SELECT rang, empreinte FROM evenements_audit
+              WHERE "tenantId" = ${evenement.tenantId}::text
+              ORDER BY rang DESC LIMIT 1`)[0] ?? null)
       : await tx.evenementAudit.findFirst({
           where: { tenantId: evenement.tenantId },
           orderBy: { rang: 'desc' },

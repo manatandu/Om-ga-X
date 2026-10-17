@@ -542,6 +542,44 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     expect(maillons[0]).toMatchObject({ rang: 5, empreintePrecedente: 'e4' });
   });
 
+  it('lit le maillon précédent PAR L’INDEX du dossier, jamais par un balayage de toute la table', async () => {
+    // LE DÉFAUT DU 2026-10-17 (test de charge k6) · `IS NOT DISTINCT FROM` ne
+    // se sert d'aucun index : chaque maillon lisait toute la table des
+    // événements (12 ms à 50 000 lignes, croissant avec elle) et posait sous
+    // SERIALIZABLE un verrou de prédicat sur la relation entière, d'où des
+    // conflits entre dossiers qui ne se connaissent pas.
+    const sqlDe = (appel: unknown[]) => (appel[0] as TemplateStringsArray).join('?');
+    const { tx, base } = transactionFactice({ rang: 4, empreinte: 'e4' });
+    await journaliserDansTransaction(tx, () =>
+      intercepterEcriture(base, {
+        model: 'Journal',
+        operation: 'create',
+        args: { data: {} },
+        query: async () => ({ id: 'j-1', tenantId: 'dossier-1' }),
+      }),
+    );
+    const sql = sqlDe(tx.$queryRaw.mock.calls[0]);
+    expect(sql).not.toMatch(/IS\s+NOT\s+DISTINCT/i);
+    expect(sql).toMatch(/"tenantId"\s*=\s*\?::text/);
+    expect(tx.$queryRaw.mock.calls[0][1]).toBe('dossier-1');
+  });
+
+  it('la chaîne de la plateforme (aucun dossier) se lit par IS NULL, que l’index lit aussi', async () => {
+    const sqlDe = (appel: unknown[]) => (appel[0] as TemplateStringsArray).join('?');
+    const { tx, base } = transactionFactice(null);
+    await journaliserDansTransaction(tx, () =>
+      intercepterEcriture(base, {
+        model: 'User',
+        operation: 'create',
+        args: { data: {} },
+        query: async () => ({ id: 'u-1', email: 'a@b.cd' }),
+      }),
+    );
+    const sql = sqlDe(tx.$queryRaw.mock.calls[0]);
+    expect(sql).not.toMatch(/IS\s+NOT\s+DISTINCT/i);
+    expect(sql).toMatch(/"tenantId"\s+IS\s+NULL/);
+  });
+
   it('un maillon qui échoue dans la transaction fait échouer l’acte, en le disant', async () => {
     const { tx, base } = transactionFactice(null);
     tx.evenementAudit.create.mockRejectedValue(new Error('refus'));

@@ -26,8 +26,10 @@
 //
 // VARIABLES (toutes facultatives)
 //   BASE         adresse du serveur            (défaut http://localhost:8080)
-//   PROFIL       fumee | nominal | montee | stress | pic | rafale | inscriptions
-//                (défaut fumee)
+//   PROFIL       fumee | nominal | palier | montee | stress | pic | rafale |
+//                inscriptions   (défaut fumee)
+//   VUS, DUREE   pour le profil `palier` : nombre de cabinets simultanés (défaut
+//                20) et durée du palier une fois monté (défaut 3m)
 //   RAFALE       pour le profil `rafale` : nombre d'inscriptions SIMULTANÉES (défaut 20)
 //   TAUX         pour le profil `inscriptions` : paliers d'inscriptions par seconde,
 //                séparés par des virgules (défaut 0.5,1,2,3,5)
@@ -65,6 +67,8 @@ const ESSAI = __ENV.ESSAI !== undefined ? Number(__ENV.ESSAI) : SINK ? 0.3 : 0;
 const LIASSE = (__ENV.LIASSE || '1') !== '0';
 const RUN = __ENV.RUN || String(Date.now());
 const RAFALE = Number(__ENV.RAFALE || 20);
+const VUS = Number(__ENV.VUS || 20);
+const DUREE = __ENV.DUREE || '3m';
 const TAUX = (__ENV.TAUX || '0.5,1,2,3,5').split(',').map(Number);
 const PARCOURS = __ENV.PARCOURS || (['rafale', 'inscriptions'].includes(PROFIL) ? 'entree' : 'complet');
 const MDP = 'MotDePasse-k6-1234';
@@ -149,6 +153,12 @@ const reponses5xx = new Counter('reponses_5xx');
 const fuites = new Counter('fuites_entre_dossiers');
 const incoherences = new Counter('incoherences_comptables');
 const refusInattendus = new Counter('refus_inattendus');
+// Un 409 « trop d'écritures au même instant » est un conflit de sérialisation
+// que le serveur n'a pas réussi à rejouer en cinq tentatives. Le message dit
+// « veuillez réessayer » : le script réessaie UNE fois après une seconde, comme
+// le ferait la personne. `conflits_409` compte les premiers refus,
+// `refus_inattendus` ne compte que ce qui résiste à la reprise.
+const conflits409 = new Counter('conflits_409');
 const cabinetsTermines = new Counter('cabinets_termines');
 const sondesLancees = new Counter('sondes_cloisonnement');
 const sondesRefusees = new Counter('sondes_refusees');
@@ -222,6 +232,19 @@ const scenarios = {
     gracefulRampDown: '2m',
     gracefulStop: '2m',
   },
+  // Un palier isolé : VUS cabinets simultanés, montés en trente secondes puis
+  // tenus DUREE · c'est le moyen de lire la courbe latence et refus en fonction
+  // du nombre de cabinets, un point par lancement, sans mélanger les paliers.
+  palier: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '30s', target: VUS },
+      { duration: DUREE, target: VUS },
+    ],
+    gracefulRampDown: '2m',
+    gracefulStop: '2m',
+  },
   // N inscriptions dans la MÊME seconde (lancement, courriel de masse, article
   // de presse) · une seule itération par VU, tous partis ensemble.
   rafale: { executor: 'per-vu-iterations', vus: RAFALE, iterations: 1, maxDuration: '5m' },
@@ -238,8 +261,38 @@ const scenarios = {
   },
 };
 
+// SONDE · un appel à /health toutes les deux secondes, hors de la charge, qui
+// écrit « SONDE <heure> <ms> <statut> » au journal de k6. /health joint la base
+// (CLAUDE.md § 5) : elle voit un pool saturé avant n'importe quel écran. C'est
+// la série temporelle qui dit si le serveur REVIENT après une pointe, ce que le
+// résumé agrégé ne dit pas. SONDE=0 la retire.
+function secondes(d) {
+  const m = /^(\d+)(s|m|h)$/.exec(String(d));
+  return m ? Number(m[1]) * { s: 1, m: 60, h: 3600 }[m[2]] : 0;
+}
+// La sonde couvre le palier de charge et deux minutes de retour au calme.
+function dureeDeLaCharge(sc) {
+  if (sc.stages) return sc.stages.reduce((t, e) => t + secondes(e.duration), 0) + 120;
+  if (sc.duration) return secondes(sc.duration) + 120;
+  return 300;
+}
+const AVEC_SONDE = (__ENV.SONDE || '1') !== '0' && PROFIL !== 'fumee';
+const toutesLesScenes = { [PROFIL]: scenarios[PROFIL] || scenarios.fumee };
+if (AVEC_SONDE) {
+  toutesLesScenes.sonde = {
+    executor: 'constant-arrival-rate',
+    rate: 1,
+    timeUnit: '2s',
+    duration: `${dureeDeLaCharge(toutesLesScenes[PROFIL])}s`,
+    preAllocatedVUs: 2,
+    maxVUs: 20,
+    exec: 'sonde',
+    gracefulStop: '0s',
+  };
+}
+
 export const options = {
-  scenarios: { [PROFIL]: scenarios[PROFIL] || scenarios.fumee },
+  scenarios: toutesLesScenes,
   thresholds: seuils,
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
   // Pas de réutilisation de connexion entre cabinets : chaque VU est un poste.
@@ -284,6 +337,16 @@ function appel(etape, methode, chemin, corps, opts) {
   return res;
 }
 
+function avecReprise(etape, methode, chemin, corps) {
+  let res = appel(etape, methode, chemin, corps);
+  if (res.status === 409 && /même instant/.test(String(res.body))) {
+    conflits409.add(1, { etape });
+    sleep(1);
+    res = appel(etape, methode, chemin, corps);
+  }
+  return res;
+}
+
 // Une réponse attendue 2xx ; tout 4xx ici est un refus INATTENDU (le scénario ou le serveur est en défaut).
 function attendu(res, etape, libelle) {
   const ok = res.status >= 200 && res.status < 300;
@@ -309,6 +372,11 @@ function reflechir() {
 const pad = (n) => String(n).padStart(2, '0');
 const montant = (i) => 50000 + ((i * 7919) % 90000);
 const dateDe = (i) => `2026-${pad(3 + (i % 8))}-${pad(1 + ((i * 3) % 27))}`;
+
+export function sonde() {
+  const r = http.get(`${BASE}/health`, { tags: { etape: 'sonde' }, timeout: '60s' });
+  console.log(`SONDE ${new Date().toISOString().slice(11, 19)} ${Math.round(r.timings.duration)} ${r.status}`);
+}
 
 // ---------------------------------------------------------------------------
 // PRÉPARATION · un dossier SENTINELLE, créé une fois, que nul cabinet ne doit
@@ -503,7 +571,7 @@ export default function (sentinelle) {
   const paires = []; // [ligneA, ligneB, compteId] à lettrer après validation
   group('saisie', () => {
     const poser = (code, date, libelle, lignes) => {
-      const r = appel('saisie_ecriture', 'POST', '/ecritures', { exerciceId, journalId: journal(code).id, date, libelle: `${libelle} ${tag}`, lignes });
+      const r = avecReprise('saisie_ecriture', 'POST', '/ecritures', { exerciceId, journalId: journal(code).id, date, libelle: `${libelle} ${tag}`, lignes });
       if (!attendu(r, 'saisie_ecriture', `${code} ${libelle}`)) return null;
       const e = json(r) || {};
       idsEcritures.push(e.id);
@@ -533,7 +601,7 @@ export default function (sentinelle) {
   group('validation', () => {
     for (let k = 0; k < idsEcritures.length; k += 25) {
       const lot = idsEcritures.slice(k, k + 25).filter(Boolean);
-      const r = appel('valider', 'POST', '/ecritures/valider', { ecritureIds: lot });
+      const r = avecReprise('valider', 'POST', '/ecritures/valider', { ecritureIds: lot });
       if (attendu(r, 'valider', 'valider un lot')) {
         const v = json(r) || {};
         if (v.validees !== lot.length) {
@@ -545,7 +613,7 @@ export default function (sentinelle) {
     reflechir();
     for (const [a, b, compteId] of paires) {
       if (!a || !b) continue;
-      attendu(appel('lettrer', 'POST', `/comptes/${compteId}/lettrage`, { ligneIds: [a.id, b.id] }), 'lettrer', 'lettrage');
+      attendu(avecReprise('lettrer', 'POST', `/comptes/${compteId}/lettrage`, { ligneIds: [a.id, b.id] }), 'lettrer', 'lettrage');
     }
     reflechir();
   });
@@ -612,7 +680,7 @@ export default function (sentinelle) {
     const contreparties = json(ctp) || [];
     const contre = contreparties.find((c) => /^5[27]/.test(c.numero)) || contreparties[0];
     if (!contre) return;
-    const bien = appel('immo_creer', 'POST', '/immobilisations', {
+    const bien = avecReprise('immo_creer', 'POST', '/immobilisations', {
       familleId: famille.id,
       designation: `Ordinateur ${tag}`,
       dateAcquisition: '2026-03-01',
@@ -624,7 +692,7 @@ export default function (sentinelle) {
     });
     if (!attendu(bien, 'immo_creer', 'immobilisation')) return;
     const idBien = (json(bien) || {}).id;
-    attendu(appel('immo_dotation', 'POST', `/immobilisations/${idBien}/dotation`, { exerciceId, journalId: journal('OD').id }), 'immo_dotation', 'dotation');
+    attendu(avecReprise('immo_dotation', 'POST', `/immobilisations/${idBien}/dotation`, { exerciceId, journalId: journal('OD').id }), 'immo_dotation', 'dotation');
     attendu(appel('immo_tableaux', 'GET', `/immobilisations/tableau?exerciceId=${exerciceId}`), 'immo_tableaux', 'tableau des immobilisations');
     attendu(appel('immo_tableaux', 'GET', `/immobilisations/tableau-amortissements?exerciceId=${exerciceId}`), 'immo_tableaux', 'tableau des amortissements');
     // Après l'acquisition et la dotation, la balance boucle encore.
