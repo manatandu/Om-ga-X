@@ -1,5 +1,6 @@
-import { FormEvent, useId, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { essaiOuvert } from '../lib/essai';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -90,6 +91,19 @@ export function AuthPage() {
   const [email, setEmail] = useState(() => lireDossiersRecents()[0]?.email ?? '');
   const [motDePasse, setMotDePasse] = useState('');
   const [surSite, setSurSite] = useState<EtatSurSite | null>(null);
+  // Le lien d'essai ne s'offre que sur une porte LUE ouverte · une lecture qui
+  // échoue le tait, le serveur restant celui qui refuse.
+  const [essai, setEssai] = useState<{ joursEssai: number } | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    api
+      .get<unknown>('/auth/inscription-essai/etat')
+      .then((e) => vivant && essaiOuvert(e) && setEssai({ joursEssai: e.joursEssai }))
+      .catch(() => undefined);
+    return () => {
+      vivant = false;
+    };
+  }, []);
   const [motDePasseVisible, setMotDePasseVisible] = useState(false);
   // Le second facteur · demandé par le serveur, jamais supposé par l'écran.
   const [codeRequis, setCodeRequis] = useState(false);
@@ -343,6 +357,13 @@ export function AuthPage() {
           <div className="mt-4 text-[11.5px]">
             <a href="#/inscription" className="underline">
               Créer un dossier sur cette installation
+            </a>
+          </div>
+        )}
+        {essai && !surSite?.surSite && (
+          <div className="mt-4 text-[11.5px]">
+            <a href="#/essai" className="underline">
+              Essayer gratuitement pendant {essai.joursEssai} jours
             </a>
           </div>
         )}
