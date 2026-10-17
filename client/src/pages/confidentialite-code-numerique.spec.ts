@@ -273,7 +273,11 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
     expect(page).not.toMatch(/de façon anonyme/);
     // Cinq demandes par heure · la durée de la limite est celle que la route porte.
     expect(serveur('src/modules/auth/auth.controller.ts')).toContain('@Throttle({ default: { ttl: 3_600_000, limit: 5 } })');
-    expect(deplie).toContain('La durée au-delà de laquelle un dossier d’essai non souscrit est supprimé doit être arrêtée par VMG Consulting');
+    // Quatre-vingt-dix jours · décision de Manasse du 2026-10-17. La suppression
+    // automatique n'existe pas encore (aucune purge de dossier dans le dépôt) · la
+    // page le DIT, elle ne promet pas un effacement qu'aucun code n'exécute.
+    expect(deplie).toContain('<strong>quatre-vingt-dix jours après le terme</strong> de l’essai');
+    expect(deplie).toContain('la suppression automatique du dossier n’est pas encore en service');
   });
 
   it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {
