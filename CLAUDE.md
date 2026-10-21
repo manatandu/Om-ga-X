@@ -220,7 +220,9 @@ jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu ; et le même
 jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
 (« Oui tu peux modifier selon ce style »), avec le bandeau de consentement
 que la loi impose à la mesure de l'interface, et le domaine
-`omegax.vmgconsulting.net` admis comme origine du site.
+`omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
+PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
+touche pas au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
