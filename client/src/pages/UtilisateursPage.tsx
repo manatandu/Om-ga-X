@@ -47,6 +47,7 @@ export function UtilisateursPage() {
    * correction restait dans la charge utile sans atteindre personne.
    */
   const [avisRemis, setAvisRemis] = useState<string | null>(null);
+  const [deconnecte, setDeconnecte] = useState<string | null>(null);
 
   const charger = async () => {
     try {
@@ -84,6 +85,26 @@ export function UtilisateursPage() {
     }
   };
 
+  // DÉCONNECTER (2026-10-21) · ferme les sessions du collaborateur sans
+  // toucher à son mot de passe ni à ses droits. Le refus du serveur se dit,
+  // comme les autres gestes (F175) ; la réussite aussi, sans quoi rien à
+  // l'écran ne distingue un clic perdu d'un clic qui a porté.
+  const deconnecter = async (u: Utilisateur) => {
+    if (!window.confirm(`Fermer toutes les sessions de ${u.email} ? Il devra se reconnecter avec son mot de passe.`)) return;
+    // Un bandeau à la fois · sinon « Sessions de A fermées » restait à côté de
+    // l'échec du geste sur B. L'erreur d'un AUTRE geste n'est pas effacée ici ·
+    // elle ne tombe que par une relecture réussie de la liste.
+    setDeconnecte(null);
+    try {
+      await api.post(`/utilisateurs/${u.id}/deconnecter`, {});
+      setReinitFait(null);
+      setAvisRemis(null);
+      setDeconnecte(u.email);
+    } catch (err) {
+      setErreurChargement(err instanceof ApiError ? err.message : 'Déconnexion impossible');
+    }
+  };
+
   const onReinitialiser = async (e: FormEvent) => {
     e.preventDefault();
     if (!reinitCible) return;
@@ -93,6 +114,7 @@ export function UtilisateursPage() {
         `/utilisateurs/${reinitCible.id}/reinitialiser-mot-de-passe`,
         { motDePasseProvisoire: reinitMotDePasse },
       );
+      setDeconnecte(null);
       setReinitFait(reinitCible.email);
       setAvisRemis(phraseAvisAcces(r.avis) || null);
       setReinitCible(null);
@@ -155,6 +177,17 @@ export function UtilisateursPage() {
           Mot de passe réinitialisé pour <strong>{reinitFait}</strong>. Remettez-le en main propre · il est
           PROVISOIRE, ses sessions ouvertes sont fermées, et le logiciel lui restera fermé tant qu'il ne l'aura pas
           remplacé.
+        </div>
+      )}
+
+      {deconnecte && (
+        <div role="status" className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
+          <span>
+            Sessions de <strong>{deconnecte}</strong> fermées.
+          </span>
+          <button onClick={() => setDeconnecte(null)} aria-label="Fermer l'avis de déconnexion" className="font-bold hover:underline shrink-0">
+            Fermer
+          </button>
         </div>
       )}
 
@@ -250,6 +283,18 @@ export function UtilisateursPage() {
               >
                 Réinitialiser
               </button>
+              {/* Ni soi-même (Mon compte le fait sans perdre l'appareil en
+                  cours), ni un compte désactivé, qui n'a plus de session. */}
+              {u.id !== utilisateur?.id && u.estActif && (
+                <button
+                  onClick={() => deconnecter(u)}
+                  className="text-[11.5px] text-sel"
+                  aria-label={`Déconnecter ${u.email}`}
+                  title="Ferme toutes ses sessions ouvertes · mot de passe et droits inchangés. Un écran déjà affiché chez lui reste visible jusqu'à son prochain geste ; pour écarter quelqu'un qui connaît son mot de passe, Réinitialiser."
+                >
+                  Déconnecter
+                </button>
+              )}
               {u.doubleAuthActiveDepuis && (
                 <span className="font-mono text-[10.5px] font-bold px-1.5 py-0.5 text-positive bg-positive-soft" title="Double authentification active">
                   2FA

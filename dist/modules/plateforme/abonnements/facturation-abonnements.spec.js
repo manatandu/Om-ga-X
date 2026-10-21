@@ -1,0 +1,80 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const facturation_abonnements_1 = require("./facturation-abonnements");
+const ESSENTIEL = { code: 'ESSENTIEL', libelle: 'Essentiel', type: 'FORMULE', prixMensuelUsd: 20, prixAnnuelUsd: 200 };
+const PAIE = { code: 'PAIE', libelle: 'Paie', type: 'OPTION', prixMensuelUsd: 10, prixAnnuelUsd: 100 };
+const SUPP = { code: 'DOSSIER_SUPPLEMENTAIRE', libelle: 'Dossier supplémentaire', type: 'OPTION', prixMensuelUsd: 12, prixAnnuelUsd: null };
+const abo = (x = {}) => ({
+    formule: ESSENTIEL,
+    options: [],
+    dossiersSupplementaires: 0,
+    periodicite: 'MENSUELLE',
+    debut: '2026-10-01',
+    finEssai: null,
+    actif: true,
+    ...x,
+});
+describe('facturation des abonnements', () => {
+    it('trente jours d’essai · le mois où l’essai finit reste gratuit', () => {
+        expect((0, facturation_abonnements_1.finEssaiDepuis)('2026-10-01')).toBe('2026-10-31');
+        expect((0, facturation_abonnements_1.premierePeriodeFacturable)('2026-10-01', '2026-10-31')).toBe('2026-11');
+        expect((0, facturation_abonnements_1.premierePeriodeFacturable)('2026-10-01', '2026-11-01')).toBe('2026-11');
+        const a = abo({ finEssai: '2026-10-31' });
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2026-10')).toEqual({ du: false, motif: "En essai jusqu'au 2026-10-31." });
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2026-11').du).toBe(true);
+    });
+    it('un début en cours de mois ne facture pas le mois entamé', () => {
+        expect((0, facturation_abonnements_1.premierePeriodeFacturable)('2026-10-15', null)).toBe('2026-11');
+        expect((0, facturation_abonnements_1.premierePeriodeFacturable)('2026-12-02', null)).toBe('2027-01');
+    });
+    it('additionne formule et options, au prix de la périodicité', () => {
+        const v = (0, facturation_abonnements_1.verdictPeriode)(abo({ options: [PAIE] }), '2026-10');
+        expect(v).toMatchObject({ du: true, totalUsd: 30 });
+        const an = (0, facturation_abonnements_1.verdictPeriode)(abo({ options: [PAIE], periodicite: 'ANNUELLE' }), '2026-10');
+        expect(an).toMatchObject({ du: true, totalUsd: 300 });
+    });
+    it('l’annuel ne revient que tous les douze mois', () => {
+        const a = abo({ periodicite: 'ANNUELLE' });
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2026-11').du).toBe(false);
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2027-04').du).toBe(false);
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2027-09').du).toBe(false);
+        expect((0, facturation_abonnements_1.verdictPeriode)(a, '2027-10').du).toBe(true);
+    });
+    it('compte les dossiers supplémentaires en quantité', () => {
+        const v = (0, facturation_abonnements_1.verdictPeriode)(abo({ options: [SUPP], dossiersSupplementaires: 3 }), '2026-10');
+        expect(v).toMatchObject({ du: true, totalUsd: 20 + 36 });
+        if (v.du)
+            expect(v.lignes.find((l) => l.designation.includes('supplémentaire'))?.quantite).toBe(3);
+    });
+    it('un prix non fixé refuse la période entière, jamais une facture amputée', () => {
+        const v = (0, facturation_abonnements_1.verdictPeriode)(abo({ options: [SUPP], dossiersSupplementaires: 1, periodicite: 'ANNUELLE' }), '2026-10');
+        expect(v).toEqual({ du: false, motif: 'Prix annuel non fixé · Dossier supplémentaire.' });
+        expect((0, facturation_abonnements_1.verdictPeriode)(abo({ formule: { ...ESSENTIEL, prixMensuelUsd: null } }), '2026-10').du).toBe(false);
+    });
+    it('rien avant le début, rien sur un abonnement suspendu', () => {
+        expect((0, facturation_abonnements_1.verdictPeriode)(abo(), '2026-09').du).toBe(false);
+        expect((0, facturation_abonnements_1.verdictPeriode)(abo({ actif: false }), '2026-10').du).toBe(false);
+    });
+    it('numérote en continu par année', () => {
+        expect((0, facturation_abonnements_1.numeroFactureSuivant)('2026', [])).toBe('VMG-2026-0001');
+        expect((0, facturation_abonnements_1.numeroFactureSuivant)('2026', ['VMG-2026-0004', 'VMG-2025-0009', 'F-12'])).toBe('VMG-2026-0005');
+    });
+});
+describe('la licence suit l’abonnement', () => {
+    const m = require('./facturation-abonnements');
+    it('quinze jours après l’essai, puis après chaque période payée', () => {
+        expect(m.expirationInitiale('2026-10-01', '2026-10-31')).toBe('2026-11-15');
+        expect(m.expirationInitiale('2026-10-01', null)).toBe('2026-10-16');
+        expect(m.finPeriodeCouverte('2026-11', 'MENSUELLE')).toBe('2026-11-30');
+        expect(m.finPeriodeCouverte('2026-02', 'MENSUELLE')).toBe('2026-02-28');
+        expect(m.finPeriodeCouverte('2026-11', 'ANNUELLE')).toBe('2027-10-31');
+        expect(m.expirationApresPaiement('2026-11', 'MENSUELLE', '2026-11-15')).toBe('2026-12-15');
+    });
+    it('un paiement tardif d’une vieille période ne recule jamais l’échéance', () => {
+        expect(m.expirationApresPaiement('2026-11', 'MENSUELLE', '2027-03-15')).toBe('2027-03-15');
+    });
+    it('compte les jours de retard au calendrier', () => {
+        expect(m.joursDepuis('2026-11-01', '2026-12-01')).toBe(30);
+    });
+});
+//# sourceMappingURL=facturation-abonnements.spec.js.map

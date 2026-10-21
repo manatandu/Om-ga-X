@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
 import { pageVue } from './lib/telemetrie';
+import { BandeauConsentementMesure } from './components/BandeauConsentementMesure';
 import { AuthProvider, useAuth } from './lib/auth';
 import { ExerciceProvider } from './lib/exercice';
 import { FenetresProvider } from './lib/fenetres';
 import { AppShell } from './components/chrome/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { EssaiPage } from './pages/EssaiPage';
 import { ChangerMotDePassePage } from './pages/ChangerMotDePassePage';
 
 // LES PAGES PUBLIQUES SE CHARGENT À LA DEMANDE (second tour de relecture,
@@ -44,6 +46,8 @@ function Routage() {
     <Routes>
       <Route path="/connexion" element={<LoginPage />} />
       <Route path="/inscription" element={<RegisterPage />} />
+      {/* L'essai en libre-service · la page se lit fermée tant que le serveur ne la dit pas ouverte. */}
+      <Route path="/essai" element={<EssaiPage />} />
       {/*
         HORS de la zone protégée, et c'est tout l'objet de cette route : une
         politique de confidentialité derrière un mot de passe n'est pas une
@@ -109,6 +113,7 @@ export function App() {
       <AuthProvider>
         <SuiviDesPages />
         <Routage />
+        <BandeauConsentementMesure />
       </AuthProvider>
     </HashRouter>
   );

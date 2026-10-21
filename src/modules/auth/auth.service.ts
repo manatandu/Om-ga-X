@@ -1,5 +1,5 @@
 import { faitAssujettissementTva } from '../tenant/faits-declares';
-import { BadRequestException, ConflictException, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { LicenceSurSiteService } from '../sur-site/licence-sur-site.service';
 import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
 import { articleTrenteSeptApplicable } from '../accord-cadre/conditions-ong-etrangere';
@@ -17,6 +17,8 @@ import { ImmobilisationService } from '../immobilisations/immobilisation.service
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { RelancesService } from '../relances/relances.service';
 import { RegisterDto } from './dto/register.dto';
+import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
+import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, estUnDossierDEssai, renvoiPossible } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
 import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
 import { ajouterMaillon } from '../../common/audit/extension-audit';
@@ -99,7 +101,12 @@ export class AuthService {
    * processeur une centaine de millisecondes, et tenir une transaction
    * ouverte pendant ce temps ne servirait à rien.
    */
-  async register(dto: RegisterDto) {
+  async register(
+    dto: RegisterDto,
+    // Ce que SEULE une porte INTERNE peut demander · jamais un champ du DTO, que
+    // le client pourrait envoyer (`whitelist` + `forbidNonWhitelisted`).
+    options: { dateExpirationLicence?: Date; motDePasseProvisoire?: boolean } = {},
+  ) {
     // LA LICENCE DE L'ÉDITEUR NE NAÎT À AUCUNE PORTE DE CRÉATION (audit final
     // F161) · elle se pose par un geste nommé, une fois, sur un dossier qui
     // existe (`PlateformeService.designerDossierEditeur`). Acceptée ici, la
@@ -184,6 +191,7 @@ export class AuthService {
           nom: dto.nomEntite,
           referentiel: dto.referentiel,
           typeLicence: dto.typeLicence ?? TypeLicence.ABONNEMENT,
+          dateExpiration: options.dateExpirationLicence,
           // Le jeu d'états est un concept SYCEBNL (art. 4 à 6) · jamais retenu
           // pour un dossier SYSCOHADA, même si le DTO en portait un.
           jeuEtatsFinanciersSycebnl: dto.referentiel === Referentiel.SYCEBNL ? dto.jeuEtatsFinanciersSycebnl : undefined,
@@ -210,6 +218,8 @@ export class AuthService {
               email: dto.email,
               motDePasse: motDePasseHache,
               role: RoleUtilisateur.ADMIN_CABINET,
+              // Le mot de passe a transité par un courriel · le titulaire le remplace.
+              ...(options.motDePasseProvisoire ? { doitChangerMotDePasse: true } : {}),
             },
           });
 
@@ -261,6 +271,111 @@ export class AuthService {
       // Session courte · un dossier naissant n'a pas coché « Rester connecté ».
       ...emettreSession(this.jwt, user.id, { longue: false, connexionComplete: 'maintenant' }),
     };
+  }
+
+  /**
+   * L'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI (`inscription-essai.ts`) · un
+   * dossier d'ESSAI, à échéance, dont le mot de passe provisoire part au seul
+   * courriel donné. AUCUNE SESSION n'est rendue.
+   *
+   * LA RÉPONSE EST LA MÊME pour une adresse neuve, une adresse déjà prise et un
+   * renvoi · elle n'apprend pas qui a un compte. (Elle ne cache pas la DURÉE
+   * de la réponse, la création d'un dossier prenant plus de temps : limite
+   * écrite, la route est limitée en débit par adresse IP.)
+   *
+   * SANS MESSAGERIE, RIEN N'EST CRÉÉ · le mot de passe n'aurait aucun chemin
+   * vers son titulaire, et l'adresse serait prise pour rien.
+   */
+  async inscrireEnEssai(dto: InscriptionEssaiDto) {
+    if (!this.courrier || !this.courrier.etatDuTransport().configure) {
+      throw new ServiceUnavailableException(
+        "L'ouverture d'un dossier d'essai est momentanément indisponible · écrivez à admin@vmgconsulting.net pour démarrer.",
+      );
+    }
+    const courrier = this.courrier;
+    const email = normaliserCourriel(dto.email);
+    const maintenant = new Date();
+    const reponse = {
+      message:
+        "Si l'adresse est valide, un courriel part dans quelques instants avec votre mot de passe provisoire. " +
+        "Pensez à regarder le dossier des courriers indésirables. Rien après un quart d'heure · écrivez à admin@vmgconsulting.net.",
+      joursEssai: JOURS_ESSAI,
+    };
+
+    const existant = await horsCloisonnement("inscription d'essai · unicité du courriel sur toute la plateforme", () =>
+      this.prisma.user.findUnique({ where: { email } }),
+    );
+    if (existant) {
+      // Adresse déjà prise · rien n'est créé. Seul le dossier d'un titulaire qui
+      // n'a rien reçu se rouvre, et seulement vers SA propre adresse.
+      const licenceExistante = await horsCloisonnement("inscription d'essai · la licence du dossier du courriel donné", () =>
+        this.prisma.licence.findUnique({ where: { tenantId: existant.tenantId } }),
+      );
+      if (existant.role === RoleUtilisateur.ADMIN_CABINET && estUnDossierDEssai(licenceExistante) && renvoiPossible(existant, maintenant)) {
+        const mot = motDePasseTireAuSort();
+        const avis = avisInscriptionEssai(mot, maintenant, false);
+        await horsCloisonnement("inscription d'essai · mot de passe renvoyé au seul titulaire", async () => {
+          await courrier.envoyerUnSecret(
+            existant.tenantId,
+            { destinataire: email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_INSCRIPTION_ESSAI, origineId: existant.id },
+            avis.corpsGarde,
+          );
+          await this.prisma.user.update({
+            where: { id: existant.id },
+            data: {
+              motDePasse: await bcrypt.hash(mot, SALT_ROUNDS),
+              doitChangerMotDePasse: true,
+              sessionsInvalidesAvant: maintenant,
+              ...DECOMPTE_REMIS_A_ZERO,
+            },
+          });
+        });
+        this.logger.log(`Dossier d'essai · mot de passe provisoire renvoyé (${existant.id})`);
+      }
+      return reponse;
+    }
+
+    const mot = motDePasseTireAuSort();
+    const finEssai = finDeLEssai(maintenant);
+    let tenant;
+    try {
+      ({ tenant } = await this.register(
+        {
+          nomEntite: dto.nomEntite.trim(),
+          referentiel: dto.referentiel,
+          email,
+          motDePasse: mot,
+          jeuEtatsFinanciersSycebnl: dto.jeuEtatsFinanciersSycebnl,
+          systemeComptableSyscohada: dto.systemeComptableSyscohada,
+        },
+        { dateExpirationLicence: finEssai, motDePasseProvisoire: true },
+      ));
+    } catch (erreur) {
+      // Deux demandes simultanées pour la même adresse neuve · la seconde perd
+      // la course à l'unicité et reçoit la réponse commune, pas un refus qui
+      // dirait que l'adresse est prise.
+      const conflit = erreur instanceof ConflictException || (erreur as { code?: string })?.code === 'P2002';
+      if (conflit) return reponse;
+      throw erreur;
+    }
+    const avis = avisInscriptionEssai(mot, finEssai, true);
+    try {
+      await horsCloisonnement("inscription d'essai · mot de passe remis au seul courriel donné", () =>
+        courrier.envoyerUnSecret(
+          tenant.id,
+          { destinataire: email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_INSCRIPTION_ESSAI, origineId: tenant.id },
+          avis.corpsGarde,
+        ),
+      );
+    } catch (erreur) {
+      // Le dossier existe, son mot de passe n'est pas parti · le même formulaire,
+      // dix minutes plus tard, le renvoie (`renvoiPossible`).
+      this.logger.warn(`Dossier d'essai créé, courriel non parti (${tenant.id}) · ${erreur instanceof Error ? erreur.message : String(erreur)}`);
+      throw new ServiceUnavailableException(
+        "Le courriel n'est pas parti. Recommencez dans une dizaine de minutes avec la même adresse, le mot de passe sera renvoyé.",
+      );
+    }
+    return reponse;
   }
 
   /**

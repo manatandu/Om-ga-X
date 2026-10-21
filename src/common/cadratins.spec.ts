@@ -101,7 +101,12 @@ const RESTENT_A_ECHAPPER: Record<string, number> = {
  * `.claude/worktrees` peut héberger, qui reproduiraient chaque exception.
  */
 const DOSSIERS_IGNORES = new Set(['.git', 'node_modules', 'dist', 'dist-e2e', 'test-results', 'playwright-report', '__pycache__', 'coverage']);
-const CHEMINS_IGNORES = new Set(['.claude/worktrees']);
+// `.claude/amont` · les sources AMONT, intactes, de deux projets tiers (ui-ux-pro-max
+// et impeccable) que Manasse a demandé de garder en entier (2026-10-17). Le
+// caractère y est parfois une DONNÉE (le détecteur d'impeccable le cherche dans les
+// textes) · le remplacer changerait ce que le code détecte. Les compétences
+// VIVANTES de `.claude/skills` restent relues et nettoyées.
+const CHEMINS_IGNORES = new Set(['.claude/worktrees', '.claude/amont']);
 /** Fichiers binaires ou locaux · une police ou une image peut contenir la suite d'octets par hasard. */
 const EXTENSIONS_IGNOREES = new Set(['.woff', '.woff2', '.ttf', '.otf', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.pdf', '.xlsx', '.docx', '.zip', '.exe', '.tsbuildinfo', '.log']);
 const FICHIERS_IGNORES = new Set(['.env', '.env.local']);

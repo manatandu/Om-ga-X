@@ -289,6 +289,10 @@ describe('balayage du code · toute collection porte sa borne', () => {
     expect(utilisatrices.sort()).toEqual([
       'src/modules/auth/auth.service.ts',
       'src/modules/groupe/groupe.service.ts',
+      // La console lit et supprime des dossiers d'essai échus qui ne sont pas celui de
+      // l'opérateur (ligne suppression-essais, 2026-10-17) · identifiants, dates et
+      // nombres en lecture, purge bornée par dossier en écriture.
+      'src/modules/plateforme/essais-echus/essais-echus.service.ts',
       'src/modules/plateforme/plateforme.service.ts',
     ]);
   });

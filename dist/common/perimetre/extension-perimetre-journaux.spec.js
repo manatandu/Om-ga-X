@@ -1,0 +1,154 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const common_1 = require("@nestjs/common");
+const fs_1 = require("fs");
+const path_1 = require("path");
+const contexte_audit_1 = require("../audit/contexte-audit");
+const extension_perimetre_journaux_1 = require("./extension-perimetre-journaux");
+const client_1 = require("@prisma/client");
+const utilisateur_service_1 = require("../../modules/utilisateurs/utilisateur.service");
+const ACTEUR = { acteurEmail: 'caisse@exemple.cd', tenantId: 't1' };
+function faire(journalDesVisees) {
+    const findMany = jest.fn().mockResolvedValue(journalDesVisees.map((journalId) => ({ journalId })));
+    const base = { ecriture: { findMany } };
+    const query = jest.fn().mockResolvedValue('fait');
+    const appeler = (autorises, model, operation, args) => (0, contexte_audit_1.dansContexteAudit)({ ...ACTEUR, journauxAutorises: autorises }, () => (0, extension_perimetre_journaux_1.garderPerimetreJournaux)(base, { model, operation, args, query }));
+    return { appeler, query, findMany };
+}
+describe('journalHorsPerimetre', () => {
+    it('ne restreint rien sans liste', () => {
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)('j1', null)).toBe(false);
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)('j1', undefined)).toBe(false);
+    });
+    it('refuse un journal absent de la liste, et une écriture sans journal', () => {
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)('j2', ['j1'])).toBe(true);
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)(null, ['j1'])).toBe(true);
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)('j1', ['j1'])).toBe(false);
+    });
+    it('une liste vide ferme toute saisie', () => {
+        expect((0, extension_perimetre_journaux_1.journalHorsPerimetre)('j1', [])).toBe(true);
+    });
+});
+describe('la saisie est gardée sur le client Prisma', () => {
+    it('laisse passer toute écriture quand l’acteur n’est pas restreint', async () => {
+        const { appeler, query } = faire(['j9']);
+        await expect(appeler(null, 'Ecriture', 'create', { data: { journalId: 'j9' } })).resolves.toBe('fait');
+        expect(query).toHaveBeenCalled();
+    });
+    it('refuse une création hors périmètre, par journalId ou par connect', async () => {
+        const { appeler, query } = faire([]);
+        await expect(appeler(['j1'], 'Ecriture', 'create', { data: { journalId: 'j2' } })).rejects.toThrow(extension_perimetre_journaux_1.MESSAGE_HORS_PERIMETRE);
+        await expect(appeler(['j1'], 'Ecriture', 'create', { data: { journal: { connect: { id: 'j2' } } } })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+        expect(query).not.toHaveBeenCalled();
+        await expect(appeler(['j1'], 'Ecriture', 'create', { data: { journalId: 'j1' } })).resolves.toBe('fait');
+        await expect(appeler(['j1'], 'Ecriture', 'create', { data: { journal: { connect: { id: 'j1' } } } })).resolves.toBe('fait');
+    });
+    it('refuse un lot dont une seule écriture sort du périmètre', async () => {
+        const { appeler } = faire([]);
+        await expect(appeler(['j1'], 'Ecriture', 'createMany', { data: [{ journalId: 'j1' }, { journalId: 'j2' }] })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+    });
+    it('refuse de modifier, valider ou supprimer une écriture d’un autre journal', async () => {
+        for (const operation of ['update', 'updateMany', 'delete', 'deleteMany']) {
+            const { appeler, query, findMany } = faire(['j1', 'j2']);
+            await expect(appeler(['j1'], 'Ecriture', operation, { where: { id: 'e' }, data: { statut: 'VALIDEE' } })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+            expect(findMany).toHaveBeenCalledWith({ where: { id: 'e' }, select: { journalId: true } });
+            expect(query).not.toHaveBeenCalled();
+        }
+    });
+    it('refuse de déplacer une écriture vers un journal hors périmètre', async () => {
+        const { appeler } = faire(['j1']);
+        await expect(appeler(['j1'], 'Ecriture', 'update', { where: { id: 'e' }, data: { journalId: 'j2' } })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+    });
+    it('laisse la lecture et les autres tables, lettrage compris', async () => {
+        const { appeler, findMany } = faire(['j2']);
+        await expect(appeler(['j1'], 'Ecriture', 'findMany', { where: {} })).resolves.toBe('fait');
+        await expect(appeler(['j1'], 'LigneEcriture', 'updateMany', { where: {}, data: { lettrageId: 'l' } })).resolves.toBe('fait');
+        expect(findMany).not.toHaveBeenCalled();
+    });
+    it('modifie une écriture de son journal', async () => {
+        const { appeler } = faire(['j1']);
+        await expect(appeler(['j1'], 'Ecriture', 'update', { where: { id: 'e' }, data: { libelle: 'x' } })).resolves.toBe('fait');
+    });
+});
+describe('le câblage', () => {
+    it('pose l’extension sur le client Prisma', () => {
+        const source = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '..', 'prisma.service.ts'), 'utf8');
+        expect(source).toContain('.$extends(extensionPerimetreJournaux(this))');
+    });
+    it("n'applique jamais la restriction à un administrateur", () => {
+        const source = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '..', 'audit', 'audit-contexte.interceptor.ts'), 'utf8');
+        expect(source).toMatch(/utilisateur\.role !== 'ADMIN_CABINET' && utilisateur\.restreindreJournaux\s*\?\s*\(utilisateur\.journauxAutorises \?\? \[\]\)\s*:\s*null/);
+    });
+    it('relit les journaux autorisés à chaque requête, comme le rôle', () => {
+        const source = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '..', '..', 'modules', 'auth', 'jwt.strategy.ts'), 'utf8');
+        expect(source).toContain('journauxAutorises: user.journauxAutorises,');
+    });
+});
+describe('la définition des journaux autorisés', () => {
+    function service(role, journauxDuDossier = 2) {
+        const update = jest.fn(async (a) => a);
+        const count = jest.fn(async () => journauxDuDossier);
+        const p = { user: { findFirst: jest.fn(async () => ({ id: 'u2', role })), update }, journal: { count } };
+        return { s: new utilisateur_service_1.UtilisateurService(p), update, count };
+    }
+    it('refuse de restreindre un administrateur, sans rien écrire', async () => {
+        const { s, update } = service(client_1.RoleUtilisateur.ADMIN_CABINET);
+        await expect(s.definirJournaux('t1', 'u2', { restreindre: true, journaux: [] })).rejects.toThrow(/jamais restreint/);
+        expect(update).not.toHaveBeenCalled();
+    });
+    it('refuse un journal d’un autre dossier, bornant la vérification au dossier', async () => {
+        const { s, update, count } = service(client_1.RoleUtilisateur.COMPTABLE, 1);
+        await expect(s.definirJournaux('t1', 'u2', { restreindre: true, journaux: ['j1', 'jx'] })).rejects.toThrow(/n’appartient pas/);
+        expect(count).toHaveBeenCalledWith({ where: { tenantId: 't1', id: { in: ['j1', 'jx'] } } });
+        expect(update).not.toHaveBeenCalled();
+    });
+    it('pose la liste sans doublon et FERME les sessions', async () => {
+        const { s, update } = service(client_1.RoleUtilisateur.COMPTABLE, 2);
+        await s.definirJournaux('t1', 'u2', { restreindre: true, journaux: ['j1', 'j2', 'j1'] });
+        const data = update.mock.calls[0][0].data;
+        expect(data).toMatchObject({ restreindreJournaux: true, journauxAutorises: ['j1', 'j2'] });
+        expect(data.sessionsInvalidesAvant).toBeInstanceOf(Date);
+    });
+    it('lever la restriction vide la liste', async () => {
+        const { s, update } = service(client_1.RoleUtilisateur.COMPTABLE);
+        await s.definirJournaux('t1', 'u2', { restreindre: false, journaux: ['j1'] });
+        expect(update.mock.calls[0][0].data).toMatchObject({ restreindreJournaux: false, journauxAutorises: [] });
+    });
+});
+describe('F156 · les lignes d’écriture passent aussi par le périmètre', () => {
+    function faireLignes(journalDesLignes, journalDesEcritures = {}) {
+        const lignesFindMany = jest.fn().mockResolvedValue(journalDesLignes.map((journalId) => ({ ecriture: { journalId } })));
+        const ecrituresFindMany = jest.fn(async ({ where }) => where.id.in.map((id) => ({ journalId: journalDesEcritures[id] ?? null })));
+        const base = { ecriture: { findMany: ecrituresFindMany }, ligneEcriture: { findMany: lignesFindMany } };
+        const query = jest.fn().mockResolvedValue('fait');
+        const appeler = (autorises, operation, args) => (0, contexte_audit_1.dansContexteAudit)({ ...ACTEUR, journauxAutorises: autorises }, () => (0, extension_perimetre_journaux_1.garderPerimetreJournaux)(base, { model: 'LigneEcriture', operation, args, query }));
+        return { appeler, query, lignesFindMany };
+    }
+    it('la réimputation au brouillard d’une ligne d’un autre journal est refusée', async () => {
+        const { appeler, query } = faireLignes(['j2']);
+        await expect(appeler(['j1'], 'updateMany', { where: { id: { in: ['l1'] } }, data: { compteId: 'c9' } })).rejects.toThrow(extension_perimetre_journaux_1.MESSAGE_HORS_PERIMETRE);
+        expect(query).not.toHaveBeenCalled();
+    });
+    it('dans son journal, elle passe', async () => {
+        const { appeler } = faireLignes(['j1']);
+        await expect(appeler(['j1'], 'updateMany', { where: { id: { in: ['l1'] } }, data: { compteId: 'c9' } })).resolves.toBe('fait');
+    });
+    it('le lettrage et le pointage restent ouverts, sans relire les lignes', async () => {
+        const { appeler, lignesFindMany } = faireLignes(['j2']);
+        await expect(appeler(['j1'], 'updateMany', { where: { id: { in: ['l1'] } }, data: { lettrageId: 'g1', lettre: 'AA' } })).resolves.toBe('fait');
+        await expect(appeler(['j1'], 'updateMany', { where: { id: { in: ['l1'] } }, data: { rapprochementId: 'r1' } })).resolves.toBe('fait');
+        expect(lignesFindMany).not.toHaveBeenCalled();
+    });
+    it('une ligne créée dans une écriture d’un autre journal est refusée, et la suppression aussi', async () => {
+        const { appeler } = faireLignes(['j2'], { e2: 'j2', e1: 'j1' });
+        await expect(appeler(['j1'], 'createMany', { data: [{ ecritureId: 'e1' }, { ecritureId: 'e2' }] })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+        await expect(appeler(['j1'], 'deleteMany', { where: { ecritureId: 'e2' } })).rejects.toBeInstanceOf(common_1.ForbiddenException);
+        await expect(appeler(['j1'], 'create', { data: { ecritureId: 'e1' } })).resolves.toBe('fait');
+    });
+    it('sans restriction, rien n’est relu', async () => {
+        const { appeler, lignesFindMany } = faireLignes(['j2']);
+        await expect(appeler(null, 'updateMany', { where: {}, data: { compteId: 'c9' } })).resolves.toBe('fait');
+        expect(lignesFindMany).not.toHaveBeenCalled();
+    });
+});
+//# sourceMappingURL=extension-perimetre-journaux.spec.js.map

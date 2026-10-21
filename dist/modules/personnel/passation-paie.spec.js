@@ -1,0 +1,338 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
+const passation_paie_1 = require("./passation-paie");
+const assiettes_paie_1 = require("./assiettes-paie");
+const SEMIS = (0, node_path_1.join)(__dirname, '..', 'comptes');
+const SEMIS_SYCEBNL = (0, node_fs_1.readFileSync)((0, node_path_1.join)(SEMIS, 'compte-seed.ts'), 'utf8');
+const SEMIS_SYSCOHADA = (0, node_fs_1.readFileSync)((0, node_path_1.join)(SEMIS, 'compte-seed-syscohada.ts'), 'utf8');
+const roles = Object.keys(passation_paie_1.NOMENCLATURE_PAIE);
+describe('Chaque numéro de la nomenclature est RÉELLEMENT ouvert dans son semis', () => {
+    it.each(roles)('%s · le numéro SYSCOHADA est semé au plan SYSCOHADA', (role) => {
+        expect(SEMIS_SYSCOHADA).toContain(`'${passation_paie_1.NOMENCLATURE_PAIE[role].SYSCOHADA}'`);
+    });
+    it.each(roles)('%s · le numéro SYCEBNL est semé au plan SYCEBNL', (role) => {
+        expect(SEMIS_SYCEBNL).toContain(`'${passation_paie_1.NOMENCLATURE_PAIE[role].SYCEBNL}'`);
+    });
+    it("vérifie que les numéros DIVERGENTS ne sont PAS ouverts dans l'autre plan", () => {
+        for (const role of roles) {
+            if (!passation_paie_1.NOMENCLATURE_PAIE[role].divergent)
+                continue;
+            expect(SEMIS_SYCEBNL).not.toContain(`'${passation_paie_1.NOMENCLATURE_PAIE[role].SYSCOHADA}'`);
+            expect(SEMIS_SYSCOHADA).not.toContain(`'${passation_paie_1.NOMENCLATURE_PAIE[role].SYCEBNL}'`);
+        }
+    });
+    it("gèle le décompte · UN SEUL rôle diverge sur les vingt", () => {
+        const divergents = roles.filter((x) => passation_paie_1.NOMENCLATURE_PAIE[x].divergent);
+        expect(roles).toHaveLength(20);
+        expect(divergents).toEqual(['CNSS_PENSIONS']);
+    });
+    it('recalcule le drapeau divergent au lieu de le croire', () => {
+        for (const role of roles) {
+            const n = passation_paie_1.NOMENCLATURE_PAIE[role];
+            expect(n.divergent).toBe(n.SYSCOHADA !== n.SYCEBNL);
+        }
+    });
+});
+describe("Le piège du 432, et la correction évidente qui est elle-même un piège", () => {
+    it('route la retraite OBLIGATOIRE vers 43130000 en SYSCOHADA et 43210000 en SYCEBNL', () => {
+        expect((0, passation_paie_1.compteDuRole)('CNSS_PENSIONS', 'SYSCOHADA')).toBe('43130000');
+        expect((0, passation_paie_1.compteDuRole)('CNSS_PENSIONS', 'SYCEBNL')).toBe('43210000');
+    });
+    it("ne route JAMAIS vers 43200000, qui est la retraite COMPLÉMENTAIRE au SYSCOHADA", () => {
+        for (const role of roles) {
+            expect(passation_paie_1.NOMENCLATURE_PAIE[role].SYSCOHADA).not.toBe('43200000');
+            expect(passation_paie_1.NOMENCLATURE_PAIE[role].SYCEBNL).not.toBe('43220000');
+        }
+        expect(SEMIS_SYSCOHADA).toContain("'43200000', 'Caisses de retraite complémentaire'");
+        expect(SEMIS_SYCEBNL).toContain("'43220000', 'Caisses de retraite · complémentaire'");
+    });
+    it("décision T1 · l'INPP au 6415, l'ONEM au 6413, leur dette au 4428, aux deux plans", () => {
+        for (const r of ['SYSCOHADA', 'SYCEBNL']) {
+            expect((0, passation_paie_1.compteDuRole)('FORMATION_PROFESSIONNELLE_CONTINUE', r)).toBe('64150000');
+            expect((0, passation_paie_1.compteDuRole)('TAXES_SUR_SALAIRES', r)).toBe('64130000');
+            expect((0, passation_paie_1.compteDuRole)('AUTRES_IMPOTS_ET_TAXES', r)).toBe('44280000');
+        }
+        for (const role of roles) {
+            for (const r of ['SYSCOHADA', 'SYCEBNL']) {
+                expect(passation_paie_1.NOMENCLATURE_PAIE[role][r]).not.toMatch(/^433/);
+            }
+        }
+    });
+});
+describe('Les deux tables de natures se complètent exactement', () => {
+    it("couvre les seize natures, sans trou ni recouvrement", () => {
+        const imputees = Object.keys(passation_paie_1.IMPUTATION_PAR_NATURE);
+        const sansImputation = Object.keys(passation_paie_1.NATURES_SANS_IMPUTATION);
+        expect(imputees.length + sansImputation.length).toBe(16);
+        expect(passation_paie_1.IMPUTATION_PAR_NATURE.INDEMNITE_DE_FIN_DE_CONTRAT).toBe('INDEMNITES_DE_PREAVIS_ET_LICENCIEMENT');
+        expect(passation_paie_1.NOMENCLATURE_PAIE.INDEMNITES_DE_PREAVIS_ET_LICENCIEMENT.SYSCOHADA).toBe('66140000');
+        expect(passation_paie_1.NOMENCLATURE_PAIE.INDEMNITES_DE_PREAVIS_ET_LICENCIEMENT.SYCEBNL).toBe('66140000');
+        expect(imputees.filter((n) => sansImputation.includes(n))).toEqual([]);
+    });
+    it("n'impute AUCUNE des quatre natures que le texte ne tranche pas", () => {
+        for (const nature of Object.keys(passation_paie_1.NATURES_SANS_IMPUTATION)) {
+            expect(passation_paie_1.IMPUTATION_PAR_NATURE[nature]).toBeUndefined();
+        }
+        expect(Object.keys(passation_paie_1.NATURES_SANS_IMPUTATION).sort()).toEqual([
+            'ALLOCATIONS_FAMILIALES_LEGALES',
+            'FRAIS_DE_VOYAGE_OU_AVANTAGE_DE_FONCTION',
+            'PARTICIPATION_AUX_BENEFICES',
+            'SOINS_DE_SANTE',
+        ]);
+    });
+    it("passe D2 · le motif des allocations familiales les dit dues par l'employeur, et la dévolution n'est pas une créance", () => {
+        const motif = passation_paie_1.NATURES_SANS_IMPUTATION.ALLOCATIONS_FAMILIALES_LEGALES;
+        expect(motif).toMatch(/que l'EMPLOYEUR doit/);
+        expect(motif).toContain('colonne 19');
+        expect(motif).toMatch(/ni charge ni créance de l'employeur/);
+        expect(motif).toContain('143/2018, art. 3 et 4');
+    });
+    it("impute bien le logement et le transport, que l'assiette SOCIALE exclut", () => {
+        expect(assiettes_paie_1.HORS_REMUNERATION_ARTICLE_7).toContain('LOGEMENT_OU_SON_INDEMNITE');
+        expect(passation_paie_1.IMPUTATION_PAR_NATURE.LOGEMENT_OU_SON_INDEMNITE).toBe('INDEMNITE_DE_LOGEMENT');
+        expect(passation_paie_1.IMPUTATION_PAR_NATURE.INDEMNITE_DE_TRANSPORT).toBe('INDEMNITE_DE_TRANSPORT');
+    });
+});
+const entree = (over = {}) => ({
+    referentiel: 'SYSCOHADA',
+    elements: [
+        { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+        { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc: 400_000 },
+    ],
+    cotisations: [
+        { cle: 'cnss-pf', charge: 'EMPLOYEUR', montantFc: 65_000 },
+        { cle: 'cnss-pension-employeur', charge: 'EMPLOYEUR', montantFc: 50_000 },
+        { cle: 'cnss-pension-travailleur', charge: 'TRAVAILLEUR', montantFc: 50_000 },
+        { cle: 'cnss-rp', charge: 'EMPLOYEUR', montantFc: 15_000 },
+        { cle: 'inpp', charge: 'EMPLOYEUR', montantFc: 35_000 },
+        { cle: 'onem', charge: 'EMPLOYEUR', montantFc: 5_000 },
+    ],
+    abstentionsCotisations: [],
+    irppFc: 100_000,
+    netAPayerFc: 1_250_000,
+    ...over,
+});
+describe("L'écriture proposée", () => {
+    it("s'équilibre, et le contrôle est fait quand même", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        expect(v.refus).toEqual([]);
+        expect(v.equilibree).toBe(true);
+        expect(v.totalDebitFc).toBeCloseTo(1_720_000, 6);
+        expect(v.totalCreditFc).toBeCloseTo(1_720_000, 6);
+    });
+    it('présente les trois blocs du Guide, dans son ordre, puis les impôts et taxes sur salaires', () => {
+        const blocs = (0, passation_paie_1.passationPaie)(entree()).lignes.map((l) => l.bloc);
+        expect([...new Set(blocs)]).toEqual(['BRUT', 'RETENUES', 'PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES']);
+        const premierRetenue = blocs.indexOf('RETENUES');
+        expect(blocs.slice(premierRetenue).includes('BRUT')).toBe(false);
+    });
+    it('crédite le 422 du BRUT ENTIER', () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const c422 = v.lignes.filter((l) => l.bloc === 'BRUT' && l.compte === '42200000');
+        expect(c422).toHaveLength(1);
+        expect(c422[0].sens).toBe('CREDIT');
+        expect(c422[0].montantFc).toBeCloseTo(1_400_000, 6);
+    });
+    it('débite le 422 des retenues, et son solde est le net du bulletin', () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const d422 = v.lignes.filter((l) => l.bloc === 'RETENUES' && l.compte === '42200000');
+        expect(d422).toHaveLength(1);
+        expect(d422[0].sens).toBe('DEBIT');
+        expect(d422[0].montantFc).toBeCloseTo(150_000, 6);
+        const solde = v.lignes
+            .filter((l) => l.compte === '42200000')
+            .reduce((n, l) => n + (l.sens === 'CREDIT' ? l.montantFc : -l.montantFc), 0);
+        expect(solde).toBeCloseTo(1_250_000, 6);
+    });
+    it("n'impute JAMAIS l'impôt retenu en charge · c'est une retenue sur le salarié", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const irpp = v.lignes.filter((l) => l.compte === '44720000');
+        expect(irpp).toHaveLength(1);
+        expect(irpp[0]).toMatchObject({ bloc: 'RETENUES', sens: 'CREDIT' });
+        expect(irpp[0].montantFc).toBeCloseTo(100_000, 6);
+        const charges = v.lignes.filter((l) => l.sens === 'DEBIT' && l.compte.startsWith('6'));
+        const total = charges.reduce((n, l) => n + l.montantFc, 0);
+        expect(total).toBeCloseTo(1_400_000 + 170_000, 6);
+    });
+    it("décision T1 · l'INPP et l'ONEM au 64 contre le 4428, la CNSS seule au 6641", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const du = (compte, sens) => v.lignes.filter((l) => l.compte === compte && l.sens === sens);
+        expect(du('66410000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['PATRONALES', 130_000]]);
+        expect(du('64150000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 35_000]]);
+        expect(du('64130000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 5_000]]);
+        const dette = du('44280000', 'CREDIT');
+        expect(dette.map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 40_000]]);
+        expect(dette[0].reserve).toBe(passation_paie_1.RESERVE_DETTE_INPP_ONEM);
+        expect(v.lignes.some((l) => l.compte.startsWith('433'))).toBe(false);
+        expect(v.lignes.filter((l) => l.compte === '44720000').map((l) => l.montantFc)).toEqual([100_000]);
+        for (const bloc of ['PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES']) {
+            const lignes = v.lignes.filter((l) => l.bloc === bloc);
+            const d = lignes.filter((l) => l.sens === 'DEBIT').reduce((n, l) => n + l.montantFc, 0);
+            const c = lignes.filter((l) => l.sens === 'CREDIT').reduce((n, l) => n + l.montantFc, 0);
+            expect(d).toBeCloseTo(c, 6);
+        }
+    });
+    it('sépare la part ouvrière (retenue) de la part patronale (charge) du même compte', () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const pension = v.lignes.filter((l) => l.compte === '43130000');
+        expect(pension.map((l) => l.bloc)).toEqual(['RETENUES', 'PATRONALES']);
+        expect(pension.every((l) => l.sens === 'CREDIT')).toBe(true);
+        expect(pension.reduce((n, l) => n + l.montantFc, 0)).toBeCloseTo(100_000, 6);
+    });
+    it('change de numéro de pension selon le référentiel, et le DIT', () => {
+        const sys = (0, passation_paie_1.passationPaie)(entree({ referentiel: 'SYSCOHADA' }));
+        const syc = (0, passation_paie_1.passationPaie)(entree({ referentiel: 'SYCEBNL' }));
+        expect(sys.lignes.some((l) => l.compte === '43130000')).toBe(true);
+        expect(syc.lignes.some((l) => l.compte === '43210000')).toBe(true);
+        expect(syc.lignes.some((l) => l.compte === '43130000')).toBe(false);
+        const ligne = syc.lignes.find((l) => l.compte === '43210000');
+        expect(ligne.reserve).toContain('PROPRE AU RÉFÉRENTIEL');
+    });
+    it("met le logement en CHARGE, bien qu'il soit hors assiette sociale", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const logement = v.lignes.find((l) => l.compte === '66310000');
+        expect(logement.sens).toBe('DEBIT');
+        expect(logement.montantFc).toBeCloseTo(400_000, 6);
+    });
+    it('regroupe deux éléments de même nature sur un seul compte', () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({
+            elements: [
+                { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 600_000 },
+                { nature: 'COMMISSION', libelle: 'Commission', montantFc: 400_000 },
+                { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc: 400_000 },
+            ],
+        }));
+        const appointements = v.lignes.filter((l) => l.compte === '66110000');
+        expect(appointements).toHaveLength(1);
+        expect(appointements[0].montantFc).toBeCloseTo(1_000_000, 6);
+    });
+});
+describe('A8 (p) · la réserve du personnel non national vaut aussi pour le 6614', () => {
+    it("porte la ligne du 66140000 et nomme le 66240000 · OmegaX ne connaît pas la nationalité", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({
+            elements: [
+                { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+                { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc: 300_000 },
+                { nature: 'INDEMNITE_DE_FIN_DE_CONTRAT', libelle: 'Préavis', montantFc: 100_000 },
+            ],
+        }));
+        const l = v.lignes.find((x) => x.bloc === 'BRUT' && x.compte === '66140000');
+        expect(l?.reserve).toBe(passation_paie_1.RESERVE_INDEMNITES_PERSONNEL_NATIONAL);
+        expect(passation_paie_1.RESERVE_INDEMNITES_PERSONNEL_NATIONAL).toContain('66240000');
+        expect(v.lignes.find((x) => x.bloc === 'BRUT' && x.compte === '66110000')?.reserve).toBeNull();
+    });
+    it('le 66240000 est semé aux deux plans, sous le personnel non national', () => {
+        for (const f of ['compte-seed.ts', 'compte-seed-syscohada.ts']) {
+            expect((0, node_fs_1.readFileSync)((0, node_path_1.join)(SEMIS, f), 'utf8')).toContain("'66240000'");
+        }
+    });
+});
+describe('Les quatre refus, et chacun contre un défaut qui laisse la balance bouclée', () => {
+    it("refuse une nature que le texte ne tranche pas, en la NOMMANT", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({
+            elements: [
+                { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+                { nature: 'SOINS_DE_SANTE', libelle: 'Frais médicaux', montantFc: 80_000 },
+            ],
+        }));
+        expect(v.lignes).toEqual([]);
+        expect(v.refus[0].motif).toBe('NATURE_SANS_IMPUTATION');
+        expect(v.refus[0].explication).toContain('Frais médicaux');
+        expect(v.refus[0].explication).toContain('66840000');
+    });
+    it("refuse tant qu'une cotisation est en abstention", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({ abstentionsCotisations: ["INPP · la NATURE de l'employeur n'est pas renseignée."] }));
+        expect(v.lignes).toEqual([]);
+        expect(v.refus[0].motif).toBe('COTISATION_EN_ABSTENTION');
+        expect(v.refus[0].explication).toContain('ÉQUILIBRÉE');
+    });
+    it("refuse tant que l'impôt du mois n'est pas chiffré", () => {
+        expect((0, passation_paie_1.passationPaie)(entree({ irppFc: null })).refus[0].motif).toBe('IMPOT_INDETERMINE');
+        expect((0, passation_paie_1.passationPaie)(entree({ netAPayerFc: null })).refus[0].motif).toBe('IMPOT_INDETERMINE');
+    });
+    it("REFUSE une écriture déséquilibrée au lieu de la rattraper", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({ netAPayerFc: 1_250_001 }));
+        expect(v.lignes).toEqual([]);
+        expect(v.refus[0].motif).toBe('ECRITURE_DESEQUILIBREE');
+        expect(v.refus[0].explication).toContain('défaut du moteur');
+    });
+});
+describe('Ce que la passation annonce', () => {
+    it('dit que le règlement est une SECONDE écriture', () => {
+        const v = (0, passation_paie_1.passationPaie)(entree());
+        const dues = v.lignes.find((l) => l.compte === '42200000');
+        expect(dues.reserve).toContain('SECONDE ÉCRITURE');
+    });
+    it("dit qu'elle propose et ne poste pas, et nomme le journal", () => {
+        const r = (0, passation_paie_1.passationPaie)(entree()).reserves.join(' ');
+        expect(r).toContain('PROPOSE');
+        expect(r).toContain('OPÉRATIONS DIVERSES');
+    });
+    it("écarte le chemin du livre de cours pour les avantages en nature", () => {
+        const r = (0, passation_paie_1.passationPaie)(entree()).reserves.join(' ');
+        expect(r).toContain('66170000');
+        expect(r).toContain('§ 4.5');
+        expect(r).toContain('781');
+    });
+    it("transfère l'avantage en nature au 6617 par le 781, sans toucher le 422 (audit final F22)", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({
+            elements: [...entree().elements, { nature: 'AVANTAGE_EN_NATURE', libelle: 'Véhicule', montantFc: 300_000 }],
+        }));
+        const du = (compte, sens) => v.lignes.filter((l) => l.compte === compte && l.sens === sens).map((l) => [l.bloc, l.montantFc]);
+        expect({
+            refus: v.refus,
+            equilibree: v.equilibree,
+            c422: du('42200000', 'CREDIT'),
+            d6617: du('66170000', 'DEBIT'),
+            c781: du('78100000', 'CREDIT'),
+        }).toEqual({
+            refus: [],
+            equilibree: true,
+            c422: [['BRUT', 1_400_000]],
+            d6617: [['AVANTAGES_EN_NATURE', 300_000]],
+            c781: [['AVANTAGES_EN_NATURE', 300_000]],
+        });
+    });
+    it("l'avantage en nature n'est pas une somme versée, tout le reste l'est", () => {
+        expect([(0, passation_paie_1.estVerseEnEspeces)('AVANTAGE_EN_NATURE'), (0, passation_paie_1.estVerseEnEspeces)('SALAIRE_OU_TRAITEMENT'), (0, passation_paie_1.estVerseEnEspeces)('LOGEMENT_OU_SON_INDEMNITE')]).toEqual([
+            false,
+            true,
+            true,
+        ]);
+    });
+    it("passe F5 · un logement FOURNI EN NATURE va au 6617 par le 781, jamais au 6631 ni au 422", () => {
+        const v = (0, passation_paie_1.passationPaie)(entree({
+            elements: [
+                { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+                { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Maison de fonction', montantFc: 400_000, enNature: true },
+            ],
+            netAPayerFc: 850_000,
+        }));
+        const du = (compte, sens) => v.lignes.filter((l) => l.compte === compte && l.sens === sens).map((l) => [l.bloc, l.montantFc]);
+        expect({
+            refus: v.refus,
+            c422: du('42200000', 'CREDIT'),
+            d6631: du('66310000', 'DEBIT'),
+            d6617: du('66170000', 'DEBIT'),
+            c781: du('78100000', 'CREDIT'),
+        }).toEqual({
+            refus: [],
+            c422: [['BRUT', 1_000_000]],
+            d6631: [],
+            d6617: [['AVANTAGES_EN_NATURE', 400_000]],
+            c781: [['AVANTAGES_EN_NATURE', 400_000]],
+        });
+    });
+    it("passe F5 · fourni en nature, le logement, le transport et les soins ne sont pas versés ; un salaire l'est toujours", () => {
+        expect([
+            (0, passation_paie_1.estVerseEnEspeces)('LOGEMENT_OU_SON_INDEMNITE', true),
+            (0, passation_paie_1.estVerseEnEspeces)('INDEMNITE_DE_TRANSPORT', true),
+            (0, passation_paie_1.estVerseEnEspeces)('SOINS_DE_SANTE', true),
+            (0, passation_paie_1.estVerseEnEspeces)('LOGEMENT_OU_SON_INDEMNITE', false),
+            (0, passation_paie_1.estVerseEnEspeces)('SALAIRE_OU_TRAITEMENT', true),
+        ]).toEqual([false, false, false, true, true]);
+    });
+});
+//# sourceMappingURL=passation-paie.spec.js.map

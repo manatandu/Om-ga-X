@@ -107,7 +107,8 @@ type Motif =
   | 'SUIT_SA_DATE'
   | 'SUIT_SA_LIGNE'
   | 'ETAT_DES_JOURNAUX'
-  | 'FILTRE_DE_L_APPELANT';
+  | 'FILTRE_DE_L_APPELANT'
+  | 'DECOMPTE_DE_CE_QUI_PART';
 const MOTIFS: Record<Motif, string> = {
   PAR_IDENTIFIANT:
     "l'écriture ou la ligne est désignée par son identifiant · reçue du client et JUGÉE ensuite (refus nommé d'une " +
@@ -132,6 +133,9 @@ const MOTIFS: Record<Motif, string> = {
   FILTRE_DE_L_APPELANT:
     "le filtre est reçu de l'appelant, dans le même fichier, qui pose lui-même le statut (le grand livre, " +
     '`perimetreEcriture` et `HORS_SITUATION`) · la fonction ne fait que regrouper ce qu’on lui donne',
+  DECOMPTE_DE_CE_QUI_PART:
+    "le décompte de ce que la suppression d'un dossier d'essai emporte compte TOUT, brouillard et situation compris " +
+    "(la trace n'a que des nombres) · le filtrer sous-dirait ce qui part, et rien n'est servi comme un état comptable",
 };
 interface Exception {
   fichier: string;
@@ -215,6 +219,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/lettrage/ligne-de-reclassement.ts', fonction: 'lignesDeLaPerteAvecTva', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/lettrage/reconduction-lettrage.ts', fonction: 'poserGroupeReconduit', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/personnel/comptabilisation-paie.service.ts', fonction: 'annulerComptabilisation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/plateforme/essais-echus/essais-echus.service.ts', fonction: 'lire', appel: 'ecriture.groupBy', nombre: 1, motif: 'DECOMPTE_DE_CE_QUI_PART' },
   { fichier: 'src/modules/plateforme/garnissage-demonstration.service.ts', fonction: 'garnirRapprochement', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'pointer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'confirmer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },

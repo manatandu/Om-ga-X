@@ -1,0 +1,281 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.COLONNES_JAMAIS_RESTITUEES = exports.COLONNES_EXCLUES_PAR_MODELE = exports.MARQUEUR_MASQUE = exports.NON_AUDITES_MOTIVES = exports.MODELES_AUDITES = void 0;
+exports.colonnesExclues = colonnesExclues;
+exports.colonnesNonRestituables = colonnesNonRestituables;
+exports.estChampSensible = estChampSensible;
+exports.masquer = masquer;
+exports.MODELES_AUDITES = new Set([
+    'Tenant',
+    'User',
+    'Licence',
+    'Compte',
+    'NatureCompte',
+    'Journal',
+    'TauxTva',
+    'Devise',
+    'PlanAnalytique',
+    'SectionAnalytique',
+    'FamilleImmobilisation',
+    'ModeleSaisie',
+    'Banque',
+    'RibBanque',
+    'LibelleEcriture',
+    'Tiers',
+    'DocumentTiers',
+    'RibTiers',
+    'OrdreVirement',
+    'Bailleur',
+    'Exercice',
+    'Cloture',
+    'AffectationResultat',
+    'Ecriture',
+    'Lettrage',
+    'Regularisation',
+    'Reevaluation',
+    'ProvisionChangeOuverture',
+    'RapprochementBancaire',
+    'EncoursOuvertureRapprochement',
+    'Immobilisation',
+    'Donation',
+    'TranscriptionInventaire',
+    'CampagneInventaire',
+    'EcartInventaire',
+    'CampagneCircularisation',
+    'DemandeConfirmation',
+    'ProvisionRisqueCharge',
+    'FaiblesseControleInterne',
+    'RegistreFaiblesses',
+    'ReponseQuestionnaire',
+    'ConsommationUniteOeuvre',
+    'ContratLocationAcquisition',
+    'ClotureLocationAcquisition',
+    'RepriseSubventionImmobilisation',
+    'SubventionImmobilisation',
+    'ReductionSubventionImmobilisation',
+    'RevisionPlanAmortissement',
+    'CoutEmpruntIncorpore',
+    'ReevaluationBilan',
+    'RepriseProvisionReevaluation',
+    'MouvementDemantelement',
+    'AnnulationTraitementImmobilisation',
+    'CompteVirementFonds',
+    'VirementFonds',
+    'PieceVirementFonds',
+    'PieceJointeEcriture',
+    'PieceJointeSection',
+    'PieceJointeImmobilisation',
+    'PieceJointeSalarie',
+    'ImpressionJournal',
+    'SequenceSaisie',
+    'ExportEcritures',
+    'ImpressionDifferee',
+    'SelectionEdition',
+    'ModeleEdition',
+    'ExtraitPeriode',
+    'ModeReglement',
+    'LieuLivraison',
+    'ModeleImpressionTiers',
+    'CreanceDouteuse',
+    'AjustementCreanceDouteuse',
+    'MouvementCreanceDouteuse',
+    'FactureCreanceDouteuse',
+    'RecuperationTvaCreance',
+    'DeclarationDeviseANouveau',
+    'ImputationPaiement',
+    'ConstatImpotResultat',
+    'CleRepartition',
+    'CoutProductionDeclare',
+    'ComportementsGestionFiges',
+    'ProcesVerbalComptageCaisse',
+    'Exoneration',
+    'LiquidationTva',
+    'RetraitementFiscal',
+    'Salarie',
+    'ContratTravail',
+    'EnfantACharge',
+    'BulletinPaie',
+    'RubriquePaie',
+    'AvanceSalaire',
+    'VersionBaremePaie',
+    'RepriseCongesSalarie',
+    'CongeSalarie',
+    'AbsenceSalarie',
+    'MajorationHeures',
+    'IndemniteCaisseAbsence',
+    'RibSalarie',
+    'PaiementSalaires',
+    'RepartitionAnalytiquePaie',
+    'TiersCompte',
+    'ModeleReglement',
+    'RattachementNote',
+    'SaisieNote',
+    'ConventionFinancement',
+    'TrancheFinancement',
+    'RapportBailleur',
+    'EngagementDepense',
+    'ExecutionEngagement',
+    'OdAnalytique',
+    'ModeleAbonnement',
+    'NiveauRelance',
+    'ReclassementImmobilisation',
+    'DepreciationImmobilisation',
+    'ManuelProcedures',
+    'RapportActivite',
+    'SousCommissionInventaire',
+    'MembreSousCommission',
+    'QuestionnaireRevision',
+    'MandatAuditeur',
+    'AccordCadrePlan',
+    'Facture',
+    'Devis',
+    'ArticleStock',
+    'MouvementStock',
+    'Consignation',
+    'EntitePerimetreConsolidation',
+    'LienParticipationConsolidation',
+    'FaitsConsolidationExercice',
+    'OperationReciproqueConsolidation',
+    'ProvisionChangeConsolidation',
+    'EcartEvaluationConsolidation',
+    'ResultatInterneConsolidation',
+    'ParametresIfrs',
+    'RegleCorrespondanceIfrs',
+    'RetraitementIfrs',
+    'RegleConsolidationIfrs',
+    'MouvementCapitauxPropresIfrs',
+    'EffetChangeTresorerieIfrs',
+    'NotesIfrs',
+    'DossierFiscalExercice',
+    'LotVirement',
+]);
+const LIGNES_DE_LA_TETE = "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
+exports.NON_AUDITES_MOTIVES = {
+    EcritureExportee: "Registre de ce qu'un export a porté (ligne sage-l7, fonction 99) · une ligne par écriture envoyée, engendrée en masse par l'export, comme les lignes d'écriture ; l'export lui-même, numéroté et daté, est journalisé.",
+    VerrouProvisionChange: "Verrou technique d'un geste sur la provision pour pertes de change (A5) · posé et retiré dans la même requête, il ne porte aucune donnée du dossier ; le geste, lui, est journalisé (déclaration, réévaluation, écritures).",
+    VerrouCreancesDouteuses: "Verrou technique d'un geste sur les créances douteuses (A7) · posé et retiré dans la même requête, il ne porte aucune donnée du dossier ; le geste, lui, est journalisé (créance, revue, mouvement, écritures).",
+    LigneEcriture: "Lignes de l'écriture, journalisée à la tête · la table la plus grosse du logiciel, la doubler n'ajouterait rien que la tête ne date déjà.",
+    LigneAffectation: LIGNES_DE_LA_TETE,
+    LigneOdAnalytique: LIGNES_DE_LA_TETE,
+    LigneCleRepartition: LIGNES_DE_LA_TETE,
+    LigneModeleSaisie: LIGNES_DE_LA_TETE,
+    EcheanceReglement: LIGNES_DE_LA_TETE,
+    LigneRetraitementIfrs: LIGNES_DE_LA_TETE,
+    LigneLotVirement: LIGNES_DE_LA_TETE,
+    LigneReevaluationBilan: 'Lignes par bien de la réévaluation, journalisée à la tête · écrites avec elle ; seuls la reprise de la provision et l’imputation d’une perte les retouchent, actes eux-mêmes journalisés ou portés par une écriture.',
+    CoupureComptee: 'Ventilation par coupure du PV de comptage, journalisé · le total compté est sur le PV.',
+    LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
+    LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
+    LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,
+    LignePaiementSalaire: "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
+    LigneOrdreVirement: "Lignes de l'ordre de virement, journalisé, recopiées à la date de l'ordre et jamais modifiées.",
+    RetenueAvanceBulletin: "Retenue née avec le bulletin émis, journalisé · un bulletin ne se modifie pas, il s'annule.",
+    LigneReleveBancaire: 'Relevé importé en masse · la pièce est le relevé de la banque, le pointage se lit sur le rapprochement journalisé.',
+    VentilationAnalytique: "Ventilations engendrées ligne à ligne avec les écritures · reconstituables depuis l'écriture.",
+    BudgetSection: "Budgets mensuels engendrés en série (dotation, report d'exercice) · la section est journalisée.",
+    EcheanceAbonnement: "Échéances engendrées par le modèle d'abonnement, journalisé · chacune pointe vers son écriture.",
+    FicheInventaire: "Fiches créées par centaines en une fois · l'écart qu'elles produisent, et sa décision, sont journalisés.",
+    LigneBalanceConsolidation: "Balance de filiale importée en masse · l'entité porte la date et le nom du fichier importé.",
+    Relance: "Historique des rappels, émis par lots et figé à l'émission · chaque ligne est elle-même la trace (date, auteur, montant).",
+    CoursDevise: "Cours du jour saisi en série · toute conversion fige le cours qu'elle applique (ligne d'écriture, bulletin, facture d'abonnement).",
+    DotationAmortissement: "Calculée depuis le plan d'amortissement et postée avec son écriture, journalisée et retenue · aucune route ne la modifie.",
+    AmortissementDerogatoire: 'Calculé depuis le plan fiscal et posté avec son écriture, journalisée et retenue · aucune route ne le modifie.',
+    EvenementAudit: "Le journal lui-même · s'y journaliser serait récursif, sa chaîne d'empreintes le protège.",
+    Message: "File d'envoi des courriels · technique, sans effet sur les comptes.",
+    ModeleBulletin: 'Gabarit qui pré-remplit une simulation et ne décide rien · le bulletin émis est journalisé.',
+    EtatPersonnalise: "Définition d'un état de consultation · ni état financier ni document déposé, aucune écriture.",
+    SimulationBudgetaire: "Hypothèses de simulation · rien n'est passé au journal.",
+    LieuBien: "Référentiel de localisation sans effet comptable · l'affectation d'un bien se lit sur l'immobilisation journalisée.",
+    LicenceSurSiteEmise: "Registre d'émission de l'éditeur, hors dossier · chaque ligne porte son numéro, son émetteur et sa date.",
+    FormuleAbonnement: "Grille de l'éditeur, hors dossier.",
+    AbonnementCabinet: "Abonnement tenu par l'éditeur, hors dossier · la licence qu'il pose chez le cabinet est journalisée.",
+    OptionAbonnement: "Options d'un abonnement de l'éditeur, hors dossier.",
+    FactureAbonnement: "Lien de l'éditeur vers la facture émise, elle-même journalisée dans le dossier de l'éditeur.",
+};
+const FRAGMENTS_SENSIBLES = [
+    'motdepasse',
+    'password',
+    'secret',
+    'jeton',
+    'token',
+    'csrf',
+    'apikey',
+    'cledeconnexion',
+    'databaseurl',
+];
+exports.MARQUEUR_MASQUE = '[masqué]';
+exports.COLONNES_EXCLUES_PAR_MODELE = {
+    User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth'],
+    DocumentTiers: ['contenu'],
+    PieceVirementFonds: ['contenu'],
+    PieceJointeEcriture: ['contenu'],
+    PieceJointeSection: ['contenu'],
+    PieceJointeImmobilisation: ['contenu'],
+    PieceJointeSalarie: ['contenu', 'nomFichier', 'commentaire'],
+    ExportEcritures: ['contenu'],
+    ImpressionDifferee: ['contenu'],
+    Salarie: [
+        'numeroAffiliationCnss',
+        'dateNaissance',
+        'millesimeNaissance',
+        'lieuNaissance',
+        'nationalite',
+        'nomConjoint',
+    ],
+    EnfantACharge: ['nom', 'postNom', 'prenoms', 'dateNaissance'],
+    ContratTravail: ['remunerationBase', 'avantagesConvenus'],
+    AvanceSalaire: ['montantFc', 'retenueMensuelleFc', 'objet'],
+    CongeSalarie: ['remunerationJournaliere', 'moyenneMensuelleArticle142'],
+    AbsenceSalarie: ['nature', 'piece', 'observation'],
+    IndemniteCaisseAbsence: ['montant', 'piece'],
+    RibSalarie: ['titulaire', 'codeBanque', 'codeGuichet', 'numeroCompte', 'cle', 'iban', 'codeBic', 'commentaire'],
+    PaiementSalaires: ['total', 'billetage'],
+    BulletinPaie: [
+        'numeroAffiliationCnss',
+        'totalVerseFc',
+        'assietteSocialeFc',
+        'cotisationsTravailleurFc',
+        'cotisationsEmployeurFc',
+        'irppFc',
+        'netAPayerFc',
+        'entree',
+        'calcul',
+    ],
+};
+function colonnesExclues(modele) {
+    return new Set((exports.COLONNES_EXCLUES_PAR_MODELE[modele] ?? []).map((c) => c.toLowerCase()));
+}
+exports.COLONNES_JAMAIS_RESTITUEES = {
+    User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth'],
+};
+function colonnesNonRestituables(modele) {
+    return new Set((exports.COLONNES_JAMAIS_RESTITUEES[modele] ?? []).map((c) => c.toLowerCase()));
+}
+function estChampSensible(nom, exclues) {
+    const n = nom.toLowerCase();
+    if (exclues?.has(n))
+        return true;
+    return FRAGMENTS_SENSIBLES.some((f) => n.includes(f));
+}
+function masquer(valeur, exclues) {
+    if (valeur === null || valeur === undefined)
+        return valeur;
+    if (Array.isArray(valeur))
+        return valeur.map((v) => masquer(v, exclues));
+    if (valeur instanceof Date)
+        return valeur.toISOString();
+    if (typeof valeur === 'bigint')
+        return valeur.toString();
+    if (typeof valeur === 'object') {
+        const o = valeur;
+        if (typeof o.toFixed === 'function')
+            return String(valeur);
+        const sortie = {};
+        for (const [cle, v] of Object.entries(o)) {
+            sortie[cle] = estChampSensible(cle, exclues) ? exports.MARQUEUR_MASQUE : masquer(v, exclues);
+        }
+        return sortie;
+    }
+    return valeur;
+}
+//# sourceMappingURL=champs-audites.js.map

@@ -100,7 +100,7 @@ export class TiersController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/fusion/:cibleId')
   async fusionner(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('cibleId') cibleId: string) {
-    return this.tiersService.fusionner(user.tenantId, id, cibleId);
+    return this.tiersService.fusionner(user.tenantId, id, cibleId, user.userId);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET)

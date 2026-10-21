@@ -3,7 +3,7 @@
  * site. Elle ne sait pas signer, et sa publication ne coûte rien : c'est la
  * clé privée, gardée par VMG seul, qui signe.
  *
- * `null` TANT QUE MANASSE NE L'A PAS POSÉE · la paire se génère une seule
+ * POSÉE PAR MANASSE LE 2026-10-16 · la paire s'est générée une seule
  * fois (voir docs/installation-sur-site.md, § 2 « Une seule fois chez VMG ·
  * la paire de clés » · le renvoi nommait une section « Clés de licence » qui
  * n'existe pas, audit final F199), la clé privée va dans le secret de
@@ -15,4 +15,7 @@
  * ELLE NE SE LIT JAMAIS DANS L'ENVIRONNEMENT · une clé réglable sur le poste
  * permettrait au client d'y poser la sienne et de se signer ses licences.
  */
-export const CLE_PUBLIQUE_EDITEUR: string | null = null;
+export const CLE_PUBLIQUE_EDITEUR: string | null = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAF9U0xNY0i4Spuioeszt4c8PRjMnn5My1vCMsmLnw1ws=
+-----END PUBLIC KEY-----
+`;

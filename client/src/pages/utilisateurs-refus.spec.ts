@@ -27,7 +27,7 @@ function corps(nom: string): string {
 }
 
 describe('fenêtre Utilisateurs · chaque action dit le refus du serveur', () => {
-  for (const action of ['deverrouiller', 'changerRole', 'basculerActif']) {
+  for (const action of ['deverrouiller', 'changerRole', 'basculerActif', 'deconnecter']) {
     it(`${action} rattrape l’erreur et l’affiche`, () => {
       const c = corps(action);
       expect(c).toContain('catch (err)');

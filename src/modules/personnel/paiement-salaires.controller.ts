@@ -6,7 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccesRolesCantonnes, ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
-import { RibTiersDto } from '../tiers/dto/ribs-tiers.dto';
+import { RibTiersDto, VisaRibDto } from '../tiers/dto/ribs-tiers.dto';
 import { RibsSalariesService } from './ribs-salaries.service';
 import { PaiementSalairesService } from './paiement-salaires.service';
 import { AnnulationPaiementSalairesDto, ModePaiementSalarieDto, PaiementSalairesDto } from './dto/paiement-salaires.dto';
@@ -35,25 +35,37 @@ export class PaiementSalairesController {
   @Get('salaries/:salarieId/paiement')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
   lire(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string) {
-    return this.ribs.lire(user.tenantId, salarieId);
+    return this.ribs.lire(user.tenantId, salarieId, user.userId);
   }
 
   @Post('salaries/:salarieId/mode-paiement')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   definirMode(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Body() dto: ModePaiementSalarieDto) {
-    return this.ribs.definirMode(user.tenantId, salarieId, dto.modePaiement);
+    return this.ribs.definirMode(user.tenantId, salarieId, dto.modePaiement, user.userId);
   }
 
   @Post('salaries/:salarieId/ribs')
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   creerRib(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Body() dto: RibTiersDto) {
-    return this.ribs.creer(user.tenantId, salarieId, dto);
+    return this.ribs.creer(user.tenantId, salarieId, dto, user.userId);
   }
 
   @Patch('ribs-salaries/:id')
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   modifierRib(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RibTiersDto) {
-    return this.ribs.modifier(user.tenantId, id, dto);
+    return this.ribs.modifier(user.tenantId, id, dto, user.userId);
+  }
+
+  /**
+   * VISER LE RIB DU SALARIÉ (`tiers/visa-rib.ts`) · l'administrateur ou le
+   * comptable autre que l'auteur, refusé aux deux rôles cantonnés · le
+   * gestionnaire de paie prépare les salaires, il ne vise pas où ils partent.
+   */
+  @Post('ribs-salaries/:id/viser')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  viserRib(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: VisaRibDto) {
+    return this.ribs.viser(user.tenantId, id, user.userId, dto.saisiLeLu);
   }
 
   @Delete('ribs-salaries/:id')

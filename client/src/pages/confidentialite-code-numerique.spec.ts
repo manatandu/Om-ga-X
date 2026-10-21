@@ -67,15 +67,20 @@ describe('la politique cite le Code du numérique', () => {
     expect(page).not.toMatch(/conforme au Code du numérique|autorisation de l’Autorité a été/i);
   });
 
-  it('laisse les deux adresses en blanc plutôt que d’en inventer', () => {
-    expect(deplie).toContain('doivent être arrêtées par VMG Consulting');
-    expect(deplie).toContain('adresse inventée dirigerait vos demandes vers le vide');
+  it('donne le courriel et la ville que VMG a arrêtés, sans inventer une adresse de rue', () => {
+    // Donnés par Manasse le 2026-10-17 · « Mets juste Kinshasa/RDC » · aucune rue n'est publiée.
+    expect(deplie).toContain('href="mailto:admin@vmgconsulting.net"');
+    expect(deplie).toContain('Le cabinet est établi à Kinshasa, en République démocratique du Congo');
+    expect(deplie).toContain('l’adresse de la rue n’étant pas encore publiée');
+    // Aucune rue n'est publiée · l'inventer dirigerait les demandes vers le vide.
+    expect(deplie).not.toMatch(/\b(avenue|boulevard|quartier)\b/i);
   });
 
   it('numérote ses sections sans doublon', () => {
     // Deux « 7. » se suivaient après l'insertion · un document juridique qui
     // se renvoie à lui-même par numéro ne peut pas en avoir deux.
-    const numeros = [...page.matchAll(/<Titre>(\d+)\./g)].map(([, n]) => Number(n));
+    const numeros = [...page.matchAll(/<Titre id="[a-z-]+">(\d+)\./g)].map(([, n]) => Number(n));
+    expect(numeros.length).toBeGreaterThan(10);
     expect(numeros).toEqual([...Array(numeros.length).keys()].map((i) => i + 1));
   });
 });
@@ -128,8 +133,9 @@ describe('la politique décrit le logiciel tel qu’il est (passe D4)', () => {
   });
 
   it('dit « chiffrés en transit », et le http du réseau local sur site (D4-A3, C7, D1)', () => {
-    // La section 5 suit la même branche `surSite` que les sections 3 et 4.
-    const section5 = deplie.slice(deplie.indexOf('<Titre>5.'), deplie.indexOf('<Titre>6.'));
+    // La section de la protection suit la même branche `surSite` que les sections 3 et 4.
+    const section5 = deplie.slice(deplie.indexOf('<Titre id="protection">'), deplie.indexOf('<Titre id="violation">'));
+    expect(section5.length).toBeGreaterThan(100);
     expect(section5).toContain('{surSite ? (');
     expect(section5).toContain('<strong>http, sur le réseau local</strong> de votre entité : OmegaX ne les chiffre pas');
     expect(section5).toContain('<strong>chiffrés en transit (HTTPS)</strong>');
@@ -167,8 +173,8 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
   it('nomme les deux services, leur région, ce qui part et ce qui ne part jamais', () => {
     expect(deplie).toContain('<strong>Sentry</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
     expect(deplie).toContain('<strong>PostHog</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
-    expect(deplie).toContain('reçoit les erreurs techniques du serveur et de l’interface');
-    expect(deplie).toContain('reçoit les pages vues de l’interface, de façon anonyme');
+    expect(deplie).toContain('reçoit les erreurs techniques du serveur et, avec votre accord seulement (section 4), de l’interface');
+    expect(deplie).toContain('reçoit les pages vues de l’interface, sans votre nom ni le contenu de vos dossiers et avec votre accord seulement (section 4)');
     expect(deplie).toContain('Ni Sentry ni PostHog ne reçoivent <strong>jamais</strong> de donnée de vos dossiers : aucun montant, aucun nom, aucune adresse de courriel, aucun contenu saisi');
     expect(deplie).toContain('Sept prestataires interviennent');
     expect(deplie).toContain('le fil des dernières requêtes réduit à leur méthode, leur adresse sans identifiants ni paramètres et leur statut, les écrans ouverts juste avant, et la version publiée du logiciel');
@@ -179,7 +185,7 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
 
   it('sur site, dit que rien ne part, et ne prétend plus à l’absence de mesure en ligne', () => {
     expect(deplie).toContain('Aucune erreur technique ni aucune page vue ne quitte cette installation');
-    expect(deplie).toContain('Il mesure la fréquentation de son interface de façon anonyme');
+    expect(deplie).toContain('Il peut mesurer la fréquentation de son interface, sans votre nom ni le contenu de vos dossiers, et signaler ses erreurs techniques (section 6), seulement si vous l’acceptez');
     expect(deplie).toContain('un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier');
   });
 });
@@ -227,5 +233,74 @@ describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', ()
     const fenetre = page.slice(page.indexOf('export function ConfidentialiteFenetre()'), page.indexOf('export function ContenuConfidentialite()'));
     expect(fenetre).not.toContain('<h1');
     expect(fenetre).toContain('<ContenuConfidentialite />');
+  });
+});
+
+describe('la politique présentée sur le modèle des grands éditeurs (2026-10-17)', () => {
+  it('ouvre sur un engagement, puis un sommaire dont chaque entrée est un titre de la page, dans l’ordre', () => {
+    expect(deplie).toContain('<p className="text-[11.5px] font-bold mb-1">Notre engagement</p>');
+    expect(deplie).toContain('Nous ne vendons ni ne louons aucune donnée');
+    const entrees = [...page.matchAll(/\{ id: '([a-z-]+)', titre: '([^']+)' \}/g)].map(([, id, t]) => `<Titre id="${id}">${t}`);
+    const titres = [...page.matchAll(/<Titre id="([a-z-]+)">\d+\. ([^<]+)<\/Titre>/g)].map(([, id, t]) => `<Titre id="${id}">${t}`);
+    expect(entrees.length).toBe(13);
+    expect(titres).toEqual(entrees);
+    // Un lien « #ancre » ramènerait à l'écran d'ouverture sous HashRouter.
+    expect(page).toContain('scrollIntoView');
+    expect(page).not.toMatch(/href="#politique-/);
+  });
+
+  it('dit le fondement de chaque traitement tel que l’article 192 les borne · consentement ou obligation légale', () => {
+    expect(deplie).toContain('n’admet que deux fondements à un traitement de données personnelles');
+    expect(deplie).toContain('(article 192)');
+    expect(deplie).toContain('Consentement, demandé avant tout envoi et retirable à tout moment (section 4)');
+    expect(deplie).toContain('Obligation légale · Acte uniforme relatif au droit comptable, art. 22 ; Code du numérique, article 219, 14°');
+  });
+
+  it('dit les délais de réponse du Code (articles 210, 213, 214, 239 à 241) et le mineur (article 247)', () => {
+    expect(deplie).toContain('<strong>trente jours</strong> de sa réception (articles 213, 214 et 239)');
+    expect(deplie).toContain('prolonger ce délai de soixante jours au plus');
+    expect(deplie).toContain('au plus tard soixante jours après la demande (article 210)');
+    expect(deplie).toContain('La réponse est gratuite (article 240)');
+    expect(deplie).toContain('L’article 247 du Code du numérique');
+  });
+
+  it('nomme la demande d’essai et ce qu’elle garde, l’adresse réseau en mémoire seulement', () => {
+    expect(deplie).toContain('<strong>La demande d’essai</strong> · le type de l’entité, son nom et l’adresse de courriel donnée');
+    // Relecture « échecs silencieux », M4 · le limiteur garde une empreinte tant que l'instance tourne,
+    // et Cloud Run journalise l'adresse de toute requête · « une heure, nulle part » était faux.
+    expect(deplie).toContain('le serveur d’application ne l’inscrit dans aucune table ; son limiteur en garde une empreinte en mémoire tant que le service tourne');
+    expect(deplie).toContain('l’hébergeur (Google Cloud Run) inscrit l’adresse dans ses journaux techniques');
+    expect(page).not.toMatch(/de façon anonyme/);
+    // Cinq demandes par heure · la durée de la limite est celle que la route porte.
+    expect(serveur('src/modules/auth/auth.controller.ts')).toContain('@Throttle({ default: { ttl: 3_600_000, limit: 5 } })');
+    // Cent quatre-vingts jours · décision de Manasse du 2026-10-17 (« 180 jours »,
+    // jamais « six mois calendaires »). La suppression existe (console de l'éditeur,
+    // `plateforme/essais-echus/`) mais c'est un GESTE de l'opérateur, pas une tâche
+    // planifiée · la page le DIT, et elle ne promet que ce que le code garantit.
+    expect(deplie).toContain('<strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime');
+    expect(deplie).toContain('<strong>au moins trente jours avant</strong> la suppression');
+    expect(deplie).toContain('(Fichier &gt; Restituer le dossier complet)');
+    expect(deplie).toContain('faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche automatique');
+    expect(deplie).toContain('Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre terme');
+    expect(deplie).not.toContain('quatre-vingt-dix jours après le terme');
+    // Le fond a changé · la politique porte la date de cette modification (le
+    // bandeau de consentement se rouvre une fois, c'est voulu).
+    const date = readFileSync(join(__dirname, '../lib/date-politique-confidentialite.ts'), 'utf8');
+    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '21 octobre 2026';");
+    expect(page).toContain('Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}');
+    expect(deplie).not.toContain('n’est pas encore en service');
+    // Les deux nombres de la page sont ceux du calendrier du serveur.
+    const calendrier = serveur('src/modules/plateforme/essais-echus/essais-echus.ts');
+    expect(calendrier).toContain('export const JOURS_CONSERVATION_ESSAI = 180;');
+    expect(calendrier).toContain('export const JOURS_RAPPEL_AVANT_SUPPRESSION = 30;');
+    // La route de suppression existe, et elle est gardée comme le reste de la console.
+    const controleur = serveur('src/modules/plateforme/plateforme.controller.ts');
+    expect(controleur).toContain("@Post('essais-echus/:tenantId/supprimer')");
+    expect(controleur).toMatch(/@UseGuards\(JwtAuthGuard, OperateurPlateformeGuard\)/);
+  });
+
+  it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {
+    expect(deplie).toContain('<LienPreferencesMesure className="text-sel underline" />');
+    expect(deplie).toContain('Adresse · Kinshasa, République démocratique du Congo');
   });
 });

@@ -1,0 +1,104 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const plateforme_service_1 = require("./plateforme.service");
+const TOUS_LES_MODULES = ['PAIE', 'REVISION', 'GESTION_COMMERCIALE', 'CONSOLIDATION', 'IFRS'];
+function service(options = {}) {
+    const tenantUpdate = jest.fn().mockResolvedValue({});
+    const userUpdateMany = jest.fn().mockResolvedValue({});
+    const prisma = {
+        tenant: {
+            findFirst: jest.fn().mockResolvedValue(options.existant ?? null),
+            update: tenantUpdate,
+        },
+        ecriture: {
+            count: jest.fn(async ({ where }) => (where.statut === 'VALIDEE' ? (options.valideesExistant ?? 0) : 99)),
+        },
+        user: { updateMany: userUpdateMany, findFirstOrThrow: jest.fn().mockResolvedValue({ id: 'u-demo' }) },
+    };
+    const authService = {
+        register: jest.fn().mockResolvedValue({ tenant: { id: 't-demo', nom: 'Démo' } }),
+    };
+    const config = { get: jest.fn().mockReturnValue(undefined) };
+    return {
+        service: new plateforme_service_1.PlateformeService(prisma, config, authService, options.garnissage),
+        prisma,
+        authService,
+        tenantUpdate,
+        userUpdateMany,
+    };
+}
+const DTO = { email: 'demonstration@vmgconsulting.cd', motDePasse: 'DemoOmegaX2026' };
+describe("l'ouverture du dossier de démonstration", () => {
+    it('marque le dossier, plutôt que de compter sur son intitulé', async () => {
+        const { service: s, tenantUpdate } = service();
+        await s.preparerDossierDemonstration(DTO);
+        expect(tenantUpdate.mock.calls[0][0].data).toEqual({ estDemonstration: true, modulesActives: TOUS_LES_MODULES });
+    });
+    it('une SARL au SYSCOHADA · système normal, forme SARL', async () => {
+        const { service: s, tenantUpdate, authService } = service();
+        await s.preparerDossierDemonstration({ ...DTO, referentiel: 'SYSCOHADA' });
+        expect(authService.register.mock.calls[0][0]).toMatchObject({ referentiel: 'SYSCOHADA', systemeComptableSyscohada: 'NORMAL' });
+        expect(tenantUpdate.mock.calls[0][0].data).toEqual({ estDemonstration: true, formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE', modulesActives: TOUS_LES_MODULES });
+    });
+    it('le dossier naît garni, par l’utilisateur du dossier lui-même', async () => {
+        const garnissage = { garnir: jest.fn().mockResolvedValue({ tiers: 4, ecritures: 9 }) };
+        const { service: s } = service({ garnissage });
+        const r = await s.preparerDossierDemonstration(DTO);
+        expect(garnissage.garnir).toHaveBeenCalledWith('t-demo', 'u-demo');
+        expect(r.garni).toEqual({ tiers: 4, ecritures: 9 });
+    });
+    it("n'impose PAS le changement de mot de passe · sinon la vitrine ne s'ouvre jamais", async () => {
+        const { service: s, userUpdateMany } = service();
+        await s.preparerDossierDemonstration(DTO);
+        expect(userUpdateMany.mock.calls[0][0].data).toEqual({ doitChangerMotDePasse: false });
+    });
+    it('emploie le mot de passe CHOISI, jamais un tirage au sort', async () => {
+        const { service: s, authService } = service();
+        await s.preparerDossierDemonstration(DTO);
+        expect(authService.register.mock.calls[0][0].motDePasse).toBe('DemoOmegaX2026');
+    });
+    it("refuse d'ouvrir une SECONDE vitrine, et nomme celle qui existe", async () => {
+        const { service: s } = service({
+            existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+        });
+        await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/existe déjà/i);
+        await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/demo@vmgconsulting.cd/);
+    });
+    it('cherche la vitrine existante SUR SON DRAPEAU et dans SON référentiel · une ASBL et une SARL ne se gênent pas', async () => {
+        const { service: s, prisma } = service({ existant: null });
+        await s.preparerDossierDemonstration(DTO);
+        const where = prisma.tenant.findFirst.mock.calls[0][0].where;
+        expect(where).toEqual({ estDemonstration: true, referentiel: 'SYCEBNL' });
+        await s.preparerDossierDemonstration({ ...DTO, referentiel: 'SYSCOHADA' });
+        expect(prisma.tenant.findFirst.mock.calls[1][0].where).toEqual({ estDemonstration: true, referentiel: 'SYSCOHADA' });
+    });
+    it('ne renvoie jamais le mot de passe', async () => {
+        const { service: s } = service();
+        const r = await s.preparerDossierDemonstration(DTO);
+        expect(JSON.stringify(r)).not.toContain('DemoOmegaX2026');
+    });
+    it('une vitrine interrompue (aucune écriture validée) se complète au lieu de bloquer (audit final F174)', async () => {
+        const garnissage = { garnir: jest.fn().mockResolvedValue({ tiers: 4, ecritures: 9, crees: 7 }) };
+        const { service: s, authService } = service({
+            existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+            garnissage,
+            valideesExistant: 0,
+        });
+        const r = await s.preparerDossierDemonstration(DTO);
+        expect(garnissage.garnir).toHaveBeenCalledWith('t1', 'u-demo');
+        expect(authService.register).not.toHaveBeenCalled();
+        expect(r).toMatchObject({ tenantId: 't1', repris: true, email: 'demo@vmgconsulting.cd', garni: { tiers: 4, ecritures: 9 } });
+        expect(r.rappel).toContain('ceux saisis maintenant ne sont pas repris');
+    });
+    it('une vitrine garnie (écritures validées) n’est pas regarnie · la seconde reste refusée', async () => {
+        const garnissage = { garnir: jest.fn() };
+        const { service: s } = service({
+            existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+            garnissage,
+            valideesExistant: 9,
+        });
+        await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/existe déjà/i);
+        expect(garnissage.garnir).not.toHaveBeenCalled();
+    });
+});
+//# sourceMappingURL=dossier-demonstration.spec.js.map

@@ -5,7 +5,19 @@
  * virement-fonds.spec.ts rejoue les mêmes cas des deux côtés.
  */
 export type SensVirementFonds = 'BANQUE_BANQUE' | 'BANQUE_CAISSE' | 'CAISSE_BANQUE' | 'CAISSE_CAISSE';
-export type NaturePieceVirement = 'BORDEREAU_VERSEMENT' | 'CHEQUE' | 'ORDRE_VIREMENT' | 'AVIS_DEBIT_CREDIT' | 'BON_CAISSE' | 'AUTRE';
+export type NaturePieceVirement =
+  | 'BORDEREAU_VERSEMENT'
+  | 'CHEQUE'
+  | 'ORDRE_VIREMENT'
+  | 'AVIS_DEBIT_CREDIT'
+  | 'BON_CAISSE'
+  | 'AUTRE'
+  | 'BON_SORTIE_CAISSE'
+  | 'BON_ENTREE_CAISSE'
+  | 'AVIS_DEBIT'
+  | 'AVIS_CREDIT'
+  | 'EXTRAIT_COMPTE'
+  | 'BORDEREAU_REMISE_CHEQUE';
 
 export function estUneCaisse(numeroCompte: string): boolean {
   return numeroCompte.startsWith('57');
@@ -36,14 +48,32 @@ export const LIBELLES_OPERATION: Readonly<Record<OperationVirementFonds, string>
   ENTREE: 'entrée des fonds',
 };
 
-export const NATURES_PIECE: readonly NaturePieceVirement[] = [
-  'ORDRE_VIREMENT',
-  'CHEQUE',
-  'BORDEREAU_VERSEMENT',
-  'AVIS_DEBIT_CREDIT',
-  'BON_CAISSE',
-  'AUTRE',
-];
+/**
+ * LES PIÈCES PROPOSÉES SELON LA TRÉSORERIE ET L'OPÉRATION · miroir de
+ * NATURES_PROPOSEES du serveur (src/modules/virements-fonds/virement-fonds.ts,
+ * tableau des pièces de trésorerie du CPCC), qui refuse le reste.
+ */
+export const NATURES_PROPOSEES: Readonly<
+  Record<'BANQUE' | 'CAISSE', Readonly<Record<OperationVirementFonds, readonly NaturePieceVirement[]>>>
+> = {
+  CAISSE: {
+    SORTIE: ['BON_SORTIE_CAISSE', 'AUTRE'],
+    ENTREE: ['BON_ENTREE_CAISSE', 'AUTRE'],
+  },
+  BANQUE: {
+    SORTIE: ['ORDRE_VIREMENT', 'CHEQUE', 'AVIS_DEBIT', 'EXTRAIT_COMPTE', 'AUTRE'],
+    ENTREE: ['BORDEREAU_VERSEMENT', 'BORDEREAU_REMISE_CHEQUE', 'AVIS_CREDIT', 'EXTRAIT_COMPTE', 'AUTRE'],
+  },
+};
+
+/**
+ * Les pièces proposées pour le compte de trésorerie d'UNE opération · vide
+ * tant que sa banque ou sa caisse n'est pas choisie.
+ */
+export function naturesDeLaPiece(numeroCompte: string | null, operation: OperationVirementFonds): readonly NaturePieceVirement[] {
+  if (!numeroCompte) return [];
+  return NATURES_PROPOSEES[estUneCaisse(numeroCompte) ? 'CAISSE' : 'BANQUE'][operation];
+}
 
 export const LIBELLES_NATURE_PIECE: Readonly<Record<NaturePieceVirement, string>> = {
   BORDEREAU_VERSEMENT: 'Bordereau de versement',
@@ -52,4 +82,10 @@ export const LIBELLES_NATURE_PIECE: Readonly<Record<NaturePieceVirement, string>
   AVIS_DEBIT_CREDIT: 'Avis de débit ou de crédit',
   BON_CAISSE: 'Bon de caisse',
   AUTRE: 'Autre pièce',
+  BON_SORTIE_CAISSE: 'Bon de sortie de caisse',
+  BON_ENTREE_CAISSE: "Bon d'entrée de caisse",
+  AVIS_DEBIT: 'Avis de débit',
+  AVIS_CREDIT: 'Avis de crédit',
+  EXTRAIT_COMPTE: 'Extrait de compte',
+  BORDEREAU_REMISE_CHEQUE: 'Bordereau de remise de chèque',
 };

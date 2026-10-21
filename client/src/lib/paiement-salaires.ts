@@ -4,6 +4,8 @@
  * billetage sont rejoués au serveur (`personnel/paiement-salaires.ts`).
  */
 
+import type { VisaRibLu } from './visa-rib';
+
 export type ModePaiement = 'VIREMENT' | 'CHEQUE' | 'ESPECES';
 
 export const LIBELLE_MODE: Record<ModePaiement, string> = {
@@ -28,6 +30,8 @@ export interface RibSalarieLu {
   estPrincipal: boolean;
   commentaire: string | null;
   coordonnees: string;
+  /** Absent d'une réponse d'un serveur d'avant le visa. */
+  visa?: VisaRibLu;
 }
 
 export interface PaiementDuSalarieLu {

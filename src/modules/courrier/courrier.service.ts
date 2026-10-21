@@ -46,6 +46,8 @@ export const ORIGINE_FACTURE_ABONNEMENT = 'FACTURE_ABONNEMENT';
 export const ORIGINE_DOUBLE_AUTHENTIFICATION = 'DOUBLE_AUTHENTIFICATION';
 /** L'accusé de réception d'une acceptation des conditions de licence, le texte accepté en pièce jointe (Code du numérique, art. 55, al. 2, et 56, al. 1er · conditions-licence/). */
 export const ORIGINE_CONDITIONS_LICENCE = 'CONDITIONS_LICENCE';
+/** Le rappel de suppression d'un dossier d'essai échu, envoyé à son administrateur par la console de l'éditeur (plateforme/essais-echus/). */
+export const ORIGINE_RAPPEL_SUPPRESSION_ESSAI = 'RAPPEL_SUPPRESSION_ESSAI';
 
 export interface MessageAMettreEnFile {
   destinataire: string;
@@ -414,6 +416,31 @@ export class CourrierService {
       where: this.filtreEligibles(tenantId, new Date()),
     });
     return bilan;
+  }
+
+  /**
+   * RETENTER UN SEUL MESSAGE, désigné par son identifiant (rappel de suppression
+   * d'un dossier d'essai échu).
+   *
+   * Un dossier échu est en lecture seule · son utilisateur ne peut plus lancer la
+   * reprise (`POST /courrier/reprendre` écrit), et la reprise générale reprendrait
+   * AUSSI les relances que ce dossier avait mises en file avant de s'éteindre, vers
+   * des tiers, des mois plus tard. Cette porte-ci ne touche qu'au message nommé,
+   * et seulement s'il est reprenable (jamais un ENVOYE, jamais un ABANDONNE), après
+   * la même revendication que la reprise · deux appels croisés ne l'envoient pas
+   * deux fois.
+   */
+  async retenter(tenantId: string, id: string): Promise<ResultatMiseEnFile> {
+    const ligne = await this.prisma.message.findFirst({ where: { id, tenantId } });
+    if (!ligne) throw new NotFoundException('Message introuvable dans ce dossier');
+    if (ligne.statut === StatutMessage.ENVOYE || ligne.statut === StatutMessage.ABANDONNE) {
+      return { id: ligne.id, statut: ligne.statut, erreur: ligne.erreur };
+    }
+    if (!this.transport.etat().configure) return { id: ligne.id, statut: ligne.statut, erreur: ligne.erreur };
+    if (!(await this.revendiquer(tenantId, ligne, new Date()))) {
+      throw new ConflictException('Ce message est déjà en cours d\'envoi.');
+    }
+    return this.tenter(tenantId, ligne);
   }
 
   /** La file du dossier, la plus récente d'abord, éventuellement filtrée par état. */

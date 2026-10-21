@@ -1,0 +1,224 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const fs_1 = require("fs");
+const path_1 = require("path");
+const client_1 = require("@prisma/client");
+const immobilisation_service_1 = require("./immobilisation.service");
+const detenteurs_ecriture_1 = require("../comptabilite/detenteurs-ecriture");
+const COMPTES = {
+    r112: { id: 'r112', numero: '11200000', estActif: true, typeCompte: client_1.TypeCompteDetailTotal.DETAIL },
+    r118: { id: 'r118', numero: '11810000', estActif: true, typeCompte: client_1.TypeCompteDetailTotal.DETAIL },
+    s118: { id: 's118', numero: '11800000', estActif: true, typeCompte: client_1.TypeCompteDetailTotal.DETAIL },
+    t113: { id: 't113', numero: '111', estActif: true, typeCompte: client_1.TypeCompteDetailTotal.TOTAL },
+    c485: { id: 'c485', numero: '48520000', estActif: true, typeCompte: client_1.TypeCompteDetailTotal.DETAIL },
+};
+function harnais(o) {
+    const postees = [];
+    const immo = {
+        id: 'i1',
+        designation: 'Bâtiment industriel',
+        statut: 'EN_SERVICE',
+        valeurOrigine: 360_000_000,
+        valeurResiduelle: 0,
+        dureeAmortissementAns: 30,
+        dateMiseEnService: new Date('2022-01-01'),
+        dateAcquisition: new Date('2022-01-01'),
+        amortissementAnterieur: 0,
+        amortissementsReevaluation: 10_000_000,
+        modeAmortissement: 'LINEAIRE',
+        compteImmobilisationId: 'cimmo',
+        compteImmobilisation: { id: 'cimmo', numero: '23110000', intitule: 'Bâtiments industriels' },
+        compteDotationId: 'cd',
+        compteAmortissementId: 'ca',
+        dotations: [...[0, 1, 2, 3, 4].map((i) => ({ montant: 10_000_000, exerciceId: `ex${i}` })), { montant: 12_000_000, exerciceId: 'exN' }],
+        depreciations: [],
+    };
+    const lignesMaj = [];
+    const fiche = jest.fn().mockResolvedValue({ ...immo, dotations: [] });
+    const client = {
+        ligneReevaluationBilan: {
+            update: jest.fn(async ({ where, data }) => {
+                if (o.echecMiseAJour)
+                    throw new Error('base indisponible');
+                lignesMaj.push({ id: where.id, data });
+                return {};
+            }),
+        },
+        immobilisation: { update: fiche },
+    };
+    const prisma = {
+        tenant: {
+            findUniqueOrThrow: jest.fn().mockResolvedValue({
+                referentiel: o.referentiel ?? client_1.Referentiel.SYSCOHADA,
+                systemeComptableSyscohada: client_1.SystemeComptableSyscohada.NORMAL,
+                jeuEtatsFinanciersSycebnl: null,
+            }),
+        },
+        immobilisation: {
+            findFirst: jest.fn().mockResolvedValue(immo),
+            findMany: jest.fn().mockResolvedValue([]),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            update: fiche,
+        },
+        exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') }) },
+        compte: {
+            findUnique: jest.fn(({ where }) => Promise.resolve({ id: `n${where.tenantId_numero.numero}`, numero: where.tenantId_numero.numero })),
+            findFirst: jest.fn(({ where }) => Promise.resolve(where.id ? (COMPTES[where.id] ?? null) : (Object.values(COMPTES).find((c) => c.numero === where.numero) ?? null))),
+        },
+        dotationAmortissement: { create: jest.fn().mockResolvedValue({ id: 'dot1' }), delete: jest.fn() },
+        ligneReevaluationBilan: {
+            findMany: jest.fn(async ({ where }) => o.lignes.filter((l) => where.tenantId === 't1' && l.immobilisationId === where.immobilisationId && l.ecart > where.ecart.gt)),
+        },
+        ligneEcriture: { deleteMany: jest.fn() },
+        ecriture: { delete: jest.fn() },
+        $transaction: jest.fn(async (fn) => fn(client)),
+    };
+    let n = 0;
+    const ecritures = {
+        creer: jest.fn().mockImplementation((_t, _u, dto) => {
+            n += 1;
+            postees.push(dto);
+            return Promise.resolve({ id: `e${n}` });
+        }),
+    };
+    return { svc: new immobilisation_service_1.ImmobilisationService(prisma, ecritures), postees, lignesMaj, fiche, prisma };
+}
+const ligne106 = (o = {}) => ({
+    id: 'l106',
+    immobilisationId: 'i1',
+    compteEcart: '10610000',
+    ecart: 50_000_000,
+    provisionReprise: 0,
+    ecartImpute: 0,
+    ecartTransfere: 0,
+    ...o,
+});
+const sortie = (o = {}) => ({
+    dateSortie: '2027-12-31',
+    type: 'CESSION',
+    exerciceId: 'exN',
+    journalId: 'j1',
+    prixCession: 300_000_000,
+    compteContrepartieId: 'c485',
+    natureSortie: 'VENTE',
+    referencePieceSortie: 'Acte de vente n° 7',
+    datePieceSortie: '2027-12-31',
+    ...o,
+});
+describe('A15 · SYSCOHADA, écart au 106 · transfert à une réserve non distribuable (ch. 28 § 6)', () => {
+    it('sans réserve choisie, la sortie est refusée AVANT le verrou, le montant nommé', async () => {
+        const { svc, postees, prisma } = harnais({ lignes: [ligne106()] });
+        await expect(svc.sortir('t1', 'u1', 'i1', sortie())).rejects.toThrow(/50000000\.00 d'écart de réévaluation au 106 · Choisissez la réserve/);
+        expect(prisma.immobilisation.updateMany).not.toHaveBeenCalled();
+        expect(postees).toEqual([]);
+    });
+    it('une réserve libre (118) ou un compte total sont refusés', async () => {
+        const libre = harnais({ lignes: [ligne106()] });
+        await expect(libre.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 'r118' }))).rejects.toThrow(/réserves libres/);
+        const total = harnais({ lignes: [ligne106()] });
+        await expect(total.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 't113' }))).rejects.toThrow(/compte de détail actif/);
+    });
+    it('cession · D 1061 / C 112 du solde (écart moins perte imputée), écriture à part sous la même pièce, ligne marquée transférée', async () => {
+        const { svc, postees, lignesMaj, fiche } = harnais({ lignes: [ligne106({ ecartImpute: 2_000_000 })] });
+        const r = (await svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 'r112' })));
+        const ecart = postees.find((e) => e.libelle.startsWith('Écart de réévaluation du bien sorti'));
+        expect(ecart.reference).toBe('Acte de vente n° 7');
+        expect(ecart.lignes).toEqual([
+            { compteId: 'n10610000', debit: 48_000_000, credit: 0 },
+            { compteId: 'r112', debit: 0, credit: 48_000_000 },
+        ]);
+        const actif = postees.find((e) => e.libelle.startsWith('Cession'));
+        expect(actif.lignes.find((l) => l.compteId === 'n81200000').debit).toBe(360_000_000 - 72_000_000);
+        expect(lignesMaj).toEqual([{ id: 'l106', data: { ecartTransfere: { increment: 48_000_000 } } }]);
+        expect(postees[2]).toBe(ecart);
+        expect(fiche.mock.calls.at(-1)[0].data).toMatchObject({ ecritureSortieEcartReevaluationId: 'e3' });
+        expect(r.ecartReevaluation).toMatchObject({ transfereReserve: 48_000_000, compteReserve: '11200000', repris861: 0 });
+        expect(r.ecartReevaluation.fiscal).toMatch(/art\. 133, al\. 3/);
+    });
+    it('mise hors service · même transfert (le § 6 vise le bien « cédé ou mis hors service »)', async () => {
+        const { svc, postees } = harnais({ lignes: [ligne106()] });
+        await svc.sortir('t1', 'u1', 'i1', sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'DESTRUCTION', compteReserveEcartId: 'r112' }));
+        expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation')).lignes[0]).toEqual({ compteId: 'n10610000', debit: 50_000_000, credit: 0 });
+    });
+    it('l’échec de la mise à jour des lignes défait TOUTES les écritures, celle de l’écart comprise', async () => {
+        const { svc, prisma } = harnais({ lignes: [ligne106()], echecMiseAJour: true });
+        await expect(svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 'r112' }))).rejects.toThrow(/base indisponible/);
+        const supprimees = prisma.ecriture.delete.mock.calls.map((c) => c[0].where.id);
+        expect(supprimees).toEqual(['e3', 'e2', 'e1']);
+        expect(prisma.immobilisation.updateMany.mock.calls.at(-1)[0].data).toMatchObject({ statut: 'EN_SERVICE', ecritureSortieEcartReevaluationId: null });
+    });
+});
+describe('A15 · provision spéciale (154)', () => {
+    const l154 = (o = {}) => ligne106({ id: 'l154', compteEcart: '15400000', provisionReprise: 2_000_000, ...o });
+    it('cession · le reste non repris (50 000 000 − 2 000 000) se reprend au 861 (art. 133 al. 3 ; fiche du compte 15)', async () => {
+        const { svc, postees, lignesMaj } = harnais({ lignes: [l154()] });
+        const r = (await svc.sortir('t1', 'u1', 'i1', sortie()));
+        expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation')).lignes).toEqual([
+            { compteId: 'n15400000', debit: 48_000_000, credit: 0 },
+            { compteId: 'n86100000', debit: 0, credit: 48_000_000 },
+        ]);
+        expect(lignesMaj).toEqual([{ id: 'l154', data: { provisionReprise: { increment: 48_000_000 } } }]);
+        expect(r.ecartReevaluation.repris861).toBe(48_000_000);
+    });
+    it('A15 bis · mise au rebut après une année de reprise · 18 000 000 − 2 000 000 = 16 000 000 au 861 (fiche 15 ; art. 132 al. 1er)', async () => {
+        const { svc, postees, lignesMaj } = harnais({ lignes: [l154({ ecart: 18_000_000, provisionReprise: 2_000_000 })] });
+        const r = (await svc.sortir('t1', 'u1', 'i1', sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'MISE_AU_REBUT' })));
+        const ecart = postees.find((e) => e.libelle.startsWith('Écart de réévaluation'));
+        expect(ecart.reference).toBe('Acte de vente n° 7');
+        expect(ecart.lignes).toEqual([
+            { compteId: 'n15400000', debit: 16_000_000, credit: 0 },
+            { compteId: 'n86100000', debit: 0, credit: 16_000_000 },
+        ]);
+        expect(lignesMaj).toEqual([{ id: 'l154', data: { provisionReprise: { increment: 16_000_000 } } }]);
+        expect(r.ecartReevaluation).toMatchObject({ repris861: 16_000_000, transfereReserve: 0, fiscal: null });
+    });
+    it('A15 bis · SYCEBNL, même reprise à la mise hors service', async () => {
+        const { svc, postees } = harnais({ referentiel: client_1.Referentiel.SYCEBNL, lignes: [l154({ ecart: 18_000_000, provisionReprise: 2_000_000 })] });
+        await svc.sortir('t1', 'u1', 'i1', sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'VOL' }));
+        expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation')).lignes[1]).toEqual({ compteId: 'n86100000', debit: 0, credit: 16_000_000 });
+    });
+});
+describe('A15 bis · SYCEBNL, écart au 106 · transfert au 118 imposé, décision du 2026-10-04', () => {
+    it('association · 106 de 10 000 000 · D 10611000 / C 11800000 sans réserve choisie, ligne marquée transférée, aucun avis fiscal', async () => {
+        const { svc, postees, lignesMaj } = harnais({ referentiel: client_1.Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+        const r = (await svc.sortir('t1', 'u1', 'i1', sortie()));
+        expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation')).lignes).toEqual([
+            { compteId: 'n10611000', debit: 10_000_000, credit: 0 },
+            { compteId: 's118', debit: 0, credit: 10_000_000 },
+        ]);
+        expect(lignesMaj).toEqual([{ id: 'l106', data: { ecartTransfere: { increment: 10_000_000 } } }]);
+        expect(r.ecartReevaluation).toMatchObject({ transfereReserve: 10_000_000, compteReserve: '11800000', fiscal: null });
+    });
+    it('le 118 envoyé est admis ; le 112 ou un autre compte est refusé en 400 nommé, avant le verrou', async () => {
+        const ok = harnais({ referentiel: client_1.Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+        await ok.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 's118' }));
+        expect(ok.postees.find((e) => e.libelle.startsWith('Écart de réévaluation')).lignes[1].compteId).toBe('s118');
+        const autre = harnais({ referentiel: client_1.Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+        await expect(autre.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 'r112' }))).rejects.toThrow(/10000000\.00 d'écart de réévaluation au 106 · Le compte 11200000 ne peut pas recevoir l’écart.*11800000 Autres réserves, imposé/);
+        expect(autre.prisma.immobilisation.updateMany).not.toHaveBeenCalled();
+    });
+});
+describe('A15 · un bien jamais réévalué sort comme avant', () => {
+    it('aucune écriture d’écart, aucune transaction, rien de rendu', async () => {
+        const { svc, postees, prisma } = harnais({ lignes: [ligne106({ immobilisationId: 'autre' })] });
+        const r = (await svc.sortir('t1', 'u1', 'i1', sortie()));
+        expect(postees.some((e) => e.libelle.startsWith('Écart de réévaluation'))).toBe(false);
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(r.ecartReevaluation).toBeNull();
+    });
+});
+describe('A15 · l’écriture de l’écart est retenue par la fiche', () => {
+    it('rangée parmi les colonnes qui retiennent, et comptée par detenteursDe', () => {
+        expect(detenteurs_ecriture_1.COLONNES_QUI_RETIENNENT).toContain('Immobilisation.ecritureSortieEcartReevaluationId');
+        const source = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '../comptabilite/ecriture.service.ts'), 'utf8');
+        expect(source).toMatch(/ecritureSortieEcartReevaluationId: ecritureId/);
+    });
+    it('échange et renouvellement transmettent la réserve choisie à la sortie', () => {
+        const source = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, 'immobilisation.service.ts'), 'utf8');
+        const echanger = source.slice(source.indexOf('async echanger('), source.indexOf('async sortir('));
+        expect(echanger).toMatch(/compteReserveEcartId: dto\.compteReserveEcartId/);
+        const renouveler = source.slice(source.indexOf('async renouveler('), source.indexOf('private async retirerRemplacant('));
+        expect(renouveler).toMatch(/compteReserveEcartId: dto\.compteReserveEcartId/);
+    });
+});
+//# sourceMappingURL=sortie-bien-reevalue.spec.js.map

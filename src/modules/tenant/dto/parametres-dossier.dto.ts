@@ -516,6 +516,16 @@ export class ModifierDoubleRegardDto {
 }
 
 /**
+ * VISA DES RIB PAR UN SECOND UTILISATEUR (décision de Manasse du 2026-10-21) ·
+ * une option, désactivée par défaut, comme le double regard · aucun texte lu
+ * ne l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2). Voir `tiers/visa-rib.ts`.
+ */
+export class ModifierVisaRibsDto {
+  @IsBoolean()
+  visaRibs!: boolean;
+}
+
+/**
  * REFUSER DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
  * décision D3) · une option, désactivée par défaut, comme le double regard ·
  * l'AUDCIF art. 22, 3° impose la clôture informatique sans la subordonner à

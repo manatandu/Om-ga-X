@@ -66,10 +66,12 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   };
   const banqueAvant = await solde(exercice.id, '52110000');
   const piece = (nature: string, reference: string, date: string) => ({ nature, reference, date });
-  const base = (date: string, entree = date) => ({
+  // La pièce suit la trésorerie de son côté (demande du 2026-10-16) · avis de
+  // crédit à l'entrée d'une banque, bon d'entrée à celle d'une caisse.
+  const base = (date: string, entree = date, natureEntree = 'AVIS_CREDIT') => ({
     exerciceId: exercice.id,
     sortie: piece('ORDRE_VIREMENT', 'OV-001', date),
-    entree: piece('AVIS_DEBIT_CREDIT', 'AC-001', entree),
+    entree: piece(natureEntree, 'AC-001', entree),
   });
 
   // Une caisse en devises (5712) ne reçoit pas un virement en francs · la
@@ -83,7 +85,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   const causd = (await appelApi<Journal[]>(page, 'GET', '/journaux')).find((x) => x.code === 'CAUSD')!;
   await expect(
     appelApi(page, 'POST', '/virements-fonds', {
-      ...base(`${an}-07-09`),
+      ...base(`${an}-07-09`, `${an}-07-09`, 'BON_ENTREE_CAISSE'),
       journalOrigineId: bq.id,
       journalDestinationId: causd.id,
       montant: 100_000,
@@ -95,10 +97,16 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   // Banque vers caisse · le porteur des espèces est exigé.
   const juillet = `${an}-07-10`;
   await expect(
-    appelApi(page, 'POST', '/virements-fonds', { ...base(juillet), journalOrigineId: bq.id, journalDestinationId: ca.id, montant: 400_000, objet: 'Alimentation de la caisse' }),
+    appelApi(page, 'POST', '/virements-fonds', {
+      ...base(juillet, juillet, 'BON_ENTREE_CAISSE'),
+      journalOrigineId: bq.id,
+      journalDestinationId: ca.id,
+      montant: 400_000,
+      objet: 'Alimentation de la caisse',
+    }),
   ).rejects.toThrow(/porteur/);
   const v1 = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
-    ...base(juillet),
+    ...base(juillet, juillet, 'BON_ENTREE_CAISSE'),
     journalOrigineId: bq.id,
     journalDestinationId: ca.id,
     montant: 400_000,
@@ -156,7 +164,10 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   await page.getByLabel('Montant').fill('150 000');
   await page.getByLabel('Objet').fill('Versement de la recette');
   await sortie.getByLabel('De (banque ou caisse)').selectOption(ca.id);
-  await sortie.getByLabel('Pièce justificative').selectOption('BON_CAISSE');
+  // Une banque ne propose pas le bon de caisse, une caisse si.
+  await expect(sortie.getByLabel('Pièce justificative').locator('option[value="BON_SORTIE_CAISSE"]')).toHaveCount(1);
+  await expect(sortie.getByLabel('Pièce justificative').locator('option[value="ORDRE_VIREMENT"]')).toHaveCount(0);
+  await sortie.getByLabel('Pièce justificative').selectOption('BON_SORTIE_CAISSE');
   await sortie.getByLabel('Référence de la pièce').fill('BC-41');
   await sortie.getByLabel('Date de la pièce').fill(`${an}-09-15`);
   await entree.getByLabel('Vers (banque ou caisse)').selectOption(bq.id);
@@ -171,7 +182,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   // Chaque écriture porte et prend la date de SA pièce.
   const ecrituresDe = async (journalId: string) =>
     (await appelApi<{ ecritures: Ecriture[] }>(page, 'GET', `/ecritures?exerciceId=${exercice.id}&journalId=${journalId}`)).ecritures;
-  const ecritureSortie = (await ecrituresDe(ca.id)).find((e) => e.reference === 'Bon de caisse BC-41');
+  const ecritureSortie = (await ecrituresDe(ca.id)).find((e) => e.reference === 'Bon de sortie de caisse BC-41');
   const ecritureEntree = (await ecrituresDe(bq.id)).find((e) => e.reference === 'Bordereau de versement BV-118');
   expect([ecritureSortie && jour(ecritureSortie.date), ecritureEntree && jour(ecritureEntree.date)]).toEqual([`${an}-09-15`, `${an}-09-16`]);
   const v3 = (await appelApi<Liste>(page, 'GET', `/virements-fonds?exerciceId=${exercice.id}`)).virements.find((x) => x.sens === 'CAISSE_BANQUE')!;
@@ -197,7 +208,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   const dateN1 = `${debutSuivant.slice(0, 4)}-01-20`;
   const v5 = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     exerciceId: suivant.id,
-    sortie: { nature: 'BON_CAISSE', reference: 'BC-7', date: dateN1 },
+    sortie: { nature: 'BON_SORTIE_CAISSE', reference: 'BC-7', date: dateN1 },
     entree: { nature: 'BORDEREAU_VERSEMENT', reference: 'BV-9', date: dateN1 },
     journalOrigineId: ca.id,
     journalDestinationId: bq.id,
@@ -231,7 +242,7 @@ test('SYCEBNL · banque vers caisse par le 58500002, la clôture passe et ne rep
   const v = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     exerciceId: exercice.id,
     sortie: { nature: 'CHEQUE', reference: 'CHQ 1187', date },
-    entree: { nature: 'BON_CAISSE', reference: 'BC-3', date },
+    entree: { nature: 'BON_ENTREE_CAISSE', reference: 'BC-3', date },
     journalOrigineId: bq.id,
     journalDestinationId: ca.id,
     montant: 120_000,

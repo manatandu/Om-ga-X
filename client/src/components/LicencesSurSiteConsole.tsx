@@ -37,6 +37,10 @@ export function LicencesSurSiteConsole() {
   const [empreinte, setEmpreinte] = useState('');
   const [finMaintenance, setFinMaintenance] = useState('');
   const [expiration, setExpiration] = useState('');
+  // LA LICENCE PERPÉTUELLE SE COCHE · un champ date « laissé vide » ne se vide
+  // pas sur un téléphone (le sélecteur d'iOS pose la date du jour), et la
+  // licence de l'essai du 2026-10-17 est sortie avec une expiration le jour même.
+  const [perpetuelle, setPerpetuelle] = useState(true);
   const [dossiersMax, setDossiersMax] = useState('1');
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -65,7 +69,7 @@ export function LicencesSurSiteConsole() {
         titulaire,
         empreinteMachine: empreinte.trim(),
         finMaintenance,
-        expiration: expiration || null,
+        expiration: perpetuelle ? null : expiration,
         dossiersMax: Number(dossiersMax),
       });
       enregistrer(r.numero, r.fichier);
@@ -116,7 +120,15 @@ export function LicencesSurSiteConsole() {
         <span className="text-text-dim">Mises à jour jusqu'au</span>
         <input type="date" className={champ} value={finMaintenance} onChange={(e) => setFinMaintenance(e.target.value)} required />
         <span className="text-text-dim">Expiration</span>
-        <input type="date" className={champ} value={expiration} onChange={(e) => setExpiration(e.target.value)} title="Vide pour une licence perpétuelle" />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={perpetuelle} onChange={(e) => setPerpetuelle(e.target.checked)} />
+            Licence perpétuelle
+          </label>
+          {!perpetuelle && (
+            <input type="date" className={champ} value={expiration} onChange={(e) => setExpiration(e.target.value)} required aria-label="Date d'expiration" />
+          )}
+        </div>
         <span className="text-text-dim">Dossiers</span>
         <input type="number" min={1} className={`${champ} w-24`} value={dossiersMax} onChange={(e) => setDossiersMax(e.target.value)} required />
         <span />
