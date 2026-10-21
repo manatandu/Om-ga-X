@@ -497,7 +497,7 @@ Classement selon CLAUDE.md : **BLOQUANT** (montant faussé en silence, geste jus
 
 *Pourquoi MAJEUR.* Aucun montant n'est faux. Mais la dégradation est sans borne avec le nombre de cabinets, ne se voit qu'avec le public réel, et frappe chaque saisie de chaque cabinet.
 
-### 4.4 [MAJEUR · NON corrigé] Conflits de sérialisation résiduels sur la saisie et le lettrage
+### 4.4 [MAJEUR · réduit, 2026-10-21] Conflits de sérialisation résiduels sur la saisie et le lettrage
 
 *Symptôme.* À 20 cabinets, de 1,4 % (73 sur 5 293 gestes d'écriture, nominal) à 3,1 % (89 sur 2 849, palier de 20) des gestes reçoivent un premier refus « Trop d'écritures enregistrées au même instant » ou « Trop de lettrages effectués au même instant », et 0,4 à 0,7 % le gardent après une reprise (22 et 21 gestes). Le message dit « veuillez réessayer » ; je n'ai trouvé aucune reprise automatique dans l'interface (`client/src/`), donc c'est à l'utilisateur de recommencer. Un lettrage refusé laisse des lignes ouvertes.
 
@@ -506,6 +506,20 @@ Classement selon CLAUDE.md : **BLOQUANT** (montant faussé en silence, geste jus
 *Ce qui est établi, et ce qui ne l'est pas.* Le taux varie d'un facteur cinq entre trois lancements de même profil sur base neuve (1,4 %, 3,1 %, 7,3 %), et il est nul sur les cinq essais commencés avec 250 dossiers ou plus (3.12). La lecture « les faux conflits par page se raréfient quand la table a plus de pages » est compatible avec cela, elle n'est pas démontrée. Sur la production, avec des tables bien plus grosses, le problème sera probablement plus petit que sur ce banc ; à vérifier en préproduction sur une base de taille réelle.
 
 *Pourquoi non corrigé.* Les remèdes (index par dossier couvrant les lectures du lettrage et de la saisie, `FILLFACTOR`, `max_pred_locks_per_page`, passage de certaines transactions à REPEATABLE READ) touchent l'isolation des écritures comptables ; ce n'est ni petit, ni sûr à faire sans les relire à la lumière de CLAUDE.md § 10 bis. À traiter en ligne dédiée, avec un scénario sur vraie base à travers une clôture.
+
+*Mesures sûres prises par la ligne k6-defauts (2026-10-21).* Deux reprises qui ne touchent pas à l'isolation · côté serveur, `avecRetrySerialisable` passe de cinq à huit tentatives, avec un délai dont la part aléatoire croît avec la tentative (20 à 60 ms, puis jusqu'à 420 ms, de l'ordre de deux secondes cumulées au pire) ; côté interface, `client/src/lib/reprise-conflit.ts` rejoue le même appel deux fois au plus sur le seul 409 « au même instant », après un délai aléatoire, puisque ce 409 n'a rien écrit. Mesuré sur ce poste, profil `palier` (20 cabinets, 150 s), base NEUVE à chaque fois (le cas où les conflits sont les plus nombreux, 3.12), serveur bridé comme en production (un cœur, 460 Mio, pool de 10), le script k6 gardant sa reprise unique après une seconde (il n'a pas la reprise de l'interface) :
+
+| | avant (cinq tentatives) | après (huit tentatives) |
+|---|---|---|
+| requêtes | 7 633 | 7 544 |
+| cabinets menés au bout | 60 | 60 |
+| premiers 409 « au même instant » | 152 (2,0 %) | 63 (0,84 %) |
+| 409 qui résistent à la reprise du script | 56 (0,73 %) | 13 (0,17 %) |
+| incohérences comptables en aval (lot validé incomplet, balance sous l'attendu, lignes restées ouvertes, toutes nées d'un geste refusé) | 10 | 3 |
+| erreurs 5xx, maillons d'audit non écrits, pool épuisé | 0, 0, 0 | 0, 0, 0 |
+| p50 / p95 | 277 ms / 1,29 s | 277 ms / 1,74 s |
+
+Les conflits qui résistent sont divisés par quatre, au prix d'un p95 plus lourd sur les gestes qui se heurtent (ils attendent plus longtemps avant de passer) ; le p50 ne bouge pas. Ce qui reste (0,17 % sur base neuve, nul au-delà de 250 dossiers d'après 3.12) relève des remèdes d'isolation ci-dessus, non pris. Les deux lancements ont aussi éprouvé le maillon qui suit l'acte (4.5) · aucun maillon manqué, aucun 500.
 
 ### 4.5 [MAJEUR · corrigé pour les maillons, 2026-10-21] Sous saturation, des erreurs 500 et des maillons d'audit manquants
 

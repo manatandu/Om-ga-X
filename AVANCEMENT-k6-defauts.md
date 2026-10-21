@@ -59,7 +59,10 @@ banc k6 en CI, puis les lignes Sage L3, L8, L9.
    la reprise à huit tentatives et délai plus aléatoire
    (`scratchpad/patch-retry.py`, à appliquer APRÈS la mesure « avant ») ;
    mesure au profil k6 palier (20 cabinets, 150 s, base neuve, serveur bridé
-   un cœur / 460 Mio / pool 10, `scratchpad/banc-k6.sh`) avant et après.
+   un cœur / 460 Mio / pool 10, `scratchpad/banc-k6.sh`) avant et après ·
+   FAIT, résultats dans `docs/test-de-charge-k6.md` § 4.4 (premiers 409 de
+   152 à 63, résistants de 56 à 13, incohérences en aval de 10 à 3, zéro 5xx
+   et zéro maillon manqué dans les deux lancements).
 6. Bloc § 3 des deux côtés, `silent-failure-hunter` et `typescript-reviewer`
    (deux tours), scénario sur vraie base à travers une clôture, intégration
    sur `main`, déploiement relu, fiche retirée.
