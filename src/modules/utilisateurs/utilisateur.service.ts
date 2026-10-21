@@ -4,7 +4,7 @@ import { SANS_DOUBLE_AUTH } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma.service';
-import { FonctionMetier, RoleUtilisateur } from '@prisma/client';
+import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
 import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 
@@ -237,11 +237,15 @@ export class UtilisateurService {
    * pour rien, la désactivation fermerait aussi la porte. Le titulaire se
    * reconnecte avec son propre mot de passe.
    *
-   * Même pose que les autres révocations (`sessionsInvalidesAvant`, relue à
-   * chaque requête par `JwtStrategy`, qui rend alors la session perdue
-   * nommée), même seconde tronquée · un jeton signé dans la seconde même du
-   * geste lui survit, comme partout ailleurs (jwt.strategy.ts). Le modèle User
-   * est au journal d'audit · qui a déconnecté qui, et quand, y est écrit.
+   * Même colonne que les autres révocations (`sessionsInvalidesAvant`, relue
+   * à chaque requête par `JwtStrategy`, qui rend alors la session perdue
+   * nommée), mais posée à la SECONDE SUIVANTE · la comparaison tronque à la
+   * seconde (jwt.strategy.ts), ce qui protège le titulaire de son propre
+   * geste ; ici l'auteur n'est pas le titulaire, et un jeton signé dans la
+   * seconde même du clic survivait alors que l'écran disait « fermées ». Le
+   * coût · une reconnexion dans cette même seconde est refusée, et se refait.
+   * Le modèle User est au journal d'audit · qui a déconnecté qui, et quand, y
+   * est écrit.
    *
    * Le compte doit être du dossier (404 sinon, comme les autres gestes). Un
    * compte désactivé n'a déjà plus de session (`estActif` relu à chaque
@@ -253,11 +257,20 @@ export class UtilisateurService {
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable pour ce tenant');
     }
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: { sessionsInvalidesAvant: new Date() },
-      select: SELECTION,
-    });
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data: { sessionsInvalidesAvant: new Date(Math.ceil(Date.now() / 1000) * 1000) },
+        select: SELECTION,
+      });
+    } catch (err) {
+      // Compte retiré entre la lecture et l'écriture · le même 404 nommé,
+      // jamais une erreur 500 de Prisma.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+      }
+      throw err;
+    }
   }
 
   /**

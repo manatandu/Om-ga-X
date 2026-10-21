@@ -91,10 +91,15 @@ export function UtilisateursPage() {
   // l'écran ne distingue un clic perdu d'un clic qui a porté.
   const deconnecter = async (u: Utilisateur) => {
     if (!window.confirm(`Fermer toutes les sessions de ${u.email} ? Il devra se reconnecter avec son mot de passe.`)) return;
+    // Un bandeau à la fois · sinon « Sessions de A fermées » restait à côté de
+    // l'échec du geste sur B. L'erreur d'un AUTRE geste n'est pas effacée ici ·
+    // elle ne tombe que par une relecture réussie de la liste.
+    setDeconnecte(null);
     try {
       await api.post(`/utilisateurs/${u.id}/deconnecter`, {});
+      setReinitFait(null);
+      setAvisRemis(null);
       setDeconnecte(u.email);
-      setErreurChargement(null);
     } catch (err) {
       setErreurChargement(err instanceof ApiError ? err.message : 'Déconnexion impossible');
     }
@@ -109,6 +114,7 @@ export function UtilisateursPage() {
         `/utilisateurs/${reinitCible.id}/reinitialiser-mot-de-passe`,
         { motDePasseProvisoire: reinitMotDePasse },
       );
+      setDeconnecte(null);
       setReinitFait(reinitCible.email);
       setAvisRemis(phraseAvisAcces(r.avis) || null);
       setReinitCible(null);
@@ -175,11 +181,11 @@ export function UtilisateursPage() {
       )}
 
       {deconnecte && (
-        <div className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
+        <div role="status" className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
           <span>
             Sessions de <strong>{deconnecte}</strong> fermées.
           </span>
-          <button onClick={() => setDeconnecte(null)} className="font-bold hover:underline shrink-0">
+          <button onClick={() => setDeconnecte(null)} aria-label="Fermer l'avis de déconnexion" className="font-bold hover:underline shrink-0">
             Fermer
           </button>
         </div>
@@ -283,7 +289,8 @@ export function UtilisateursPage() {
                 <button
                   onClick={() => deconnecter(u)}
                   className="text-[11.5px] text-sel"
-                  title="Ferme toutes ses sessions ouvertes · mot de passe et droits inchangés."
+                  aria-label={`Déconnecter ${u.email}`}
+                  title="Ferme toutes ses sessions ouvertes · mot de passe et droits inchangés. Un écran déjà affiché chez lui reste visible jusqu'à son prochain geste ; pour écarter quelqu'un qui connaît son mot de passe, Réinitialiser."
                 >
                   Déconnecter
                 </button>

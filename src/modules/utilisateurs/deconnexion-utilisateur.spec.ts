@@ -48,11 +48,27 @@ describe('déconnecter un utilisateur · ferme les sessions, et rien d’autre',
     const pose = ecrits[0].data.sessionsInvalidesAvant as Date;
     expect(pose).toBeInstanceOf(Date);
     expect(pose.getTime()).toBeGreaterThanOrEqual(avant);
-    // Un jeton signé une seconde avant le geste est refusé, comme pour toute révocation.
-    const iatAvant = Math.floor(pose.getTime() / 1000) - 1;
-    expect(sessionRevoquee(iatAvant, pose)).toBe(true);
-    // Une reconnexion après le geste repasse.
-    expect(sessionRevoquee(Math.floor(pose.getTime() / 1000) + 1, pose)).toBe(false);
+    // Posée à la SECONDE SUIVANTE du geste · un jeton signé dans la seconde
+    // même du clic tombe aussi, sans quoi l'écran disait « fermées » à tort.
+    expect(pose.getTime() % 1000).toBe(0);
+    expect(sessionRevoquee(Math.floor(pose.getTime() / 1000) - 1, pose)).toBe(true);
+    // Une reconnexion à partir de la seconde posée repasse.
+    expect(sessionRevoquee(pose.getTime() / 1000, pose)).toBe(false);
+  });
+
+  it('un jeton signé dans la seconde même du clic tombe aussi', async () => {
+    // 10:00:00,400 · le collaborateur s'est connecté à 10:00:00,200.
+    const horloge = jest.spyOn(Date, 'now').mockReturnValue(1_800_000_000_400);
+    try {
+      const { p, ecrits } = prisma([admin, comptable]);
+      await new UtilisateurService(p).deconnecter('d-1', 'c1', 'a1');
+      const pose = ecrits[0].data.sessionsInvalidesAvant as Date;
+      expect(pose.getTime()).toBe(1_800_000_001_000);
+      expect(sessionRevoquee(1_800_000_000, pose)).toBe(true);
+      expect(sessionRevoquee(1_800_000_001, pose)).toBe(false);
+    } finally {
+      horloge.mockRestore();
+    }
   });
 
   it('refuse sa propre session et renvoie à « Mon compte », sans rien écrire', async () => {

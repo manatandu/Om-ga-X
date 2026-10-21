@@ -24,8 +24,15 @@ test('l’administrateur ferme les sessions d’un collaborateur, et seulement l
   const autre = await (await browser.newContext()).newPage();
   const entetes = { 'X-Forwarded-For': `10.250.${Date.now() % 250}.7` };
   await autre.goto('/');
+  // Le cas courant · un compte qui a remplacé son mot de passe provisoire et
+  // tient une session « Rester connecté », prolongée à l'usage. Le mot de
+  // passe provisoire ne laisserait passer que les routes de sortie.
   await appelApi(autre, 'POST', '/auth/login', { email: collaborateur, motDePasse: MOT_DE_PASSE }, entetes);
-  await appelApi(autre, 'GET', '/auth/me', undefined, entetes);
+  const nouveau = `${MOT_DE_PASSE}-n2`;
+  await appelApi(autre, 'POST', '/auth/changer-mot-de-passe', { motDePasseActuel: MOT_DE_PASSE, nouveauMotDePasse: nouveau }, entetes);
+  await autre.waitForTimeout(1_100);
+  await appelApi(autre, 'POST', '/auth/login', { email: collaborateur, motDePasse: nouveau, resterConnecte: true }, entetes);
+  await appelApi(autre, 'GET', '/exercices', undefined, entetes);
 
   // La révocation se compare à la SECONDE (jwt.strategy.ts) · un jeton signé
   // dans la seconde même du geste lui survit, comme pour toute révocation.
@@ -38,7 +45,7 @@ test('l’administrateur ferme les sessions d’un collaborateur, et seulement l
   await expect(page.getByText(`Sessions de ${collaborateur} fermées.`)).toBeVisible();
 
   // Sa session tombe, en session perdue nommée.
-  const refus = await appelApi(autre, 'GET', '/auth/me', undefined, entetes).then(
+  const refus = await appelApi(autre, 'GET', '/exercices', undefined, entetes).then(
     () => null,
     (e: Error) => e.message,
   );
@@ -51,7 +58,10 @@ test('l’administrateur ferme les sessions d’un collaborateur, et seulement l
   await expect(sienne.getByRole('button', { name: 'Déconnecter' })).toHaveCount(0);
 
   // Le collaborateur rentre avec son mot de passe, que le geste n'a pas touché.
-  await appelApi(autre, 'POST', '/auth/login', { email: collaborateur, motDePasse: MOT_DE_PASSE }, entetes);
-  await appelApi(autre, 'GET', '/auth/me', undefined, entetes);
+  // La révocation est posée à la seconde qui suit le clic · une reconnexion
+  // dans cette seconde-là serait refusée, d'où l'attente.
+  await autre.waitForTimeout(1_100);
+  await appelApi(autre, 'POST', '/auth/login', { email: collaborateur, motDePasse: nouveau }, entetes);
+  await appelApi(autre, 'GET', '/exercices', undefined, entetes);
   await autre.context().close();
 });
