@@ -222,7 +222,8 @@ jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
 que la loi impose à la mesure de l'interface, et le domaine
 `omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
 PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
-touche pas au serveur.
+touche pas au serveur ; et la SUPPRESSION DES DOSSIERS D'ESSAI ÉCHUS cent
+quatre-vingts jours après leur terme (« Construit maintenant »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
