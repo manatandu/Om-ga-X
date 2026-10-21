@@ -584,7 +584,7 @@ L'isolation SERIALIZABLE de Prisma est ce qui garantit qu'une balance boucle qua
 
 - **Neon et PgBouncer** : aucune mesure derrière le pooler de Neon (`pgbouncer=true`). Les transactions interactives de Prisma sous PgBouncer en mode transaction n'ont pas été éprouvées ici ; seule une latence simulée de 8 ms l'a été.
 - **Cloud Run** : pas de limite de mémoire de conteneur, pas de plafond de processeur de 1 vCPU garanti par le fournisseur (ici un cœur réservé par `taskset` sur un processeur dont la vitesse n'est pas celle d'un vCPU), pas d'autoscaling, pas de démarrage à froid, pas de `--cpu-boost`. Je ne sais pas combien d'instances Cloud Run lancerait pour le même trafic.
-- **PostgreSQL 17 et 18** : tout a tourné sur la 16.
+- **PostgreSQL 17 et 18** : tout a tourné sur la 16 sur ce poste. Depuis la ligne k6-ci (2026-10-21), le workflow manuel `charge-k6.yml` rejoue le banc dans un coureur GitHub sur l'une et l'autre (base jetable, serveur bridé comme en 2.2, artefacts) · les chiffres d'un coureur partagé ne se comparent pas à ceux de ce poste, mais ils disent si les seuils tiennent et combien de 409 restent sous chaque version.
 - **Un SMTP réel** : le puits répond en quelques millisecondes ; un vrai relais ajoutera une latence à chaque essai public, hors du chemin de calcul.
 - **Des exports concurrents plus gros** : le test fait trois exports et la liasse d'un petit dossier (40 pièces) par cabinet. Les gros volumes mesurés par `docs/capacite-mesuree.md` (un million de lignes dans UN dossier) n'ont pas été rejoués avec la charge multi-cabinets.
 - **Plusieurs heures d'endurance** : le plus long essai dure quinze minutes (3.11).
@@ -632,3 +632,5 @@ k6 run -e PROFIL=palier -e VUS=20 -e DUREE=150s -e THINK=1 -e SINK=http://127.0.
 ```
 
 Les résultats bruts (`--summary-export`, journaux du serveur, séries de surveillance) ne sont pas versionnés.
+
+**En CI, à la main** · Actions → « Banc de charge k6 » → *Run workflow* (`charge-k6.yml`) · profil `fumee`, `palier` (cabinets et durée au choix) ou `nominal`, base jetable en PostgreSQL 18, 17 ou les deux (deux jambes indépendantes). Le job construit le serveur, le bride comme en 2.2 (un cœur, 460 Mio, pool de 10), lance le puits de courriel du dépôt, k6 à version épinglée et somme vérifiée, et la surveillance de `surveiller.sh` ; il tombe si un seuil du script est franchi ou si un maillon d'audit n'a pas été écrit, et range dans un artefact par jambe le résumé k6 (`k6-resume.json`, `resume.json`), la sortie de k6, la surveillance (CSV) et le journal du serveur. Il n'a aucun secret et ne vise jamais Cloud Run ni Neon (section 6).

@@ -1,0 +1,219 @@
+name: Banc de charge k6
+
+# LE BANC k6 SUR LES VERSIONS DE LA CIBLE, À LA MAIN SEULEMENT (ligne k6-ci,
+# 2026-10-21, demande de Manasse « les réglages du banc k6 sur Cloud Run,
+# Neon et PostgreSQL 17 et 18 n'ont pas été mesurés »). Jusqu'ici le banc
+# n'avait tourné que sur un poste, sous PostgreSQL 16 (docs/test-de-charge-k6.md,
+# section 6). Ce workflow le rejoue dans un coureur GitHub, contre un serveur
+# COMPILÉ bridé comme en production (un cœur, tas de 460 Mio, pool de 10) et
+# une base JETABLE en PostgreSQL 18 (Neon) ET 17 (sur site), et range les
+# chiffres bruts en artefacts. Il ne mesure NI Cloud Run NI Neon · ces deux-là
+# ne sont joignables d'aucun workflow sans un environnement de préproduction,
+# qui n'existe pas, et le script crée des dizaines de dossiers à la minute
+# (e2e/k6/README.md · JAMAIS la production). Aucun secret, aucune clé de
+# télémétrie, aucune chaîne de connexion hors de celle de la base jetable.
+on:
+  workflow_dispatch:
+    inputs:
+      profil:
+        description: "Profil k6 · fumee (un cabinet), palier (VUS cabinets pendant DUREE), nominal (20 cabinets, 5 min)"
+        type: choice
+        default: palier
+        options: [fumee, palier, nominal]
+      vus:
+        description: "Cabinets simultanés du profil palier"
+        default: '20'
+      duree:
+        description: "Durée du palier une fois monté (k6, ex. 150s)"
+        default: 150s
+      postgres:
+        description: "Version majeure de la base jetable · 18 (Neon), 17 (sur site), ou les deux"
+        type: choice
+        default: les deux
+        options: ['18', '17', les deux]
+
+permissions:
+  contents: read
+
+env:
+  # La version de k6 est ÉPINGLÉE et son archive vérifiée par la somme
+  # publiée avec elle · un binaire pris « au dernier » changerait les
+  # chiffres d'un lancement à l'autre sans que rien ne le dise.
+  K6_VERSION: 2.3.0
+
+jobs:
+  banc:
+    name: banc k6 · PostgreSQL ${{ matrix.postgres }}
+    runs-on: ubuntu-latest
+    # Le nominal dure cinq minutes de palier, plus la montée, la construction
+    # et les migrations · une heure borne un blocage.
+    timeout-minutes: 60
+    strategy:
+      # Une jambe rouge n'arrête pas l'autre · savoir LAQUELLE des deux
+      # versions tombe est l'information.
+      fail-fast: false
+      matrix:
+        postgres: ${{ fromJSON(inputs.postgres == 'les deux' && '["18","17"]' || format('["{0}"]', inputs.postgres)) }}
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: omega
+          POSTGRES_PASSWORD: omega
+          POSTGRES_DB: omegacharge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Valeurs de contrôle, jetables avec la base · ce job n'a aucun secret.
+    # `connection_limit=10` est le pool de la production (CLAUDE.md § 5).
+    env:
+      DATABASE_URL: postgresql://omega:omega@127.0.0.1:5432/omegacharge?schema=public&connection_limit=10
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: omega
+      PGPASSWORD: omega
+      PGDATABASE: omegacharge
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer et construire le serveur
+        run: |
+          npm ci
+          npm run build
+
+      # LA VERSION SERVIE SE LIT, ELLE NE SE PRÉSUME PAS (comme le portillon,
+      # deploy-cloud-run.yml) · une jambe qui mesurerait une autre version
+      # que la sienne rendrait des chiffres sous une étiquette fausse.
+      - name: Version de PostgreSQL réellement servie
+        env:
+          CONTENEUR: ${{ job.services.postgres.id }}
+          PG_MAJEUR: ${{ matrix.postgres }}
+        run: |
+          version=$(docker exec "$CONTENEUR" psql -U omega -d omegacharge -tAc 'SHOW server_version_num' | tr -d '[:space:]')
+          if ! [[ "$version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Version de la base jetable illisible"; exit 1
+          fi
+          majeur=$(( version / 10000 ))
+          if [ "$majeur" != "$PG_MAJEUR" ]; then
+            echo "::error::La base jetable est en PostgreSQL $majeur, $PG_MAJEUR attendu · cette jambe ne mesurerait pas sa cible"
+            exit 1
+          fi
+          echo "PostgreSQL $majeur servi, comme attendu"
+
+
+      - name: Installer k6 (version épinglée, somme vérifiée)
+        run: |
+          set -e
+          base="https://github.com/grafana/k6/releases/download/v${K6_VERSION}"
+          curl -fsSL -o k6.tar.gz "$base/k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          curl -fsSL -o sommes.txt "$base/k6-v${K6_VERSION}-checksums.txt"
+          grep "k6-v${K6_VERSION}-linux-amd64.tar.gz" sommes.txt | sed 's#  .*#  k6.tar.gz#' | sha256sum -c -
+          tar -xzf k6.tar.gz
+          sudo install -m 0755 "k6-v${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      # LE SERVEUR BRIDÉ COMME EN PRODUCTION (docs/test-de-charge-k6.md § 2.2)
+      # · un cœur (`taskset -c 0`), tas de 460 Mio, pool de 10 par la chaîne
+      # de connexion. k6 tourne sur les autres cœurs du coureur. L'inscription
+      # est ouverte ICI SEULEMENT · c'est par elle que chaque cabinet virtuel
+      # naît ; l'essai public passe par le puits de courriel du dépôt.
+      - name: Migrer la base, lancer le puits de courriel et le serveur
+        env:
+          NODE_ENV: production
+          JWT_SECRET: banc-k6-jetable-0123456789abcdef
+          JWT_EXPIRES_IN: 8h
+          PORT: '8080'
+          INSCRIPTION_PUBLIQUE: 'true'
+          INSCRIPTION_ESSAI: 'true'
+          CORS_ORIGIN: http://localhost:4173
+          SMTP_HOST: 127.0.0.1
+          SMTP_PORT: '2525'
+          SMTP_USER: u
+          SMTP_PASS: p
+          COURRIER_EXPEDITEUR: essai@omegax.test
+        run: |
+          npx prisma migrate deploy
+          nohup node e2e/k6/puits-courriel.mjs > /tmp/puits.log 2>&1 &
+          point=dist/main.js
+          [ -f "$point" ] || point=dist/src/main.js
+          nohup taskset -c 0 node --max-old-space-size=460 "$point" > /tmp/serveur.log 2>&1 &
+          echo $! > /tmp/serveur.pid
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::Le serveur n'a pas démarré"
+          tail -60 /tmp/serveur.log
+          exit 1
+
+      - name: Lancer k6 et surveiller le serveur
+        env:
+          PROFIL: ${{ inputs.profil }}
+          VUS: ${{ inputs.vus }}
+          DUREE: ${{ inputs.duree }}
+        run: |
+          set +e
+          nohup e2e/k6/surveiller.sh "$(cat /tmp/serveur.pid)" /tmp/surveillance.csv > /dev/null 2>&1 &
+          taskset -c 1-3 k6 run \
+            -e PROFIL="$PROFIL" -e VUS="$VUS" -e DUREE="$DUREE" \
+            -e BASE=http://127.0.0.1:8080 -e SINK=http://127.0.0.1:2526 \
+            -e RUN="${GITHUB_RUN_ID}-pg${{ matrix.postgres }}" \
+            --summary-export /tmp/k6-resume.json e2e/k6/usage-complet.js | tee /tmp/k6.txt
+          echo "k6 rc=${PIPESTATUS[0]}" | tee /tmp/k6-rc.txt
+          kill "$(cat /tmp/serveur.pid)" 2>/dev/null || true
+          sleep 2
+          exit 0
+
+      # LES CHIFFRES QUI COMPTENT, EN UNE LIGNE, puis le verdict · les seuils
+      # du script (aucun 5xx, aucune fuite entre dossiers, aucune incohérence
+      # comptable, aucun refus inattendu) font tomber k6, et un maillon
+      # d'audit non écrit ou un pool épuisé se lisent au journal du serveur
+      # seulement.
+      - name: Résumé et verdict
+        run: |
+          node -e '
+            const s = require("/tmp/k6-resume.json").metrics;
+            const v = (n, k) => (s[n] && s[n][k] !== undefined) ? s[n][k] : "·";
+            console.log(JSON.stringify({
+              postgres: "${{ matrix.postgres }}", profil: "${{ inputs.profil }}",
+              requetes: v("http_reqs", "count"), iterations: v("iterations", "count"),
+              cabinets_termines: v("cabinets_termines", "count"), ecritures_saisies: v("ecritures_saisies", "count"),
+              conflits_409: v("conflits_409", "count"), refus_inattendus: v("refus_inattendus", "count"),
+              reponses_5xx: v("reponses_5xx", "count"), fuites_entre_dossiers: v("fuites_entre_dossiers", "count"),
+              incoherences_comptables: v("incoherences_comptables", "count"),
+              p50_ms: v("http_req_duration", "med"), p95_ms: v("http_req_duration", "p(95)"),
+            }, null, 1));
+          ' | tee /tmp/resume.json
+          maillons=$(grep -c "Maillon d'audit NON écrit" /tmp/serveur.log || true)
+          pool=$(grep -c "Timed out fetching" /tmp/serveur.log || true)
+          echo "maillons non écrits · $maillons · pool épuisé · $pool"
+          rc=$(sed 's/k6 rc=//' /tmp/k6-rc.txt)
+          if [ "$rc" != "0" ]; then echo "::error::k6 a conclu en échec (code $rc) · un seuil du script est franchi, voir /tmp/k6.txt dans les artefacts"; fi
+          if [ "$maillons" != "0" ]; then echo "::error::$maillons maillon(s) d'audit NON écrit(s) · la chaîne a des trous"; fi
+          [ "$rc" = "0" ] && [ "$maillons" = "0" ]
+
+      - name: Artefacts du banc
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banc-k6-pg${{ matrix.postgres }}-${{ inputs.profil }}-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            /tmp/k6-resume.json
+            /tmp/resume.json
+            /tmp/k6.txt
+            /tmp/k6-rc.txt
+            /tmp/surveillance.csv
+            /tmp/serveur.log
+            /tmp/puits.log

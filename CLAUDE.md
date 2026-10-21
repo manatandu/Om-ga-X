@@ -250,6 +250,7 @@ ou redéclenché sans que la ligne suive fait tomber le test.
 | `sauvegarde-base.yml` | horaire, chaque nuit à 02:00 UTC ; à la main | `pg_dump` chiffré + restauration de contrôle, qui doit rendre la source table par table et ligne par ligne, décomptée dans l'instantané même de l'export (audit final F262) |
 | `surveillance.yml` | horaire, toutes les quinze minutes ; à la main | interroge le service, le relais `/api` du site et le site ; après trois échecs, ouvre l'issue « Panne de production », refermée au retour |
 | `paquet-sur-site.yml` | à la main seulement | paquet d'installation Windows (`OmegaX-installation-<date>-<commit>.exe`) |
+| `charge-k6.yml` | à la main seulement | banc de charge k6 (`e2e/k6/`, profil, cabinets et durée choisis au lancement) contre le serveur compilé bridé comme en production (un cœur, 460 Mio, pool de 10) et une base jetable en PostgreSQL 18 (Neon) et 17 (sur site), aucun secret ; chiffres bruts, surveillance et journal du serveur en artefacts ; jamais Cloud Run ni Neon, que nul workflow ne peut mesurer sans préproduction |
 | `requetes-production.yml` | à la main seulement | lit les requêtes R1 et R2 du paquet 1 sur la base de production, blocs pris dans `docs/requetes-production-paquet-1.md`, session en lecture seule, identifiants et nombres seulement |
 
 **TÉLÉMÉTRIE, TROIS SECRETS, TOUS FACULTATIFS** (décision de Manasse du
@@ -5498,7 +5499,10 @@ contre le workflow.
 **TEST DE CHARGE k6 (`e2e/k6/`, 2026-10-17).** Le scénario d'un cabinet complet
 contre un serveur et une base JETABLES montés comme en production (un cœur, tas
 de 460 Mio, pool de 10) · JAMAIS la production (`e2e/k6/README.md`) ; chiffres
-et constats dans `docs/test-de-charge-k6.md`, mesurés hors Cloud Run. Il a
+et constats dans `docs/test-de-charge-k6.md`, mesurés hors Cloud Run.
+`charge-k6.yml` le rejoue à la main dans un coureur GitHub, sur PostgreSQL 18
+et 17 (ligne k6-ci, 2026-10-21) · Cloud Run et Neon restent hors de portée de
+tout workflow tant qu'aucune préproduction n'existe. Il a
 trouvé trois défauts que les Prisma factices et les bases neuves ne voient pas,
 corrigés et gelés par `journal-audit.spec.ts` et `compte-collectif-saisie.spec.ts` :
 la pré-image du journal d'audit prenait une seconde connexion du pool, le maillon

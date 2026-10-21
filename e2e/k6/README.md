@@ -70,6 +70,15 @@ les constats sont dans `docs/test-de-charge-k6.md` ; ce fichier dit seulement
 3. **Surveiller** le serveur pendant l'essai :
    `PGHOST=localhost PGPORT=<port> PGUSER=<u> PGDATABASE=<base> e2e/k6/surveiller.sh <pid du serveur> memoire.csv`.
 
+## Relancer en CI
+
+Le workflow manuel `.github/workflows/charge-k6.yml` (Actions → « Banc de
+charge k6 » → *Run workflow*) fait les trois étapes ci-dessus dans un coureur
+GitHub, sur une base jetable en PostgreSQL 18, 17 ou les deux, avec le
+serveur bridé comme en production, et range les chiffres bruts en artefacts.
+Il ne vise jamais la production (section du haut) · la base est celle du job,
+jetée avec lui.
+
 ## Deux manières de simuler les visiteurs, et pourquoi la différence compte
 
 - `IP=distinctes` (défaut) : chaque cabinet arrive d'une adresse différente
