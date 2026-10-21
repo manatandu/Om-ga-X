@@ -22,13 +22,16 @@ Demande de Manasse du 2026-10-21 · « Lève le gel pour le visa d'un RIB »
   routes `POST /ribs-tiers/:id/viser`, `POST /personnel/ribs-salaries/:id/viser`,
   option `PATCH /dossier/visa-ribs`, refus dans `OrdresVirementService`.
 - CLAUDE.md § 5 (gel) et § 6 (règle).
+- Specs serveur (`visa-rib.spec.ts`, ordres sous l'option, audit).
+- Écrans · volet RIB du tiers, paiement du salarié, Paramètres du dossier
+  (onglet Régime fiscal), `client/src/lib/visa-rib.ts` et son spec.
+- `e2e/tests/visa-rib.e2e.ts` vert sur base jetable, à travers la clôture de N.
+- `prisma migrate diff` · aucune différence.
 
 ## Reste
 
-- Specs serveur (règles, services, ordres sous l'option, audit).
-- Écrans · volet RIB du tiers, paiement du salarié, Paramètres du dossier.
 - Relectures (typescript-reviewer, react-reviewer, silent-failure-hunter).
-- Bloc § 3, scénario sur vraie base à travers une clôture, e2e.
+- Bloc § 3 complet des deux côtés.
 - Intégration sur main, déploiement vérifié, fiche retirée.
 
 ## Vérification
