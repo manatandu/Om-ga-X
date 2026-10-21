@@ -57,8 +57,16 @@ describe('la structure de la console', () => {
     expect(source).toContain("'/plateforme/essais-echus/rappels'");
     expect(source).toContain('libelleIssueRappel(r.issue)');
     expect(source).toContain("r.issue === 'ECHEC'");
-    // Les dossiers non examinés (tranche) se disent, jamais « aucun rappel » seul.
-    expect(source).toContain('bilan.tronque');
+    // Les rappels dus au-delà de la borne d'un appel se disent, jamais « aucun rappel » seul.
+    expect(source).toContain('bilan.restants > 0 &&');
+    // « Recommencez pour la suite » était faux · le serveur lit tous les dossiers.
+    expect(source).not.toContain('recommencez pour la suite');
+  });
+
+  it('le bouton des rappels se règle sur le compte du SERVEUR (tous les dossiers), jamais sur la tranche affichée', () => {
+    expect(source).toContain('const aRappeler = liste?.aRappeler ?? 0;');
+    expect(source).toContain('aRappeler === 0}');
+    expect(source).not.toMatch(/essais\.filter\(\(e\) => e\.etat === 'RAPPEL_A_ENVOYER'\)/);
   });
 
   it('la boîte passe par PortailModale, se ferme à Échap, et se tient pendant l’envoi', () => {

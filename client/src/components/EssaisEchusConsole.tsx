@@ -7,8 +7,11 @@ import { etatEssai, libelleIssueRappel, dateDuJour, statutDuRappel, type EssaiEc
 
 interface Liste {
   essais: EssaiEchu[];
+  /** Comptés par le serveur sur TOUS les dossiers concernés, pas sur la tranche affichée. */
   total: number;
   tronque: boolean;
+  aRappeler: number;
+  supprimables: number;
 }
 
 interface BilanRappels {
@@ -16,8 +19,9 @@ interface BilanRappels {
   envoyes: number;
   enFile: number;
   echecs: number;
-  total: number;
-  tronque: boolean;
+  /** Tous les dossiers dus ont été lus · ceux que la borne de l'appel n'a pas tentés. */
+  restants: number;
+  parAppel: number;
 }
 
 interface Suppression {
@@ -83,7 +87,10 @@ export function EssaisEchusConsole() {
     });
   }, [cible, suppressionEnCours]);
 
-  const aRappeler = liste?.essais.filter((e) => e.etat === 'RAPPEL_A_ENVOYER') ?? [];
+  // Le nombre de rappels dus est celui du SERVEUR, sur tous les dossiers · la
+  // tranche affichée n'en montre qu'une partie, et un rappel dû au-delà d'elle
+  // doit rester envoyable.
+  const aRappeler = liste?.aRappeler ?? 0;
 
   const envoyerRappels = async () => {
     setEnvoiRappels(true);
@@ -141,10 +148,10 @@ export function EssaisEchusConsole() {
           <button
             type="button"
             onClick={() => void envoyerRappels()}
-            disabled={envoiRappels || liste === null || aRappeler.length === 0}
+            disabled={envoiRappels || liste === null || aRappeler === 0}
             className="bg-sel text-white px-3 py-1.5 font-semibold disabled:opacity-50"
           >
-            {envoiRappels ? 'Envoi…' : `Envoyer les rappels${liste && aRappeler.length > 0 ? ` (${aRappeler.length})` : ''}`}
+            {envoiRappels ? 'Envoi…' : `Envoyer les rappels${liste && aRappeler > 0 ? ` (${aRappeler})` : ''}`}
           </button>
         </div>
       </div>
@@ -163,14 +170,12 @@ export function EssaisEchusConsole() {
         <div role="status" className="border border-border bg-surface-alt px-3 py-2 mb-2">
           <p className="font-semibold">
             {bilan.resultats.length === 0
-              ? bilan.tronque
-                ? 'Aucun rappel à envoyer parmi les dossiers examinés.'
-                : 'Aucun rappel à envoyer.'
+              ? 'Aucun rappel à envoyer.'
               : `Rappels · ${bilan.envoyes} partis, ${bilan.enFile} en file, ${bilan.echecs} en échec.`}
           </p>
-          {bilan.tronque && (
+          {bilan.restants > 0 && (
             <p className="mt-1 text-danger">
-              {bilan.total} dossiers d’essai échus · seuls les plus anciens ont été examinés, recommencez pour la suite.
+              {bilan.restants} rappel(s) restent dus · {bilan.parAppel} partent par demande, cliquez de nouveau sur « Envoyer les rappels ».
             </p>
           )}
           {bilan.resultats.length > 0 && (
@@ -193,7 +198,8 @@ export function EssaisEchusConsole() {
       )}
       {liste?.tronque && (
         <p className="border border-warning/30 bg-warning-soft px-3 py-1.5 mb-2">
-          {liste.essais.length} dossiers examinés sur {liste.total} · les plus anciens d’abord.
+          {liste.essais.length} dossiers affichés sur {liste.total}, les plus anciennes échéances d’abord · {liste.aRappeler} rappel(s) dû(s) et{' '}
+          {liste.supprimables} dossier(s) supprimable(s) en tout.
         </p>
       )}
 

@@ -10,7 +10,17 @@ import { JOURS_ESSAI } from '../abonnements/facturation-abonnements';
 import { PLAFOND_LISTE_CONSOLE, tranche } from '../plafond-console';
 import { avisRappelSuppression } from './courriel-rappel';
 import { causeDeLException, causeEchecEnvoi, CauseEchecEnvoi, LIBELLES_CAUSE_ECHEC } from './cause-echec-envoi';
-import { dateDeSuppression, debutDeLaFenetreDeRappel, etatDeLEssai, FaitsDossierEssai, termeDeLaLicence, VerdictEssai } from './essais-echus';
+import {
+  dateDeSuppression,
+  debutDeLaFenetreDeRappel,
+  etatDeLEssai,
+  FaitsDossierEssai,
+  JOURS_CONSERVATION_ESSAI,
+  JOURS_FENETRE_RAPPEL,
+  JOURS_RAPPEL_AVANT_SUPPRESSION,
+  termeDeLaLicence,
+  VerdictEssai,
+} from './essais-echus';
 import { purgerDossier } from './purger-dossier';
 
 /**
@@ -76,6 +86,22 @@ const DECALAGE_KINSHASA_MS = 60 * 60 * 1000;
 /** Un rappel mis en file depuis plus de ceci sans message est celui d'un processus tombé. */
 const DELAI_RAPPEL_ORPHELIN_MS = 15 * 60_000;
 
+/** Une page de candidats lus d'un coup (dix requêtes par page, `lire`). */
+const PAGE_CANDIDATS = PLAFOND_LISTE_CONSOLE;
+
+/**
+ * Rappels tentés par appel · cinquante, convention d'OmegaX. Les envois partent
+ * l'un après l'autre (un message, puis sa ligne de suivi) · cinquante tiennent
+ * dans le délai d'une requête même sur un serveur de messagerie lent.
+ */
+export const RAPPELS_PAR_APPEL = 50;
+
+/**
+ * Aucun rappel n'est dû avant le terme + 121 jours (180 + 1 - 60). Les essais
+ * plus récents ne sont pas lus par l'envoi · un jour de marge pour le fuseau.
+ */
+const JOURS_AVANT_LE_PREMIER_RAPPEL = JOURS_CONSERVATION_ESSAI + 1 - (JOURS_RAPPEL_AVANT_SUPPRESSION + JOURS_FENETRE_RAPPEL) - 1;
+
 /** Le dossier entier à purger peut être long · borne de la transaction. */
 const OPTIONS_SUPPRESSION = { maxWait: 10_000, timeout: 120_000 };
 
@@ -115,27 +141,78 @@ export class EssaisEchusService {
   ) {}
 
   /**
-   * Les dossiers dont la licence est un essai de trente jours échu · la sélection
-   * est faite par la base (même durée et même tolérance que `estUnDossierDEssai`,
-   * qui reste la règle appliquée ensuite en code). Les identifiants seulement.
+   * UNE PAGE DE CANDIDATS, PAR LA CLÉ (échéance, dossier) · les dossiers dont la
+   * licence est un essai de trente jours échu (même durée et même tolérance que
+   * `estUnDossierDEssai`, qui reste la règle appliquée ensuite en code), les
+   * identifiants seulement.
+   *
+   * CE QUI N'EST PAS CONCERNÉ ET SE LIT EN BASE EST ÉCARTÉ EN SQL · licence
+   * suspendue, vitrine, mère ou cellule d'un groupe, dossier de combinaison,
+   * tiers de cellule chez un siège, abonnement enregistré (l'éditeur, en
+   * PROPRIETAIRE, l'est par le type). Une fenêtre de cinq cents candidats pris
+   * sans ce tri se remplissait de dossiers non concernés et figeait la console
+   * sur eux, les dossiers concernés au-delà n'étant jamais lus. Le code rejoue
+   * ensuite TOUTES les règles (`etatDeLEssai`) · le filtre SQL ne fait que
+   * retirer, jamais décider qu'un dossier est supprimable.
+   *
+   * PAR LA CLÉ, JAMAIS PAR UN DÉCALAGE · un dossier supprimé entre deux pages ne
+   * décale rien (`common/lecture-par-lots.ts`).
    */
-  private async candidats(client: Lecteur, maintenant: Date): Promise<{ ids: string[]; total: number }> {
+  private async pageDeCandidats(
+    client: Lecteur,
+    maintenant: Date,
+    apres: { dateExpiration: Date; tenantId: string } | null,
+    echuAvant: Date | null,
+  ): Promise<{ tenantId: string; dateExpiration: Date }[]> {
     const secondes = JOURS_ESSAI * 86_400;
-    const lignes = await client.$queryRaw<{ tenantId: string }[]>`
-      SELECT "tenantId" FROM "licences"
-      WHERE "type" = 'ABONNEMENT'::"TypeLicence"
-        AND "dateExpiration" IS NOT NULL
-        AND "dateExpiration" <= ${maintenant}
-        AND abs(extract(epoch FROM ("dateExpiration" - "dateDebut")) - ${secondes}) <= 60
-      ORDER BY "dateExpiration" ASC, "tenantId" ASC
-      LIMIT ${PLAFOND_LISTE_CONSOLE}`;
-    const [{ n }] = await client.$queryRaw<{ n: bigint }[]>`
-      SELECT count(*) AS n FROM "licences"
-      WHERE "type" = 'ABONNEMENT'::"TypeLicence"
-        AND "dateExpiration" IS NOT NULL
-        AND "dateExpiration" <= ${maintenant}
-        AND abs(extract(epoch FROM ("dateExpiration" - "dateDebut")) - ${secondes}) <= 60`;
-    return { ids: lignes.map((l) => l.tenantId), total: Number(n) };
+    const borneEchu = echuAvant && echuAvant.getTime() < maintenant.getTime() ? echuAvant : maintenant;
+    const curseur = apres ? Prisma.sql`AND (l."dateExpiration", l."tenantId") > (${apres.dateExpiration}, ${apres.tenantId})` : Prisma.empty;
+    return client.$queryRaw<{ tenantId: string; dateExpiration: Date }[]>`
+      SELECT l."tenantId", l."dateExpiration" FROM "licences" l
+      JOIN "tenants" t ON t."id" = l."tenantId"
+      WHERE l."type" = 'ABONNEMENT'::"TypeLicence"
+        AND l."statut" <> 'SUSPENDUE'::"StatutLicence"
+        AND l."dateExpiration" IS NOT NULL
+        AND l."dateExpiration" <= ${borneEchu}
+        AND abs(extract(epoch FROM (l."dateExpiration" - l."dateDebut")) - ${secondes}) <= 60
+        AND t."estDemonstration" = false
+        AND t."dossierMereId" IS NULL
+        AND t."dossierCombinaisonId" IS NULL
+        AND NOT EXISTS (SELECT 1 FROM "tenants" g WHERE g."dossierMereId" = t."id" OR g."dossierCombinaisonId" = t."id")
+        AND NOT EXISTS (SELECT 1 FROM "tiers" x WHERE x."celluleGroupeId" = t."id")
+        AND NOT EXISTS (SELECT 1 FROM "abonnements_cabinets" a WHERE a."cabinetId" = t."id")
+        ${curseur}
+      ORDER BY l."dateExpiration" ASC, l."tenantId" ASC
+      LIMIT ${PAGE_CANDIDATS}`;
+  }
+
+  /**
+   * TOUS LES CANDIDATS, PAGE PAR PAGE · chaque page est lue (`lire`) et rendue à
+   * l'appelant avec son verdict, la plus ancienne échéance d'abord. L'appelant
+   * dit s'il faut continuer · la console lit tout pour compter, les rappels
+   * aussi (ce qui reste dû est DIT, jamais tu).
+   */
+  private async parcourir(
+    maintenant: Date,
+    visiter: (dossiers: { tenantId: string; lu: DossierLu; verdict: VerdictEssai }[]) => Promise<void>,
+    echuAvant: Date | null = null,
+  ): Promise<number> {
+    let apres: { dateExpiration: Date; tenantId: string } | null = null;
+    let examines = 0;
+    for (;;) {
+      const page = await this.pageDeCandidats(this.prisma, maintenant, apres, echuAvant);
+      examines += page.length;
+      const lus = await this.lire(this.prisma, page.map((c) => c.tenantId));
+      const dossiers: { tenantId: string; lu: DossierLu; verdict: VerdictEssai }[] = [];
+      for (const c of page) {
+        const lu = lus.get(c.tenantId);
+        if (lu) dossiers.push({ tenantId: c.tenantId, lu, verdict: etatDeLEssai(lu.faits, maintenant) });
+      }
+      await visiter(dossiers);
+      if (page.length < PAGE_CANDIDATS) return examines;
+      const dernier = page[page.length - 1];
+      apres = { dateExpiration: dernier.dateExpiration, tenantId: dernier.tenantId };
+    }
   }
 
   /**
@@ -236,22 +313,33 @@ export class EssaisEchusService {
    * La liste de la console · les dossiers d'essai échus que le calendrier
    * concerne, avec leur état. Un dossier NON CONCERNÉ (abonné, groupe, vitrine…)
    * n'y paraît pas · la console ne propose que ce qu'elle pourrait supprimer.
-   * Tranche qui se dit (`tronque`, `total`), conformément à § 8 bis.
+   *
+   * TOUT EST LU, PAR PAGES, ET COMPTÉ · `total`, `aRappeler` et `supprimables`
+   * portent sur TOUS les dossiers concernés ; seules les lignes rendues sont une
+   * tranche (les plus anciennes échéances d'abord, § 8 bis), et `tronque` le dit.
+   * Le bouton des rappels se règle sur `aRappeler`, jamais sur la tranche · un
+   * rappel dû au-delà des lignes affichées partait sinon jamais.
    */
   async lister(maintenant: Date = new Date()) {
     return horsCloisonnement('console · dossiers d’essai échus', async () => {
-      const { ids, total } = await this.candidats(this.prisma, maintenant);
-      const lus = await this.lire(this.prisma, ids);
-      const statuts = await this.statutsDesRappels(ids.flatMap((id) => (lus.get(id) ? [{ tenantId: id, lu: lus.get(id) as DossierLu }] : [])));
-      const lignes: LigneEssaiEchu[] = [];
-      for (const id of ids) {
-        const l = lus.get(id);
-        if (!l) continue;
-        const v = etatDeLEssai(l.faits, maintenant);
-        if (v.etat === 'NON_CONCERNE' || v.etat === 'EN_COURS') continue;
+      const gardes: { tenantId: string; lu: DossierLu; verdict: VerdictEssai }[] = [];
+      let total = 0;
+      let aRappeler = 0;
+      let supprimables = 0;
+      await this.parcourir(maintenant, async (dossiers) => {
+        for (const d of dossiers) {
+          if (d.verdict.etat === 'NON_CONCERNE' || d.verdict.etat === 'EN_COURS') continue;
+          total += 1;
+          if (d.verdict.etat === 'RAPPEL_A_ENVOYER') aRappeler += 1;
+          if (d.verdict.etat === 'SUPPRIMABLE') supprimables += 1;
+          if (gardes.length < PLAFOND_LISTE_CONSOLE) gardes.push(d);
+        }
+      });
+      const statuts = await this.statutsDesRappels(gardes);
+      const lignes: LigneEssaiEchu[] = gardes.map(({ tenantId, lu: l, verdict: v }) => {
         const message = l.rappelMessageId ? statuts.get(l.rappelMessageId) ?? null : null;
-        lignes.push({
-          tenantId: id,
+        return {
+          tenantId,
           etat: v.etat,
           termeLe: iso(v.termeLe),
           conserveJusquAu: iso(v.conserveJusquAu),
@@ -268,9 +356,9 @@ export class EssaisEchusService {
           nombreUtilisateurs: l.nombreUtilisateurs,
           nombreExercices: l.nombreExercices,
           nombreEcritures: l.nombreEcritures,
-        });
-      }
-      return { essais: lignes, ...tranche(ids.length, total) };
+        };
+      });
+      return { essais: lignes, ...tranche(lignes.length, total), aRappeler, supprimables };
     });
   }
 
@@ -314,6 +402,9 @@ export class EssaisEchusService {
    *   message déjà écrit s'il existe plutôt que d'en écrire un second.
    * · UN ÉCHEC SE DIT · chaque dossier rend son issue et son motif, un dossier en
    *   échec n'arrête pas les autres, et rien n'est avalé.
+   * · TOUS LES DOSSIERS DUS SONT LUS, CINQUANTE SONT TENTÉS PAR APPEL · les plus
+   *   anciennes échéances d'abord ; le reste est compté (`restants`), jamais tu,
+   *   et l'appel suivant le prend.
    */
   async envoyerRappels(operateur: { userId: string; email: string }, maintenant: Date = new Date()) {
     if (!this.courrier.etatDuTransport().configure) {
@@ -322,42 +413,57 @@ export class EssaisEchusService {
       );
     }
     return horsCloisonnement('console · rappels de suppression des dossiers d’essai échus', async () => {
-      const { ids, total } = await this.candidats(this.prisma, maintenant);
-      const lus = await this.lire(this.prisma, ids);
       const resultats: ResultatRappel[] = [];
-      for (const id of ids) {
-        const l = lus.get(id);
-        if (!l) continue;
-        const v = etatDeLEssai(l.faits, maintenant);
-        // Ni un dossier hors calendrier, ni un dossier dont le rappel est déjà
-        // parti (état ECHU_CONSERVE ou SUPPRIMABLE avec envoyeLe).
-        if (v.etat !== 'RAPPEL_A_ENVOYER') continue;
-        try {
-          resultats.push(await this.rappelerUn(id, l, v, operateur, maintenant));
-        } catch (erreur) {
-          if (erreur instanceof ConflictException) {
-            // `retenter` · un autre geste envoie ce message à l'instant.
-            resultats.push({ tenantId: id, issue: 'EN_COURS', detail: 'Un envoi est déjà en cours pour ce dossier.', cause: null });
-            continue;
+      let restants = 0;
+      // Aucun rappel n'est dû avant le cent vingt et unième jour après le terme
+      // (`debutDeLaFenetreDeRappel`) · les essais plus récents ne sont pas lus. Un
+      // jour de marge pour le fuseau, le calendrier exact étant rejoué ensuite.
+      const echuAvant = new Date(maintenant.getTime() - JOURS_AVANT_LE_PREMIER_RAPPEL * 86_400_000);
+      const examines = await this.parcourir(
+        maintenant,
+        async (dossiers) => {
+          for (const { tenantId: id, lu: l, verdict: v } of dossiers) {
+            // Ni un dossier hors calendrier, ni un dossier dont le rappel est déjà
+            // parti (état ECHU_CONSERVE ou SUPPRIMABLE avec envoyeLe).
+            if (v.etat !== 'RAPPEL_A_ENVOYER') continue;
+            // CINQUANTE PAR APPEL · les envois sont en série (un serveur de
+            // messagerie lent tiendrait la requête au-delà de son délai) ; le reste
+            // est COMPTÉ et dit, l'appel suivant le prend, plus ancien d'abord.
+            if (resultats.length >= RAPPELS_PAR_APPEL) {
+              restants += 1;
+              continue;
+            }
+            try {
+              resultats.push(await this.rappelerUn(id, l, v, operateur, maintenant));
+            } catch (erreur) {
+              if (erreur instanceof ConflictException) {
+                // `retenter` · un autre geste envoie ce message à l'instant.
+                resultats.push({ tenantId: id, issue: 'EN_COURS', detail: 'Un envoi est déjà en cours pour ce dossier.', cause: null });
+                continue;
+              }
+              // Ni le message de l'erreur ni sa pile · le refus de la file cite
+              // l'adresse de l'administrateur. Le journal du serveur reçoit le NOM de
+              // l'erreur et sa catégorie, la console la catégorie.
+              const cause = causeDeLException(erreur);
+              const nom = erreur instanceof Error ? erreur.name : typeof erreur;
+              this.logger.error(`Rappel de suppression · échec pour le dossier ${id} · ${nom} · ${LIBELLES_CAUSE_ECHEC[cause]}`);
+              resultats.push({ tenantId: id, issue: 'ECHEC', detail: `L’envoi du rappel a échoué · ${LIBELLES_CAUSE_ECHEC[cause]}.`, cause });
+            }
           }
-          // Ni le message de l'erreur ni sa pile · le refus de la file cite
-          // l'adresse de l'administrateur. Le journal du serveur reçoit le NOM de
-          // l'erreur et sa catégorie, la console la catégorie.
-          const cause = causeDeLException(erreur);
-          const nom = erreur instanceof Error ? erreur.name : typeof erreur;
-          this.logger.error(`Rappel de suppression · échec pour le dossier ${id} · ${nom} · ${LIBELLES_CAUSE_ECHEC[cause]}`);
-          resultats.push({ tenantId: id, issue: 'ECHEC', detail: `L’envoi du rappel a échoué · ${LIBELLES_CAUSE_ECHEC[cause]}.`, cause });
-        }
-      }
+        },
+        echuAvant,
+      );
       const compte = (i: IssueRappel) => resultats.filter((r) => r.issue === i).length;
       return {
         resultats,
         envoyes: compte('ENVOYE') + compte('DEJA_ENVOYE'),
         enFile: compte('EN_FILE'),
         echecs: compte('ECHEC') + compte('SANS_ADMINISTRATEUR'),
-        // Une tranche qui se dit (§ 8 bis) · les dossiers au-delà de la borne n'ont pas été examinés,
-        // et « aucun rappel à envoyer » ne doit jamais couvrir ce silence.
-        ...tranche(ids.length, total),
+        // TOUS les candidats ont été lus · `restants` compte les rappels dus que la
+        // borne de cet appel n'a pas tentés, jamais un silence sur la suite.
+        examines,
+        restants,
+        parAppel: RAPPELS_PAR_APPEL,
       };
     });
   }

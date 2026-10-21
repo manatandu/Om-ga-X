@@ -5,6 +5,7 @@ import { ORIGINE_RAPPEL_SUPPRESSION_ESSAI } from '../../courrier/courrier.servic
 import { EssaisEchusService } from './essais-echus.service';
 import { planDePurge } from './purger-dossier';
 import { termeDeLaLicence } from './essais-echus';
+import { RAPPELS_PAR_APPEL } from './essais-echus.service';
 
 /**
  * LE SERVICE DES ESSAIS ÉCHUS, SUR UNE DOUBLURE · ce qui casserait en silence :
@@ -212,8 +213,8 @@ describe('envoyerRappels', () => {
     const { service, courrier, lecteur, appels } = monter();
     const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
     expect(r.resultats).toEqual([{ tenantId: T, issue: 'ENVOYE', detail: null }]);
-    // Une tranche qui se dit · « aucun rappel » ne couvre jamais des dossiers non examinés.
-    expect(r).toMatchObject({ total: 1, tronque: false });
+    // Tout est examiné, et ce qui reste dû au-delà de la borne de l'appel est compté.
+    expect(r).toMatchObject({ examines: 1, restants: 0, parAppel: 50 });
     expect(appels).toEqual(['RESERVATION', 'ENVOI', 'MISE_A_JOUR_RAPPEL']);
     const [tenantId, message] = courrier.mettreEnFile.mock.calls[0] as unknown as [string, Record<string, string>];
     expect(tenantId).toBe(T);
@@ -482,5 +483,107 @@ describe('supprimer', () => {
     await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toThrow('violation de clé étrangère');
     expect(lecteur.dossierEssaiSupprime.create).not.toHaveBeenCalled();
     expect(lecteur.$transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * PLUS DE DOSSIERS QU'UNE FENÊTRE · une doublure qui sert N dossiers d'essai, tous
+ * concernés et dus, et HONORE la pagination par la clé (le curseur de la requête
+ * brute) et les `in` de la lecture. Ce qui casserait en silence · une fenêtre figée
+ * sur les cinq cents premiers, des rappels dus au-delà jamais envoyés, un compte
+ * qui ne dit que la tranche.
+ */
+function monterPlusieurs(n: number) {
+  const fin = jours(-160);
+  const debut = new Date(fin.getTime() - 30 * 86_400_000);
+  const ids = Array.from({ length: n }, (_, i) => `essai-${String(i).padStart(5, '0')}`);
+  const requetes: string[] = [];
+  const dansIn = (w: unknown): string[] => ((w as { in?: string[] })?.in ?? []);
+  const lecteur: any = {
+    $queryRaw: jest.fn(async (...args: unknown[]) => {
+      const texte = (args[0] as string[]).join('?');
+      requetes.push(texte);
+      const curseur = args.slice(1).find((a) => a && typeof a === 'object' && Array.isArray((a as { values?: unknown[] }).values)) as
+        | { values: unknown[] }
+        | undefined;
+      const apres = curseur && curseur.values.length === 2 ? String(curseur.values[1]) : null;
+      const reste = apres ? ids.filter((id) => id > apres) : ids;
+      const limite = Number(args[args.length - 1]);
+      return reste.slice(0, limite).map((tenantId) => ({ tenantId, dateExpiration: fin }));
+    }),
+    tenant: {
+      findMany: jest.fn(async (a: { where: Record<string, unknown> }) =>
+        'id' in a.where ? dansIn(a.where.id).map((id) => ({ id, estDemonstration: false, dossierMereId: null, dossierCombinaisonId: null })) : [],
+      ),
+    },
+    licence: {
+      findMany: jest.fn(async (a: { where: { tenantId: unknown } }) =>
+        dansIn(a.where.tenantId).map((tenantId) => ({ tenantId, type: 'ABONNEMENT', statut: 'ACTIVE', dateDebut: debut, dateExpiration: fin })),
+      ),
+    },
+    abonnementCabinet: { findMany: jest.fn().mockResolvedValue([]) },
+    tiers: { findMany: jest.fn().mockResolvedValue([]) },
+    message: {
+      findMany: jest.fn(async (a: { where: { tenantId: unknown; origine?: string } }) =>
+        a.where.origine === ORIGINE_INSCRIPTION_ESSAI ? dansIn(a.where.tenantId).map((tenantId) => ({ tenantId, origineId: tenantId })) : [],
+      ),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    rappelSuppressionEssai: {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn(async () => ({ id: 'r' })),
+      update: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    user: {
+      groupBy: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue({ email: 'admin@client.invalid' }),
+    },
+    exercice: { groupBy: jest.fn().mockResolvedValue([]) },
+    ecriture: { groupBy: jest.fn().mockResolvedValue([]) },
+  };
+  const courrier = {
+    etatDuTransport: jest.fn().mockReturnValue({ configure: true, manques: [], expediteur: 'x@y.z' }),
+    mettreEnFile: jest.fn(async () => ({ id: 'm', statut: StatutMessage.ENVOYE, erreur: null })),
+    retenter: jest.fn(),
+  };
+  return { service: new EssaisEchusService(lecteur as never, courrier as never), lecteur, courrier, requetes };
+}
+
+describe('AU-DELÀ D’UNE FENÊTRE · tout est lu, compté, et dit', () => {
+  it('la sélection écarte EN SQL ce qui n’est pas concerné et se lit en base', async () => {
+    const { service, requetes } = monterPlusieurs(1);
+    await service.lister(MAINTENANT);
+    const sql = requetes[0];
+    for (const fragment of [
+      `"statut" <> 'SUSPENDUE'`,
+      '"estDemonstration" = false',
+      '"dossierMereId" IS NULL',
+      '"dossierCombinaisonId" IS NULL',
+      '"celluleGroupeId" = t."id"',
+      '"abonnements_cabinets"',
+      `"type" = 'ABONNEMENT'`,
+    ]) {
+      expect(sql).toContain(fragment);
+    }
+    // Par la clé (échéance, dossier), jamais par un décalage.
+    expect(sql).not.toMatch(/OFFSET/i);
+  });
+
+  it('liste · 1 203 dossiers concernés, trois pages lues, cinq cents lignes rendues, les comptes sur TOUS', async () => {
+    const { service, requetes } = monterPlusieurs(1203);
+    const r = await service.lister(MAINTENANT);
+    expect(requetes).toHaveLength(3);
+    expect(r.essais).toHaveLength(500);
+    expect(r).toMatchObject({ total: 1203, tronque: true, aRappeler: 1203, supprimables: 0 });
+  });
+
+  it('rappels · cinquante tentés par appel, les rappels dus au-delà COMPTÉS (restants), tous les dossiers examinés', async () => {
+    const { service, courrier } = monterPlusieurs(620);
+    const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(RAPPELS_PAR_APPEL).toBe(50);
+    expect(courrier.mettreEnFile).toHaveBeenCalledTimes(50);
+    expect(r).toMatchObject({ envoyes: 50, restants: 570, examines: 620, parAppel: 50 });
   });
 });
