@@ -602,6 +602,11 @@ export class EssaisEchusService {
       envoyeAt = statut === StatutMessage.ENVOYE ? maintenant : envoyeAt;
     }
     if (statut === StatutMessage.ENVOYE) {
+      // LA DATE ANNONCÉE N'EST QU'UN MINIMUM · `supprimableLe` reste celle que le
+      // courriel a dite (calculée à la réservation) ; parti un autre jour que celui
+      // où il a été écrit, le message repousse la date RÉELLE, que le calendrier
+      // relit sur `envoyeLe` (trente jours pleins après le jour de l'envoi). Sens
+      // sûr · jamais supprimable avant la date annoncée, parfois après.
       await this.prisma.rappelSuppressionEssai.update({ where: { id: rappelId }, data: { envoyeLe: envoyeAt ?? maintenant } });
       return { tenantId, issue: 'ENVOYE', detail: null };
     }

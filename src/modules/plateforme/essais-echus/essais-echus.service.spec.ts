@@ -4,7 +4,7 @@ import { ORIGINE_INSCRIPTION_ESSAI } from '../../auth/inscription-essai';
 import { ORIGINE_RAPPEL_SUPPRESSION_ESSAI } from '../../courrier/courrier.service';
 import { EssaisEchusService } from './essais-echus.service';
 import { planDePurge } from './purger-dossier';
-import { termeDeLaLicence } from './essais-echus';
+import { dateDeSuppression, termeDeLaLicence } from './essais-echus';
 import { RAPPELS_PAR_APPEL } from './essais-echus.service';
 
 /**
@@ -269,6 +269,18 @@ describe('envoyerRappels', () => {
     expect(courrier.mettreEnFile).not.toHaveBeenCalled();
     expect(r.resultats[0].issue).toBe('ENVOYE');
     expect((lecteur.rappelSuppressionEssai.update.mock.calls[0][0] as { data: { envoyeLe: Date } }).data.envoyeLe).toBeInstanceOf(Date);
+  });
+
+  it('LA DATE ANNONCÉE EST UN MINIMUM · un message parti plus tard que sa réservation repousse la date réelle, jamais l’inverse', async () => {
+    // Réservé et écrit il y a dix jours, retenté et parti aujourd'hui.
+    const { service, lecteur } = monter({ rappel: { envoyeLeIlYa: null, statut: StatutMessage.ECHEC, misEnFileIlYaMinutes: 10 * 24 * 60 } });
+    await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    const maj = lecteur.rappelSuppressionEssai.update.mock.calls[0][0] as { data: Record<string, unknown> };
+    // Seule la date d'envoi est posée · la date annoncée au client n'est pas réécrite.
+    expect(Object.keys(maj.data)).toEqual(['envoyeLe']);
+    const annoncee = dateDeSuppression(termeDeLaLicence(jours(-160)), jours(-10));
+    const reelle = dateDeSuppression(termeDeLaLicence(jours(-160)), maj.data.envoyeLe as Date);
+    expect(reelle.getTime()).toBeGreaterThanOrEqual(annoncee.getTime());
   });
 
   it('un message abandonné lève la réservation et le DIT, au lieu de laisser croire que le préavis court', async () => {
