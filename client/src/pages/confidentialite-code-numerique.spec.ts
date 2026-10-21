@@ -283,6 +283,11 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
     expect(deplie).toContain('faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche automatique');
     expect(deplie).toContain('Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre terme');
     expect(deplie).not.toContain('quatre-vingt-dix jours après le terme');
+    // Le fond a changé · la politique porte la date de cette modification (le
+    // bandeau de consentement se rouvre une fois, c'est voulu).
+    const date = readFileSync(join(__dirname, '../lib/date-politique-confidentialite.ts'), 'utf8');
+    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '21 octobre 2026';");
+    expect(page).toContain('Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}');
     expect(deplie).not.toContain('n’est pas encore en service');
     // Les deux nombres de la page sont ceux du calendrier du serveur.
     const calendrier = serveur('src/modules/plateforme/essais-echus/essais-echus.ts');

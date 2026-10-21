@@ -35,6 +35,10 @@ import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 export { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 import { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 
+// Mise à jour du 21 octobre 2026 · le sort des dossiers d'essai non souscrits
+// (cent quatre-vingts jours après le terme, rappel d'au moins trente jours,
+// suppression par VMG Consulting depuis sa console), ligne suppression-essais.
+//
 // Mise à jour du 17 octobre 2026 · présentation sur le modèle des politiques
 // des grands éditeurs (demande de Manasse, d'après celle de Cloudflare) ·
 // engagement en tête, sommaire, champ d'application, fondement de chaque
