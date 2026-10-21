@@ -4,6 +4,7 @@ import { adresseApi } from './adresse-api';
 import { motifDeSessionPerdue, signalerSessionPerdue } from './session-perdue';
 import { CHEMINS_CACHES, cheminsAViderApres } from './cache-referentiels';
 import { messageDuRefus } from './message-refus';
+import { delaiDeReprise, estConflitAReprendre, REPRISES_MAX } from './reprise-conflit';
 
 const API_URL = adresseApi(import.meta.env.VITE_API_URL);
 
@@ -75,20 +76,32 @@ async function refus(res: Response): Promise<ApiError> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    // Le cookie de session voyage avec chaque appel. En ligne, l'API est
-    // servie sous l'adresse du site (`/api`, relais de Firebase Hosting) ·
-    // le cookie est de PREMIÈRE partie. `include` reste nécessaire au
-    // développement local, où l'interface et l'API ont deux ports.
-    credentials: 'include',
-    headers: entetesRequete(options.method, getCsrf(), options.headers),
-  });
+  // UN CONFLIT DE SÉRIALISATION SE REJOUE (ligne k6-defauts, `reprise-conflit.ts`)
+  // · le 409 « au même instant » n'a rien écrit, le même appel repart, deux
+  // fois au plus, après un délai aléatoire. Tout autre refus part tel quel.
+  for (let tentative = 0; ; tentative++) {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      // Le cookie de session voyage avec chaque appel. En ligne, l'API est
+      // servie sous l'adresse du site (`/api`, relais de Firebase Hosting) ·
+      // le cookie est de PREMIÈRE partie. `include` reste nécessaire au
+      // développement local, où l'interface et l'API ont deux ports.
+      credentials: 'include',
+      headers: entetesRequete(options.method, getCsrf(), options.headers),
+    });
 
-  if (!res.ok) throw await refus(res);
+    if (!res.ok) {
+      const erreur = await refus(res);
+      if (tentative < REPRISES_MAX && estConflitAReprendre(erreur.status, erreur.message)) {
+        await new Promise((r) => setTimeout(r, delaiDeReprise(tentative + 1)));
+        continue;
+      }
+      throw erreur;
+    }
 
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  }
 }
 
 /**
