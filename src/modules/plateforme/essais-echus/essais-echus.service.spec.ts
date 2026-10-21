@@ -355,6 +355,28 @@ describe('supprimer', () => {
     expect(appels.filter((a) => a.startsWith('DELETE'))).toEqual([]);
   });
 
+  it('la LICENCE est verrouillée (FOR UPDATE, paramétrée) après le dossier et AVANT la lecture du calendrier', async () => {
+    const { service, lecteur } = monter(pret);
+    const ordre: string[] = [];
+    const brut = lecteur.$queryRaw.getMockImplementation();
+    lecteur.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+      const texte = (args[0] as string[]).join('?');
+      if (texte.includes('FOR UPDATE')) ordre.push(texte.includes('"licences"') ? 'VERROU_LICENCE' : 'VERROU_DOSSIER');
+      return brut(...args);
+    });
+    lecteur.licence.findMany.mockImplementation(async () => {
+      ordre.push('LECTURE_LICENCE');
+      const fin = jours(-200);
+      return [{ tenantId: T, type: 'ABONNEMENT', statut: 'ACTIVE', dateDebut: new Date(fin.getTime() - 30 * 86_400_000), dateExpiration: fin }];
+    });
+    await service.supprimer(T, OPERATEUR, T, MAINTENANT);
+    expect(ordre.slice(0, 3)).toEqual(['VERROU_DOSSIER', 'VERROU_LICENCE', 'LECTURE_LICENCE']);
+    const appel = lecteur.$queryRaw.mock.calls.find((c: unknown[]) => (c[0] as string[]).join('?').includes('"licences"'));
+    // Le dossier est un PARAMÈTRE lié, jamais concaténé dans le texte de la requête.
+    expect((appel[0] as string[]).join('?')).toBe('SELECT 1 FROM "licences" WHERE "tenantId" = ? FOR UPDATE');
+    expect(appel[1]).toBe(T);
+  });
+
   it('un dossier déjà supprimé (verrou sans ligne) est 404, jamais une erreur de base', async () => {
     const { service } = monter({ ...pret, dossierExiste: false });
     await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toBeInstanceOf(NotFoundException);

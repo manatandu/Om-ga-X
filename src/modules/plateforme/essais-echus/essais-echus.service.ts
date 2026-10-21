@@ -462,8 +462,9 @@ export class EssaisEchusService {
    * · L'OPÉRATEUR RETAPE L'IDENTIFIANT (`confirmation`) · ni un clic, ni un
    *   identifiant d'une autre ligne.
    * · TOUT EST RELU SOUS VERROU DANS LA TRANSACTION · verrou consultatif du
-   *   dossier et verrou de sa ligne (`FOR UPDATE`, qui retient aussi toute
-   *   insertion concurrente par clé étrangère), puis le calendrier est rejoué sur
+   *   dossier, verrou de sa ligne (`FOR UPDATE`, qui retient aussi toute
+   *   insertion concurrente par clé étrangère) et verrou de sa LICENCE (qu'une
+   *   prolongation écrit seule), puis le calendrier est rejoué sur
    *   ce qu'on vient de lire. Une licence prolongée, un abonnement enregistré, un
    *   dossier rattaché à un groupe entre l'affichage de la liste et le clic font
    *   REFUSER la suppression (409) · le geste ne se fonde jamais sur la liste.
@@ -491,6 +492,13 @@ export class EssaisEchusService {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`suppression-essai:${tenantId}`}))`;
           const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "tenants" WHERE "id" = ${tenantId} FOR UPDATE`;
           if (verrou.length === 0) throw new NotFoundException('Dossier introuvable · il a peut-être déjà été supprimé.');
+          // LA LICENCE SOUS VERROU AUSSI · `modifierLicence` (prolongation, essai
+          // redonné, encaissement) écrit la ligne de licence sans toucher celle du
+          // dossier · sans ce verrou, une prolongation validée pendant la purge
+          // n'était pas vue par la lecture qui suit, et un dossier redevenu actif
+          // était supprimé. Une prolongation concurrente ATTEND ici, et l'état est
+          // relu après elle (la lecture qui suit voit ce qu'elle a validé).
+          await tx.$queryRaw`SELECT 1 FROM "licences" WHERE "tenantId" = ${tenantId} FOR UPDATE`;
 
           const lus = await this.lire(tx, [tenantId]);
           const lu = lus.get(tenantId);
