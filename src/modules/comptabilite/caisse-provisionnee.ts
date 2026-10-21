@@ -45,9 +45,17 @@ import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee
  * jugées · refuser l'annulation d'une entrée de caisse déjà dépensée
  * enfermerait le dossier ; le transfert d'un brouillard depuis la situation
  * ne fait que repousser sa date, jamais vider la caisse ; la fiche d'un bien
- * retouchée en place (`modifierPieceDuModule`) n'est pas rejugée ; un
+ * retouchée en place (`modifierPieceDuModule`) ou dont la pièce d'acquisition
+ * est remplacée (changement de mois ou d'exercice) n'est pas rejugée ; un
  * exercice postérieur déjà ouvert n'est pas relu ; deux sorties envoyées à la
- * même seconde se jugent chacune sans l'autre.
+ * même seconde se jugent chacune sans l'autre. Seconde relecture · une
+ * opération diverse du premier jour qui porte la caisse, même annulée par son
+ * négatif, arrête la remontée vers l'exercice précédent encore ouvert (la
+ * caisse se lit sur elle seule, des refus peuvent tomber jusqu'à la clôture de
+ * N · la dater du lendemain ou clôturer N les lève) ; la fusion de deux
+ * caisses se juge exercice par exercice, sans les lignes que l'exercice
+ * précédent va lui apporter, et ses lignes validées arrivent à la date de la
+ * fusion quand son brouillard garde la sienne (valider d'abord le brouillard).
  */
 
 type Client = Prisma.TransactionClient;
@@ -89,7 +97,12 @@ export interface MouvementLu {
   deviseId: string | null;
   /** Le net dans la devise, en centimes · null quand une ligne en devise n'en porte pas le montant. */
   netDevise: number | null;
-  /** Une écriture de change (écarts de réévaluation, leur extourne, leur contre-passation, leurs négatifs) · sans devise par construction. */
+  /**
+   * Une ligne qui ne fait entrer ni sortir aucun billet · une écriture de
+   * change (écarts de réévaluation, leur extourne, leur contre-passation, leurs
+   * négatifs), ou le reste en francs d'un à-nouveau de clôture qui porte aussi
+   * la caisse en devise (voir `mouvementsParJour`) · sans devise par construction.
+   */
   deChange: boolean;
 }
 
@@ -117,14 +130,17 @@ function netEnDevise(l: { debit: number; credit: number; montantDevise: number |
  * elles ne font ni entrer ni sortir un billet. Sinon, francs · débit moins
  * crédit, au cours historique de chaque ligne.
  */
-export function uniteDuJugement(mouvements: Pick<MouvementLu, 'deviseId' | 'netDevise' | 'deChange'>[]): { devise: string | null } {
+export function uniteDuJugement(mouvements: Pick<MouvementLu, 'deviseId' | 'netDevise' | 'deChange' | 'netFrancs'>[]): { devise: string | null } {
   const devises = new Set<string>();
   let sansDeviseHorsChange = 0;
   for (const m of mouvements) {
     if (m.deviseId) {
       if (m.netDevise === null) return { devise: null };
       devises.add(m.deviseId);
-    } else if (!m.deChange) {
+    } else if (!m.deChange && m.netFrancs !== 0) {
+      // Un jour dont les lignes sans devise se compensent (la ligne en francs
+      // d'un à-nouveau et son négatif, déclaration de devise AU3) n'a fait
+      // entrer ni sortir aucun franc (seconde relecture, B1).
       sansDeviseHorsChange += 1;
     }
   }
@@ -187,6 +203,15 @@ interface RangeeMouvement {
  * précédent, que `mouvementsDOuverture` relit · le compter ajouterait la caisse
  * d'ouverture une seconde fois (validé), ou la tiendrait pour vide
  * (brouillard). Le jour est celui de la date INSCRITE (art. 22, 4°).
+ * LE RESTE EN FRANCS D'UN À-NOUVEAU EN DEVISE NE FAIT PAS BASCULER EN FRANCS
+ * (seconde relecture, B1) · le report au solde écrit une ligne par devise et
+ * une ligne sans devise pour le reste (`report-a-nouveau.ts`) ; d'une caisse
+ * tenue en dollars, ce reste est l'écart de la réévaluation de clôture, et le
+ * compter faisait juger en francs, au cours du jour, une caisse qui tient ses
+ * cent dollars (« il manque 5 000 » quand le cours avait monté, et rien de
+ * refusé quand il avait baissé). Il se lit comme une écriture de change ·
+ * neutre dans la devise, compté en francs. Une caisse qui tient aussi de vrais
+ * francs se juge en francs dès qu'un franc y entre ou en sort.
  */
 async function mouvementsParJour(
   prisma: Client,
@@ -199,12 +224,17 @@ async function mouvementsParJour(
   const rangees = (await prisma.$queryRaw`
     SELECT to_char(e."date", 'YYYY-MM-DD') AS "jour",
            l."deviseId" AS "deviseId",
-           EXISTS (
+           (EXISTS (
              SELECT 1 FROM "reevaluations" r
              WHERE r."ecritureEcartsId" IN (e."id", e."corrigeEcritureId")
                 OR r."ecritureExtourneId" IN (e."id", e."corrigeEcritureId")
                 OR r."contrePassationDeclareeId" IN (e."id", e."corrigeEcritureId")
-           ) AS "deChange",
+           ) OR (
+             e."estGenereeParCloture" = true AND l."deviseId" IS NULL AND EXISTS (
+               SELECT 1 FROM "lignes_ecriture" l2
+               WHERE l2."ecritureId" = e."id" AND l2."compteId" = l."compteId" AND l2."deviseId" IS NOT NULL
+             )
+           )) AS "deChange",
            (e."id" = ${remplacee}) AS "remplacee",
            (SUM(l."debit" - l."credit") * 100)::bigint AS "netFrancs",
            CASE WHEN COUNT(*) FILTER (WHERE l."deviseId" IS NOT NULL AND l."montantDevise" IS NULL) > 0 THEN NULL

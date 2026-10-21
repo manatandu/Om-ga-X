@@ -1566,7 +1566,10 @@ export class EcritureService {
     });
     // La caisse après les contrôles propres de la modification, à la date
     // inscrite · la version d'avant sort du solde, la nouvelle y entre.
-    if (options.jugerLaCaisse && !estJournalDeSituation(ecriture.journal)) {
+    // Le STATUT décide, jamais le journal · un brouillard hérité resté dans un
+    // journal de situation compte dans la caisse, et sa sortie augmentée se
+    // juge (seconde relecture, m4).
+    if (options.jugerLaCaisse && ecriture.statut !== StatutEcriture.SITUATION) {
       const lignes =
         dto.lignes ??
         ecriture.lignes.map((l) => ({
@@ -2682,7 +2685,11 @@ export class EcritureService {
         montantDevise: l.montantDevise == null ? null : Number(l.montantDevise),
       });
       await this.verifierCaisseProvisionnee(tenantId, exercice.id, [
-        ...auBrouillard.map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
+        // Une simulation ne fait entrer ni sortir aucun billet (la lecture
+        // l'écarte) · seul le brouillard se juge (seconde relecture, m2).
+        ...auBrouillard
+          .filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD)
+          .map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
         ...(validees.length ? [{ date, lignes: validees.map(versLaCaisse) }] : []),
       ]);
     }

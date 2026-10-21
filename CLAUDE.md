@@ -3417,14 +3417,20 @@ PAR JOUR sur tout l'exercice, agrégé par la base, à la date INSCRITE
 précédents non clôturés (une opération diverse du premier jour sans ligne
 de caisse n'arrête pas la remontée) ; une sortie ANTIDATÉE qui ferait passer
 sous zéro une sortie postérieure est refusée ; la caisse jugée dans sa devise
-quand toutes ses lignes en portent une seule ; en centimes entiers. Un
+quand toutes ses lignes en portent une seule, le reste en francs d'un
+à-nouveau qui la porte en devise lu comme une écriture de change (seconde
+relecture, B1 · sinon la caisse de cent dollars réévaluée se jugeait en
+francs au cours du jour) ; en centimes entiers. Un
 dossier dont la caisse est DÉJÀ créditrice n'est pas enfermé · seul ce qui
 l'enfonce est refusé, l'encaissement passe. Le message nomme la caisse, la
 date, ce qui manque, et trois issues (approvisionner par un virement de
 fonds, payer par la banque, dater après l'entrée). Non jugés, et c'est
 écrit · clôture, report, imports, annulations en négatif, transfert depuis
 la situation (il ne fait que repousser la date), fiche d'un bien retouchée
-en place, exercices postérieurs, deux saisies concurrentes.
+en place ou remplacée, exercices postérieurs, deux saisies concurrentes ;
+une ouverture du premier jour qui porte la caisse arrête la remontée, même
+annulée, et une fusion de caisses se juge exercice par exercice (limites
+écrites en tête du module).
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·

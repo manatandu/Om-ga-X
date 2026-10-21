@@ -66,10 +66,11 @@ describe('premierJourRefuse · le jour où la pièce rend la caisse créditrice'
 describe('uniteDuJugement · une caisse tenue en devise se juge dans sa devise', () => {
   // netDevise · le net en devise agrégé par la base, null quand une ligne en
   // devise n'en porte pas le montant.
-  const ligne = (deviseId: string | null, montantDevise: number | null, deChange = false) => ({
+  const ligne = (deviseId: string | null, montantDevise: number | null, deChange = false, netFrancs = 100_000) => ({
     deviseId,
     netDevise: deviseId === null ? 0 : montantDevise === null ? null : montantDevise * 100,
     deChange,
+    netFrancs,
   });
 
   it('une seule devise, montants portés · la devise', () => {
@@ -82,6 +83,10 @@ describe('uniteDuJugement · une caisse tenue en devise se juge dans sa devise',
 
   it('une ligne en francs hors change · les francs', () => {
     expect(uniteDuJugement([ligne('usd', 100), ligne(null, null)])).toEqual({ devise: null });
+  });
+
+  it("des lignes en francs qui se compensent le même jour ne la font pas quitter (déclaration AU3, seconde relecture B1)", () => {
+    expect(uniteDuJugement([ligne('usd', 100), ligne(null, null, false, 0)])).toEqual({ devise: 'usd' });
   });
 
   it('deux devises, ou un montant en devise absent · les francs', () => {
@@ -99,15 +104,20 @@ describe('uniteDuJugement · une caisse tenue en devise se juge dans sa devise',
 function doublure(opts: {
   comptes: { id: string; numero: string; intitule: string }[];
   exercices: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice; ouvertureSur?: string[] }[];
-  lignes: { id: string; compteId: string; exerciceId: string; ecritureId: string; date: string; debit: number; credit: number; statut?: string; provisoire?: boolean; deviseId?: string | null; montantDevise?: number | null }[];
+  lignes: { id: string; compteId: string; exerciceId: string; ecritureId: string; date: string; debit: number; credit: number; statut?: string; provisoire?: boolean; cloture?: boolean; deviseId?: string | null; montantDevise?: number | null }[];
 }) {
   const queryRaw = jest.fn(async (_gabarit: TemplateStringsArray, remplacee: string, compteId: string, _tenantId: string, exerciceId: string) => {
+    // Le reste en francs d'un à-nouveau de clôture qui porte la caisse en devise
+    // se lit comme une écriture de change (même règle que la requête).
+    const deChangeDe = (l: (typeof opts.lignes)[number]) =>
+      !!l.cloture && !l.deviseId && opts.lignes.some((m) => m.ecritureId === l.ecritureId && m.compteId === l.compteId && !!m.deviseId);
     const groupes = new Map<string, { jour: string; deviseId: string | null; deChange: boolean; remplacee: boolean; netFrancs: bigint; netDevise: bigint | null }>();
     for (const l of opts.lignes) {
       if (l.compteId !== compteId || l.exerciceId !== exerciceId || l.statut === 'SITUATION' || l.provisoire) continue;
       const deviseId = l.deviseId ?? null;
-      const cle = `${l.date}|${deviseId}|${l.ecritureId === remplacee}`;
-      const g = groupes.get(cle) ?? { jour: l.date, deviseId, deChange: false, remplacee: l.ecritureId === remplacee, netFrancs: 0n, netDevise: 0n as bigint | null };
+      const deChange = deChangeDe(l);
+      const cle = `${l.date}|${deviseId}|${deChange}|${l.ecritureId === remplacee}`;
+      const g = groupes.get(cle) ?? { jour: l.date, deviseId, deChange, remplacee: l.ecritureId === remplacee, netFrancs: 0n, netDevise: 0n as bigint | null };
       g.netFrancs += BigInt(Math.round((l.debit - l.credit) * 100));
       if (deviseId !== null) {
         if (l.montantDevise == null) g.netDevise = null;
@@ -259,6 +269,35 @@ describe('motifCaisseNonProvisionnee · la lecture du solde', () => {
       motifCaisseNonProvisionnee(prisma, 't', 'n', [{ date: '2026-02-10', lignes: [{ compteId: 'caisse', credit: usd * 2900, deviseId: 'usd', montantDevise: usd }] }]);
     expect(await payer(100)).toBeNull();
     expect(await payer(101)).toContain('USD');
+  });
+
+  it("après la clôture, le reste en francs de l'à-nouveau ne la fait pas juger en francs (seconde relecture, B1)", async () => {
+    // À-nouveau au solde · 100 USD pour 280 000, plus 10 000 sans devise (écart
+    // de la réévaluation, cours de clôture 2 900). Payés au cours de 2 950 ·
+    // 295 000 FC, la caisse tient ses 100 USD · passe ; 101 USD refusés.
+    const prisma = doublure({
+      comptes: [CAISSE],
+      exercices: [{ ...N1, ouvertureSur: ['caisse'] }],
+      lignes: [
+        { id: 'a1', compteId: 'caisse', exerciceId: 'n1', ecritureId: 'an', date: '2027-01-01', debit: 280_000, credit: 0, deviseId: 'usd', montantDevise: 100, cloture: true },
+        { id: 'a2', compteId: 'caisse', exerciceId: 'n1', ecritureId: 'an', date: '2027-01-01', debit: 10_000, credit: 0, cloture: true },
+      ],
+    });
+    const payer = (usd: number) =>
+      motifCaisseNonProvisionnee(prisma, 't', 'n1', [{ date: '2027-01-10', lignes: [{ compteId: 'caisse', credit: usd * 2950, deviseId: 'usd', montantDevise: usd }] }]);
+    expect(await payer(100)).toBeNull();
+    expect(await payer(101)).toContain('USD');
+  });
+
+  it('la requête porte les filtres que la doublure rejoue (relecture TypeScript, second tour)', async () => {
+    const prisma = doublure({ comptes: [CAISSE], exercices: [N], lignes: [] });
+    await motifCaisseNonProvisionnee(prisma, 't', 'n', [{ date: '2026-02-10', lignes: [{ compteId: 'caisse', credit: 1 }] }]);
+    const gabarit = (prisma.$queryRaw.mock.calls[0][0] as TemplateStringsArray).join('?');
+    expect(gabarit).toContain(`e."tenantId" = ?`);
+    expect(gabarit).toContain(`e."statut" <> 'SITUATION'`);
+    expect(gabarit).toContain(`e."estANouveauProvisoire" = false`);
+    expect(gabarit).toContain(`FROM "reevaluations" r`);
+    expect(gabarit).toContain(`e."estGenereeParCloture" = true AND l."deviseId" IS NULL`);
   });
 });
 
