@@ -3,7 +3,7 @@ import { calculerEmpreinte, EMPREINTE_ORIGINE, ContenuEmpreinte } from './emprei
 import { masquer, estChampSensible, MARQUEUR_MASQUE, MODELES_AUDITES } from './champs-audites';
 import { JournalAuditService } from './journal-audit.service';
 import { JournalAuditController } from './journal-audit.controller';
-import { intercepterEcriture } from './extension-audit';
+import { intercepterEcriture, filtrePreImage } from './extension-audit';
 import { dansContexteAudit, ACTEUR_SYSTEME, journaliserDansTransaction } from './contexte-audit';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -666,6 +666,11 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     expect(maillons).toHaveLength(1);
     // Sans pré-image, le maillon la range vide · rien d'inventé.
     expect([null, {}]).toContainEqual(maillons[0].avant);
+  });
+
+  it('une clé unique composée se déplie pour la pré-image · `findFirst` la refuserait', () => {
+    expect(filtrePreImage('Journal', { tenantId_code: { tenantId: 'd-1', code: 'BQ' } })).toEqual({ tenantId: 'd-1', code: 'BQ' });
+    expect(filtrePreImage('Journal', { id: 'j-1' })).toEqual({ id: 'j-1' });
   });
 
   it('hors transaction, la pré-image se lit toujours par la connexion de base', async () => {

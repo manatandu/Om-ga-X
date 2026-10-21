@@ -25,6 +25,34 @@ const ACTIONS: Record<string, 'CREATION' | 'MODIFICATION' | 'SUPPRESSION'> = {
  * d'une pièce attachée à un tiers. Sans colonne binaire, aucun `select` n'est
  * posé et la ligne entière est lue, comme avant.
  */
+/**
+ * UNE CLÉ COMPOSÉE SE DÉPLIE POUR LA PRÉ-IMAGE (relecture du 2026-10-21) ·
+ * `update` et `upsert` admettent la clé unique composée
+ * (`{ tenantId_code: { tenantId, code } }`), qu'un `findFirst` refuse en
+ * erreur de validation · la pré-image était alors perdue en silence, à chaque
+ * création de dossier (semis des journaux, taux et familles). La clé, lue dans
+ * le schéma (nom déclaré, sinon ses champs joints par « _ », règle de Prisma),
+ * devient le filtre ordinaire qu'elle désigne ; tout le reste du filtre est
+ * gardé tel quel.
+ */
+export function filtrePreImage(model: string, where: Record<string, unknown>): Record<string, unknown> {
+  const modele = Prisma.dmmf.datamodel.models.find((m) => m.name === model);
+  if (!modele) return where;
+  const composees = [
+    ...modele.uniqueIndexes.map((u) => u.name ?? u.fields.join('_')),
+    ...(modele.primaryKey ? [modele.primaryKey.name ?? modele.primaryKey.fields.join('_')] : []),
+  ];
+  const filtre: Record<string, unknown> = {};
+  for (const [cle, valeur] of Object.entries(where)) {
+    if (composees.includes(cle) && valeur !== null && typeof valeur === 'object' && !Array.isArray(valeur)) {
+      Object.assign(filtre, valeur as Record<string, unknown>);
+    } else {
+      filtre[cle] = valeur;
+    }
+  }
+  return filtre;
+}
+
 const selectsPreImage = new Map<string, { select?: Record<string, true> }>();
 export function selectPreImage(model: string): { select?: Record<string, true> } {
   const connu = selectsPreImage.get(model);
@@ -276,7 +304,7 @@ export async function intercepterEcriture(
         { findFirst: (x: unknown) => Promise<unknown> }
       >;
       avant = await lecteur[model.charAt(0).toLowerCase() + model.slice(1)].findFirst({
-        where: a.where,
+        where: filtrePreImage(model, a.where as Record<string, unknown>),
         ...selectPreImage(model),
       });
     } catch (erreur) {
