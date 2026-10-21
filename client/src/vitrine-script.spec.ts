@@ -82,8 +82,8 @@ describe('feuille de journal de la page publique', () => {
     const m = await monter('echec');
     for (const brut of ['-5', '1,234', '1,234,56', 'abc', '']) {
       saisir(m, brut, '1');
-      expect(m.ids['valider'].disabled, brut).toBe(true);
-      expect(m.ids['ecart'].textContent, brut).toBe('·');
+      expect(m.ids['valider'].disabled).toBe(true);
+      expect(m.ids['ecart'].textContent).toBe('·');
     }
   });
   it('refuse une pièce à zéro, et ne confond pas deux montants au-delà de 2^53 centimes', async () => {

@@ -31,7 +31,7 @@ describe('la page publique reste dans la politique de sécurité du site', () =>
   it('aucune adresse externe, aucun script ni gestionnaire en ligne', () => {
     for (const [nom, texte] of Object.entries(toutes)) {
       // Les commentaires de licence ne citent aucune adresse · rien de http(s) hors mailto.
-      expect(texte, nom).not.toMatch(/https?:\/\//i);
+      expect(texte).not.toMatch(/https?:\/\//i);
     }
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/i);
     expect(html).not.toMatch(/\son[a-z]+\s*=/i);
@@ -40,7 +40,7 @@ describe('la page publique reste dans la politique de sécurité du site', () =>
     // Toute ressource chargée est de notre origine.
     const refs = [...html.matchAll(/\s(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
     for (const r of refs) {
-      expect(/^(\/|#|mailto:|vitrine\.(css|js)\?v=)/.test(r), r).toBe(true);
+      expect(/^(\/|#|mailto:|vitrine\.(css|js)\?v=)/.test(r)).toBe(true);
     }
   });
 
@@ -48,8 +48,8 @@ describe('la page publique reste dans la politique de sécurité du site', () =>
     const urls = [...css.matchAll(/url\('([^']+)'\)/g)].map((m) => m[1]);
     expect(urls.length).toBeGreaterThan(0);
     for (const u of urls) {
-      expect(u.startsWith('/polices/'), u).toBe(true);
-      expect(existsSync(join(CLIENT, 'public', u)), u).toBe(true);
+      expect(u.startsWith('/polices/')).toBe(true);
+      expect(existsSync(join(CLIENT, 'public', u))).toBe(true);
     }
     for (const f of ['/logo-omegax-mot.svg', '/icone.svg']) {
       expect(html).toContain(f);
@@ -74,14 +74,14 @@ describe('chaque lien interne mène quelque part de vrai', () => {
 
   it('les liens du cahier des charges sont là, et chacun est une route du HashRouter', () => {
     for (const l of ['/essai', '/connexion', '/contrat-de-licence', '/confidentialite', '/questions-frequentes']) {
-      expect(liens, l).toContain(l);
+      expect(liens).toContain(l);
     }
-    for (const l of new Set(liens)) expect(app, l).toContain(`path="${l}"`);
+    for (const l of new Set(liens)) expect(app).toContain(`path="${l}"`);
   });
 
   it('les ancres de la page existent', () => {
     for (const a of [...html.matchAll(/href="#([a-z-]+)"/g)].map((m) => m[1])) {
-      expect(html, a).toContain(`id="${a}"`);
+      expect(html).toContain(`id="${a}"`);
     }
   });
 });
@@ -139,7 +139,7 @@ describe('les intitulés de comptes cités sont ceux du plan semé', () => {
       const lignes = [...bloc.matchAll(/<th scope="row" class="code">(\d+)<\/th><td>([^<]+)<\/td>/g)];
       expect(lignes.length).toBe(3);
       for (const [, numero, libelle] of lignes) {
-        expect(dans(ref, numero, libelle.replace(/&amp;/g, '&')), `${ref} ${numero} ${libelle}`).toBe(true);
+        expect(dans(ref, numero, libelle.replace(/&amp;/g, '&'))).toBe(true);
       }
     });
   }
@@ -201,10 +201,10 @@ describe('les nombres et les phrases de la page ont leur source dans le dépôt'
 
   it('aucune promesse que le code ne tient pas : pas de « bientôt », ni de chiffre de clientèle', () => {
     for (const [nom, t] of Object.entries(toutes)) {
-      expect(t.toLowerCase(), nom).not.toMatch(/bient[oô]t disponible|coming soon|témoignage|ils nous font confiance|clients? satisfaits|[0-9]+\s*(\+|%)?\s*(clients|cabinets|utilisateurs)/);
+      expect(t.toLowerCase()).not.toMatch(/bient[oô]t disponible|coming soon|témoignage|ils nous font confiance|clients? satisfaits|[0-9]+\s*(\+|%)?\s*(clients|cabinets|utilisateurs)/);
     }
     // Aucun nom de modèle d'IA dans ce qui est poussé (CLAUDE.md § 4).
-    for (const [nom, t] of Object.entries(toutes)) expect(t, nom).not.toMatch(/claude|anthropic|gpt|sonnet|opus|chatgpt/i);
+    for (const [nom, t] of Object.entries(toutes)) expect(t).not.toMatch(/claude|anthropic|gpt|sonnet|opus|chatgpt/i);
   });
 });
 
@@ -226,10 +226,10 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
   ]);
 
   it('toute couleur de la feuille de style est de la charte, la liste est fermée', () => {
-    for (const h of new Set(hexa)) expect(ADMISES.has(h), h).toBe(true);
+    for (const h of new Set(hexa)) expect(ADMISES.has(h)).toBe(true);
     // Les transparences ne sont posées que sur l'encre et sur le blanc.
     for (const m of css.matchAll(/rgba\(([^)]+)\)/g)) {
-      expect(/^(255,255,255|42,31,92),/.test(m[1].replace(/\s/g, '')), m[0]).toBe(true);
+      expect(/^(255,255,255|42,31,92),/.test(m[1].replace(/\s/g, ''))).toBe(true);
     }
   });
 
@@ -247,10 +247,10 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
     const fond = jeton('fond');
     const lavis = jeton('lavis');
     for (const t of ['texte', 'discret', 'attente', 'encre', 'signal']) {
-      expect(rapport(jeton(t), fond), `${t} sur le fond`).toBeGreaterThanOrEqual(4.5);
+      expect(rapport(jeton(t), fond)).toBeGreaterThanOrEqual(4.5);
     }
     for (const t of ['texte', 'discret', 'encre', 'signal']) {
-      expect(rapport(jeton(t), lavis), `${t} sur le lavis`).toBeGreaterThanOrEqual(4.5);
+      expect(rapport(jeton(t), lavis)).toBeGreaterThanOrEqual(4.5);
     }
     // Le blanc sur l'encre (bouton plein, bandeau d'appel).
     expect(rapport('#ffffff', jeton('encre'))).toBeGreaterThanOrEqual(4.5);
@@ -292,7 +292,7 @@ describe('le mouvement sert la lecture et se coupe', () => {
 
   it('la durée des mouvements reste sobre : aucune animation de plus de trois secondes sauf la bordure tracée une fois', () => {
     for (const m of css.matchAll(/animation:[^;}]*?(\d*\.?\d+)s/g)) {
-      expect(Number(m[1]), m[0]).toBeLessThanOrEqual(2.6);
+      expect(Number(m[1])).toBeLessThanOrEqual(2.6);
     }
   });
 });
