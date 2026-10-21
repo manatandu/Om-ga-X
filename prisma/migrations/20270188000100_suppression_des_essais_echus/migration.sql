@@ -1,14 +1,15 @@
 -- Suppression des dossiers d'essai échus (décision de Manasse du 2026-10-17) ·
 -- conservés cent quatre-vingts jours après leur terme, rappel par courriel au
 -- moins trente jours avant, suppression faite par l'opérateur depuis la console.
--- Deux tables de l'ÉDITEUR, hors dossier : le rappel (un par dossier, qui part
--- avec lui) et la trace de la suppression (sans clé étrangère, aucune donnée du
--- client, des dates et des nombres).
+-- Deux tables de l'ÉDITEUR, hors dossier : le rappel (un par dossier et par
+-- terme d'essai, qui part avec lui) et la trace de la suppression (sans clé
+-- étrangère, aucune donnée du client, des dates et des nombres).
 
 -- CreateTable
 CREATE TABLE "rappels_suppression_essai" (
     "id" TEXT NOT NULL,
     "cabinetId" TEXT NOT NULL,
+    "termeLe" DATE NOT NULL,
     "messageId" TEXT NOT NULL,
     "misEnFileLe" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "envoyeLe" TIMESTAMP(3),
@@ -37,7 +38,7 @@ CREATE TABLE "dossiers_essai_supprimes" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "rappels_suppression_essai_cabinetId_key" ON "rappels_suppression_essai"("cabinetId");
+CREATE UNIQUE INDEX "rappels_suppression_essai_cabinetId_termeLe_key" ON "rappels_suppression_essai"("cabinetId", "termeLe");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "dossiers_essai_supprimes_ancienTenantId_key" ON "dossiers_essai_supprimes"("ancienTenantId");

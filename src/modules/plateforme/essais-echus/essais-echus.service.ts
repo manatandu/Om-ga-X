@@ -9,7 +9,7 @@ import { ORIGINE_INSCRIPTION_ESSAI } from '../../auth/inscription-essai';
 import { JOURS_ESSAI } from '../abonnements/facturation-abonnements';
 import { PLAFOND_LISTE_CONSOLE, tranche } from '../plafond-console';
 import { avisRappelSuppression } from './courriel-rappel';
-import { dateDeSuppression, etatDeLEssai, FaitsDossierEssai, VerdictEssai } from './essais-echus';
+import { dateDeSuppression, debutDeLaFenetreDeRappel, etatDeLEssai, FaitsDossierEssai, termeDeLaLicence, VerdictEssai } from './essais-echus';
 import { purgerDossier } from './purger-dossier';
 
 /**
@@ -60,6 +60,9 @@ export interface LigneEssaiEchu {
 
 const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
+/** Minuit à Kinshasa est 23 h UTC la veille (UTC+1, sans heure d'été · `common/echeance.ts`). */
+const DECALAGE_KINSHASA_MS = 60 * 60 * 1000;
+
 /** Un rappel mis en file depuis plus de ceci sans message est celui d'un processus tombé. */
 const DELAI_RAPPEL_ORPHELIN_MS = 15 * 60_000;
 
@@ -72,6 +75,8 @@ interface DossierLu {
   nombreExercices: number;
   nombreEcritures: number;
   rappelId: string | null;
+  /** Le terme que le rappel lu annonçait · toujours celui de la licence courante (voir `lire`). */
+  rappelTermeLe: Date | null;
   rappelMessageId: string | null;
   rappelMisEnFileLe: Date | null;
   rappelEnvoyeLe: Date | null;
@@ -160,7 +165,15 @@ export class EssaisEchusService {
     }
     for (const t of tiersCellule) if (t.celluleGroupeId) groupe.add(t.celluleGroupeId);
     const inscrits = new Set(preuves.filter((p) => p.origineId === p.tenantId).map((p) => p.tenantId));
-    const rappelDe = new Map(rappels.map((r) => [r.cabinetId, r]));
+    // UN RAPPEL PAR TERME · seul celui du terme de la licence COURANTE est lu. Un
+    // essai redonné (terme nouveau) laisse le rappel de l'ancien terme dans la
+    // table, et il n'y vaut pas préavis (`rappelDuTermeCourant`).
+    const rappelDe = new Map<string, (typeof rappels)[number]>();
+    for (const r of rappels) {
+      const l = licenceDe.get(r.cabinetId);
+      if (!l?.dateExpiration) continue;
+      if (r.termeLe.getTime() === termeDeLaLicence(l.dateExpiration).getTime()) rappelDe.set(r.cabinetId, r);
+    }
 
     const resultat = new Map<string, DossierLu>();
     for (const t of tenants) {
@@ -173,12 +186,13 @@ export class EssaisEchusService {
           toucheUnGroupe: t.dossierMereId !== null || t.dossierCombinaisonId !== null || groupe.has(t.id),
           aUnAbonnement: avecAbonnement.has(t.id),
           inscritParEssai: inscrits.has(t.id),
-          rappel: r ? { envoyeLe: r.envoyeLe } : null,
+          rappel: r ? { envoyeLe: r.envoyeLe, termeLe: r.termeLe } : null,
         },
         nombreUtilisateurs: nUtilisateurs.get(t.id) ?? 0,
         nombreExercices: nExercices.get(t.id) ?? 0,
         nombreEcritures: nEcritures.get(t.id) ?? 0,
         rappelId: r?.id ?? null,
+        rappelTermeLe: r?.termeLe ?? null,
         rappelMessageId: r?.messageId || null,
         rappelMisEnFileLe: r?.misEnFileLe ?? null,
         rappelEnvoyeLe: r?.envoyeLe ?? null,
@@ -333,12 +347,15 @@ export class EssaisEchusService {
       return { tenantId, issue: 'SANS_ADMINISTRATEUR', detail: 'Aucun administrateur actif dans ce dossier · le rappel ne peut pas partir.' };
     }
 
-    // 3. Réservation avant l'envoi · la clé unique ferme le doublon.
-    const supprimableLe = dateDeSuppression(verdict.termeLe as Date, maintenant);
+    // 3. Réservation avant l'envoi · la clé unique (dossier, terme) ferme le doublon.
+    // `supprimableLe` est la date que le courriel ANNONCE · un minimum, la date
+    // réelle étant relue sur l'envoi constaté (voir le schéma).
+    const termeLe = verdict.termeLe as Date;
+    const supprimableLe = dateDeSuppression(termeLe, maintenant);
     let reservation: { id: string };
     try {
       reservation = await this.prisma.rappelSuppressionEssai.create({
-        data: { cabinetId: tenantId, messageId: '', supprimableLe, parOperateur: operateur.email },
+        data: { cabinetId: tenantId, termeLe, messageId: '', supprimableLe, parOperateur: operateur.email },
         select: { id: true },
       });
     } catch (erreur) {
@@ -349,13 +366,17 @@ export class EssaisEchusService {
     }
 
     try {
-      // 4. Un message déjà écrit pour ce dossier (processus tombé après l'écriture) est ADOPTÉ.
+      // 4. Un message déjà écrit pour ce dossier ET CE TERME (processus tombé après
+      // l'écriture) est ADOPTÉ. Le rappel d'un terme ancien, écrit avant l'ouverture
+      // de la fenêtre du terme courant, ne l'est jamais · il annonçait une autre date.
+      const ouvertureFenetre = new Date(debutDeLaFenetreDeRappel(termeLe).getTime() - DECALAGE_KINSHASA_MS);
       const existant = await this.prisma.message.findFirst({
         where: {
           tenantId,
           origine: ORIGINE_RAPPEL_SUPPRESSION_ESSAI,
           origineId: tenantId,
           statut: { not: StatutMessage.ABANDONNE },
+          createdAt: { gte: ouvertureFenetre },
         },
         orderBy: { createdAt: 'desc' },
         select: { id: true, statut: true, envoyeAt: true, erreur: true },
@@ -370,7 +391,7 @@ export class EssaisEchusService {
         envoyeAt = existant.envoyeAt;
         erreur = existant.erreur;
       } else {
-        const avis = avisRappelSuppression({ termeLe: verdict.termeLe as Date, supprimableLe });
+        const avis = avisRappelSuppression({ termeLe, supprimableLe });
         const envoi = await this.courrier.mettreEnFile(tenantId, {
           destinataire: admin.email,
           sujet: avis.sujet,
@@ -484,6 +505,11 @@ export class EssaisEchusService {
             : null;
           if (!rappel || rappel.statut !== StatutMessage.ENVOYE || !lu.rappelEnvoyeLe) {
             throw new ConflictException('Le rappel n’est pas constaté envoyé · le dossier ne peut pas être supprimé.');
+          }
+          // Le rappel doit être celui du terme COURANT · un essai redonné entre-temps
+          // a un terme nouveau, et le rappel de l'ancien n'a prévenu de rien.
+          if (!lu.rappelTermeLe || lu.rappelTermeLe.getTime() !== (verdict.termeLe as Date).getTime()) {
+            throw new ConflictException('Le rappel parti ne correspond pas au terme courant de l’essai · un nouveau rappel doit partir avant la suppression.');
           }
           // Rien d'un autre dossier ne doit viser celui-ci (groupe, abonnement) · lu une seconde fois, dans la transaction.
           const visesParAilleurs =

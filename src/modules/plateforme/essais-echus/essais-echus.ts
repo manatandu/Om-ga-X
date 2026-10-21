@@ -53,8 +53,12 @@ export interface FaitsDossierEssai {
   aUnAbonnement: boolean;
   /** Le courriel de l'inscription en libre-service est retrouvé dans la file du dossier. */
   inscritParEssai: boolean;
-  /** Le rappel, quand il a été mis en file · `envoyeLe` seulement une fois PARTI. */
-  rappel: { envoyeLe: Date | null } | null;
+  /**
+   * Le rappel, quand il a été mis en file · `envoyeLe` seulement une fois PARTI ;
+   * `termeLe`, le terme qu'il annonçait (absent dans les jeux d'essai purs, qui
+   * n'en connaissent qu'un). Le rappel d'un AUTRE terme est ignoré.
+   */
+  rappel: { envoyeLe: Date | null; termeLe?: Date | null } | null;
 }
 
 export interface VerdictEssai {
@@ -110,6 +114,41 @@ export function dateDeSuppression(termeLe: Date, envoyeLe: Date | null): Date {
   return apresPreavis.getTime() > premiere.getTime() ? apresPreavis : premiere;
 }
 
+/**
+ * UN RAPPEL ANCIEN NE VAUT PAS PRÉAVIS POUR UN TERME NOUVEAU · l'opérateur peut
+ * redonner un essai (nouvelle licence de trente jours, terme T2). Le rappel parti
+ * pour le terme T1 annonçait une autre date à un client qui a depuis repris
+ * l'essai · le lire comme préavis de T2 rendrait le dossier supprimable sans que
+ * personne ne l'ait prévenu de la nouvelle échéance. Deux signes, chacun
+ * suffisant · le terme que le rappel porte n'est pas le terme courant, ou le
+ * rappel est parti AVANT l'ouverture de la fenêtre de rappel du terme courant
+ * (aucun rappel de T2 ne peut partir avant elle). Ignoré, il laisse l'état
+ * repasser par RAPPEL_A_ENVOYER.
+ */
+export function rappelDuTermeCourant(
+  rappel: FaitsDossierEssai['rappel'],
+  termeLe: Date,
+  rappelDepuisLe: Date,
+): boolean {
+  if (!rappel) return false;
+  if (rappel.termeLe && jourUtcDe(rappel.termeLe).getTime() !== termeLe.getTime()) return false;
+  if (rappel.envoyeLe && jourDeKinshasa(rappel.envoyeLe).getTime() < rappelDepuisLe.getTime()) return false;
+  return true;
+}
+
+/** Une `@db.Date` lue de la base est déjà à minuit UTC · ramenée à elle-même, sans fuseau. */
+const jourUtcDe = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+
+/** Le jour (de Kinshasa) du terme d'une licence d'essai · la clé de son rappel. */
+export function termeDeLaLicence(dateExpiration: Date): Date {
+  return jourDeKinshasa(dateExpiration);
+}
+
+/** Premier jour où le rappel du terme `termeLe` peut partir. */
+export function debutDeLaFenetreDeRappel(termeLe: Date): Date {
+  return ajouterJours(premiereDateDeSuppression(termeLe), -(JOURS_RAPPEL_AVANT_SUPPRESSION + JOURS_FENETRE_RAPPEL));
+}
+
 const SANS_DATES = { termeLe: null, conserveJusquAu: null, supprimableLe: null, rappelDepuisLe: null };
 
 function nonConcerne(motif: string): VerdictEssai {
@@ -133,10 +172,9 @@ export function etatDeLEssai(faits: FaitsDossierEssai, maintenant: Date): Verdic
   if (!faits.inscritParEssai) return nonConcerne('Le dossier ne vient pas de l’inscription en libre-service.');
 
   const echeance = l.dateExpiration as Date; // estUnDossierDEssai l'exige non nulle
-  const termeLe = jourDeKinshasa(echeance);
+  const termeLe = termeDeLaLicence(echeance);
   const conserveJusquAu = ajouterJours(termeLe, JOURS_CONSERVATION_ESSAI);
-  const premiere = premiereDateDeSuppression(termeLe);
-  const rappelDepuisLe = ajouterJours(premiere, -(JOURS_RAPPEL_AVANT_SUPPRESSION + JOURS_FENETRE_RAPPEL));
+  const rappelDepuisLe = debutDeLaFenetreDeRappel(termeLe);
   const dates = { termeLe, conserveJusquAu, rappelDepuisLe };
 
   // L'essai court tant que l'instant d'échéance n'est pas atteint · le jour du
@@ -146,7 +184,8 @@ export function etatDeLEssai(faits: FaitsDossierEssai, maintenant: Date): Verdic
   }
 
   const aujourdhui = jourDeKinshasa(maintenant);
-  const envoyeLe = faits.rappel?.envoyeLe ?? null;
+  const rappel = rappelDuTermeCourant(faits.rappel, termeLe, rappelDepuisLe) ? faits.rappel : null;
+  const envoyeLe = rappel?.envoyeLe ?? null;
   const supprimableLe = dateDeSuppression(termeLe, envoyeLe);
 
   if (envoyeLe) {

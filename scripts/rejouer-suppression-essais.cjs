@@ -47,6 +47,11 @@ const API = `http://127.0.0.1:${PORT_SERVEUR}`;
 const MOT_DE_PASSE = 'MotDePasse-rejeu-2026!';
 const EMAIL_OPERATEUR = `operateur-${Date.now()}@exemple.invalid`;
 const JOUR_MS = 86_400_000;
+/** Le jour de Kinshasa (UTC+1) d'un instant, à minuit UTC · la règle de `common/echeance.ts`. */
+function jourDeKinshasa(instant) {
+  const local = new Date(instant.getTime() + 60 * 60 * 1000);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+}
 
 const { PrismaClient } = require(join(RACINE, 'node_modules', '@prisma', 'client'));
 const prisma = new PrismaClient({ datasources: { db: { url: URL_BASE } } });
@@ -640,9 +645,17 @@ async function principal() {
 
     console.log('== Vieillir le rappel (trente et un jours) et le terme (200 jours) · seule la cible, le voisin garde son rappel récent');
     const ilYa = new Date(Date.now() - 31 * JOUR_MS);
-    await prisma.$executeRawUnsafe(`UPDATE "rappels_suppression_essai" SET "envoyeLe" = $2, "misEnFileLe" = $2 WHERE "cabinetId" = $1`, cible.tenantId, ilYa);
-    await prisma.$executeRawUnsafe(`UPDATE "messages" SET "envoyeAt" = $2 WHERE "tenantId" = $1 AND "origine" = 'RAPPEL_SUPPRESSION_ESSAI'`, cible.tenantId, ilYa);
+    // Le temps passe pour TOUT · le terme de la licence et le terme que le rappel
+    // annonce avancent ensemble (un rappel d'un autre terme ne vaut pas préavis).
     await vieillir(cible.tenantId, 200);
+    const nouveauTerme = jourDeKinshasa(new Date(Date.now() - 200 * JOUR_MS));
+    await prisma.$executeRawUnsafe(
+      `UPDATE "rappels_suppression_essai" SET "envoyeLe" = $2, "misEnFileLe" = $2, "termeLe" = $3 WHERE "cabinetId" = $1`,
+      cible.tenantId,
+      ilYa,
+      nouveauTerme,
+    );
+    await prisma.$executeRawUnsafe(`UPDATE "messages" SET "envoyeAt" = $2 WHERE "tenantId" = $1 AND "origine" = 'RAPPEL_SUPPRESSION_ESSAI'`, cible.tenantId, ilYa);
     liste = await console_.get('/plateforme/essais-echus');
     verifier(ligne(cible.tenantId)?.etat === 'SUPPRIMABLE', `cible · état SUPPRIMABLE (lu : ${ligne(cible.tenantId)?.etat})`);
     verifier(ligne(voisin.tenantId)?.etat !== 'SUPPRIMABLE', `voisin · jamais SUPPRIMABLE sans préavis de trente jours (lu : ${ligne(voisin.tenantId)?.etat})`);

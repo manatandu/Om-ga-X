@@ -126,6 +126,23 @@ describe('l’état d’un essai, du premier au dernier jour', () => {
   });
 });
 
+describe('UN RAPPEL ANCIEN NE VAUT PAS PRÉAVIS POUR UN TERME NOUVEAU (essai redonné)', () => {
+  // Terme courant 31 janvier, fenêtre de rappel ouverte le 1er juin.
+  it('le rappel d’un autre terme est ignoré · l’état repasse par RAPPEL_A_ENVOYER, jamais SUPPRIMABLE', () => {
+    const rappel = { envoyeLe: new Date('2026-06-10T12:00:00Z'), termeLe: jour('2025-07-15') };
+    const v = etatDeLEssai(faits({ rappel }), new Date('2026-09-01T12:00:00Z'));
+    expect(v.etat).toBe('RAPPEL_A_ENVOYER');
+    expect(iso(v.supprimableLe)).toBe('2026-07-31');
+  });
+
+  it('un rappel parti AVANT l’ouverture de la fenêtre du terme courant est ignoré, même sans terme lu', () => {
+    const rappel = { envoyeLe: new Date('2026-05-31T22:59:00Z') }; // le 31 mai à 23 h 59 à Kinshasa
+    expect(etatDeLEssai(faits({ rappel }), new Date('2026-09-01T12:00:00Z')).etat).toBe('RAPPEL_A_ENVOYER');
+    const dansLaFenetre = { envoyeLe: new Date('2026-05-31T23:00:00Z'), termeLe: jour('2026-01-31') }; // minuit le 1er juin
+    expect(etatDeLEssai(faits({ rappel: dansLaFenetre }), new Date('2026-09-01T12:00:00Z')).etat).toBe('SUPPRIMABLE');
+  });
+});
+
 describe('un dossier n’est JAMAIS concerné · en cas de doute, non concerné', () => {
   const apres = new Date('2027-06-01T00:00:00Z');
   const cas: [string, Partial<FaitsDossierEssai>][] = [

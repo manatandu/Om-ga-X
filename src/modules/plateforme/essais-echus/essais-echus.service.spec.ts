@@ -4,6 +4,7 @@ import { ORIGINE_INSCRIPTION_ESSAI } from '../../auth/inscription-essai';
 import { ORIGINE_RAPPEL_SUPPRESSION_ESSAI } from '../../courrier/courrier.service';
 import { EssaisEchusService } from './essais-echus.service';
 import { planDePurge } from './purger-dossier';
+import { termeDeLaLicence } from './essais-echus';
 
 /**
  * LE SERVICE DES ESSAIS ÉCHUS, SUR UNE DOUBLURE · ce qui casserait en silence :
@@ -23,7 +24,14 @@ const T = 'dossier-essai-1';
 interface Scenario {
   /** Jours entre le terme et maintenant (positif = terme passé). */
   termeIlYa?: number;
-  rappel?: { envoyeLeIlYa: number | null; messageId?: string; statut?: StatutMessage; misEnFileIlYaMinutes?: number } | null;
+  rappel?: {
+    envoyeLeIlYa: number | null;
+    messageId?: string;
+    statut?: StatutMessage;
+    misEnFileIlYaMinutes?: number;
+    /** Le rappel annonçait un AUTRE terme (essai redonné depuis) · jours entre ce terme ancien et le terme courant. */
+    termeAnterieurDe?: number;
+  } | null;
   abonnement?: boolean;
   groupe?: boolean;
   inscrit?: boolean;
@@ -44,6 +52,7 @@ function monter(s: Scenario = {}) {
           {
             id: 'r-1',
             cabinetId: T,
+            termeLe: termeDeLaLicence(new Date(fin.getTime() - (s.rappel.termeAnterieurDe ?? 0) * 86_400_000)),
             messageId: s.rappel.messageId ?? 'm-rappel',
             misEnFileLe:
               s.rappel.misEnFileIlYaMinutes !== undefined
@@ -274,6 +283,36 @@ describe('envoyerRappels', () => {
     const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
     expect(r.resultats).toEqual([]);
     expect(courrier.mettreEnFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('UN RAPPEL ANCIEN NE VAUT PAS PRÉAVIS POUR UN TERME NOUVEAU (essai redonné)', () => {
+  // Terme ancien 200 jours avant le courant, rappel parti il y a 120 jours · avant la fenêtre du terme courant.
+  const ancien = { termeIlYa: 160, rappel: { envoyeLeIlYa: 120, termeAnterieurDe: 200 } } as Scenario;
+
+  it('la liste repasse par RAPPEL_A_ENVOYER et ne montre pas le rappel ancien', async () => {
+    const { service } = monter(ancien);
+    const [ligne] = (await service.lister(MAINTENANT)).essais;
+    expect(ligne.etat).toBe('RAPPEL_A_ENVOYER');
+    expect(ligne.rappel).toBeNull();
+  });
+
+  it('un nouveau rappel est RÉSERVÉ pour le terme courant, et le message ancien n’est pas adopté', async () => {
+    const { service, lecteur, courrier } = monter(ancien);
+    const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(r.resultats[0].issue).toBe('ENVOYE');
+    const reservation = lecteur.rappelSuppressionEssai.create.mock.calls[0][0] as { data: { cabinetId: string; termeLe: Date } };
+    expect(reservation.data.termeLe).toEqual(termeDeLaLicence(jours(-160)));
+    // L'adoption ne lit que les messages écrits depuis l'ouverture de la fenêtre du terme courant.
+    const adoption = lecteur.message.findFirst.mock.calls[0][0] as { where: { createdAt: { gte: Date } } };
+    expect(adoption.where.createdAt.gte.getTime()).toBeGreaterThan(jours(-120).getTime());
+    expect(courrier.mettreEnFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('la suppression est REFUSÉE (409) sur le seul rappel de l’ancien terme', async () => {
+    const { service, appels } = monter({ termeIlYa: 200, rappel: { envoyeLeIlYa: 31, termeAnterieurDe: 60 } });
+    await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toBeInstanceOf(ConflictException);
+    expect(appels.filter((a) => a.startsWith('DELETE') || a === 'TRACE')).toEqual([]);
   });
 });
 

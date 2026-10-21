@@ -776,7 +776,7 @@ model Tenant {
 
   licence                   Licence?
   abonnementEditeur         AbonnementCabinet?              @relation("AbonnementDuCabinet")
-  rappelSuppressionEssai    RappelSuppressionEssai?         @relation("RappelSuppressionDuCabinet")
+  rappelsSuppressionEssai   RappelSuppressionEssai[]        @relation("RappelSuppressionDuCabinet")
   comptes                   Compte[]
   exercices                 Exercice[]
   ecritures                 Ecriture[]
@@ -1066,24 +1066,34 @@ model FactureAbonnement {
 /// cent quatre-vingts jours après son terme, puis supprimé ; un courriel part au
 /// moins trente jours avant). Suivi de l'ÉDITEUR sur son client, hors dossier
 /// comme `AbonnementCabinet` (`cabinetId` et non `tenantId`) : il n'est pas une
-/// donnée du client et ne figure pas dans sa restitution. Une seule ligne par
-/// dossier (la clé unique ferme le doublon), qui part avec lui (cascade) ; la
-/// trace durable est `DossierEssaiSupprime`.
+/// donnée du client et ne figure pas dans sa restitution. UNE LIGNE PAR DOSSIER
+/// ET PAR TERME D'ESSAI (la clé unique ferme le doublon) · un essai redonné par
+/// l'opérateur a un terme nouveau, et le rappel du terme ancien ne vaut pas
+/// préavis pour lui (il reste, pour l'histoire, et il est ignoré). Les lignes
+/// partent avec le dossier (cascade) ; la trace durable est `DossierEssaiSupprime`.
 model RappelSuppressionEssai {
   id            String    @id @default(uuid())
-  cabinetId     String    @unique
+  cabinetId     String
   cabinet       Tenant    @relation("RappelSuppressionDuCabinet", fields: [cabinetId], references: [id], onDelete: Cascade)
+  /// Le jour (de Kinshasa) du terme de l'essai que ce rappel annonce. Le rappel
+  /// d'un autre terme n'est jamais lu comme le préavis du terme courant.
+  termeLe       DateTime  @db.Date
   /// Le message dans la file du dossier (sans clé étrangère · la file appartient
   /// au dossier). Le rappel n'est « parti » que quand ce message l'est.
   messageId     String
   misEnFileLe   DateTime  @default(now())
   /// Renseigné quand le message est CONSTATÉ envoyé · null tant qu'il attend.
   envoyeLe      DateTime?
-  /// Le premier jour où la suppression est permise, tel que dit au client.
+  /// La date annoncée au client dans le courriel, calculée à la RÉSERVATION. C'est
+  /// un MINIMUM · la date réelle se calcule sur `envoyeLe` (trente jours pleins
+  /// après le jour de l'envoi), et elle est plus tardive si le message part plus
+  /// tard qu'il n'a été écrit (retenté un autre jour). Sens sûr · le dossier n'est
+  /// jamais supprimable avant la date annoncée, il peut l'être après.
   supprimableLe DateTime  @db.Date
   parOperateur  String
   createdAt     DateTime  @default(now())
 
+  @@unique([cabinetId, termeLe])
   @@map("rappels_suppression_essai")
 }
 
