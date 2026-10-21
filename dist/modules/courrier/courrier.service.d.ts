@@ -7,6 +7,7 @@ export declare const ORIGINE_LICENCE_SUR_SITE = "LICENCE_SUR_SITE";
 export declare const ORIGINE_FACTURE_ABONNEMENT = "FACTURE_ABONNEMENT";
 export declare const ORIGINE_DOUBLE_AUTHENTIFICATION = "DOUBLE_AUTHENTIFICATION";
 export declare const ORIGINE_CONDITIONS_LICENCE = "CONDITIONS_LICENCE";
+export declare const ORIGINE_RAPPEL_SUPPRESSION_ESSAI = "RAPPEL_SUPPRESSION_ESSAI";
 export interface MessageAMettreEnFile {
     destinataire: string;
     destinataireNom?: string | null;
@@ -59,19 +60,20 @@ export declare class CourrierService {
     ecrireEnFileSansTenter(client: Prisma.TransactionClient, tenantId: string, messages: MessageAMettreEnFile[]): Promise<ResultatEcritureEnFile[]>;
     private preparer;
     reprendre(tenantId: string, limite?: number): Promise<BilanReprise>;
+    retenter(tenantId: string, id: string): Promise<ResultatMiseEnFile>;
     lister(tenantId: string, options?: {
         statut?: StatutMessage;
         limite?: number;
     }): Promise<{
         messages: {
+            origine: string;
             id: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutMessage;
-            sujet: string;
-            origine: string;
             createdBy: string | null;
             destinataire: string;
             destinataireNom: string | null;
+            sujet: string;
             origineId: string | null;
             tentatives: number;
             dernierEssaiAt: Date | null;
@@ -84,16 +86,16 @@ export declare class CourrierService {
         tronque: boolean;
     }>;
     lire(tenantId: string, id: string): Promise<{
+        origine: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutMessage;
-        tenantId: string;
-        corps: string;
-        sujet: string;
-        origine: string;
         createdBy: string | null;
         destinataire: string;
         destinataireNom: string | null;
+        sujet: string;
+        corps: string;
         origineId: string | null;
         pieceJointeNom: string | null;
         pieceJointeTexte: string | null;

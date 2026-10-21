@@ -9,8 +9,8 @@ export declare class JournalController {
     lister(user: AuthenticatedUser, actifsSeuls?: string): Promise<({
         compteTresorerie: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -27,11 +27,11 @@ export declare class JournalController {
             porteFondsContrepartieEtat: boolean;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;
@@ -50,8 +50,8 @@ export declare class JournalController {
         mois: string[];
         journaux: {
             cases: import("./etat-journaux-saisie").CaseJournalMois[];
-            id: string;
             type: import(".prisma/client").$Enums.TypeJournal;
+            id: string;
             estActif: boolean;
             intitule: string;
             code: string;
@@ -89,11 +89,11 @@ export declare class JournalController {
         motif: string | null;
     }>;
     creer(user: AuthenticatedUser, dto: CreerJournalDto): Promise<{
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;
@@ -101,11 +101,11 @@ export declare class JournalController {
         contrepartieChaqueLigne: boolean;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierJournalDto): Promise<{
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;

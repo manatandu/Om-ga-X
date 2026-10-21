@@ -46,11 +46,11 @@ export declare class PiecesJointesService {
     }>;
     listerDetachees(tenantId: string): Promise<{
         pieces: {
-            id: string;
-            createdAt: Date;
             nomFichier: string;
             commentaire: string | null;
             empreinte: string;
+            id: string;
+            createdAt: Date;
             typeMime: string;
             taille: number;
             deposePar: string | null;

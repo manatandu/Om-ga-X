@@ -14,8 +14,8 @@ export declare class ManuelProceduresService {
     lister(tenantId: string): Promise<{
         sections: SectionManuel[];
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         createdBy: string;
         version: number;
         dateApplication: Date;
@@ -31,8 +31,8 @@ export declare class ManuelProceduresService {
     }>;
     enregistrer(tenantId: string, userId: string, dto: EnregistrerManuelDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         createdBy: string;
         version: number;
         dateApplication: Date;

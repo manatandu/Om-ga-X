@@ -16,18 +16,18 @@ export declare class MandatAuditeurService {
     lister(tenantId: string): Promise<{
         mandats: {
             dernierExerciceCouvert: number;
-            id: string;
             nom: string;
-            createdAt: Date;
-            tenantId: string;
             rang: number;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
+            nombreExercices: number;
             motifFin: string | null;
             inscriptionOrdre: string;
             organeDesignation: import(".prisma/client").$Enums.OrganeDesignationAuditeur;
             dateDesignation: Date;
             premierExercice: number;
-            nombreExercices: number;
             refusDeProrogation: boolean;
             finAnticipeeLe: Date | null;
             mandatOrigineId: string | null;
@@ -50,18 +50,18 @@ export declare class MandatAuditeurService {
         mandatOrigineId?: string;
         natureSuccession?: NatureSuccession;
     }): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
-        tenantId: string;
         rang: number;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
+        nombreExercices: number;
         motifFin: string | null;
         inscriptionOrdre: string;
         organeDesignation: import(".prisma/client").$Enums.OrganeDesignationAuditeur;
         dateDesignation: Date;
         premierExercice: number;
-        nombreExercices: number;
         refusDeProrogation: boolean;
         finAnticipeeLe: Date | null;
         mandatOrigineId: string | null;
@@ -69,18 +69,18 @@ export declare class MandatAuditeurService {
     }>;
     private origineDeLaSuccession;
     refuserProrogation(tenantId: string, id: string, refus: boolean): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
-        tenantId: string;
         rang: number;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
+        nombreExercices: number;
         motifFin: string | null;
         inscriptionOrdre: string;
         organeDesignation: import(".prisma/client").$Enums.OrganeDesignationAuditeur;
         dateDesignation: Date;
         premierExercice: number;
-        nombreExercices: number;
         refusDeProrogation: boolean;
         finAnticipeeLe: Date | null;
         mandatOrigineId: string | null;
@@ -90,18 +90,18 @@ export declare class MandatAuditeurService {
         finAnticipeeLe: string;
         motifFin: string;
     }): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
-        tenantId: string;
         rang: number;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
+        nombreExercices: number;
         motifFin: string | null;
         inscriptionOrdre: string;
         organeDesignation: import(".prisma/client").$Enums.OrganeDesignationAuditeur;
         dateDesignation: Date;
         premierExercice: number;
-        nombreExercices: number;
         refusDeProrogation: boolean;
         finAnticipeeLe: Date | null;
         mandatOrigineId: string | null;

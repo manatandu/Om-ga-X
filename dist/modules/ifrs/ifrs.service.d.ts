@@ -44,10 +44,10 @@ export declare class IfrsService {
         decouvertsDansTresorerie: boolean | null;
         tresorerieEnDevises: boolean | null;
         effetChange: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             montant: Prisma.Decimal;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             consolide: boolean;
             justification: string;
@@ -62,8 +62,8 @@ export declare class IfrsService {
         dejaAdoptant: boolean;
         regles: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             prefixe: string;
             rubrique: string;
         }[];
@@ -80,8 +80,8 @@ export declare class IfrsService {
                 retraitementId: string;
             }[];
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             fondement: string;
@@ -103,8 +103,8 @@ export declare class IfrsService {
                 retraitementId: string;
             }[];
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             fondement: string;
@@ -140,10 +140,10 @@ export declare class IfrsService {
             motifN1: string | null;
             mouvements: {
                 montant: number;
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeMouvementCpIfrs;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
                 exerciceId: string;
                 libelle: string;
                 consolide: boolean;
@@ -167,15 +167,15 @@ export declare class IfrsService {
         activitePrincipale: import(".prisma/client").$Enums.ActivitePrincipaleIfrs | null;
         regles: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             prefixe: string;
             rubrique: string;
         }[];
         reglesConsolidation: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             rubrique: string;
             poste: string;
         }[];
@@ -192,8 +192,8 @@ export declare class IfrsService {
                 retraitementId: string;
             }[];
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             fondement: string;
@@ -219,10 +219,10 @@ export declare class IfrsService {
         dejaAdoptantConsolide: boolean;
         exemptionRegroupementsC1: boolean | null;
         effetChange: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             montant: Prisma.Decimal;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             consolide: boolean;
             justification: string;
@@ -255,8 +255,8 @@ export declare class IfrsService {
                 retraitementId: string;
             }[];
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             fondement: string;
@@ -292,10 +292,10 @@ export declare class IfrsService {
             motifN1: string | null;
             mouvements: {
                 montant: number;
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeMouvementCpIfrs;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
                 exerciceId: string;
                 libelle: string;
                 consolide: boolean;
@@ -306,15 +306,15 @@ export declare class IfrsService {
         activitePrincipale: import(".prisma/client").$Enums.ActivitePrincipaleIfrs | null;
         regles: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             prefixe: string;
             rubrique: string;
         }[];
         reglesConsolidation: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             rubrique: string;
             poste: string;
         }[];
@@ -331,8 +331,8 @@ export declare class IfrsService {
                 retraitementId: string;
             }[];
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             fondement: string;
@@ -358,10 +358,10 @@ export declare class IfrsService {
         dejaAdoptantConsolide: boolean;
         exemptionRegroupementsC1: boolean | null;
         effetChange: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             montant: Prisma.Decimal;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             consolide: boolean;
             justification: string;
@@ -372,8 +372,8 @@ export declare class IfrsService {
     private fluxConsolideDe;
     ajouterRegleConsolidation(tenantId: string, dto: RegleConsolidationIfrsDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         rubrique: string;
         poste: string;
     }>;
@@ -381,20 +381,20 @@ export declare class IfrsService {
         supprime: boolean;
     }>;
     declarerNotes(tenantId: string, dto: NotesIfrsDto): Promise<{
+        contenu: Prisma.JsonValue;
         id: string;
         tenantId: string;
-        contenu: Prisma.JsonValue;
-        exerciceId: string;
         updatedAt: Date;
+        exerciceId: string;
         consolide: boolean;
         ifrs12: Prisma.JsonValue | null;
     }>;
     declarerNotesIfrs12(tenantId: string, dto: NotesIfrsDto): Promise<{
+        contenu: Prisma.JsonValue;
         id: string;
         tenantId: string;
-        contenu: Prisma.JsonValue;
-        exerciceId: string;
         updatedAt: Date;
+        exerciceId: string;
         consolide: boolean;
         ifrs12: Prisma.JsonValue | null;
     }>;
@@ -413,10 +413,10 @@ export declare class IfrsService {
         tresorerieGroupeEnDevises: boolean | null;
     }>;
     declarerEffetChange(tenantId: string, dto: EffetChangeIfrsDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         consolide: boolean;
         justification: string;
@@ -455,8 +455,8 @@ export declare class IfrsService {
     }>;
     ajouterRegle(tenantId: string, dto: RegleIfrsDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         prefixe: string;
         rubrique: string;
     }>;
@@ -465,17 +465,17 @@ export declare class IfrsService {
     }>;
     ajouterRetraitement(tenantId: string, dto: RetraitementIfrsDto): Promise<{
         lignes: {
+            montant: Prisma.Decimal;
             id: string;
             tenantId: string;
-            montant: Prisma.Decimal;
             ordre: number;
             rubrique: string;
             retraitementId: string;
         }[];
     } & {
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         fondement: string;
@@ -490,11 +490,11 @@ export declare class IfrsService {
         supprime: boolean;
     }>;
     ajouterMouvementCp(tenantId: string, dto: MouvementCpIfrsDto): Promise<{
-        id: string;
-        createdAt: Date;
-        type: import(".prisma/client").$Enums.TypeMouvementCpIfrs;
-        tenantId: string;
         montant: Prisma.Decimal;
+        type: import(".prisma/client").$Enums.TypeMouvementCpIfrs;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         consolide: boolean;

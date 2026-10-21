@@ -8,28 +8,28 @@ export declare class EtatsPersonnalisesService {
     private readonly ecritures;
     constructor(prisma: PrismaService, ecritures: EcritureService);
     lister(tenantId: string): Prisma.PrismaPromise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         lignes: Prisma.JsonValue;
     }[]>;
     private verifier;
     private doublon;
     creer(tenantId: string, dto: EtatPersonnaliseDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         lignes: Prisma.JsonValue;
     }>;
     modifier(tenantId: string, id: string, dto: EtatPersonnaliseDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         lignes: Prisma.JsonValue;
     }>;

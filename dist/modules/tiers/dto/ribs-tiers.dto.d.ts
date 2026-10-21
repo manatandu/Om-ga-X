@@ -11,3 +11,6 @@ export declare class RibTiersDto {
     commentaire?: string;
     estPrincipal?: boolean;
 }
+export declare class VisaRibDto {
+    saisiLeLu: string | null;
+}

@@ -68,12 +68,12 @@ export declare class ReevaluationBilanService {
                 valeurResiduelleAvant: Prisma.Decimal | null;
             })[];
         } & {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeReevaluation;
+            id: string;
             tenantId: string;
-            exerciceId: string;
+            createdAt: Date;
             createdBy: string;
+            exerciceId: string;
             ecritureId: string;
             dateReevaluation: Date;
             decision: string;

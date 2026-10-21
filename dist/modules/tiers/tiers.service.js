@@ -16,6 +16,7 @@ const references_1 = require("../../common/suppression/references");
 const fusion_tiers_1 = require("./fusion-tiers");
 const qualite_tiers_1 = require("./qualite-tiers");
 const lieux_livraison_1 = require("./lieux-livraison");
+const visa_rib_1 = require("./visa-rib");
 const duplication_tiers_1 = require("./duplication-tiers");
 const collectifs_tiers_1 = require("./collectifs-tiers");
 const prisma_service_1 = require("../../common/prisma.service");
@@ -364,7 +365,7 @@ let TiersService = class TiersService {
         });
         return { supprime: true };
     }
-    async fusionner(tenantId, sourceId, cibleId) {
+    async fusionner(tenantId, sourceId, cibleId, utilisateurId) {
         const [source, cible] = await Promise.all([
             this.prisma.tiers.findFirst({ where: { id: sourceId, tenantId } }),
             this.prisma.tiers.findFirst({ where: { id: cibleId, tenantId }, include: { comptesRattaches: true } }),
@@ -400,6 +401,11 @@ let TiersService = class TiersService {
                 await tx.documentTiers.deleteMany({
                     where: { tenantId, tiersId: source.id, empreinte: { in: detenues.map((d) => d.empreinte) } },
                 });
+            }
+            const maintenant = new Date();
+            const ribsDuDoublon = await tx.ribTiers.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true } });
+            for (const rib of ribsDuDoublon) {
+                await tx.ribTiers.update({ where: { id: rib.id }, data: (0, visa_rib_1.saisieDesCoordonnees)(utilisateurId, maintenant) });
             }
             const r = await (0, references_1.reporterReferences)(tx, 'Tiers', source.id, cible.id, tenantId);
             const complement = (0, fusion_tiers_1.coordonneesAComblement)(source, cible);

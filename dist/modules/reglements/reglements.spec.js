@@ -126,7 +126,7 @@ function monter(clotures = [], creancesReclassees = [], reclassements = {}, grou
     });
     const retirerCompensation = jest.fn(async () => undefined);
     const delettrer = jest.fn(async () => undefined);
-    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation }, { lettrerManuel, delettrer, completer }, ordres);
+    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation, verifierCaisseProvisionnee: jest.fn() }, { lettrerManuel, delettrer, completer }, ordres);
     return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation, prisma };
 }
 const base = { sens: 'FOURNISSEUR', exerciceId: 'ex', journalId: 'bq', date: '2026-09-25' };
@@ -317,7 +317,7 @@ function echeancier(lignes, reevaluations = [], groupes = []) {
         lignes: dto.lignes.map((l, i) => ({ ...l, id: `p-${i}` })),
     }));
     const lettrerManuel = jest.fn(async () => ({ lettre: 'b' }));
-    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation: jest.fn() }, { lettrerManuel }, {});
+    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation: jest.fn(), verifierCaisseProvisionnee: jest.fn() }, { lettrerManuel }, {});
     return { service, creer, lettrerManuel, prisma };
 }
 function ligneEcheance(id, credit, ecriture = {}, enPlus = {}) {

@@ -62,8 +62,8 @@ export declare class ReglementsService {
             lettre: string;
         }[];
         ordre: {
-            id: string;
             total: Prisma.Decimal;
+            id: string;
             numero: number;
         } | null;
         avertissements: string[];

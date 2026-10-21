@@ -6,15 +6,15 @@ export declare class LieuxLivraisonController {
     constructor(lieux: LieuxLivraisonService);
     lister(user: AuthenticatedUser, tiersId: string): Promise<{
         lieux: {
+            email: string | null;
             id: string;
+            tenantId: string;
             createdAt: Date;
             adresse: string | null;
             ville: string | null;
             pays: string | null;
             telephone: string | null;
-            email: string | null;
             estActif: boolean;
-            tenantId: string;
             intitule: string;
             contact: string | null;
             boitePostale: string | null;
@@ -26,15 +26,15 @@ export declare class LieuxLivraisonController {
         tronque: boolean;
     }>;
     creer(user: AuthenticatedUser, tiersId: string, dto: LieuLivraisonDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         contact: string | null;
         boitePostale: string | null;
@@ -43,15 +43,15 @@ export declare class LieuxLivraisonController {
         complement: string | null;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: LieuLivraisonDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         contact: string | null;
         boitePostale: string | null;

@@ -22,19 +22,19 @@ export declare class AffectationController {
                 intitule: string;
             };
         } & {
-            id: string;
             montant: import("@prisma/client/runtime/library").Decimal;
+            id: string;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
     } & {
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: import("@prisma/client/runtime/library").Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
+        exerciceId: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;
@@ -72,19 +72,19 @@ export declare class AffectationController {
                     intitule: string;
                 };
             } & {
-                id: string;
                 montant: import("@prisma/client/runtime/library").Decimal;
+                id: string;
                 libelle: string | null;
                 compteId: string;
                 affectationId: string;
             })[];
         } & {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             montant: import("@prisma/client/runtime/library").Decimal;
-            exerciceId: string;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             createdBy: string;
+            exerciceId: string;
             dateDecision: Date;
             organe: string;
             reference: string | null;
@@ -106,18 +106,18 @@ export declare class AffectationController {
                 intitule: string;
             };
         } & {
-            id: string;
             montant: import("@prisma/client/runtime/library").Decimal;
+            id: string;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: import("@prisma/client/runtime/library").Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
+        exerciceId: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;

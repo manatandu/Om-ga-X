@@ -10,13 +10,13 @@ export declare class CircularisationController {
         };
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneCircularisation;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         clotureeLe: Date | null;
         clotureePar: string | null;
         dateArrete: Date;
@@ -55,10 +55,10 @@ export declare class CircularisationController {
             } | null;
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             adresse: string | null;
             statut: import(".prisma/client").$Enums.StatutDemandeConfirmation;
-            tenantId: string;
             updatedAt: Date;
             tiersId: string | null;
             compteId: string;
@@ -77,13 +77,13 @@ export declare class CircularisationController {
             doutefiabilite: string | null;
         })[];
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneCircularisation;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         clotureeLe: Date | null;
         clotureePar: string | null;
         dateArrete: Date;
@@ -110,13 +110,13 @@ export declare class CircularisationController {
     }>;
     creer(user: AuthenticatedUser, dto: CreerCampagneCircularisationDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneCircularisation;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         clotureeLe: Date | null;
         clotureePar: string | null;
         dateArrete: Date;
@@ -130,10 +130,10 @@ export declare class CircularisationController {
     }>;
     creerDemande(user: AuthenticatedUser, id: string, dto: CreerDemandeDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         statut: import(".prisma/client").$Enums.StatutDemandeConfirmation;
-        tenantId: string;
         updatedAt: Date;
         tiersId: string | null;
         compteId: string;
@@ -178,10 +178,10 @@ export declare class CircularisationController {
             } | null;
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             adresse: string | null;
             statut: import(".prisma/client").$Enums.StatutDemandeConfirmation;
-            tenantId: string;
             updatedAt: Date;
             tiersId: string | null;
             compteId: string;
@@ -200,13 +200,13 @@ export declare class CircularisationController {
             doutefiabilite: string | null;
         })[];
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneCircularisation;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         clotureeLe: Date | null;
         clotureePar: string | null;
         dateArrete: Date;
@@ -220,10 +220,10 @@ export declare class CircularisationController {
     }>;
     depouiller(user: AuthenticatedUser, demandeId: string, dto: DepouillerDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         statut: import(".prisma/client").$Enums.StatutDemandeConfirmation;
-        tenantId: string;
         updatedAt: Date;
         tiersId: string | null;
         compteId: string;
@@ -246,10 +246,10 @@ export declare class CircularisationController {
     }>;
     proceduresAlternatives(user: AuthenticatedUser, demandeId: string, dto: ProceduresAlternativesDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         statut: import(".prisma/client").$Enums.StatutDemandeConfirmation;
-        tenantId: string;
         updatedAt: Date;
         tiersId: string | null;
         compteId: string;
@@ -269,13 +269,13 @@ export declare class CircularisationController {
     }>;
     clore(user: AuthenticatedUser, id: string, dto: ClorerCampagneDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneCircularisation;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         clotureeLe: Date | null;
         clotureePar: string | null;
         dateArrete: Date;

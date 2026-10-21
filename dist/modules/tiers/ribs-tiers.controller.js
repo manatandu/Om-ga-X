@@ -22,18 +22,22 @@ const roles_decorator_1 = require("../../common/decorators/roles.decorator");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 const ribs_tiers_service_1 = require("./ribs-tiers.service");
 const ribs_tiers_dto_1 = require("./dto/ribs-tiers.dto");
+const acces_roles_cantonnes_decorator_1 = require("../../common/decorators/acces-roles-cantonnes.decorator");
 let RibsTiersController = class RibsTiersController {
     constructor(ribs) {
         this.ribs = ribs;
     }
     lister(user, tiersId) {
-        return this.ribs.lister(user.tenantId, tiersId);
+        return this.ribs.lister(user.tenantId, tiersId, user.userId);
     }
     creer(user, tiersId, dto) {
-        return this.ribs.creer(user.tenantId, tiersId, dto);
+        return this.ribs.creer(user.tenantId, tiersId, dto, user.userId);
     }
     modifier(user, id, dto) {
-        return this.ribs.modifier(user.tenantId, id, dto);
+        return this.ribs.modifier(user.tenantId, id, dto, user.userId);
+    }
+    viser(user, id, dto) {
+        return this.ribs.viser(user.tenantId, id, user.userId, dto.saisiLeLu);
     }
     supprimer(user, id) {
         return this.ribs.supprimer(user.tenantId, id);
@@ -68,6 +72,17 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, ribs_tiers_dto_1.RibTiersDto]),
     __metadata("design:returntype", void 0)
 ], RibsTiersController.prototype, "modifier", null);
+__decorate([
+    (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET, client_1.RoleUtilisateur.COMPTABLE),
+    (0, acces_roles_cantonnes_decorator_1.ReserveAuComptable)(),
+    (0, common_1.Post)('ribs-tiers/:id/viser'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, ribs_tiers_dto_1.VisaRibDto]),
+    __metadata("design:returntype", void 0)
+], RibsTiersController.prototype, "viser", null);
 __decorate([
     (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET),
     (0, common_1.Delete)('ribs-tiers/:id'),

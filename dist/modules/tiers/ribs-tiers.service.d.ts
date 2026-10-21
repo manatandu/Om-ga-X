@@ -6,12 +6,8 @@ export declare class RibsTiersService {
     private tiersDuDossier;
     private trouver;
     private donnees;
-    lister(tenantId: string, tiersId: string): Promise<{
-        devise: string | null;
-        banque: string;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
+    lister(tenantId: string, tiersId: string, utilisateurId: string): Promise<{
+        visa: import("./visa-rib").VisaPresente;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -20,15 +16,19 @@ export declare class RibsTiersService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        devise: string | null;
+        banque: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
+        saisiPar: string | null;
+        saisiLe: Date | null;
+        visePar: string | null;
+        viseLe: Date | null;
     }[]>;
-    creer(tenantId: string, tiersId: string, dto: RibTiersDto): Promise<{
-        devise: string | null;
-        banque: string;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
+    creer(tenantId: string, tiersId: string, dto: RibTiersDto, utilisateurId: string): Promise<{
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -37,15 +37,19 @@ export declare class RibsTiersService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        devise: string | null;
+        banque: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
+        saisiPar: string | null;
+        saisiLe: Date | null;
+        visePar: string | null;
+        viseLe: Date | null;
     }>;
-    modifier(tenantId: string, id: string, dto: RibTiersDto): Promise<{
-        devise: string | null;
-        banque: string;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
+    modifier(tenantId: string, id: string, dto: RibTiersDto, utilisateurId: string): Promise<{
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -54,10 +58,44 @@ export declare class RibsTiersService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        devise: string | null;
+        banque: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
+        saisiPar: string | null;
+        saisiLe: Date | null;
+        visePar: string | null;
+        viseLe: Date | null;
+    }>;
+    viser(tenantId: string, id: string, utilisateurId: string, saisiLeLu: string | null): Promise<{
+        rib: {
+            commentaire: string | null;
+            titulaire: string | null;
+            codeBanque: string | null;
+            codeGuichet: string | null;
+            numeroCompte: string | null;
+            cle: string | null;
+            iban: string | null;
+            codeBic: string | null;
+            devise: string | null;
+            banque: string;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
+            tiersId: string;
+            estPrincipal: boolean;
+            saisiPar: string | null;
+            saisiLe: Date | null;
+            visePar: string | null;
+            viseLe: Date | null;
+        };
+        avertissement: string | null;
     }>;
     supprimer(tenantId: string, id: string): Promise<{
         supprime: boolean;
     }>;
 }
+export declare function courrielsDesAuteurs(prisma: PrismaService, tenantId: string, ids: string[]): Promise<Map<string, string>>;

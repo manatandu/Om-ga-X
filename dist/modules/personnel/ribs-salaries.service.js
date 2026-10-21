@@ -15,6 +15,8 @@ const prisma_service_1 = require("../../common/prisma.service");
 const transaction_journalisee_1 = require("../../common/audit/transaction-journalisee");
 const banques_1 = require("../banques/banques");
 const ribs_tiers_1 = require("../tiers/ribs-tiers");
+const ribs_tiers_service_1 = require("../tiers/ribs-tiers.service");
+const visa_rib_1 = require("../tiers/visa-rib");
 const nul = (v) => (v === undefined || v.trim() === '' ? null : v.trim());
 exports.PLAFOND_RIBS_SALARIE = 20;
 let RibsSalariesService = class RibsSalariesService {
@@ -52,32 +54,35 @@ let RibsSalariesService = class RibsSalariesService {
             throw new common_1.BadRequestException(refus.replace('du tiers', 'du salarié'));
         return donnees;
     }
-    async lire(tenantId, salarieId) {
+    async lire(tenantId, salarieId, utilisateurId) {
         const s = await this.salarie(tenantId, salarieId);
-        const [ribs, total] = await Promise.all([
+        const [ribs, total, dossier] = await Promise.all([
             this.prisma.ribSalarie.findMany({
                 where: { tenantId, salarieId },
                 orderBy: [{ estPrincipal: 'desc' }, { createdAt: 'asc' }],
                 take: exports.PLAFOND_RIBS_SALARIE,
             }),
             this.prisma.ribSalarie.count({ where: { tenantId, salarieId } }),
+            this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaRibs: true } }),
         ]);
+        const courriels = await (0, ribs_tiers_service_1.courrielsDesAuteurs)(this.prisma, tenantId, (0, visa_rib_1.auteursDesVisas)(ribs));
+        const exige = dossier?.visaRibs === true;
         return {
             modePaiement: s.modePaiement,
-            ribs: ribs.map((r) => ({ ...r, coordonnees: (0, ribs_tiers_1.coordonneesImprimees)(r) })),
+            ribs: ribs.map((r) => ({ ...r, coordonnees: (0, ribs_tiers_1.coordonneesImprimees)(r), visa: (0, visa_rib_1.presenterVisa)(r, exige, utilisateurId, courriels) })),
             total,
             tronque: total > ribs.length,
         };
     }
-    async definirMode(tenantId, salarieId, mode) {
+    async definirMode(tenantId, salarieId, mode, utilisateurId) {
         if (mode === undefined) {
             throw new common_1.BadRequestException('Le mode de paiement se déclare (virement, chèque, espèces), ou « pas encore dit » (null).');
         }
         await this.salarie(tenantId, salarieId);
         await this.prisma.salarie.update({ where: { id: salarieId, tenantId }, data: { modePaiement: mode } });
-        return this.lire(tenantId, salarieId);
+        return this.lire(tenantId, salarieId, utilisateurId);
     }
-    async creer(tenantId, salarieId, dto) {
+    async creer(tenantId, salarieId, dto, utilisateurId) {
         await this.salarie(tenantId, salarieId);
         const donnees = this.donnees(dto);
         const existants = await this.prisma.ribSalarie.count({ where: { tenantId, salarieId } });
@@ -85,21 +90,47 @@ let RibsSalariesService = class RibsSalariesService {
         return (0, transaction_journalisee_1.transactionJournalisee)(this.prisma, async (tx) => {
             if (principal)
                 await tx.ribSalarie.updateMany({ where: { tenantId, salarieId }, data: { estPrincipal: false } });
-            return tx.ribSalarie.create({ data: { ...donnees, tenantId, salarieId, estPrincipal: principal } });
+            return tx.ribSalarie.create({
+                data: { ...donnees, tenantId, salarieId, estPrincipal: principal, ...(0, visa_rib_1.saisieDesCoordonnees)(utilisateurId, new Date()) },
+            });
         });
     }
-    async modifier(tenantId, id, dto) {
-        const rib = await this.trouver(tenantId, id);
+    async modifier(tenantId, id, dto, utilisateurId) {
+        await this.trouver(tenantId, id);
         const donnees = this.donnees(dto);
         return (0, transaction_journalisee_1.transactionJournalisee)(this.prisma, async (tx) => {
+            await tx.$queryRaw `SELECT id FROM "ribs_salaries" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+            const rib = await tx.ribSalarie.findFirst({ where: { id, tenantId } });
+            if (!rib)
+                throw new common_1.NotFoundException('RIB introuvable pour ce dossier.');
             if (dto.estPrincipal === true && !rib.estPrincipal) {
                 await tx.ribSalarie.updateMany({ where: { tenantId, salarieId: rib.salarieId }, data: { estPrincipal: false } });
             }
             return tx.ribSalarie.update({
                 where: { id: rib.id },
-                data: { ...donnees, ...(dto.estPrincipal === true ? { estPrincipal: true } : {}) },
+                data: {
+                    ...donnees,
+                    ...(dto.estPrincipal === true ? { estPrincipal: true } : {}),
+                    ...((0, visa_rib_1.coordonneesChangees)(rib, donnees) ? (0, visa_rib_1.saisieDesCoordonnees)(utilisateurId, new Date()) : {}),
+                },
             });
         });
+    }
+    async viser(tenantId, id, utilisateurId, saisiLeLu) {
+        await this.trouver(tenantId, id);
+        const vise = await (0, transaction_journalisee_1.transactionJournalisee)(this.prisma, async (tx) => {
+            await tx.$queryRaw `SELECT id FROM "ribs_salaries" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+            const rib = await tx.ribSalarie.findFirst({ where: { id, tenantId } });
+            if (!rib)
+                throw new common_1.NotFoundException('RIB introuvable pour ce dossier.');
+            const refus = (0, visa_rib_1.motifRefusVisa)(rib, utilisateurId, saisiLeLu);
+            if (refus === visa_rib_1.MOTIF_VISA_PAR_SON_AUTEUR)
+                throw new common_1.ForbiddenException(refus);
+            if (refus)
+                throw new common_1.ConflictException(refus);
+            return tx.ribSalarie.update({ where: { id: rib.id }, data: { visePar: utilisateurId, viseLe: new Date() } });
+        });
+        return { rib: vise, avertissement: vise.saisiPar === null ? visa_rib_1.AVERTISSEMENT_AUTEUR_INCONNU : null };
     }
     async supprimer(tenantId, id) {
         const rib = await this.trouver(tenantId, id);

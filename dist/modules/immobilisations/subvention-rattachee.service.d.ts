@@ -8,13 +8,13 @@ export declare class SubventionRattacheeService {
     constructor(prisma: PrismaService, ecritures: EcritureService);
     lister(tenantId: string, immobilisationId?: string): Promise<{
         subventions: {
+            montant: Prisma.Decimal;
             immobilisation: {
                 id: string;
                 designation: string;
                 numeroInventaire: string | null;
             };
             id: string;
-            montant: Prisma.Decimal;
             reference: string;
             dateOctroi: Date;
             dureeInalienabiliteAns: number | null;
@@ -25,10 +25,10 @@ export declare class SubventionRattacheeService {
                 intitule: string;
             };
             reductions: {
-                id: string;
-                createdAt: Date;
                 nature: import(".prisma/client").$Enums.NatureReductionSubvention;
                 montant: Prisma.Decimal;
+                id: string;
+                createdAt: Date;
                 motif: string;
             }[];
         }[];
@@ -73,11 +73,11 @@ export declare class SubventionRattacheeService {
     }>;
     enregistrerOctroi(tenantId: string, userId: string, dto: OctroiSubventionDto): Promise<{
         journal: {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeJournal;
-            estActif: boolean;
+            id: string;
             tenantId: string;
+            createdAt: Date;
+            estActif: boolean;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -86,9 +86,9 @@ export declare class SubventionRattacheeService {
         };
         lignes: {
             id: string;
-            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
+            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: Prisma.Decimal;
@@ -106,17 +106,17 @@ export declare class SubventionRattacheeService {
         }[];
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        tenantId: string;
-        exerciceId: string;
-        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
+        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -130,10 +130,10 @@ export declare class SubventionRattacheeService {
         motifCorrection: string | null;
     }>;
     rattacher(tenantId: string, userId: string, dto: RattacherSubventionDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
         reference: string;
         immobilisationId: string;
@@ -146,13 +146,13 @@ export declare class SubventionRattacheeService {
         methodeDepreciationBienSubventionne: import(".prisma/client").$Enums.MethodeDepreciationBienSubventionne | null;
     }>;
     reduire(tenantId: string, userId: string, subventionId: string, dto: ReduireSubventionDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureReductionSubvention;
         montant: Prisma.Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
+        exerciceId: string;
         ecritureId: string;
         motif: string;
         subventionId: string;

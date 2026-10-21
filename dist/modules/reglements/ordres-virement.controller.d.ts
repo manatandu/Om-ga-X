@@ -14,11 +14,11 @@ export declare class OrdresVirementController {
                 lignes: number;
             };
         } & {
+            total: import("@prisma/client/runtime/library").Decimal;
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutOrdreVirement;
-            tenantId: string;
-            total: import("@prisma/client/runtime/library").Decimal;
             numero: number;
             journalId: string;
             date: Date;
@@ -44,11 +44,11 @@ export declare class OrdresVirementController {
             code: string;
         };
         lignes: {
+            montant: import("@prisma/client/runtime/library").Decimal;
+            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
-            montant: import("@prisma/client/runtime/library").Decimal;
-            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -60,11 +60,11 @@ export declare class OrdresVirementController {
             imputationDeclaree: string | null;
         }[];
     } & {
+        total: import("@prisma/client/runtime/library").Decimal;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
-        tenantId: string;
-        total: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         journalId: string;
         date: Date;
@@ -101,11 +101,11 @@ export declare class OrdresVirementController {
             code: string;
         };
         lignes: {
+            montant: import("@prisma/client/runtime/library").Decimal;
+            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
-            montant: import("@prisma/client/runtime/library").Decimal;
-            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -117,11 +117,11 @@ export declare class OrdresVirementController {
             imputationDeclaree: string | null;
         }[];
     } & {
+        total: import("@prisma/client/runtime/library").Decimal;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
-        tenantId: string;
-        total: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         journalId: string;
         date: Date;
@@ -142,11 +142,11 @@ export declare class OrdresVirementController {
             code: string;
         };
         lignes: {
+            montant: import("@prisma/client/runtime/library").Decimal;
+            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
-            montant: import("@prisma/client/runtime/library").Decimal;
-            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -158,11 +158,11 @@ export declare class OrdresVirementController {
             imputationDeclaree: string | null;
         }[];
     } & {
+        total: import("@prisma/client/runtime/library").Decimal;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
-        tenantId: string;
-        total: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         journalId: string;
         date: Date;

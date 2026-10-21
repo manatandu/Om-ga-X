@@ -6,8 +6,8 @@ export declare class ModelesEditionController {
     constructor(service: ModelesEditionService);
     lister(user: AuthenticatedUser, edition?: string): Promise<{
         modeles: {
-            id: string;
             nom: string;
+            id: string;
             edition: import(".prisma/client").$Enums.EditionModele;
             creeLe: Date;
             modifieLe: Date;
@@ -18,8 +18,8 @@ export declare class ModelesEditionController {
         tronque: boolean;
     }>;
     creer(user: AuthenticatedUser, dto: CreerModeleEditionDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
         edition: import(".prisma/client").$Enums.EditionModele;
         creeLe: Date;
         modifieLe: Date;
@@ -27,8 +27,8 @@ export declare class ModelesEditionController {
         saut: import(".prisma/client").$Enums.SautEdition;
     }>;
     remplacer(user: AuthenticatedUser, id: string, dto: RemplacerModeleEditionDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
         edition: import(".prisma/client").$Enums.EditionModele;
         creeLe: Date;
         modifieLe: Date;

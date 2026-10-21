@@ -14,18 +14,18 @@ export declare class ConsolidationController {
             dotation: number;
             reprise: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
-            entiteId: string | null;
             compteProvision: string;
+            entiteId: string | null;
         }[];
         ecartsEvaluation: {
             montant: number;
             compte: string;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             mode: import(".prisma/client").$Enums.ModeEcartEvaluation;
@@ -42,10 +42,10 @@ export declare class ConsolidationController {
         resultatsInternes: {
             margeOuverture: number;
             margeCloture: number;
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             nature: import(".prisma/client").$Enums.NatureResultatInterne;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             vendeuseId: string | null;
@@ -55,14 +55,14 @@ export declare class ConsolidationController {
         reciproques: {
             montant: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
+            libelle: string;
             entiteAId: string | null;
             compteA: string;
             entiteBId: string | null;
             compteB: string;
-            libelle: string;
         }[];
         entites: {
             tauxImpotDiffere: number | null;
@@ -76,10 +76,10 @@ export declare class ConsolidationController {
             coursProduitsCharges: number | null;
             coursEntree: number | null;
             capitauxPropresHistoriques: number | null;
-            id: string;
             nom: string;
-            createdAt: Date;
+            id: string;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             designationMajoriteDeuxExercices: boolean;
             aucunAutreAssocieSuperieur: boolean;
@@ -102,8 +102,8 @@ export declare class ConsolidationController {
             pctDroitsVote: number;
             pctCapital: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             detentriceId: string | null;
             detenueId: string;
@@ -136,6 +136,7 @@ export declare class ConsolidationController {
             seuilEquivalentFc: number | null;
             id: string;
             tenantId: string;
+            updatedAt: Date;
             exerciceId: string;
             sourceTauxImpot: string | null;
             justificationIda: string | null;
@@ -145,7 +146,6 @@ export declare class ConsolidationController {
             demandeAssociesDixieme: boolean;
             entitesControleHorsOhada: string | null;
             sourceSeuil: string | null;
-            updatedAt: Date;
         } | null;
         resultats: import("./perimetre-consolidation").ResultatEntite[];
         obligation: import("./perimetre-consolidation").VerdictObligation;
@@ -153,10 +153,10 @@ export declare class ConsolidationController {
         seuilDispenseFcfa: number;
     }>;
     creerEntite(user: AuthenticatedUser, dto: EntitePerimetreDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -187,10 +187,10 @@ export declare class ConsolidationController {
         fichierBalance: string | null;
     }>;
     modifierEntite(user: AuthenticatedUser, id: string, dto: ModifierEntitePerimetreDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -225,8 +225,8 @@ export declare class ConsolidationController {
     }>;
     ajouterLien(user: AuthenticatedUser, dto: LienParticipationDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -246,8 +246,8 @@ export declare class ConsolidationController {
     }>;
     modifierLien(user: AuthenticatedUser, id: string, dto: ModifierLienParticipationDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -271,6 +271,7 @@ export declare class ConsolidationController {
     enregistrerFaits(user: AuthenticatedUser, dto: FaitsConsolidationDto): Promise<{
         id: string;
         tenantId: string;
+        updatedAt: Date;
         exerciceId: string;
         tauxImpotDiffere: import("@prisma/client/runtime/library").Decimal | null;
         sourceTauxImpot: string | null;
@@ -290,7 +291,6 @@ export declare class ConsolidationController {
         chiffreAffairesN1: import("@prisma/client/runtime/library").Decimal | null;
         seuilEquivalentFc: import("@prisma/client/runtime/library").Decimal | null;
         sourceSeuil: string | null;
-        updatedAt: Date;
     }>;
     cumul(user: AuthenticatedUser, exerciceId: string): Promise<{
         reserves: string[];
@@ -352,8 +352,8 @@ export declare class ConsolidationController {
     }>;
     declarerAcquisition(user: AuthenticatedUser, id: string, dto: AcquisitionDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -372,11 +372,11 @@ export declare class ConsolidationController {
         obligationNonDesengagement: boolean;
     }>;
     ajouterEcartEvaluation(user: AuthenticatedUser, id: string, dto: EcartEvaluationDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         compte: string;
         id: string;
-        createdAt: Date;
         tenantId: string;
-        montant: import("@prisma/client/runtime/library").Decimal;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         mode: import(".prisma/client").$Enums.ModeEcartEvaluation;
@@ -391,11 +391,11 @@ export declare class ConsolidationController {
     ajouterProvisionChange(user: AuthenticatedUser, dto: ProvisionChangeDto): Promise<{
         cloture: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
-        entiteId: string | null;
         compteProvision: string;
+        entiteId: string | null;
         dotation: import("@prisma/client/runtime/library").Decimal;
         reprise: import("@prisma/client/runtime/library").Decimal;
     }>;
@@ -403,10 +403,10 @@ export declare class ConsolidationController {
         supprime: boolean;
     }>;
     enregistrerMonnaie(user: AuthenticatedUser, id: string, dto: MonnaieEntiteDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -437,10 +437,10 @@ export declare class ConsolidationController {
         fichierBalance: string | null;
     }>;
     enregistrerFiscalite(user: AuthenticatedUser, dto: FiscaliteEntiteDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -472,6 +472,7 @@ export declare class ConsolidationController {
     } | {
         id: string;
         tenantId: string;
+        updatedAt: Date;
         exerciceId: string;
         tauxImpotDiffere: import("@prisma/client/runtime/library").Decimal | null;
         sourceTauxImpot: string | null;
@@ -491,13 +492,12 @@ export declare class ConsolidationController {
         chiffreAffairesN1: import("@prisma/client/runtime/library").Decimal | null;
         seuilEquivalentFc: import("@prisma/client/runtime/library").Decimal | null;
         sourceSeuil: string | null;
-        updatedAt: Date;
     }>;
     ajouterResultatInterne(user: AuthenticatedUser, dto: ResultatInterneDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureResultatInterne;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         vendeuseId: string | null;
@@ -510,16 +510,16 @@ export declare class ConsolidationController {
         supprime: boolean;
     }>;
     ajouterReciproque(user: AuthenticatedUser, dto: OperationReciproqueDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: import("@prisma/client/runtime/library").Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
+        libelle: string;
         entiteAId: string | null;
         compteA: string;
         entiteBId: string | null;
         compteB: string;
-        libelle: string;
     }>;
     supprimerReciproque(user: AuthenticatedUser, id: string): Promise<{
         supprime: boolean;

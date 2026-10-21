@@ -116,7 +116,11 @@ export declare class ExportService {
     }): Promise<ClasseurExporte>;
     evolutionSoldesExcel(tenantId: string, nbExercices?: number): Promise<ClasseurExporte>;
     tableauImmobilisationsExcel(tenantId: string, dateArret?: string): Promise<ClasseurExporte>;
+    tableauxImmobilisationsExcel(tenantId: string, exerciceId: string, dateArret?: string): Promise<ClasseurExporte>;
+    private feuilleImmobilisations;
     tableauAmortissementsExcel(tenantId: string, exerciceId: string): Promise<ClasseurExporte>;
+    private feuilleAmortissements;
+    private feuilleReevaluations;
     private exerciceDuDossier;
     private identiteLiasse;
     private champsFiche1;
@@ -211,3 +215,8 @@ export declare class ExportService {
     private liasseSmtSyscohadaEtafi;
     liasseCompleteExcel(tenantId: string, exerciceId: string, paiementsEnInstance?: number | null): Promise<ClasseurExporte>;
 }
+export declare function dateArretDansLExercice(dateArret: string | undefined, exercice: {
+    dateDebut: Date;
+    dateFin: Date;
+}): string;
+export declare function dateArretLisible(dateArret: string | undefined): string | undefined;

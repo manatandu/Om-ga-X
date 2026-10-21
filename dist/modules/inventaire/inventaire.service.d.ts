@@ -15,13 +15,13 @@ export declare class InventaireService {
     private campagneOuverte;
     creer(tenantId: string, userId: string, dto: CreerCampagneDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -31,13 +31,13 @@ export declare class InventaireService {
     }>;
     modifier(tenantId: string, id: string, dto: ModifierCampagneDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -46,19 +46,19 @@ export declare class InventaireService {
         clotureePar: string | null;
     }>;
     ajouterSousCommission(tenantId: string, campagneId: string, dto: AjouterSousCommissionDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         campagneId: string;
         perimetre: string | null;
     }>;
     ajouterMembre(tenantId: string, sousCommissionId: string, dto: AjouterMembreDto): Promise<{
-        id: string;
-        nom: string;
-        createdAt: Date;
         role: import(".prisma/client").$Enums.RoleMembreInventaire;
+        nom: string;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         sousCommissionId: string;
         fonction: string | null;
     }>;
@@ -69,8 +69,8 @@ export declare class InventaireService {
     }>;
     creerFiche(tenantId: string, campagneId: string, dto: CreerFicheDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         compteId: string;
         designation: string;
@@ -86,8 +86,8 @@ export declare class InventaireService {
     private sousCommissionDeLaCampagne;
     saisirComptage(tenantId: string, ficheId: string, dto: SaisirComptageDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         compteId: string;
         designation: string;
@@ -115,8 +115,8 @@ export declare class InventaireService {
             } | null;
             coupures: {
                 id: string;
-                createdAt: Date;
                 tenantId: string;
+                createdAt: Date;
                 pvId: string;
                 valeurUnitaire: Prisma.Decimal;
                 nombre: number;
@@ -164,8 +164,8 @@ export declare class InventaireService {
             };
         } & {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             ecritureId: string | null;
             compteId: string;
@@ -183,19 +183,19 @@ export declare class InventaireService {
         })[];
         sousCommissions: ({
             membres: {
-                id: string;
-                nom: string;
-                createdAt: Date;
                 role: import(".prisma/client").$Enums.RoleMembreInventaire;
+                nom: string;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
                 sousCommissionId: string;
                 fonction: string | null;
             }[];
         } & {
-            id: string;
             nom: string;
-            createdAt: Date;
+            id: string;
             tenantId: string;
+            createdAt: Date;
             campagneId: string;
             perimetre: string | null;
         })[];
@@ -206,8 +206,8 @@ export declare class InventaireService {
             };
         } & {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             compteId: string;
             designation: string;
@@ -221,13 +221,13 @@ export declare class InventaireService {
             quantiteComptee: Prisma.Decimal | null;
         })[];
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -237,8 +237,8 @@ export declare class InventaireService {
     }>;
     arbitrer(tenantId: string, ecartId: string, userId: string, dto: ArbitrerEcartDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         ecritureId: string | null;
         compteId: string;
@@ -282,8 +282,8 @@ export declare class InventaireService {
         date: string;
         id: string;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        libelle: string;
         numeroPiece: number | null;
+        libelle: string;
     }[]>;
     rattacherEcritureRedressement(tenantId: string, ecartId: string, ecritureId: string): Promise<{
         rattache: boolean;
@@ -294,13 +294,13 @@ export declare class InventaireService {
     }>;
     etablirProcesVerbal(tenantId: string, campagneId: string, userId: string, dto: EtablirProcesVerbalDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -318,8 +318,8 @@ export declare class InventaireService {
         } | null;
         coupures: {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             pvId: string;
             valeurUnitaire: Prisma.Decimal;
             nombre: number;
@@ -382,13 +382,13 @@ export declare class InventaireService {
     }[]>;
     clore(tenantId: string, campagneId: string, userId: string): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -405,13 +405,13 @@ export declare class InventaireService {
         };
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;
@@ -430,8 +430,8 @@ export declare class InventaireService {
             } | null;
             coupures: {
                 id: string;
-                createdAt: Date;
                 tenantId: string;
+                createdAt: Date;
                 pvId: string;
                 valeurUnitaire: Prisma.Decimal;
                 nombre: number;
@@ -479,8 +479,8 @@ export declare class InventaireService {
             };
         } & {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             ecritureId: string | null;
             compteId: string;
@@ -498,19 +498,19 @@ export declare class InventaireService {
         })[];
         sousCommissions: ({
             membres: {
-                id: string;
-                nom: string;
-                createdAt: Date;
                 role: import(".prisma/client").$Enums.RoleMembreInventaire;
+                nom: string;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
                 sousCommissionId: string;
                 fonction: string | null;
             }[];
         } & {
-            id: string;
             nom: string;
-            createdAt: Date;
+            id: string;
             tenantId: string;
+            createdAt: Date;
             campagneId: string;
             perimetre: string | null;
         })[];
@@ -521,8 +521,8 @@ export declare class InventaireService {
             };
         } & {
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             compteId: string;
             designation: string;
@@ -536,13 +536,13 @@ export declare class InventaireService {
             quantiteComptee: Prisma.Decimal | null;
         })[];
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutCampagneInventaire;
-        tenantId: string;
-        exerciceId: string;
         updatedAt: Date;
-        libelle: string;
         createdBy: string;
+        exerciceId: string;
+        libelle: string;
         dateInventaire: Date;
         instructions: string | null;
         procesVerbalEtabliLe: Date | null;

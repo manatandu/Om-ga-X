@@ -32,11 +32,11 @@ export declare class EmballagesService {
     }>;
     creer(tenantId: string, userId: string, dto: CreerConsignationDto): Promise<{
         consignation: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             nature: import(".prisma/client").$Enums.NatureObjetConsigne;
             montant: import("@prisma/client/runtime/library").Decimal;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             createdBy: string;
             tiersId: string;
@@ -59,11 +59,11 @@ export declare class EmballagesService {
     propositionDenouement(tenantId: string, consignationId: string, mode: ModeDenouement, prixDeReprise?: number | null): Promise<import("./consignation").PropositionDenouement>;
     denouer(tenantId: string, consignationId: string, dto: DenouerConsignationDto): Promise<{
         consignation: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             nature: import(".prisma/client").$Enums.NatureObjetConsigne;
             montant: import("@prisma/client/runtime/library").Decimal;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             updatedAt: Date;
             createdBy: string;
             tiersId: string;

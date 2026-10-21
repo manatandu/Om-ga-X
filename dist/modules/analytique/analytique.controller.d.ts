@@ -47,9 +47,9 @@ export declare class AnalytiqueController {
         };
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -60,9 +60,9 @@ export declare class AnalytiqueController {
     })[]>;
     creerPlan(user: AuthenticatedUser, dto: CreerPlanAnalytiqueDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -73,9 +73,9 @@ export declare class AnalytiqueController {
     }>;
     modifierPlan(user: AuthenticatedUser, planId: string, dto: ModifierPlanAnalytiqueDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -98,60 +98,60 @@ export declare class AnalytiqueController {
     }>;
     listerSections(user: AuthenticatedUser, planId: string): Promise<({
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     })[]>;
     creerSection(user: AuthenticatedUser, planId: string, dto: CreerSectionDto): Promise<{
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     }>;
     modifierSection(user: AuthenticatedUser, sectionId: string, dto: ModifierSectionDto): Promise<{
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     }>;
     supprimerSection(user: AuthenticatedUser, sectionId: string): Promise<{
         supprime: boolean;
@@ -265,44 +265,44 @@ export declare class AnalytiqueController {
             ecriture: {
                 id: string;
                 statut: import(".prisma/client").$Enums.StatutEcriture;
-                libelle: string;
                 date: Date;
                 numeroPiece: number | null;
+                libelle: string;
             };
         }[];
     }[]>;
     ecrituresRattachables(user: AuthenticatedUser, exerciceId: string, recherche?: string): Promise<{
         ecritures: {
             id: string;
-            libelle: string;
             date: Date;
             reference: string | null;
             numeroPiece: number | null;
+            libelle: string;
         }[];
         total: number;
         tronque: boolean;
     }>;
     creerEngagement(user: AuthenticatedUser, dto: CreerEngagementDto): Promise<{
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
         updatedAt: Date;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;
         beneficiaire: string;
     }>;
     rattacherExecution(user: AuthenticatedUser, engagementId: string, dto: RattacherExecutionDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        montant: import("@prisma/client/runtime/library").Decimal;
         createdBy: string;
         ecritureId: string;
         engagementId: string;
@@ -311,34 +311,34 @@ export declare class AnalytiqueController {
         detache: boolean;
     }>;
     cloreEngagement(user: AuthenticatedUser, engagementId: string, dto: CloreEngagementDto): Promise<{
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
         updatedAt: Date;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;
         beneficiaire: string;
     }>;
     rouvrirEngagement(user: AuthenticatedUser, engagementId: string): Promise<{
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
         updatedAt: Date;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;

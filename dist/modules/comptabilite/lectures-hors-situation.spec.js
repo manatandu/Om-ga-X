@@ -54,6 +54,8 @@ const MOTIFS = {
         'ses simulations sous leur propre sigle (jamais en brouillard), et aucun total ne les ajoute aux autres journaux',
     FILTRE_DE_L_APPELANT: "le filtre est reçu de l'appelant, dans le même fichier, qui pose lui-même le statut (le grand livre, " +
         '`perimetreEcriture` et `HORS_SITUATION`) · la fonction ne fait que regrouper ce qu’on lui donne',
+    DECOMPTE_DE_CE_QUI_PART: "le décompte de ce que la suppression d'un dossier d'essai emporte compte TOUT, brouillard et situation compris " +
+        "(la trace n'a que des nombres) · le filtrer sous-dirait ce qui part, et rien n'est servi comme un état comptable",
 };
 const EXCEPTIONS = [
     { fichier: 'src/common/journal-de-situation/extension-journal-de-situation.ts', fonction: 'garderJournalDeSituation', appel: 'ecriture.groupBy', nombre: 1, motif: 'PAR_IDENTIFIANT' },
@@ -128,6 +130,7 @@ const EXCEPTIONS = [
     { fichier: 'src/modules/lettrage/ligne-de-reclassement.ts', fonction: 'lignesDeLaPerteAvecTva', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
     { fichier: 'src/modules/lettrage/reconduction-lettrage.ts', fonction: 'poserGroupeReconduit', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
     { fichier: 'src/modules/personnel/comptabilisation-paie.service.ts', fonction: 'annulerComptabilisation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+    { fichier: 'src/modules/plateforme/essais-echus/essais-echus.service.ts', fonction: 'lire', appel: 'ecriture.groupBy', nombre: 1, motif: 'DECOMPTE_DE_CE_QUI_PART' },
     { fichier: 'src/modules/plateforme/garnissage-demonstration.service.ts', fonction: 'garnirRapprochement', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
     { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'pointer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
     { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'confirmer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },

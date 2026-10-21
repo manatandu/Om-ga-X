@@ -2,33 +2,35 @@ import { PlateformeService } from './plateforme.service';
 import { LicencesSurSiteService } from './licences-sur-site.service';
 import { AbonnementsService } from './abonnements/abonnements.service';
 import { CourrielsEditeurService } from './abonnements/courriels-editeur.service';
+import { EssaisEchusService } from './essais-echus/essais-echus.service';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { CreerCabinetDto, ActiverAbonnementDto, EmettreLicenceSurSiteDto, EnregistrerAbonnementDto, EnvoyerParCourrielDto, FacturerAbonnementsDto, FixerPrixFormuleDto, MarquerPayeeDto, ModifierGroupeDto, ModifierLicenceDto, PreparerDemonstrationDto, ReinitialiserAdminDto } from './dto/plateforme.dto';
+import { CreerCabinetDto, ActiverAbonnementDto, EmettreLicenceSurSiteDto, EnregistrerAbonnementDto, EnvoyerParCourrielDto, FacturerAbonnementsDto, FixerPrixFormuleDto, MarquerPayeeDto, ModifierGroupeDto, ModifierLicenceDto, PreparerDemonstrationDto, ReinitialiserAdminDto, SupprimerEssaiEchuDto } from './dto/plateforme.dto';
 export declare class PlateformeController {
     private readonly plateformeService;
     private readonly licencesSurSite;
     private readonly abonnements;
     private readonly courriels;
-    constructor(plateformeService: PlateformeService, licencesSurSite: LicencesSurSiteService, abonnements: AbonnementsService, courriels: CourrielsEditeurService);
+    private readonly essaisEchus;
+    constructor(plateformeService: PlateformeService, licencesSurSite: LicencesSurSiteService, abonnements: AbonnementsService, courriels: CourrielsEditeurService, essaisEchus: EssaisEchusService);
     formules(): Promise<{
         prixMensuelUsd: number | null;
         prixAnnuelUsd: number | null;
-        id: string;
-        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
-        libelle: string;
-        code: string;
-        actif: boolean;
         contenu: string | null;
+        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
+        id: string;
+        code: string;
+        libelle: string;
+        actif: boolean;
     }[]>;
     fixerPrix(code: string, dto: FixerPrixFormuleDto): Promise<{
         prixMensuelUsd: number | null;
         prixAnnuelUsd: number | null;
-        id: string;
-        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
-        libelle: string;
-        code: string;
-        actif: boolean;
         contenu: string | null;
+        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
+        id: string;
+        code: string;
+        libelle: string;
+        actif: boolean;
     }[]>;
     listeAbonnements(): Promise<{
         total: number;
@@ -39,12 +41,12 @@ export declare class PlateformeController {
             cabinetId: string;
             cabinet: string;
             formule: {
-                libelle: string;
                 code: string;
+                libelle: string;
             };
             options: {
-                libelle: string;
                 code: string;
+                libelle: string;
             }[];
             dossiersSupplementaires: number;
             periodicite: import(".prisma/client").$Enums.PeriodiciteFacturationEditeur;
@@ -94,10 +96,10 @@ export declare class PlateformeController {
         tronque: boolean;
         plafond: number;
         licences: {
+            titulaire: string;
             id: string;
             createdAt: Date;
             numero: string;
-            titulaire: string;
             empreinteMachine: string;
             emiseLe: string;
             finMaintenance: string;
@@ -131,15 +133,15 @@ export declare class PlateformeController {
             numeroImpot: string | null;
             createdAt: Date;
             licence: {
-                statut: import(".prisma/client").$Enums.StatutLicence;
                 type: import(".prisma/client").$Enums.TypeLicence;
+                statut: import(".prisma/client").$Enums.StatutLicence;
                 dateDebut: Date;
                 dateExpiration: Date | null;
                 dernierHeartbeatAt: Date | null;
             } | null;
             dossierMere: {
-                id: string;
                 nom: string;
+                id: string;
             } | null;
             plafondCellules: number | null;
             nbCellules: number;
@@ -157,8 +159,8 @@ export declare class PlateformeController {
             numeroImpot: string | null;
         };
         exercice: {
-            tenantId: string;
             id: string;
+            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
             dateFin: Date;
@@ -182,8 +184,8 @@ export declare class PlateformeController {
     }>;
     modifierLicence(tenantId: string, dto: ModifierLicenceDto): Promise<{
         cellulesEnCascade: number;
-        statut: import(".prisma/client").$Enums.StatutLicence;
         type: import(".prisma/client").$Enums.TypeLicence;
+        statut: import(".prisma/client").$Enums.StatutLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;
@@ -202,8 +204,8 @@ export declare class PlateformeController {
         plafondCellules?: undefined;
     }>;
     designerDossierEditeur(tenantId: string): Promise<{
-        statut: import(".prisma/client").$Enums.StatutLicence;
         type: import(".prisma/client").$Enums.TypeLicence;
+        statut: import(".prisma/client").$Enums.StatutLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;
@@ -223,5 +225,30 @@ export declare class PlateformeController {
         reinitialise: boolean;
         email: string;
         courriel: import(".prisma/client").$Enums.StatutMessage;
+    }>;
+    listeEssaisEchus(): Promise<{
+        aRappeler: number;
+        supprimables: number;
+        total: number;
+        tronque: boolean;
+        plafond: number;
+        essais: import("./essais-echus/essais-echus.service").LigneEssaiEchu[];
+    }>;
+    envoyerRappelsEssaisEchus(operateur: AuthenticatedUser): Promise<{
+        resultats: import("./essais-echus/essais-echus.service").ResultatRappel[];
+        envoyes: number;
+        enFile: number;
+        echecs: number;
+        examines: number;
+        restants: number;
+        parAppel: number;
+    }>;
+    supprimerEssaiEchu(tenantId: string, dto: SupprimerEssaiEchuDto, operateur: AuthenticatedUser): Promise<{
+        supprime: boolean;
+        tenantId: string;
+        nombreUtilisateurs: number;
+        nombreExercices: number;
+        nombreEcritures: number;
+        nombreLignesSupprimees: number;
     }>;
 }

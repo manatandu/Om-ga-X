@@ -652,44 +652,50 @@ let ReglementsService = ReglementsService_1 = class ReglementsService {
             }
             preparation = await this.ordres.preparer(tenantId, dto.journalId, idsComptes);
         }
+        const lignesDe = ({ r, montant, escompte, ecart, compteEscompteId, compteEcartId, plan, enDevise, parts }, libelle) => avecLeMode(mode?.id ?? null, [r.compteId, compteTresorerieId], enDevise
+            ? (0, ecart_change_realise_1.lignesDuReglementEnDevise)({
+                sens: dto.sens,
+                compteTiersId: r.compteId,
+                compteTresorerieId,
+                compteEcartId: enDevise.compteEcartId,
+                historique: enDevise.historique,
+                francsPayes: enDevise.francsPayes,
+                deviseId: enDevise.deviseId,
+                montantDevise: enDevise.montantDevise,
+                coursReglement: enDevise.coursReglement,
+                tresorerieEnDevise: dto.tresorerieEnDevise === true,
+                libelle,
+            })
+            : parts
+                ? (0, reglement_tiers_1.lignesDuReglementImpute)({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
+                : plan && (escompte > 0 || ecart > 0)
+                    ? (0, ecart_escompte_1.lignesAvecEscompteEtEcart)({
+                        sens: dto.sens,
+                        compteTiersId: r.compteId,
+                        compteTresorerieId,
+                        montant,
+                        plan,
+                        escompte: compteEscompteId ? { montant: escompte, compteId: compteEscompteId } : null,
+                        ecart: compteEcartId ? { montant: ecart, compteId: compteEcartId } : null,
+                        libelle,
+                    })
+                    : (0, reglement_tiers_1.lignesDuReglement)({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }));
+        const libelleDe = (p) => `Règlement ${p.compte.tiersCompte?.tiers.nom ?? p.compte.intitule}`.slice(0, 190);
+        await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+            { date: dto.date, lignes: prepares.flatMap((p) => lignesDe(p, libelleDe(p))) },
+        ]);
         const resultats = [];
         const aOrdonner = [];
-        for (const { r, compte, du, montant, tiers, escompte, ecart, compteEscompteId, compteEcartId, plan, enDevise, reduite, parts, groupe } of prepares) {
-            const libelle = `Règlement ${compte.tiersCompte?.tiers.nom ?? compte.intitule}`.slice(0, 190);
+        for (const preparee of prepares) {
+            const { r, compte, du, montant, tiers, escompte, ecart, enDevise, reduite, parts, groupe } = preparee;
+            const libelle = libelleDe(preparee);
             const ecriture = await this.ecritures.creer(tenantId, userId, {
                 exerciceId: dto.exerciceId,
                 journalId: dto.journalId,
                 date: dto.date,
                 libelle,
                 reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
-                lignes: avecLeMode(mode?.id ?? null, [r.compteId, compteTresorerieId], enDevise
-                    ? (0, ecart_change_realise_1.lignesDuReglementEnDevise)({
-                        sens: dto.sens,
-                        compteTiersId: r.compteId,
-                        compteTresorerieId,
-                        compteEcartId: enDevise.compteEcartId,
-                        historique: enDevise.historique,
-                        francsPayes: enDevise.francsPayes,
-                        deviseId: enDevise.deviseId,
-                        montantDevise: enDevise.montantDevise,
-                        coursReglement: enDevise.coursReglement,
-                        tresorerieEnDevise: dto.tresorerieEnDevise === true,
-                        libelle,
-                    })
-                    : parts
-                        ? (0, reglement_tiers_1.lignesDuReglementImpute)({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
-                        : plan && (escompte > 0 || ecart > 0)
-                            ? (0, ecart_escompte_1.lignesAvecEscompteEtEcart)({
-                                sens: dto.sens,
-                                compteTiersId: r.compteId,
-                                compteTresorerieId,
-                                montant,
-                                plan,
-                                escompte: compteEscompteId ? { montant: escompte, compteId: compteEscompteId } : null,
-                                ecart: compteEcartId ? { montant: ecart, compteId: compteEcartId } : null,
-                                libelle,
-                            })
-                            : (0, reglement_tiers_1.lignesDuReglement)({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
+                lignes: lignesDe(preparee, libelle),
             });
             if (parts) {
                 const poses = [];

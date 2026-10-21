@@ -27,8 +27,8 @@ export declare class NoteAnnexeService {
     private verifierJeuDuDossier;
     rattacher(tenantId: string, userId: string, jeu: JeuNotesAnnexes, codeNote: string, cleRubrique: string, compteId: string): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         createdBy: string;
         compteId: string;
         jeu: import(".prisma/client").$Enums.JeuNotesAnnexes;
@@ -51,11 +51,11 @@ export declare class NoteAnnexeService {
     private chargerSaisies;
     private celluleSaisissable;
     enregistrerSaisie(tenantId: string, userId: string, exerciceId: string, jeu: JeuNotesAnnexes, codeNote: string, cleRubrique: string, colonne: number, valeur: string | number | null, rang?: number): Promise<{
+        rang: number;
         id: string;
         tenantId: string;
-        rang: number;
-        exerciceId: string;
         updatedAt: Date;
+        exerciceId: string;
         jeu: import(".prisma/client").$Enums.JeuNotesAnnexes;
         motifRetrait: string | null;
         codeNote: string;

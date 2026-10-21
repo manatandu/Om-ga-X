@@ -8,9 +8,9 @@ export declare class ExportModificationsController {
     lister(user: AuthenticatedUser, avant?: string): Promise<{
         exports: {
             produitPar: string;
-            id: string;
             nomFichier: string;
             empreinte: string;
+            id: string;
             numero: number;
             taille: number;
             nombreEcritures: number;

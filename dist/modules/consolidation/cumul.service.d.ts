@@ -17,8 +17,8 @@ export declare class CumulService {
     }>;
     declarerAcquisition(tenantId: string, lienId: string, dto: AcquisitionDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -37,22 +37,22 @@ export declare class CumulService {
         obligationNonDesengagement: boolean;
     }>;
     ajouterReciproque(tenantId: string, dto: OperationReciproqueDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         montant: import("@prisma/client/runtime/library").Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
+        libelle: string;
         entiteAId: string | null;
         compteA: string;
         entiteBId: string | null;
         compteB: string;
-        libelle: string;
     }>;
     ajouterResultatInterne(tenantId: string, dto: ResultatInterneDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureResultatInterne;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         vendeuseId: string | null;
@@ -65,11 +65,11 @@ export declare class CumulService {
         supprime: boolean;
     }>;
     ajouterEcartEvaluation(tenantId: string, lienId: string, dto: EcartEvaluationDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         compte: string;
         id: string;
-        createdAt: Date;
         tenantId: string;
-        montant: import("@prisma/client/runtime/library").Decimal;
+        createdAt: Date;
         exerciceId: string;
         libelle: string;
         mode: import(".prisma/client").$Enums.ModeEcartEvaluation;
@@ -84,11 +84,11 @@ export declare class CumulService {
     ajouterProvisionChange(tenantId: string, dto: ProvisionChangeDto): Promise<{
         cloture: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
-        entiteId: string | null;
         compteProvision: string;
+        entiteId: string | null;
         dotation: import("@prisma/client/runtime/library").Decimal;
         reprise: import("@prisma/client/runtime/library").Decimal;
     }>;
@@ -96,10 +96,10 @@ export declare class CumulService {
         supprime: boolean;
     }>;
     enregistrerFiscalite(tenantId: string, dto: FiscaliteEntiteDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -131,6 +131,7 @@ export declare class CumulService {
     } | {
         id: string;
         tenantId: string;
+        updatedAt: Date;
         exerciceId: string;
         tauxImpotDiffere: import("@prisma/client/runtime/library").Decimal | null;
         sourceTauxImpot: string | null;
@@ -150,13 +151,12 @@ export declare class CumulService {
         chiffreAffairesN1: import("@prisma/client/runtime/library").Decimal | null;
         seuilEquivalentFc: import("@prisma/client/runtime/library").Decimal | null;
         sourceSeuil: string | null;
-        updatedAt: Date;
     }>;
     enregistrerMonnaie(tenantId: string, entiteId: string, dto: MonnaieEntiteDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;

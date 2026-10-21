@@ -9,15 +9,15 @@ export declare class LieuxLivraisonService {
     private jugerLeGeste;
     lister(tenantId: string, tiersId: string): Promise<{
         lieux: {
+            email: string | null;
             id: string;
+            tenantId: string;
             createdAt: Date;
             adresse: string | null;
             ville: string | null;
             pays: string | null;
             telephone: string | null;
-            email: string | null;
             estActif: boolean;
-            tenantId: string;
             intitule: string;
             contact: string | null;
             boitePostale: string | null;
@@ -29,15 +29,15 @@ export declare class LieuxLivraisonService {
         tronque: boolean;
     }>;
     creer(tenantId: string, tiersId: string, dto: LieuLivraisonDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         contact: string | null;
         boitePostale: string | null;
@@ -46,15 +46,15 @@ export declare class LieuxLivraisonService {
         complement: string | null;
     }>;
     modifier(tenantId: string, id: string, dto: LieuLivraisonDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         contact: string | null;
         boitePostale: string | null;

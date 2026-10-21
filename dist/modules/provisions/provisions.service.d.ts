@@ -30,15 +30,15 @@ export declare class ProvisionsService {
     private referentielDu;
     private controler;
     creer(tenantId: string, exerciceId: string, dto: CreerProvisionDto, utilisateur: string): Promise<{
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutProvision;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureProvision;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutProvision;
         updatedAt: Date;
         createdBy: string;
+        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -62,15 +62,15 @@ export declare class ProvisionsService {
     private lireHorizon;
     modifier(tenantId: string, id: string, dto: ModifierProvisionDto): Promise<{
         avertissements: string[];
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutProvision;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureProvision;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutProvision;
         updatedAt: Date;
         createdBy: string;
+        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -93,15 +93,15 @@ export declare class ProvisionsService {
     }>;
     statuer(tenantId: string, id: string, dto: StatuerProvisionDto): Promise<{
         avertissements: string[];
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutProvision;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureProvision;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutProvision;
         updatedAt: Date;
         createdBy: string;
+        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -131,15 +131,15 @@ export declare class ProvisionsService {
             intitule: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutProvision;
-        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureProvision;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutProvision;
         updatedAt: Date;
         createdBy: string;
+        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;

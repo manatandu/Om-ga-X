@@ -8,8 +8,8 @@ export declare class SelectionsEditionController {
         selections: {
             creePar: string;
             journalIntrouvable: boolean;
-            id: string;
             nom: string;
+            id: string;
             criteres: import("@prisma/client/runtime/library").JsonValue;
             edition: import(".prisma/client").$Enums.EditionSelection;
             creeLe: Date;
@@ -19,14 +19,14 @@ export declare class SelectionsEditionController {
         tronque: boolean;
     }>;
     creer(user: AuthenticatedUser, dto: CreerSelectionEditionDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
         criteres: import("@prisma/client/runtime/library").JsonValue;
         edition: import(".prisma/client").$Enums.EditionSelection;
     }>;
     remplacer(user: AuthenticatedUser, id: string, dto: RemplacerSelectionEditionDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
         criteres: import("@prisma/client/runtime/library").JsonValue;
         edition: import(".prisma/client").$Enums.EditionSelection;
     }>;

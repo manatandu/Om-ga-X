@@ -7,8 +7,8 @@ export declare class RapprochementController {
     lister(user: AuthenticatedUser, compteId?: string): Promise<({
         compte: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -26,9 +26,9 @@ export declare class RapprochementController {
         };
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
-        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -43,9 +43,9 @@ export declare class RapprochementController {
     obtenir(user: AuthenticatedUser, id: string): Promise<{
         rapprochement: {
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutRapprochement;
-            tenantId: string;
             createdBy: string;
             compteId: string;
             dateReleve: Date;
@@ -103,9 +103,9 @@ export declare class RapprochementController {
     }>;
     ouvrir(user: AuthenticatedUser, dto: OuvrirRapprochementDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
-        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -125,9 +125,9 @@ export declare class RapprochementController {
     }>;
     cloturer(user: AuthenticatedUser, id: string): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
-        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -141,9 +141,9 @@ export declare class RapprochementController {
     }>;
     rouvrir(user: AuthenticatedUser, id: string, dto: RouvrirRapprochementDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
-        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -157,9 +157,9 @@ export declare class RapprochementController {
     }>;
     declarerDepart(user: AuthenticatedUser, id: string, dto: DeclarerDepartDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
-        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -173,11 +173,11 @@ export declare class RapprochementController {
     }>;
     declarerEncours(user: AuthenticatedUser, id: string, dto: DeclarerEncoursDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
-        libelle: string;
+        createdAt: Date;
         createdBy: string;
         date: Date;
+        libelle: string;
         declareSurId: string;
         pointeSurId: string | null;
         ligneReleveId: string | null;

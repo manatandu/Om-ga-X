@@ -15,18 +15,18 @@ export declare class PerimetreService {
             dotation: number;
             reprise: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
-            entiteId: string | null;
             compteProvision: string;
+            entiteId: string | null;
         }[];
         ecartsEvaluation: {
             montant: number;
             compte: string;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             mode: import(".prisma/client").$Enums.ModeEcartEvaluation;
@@ -43,10 +43,10 @@ export declare class PerimetreService {
         resultatsInternes: {
             margeOuverture: number;
             margeCloture: number;
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             nature: import(".prisma/client").$Enums.NatureResultatInterne;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             libelle: string;
             vendeuseId: string | null;
@@ -56,14 +56,14 @@ export declare class PerimetreService {
         reciproques: {
             montant: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
+            libelle: string;
             entiteAId: string | null;
             compteA: string;
             entiteBId: string | null;
             compteB: string;
-            libelle: string;
         }[];
         entites: {
             tauxImpotDiffere: number | null;
@@ -77,10 +77,10 @@ export declare class PerimetreService {
             coursProduitsCharges: number | null;
             coursEntree: number | null;
             capitauxPropresHistoriques: number | null;
-            id: string;
             nom: string;
-            createdAt: Date;
+            id: string;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             designationMajoriteDeuxExercices: boolean;
             aucunAutreAssocieSuperieur: boolean;
@@ -103,8 +103,8 @@ export declare class PerimetreService {
             pctDroitsVote: number;
             pctCapital: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             exerciceId: string;
             detentriceId: string | null;
             detenueId: string;
@@ -137,6 +137,7 @@ export declare class PerimetreService {
             seuilEquivalentFc: number | null;
             id: string;
             tenantId: string;
+            updatedAt: Date;
             exerciceId: string;
             sourceTauxImpot: string | null;
             justificationIda: string | null;
@@ -146,7 +147,6 @@ export declare class PerimetreService {
             demandeAssociesDixieme: boolean;
             entitesControleHorsOhada: string | null;
             sourceSeuil: string | null;
-            updatedAt: Date;
         } | null;
         resultats: import("./perimetre-consolidation").ResultatEntite[];
         obligation: import("./perimetre-consolidation").VerdictObligation;
@@ -156,10 +156,10 @@ export declare class PerimetreService {
     private verifierExclusion;
     private nomLibre;
     creerEntite(tenantId: string, dto: EntitePerimetreDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -190,10 +190,10 @@ export declare class PerimetreService {
         fichierBalance: string | null;
     }>;
     modifierEntite(tenantId: string, id: string, dto: ModifierEntitePerimetreDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         designationMajoriteDeuxExercices: boolean;
         aucunAutreAssocieSuperieur: boolean;
@@ -228,8 +228,8 @@ export declare class PerimetreService {
     }>;
     ajouterLien(tenantId: string, dto: LienParticipationDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -252,8 +252,8 @@ export declare class PerimetreService {
         pctCapital?: number;
     }): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         exerciceId: string;
         detentriceId: string | null;
         detenueId: string;
@@ -277,6 +277,7 @@ export declare class PerimetreService {
     enregistrerFaits(tenantId: string, dto: FaitsConsolidationDto): Promise<{
         id: string;
         tenantId: string;
+        updatedAt: Date;
         exerciceId: string;
         tauxImpotDiffere: Prisma.Decimal | null;
         sourceTauxImpot: string | null;
@@ -296,6 +297,5 @@ export declare class PerimetreService {
         chiffreAffairesN1: Prisma.Decimal | null;
         seuilEquivalentFc: Prisma.Decimal | null;
         sourceSeuil: string | null;
-        updatedAt: Date;
     }>;
 }

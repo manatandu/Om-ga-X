@@ -7,8 +7,8 @@ export declare class ConventionFinancementController {
     lister(user: AuthenticatedUser): Promise<{
         id: string;
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         };
         reference: string;
@@ -55,15 +55,15 @@ export declare class ConventionFinancementController {
         resteARecevoir: number;
     }[]>;
     creer(user: AuthenticatedUser, dto: CreerConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -75,15 +75,15 @@ export declare class ConventionFinancementController {
         conditions: string | null;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -95,15 +95,15 @@ export declare class ConventionFinancementController {
         conditions: string | null;
     }>;
     clore(user: AuthenticatedUser, id: string, dto: CloreConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -115,9 +115,9 @@ export declare class ConventionFinancementController {
         conditions: string | null;
     }>;
     ajouterTranche(user: AuthenticatedUser, id: string, dto: CreerTrancheDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        montant: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         libelle: string;
         conventionId: string;
@@ -126,9 +126,9 @@ export declare class ConventionFinancementController {
         montantEncaisse: import("@prisma/client/runtime/library").Decimal | null;
     }>;
     encaisserTranche(user: AuthenticatedUser, id: string, trancheId: string, dto: EncaisserTrancheDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        montant: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         libelle: string;
         conventionId: string;
@@ -140,20 +140,20 @@ export declare class ConventionFinancementController {
         supprime: boolean;
     }>;
     ajouterRapport(user: AuthenticatedUser, id: string, dto: CreerRapportDto): Promise<{
-        id: string;
-        createdAt: Date;
         nature: import(".prisma/client").$Enums.NatureRapportBailleur;
         observation: string | null;
+        id: string;
+        createdAt: Date;
         intitule: string;
         conventionId: string;
         dateEcheance: Date;
         dateTransmission: Date | null;
     }>;
     transmettreRapport(user: AuthenticatedUser, id: string, rapportId: string, dto: TransmettreRapportDto): Promise<{
-        id: string;
-        createdAt: Date;
         nature: import(".prisma/client").$Enums.NatureRapportBailleur;
         observation: string | null;
+        id: string;
+        createdAt: Date;
         intitule: string;
         conventionId: string;
         dateEcheance: Date;

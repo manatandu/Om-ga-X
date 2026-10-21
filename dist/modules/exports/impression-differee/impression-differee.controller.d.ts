@@ -9,13 +9,13 @@ export declare class ImpressionsDiffereesController {
         impressions: {
             demandePar: string;
             interrompue: boolean;
-            id: string;
             nomFichier: string | null;
             nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
             empreinte: string | null;
+            id: string;
             numero: number;
-            libelle: string;
             taille: number | null;
+            libelle: string;
             etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
             demandeLe: Date;
             commenceLe: Date | null;
@@ -29,13 +29,13 @@ export declare class ImpressionsDiffereesController {
         enAttente: number;
     }>;
     demander(user: AuthenticatedUser, dto: DemanderImpressionDto): Promise<{
-        id: string;
         nomFichier: string | null;
         nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
         empreinte: string | null;
+        id: string;
         numero: number;
-        libelle: string;
         taille: number | null;
+        libelle: string;
         etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
         demandeLe: Date;
         demandePar: string;
@@ -46,13 +46,13 @@ export declare class ImpressionsDiffereesController {
     }>;
     traiter(user: AuthenticatedUser): Promise<{
         traitee: {
-            id: string;
             nomFichier: string | null;
             nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
             empreinte: string | null;
+            id: string;
             numero: number;
-            libelle: string;
             taille: number | null;
+            libelle: string;
             etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
             demandeLe: Date;
             demandePar: string;
@@ -64,13 +64,13 @@ export declare class ImpressionsDiffereesController {
         enAttente: number;
     }>;
     retirerFichier(user: AuthenticatedUser, id: string): Promise<{
-        id: string;
         nomFichier: string | null;
         nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
         empreinte: string | null;
+        id: string;
         numero: number;
-        libelle: string;
         taille: number | null;
+        libelle: string;
         etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
         demandeLe: Date;
         demandePar: string;

@@ -168,6 +168,7 @@ describe('saisie sur un compte collectif', () => {
             verifierComptesEnSommeil: jest.fn(async () => {
                 appels.push('sommeil');
             }),
+            verifierCaisseProvisionnee: jest.fn(async () => undefined),
             creer: jest.fn(async () => appels.push('creer')),
             modifier: jest.fn(async () => appels.push('modifier')),
         };

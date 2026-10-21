@@ -69,9 +69,10 @@ export declare class FiscaliteService {
         derniereVerification: string;
     };
     tenantSyscohada(tenantId: string): Promise<{
+        email: string | null;
+        nom: string;
         devise: string | null;
         id: string;
-        nom: string;
         referentiel: import(".prisma/client").$Enums.Referentiel;
         jeuEtatsFinanciersSycebnl: import(".prisma/client").$Enums.JeuEtatsFinanciersSycebnl;
         systemeComptableSyscohada: import(".prisma/client").$Enums.SystemeComptableSyscohada | null;
@@ -82,7 +83,6 @@ export declare class FiscaliteService {
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
         siteWeb: string | null;
         capitalSocial: Prisma.Decimal | null;
         capitalVariable: boolean;
@@ -132,6 +132,7 @@ export declare class FiscaliteService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
+        visaRibs: boolean;
         seuilEcartReglement: Prisma.Decimal | null;
         assujettiTva: boolean;
         assujettissementTvaRepondu: boolean;
@@ -142,8 +143,8 @@ export declare class FiscaliteService {
         dateAutorisationDebitsTva: Date | null;
         effectifPermanent: number;
         numeroAffiliationCnssEmployeur: string | null;
-        plafondCellules: number | null;
         dossierMereId: string | null;
+        plafondCellules: number | null;
         dossierCombinaisonId: string | null;
     }>;
     exemptionIs(tenantId: string): Promise<{

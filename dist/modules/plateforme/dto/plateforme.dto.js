@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarquerPayeeDto = exports.EnvoyerParCourrielDto = exports.FacturerAbonnementsDto = exports.ActiverAbonnementDto = exports.EnregistrerAbonnementDto = exports.FixerPrixFormuleDto = exports.EmettreLicenceSurSiteDto = exports.PreparerDemonstrationDto = exports.ReinitialiserAdminDto = exports.ModifierGroupeDto = exports.ModifierLicenceDto = exports.CreerCabinetDto = void 0;
+exports.SupprimerEssaiEchuDto = exports.MarquerPayeeDto = exports.EnvoyerParCourrielDto = exports.FacturerAbonnementsDto = exports.ActiverAbonnementDto = exports.EnregistrerAbonnementDto = exports.FixerPrixFormuleDto = exports.EmettreLicenceSurSiteDto = exports.PreparerDemonstrationDto = exports.ReinitialiserAdminDto = exports.ModifierGroupeDto = exports.ModifierLicenceDto = exports.CreerCabinetDto = void 0;
 const class_validator_1 = require("class-validator");
 const courriel_1 = require("../../../common/courriel");
 const facultatif_non_nul_1 = require("../../../common/facultatif-non-nul");
@@ -281,4 +281,13 @@ __decorate([
     (0, class_validator_1.IsDateString)({ strict: true }),
     __metadata("design:type", String)
 ], MarquerPayeeDto.prototype, "payeeLe", void 0);
+class SupprimerEssaiEchuDto {
+}
+exports.SupprimerEssaiEchuDto = SupprimerEssaiEchuDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(100),
+    __metadata("design:type", String)
+], SupprimerEssaiEchuDto.prototype, "confirmation", void 0);
 //# sourceMappingURL=plateforme.dto.js.map

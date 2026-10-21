@@ -31,9 +31,9 @@ export declare class AnalytiqueService {
         };
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -44,9 +44,9 @@ export declare class AnalytiqueService {
     })[]>;
     creerPlan(tenantId: string, dto: CreerPlanAnalytiqueDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -57,9 +57,9 @@ export declare class AnalytiqueService {
     }>;
     modifierPlan(tenantId: string, planId: string, dto: ModifierPlanAnalytiqueDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         classesVentilees: string;
@@ -87,60 +87,60 @@ export declare class AnalytiqueService {
     private trouverPlan;
     listerSections(tenantId: string, planId: string): Promise<({
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     })[]>;
     creerSection(tenantId: string, planId: string, dto: CreerSectionDto): Promise<{
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     }>;
     modifierSection(tenantId: string, sectionId: string, dto: ModifierSectionDto): Promise<{
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeCompteDetailTotal;
-        dateDebut: Date | null;
+        id: string;
         tenantId: string;
-        dateFin: Date | null;
+        createdAt: Date;
+        dateDebut: Date | null;
         intitule: string;
         bailleurId: string | null;
         code: string;
         estActive: boolean;
         planId: string;
+        dateFin: Date | null;
     }>;
     supprimerSection(tenantId: string, sectionId: string): Promise<{
         supprime: boolean;

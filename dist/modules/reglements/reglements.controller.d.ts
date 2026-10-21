@@ -62,8 +62,8 @@ export declare class ReglementsController {
             lettre: string;
         }[];
         ordre: {
-            id: string;
             total: import("@prisma/client/runtime/library").Decimal;
+            id: string;
             numero: number;
         } | null;
         avertissements: string[];

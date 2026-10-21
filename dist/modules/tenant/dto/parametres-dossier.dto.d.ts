@@ -77,6 +77,9 @@ export declare class ModifierMethodeInventaireStocksDto {
 export declare class ModifierDoubleRegardDto {
     doubleRegardValidation: boolean;
 }
+export declare class ModifierVisaRibsDto {
+    visaRibs: boolean;
+}
 export declare class ModifierRefusClotureNonImprimeDto {
     refusClotureJournalNonImprime: boolean;
 }

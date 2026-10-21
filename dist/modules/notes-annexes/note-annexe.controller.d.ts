@@ -39,8 +39,8 @@ export declare class NoteAnnexeController {
     }>;
     rattacher(user: AuthenticatedUser, dto: RattacherDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         createdBy: string;
         compteId: string;
         jeu: import(".prisma/client").$Enums.JeuNotesAnnexes;
@@ -51,11 +51,11 @@ export declare class NoteAnnexeController {
         detache: boolean;
     }>;
     saisir(user: AuthenticatedUser, dto: SaisirNoteDto): Promise<{
+        rang: number;
         id: string;
         tenantId: string;
-        rang: number;
-        exerciceId: string;
         updatedAt: Date;
+        exerciceId: string;
         jeu: import(".prisma/client").$Enums.JeuNotesAnnexes;
         motifRetrait: string | null;
         codeNote: string;

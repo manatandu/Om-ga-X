@@ -21,6 +21,7 @@ const tiers_module_1 = require("../tiers/tiers.module");
 const comptabilite_module_1 = require("../comptabilite/comptabilite.module");
 const garnissage_demonstration_service_1 = require("./garnissage-demonstration.service");
 const courriels_editeur_service_1 = require("./abonnements/courriels-editeur.service");
+const essais_echus_service_1 = require("./essais-echus/essais-echus.service");
 const immobilisations_module_1 = require("../immobilisations/immobilisations.module");
 const personnel_module_1 = require("../personnel/personnel.module");
 const rapprochement_module_1 = require("../rapprochement/rapprochement.module");
@@ -46,6 +47,7 @@ exports.PlateformeModule = PlateformeModule = __decorate([
             plateforme_service_1.PlateformeService,
             abonnements_service_1.AbonnementsService,
             courriels_editeur_service_1.CourrielsEditeurService,
+            essais_echus_service_1.EssaisEchusService,
             garnissage_demonstration_service_1.GarnissageDemonstrationService,
             operateur_plateforme_guard_1.OperateurPlateformeGuard,
             { provide: licences_sur_site_service_1.LicencesSurSiteService, useFactory: (p) => new licences_sur_site_service_1.LicencesSurSiteService(p), inject: [prisma_service_1.PrismaService] },

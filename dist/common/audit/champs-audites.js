@@ -73,6 +73,7 @@ exports.MODELES_AUDITES = new Set([
     'SelectionEdition',
     'ModeleEdition',
     'ExtraitPeriode',
+    'DossierEssaiSupprime',
     'ModeReglement',
     'LieuLivraison',
     'ModeleImpressionTiers',
@@ -191,6 +192,7 @@ exports.NON_AUDITES_MOTIVES = {
     AbonnementCabinet: "Abonnement tenu par l'éditeur, hors dossier · la licence qu'il pose chez le cabinet est journalisée.",
     OptionAbonnement: "Options d'un abonnement de l'éditeur, hors dossier.",
     FactureAbonnement: "Lien de l'éditeur vers la facture émise, elle-même journalisée dans le dossier de l'éditeur.",
+    RappelSuppressionEssai: "Suivi de l'éditeur, hors dossier · le rappel part dans la file du dossier (journalisée) et la suppression qui le suit laisse sa propre trace, journalisée.",
 };
 const FRAGMENTS_SENSIBLES = [
     'motdepasse',

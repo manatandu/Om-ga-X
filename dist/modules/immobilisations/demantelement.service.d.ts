@@ -52,13 +52,13 @@ export declare class DemantelementService {
     private proposition;
     desactualiser(tenantId: string, userId: string, id: string, dto: DesactualisationDemantelementDto): Promise<{
         montant: number;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureMouvementDemantelement;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         ecritureId: string;
         immobilisationId: string;
         repriseExploitation: Prisma.Decimal | null;
@@ -67,13 +67,13 @@ export declare class DemantelementService {
     }>;
     reprendre(tenantId: string, userId: string, id: string, dto: RepriseDemantelementDto): Promise<{
         montant: number;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureMouvementDemantelement;
-        exerciceId: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         ecritureId: string;
         immobilisationId: string;
         repriseExploitation: Prisma.Decimal | null;

@@ -80,8 +80,8 @@ export declare class AnalyseJournauxService {
         mois: string[];
         journaux: {
             cases: import("./etat-journaux-saisie").CaseJournalMois[];
-            id: string;
             type: import(".prisma/client").$Enums.TypeJournal;
+            id: string;
             estActif: boolean;
             intitule: string;
             code: string;

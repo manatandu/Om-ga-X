@@ -31,15 +31,15 @@ export declare class PlateformeService implements OnModuleInit {
             numeroImpot: string | null;
             createdAt: Date;
             licence: {
-                statut: import(".prisma/client").$Enums.StatutLicence;
                 type: import(".prisma/client").$Enums.TypeLicence;
+                statut: import(".prisma/client").$Enums.StatutLicence;
                 dateDebut: Date;
                 dateExpiration: Date | null;
                 dernierHeartbeatAt: Date | null;
             } | null;
             dossierMere: {
-                id: string;
                 nom: string;
+                id: string;
             } | null;
             plafondCellules: number | null;
             nbCellules: number;
@@ -50,8 +50,8 @@ export declare class PlateformeService implements OnModuleInit {
     private refuserAttributionSurSite;
     modifierLicence(tenantId: string, dto: ModifierLicenceDto): Promise<{
         cellulesEnCascade: number;
-        statut: import(".prisma/client").$Enums.StatutLicence;
         type: import(".prisma/client").$Enums.TypeLicence;
+        statut: import(".prisma/client").$Enums.StatutLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;
@@ -84,8 +84,8 @@ export declare class PlateformeService implements OnModuleInit {
             numeroImpot: string | null;
         };
         exercice: {
-            tenantId: string;
             id: string;
+            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
             dateFin: Date;
@@ -115,8 +115,8 @@ export declare class PlateformeService implements OnModuleInit {
         courriel: import(".prisma/client").$Enums.StatutMessage;
     }>;
     designerDossierEditeur(tenantId: string): Promise<{
-        statut: import(".prisma/client").$Enums.StatutLicence;
         type: import(".prisma/client").$Enums.TypeLicence;
+        statut: import(".prisma/client").$Enums.StatutLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;

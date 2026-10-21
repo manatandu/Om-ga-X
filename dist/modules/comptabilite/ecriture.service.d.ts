@@ -13,6 +13,7 @@ import { AnalytiqueService } from '../analytique/analytique.service';
 import { type PeriodeExtrait, type ReportALaVeille } from './periode-extrait';
 import { VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { type FamilleTiers } from './familles-tiers';
+import { type PieceProposee } from './caisse-provisionnee';
 export interface TrancheAgee {
     cle: string;
     libellePeriode: string;
@@ -139,6 +140,10 @@ export declare function donneesLigneSaisie(l: LigneEcritureDto, sectionsParId: M
     coursApplique: number | undefined;
 };
 export type MemoireControles = Map<string, Promise<unknown>>;
+export interface OptionsCreation {
+    saisie?: boolean;
+    jugerLaCaisse?: boolean;
+}
 export declare class EcritureService {
     private readonly prisma;
     private readonly journalService;
@@ -147,17 +152,17 @@ export declare class EcritureService {
     constructor(prisma: PrismaService, journalService: JournalService, exerciceService: ExerciceService, analytiqueService: AnalytiqueService);
     imputerAuxCapitauxPropresDOuverture(tenantId: string, createdBy: string, dto: ImputationOuvertureDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        tenantId: string;
-        exerciceId: string;
-        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
+        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -170,6 +175,7 @@ export declare class EcritureService {
         corrigeEcritureId: string | null;
         motifCorrection: string | null;
     }>;
+    verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string): Promise<void>;
     verifierComptesEnSommeil(tenantId: string, lignes: {
         compteId: string;
     }[] | undefined, confirme: boolean | undefined): Promise<void>;
@@ -182,9 +188,9 @@ export declare class EcritureService {
     controlesDEntree(tenantId: string, piece: PieceEntree, db?: Prisma.TransactionClient | PrismaService, memoire?: MemoireControles): Promise<{
         exercice: {
             id: string;
+            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
-            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -202,11 +208,11 @@ export declare class EcritureService {
             datePaiementDividendeEtat: Date | null;
         };
         journal: {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeJournal;
-            estActif: boolean;
+            id: string;
             tenantId: string;
+            createdAt: Date;
+            estActif: boolean;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -221,15 +227,13 @@ export declare class EcritureService {
             planCode: string;
         }>;
     }>;
-    creer(tenantId: string, createdBy: string, dto: CreerEcritureDto, options?: {
-        saisie?: boolean;
-    }): Promise<{
+    creer(tenantId: string, createdBy: string, dto: CreerEcritureDto, options?: OptionsCreation): Promise<{
         journal: {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeJournal;
-            estActif: boolean;
+            id: string;
             tenantId: string;
+            createdAt: Date;
+            estActif: boolean;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -238,9 +242,9 @@ export declare class EcritureService {
         };
         lignes: {
             id: string;
-            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
+            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: Prisma.Decimal;
@@ -258,17 +262,17 @@ export declare class EcritureService {
         }[];
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        tenantId: string;
-        exerciceId: string;
-        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
+        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -283,16 +287,14 @@ export declare class EcritureService {
     }>;
     creerAvec<T>(tenantId: string, createdBy: string, dto: CreerEcritureDto, suite: (tx: Prisma.TransactionClient, ecriture: {
         id: string;
-    }) => Promise<T>, options?: {
-        saisie?: boolean;
-    }): Promise<{
+    }) => Promise<T>, options?: OptionsCreation): Promise<{
         ecriture: {
             journal: {
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeJournal;
-                estActif: boolean;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
+                estActif: boolean;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -301,9 +303,9 @@ export declare class EcritureService {
             };
             lignes: {
                 id: string;
-                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
+                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: Prisma.Decimal;
@@ -321,17 +323,17 @@ export declare class EcritureService {
             }[];
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
-            tenantId: string;
-            exerciceId: string;
-            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
+            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
+            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -352,16 +354,14 @@ export declare class EcritureService {
             id: string;
             compteId: string;
         }>;
-    }>) => Promise<T>, options?: {
-        saisie?: boolean;
-    }): Promise<{
+    }>) => Promise<T>, options?: OptionsCreation): Promise<{
         ecritures: ({
             journal: {
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeJournal;
-                estActif: boolean;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
+                estActif: boolean;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -370,9 +370,9 @@ export declare class EcritureService {
             };
             lignes: {
                 id: string;
-                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
+                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: Prisma.Decimal;
@@ -390,17 +390,17 @@ export declare class EcritureService {
             }[];
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
-            tenantId: string;
-            exerciceId: string;
-            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
+            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
+            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -417,13 +417,15 @@ export declare class EcritureService {
     }>;
     private verifierSectionsVentilees;
     private trouverEnBrouillard;
-    modifier(tenantId: string, ecritureId: string, dto: ModifierEcritureDto): Promise<{
+    modifier(tenantId: string, ecritureId: string, dto: ModifierEcritureDto, options?: {
+        jugerLaCaisse?: boolean;
+    }): Promise<{
         journal: {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeJournal;
-            estActif: boolean;
+            id: string;
             tenantId: string;
+            createdAt: Date;
+            estActif: boolean;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -433,8 +435,8 @@ export declare class EcritureService {
         lignes: ({
             compte: {
                 id: string;
-                estActif: boolean;
                 tenantId: string;
+                estActif: boolean;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -452,9 +454,9 @@ export declare class EcritureService {
             };
         } & {
             id: string;
-            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
+            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: Prisma.Decimal;
@@ -472,17 +474,17 @@ export declare class EcritureService {
         })[];
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        tenantId: string;
-        exerciceId: string;
-        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
+        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -621,11 +623,11 @@ export declare class EcritureService {
     }>;
     corrigerParInscriptionEnNegatif(tenantId: string, createdBy: string, ecritureId: string, dto: CorrigerEcritureDto): Promise<{
         journal: {
-            id: string;
-            createdAt: Date;
             type: import(".prisma/client").$Enums.TypeJournal;
-            estActif: boolean;
+            id: string;
             tenantId: string;
+            createdAt: Date;
+            estActif: boolean;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -634,9 +636,9 @@ export declare class EcritureService {
         };
         lignes: {
             id: string;
-            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
+            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: Prisma.Decimal;
@@ -654,17 +656,17 @@ export declare class EcritureService {
         }[];
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
-        tenantId: string;
-        exerciceId: string;
-        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
+        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
+        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -702,11 +704,11 @@ export declare class EcritureService {
     }): Promise<{
         ecritures: ({
             journal: {
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeJournal;
-                estActif: boolean;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
+                estActif: boolean;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -716,8 +718,8 @@ export declare class EcritureService {
             lignes: ({
                 compte: {
                     id: string;
-                    estActif: boolean;
                     tenantId: string;
+                    estActif: boolean;
                     numero: string;
                     intitule: string;
                     classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -735,9 +737,9 @@ export declare class EcritureService {
                 };
             } & {
                 id: string;
-                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
+                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: Prisma.Decimal;
@@ -755,9 +757,9 @@ export declare class EcritureService {
             })[];
             corrigeEcriture: {
                 id: string;
-                libelle: string;
                 date: Date;
                 numeroPiece: number | null;
+                libelle: string;
             } | null;
             correction: {
                 id: string;
@@ -766,17 +768,17 @@ export declare class EcritureService {
             } | null;
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
-            tenantId: string;
-            exerciceId: string;
-            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
+            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
+            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -960,8 +962,8 @@ export declare class EcritureService {
         report?: ReportALaVeille | null | undefined;
         compte: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;

@@ -8,8 +8,8 @@ export declare class JournalService {
     lister(tenantId: string, actifsSeuls?: boolean): Promise<({
         compteTresorerie: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -26,11 +26,11 @@ export declare class JournalService {
             porteFondsContrepartieEtat: boolean;
         } | null;
     } & {
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;
@@ -38,11 +38,11 @@ export declare class JournalService {
         contrepartieChaqueLigne: boolean;
     })[]>;
     trouver(tenantId: string, journalId: string): Promise<{
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;
@@ -50,11 +50,11 @@ export declare class JournalService {
         contrepartieChaqueLigne: boolean;
     }>;
     creer(tenantId: string, dto: CreerJournalDto): Promise<{
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;
@@ -82,11 +82,11 @@ export declare class JournalService {
         supprime: boolean;
     }>;
     modifier(tenantId: string, journalId: string, dto: ModifierJournalDto): Promise<{
-        id: string;
-        createdAt: Date;
         type: import(".prisma/client").$Enums.TypeJournal;
-        estActif: boolean;
+        id: string;
         tenantId: string;
+        createdAt: Date;
+        estActif: boolean;
         intitule: string;
         code: string;
         compteTresorerieId: string | null;

@@ -98,8 +98,8 @@ export declare class TauxTvaService {
     lister(tenantId: string, actifsSeuls?: boolean): Promise<({
         compteCollecte: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -117,8 +117,8 @@ export declare class TauxTvaService {
         } | null;
         compteDeductible: {
             id: string;
-            estActif: boolean;
             tenantId: string;
+            estActif: boolean;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -136,9 +136,9 @@ export declare class TauxTvaService {
         } | null;
     } & {
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         taux: Prisma.Decimal;
@@ -149,9 +149,9 @@ export declare class TauxTvaService {
     private verifierComptes;
     creer(tenantId: string, dto: CreerTauxTvaDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         taux: Prisma.Decimal;
@@ -163,9 +163,9 @@ export declare class TauxTvaService {
     }>;
     modifier(tenantId: string, id: string, dto: ModifierTauxTvaDto): Promise<{
         id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         intitule: string;
         code: string;
         taux: Prisma.Decimal;
@@ -702,11 +702,11 @@ export declare class TauxTvaService {
     }): Promise<{
         ecriture: {
             journal: {
-                id: string;
-                createdAt: Date;
                 type: import(".prisma/client").$Enums.TypeJournal;
-                estActif: boolean;
+                id: string;
                 tenantId: string;
+                createdAt: Date;
+                estActif: boolean;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -715,9 +715,9 @@ export declare class TauxTvaService {
             };
             lignes: {
                 id: string;
-                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
+                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: Prisma.Decimal;
@@ -735,17 +735,17 @@ export declare class TauxTvaService {
             }[];
         } & {
             id: string;
+            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
-            tenantId: string;
-            exerciceId: string;
-            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
+            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
+            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -965,9 +965,9 @@ export declare class TauxTvaService {
         prorataApplique: number;
         ecriture: {
             id: string;
-            libelle: string;
             date: Date;
             numeroPiece: number | null;
+            libelle: string;
         };
         createdAt: Date;
     }[]>;

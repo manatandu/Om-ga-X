@@ -7,12 +7,12 @@ export declare class AvancesRubriquesService {
     constructor(prisma: PrismaService);
     listerRubriques(tenantId: string): Promise<{
         rubriques: {
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             nature: string;
-            libelle: string;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             code: string;
+            libelle: string;
             fondement: string;
             actif: boolean;
         }[];
@@ -22,31 +22,31 @@ export declare class AvancesRubriquesService {
         tronque: boolean;
     }>;
     creerRubrique(tenantId: string, dto: RubriquePaieDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: string;
-        libelle: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         code: string;
+        libelle: string;
         fondement: string;
         actif: boolean;
     }>;
     modifierRubrique(tenantId: string, id: string, dto: ModifierRubriquePaieDto): Promise<{
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         nature: string;
-        libelle: string;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         code: string;
+        libelle: string;
         fondement: string;
         actif: boolean;
     }>;
     listerModeles(tenantId: string): Promise<{
         modeles: {
-            id: string;
             nom: string;
-            createdAt: Date;
+            id: string;
             tenantId: string;
+            createdAt: Date;
             creePar: string;
             categorie: string | null;
             deviseStipulation: string;
@@ -57,10 +57,10 @@ export declare class AvancesRubriquesService {
         tronque: boolean;
     }>;
     creerModele(tenantId: string, creePar: string, dto: ModeleBulletinDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         creePar: string;
         categorie: string | null;
         deviseStipulation: string;
@@ -77,7 +77,7 @@ export declare class AvancesRubriquesService {
             matricule: string | null;
             type: import(".prisma/client").$Enums.TypeAvanceSalaire;
             categoriePret: import(".prisma/client").$Enums.CategoriePretPersonnel | null;
-            littera: "c" | "f" | "g";
+            littera: "f" | "c" | "g";
             compte: {
                 compte: string;
                 intitule: string;
@@ -104,14 +104,14 @@ export declare class AvancesRubriquesService {
         tronque: boolean;
     }>;
     creerAvance(tenantId: string, email: string, salarieId: string, dto: AvanceSalaireDto): Promise<{
-        id: string;
-        createdAt: Date;
-        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
-        tenantId: string;
-        dateFin: Date | null;
         montantFc: Prisma.Decimal;
         retenueMensuelleFc: Prisma.Decimal | null;
         objet: string;
+        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        dateFin: Date | null;
         creePar: string;
         destinataire: string | null;
         dateOctroi: Date;
@@ -122,14 +122,14 @@ export declare class AvancesRubriquesService {
         greffe: string | null;
     }>;
     terminerSaisie(tenantId: string, id: string, dto: FinSaisieArretDto): Promise<{
-        id: string;
-        createdAt: Date;
-        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
-        tenantId: string;
-        dateFin: Date | null;
         montantFc: Prisma.Decimal;
         retenueMensuelleFc: Prisma.Decimal | null;
         objet: string;
+        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
+        dateFin: Date | null;
         creePar: string;
         destinataire: string | null;
         dateOctroi: Date;

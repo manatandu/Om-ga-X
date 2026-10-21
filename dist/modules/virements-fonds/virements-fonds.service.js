@@ -172,6 +172,10 @@ let VirementsFondsService = class VirementsFondsService {
             reference: reference(p),
             lignes: l,
         });
+        await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+            { date: sortie.date, lignes: lignes.origine },
+            { date: entree.date, lignes: lignes.destination },
+        ]);
         const r = await this.ecritures.creerPlusieursAvec(tenantId, userId, [ecriture(origine.id, sortie, lignes.origine), ecriture(destination.id, entree, lignes.destination)], async (tx, [eo, ed]) => {
             const numeros = await tx.ecriture.findMany({ where: { id: { in: [eo.id, ed.id] }, tenantId }, select: { id: true, numeroPiece: true } });
             const numero = (id) => numeros.find((n) => n.id === id)?.numeroPiece ?? '·';

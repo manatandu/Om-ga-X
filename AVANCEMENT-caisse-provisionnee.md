@@ -33,6 +33,15 @@ npx tsc --noEmit ; npx jest src/modules/comptabilite src/modules/reglements src/
   « débourser ») ; entrée réduite ou retirée jamais refusée, CAISSE_CREDITRICE
   la dit.
 
+## Scénario sur vraie base (2026-10-21, vert)
+Serveur compilé, PostgreSQL jetable, dossier SYSCOHADA, N puis N+1 à travers
+la clôture · sortie au-delà refusée (il manque 50 000), sortie antidatée qui
+rend une sortie postérieure impossible refusée, sortie égale au disponible
+admise, entrée réduite admise même caisse créditrice, N+1 avant la clôture de
+N (à-nouveau provisoire et OD du premier jour sans caisse) lit N, après la
+clôture l'à-nouveau réel porte 121 000 (lu en base), un franc de plus refusé,
+banque découverte admise, virement caisse vers banque et règlement par caisse
+au-delà refusés, approvisionnement puis règlement partiel admis.
+
 ## Reste
-- Scénario sur vraie base à travers une clôture, bloc § 3 des deux côtés,
-  silent-failure-hunter et typescript-reviewer (second tour), intégration, déploiement.
+- silent-failure-hunter et typescript-reviewer (second tour), intégration, déploiement.

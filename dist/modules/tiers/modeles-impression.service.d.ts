@@ -5,8 +5,8 @@ import { CreerModeleImpressionDto, ModifierModeleImpressionDto } from './dto/mod
 type LecteurModeles = Pick<PrismaService, 'modeleImpressionTiers'>;
 type LecteurCadres = Pick<PrismaService, 'modeleImpressionTiers' | 'tiers'>;
 export declare function modeleDuDossierPourLaZone(prisma: LecteurModeles, tenantId: string, id: string, nature: NatureModeleImpression): Promise<{
-    id: string;
     nature: import(".prisma/client").$Enums.NatureModeleImpression;
+    id: string;
     intitule: string;
 }>;
 export declare function cadresDesTiers(prisma: LecteurCadres, tenantId: string, tiersIds: readonly string[], nature: NatureModeleImpression, contexte: {
@@ -18,20 +18,20 @@ export declare class ModelesImpressionService {
     constructor(prisma: PrismaService);
     lister(tenantId: string): Promise<{
         nombreTiers: number;
-        id: string;
         nature: import(".prisma/client").$Enums.NatureModeleImpression;
+        id: string;
         intitule: string;
         texte: string;
     }[]>;
     creer(tenantId: string, userId: string, dto: CreerModeleImpressionDto): Promise<{
-        id: string;
         nature: import(".prisma/client").$Enums.NatureModeleImpression;
+        id: string;
         intitule: string;
         texte: string;
     }>;
     modifier(tenantId: string, id: string, dto: ModifierModeleImpressionDto): Promise<{
-        id: string;
         nature: import(".prisma/client").$Enums.NatureModeleImpression;
+        id: string;
         intitule: string;
         texte: string;
     }>;

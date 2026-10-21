@@ -27,8 +27,8 @@ export declare class ImputationsPaiementsService {
         imputations: {
             montant: number;
             id: string;
-            createdAt: Date;
             tenantId: string;
+            createdAt: Date;
             createdBy: string;
             retireeLe: Date | null;
             retireePar: string | null;

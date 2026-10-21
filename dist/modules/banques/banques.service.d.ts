@@ -12,10 +12,6 @@ export declare class BanquesService {
                 code: string;
             } | null;
         } & {
-            devise: string | null;
-            id: string;
-            createdAt: Date;
-            tenantId: string;
             commentaire: string | null;
             codeBanque: string | null;
             codeGuichet: string | null;
@@ -23,19 +19,23 @@ export declare class BanquesService {
             cle: string | null;
             iban: string | null;
             codeBic: string | null;
+            devise: string | null;
+            id: string;
+            tenantId: string;
+            createdAt: Date;
             journalId: string | null;
             banqueId: string;
             abrege: string;
         })[];
     } & {
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
-        tenantId: string;
         intitule: string;
         codePostal: string | null;
         contact: string | null;
@@ -43,27 +43,27 @@ export declare class BanquesService {
     private doublon;
     private banqueDuDossier;
     creer(tenantId: string, dto: BanqueDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
-        tenantId: string;
         intitule: string;
         codePostal: string | null;
         contact: string | null;
     }>;
     modifier(tenantId: string, id: string, dto: ModifierBanqueDto): Promise<{
+        email: string | null;
         id: string;
+        tenantId: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
-        email: string | null;
-        tenantId: string;
         intitule: string;
         codePostal: string | null;
         contact: string | null;
@@ -73,10 +73,6 @@ export declare class BanquesService {
     }>;
     private champsRib;
     creerRib(tenantId: string, banqueId: string, dto: RibDto): Promise<{
-        devise: string | null;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         commentaire: string | null;
         codeBanque: string | null;
         codeGuichet: string | null;
@@ -84,15 +80,15 @@ export declare class BanquesService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        devise: string | null;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         journalId: string | null;
         banqueId: string;
         abrege: string;
     }>;
     modifierRib(tenantId: string, ribId: string, dto: RibDto): Promise<{
-        devise: string | null;
-        id: string;
-        createdAt: Date;
-        tenantId: string;
         commentaire: string | null;
         codeBanque: string | null;
         codeGuichet: string | null;
@@ -100,6 +96,10 @@ export declare class BanquesService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        devise: string | null;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         journalId: string | null;
         banqueId: string;
         abrege: string;
@@ -109,22 +109,22 @@ export declare class BanquesService {
     }>;
     listerLibelles(tenantId: string): Prisma.PrismaPromise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         intitule: string;
         code: string;
     }[]>;
     creerLibelle(tenantId: string, dto: LibelleDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         intitule: string;
         code: string;
     }>;
     modifierLibelle(tenantId: string, id: string, dto: ModifierLibelleDto): Promise<{
         id: string;
-        createdAt: Date;
         tenantId: string;
+        createdAt: Date;
         intitule: string;
         code: string;
     }>;

@@ -66,8 +66,8 @@ export declare class FacturationService {
             dateFacture: Date;
             dateReception: Date | null;
             tiers: {
-                id: string;
                 nom: string;
+                id: string;
                 code: string;
             } | null;
             emetteurNom: string;

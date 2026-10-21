@@ -6,9 +6,9 @@ export declare class CongesController {
     constructor(conges: CongesService);
     compteur(user: AuthenticatedUser, salarieId: string, aLa?: string): Promise<{
         aLa: string;
-        compteur: import("./conges-acquis").CompteurConges | {
+        compteur: {
             refus: string;
-        };
+        } | import("./conges-acquis").CompteurConges;
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -99,9 +99,9 @@ export declare class CongesController {
     }[]>;
     declarerReprise(user: AuthenticatedUser, salarieId: string, dto: RepriseCongesDto): Promise<{
         aLa: string;
-        compteur: import("./conges-acquis").CompteurConges | {
+        compteur: {
             refus: string;
-        };
+        } | import("./conges-acquis").CompteurConges;
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -151,9 +151,9 @@ export declare class CongesController {
     creerConge(user: AuthenticatedUser, salarieId: string, dto: CongeSalarieDto): Promise<{
         avertissements: string[];
         aLa: string;
-        compteur: import("./conges-acquis").CompteurConges | {
+        compteur: {
             refus: string;
-        };
+        } | import("./conges-acquis").CompteurConges;
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -204,9 +204,9 @@ export declare class CongesController {
     }>;
     modifierAllocation(user: AuthenticatedUser, id: string, dto: AllocationCongeDto): Promise<{
         aLa: string;
-        compteur: import("./conges-acquis").CompteurConges | {
+        compteur: {
             refus: string;
-        };
+        } | import("./conges-acquis").CompteurConges;
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;

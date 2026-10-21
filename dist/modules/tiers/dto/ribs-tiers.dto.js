@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RibTiersDto = void 0;
+exports.VisaRibDto = exports.RibTiersDto = void 0;
 const class_validator_1 = require("class-validator");
 class RibTiersDto {
 }
@@ -79,4 +79,12 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], RibTiersDto.prototype, "estPrincipal", void 0);
+class VisaRibDto {
+}
+exports.VisaRibDto = VisaRibDto;
+__decorate([
+    (0, class_validator_1.ValidateIf)((_, v) => v !== null),
+    (0, class_validator_1.IsISO8601)({ strict: true }, { message: "L'instant de la saisie lue est exigé (ou null pour un RIB d'avant le visa)." }),
+    __metadata("design:type", Object)
+], VisaRibDto.prototype, "saisiLeLu", void 0);
 //# sourceMappingURL=ribs-tiers.dto.js.map

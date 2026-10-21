@@ -6,12 +6,12 @@ export declare class ImpressionsJournalService {
     constructor(prisma: PrismaService);
     imprimer(tenantId: string, userId: string, dto: ImprimerJournalDto): Promise<{
         id: string;
-        dateDebut: Date;
         tenantId: string;
-        dateFin: Date;
-        exerciceId: string;
+        dateDebut: Date;
         numero: number;
+        dateFin: Date;
         journalId: string | null;
+        exerciceId: string;
         forme: import(".prisma/client").$Enums.FormeImpressionJournal;
         nombreEcritures: number;
         imprimeAt: Date;

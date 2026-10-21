@@ -12,8 +12,8 @@ export declare class ConventionFinancementService {
     lister(tenantId: string, aujourdhui?: Date): Promise<{
         id: string;
         bailleur: {
-            id: string;
             nom: string;
+            id: string;
             code: string;
         };
         reference: string;
@@ -60,15 +60,15 @@ export declare class ConventionFinancementService {
         resteARecevoir: number;
     }[]>;
     creer(tenantId: string, userId: string, dto: CreerConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -81,15 +81,15 @@ export declare class ConventionFinancementService {
     }>;
     private verifierCoherence;
     modifier(tenantId: string, conventionId: string, dto: ModifierConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -101,15 +101,15 @@ export declare class ConventionFinancementService {
         conditions: string | null;
     }>;
     clore(tenantId: string, conventionId: string, dto: CloreConventionDto): Promise<{
+        objet: string;
         id: string;
+        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutConvention;
         dateDebut: Date;
-        tenantId: string;
-        dateFin: Date;
-        objet: string;
-        updatedAt: Date;
         bailleurId: string;
+        updatedAt: Date;
+        dateFin: Date;
         createdBy: string;
         reference: string;
         motifCloture: string | null;
@@ -121,9 +121,9 @@ export declare class ConventionFinancementService {
         conditions: string | null;
     }>;
     ajouterTranche(tenantId: string, conventionId: string, dto: CreerTrancheDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        montant: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         libelle: string;
         conventionId: string;
@@ -132,9 +132,9 @@ export declare class ConventionFinancementService {
         montantEncaisse: import("@prisma/client/runtime/library").Decimal | null;
     }>;
     encaisserTranche(tenantId: string, conventionId: string, trancheId: string, dto: EncaisserTrancheDto): Promise<{
+        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        montant: import("@prisma/client/runtime/library").Decimal;
         numero: number;
         libelle: string;
         conventionId: string;
@@ -146,20 +146,20 @@ export declare class ConventionFinancementService {
         supprime: boolean;
     }>;
     ajouterRapport(tenantId: string, conventionId: string, dto: CreerRapportDto): Promise<{
-        id: string;
-        createdAt: Date;
         nature: import(".prisma/client").$Enums.NatureRapportBailleur;
         observation: string | null;
+        id: string;
+        createdAt: Date;
         intitule: string;
         conventionId: string;
         dateEcheance: Date;
         dateTransmission: Date | null;
     }>;
     transmettreRapport(tenantId: string, conventionId: string, rapportId: string, dateTransmission: string): Promise<{
-        id: string;
-        createdAt: Date;
         nature: import(".prisma/client").$Enums.NatureRapportBailleur;
         observation: string | null;
+        id: string;
+        createdAt: Date;
         intitule: string;
         conventionId: string;
         dateEcheance: Date;

@@ -67,6 +67,9 @@ let UtilisateurController = class UtilisateurController {
     async definirJournaux(user, id, dto) {
         return this.utilisateurService.definirJournaux(user.tenantId, id, dto);
     }
+    async deconnecter(user, id) {
+        return this.utilisateurService.deconnecter(user.tenantId, id, user.userId);
+    }
     async deverrouiller(user, id) {
         return this.utilisateurService.deverrouiller(user.tenantId, id);
     }
@@ -129,6 +132,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, utilisateur_dto_1.DefinirJournauxDto]),
     __metadata("design:returntype", Promise)
 ], UtilisateurController.prototype, "definirJournaux", null);
+__decorate([
+    (0, common_1.Post)(':id/deconnecter'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], UtilisateurController.prototype, "deconnecter", null);
 __decorate([
     (0, common_1.Post)(':id/deverrouiller'),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),

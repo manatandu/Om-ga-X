@@ -21,12 +21,12 @@ export declare class ImpressionsJournalController {
     }>;
     imprimer(user: AuthenticatedUser, dto: ImprimerJournalDto): Promise<{
         id: string;
-        dateDebut: Date;
         tenantId: string;
-        dateFin: Date;
-        exerciceId: string;
+        dateDebut: Date;
         numero: number;
+        dateFin: Date;
         journalId: string | null;
+        exerciceId: string;
         forme: import(".prisma/client").$Enums.FormeImpressionJournal;
         nombreEcritures: number;
         imprimeAt: Date;

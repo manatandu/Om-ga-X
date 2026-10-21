@@ -128,6 +128,7 @@ let TenantService = class TenantService {
             doubleRegardValidation: tenant.doubleRegardValidation,
             refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
             creationCompteEnSaisie: tenant.creationCompteEnSaisie,
+            visaRibs: tenant.visaRibs,
             seuilEcartReglement: tenant.seuilEcartReglement === null ? null : Number(tenant.seuilEcartReglement),
             attestationExemptionIs: tenant.attestationExemptionIs,
             dateAttestationExemptionIs: tenant.dateAttestationExemptionIs,
@@ -636,6 +637,14 @@ let TenantService = class TenantService {
             throw new common_1.NotFoundException('Dossier introuvable');
         }
         await this.prisma.tenant.update({ where: { id: tenantId }, data: { refusClotureJournalNonImprime } });
+        return this.parametres(tenantId);
+    }
+    async modifierVisaRibs(tenantId, visaRibs) {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (!tenant) {
+            throw new common_1.NotFoundException('Dossier introuvable');
+        }
+        await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaRibs } });
         return this.parametres(tenantId);
     }
     async modifierDoubleRegard(tenantId, doubleRegardValidation) {

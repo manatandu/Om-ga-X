@@ -20,8 +20,8 @@ export declare class CompteService {
         utilise?: boolean | undefined;
         nature: string | null;
         id: string;
-        estActif: boolean;
         tenantId: string;
+        estActif: boolean;
         numero: string;
         intitule: string;
         classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -39,8 +39,8 @@ export declare class CompteService {
     }[]>;
     creer(tenantId: string, dto: CreerCompteDto): Promise<{
         id: string;
-        estActif: boolean;
         tenantId: string;
+        estActif: boolean;
         numero: string;
         intitule: string;
         classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -67,8 +67,8 @@ export declare class CompteService {
     }>;
     creerEnSaisie(tenantId: string, dto: CreerCompteEnSaisieDto): Promise<{
         id: string;
-        estActif: boolean;
         tenantId: string;
+        estActif: boolean;
         numero: string;
         intitule: string;
         classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -99,8 +99,8 @@ export declare class CompteService {
     }>;
     modifier(tenantId: string, compteId: string, dto: ModifierCompteDto): Promise<{
         id: string;
-        estActif: boolean;
         tenantId: string;
+        estActif: boolean;
         numero: string;
         intitule: string;
         classe: import(".prisma/client").$Enums.ClasseCompte;

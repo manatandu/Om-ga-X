@@ -5,27 +5,27 @@ export declare class BailleurController {
     private readonly bailleurService;
     constructor(bailleurService: BailleurService);
     lister(user: AuthenticatedUser, actifsSeuls?: string): Promise<{
-        id: string;
         nom: string;
+        id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         code: string;
     }[]>;
     creer(user: AuthenticatedUser, dto: CreerBailleurDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         code: string;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierBailleurDto): Promise<{
-        id: string;
         nom: string;
+        id: string;
+        tenantId: string;
         createdAt: Date;
         estActif: boolean;
-        tenantId: string;
         code: string;
     }>;
 }

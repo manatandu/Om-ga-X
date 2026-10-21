@@ -28,18 +28,18 @@ export declare class DonationService {
     lister(tenantId: string, filtre?: FiltreRegistreDto): Promise<({
         ecriture: {
             id: string;
-            libelle: string;
             date: Date;
             numeroPiece: number | null;
+            libelle: string;
         } | null;
     } & {
-        id: string;
         nom: string | null;
-        createdAt: Date;
-        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -62,13 +62,13 @@ export declare class DonationService {
         montant: number;
     })[]>;
     inscrire(tenantId: string, userId: string, dto: InscrireDonationDto): Promise<{
-        id: string;
         nom: string | null;
-        createdAt: Date;
-        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -91,13 +91,13 @@ export declare class DonationService {
         montant: number;
     }>;
     modifier(tenantId: string, id: string, dto: ModifierDonationDto): Promise<{
-        id: string;
         nom: string | null;
-        createdAt: Date;
-        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -120,13 +120,13 @@ export declare class DonationService {
         montant: number;
     }>;
     signer(tenantId: string, id: string, dto: SignerDonationDto): Promise<{
-        id: string;
         nom: string | null;
-        createdAt: Date;
-        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -149,13 +149,13 @@ export declare class DonationService {
         montant: number;
     }>;
     annuler(tenantId: string, id: string, dto: AnnulerDonationDto): Promise<{
-        id: string;
         nom: string | null;
-        createdAt: Date;
-        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: Prisma.Decimal;
+        id: string;
+        tenantId: string;
+        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;

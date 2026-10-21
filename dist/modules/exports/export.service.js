@@ -14,6 +14,8 @@ exports.ExportService = void 0;
 exports.resultatDeLExerciceLogeAuBilan = resultatDeLExerciceLogeAuBilan;
 exports.anomaliePosteDeFlux = anomaliePosteDeFlux;
 exports.anomalieResultatAnterieurNonVire = anomalieResultatAnterieurNonVire;
+exports.dateArretDansLExercice = dateArretDansLExercice;
+exports.dateArretLisible = dateArretLisible;
 const ecritures_de_situation_1 = require("../comptabilite/ecritures-de-situation");
 const common_1 = require("@nestjs/common");
 const impressions_journal_1 = require("../journaux/impressions-journal");
@@ -51,6 +53,7 @@ const correspondance_projet_compte_exploitation_1 = require("../etats-financiers
 const theme_etafi_1 = require("./theme-etafi");
 const theme_etafi_2 = require("./theme-etafi");
 const balance_fpm_1 = require("./balance-fpm");
+const reevaluation_bilan_service_1 = require("../immobilisations/reevaluation-bilan.service");
 const etat_etafi_1 = require("./etat-etafi");
 const libelle_exercice_1 = require("../../common/libelle-exercice");
 const duree_mandat_1 = require("../mandat-auditeur/duree-mandat");
@@ -936,9 +939,28 @@ let ExportService = ExportService_1 = class ExportService {
         };
     }
     async tableauImmobilisationsExcel(tenantId, dateArret) {
-        const t = await this.immos.tableauImmobilisations(tenantId, { dateArret });
-        const identite = await this.identiteEtat(tenantId, {});
         const classeur = this.nouveauClasseur();
+        const t = await this.feuilleImmobilisations(classeur, tenantId, dateArretLisible(dateArret));
+        return {
+            buffer: await this.versBuffer(classeur),
+            nomFichier: `tableau-immobilisations${t.dateArret ? `-au-${t.dateArret}` : ''}.xlsx`,
+        };
+    }
+    async tableauxImmobilisationsExcel(tenantId, exerciceId, dateArret) {
+        const exercice = await this.exerciceDuDossier(tenantId, exerciceId);
+        const arret = dateArretDansLExercice(dateArret, exercice);
+        const classeur = this.nouveauClasseur();
+        await this.feuilleImmobilisations(classeur, tenantId, arret, { exerciceId });
+        await this.feuilleAmortissements(classeur, tenantId, exerciceId);
+        await this.feuilleReevaluations(classeur, tenantId, exerciceId);
+        return {
+            buffer: await this.versBuffer(classeur),
+            nomFichier: `tableaux-immobilisations${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
+        };
+    }
+    async feuilleImmobilisations(classeur, tenantId, dateArret, periode = {}) {
+        const t = await this.immos.tableauImmobilisations(tenantId, { dateArret });
+        const identite = await this.identiteEtat(tenantId, periode);
         const feuille = classeur.addWorksheet('Immobilisations');
         const colonnes = [
             { header: 'Libellé', key: 'libelle', width: 52 },
@@ -1036,15 +1058,19 @@ let ExportService = ExportService_1 = class ExportService {
             : 'TABLEAU DES IMMOBILISATIONS';
         const enteteImmo = this.coifferEtat(feuille, identite, titreImmo, colonnes.length);
         this.finaliserTableau(feuille, colonnes.length, derniereLigneDonnees + 3, enteteImmo);
-        return {
-            buffer: await this.versBuffer(classeur),
-            nomFichier: `tableau-immobilisations${t.dateArret ? `-au-${t.dateArret}` : ''}.xlsx`,
-        };
+        return t;
     }
     async tableauAmortissementsExcel(tenantId, exerciceId) {
+        const classeur = this.nouveauClasseur();
+        await this.feuilleAmortissements(classeur, tenantId, exerciceId);
+        return {
+            buffer: await this.versBuffer(classeur),
+            nomFichier: `tableau-amortissements${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
+        };
+    }
+    async feuilleAmortissements(classeur, tenantId, exerciceId) {
         const t = await this.immos.tableauAmortissements(tenantId, exerciceId);
         const identite = await this.identiteEtat(tenantId, { exerciceId });
-        const classeur = this.nouveauClasseur();
         const feuille = classeur.addWorksheet('Amortissements');
         const entetes = [
             'Libellé',
@@ -1192,10 +1218,111 @@ let ExportService = ExportService_1 = class ExportService {
         this.piedDePageEtat(feuille, identite);
         const enteteAmort = this.coifferEtat(feuille, identite, 'TABLEAU DES AMORTISSEMENTS', entetes.length);
         this.finaliserTableau(feuille, entetes.length, derniereLigneDonnees + 3, enteteAmort);
-        return {
-            buffer: await this.versBuffer(classeur),
-            nomFichier: `tableau-amortissements${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
-        };
+    }
+    async feuilleReevaluations(classeur, tenantId, exerciceId) {
+        const identite = await this.identiteEtat(tenantId, { exerciceId });
+        const feuille = classeur.addWorksheet('Réévaluations');
+        const reevaluation = await this.prisma.reevaluationBilan.findFirst({
+            where: { tenantId, exerciceId },
+            select: {
+                dateReevaluation: true,
+                decision: true,
+                totalEcart: true,
+                ecriture: { select: { numeroPiece: true, statut: true, journal: { select: { code: true } } } },
+                lignes: {
+                    orderBy: { id: 'asc' },
+                    take: reevaluation_bilan_service_1.PLAFOND_PERIMETRE,
+                    select: {
+                        coefficientRetenu: true,
+                        brutAvant: true,
+                        amortissementsAvant: true,
+                        valeurNetteAvant: true,
+                        valeurReevaluee: true,
+                        ecart: true,
+                        brutApres: true,
+                        amortissementsApres: true,
+                        compteEcart: true,
+                        motifNonReevalue: true,
+                        immobilisation: { select: { designation: true, numeroInventaire: true } },
+                    },
+                },
+            },
+        });
+        const entetes = [
+            'Bien',
+            'N° inventaire',
+            'Coefficient',
+            `Val. brute avant (${identite.devise})`,
+            'Amort. avant',
+            'Val. nette avant',
+            'Valeur réévaluée',
+            'Écart',
+            'Val. brute après',
+            'Amort. après',
+            "Compte de l'écart",
+            'Observations',
+        ];
+        const enteteRow = feuille.addRow(entetes);
+        enteteRow.font = ENTETE_FONT;
+        if (!reevaluation) {
+            feuille.addRow(["Aucune réévaluation n'est passée dans cet exercice."]);
+        }
+        else {
+            const montants = (l) => [
+                Number(l.brutAvant),
+                Number(l.amortissementsAvant),
+                Number(l.valeurNetteAvant),
+                Number(l.valeurReevaluee),
+                Number(l.ecart),
+                Number(l.brutApres),
+                Number(l.amortissementsApres),
+            ];
+            const sommes = [0, 0, 0, 0, 0, 0, 0];
+            for (const l of reevaluation.lignes) {
+                const m = montants(l);
+                m.forEach((v, i) => (sommes[i] += v));
+                feuille.addRow([
+                    l.immobilisation.designation,
+                    l.immobilisation.numeroInventaire ?? '',
+                    Number(l.coefficientRetenu) || null,
+                    ...m.map((v) => v || null),
+                    l.compteEcart ?? '',
+                    l.motifNonReevalue ?? '',
+                ]);
+            }
+            const premiere = enteteRow.number + 1;
+            const derniere = feuille.rowCount;
+            const total = feuille.addRow(['Total']);
+            for (let i = 0; i < sommes.length; i++) {
+                const col = feuille.getColumn(4 + i).letter;
+                total.getCell(4 + i).value = reevaluation.lignes.length
+                    ? this.formule(`SUM(${col}${this.ligneCoiffee(premiere)}:${col}${this.ligneCoiffee(derniere)})`, (0, balance_fpm_1.arrondi)(sommes[i]))
+                    : null;
+            }
+            total.font = ENTETE_FONT;
+            const piece = reevaluation.ecriture;
+            feuille.addRow([]);
+            feuille.addRow([
+                `Réévaluation du ${reevaluation.dateReevaluation.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} · pièce ${piece.journal.code} ${piece.numeroPiece ?? '·'}${piece.statut === 'BROUILLARD' ? ' (au brouillard)' : ''} · ${reevaluation.decision}`,
+            ]);
+            if (Math.abs((0, balance_fpm_1.arrondi)(sommes[4]) - Number(reevaluation.totalEcart)) >= 0.005) {
+                feuille.addRow([
+                    `Total des écarts enregistré par l'opération · ${Number(reevaluation.totalEcart).toFixed(2)}, différent de la somme des lignes.`,
+                ]);
+            }
+        }
+        const derniereLigneDonnees = reevaluation ? enteteRow.number + reevaluation.lignes.length : enteteRow.number + 1;
+        feuille.getColumn(1).width = 46;
+        feuille.getColumn(3).numFmt = '0.0000000000';
+        feuille.getColumn(3).width = 16;
+        for (let i = 4; i <= 10; i++) {
+            feuille.getColumn(i).numFmt = FORMAT_MONTANT;
+            feuille.getColumn(i).width = 18;
+        }
+        feuille.getColumn(12).width = 44;
+        this.piedDePageEtat(feuille, identite);
+        const entete = this.coifferEtat(feuille, identite, 'RÉÉVALUATION DES IMMOBILISATIONS', entetes.length);
+        this.finaliserTableau(feuille, entetes.length, derniereLigneDonnees + 3, entete);
     }
     async exerciceDuDossier(tenantId, exerciceId) {
         const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
@@ -5254,5 +5381,26 @@ function formaterQuantiteEtPrix(ws, r) {
     const prix = ws.getCell(r, 4);
     prix.numFmt = '#,##0.00';
     prix.alignment = { horizontal: 'right', vertical: 'middle' };
+}
+function dateArretDansLExercice(dateArret, exercice) {
+    const debut = exercice.dateDebut.toISOString().slice(0, 10);
+    const fin = exercice.dateFin.toISOString().slice(0, 10);
+    const lue = dateArretLisible(dateArret);
+    if (lue === undefined)
+        return fin;
+    if (lue < debut || lue > fin) {
+        throw new common_1.BadRequestException(`La date d'arrêté ${lue} est hors de l'exercice (${debut} au ${fin}) · le classeur porte aussi les amortissements et la réévaluation de cet exercice. Choisissez une date dans l'exercice, ou l'exercice qui la contient.`);
+    }
+    return lue;
+}
+function dateArretLisible(dateArret) {
+    if (dateArret === undefined || dateArret.trim() === '')
+        return undefined;
+    const lue = dateArret.trim();
+    const d = new Date(`${lue}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lue) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== lue) {
+        throw new common_1.BadRequestException(`Date d'arrêté illisible (« ${lue} ») · attendu AAAA-MM-JJ.`);
+    }
+    return lue;
 }
 //# sourceMappingURL=export.service.js.map

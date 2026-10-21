@@ -16,10 +16,10 @@ export declare class SimulationsService {
             dateFin: Date;
         };
     } & {
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;
@@ -32,10 +32,10 @@ export declare class SimulationsService {
     private donnees;
     private conflit;
     creer(tenantId: string, auteur: string, dto: SimulationBudgetaireDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;
@@ -45,10 +45,10 @@ export declare class SimulationsService {
         seuilRougePct: Prisma.Decimal;
     }>;
     modifier(tenantId: string, auteur: string, id: string, dto: SimulationBudgetaireDto): Promise<{
-        id: string;
         nom: string;
-        createdAt: Date;
+        id: string;
         tenantId: string;
+        createdAt: Date;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;

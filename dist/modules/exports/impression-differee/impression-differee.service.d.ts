@@ -9,13 +9,13 @@ export declare class ImpressionDiffereeService {
     private readonly logger;
     constructor(prisma: PrismaService, exportService: ExportService, exportFpm: ExportFpmService);
     demander(tenantId: string, userId: string, nature: NatureImpressionDifferee, brut: Record<string, unknown>): Promise<{
-        id: string;
         nomFichier: string | null;
         nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
         empreinte: string | null;
+        id: string;
         numero: number;
-        libelle: string;
         taille: number | null;
+        libelle: string;
         etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
         demandeLe: Date;
         demandePar: string;
@@ -26,13 +26,13 @@ export declare class ImpressionDiffereeService {
     }>;
     traiter(tenantId: string): Promise<{
         traitee: {
-            id: string;
             nomFichier: string | null;
             nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
             empreinte: string | null;
+            id: string;
             numero: number;
-            libelle: string;
             taille: number | null;
+            libelle: string;
             etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
             demandeLe: Date;
             demandePar: string;
@@ -47,13 +47,13 @@ export declare class ImpressionDiffereeService {
         impressions: {
             demandePar: string;
             interrompue: boolean;
-            id: string;
             nomFichier: string | null;
             nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
             empreinte: string | null;
+            id: string;
             numero: number;
-            libelle: string;
             taille: number | null;
+            libelle: string;
             etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
             demandeLe: Date;
             commenceLe: Date | null;
@@ -71,13 +71,13 @@ export declare class ImpressionDiffereeService {
         contenu: Buffer;
     }>;
     retirerFichier(tenantId: string, id: string): Promise<{
-        id: string;
         nomFichier: string | null;
         nature: import(".prisma/client").$Enums.NatureImpressionDifferee;
         empreinte: string | null;
+        id: string;
         numero: number;
-        libelle: string;
         taille: number | null;
+        libelle: string;
         etat: import(".prisma/client").$Enums.EtatImpressionDifferee;
         demandeLe: Date;
         demandePar: string;

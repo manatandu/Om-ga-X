@@ -1302,7 +1302,7 @@ let ImmobilisationService = ImmobilisationService_1 = class ImmobilisationServic
                             : { compteId: l.compteId, debit: -l.montant, credit: 0 })
                         : [{ compteId: dto.compteContrepartieId, debit: 0, credit: dto.valeurOrigine }]),
                 ],
-            });
+            }, { jugerLaCaisse: true });
         let immobilisation;
         try {
             immobilisation = await this.prisma.immobilisation.create({
