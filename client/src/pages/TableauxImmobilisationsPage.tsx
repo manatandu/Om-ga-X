@@ -152,13 +152,16 @@ export function TableauxImmobilisationsPage({ ongletPilote }: { ongletPilote?: '
   // UN classeur, trois feuilles (demande de Manasse du 2026-10-16, « ne le
   // sépare pas ») · immobilisations à la date d'arrêté choisie (fin de
   // l'exercice à défaut), amortissements et réévaluation de l'exercice.
+  const dateArretExportee = onglet === 'immobilisations' ? dateArret : '';
   const exporter = () => {
     if (!exerciceCourant) {
       setErreur("Choisissez d'abord un exercice · le classeur porte ses amortissements et sa réévaluation.");
       return;
     }
     const parametres = new URLSearchParams({ exerciceId: exerciceCourant.id });
-    if (dateArret) parametres.set('dateArret', dateArret);
+    // La date ne part que si elle est à l'écran · gardée d'un onglet à
+    // l'autre, elle aurait daté la feuille d'un arrêté que personne ne voyait.
+    if (dateArretExportee) parametres.set('dateArret', dateArretExportee);
     void api.telechargerOuSignaler(`/exports/tableaux-immobilisations?${parametres}`, 'tableaux-immobilisations.xlsx', setErreur);
   };
 
@@ -189,7 +192,9 @@ export function TableauxImmobilisationsPage({ ongletPilote }: { ongletPilote?: '
           <button
             type="button"
             onClick={exporter}
-            title="Un classeur, trois feuilles · Immobilisations, Amortissements, Réévaluations"
+            title={`Un classeur, trois feuilles · Immobilisations (arrêtée au ${
+              dateArretExportee ? new Date(`${dateArretExportee}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : "dernier jour de l'exercice"
+            }), Amortissements, Réévaluations`}
             className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold"
           >
             Exporter en Excel

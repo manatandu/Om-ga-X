@@ -156,7 +156,7 @@ const EXCEPTIONS: Readonly<Record<string, string>> = {
     'plan entier où se résout le numéro TAPÉ (jamais un refus) et où se lisent la contrepartie de trésorerie, la TVA routée et les modèles · la liste de frappe, elle, lit `retenus=true`',
   "pages/InventairePage.tsx :: '/comptes?typeCompte=DETAIL'":
     'plan entier où se résout le numéro TAPÉ d’une fiche, même règle que la saisie · la liste proposée lit `retenus=true`',
-  "pages/ImmobilisationsPage.tsx :: '/comptes?typeCompte=DETAIL'":
+  'pages/ImmobilisationsPage.tsx :: `/comptes?typeCompte=DETAIL&usage=true&recherche=${encodeURIComponent(numero)}`':
     'retrouve par son numéro le compte que la nature du barème propose, non encore personnalisé, pour l’adopter d’un clic (administrateur) · la liste des comptes du bien lit `retenus=true`',
   "pages/BrouillardPage.tsx :: '/comptes?typeCompte=DETAIL'":
     'l’édition du brouillard n’offre aucune liste · elle résout un numéro tapé, qu’un plan restreint dirait introuvable à tort',
