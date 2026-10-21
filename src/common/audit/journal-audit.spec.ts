@@ -729,6 +729,95 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     expect(preImageIllisible({ statut: 'OUVERT' })).toBe(false);
   });
 
+  describe('le maillon suit l’acte dans une transaction (ligne k6-defauts, AUDCIF art. 22, 5° et 6°)', () => {
+    // Le client étendu factice · sa transaction rejoue l'acte par un client
+    // qui réentre l'intercepteur avec la transaction au contexte.
+    function etenduFactice(options: { maillonTombe?: boolean; transactionRefusee?: boolean } = {}) {
+      const maillons: any[] = [];
+      const query = jest.fn(async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }));
+      const base: any = { $transaction: jest.fn().mockRejectedValue(new Error('la connexion à part ne doit pas servir')) };
+      const tx: any = {
+        $executeRaw: jest.fn().mockResolvedValue(1),
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        evenementAudit: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockImplementation(async ({ data }: any) => {
+            if (options.maillonTombe) throw new Error('Timed out fetching a new connection from the connection pool');
+            maillons.push(data);
+            return data;
+          }),
+        },
+        journal: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'j-1', tenantId: 'd-1', intitule: 'Avant' }),
+          update: jest.fn((args: unknown) => intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query })),
+        },
+      };
+      const etendu = {
+        $transaction: jest.fn().mockImplementation(async (f: any) => {
+          if (options.transactionRefusee) throw new Error('Unable to start a transaction in the given time');
+          return f(tx);
+        }),
+      };
+      return { etendu, tx, base, query, maillons };
+    }
+    const args = { where: { id: 'j-1' }, data: { intitule: 'Après' } };
+
+    it('hors transaction, l’acte est rejoué par le client étendu dans une transaction qui porte son maillon', async () => {
+      const { etendu, tx, base, query, maillons } = etenduFactice();
+      const r = await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query: async () => { throw new Error('jamais par le client nu'); } }, () => etendu as never),
+      );
+      expect(r).toMatchObject({ intitule: 'Après' });
+      expect(etendu.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.journal.update).toHaveBeenCalledWith(args);
+      expect(query).toHaveBeenCalledTimes(1);
+      // Pré-image et maillon par la transaction · aucune connexion à part.
+      expect(tx.journal.findFirst).toHaveBeenCalledTimes(1);
+      expect(maillons).toHaveLength(1);
+      expect(maillons[0]).toMatchObject({ entite: 'Journal', avant: { intitule: 'Avant' }, apres: { intitule: 'Après' } });
+      expect(base.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('le maillon qui ne peut pas s’écrire fait tomber l’acte avec lui · jamais un acte sans sa trace', async () => {
+      const { etendu, base, query } = etenduFactice({ maillonTombe: true });
+      await expect(
+        dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+          intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never),
+        ),
+      ).rejects.toThrow(/Maillon d’audit|maillon/i);
+      // L'acte a été tenté dans la transaction, qui l'annule avec le maillon.
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('une transaction qui ne peut pas s’ouvrir (pool épuisé) ne fait RIEN · l’acte n’est pas tenté', async () => {
+      const { etendu, base, query } = etenduFactice({ transactionRefusee: true });
+      await expect(
+        dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+          intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never),
+        ),
+      ).rejects.toThrow(/Unable to start a transaction/);
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('déjà dans une transaction, aucune seconde transaction · le chemin de la transaction en cours', async () => {
+      const { etendu, tx, base, query, maillons } = etenduFactice();
+      await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        journaliserDansTransaction(tx, () => intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never)),
+      );
+      expect(etendu.$transaction).not.toHaveBeenCalled();
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(maillons).toHaveLength(1);
+    });
+
+    it('un modèle non audité n’ouvre aucune transaction', async () => {
+      const { etendu, base } = etenduFactice();
+      const query = jest.fn(async () => ({ id: 'l-1' }));
+      await intercepterEcriture(base, { model: 'LigneEcriture', operation: 'update', args, query }, () => etendu as never);
+      expect(etendu.$transaction).not.toHaveBeenCalled();
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('la création du dossier ouvre SA chaîne, pas celle de l’acteur', async () => {
     const { tx, base, maillons } = transactionFactice(null);
     await dansContexteAudit({ acteurEmail: 'operateur@vmg.cd', tenantId: 'editeur' }, () =>

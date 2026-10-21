@@ -316,8 +316,14 @@ factices, qui rendent des promesses déjà lancées et ne désérialisent aucune
 colonne. Les deux pannes du 2026-09-02 (sortie de cloisonnement muette,
 verrou d'audit illisible) sont passées au vert dans 1696 tests et sont tombées
 à la première seconde de vie réelle. Ce contrôle relit aussi le journal de
-démarrage : un maillon d'audit non écrit ne fait tomber aucune requête, il ne
-se voit que là.
+démarrage · « Maillon d'audit NON écrit » n'y a plus sa place depuis la ligne
+k6-defauts (2026-10-21, décision par la loi · AUDCIF art. 22, 5° et 6°) · un
+acte audité hors transaction se rejoue DANS une transaction courte avec son
+maillon, par le client étendu (`extensionAudit(this, () => etendu)`) · l'un et
+l'autre passent, ou aucun ; si la transaction ne s'ouvre pas, rien n'est fait
+et la requête tombe, sans doublon. La ligne ne peut plus venir que d'un appel
+sans client étendu (`ajouterMaillon` à la main), et le portillon la relit
+encore.
 
 **LE PORTILLON ÉPROUVE LES VERSIONS DE SES CIBLES, ET IL JUGE LES DEMANDES DE
 TIRAGE (2026-09-28, audit final F194, F195).** Node 22 comme le `Dockerfile`,

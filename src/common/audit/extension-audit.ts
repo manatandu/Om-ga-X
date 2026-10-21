@@ -4,6 +4,7 @@ import { acteurCourant, ACTEUR_SYSTEME, transactionAuditee } from './contexte-au
 import { MODELES_AUDITES, colonnesExclues, masquer } from './champs-audites';
 import { calculerEmpreinte, EMPREINTE_ORIGINE } from './empreinte-audit';
 import { PRE_IMAGE_ILLISIBLE } from './pre-image';
+import { transactionJournalisee } from './transaction-journalisee';
 
 const journal = new Logger('JournalAudit');
 
@@ -265,6 +266,9 @@ function dossier(model: string, avant: unknown, apres: unknown, secours: string 
  * `base` est le client NON étendu · c'est par lui que le journal s'écrit, ce
  * qui évite qu'un maillon déclenche l'écriture d'un maillon.
  */
+/** Le client ÉTENDU, par lequel l'acte et son maillon partagent une transaction. */
+export type ClientEtendu = Parameters<typeof transactionJournalisee>[0];
+
 export async function intercepterEcriture(
   base: PrismaClient,
   contexte: {
@@ -273,10 +277,36 @@ export async function intercepterEcriture(
     args: unknown;
     query: (args: unknown) => Promise<unknown>;
   },
+  etendu?: () => ClientEtendu | undefined,
 ): Promise<unknown> {
   const { model, operation, args, query } = contexte;
   const action = ACTIONS[operation];
   if (!action || !MODELES_AUDITES.has(model)) return query(args);
+
+  // LE MAILLON SUIT L'ACTE, OU L'ACTE NE SE FAIT PAS (ligne k6-defauts,
+  // décision par la loi · AUDCIF art. 22, 5° et 6° · l'organisation
+  // « garantisse toutes les possibilités de contrôle en permettant la
+  // reconstitution du chemin de révision », et l'intégrité des données
+  // « offre des garanties de conservation »). Un acte audité hors de toute
+  // transaction s'exécutait, PUIS son maillon s'écrivait par une transaction
+  // à part · sous saturation (test de charge § 4.5), la seconde tombait et
+  // l'acte restait fait sans sa trace, « Maillon d'audit NON écrit » au
+  // journal du serveur. Un chemin de révision qui a des trous ne se
+  // reconstitue pas. L'acte est donc rejoué DANS une transaction courte, par
+  // le client étendu · ses gardes (cloisonnement, périmètre, situation) le
+  // jugent à nouveau par la transaction, et l'intercepteur, réentré avec la
+  // transaction au contexte, écrit le maillon dedans · l'un et l'autre
+  // passent, ou aucun. Si la transaction ne peut pas s'ouvrir (pool épuisé),
+  // RIEN n'est fait et la requête tombe · l'utilisateur la rejoue, sans
+  // doublon, puisque rien n'a été écrit. Sans client étendu (tests, appels
+  // directs), l'ancien chemin reste, et consigne le maillon manqué.
+  const client = etendu?.();
+  if (client && !transactionAuditee()) {
+    const propriete = model.charAt(0).toLowerCase() + model.slice(1);
+    return transactionJournalisee(client, (tx) =>
+      (tx as unknown as Record<string, Record<string, (x: unknown) => Promise<unknown>>>)[propriete][operation](args),
+    );
+  }
 
   const a = args as { where?: Record<string, unknown>; data?: unknown };
 
@@ -370,15 +400,15 @@ export async function intercepterEcriture(
     }
   } catch (erreur) {
     if (erreur instanceof ErreurMaillonDansTransaction) throw erreur;
-    // CHOIX ASSUMÉ · l'opération métier a RÉUSSI à ce stade. Faire échouer la
-    // requête ferait voir une erreur pour un acte accompli, et l'utilisateur
-    // le rejouerait · une écriture en double vaut pire qu'un trou dans le
-    // journal. On crie donc dans les journaux d'exploitation et on laisse
-    // passer.
-    //
-    // Ce que cela veut dire, et il faut le dire : la chaîne détecte la
-    // FALSIFICATION d'un maillon, pas l'ABSENCE d'un maillon jamais écrit. Ce
-    // sont deux garanties différentes, et seule la première est tenue ici.
+    // CE CHEMIN NE SERT PLUS QU'AUX APPELS SANS CLIENT ÉTENDU (tests,
+    // `ajouterMaillon` appelé à la main) · le service enveloppe tout acte
+    // audité dans une transaction avec son maillon (voir plus haut). Ici,
+    // l'opération métier a RÉUSSI à ce stade · faire échouer la requête
+    // ferait voir une erreur pour un acte accompli, et l'utilisateur le
+    // rejouerait. On crie donc dans les journaux d'exploitation et on laisse
+    // passer · la chaîne détecte alors la FALSIFICATION d'un maillon, pas
+    // l'ABSENCE d'un maillon jamais écrit. `deploy-cloud-run.yml` relit cette
+    // ligne au démarrage réel.
     journal.error(
       `Maillon d'audit NON écrit · ${model}.${operation} · ${erreur instanceof Error ? erreur.message : erreur}`,
     );
@@ -392,13 +422,19 @@ export async function intercepterEcriture(
  * d'où qu'elle vienne. C'est le point de la chose : un journal appelé à la
  * main dans les services serait oublié le jour où l'on ajoute un service.
  */
-export function extensionAudit(base: PrismaClient) {
+/**
+ * `etendu` rend le client ÉTENDU une fois construit (il n'existe pas encore
+ * quand l'extension se pose) · c'est par lui que l'acte et son maillon
+ * partagent une transaction. Absent, l'acte s'exécute puis le maillon s'écrit
+ * à part, comme avant la ligne k6-defauts.
+ */
+export function extensionAudit(base: PrismaClient, etendu?: () => ClientEtendu | undefined) {
   return Prisma.defineExtension({
     name: 'journal-audit',
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          return intercepterEcriture(base, { model, operation, args, query });
+          return intercepterEcriture(base, { model, operation, args, query }, etendu);
         },
       },
     },

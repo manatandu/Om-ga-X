@@ -25,15 +25,26 @@ banc k6 en CI, puis les lignes Sage L3, L8, L9.
    `EXPLAIN` sur la base jetable locale, à reporter dans
    `docs/test-de-charge-k6.md` § 4.12 (voir la section Mesures ci-dessous).
 
+3. **§ 4.11 · les deux gardes lisent par la transaction** ·
+   `extension-cloisonnement.ts` et `extension-perimetre-journaux.ts`,
+   `transactionAuditee() ?? base`, sous `horsCloisonnement` pour leur propre
+   relecture (le client de la transaction porte les extensions). Tests dans
+   `cloisonnement.spec.ts` (+ liste fermée) et
+   `extension-perimetre-journaux.spec.ts`. Scénario sur vraie base
+   `scratchpad/scenario-perimetre.mjs` · comptable restreint à la caisse,
+   saisie, modification, validation, refus hors périmètre, pièce d'un autre
+   dossier, à travers la clôture de N · passé (12 contrôles) sur le serveur
+   compilé du 2026-10-21.
+4. **§ 4.5 · le maillon suit l'acte** (décision par la loi · AUDCIF art. 22,
+   5° et 6°, lus dans `audcif-acte-uniforme`, titre 1 ch. 2) · un acte audité
+   hors transaction est rejoué par le client étendu dans une transaction
+   courte avec son maillon (`extensionAudit(this, () => etendu)`,
+   `intercepterEcriture(…, etendu)`) ; l'ancien chemin reste pour les appels
+   sans client étendu. Cinq tests (`journal-audit.spec.ts`), CLAUDE.md § 5 et
+   `docs/test-de-charge-k6.md` § 4.5 mis à jour.
+
 ## Reste
 
-3. § 4.11 · `extension-cloisonnement.ts` (l. 321) et
-   `extension-perimetre-journaux.ts` (l. 92, 106, 148) lisent par
-   `transactionAuditee() ?? base` ; scénario sur vraie base avec un
-   utilisateur à journaux restreints, à travers une clôture.
-4. § 4.5 · le maillon d'audit hors transaction · décision par la loi (AUDCIF
-   art. 22, 5° et 6°) à écrire ; si le maillon doit suivre l'acte, le dire
-   dans CLAUDE.md § 5 (qui écrit aujourd'hui le choix inverse).
 5. § 4.4 · conflits de sérialisation · mesures sûres (reprises serveur plus
    nombreuses et plus espacées dans `avecRetrySerialisable`, reprise
    automatique côté client sur les deux 409), mesurées au profil k6 nominal

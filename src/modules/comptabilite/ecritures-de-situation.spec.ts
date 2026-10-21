@@ -215,7 +215,7 @@ describe('l’invariant tenu sur le client Prisma', () => {
     const src = SOURCE('src/common/prisma.service.ts');
     const perimetre = src.indexOf('.$extends(extensionPerimetreJournaux(this))');
     const situation = src.indexOf('.$extends(extensionJournalDeSituation(this))');
-    const audit = src.indexOf('.$extends(extensionAudit(this))');
+    const audit = src.indexOf('.$extends(extensionAudit(this,');
     expect(perimetre).toBeGreaterThan(-1);
     expect(situation).toBeGreaterThan(perimetre);
     expect(audit).toBeGreaterThan(situation);

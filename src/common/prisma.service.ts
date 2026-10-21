@@ -52,10 +52,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // écriture d'un autre dossier est refusée par lui d'abord, avec son motif.
     // L'invariant des écritures de situation (ligne sage-l1, fonction 12) se
     // pose après eux · un refus de dossier ou de périmètre se dit d'abord.
-    const etendu = this.$extends(extensionCloisonnement(this))
+    // Le journal d'audit reçoit le client ÉTENDU une fois construit · un acte
+    // audité hors transaction s'y rejoue avec son maillon dans UNE transaction
+    // (ligne k6-defauts, AUDCIF art. 22, 5° et 6°).
+    let etendu: this | undefined;
+    etendu = this.$extends(extensionCloisonnement(this))
       .$extends(extensionPerimetreJournaux(this))
       .$extends(extensionJournalDeSituation(this))
-      .$extends(extensionAudit(this)) as unknown as this;
+      .$extends(extensionAudit(this, () => etendu)) as unknown as this;
     // `defineProperty` et non une affectation · le champ doit être posé sur
     // l'objet ÉTENDU que le constructeur retourne (c'est lui que Nest
     // injecte), et rester NON énumérable pour qu'aucune sérialisation du
