@@ -4,7 +4,25 @@ import { transactionJournalisee } from './audit/transaction-journalisee';
 
 // Code Prisma d'un échec de sérialisation (conflit d'écriture concurrente).
 const CODE_CONFLIT_TRANSACTION = 'P2034';
-const TENTATIVES_MAX = 5;
+/**
+ * HUIT TENTATIVES, DÉLAI CROISSANT ET LARGEMENT ALÉATOIRE (ligne k6-defauts,
+ * test de charge § 4.4). À cinq tentatives espacées de 20 à 130 ms, de 0,4 à
+ * 0,7 % des gestes d'écriture de vingt cabinets simultanés gardaient leur
+ * 409 · des conflits de prédicat au niveau PAGE des index partagés par tous
+ * les dossiers, où deux cabinets sans rapport se percutent, et se
+ * repercutent quand leurs reprises repartent au même instant. Trois
+ * tentatives de plus, et une part aléatoire qui croît avec la tentative,
+ * dispersent les reprises · au pire, de l'ordre de deux secondes d'attente
+ * cumulée avant le 409, que l'interface rejoue encore (`reprise-conflit.ts`).
+ */
+export const TENTATIVES_MAX = 8;
+export const DELAI_REPRISE_BASE_MS = 20;
+export const DELAI_REPRISE_ALEATOIRE_MS = 40;
+
+/** Délai avant la reprise qui suit la tentative n° `tentative` · croissant et aléatoire. */
+export function delaiDeReprise(tentative: number, aleatoire: () => number = Math.random): number {
+  return DELAI_REPRISE_BASE_MS * tentative + Math.floor(aleatoire() * DELAI_REPRISE_ALEATOIRE_MS * tentative);
+}
 
 /**
  * Un échec de sérialisation, où qu'il se loge · P2034 rendu par Prisma, ou
@@ -84,7 +102,7 @@ export async function avecRetrySerialisable<T>(
       const estConflit = estConflitDeSerialisation(err);
       if (!estConflit) throw err;
       if (tentative === TENTATIVES_MAX) throw new ConflictException(messageConflit);
-      await attendre(20 * tentative + Math.random() * 30);
+      await attendre(delaiDeReprise(tentative));
     }
   }
   // Inatteignable (la boucle retourne ou relance à chaque itération) ·

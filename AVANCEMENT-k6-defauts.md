@@ -41,14 +41,25 @@ banc k6 en CI, puis les lignes Sage L3, L8, L9.
    courte avec son maillon (`extensionAudit(this, () => etendu)`,
    `intercepterEcriture(…, etendu)`) ; l'ancien chemin reste pour les appels
    sans client étendu. Cinq tests (`journal-audit.spec.ts`), CLAUDE.md § 5 et
-   `docs/test-de-charge-k6.md` § 4.5 mis à jour.
+   `docs/test-de-charge-k6.md` § 4.5 mis à jour. TROUVÉ AU REJEU SUR VRAIE
+   BASE (le banc k6 tombait à la première inscription, « Unable to start a
+   transaction ») · le rappel rendait une requête Prisma NON attendue, dont le
+   `.then` est appelé par Prisma hors de la portée de
+   `journaliserDansTransaction` · le crochet ne voyait plus la transaction et
+   en rouvrait une à l'infini. Corrigé à la racine · `journaliserDansTransaction`
+   appelle `.then` dans sa portée (comme `dansLaPortee` du cloisonnement),
+   deux tests dans `transaction-journalisee.spec.ts`. Un rappel de
+   `transactionJournalisee` qui rendait une requête nue avait le même défaut
+   latent (maillon par la connexion à part).
 
 ## Reste
 
-5. § 4.4 · conflits de sérialisation · mesures sûres (reprises serveur plus
-   nombreuses et plus espacées dans `avecRetrySerialisable`, reprise
-   automatique côté client sur les deux 409), mesurées au profil k6 nominal
-   avant et après, en local.
+5. § 4.4 · conflits de sérialisation · côté client FAIT (`reprise-conflit.ts`,
+   `api.ts`, deux reprises après délai aléatoire, test vitest) ; côté serveur
+   la reprise à huit tentatives et délai plus aléatoire
+   (`scratchpad/patch-retry.py`, à appliquer APRÈS la mesure « avant ») ;
+   mesure au profil k6 palier (20 cabinets, 150 s, base neuve, serveur bridé
+   un cœur / 460 Mio / pool 10, `scratchpad/banc-k6.sh`) avant et après.
 6. Bloc § 3 des deux côtés, `silent-failure-hunter` et `typescript-reviewer`
    (deux tours), scénario sur vraie base à travers une clôture, intégration
    sur `main`, déploiement relu, fiche retirée.

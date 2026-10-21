@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { avecRetrySerialisable, estConflitDeSerialisation } from './prisma-retry.util';
+import { avecRetrySerialisable, estConflitDeSerialisation, TENTATIVES_MAX, delaiDeReprise } from './prisma-retry.util';
 import { transactionAuditee } from './audit/contexte-audit';
 import { ErreurMaillonDansTransaction } from './audit/extension-audit';
 
@@ -73,5 +73,20 @@ describe('transaction sérialisable et journal d’audit', () => {
   it('une autre erreur brute n’est pas prise pour un conflit', () => {
     const autre = new Prisma.PrismaClientKnownRequestError('x', { code: 'P2010', clientVersion: 'x', meta: { code: '23505' } });
     expect(estConflitDeSerialisation(Object.assign(new Error('e'), { cause: autre }))).toBe(false);
+  });
+});
+
+describe('la reprise après conflit (ligne k6-defauts, test de charge § 4.4)', () => {
+  it('huit tentatives, délai croissant et largement aléatoire · deux reprises reparties ensemble se dispersent', () => {
+    expect(TENTATIVES_MAX).toBe(8);
+    expect(delaiDeReprise(1, () => 0)).toBe(20);
+    expect(delaiDeReprise(7, () => 0)).toBe(140);
+    expect(delaiDeReprise(1, () => 0.999)).toBeLessThan(60);
+    expect(delaiDeReprise(7, () => 0.999)).toBeLessThan(420);
+    expect(delaiDeReprise(3, () => 0.5)).not.toBe(delaiDeReprise(3, () => 0.25));
+    // Au pire, de l'ordre de deux secondes cumulées avant le 409.
+    let cumul = 0;
+    for (let t = 1; t < TENTATIVES_MAX; t++) cumul += delaiDeReprise(t, () => 0.999);
+    expect(cumul).toBeLessThan(2000);
   });
 });
