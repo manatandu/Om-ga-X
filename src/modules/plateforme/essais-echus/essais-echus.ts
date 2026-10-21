@@ -92,13 +92,21 @@ export function premiereDateDeSuppression(termeLe: Date): Date {
 
 /**
  * Le jour où la suppression est permise une fois le rappel parti `envoyeLe` · ni
- * avant la conservation, ni avant trente jours pleins après l'envoi. Un rappel
- * parti tard repousse la suppression, il ne raccourcit jamais le préavis.
+ * avant la conservation, ni avant trente jours PLEINS après le jour de l'envoi.
+ * Un rappel parti tard repousse la suppression, il ne raccourcit jamais le préavis.
+ *
+ * TRENTE JOURS PLEINS, LE JOUR DE L'ENVOI NON COMPTÉ · même règle que la
+ * conservation (`premiereDateDeSuppression`, terme + 180 inclus, supprimable le
+ * lendemain). Compter le jour de l'envoi pour un jour de préavis faisait d'un
+ * rappel parti le jour D à 23 h 59 un dossier supprimable à D + 30, 0 h 01 · vingt-
+ * neuf jours pleins et deux minutes, quand le courriel promettait « au moins
+ * trente jours ». D'où le `+ 1` · supprimable à D + 31, le courriel annonçant
+ * cette date exacte.
  */
 export function dateDeSuppression(termeLe: Date, envoyeLe: Date | null): Date {
   const premiere = premiereDateDeSuppression(termeLe);
   if (!envoyeLe) return premiere;
-  const apresPreavis = ajouterJours(jourDeKinshasa(envoyeLe), JOURS_RAPPEL_AVANT_SUPPRESSION);
+  const apresPreavis = ajouterJours(jourDeKinshasa(envoyeLe), JOURS_RAPPEL_AVANT_SUPPRESSION + 1);
   return apresPreavis.getTime() > premiere.getTime() ? apresPreavis : premiere;
 }
 

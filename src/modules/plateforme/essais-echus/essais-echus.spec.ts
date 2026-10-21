@@ -97,18 +97,32 @@ describe('l’état d’un essai, du premier au dernier jour', () => {
     expect(iso(jourJ.supprimableLe)).toBe('2026-07-31');
   });
 
-  it('rappel parti TARD · le préavis de trente jours repousse la suppression, il ne se raccourcit jamais', () => {
-    const rappel = { envoyeLe: new Date('2026-07-20T09:00:00Z') }; // + 30 jours = 19 août
-    expect(iso(dateDeSuppression(jour('2026-01-31'), rappel.envoyeLe))).toBe('2026-08-19');
-    expect(etatDeLEssai(faits({ rappel }), new Date('2026-08-18T12:00:00Z')).etat).toBe('ECHU_CONSERVE');
-    expect(etatDeLEssai(faits({ rappel }), new Date('2026-08-19T12:00:00Z')).etat).toBe('SUPPRIMABLE');
+  it('rappel parti TARD · le préavis de trente jours pleins repousse la suppression, il ne se raccourcit jamais', () => {
+    const rappel = { envoyeLe: new Date('2026-07-20T09:00:00Z') }; // 20 juillet + 30 jours pleins = supprimable le 20 août
+    expect(iso(dateDeSuppression(jour('2026-01-31'), rappel.envoyeLe))).toBe('2026-08-20');
+    expect(etatDeLEssai(faits({ rappel }), new Date('2026-08-19T12:00:00Z')).etat).toBe('ECHU_CONSERVE');
+    expect(etatDeLEssai(faits({ rappel }), new Date('2026-08-20T12:00:00Z')).etat).toBe('SUPPRIMABLE');
   });
 
-  it('le préavis se compte en jours de Kinshasa depuis l’envoi · 29 jours non, 30 jours oui', () => {
-    // Rappel le 10 août à 23 h 30 UTC = le 11 août à 0 h 30 à Kinshasa · jour K = 11 août, + 30 = 10 septembre.
+  it('le préavis se compte en jours de Kinshasa depuis l’envoi, le jour de l’envoi non compté', () => {
+    // Rappel le 10 août à 23 h 30 UTC = le 11 août à 0 h 30 à Kinshasa · jour K = 11 août, trente jours pleins
+    // du 12 août au 10 septembre, supprimable le 11 septembre.
     const rappel = { envoyeLe: new Date('2026-08-10T23:30:00Z') };
-    expect(etatDeLEssai(faits({ rappel }), new Date('2026-09-09T12:00:00Z')).etat).toBe('ECHU_CONSERVE');
-    expect(etatDeLEssai(faits({ rappel }), new Date('2026-09-10T12:00:00Z')).etat).toBe('SUPPRIMABLE');
+    expect(etatDeLEssai(faits({ rappel }), new Date('2026-09-10T12:00:00Z')).etat).toBe('ECHU_CONSERVE');
+    expect(etatDeLEssai(faits({ rappel }), new Date('2026-09-11T12:00:00Z')).etat).toBe('SUPPRIMABLE');
+  });
+
+  it('AU MOINS TRENTE JOURS PLEINS · un rappel parti à 23 h 59 ne rend pas le dossier supprimable vingt-neuf jours et deux minutes plus tard', () => {
+    // Le 20 juillet à 23 h 59 à Kinshasa (22 h 59 UTC).
+    const envoyeLe = new Date('2026-07-20T22:59:00Z');
+    const supprimableLe = dateDeSuppression(jour('2026-01-31'), envoyeLe);
+    expect(iso(supprimableLe)).toBe('2026-08-20');
+    // Minuit à Kinshasa le jour permis, moins l'instant d'envoi · au moins trente jours entiers.
+    const debutDuJourPermis = new Date(supprimableLe.getTime() - 60 * 60 * 1000);
+    expect(debutDuJourPermis.getTime() - envoyeLe.getTime()).toBeGreaterThanOrEqual(30 * 86_400_000);
+    // Le 19 août à 0 h 01 à Kinshasa (D + 30) · encore conservé ; le 20 août à 0 h 01, supprimable.
+    expect(etatDeLEssai(faits({ rappel: { envoyeLe } }), new Date('2026-08-18T23:01:00Z')).etat).toBe('ECHU_CONSERVE');
+    expect(etatDeLEssai(faits({ rappel: { envoyeLe } }), new Date('2026-08-19T23:01:00Z')).etat).toBe('SUPPRIMABLE');
   });
 });
 
