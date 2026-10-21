@@ -220,7 +220,9 @@ jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu ; et le même
 jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
 (« Oui tu peux modifier selon ce style »), avec le bandeau de consentement
 que la loi impose à la mesure de l'interface, et le domaine
-`omegax.vmgconsulting.net` admis comme origine du site.
+`omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
+PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
+touche pas au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4270,6 +4272,26 @@ consulte pas le contenu des dossiers, et chacun de ses accès techniques
 l'interface que la publication pose (`OMEGAX_MISE_EN_PRODUCTION`,
 `firebase-hosting-merge.yml`, jour de Kinshasa), sinon « non
 renseignée », et la langue (français, seule).
+
+**La page publique (`/vitrine/`, 2026-10-17, demande de Manasse).** Page STATIQUE
+de `client/public/vitrine/` (HTML, CSS et JS, sans build), servie par Firebase
+Hosting sous la politique de sécurité du site · aucune ressource externe, aucun
+script ni style en ligne, polices de `/polices/`, marque en tracés. ELLE NE DIT
+QUE CE QUE LE CODE TIENT, et `client/src/vitrine-publique.spec.ts` la relit :
+liens contre les routes du HashRouter, intitulés de comptes contre les DEUX semis
+(4181, 192 et la retraite obligatoire, un numéro deux sens), nombres de notes
+contre le § 6, refus d'une écriture déséquilibrée contre le service, charte
+(aucune couleur d'accent, liste fermée, contrastes mesurés sur les jetons, filet
+de clôture du § 9 de la charte), mouvement réduit. LE LIEN D'ESSAI NE S'OFFRE QUE
+SUR UNE PORTE LUE OUVERTE (`GET /api/auth/inscription-essai/etat`, même critère
+que `lib/essai.ts`) · caché au départ, une lecture absente, échouée ou fermée le
+laisse caché et la page donne l'adresse de VMG ; la durée affichée est celle que
+le serveur rend, jamais écrite en dur. La feuille de journal du haut de page est
+un exemple FICTIF qui ne s'enregistre nulle part, et le dit. Les `?v=` de la
+feuille de style et du script se montent ENSEMBLE à chaque changement (cache par
+défaut de Firebase Hosting). Les compétences `ui-ux-pro-max` et `impeccable` et le
+serveur `magicuidesign-mcp` (§ 11) ont servi à la concevoir · leurs conseils ne
+priment pas sur la charte.
 
 **Dossiers de démonstration (2026-09-26).** Une association (SYCEBNL), une SARL
 (SYSCOHADA), UNE par référentiel. (1) Comptes du scénario
