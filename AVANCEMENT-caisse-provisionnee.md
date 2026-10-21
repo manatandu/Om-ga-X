@@ -43,5 +43,16 @@ clôture l'à-nouveau réel porte 121 000 (lu en base), un franc de plus refusé
 banque découverte admise, virement caisse vers banque et règlement par caisse
 au-delà refusés, approvisionnement puis règlement partiel admis.
 
+## Second tour de relecture (2026-10-21)
+- B1 (BLOQUANT, reproduit sur vraie base puis corrigé) · une caisse en dollars
+  réévaluée à la clôture se jugeait en francs en N+1 (« il manque 5 000 » sur
+  100 USD tenus) · le reste en francs de l'à-nouveau qui porte la caisse en
+  devise se lit comme une écriture de change, et un jour dont les francs se
+  compensent ne fait pas basculer ; rejoué · 100 USD passent, 101 refusés.
+- m2, m4 · simulation écartée de la réimputation, statut (et non journal) jugé
+  à la modification. Limites écrites · fiche remplacée, ouverture du premier
+  jour sur la caisse, fusion de caisses par exercice.
+- Spec · le gabarit SQL porte ses filtres, le cas B1 rejoué.
+
 ## Reste
-- silent-failure-hunter et typescript-reviewer (second tour), intégration, déploiement.
+- Intégration sur main, bloc § 3, déploiement vérifié.
