@@ -15,20 +15,29 @@ import { API, appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * inventer d'une construction qui n'a pas été publiée.
  */
 
-test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture', async ({ page }) => {
-  const pannes = surveiller(page);
+test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture', async ({ page: ouverture }) => {
+  const pannes = surveiller(ouverture);
   // Au démarrage, `/auth/me` et le préchargement de `/exercices` partent
   // ensemble et reçoivent un 401 sans session, à dessein (lib/prechargement.ts).
   // Tout autre refus viendrait d'une page publique qui lit une route privée.
   const DEMARRAGE = new Set(['/auth/me', '/exercices']);
   const refusees: string[] = [];
-  page.on('response', (r) => {
-    const chemin = r.url().slice(API.length);
-    if (r.url().startsWith(API) && r.status() === 401 && !DEMARRAGE.has(chemin)) refusees.push(chemin);
-  });
-  await page.goto('/#/connexion');
+  const ecouter = (p: typeof ouverture) =>
+    p.on('response', (r) => {
+      const chemin = r.url().slice(API.length);
+      if (r.url().startsWith(API) && r.status() === 401 && !DEMARRAGE.has(chemin)) refusees.push(chemin);
+    });
+  ecouter(ouverture);
+  await ouverture.goto('/#/connexion');
 
-  await page.getByRole('link', { name: 'Questions fréquentes' }).click();
+  // Les textes s'ouvrent dans un NOUVEL ONGLET depuis l'écran d'ouverture
+  // (2026-10-17) · un formulaire de connexion commencé n'est pas perdu.
+  const [page] = await Promise.all([
+    ouverture.waitForEvent('popup'),
+    ouverture.getByRole('link', { name: 'Questions fréquentes' }).click(),
+  ]);
+  const pannesOnglet = surveiller(page);
+  ecouter(page);
   await expect(page.getByRole('heading', { level: 1, name: 'Questions fréquentes sur OmegaX' })).toBeVisible();
   await page.getByRole('searchbox').fill('verrou');
   await expect(page.getByText('Ma connexion est refusée après plusieurs essais.')).toBeVisible();
@@ -55,6 +64,7 @@ test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture'
 
   expect(refusees, 'routes qui exigent une session').toEqual([]);
   expect(pannes, 'exceptions et réponses 5xx').toEqual([]);
+  expect(pannesOnglet, 'exceptions et réponses 5xx du nouvel onglet').toEqual([]);
 });
 
 test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptation se dit fermée', async ({ page }) => {
@@ -94,7 +104,8 @@ test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptat
 
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Politique de confidentialité' }).click();
-  await expect(page.getByText('Dernière mise à jour · 15 octobre 2026')).toBeVisible();
+  // La date suit la politique en vigueur · elle se lit, elle ne se recopie pas.
+  await expect(page.getByText(/^Dernière mise à jour · \d{1,2} \S+ \d{4}$/)).toBeVisible();
   // Dans une fenêtre, la barre de titre porte le titre · pas de titre de page.
   await expect(page.getByRole('heading', { level: 1, name: 'Politique de confidentialité d’OmegaX' })).toHaveCount(0);
   // Le lien vers le contrat ouvre la FENÊTRE du contrat, sans quitter

@@ -1,5 +1,7 @@
-import { FormEvent, useId, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { essaiOuvert } from '../lib/essai';
+import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -90,6 +92,19 @@ export function AuthPage() {
   const [email, setEmail] = useState(() => lireDossiersRecents()[0]?.email ?? '');
   const [motDePasse, setMotDePasse] = useState('');
   const [surSite, setSurSite] = useState<EtatSurSite | null>(null);
+  // Le lien d'essai ne s'offre que sur une porte LUE ouverte · une lecture qui
+  // échoue le tait, le serveur restant celui qui refuse.
+  const [essai, setEssai] = useState<{ joursEssai: number } | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    api
+      .get<unknown>('/auth/inscription-essai/etat')
+      .then((e) => vivant && essaiOuvert(e) && setEssai({ joursEssai: e.joursEssai }))
+      .catch(() => undefined);
+    return () => {
+      vivant = false;
+    };
+  }, []);
   const [motDePasseVisible, setMotDePasseVisible] = useState(false);
   // Le second facteur · demandé par le serveur, jamais supposé par l'écran.
   const [codeRequis, setCodeRequis] = useState(false);
@@ -346,6 +361,13 @@ export function AuthPage() {
             </a>
           </div>
         )}
+        {essai && !surSite?.surSite && (
+          <div className="mt-4 text-[11.5px]">
+            <a href="#/essai" className="underline">
+              Essayer gratuitement pendant {essai.joursEssai} jours
+            </a>
+          </div>
+        )}
         {/*
           Le lien vers la politique de confidentialité est ICI parce que c'est
           la seule page qu'un visiteur non connecté voit · un lien enfoui dans
@@ -356,16 +378,29 @@ export function AuthPage() {
             veut mis à la disposition de la clientèle (art. 53, al. 1er), et
             pour les questions fréquentes · « comment obtenir un accès » se lit
             avant d'en avoir un. */}
+        {/* Sur le modèle de l'écran de connexion des grands éditeurs (demande
+            de Manasse du 2026-10-17, d'après Cloudflare) · une phrase qui
+            renvoie aux textes, chacun dans un NOUVEL ONGLET pour ne pas perdre
+            ce qui est saisi. Elle ne dit pas « j'accepte » · l'acceptation du
+            contrat est un acte enregistré par le serveur (art. 55 et 56 du
+            Code du numérique, AcceptationConditionsLicence), pas un effet de
+            la connexion. */}
+        <p className="mt-3 text-[11px] text-text-dim leading-relaxed">
+          L’utilisation d’OmegaX est régie par le{' '}
+          <a href="#/contrat-de-licence" target="_blank" rel="noopener" className="underline">
+            contrat de licence
+          </a>
+          . Le traitement de vos données est décrit dans la{' '}
+          <a href="#/confidentialite" target="_blank" rel="noopener" className="underline">
+            politique de confidentialité
+          </a>
+          , qui dit aussi l’usage des témoins.
+        </p>
         <div className="mt-2 text-[11px] text-text-dim flex flex-wrap gap-x-3 gap-y-1">
-          <a href="#/questions-frequentes" className="underline">
+          <a href="#/questions-frequentes" target="_blank" rel="noopener" className="underline">
             Questions fréquentes
           </a>
-          <a href="#/contrat-de-licence" className="underline">
-            Contrat de licence
-          </a>
-          <a href="#/confidentialite" className="underline">
-            Politique de confidentialité
-          </a>
+          <LienPreferencesMesure />
         </div>
       </div>
           </div>

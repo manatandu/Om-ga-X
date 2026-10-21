@@ -110,6 +110,15 @@ export class UtilisateurController {
     return this.utilisateurService.definirJournaux(user.tenantId, id, dto);
   }
 
+  /**
+   * Ferme toutes les sessions d'un collaborateur, sans rien changer d'autre
+   * (poste resté ouvert, appareil dont on doute) · UtilisateurService.deconnecter.
+   */
+  @Post(':id/deconnecter')
+  async deconnecter(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.utilisateurService.deconnecter(user.tenantId, id, user.userId);
+  }
+
   /** Le comptable qui a mal tapé cinq fois et se souvient très bien du sien. */
   @Post(':id/deverrouiller')
   async deverrouiller(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

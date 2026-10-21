@@ -199,6 +199,7 @@ describe('mineur 7 · un ordre de virement en francs ne part pas vers un RIB en 
           journal: { code: 'BQ' },
         }),
       },
+      tenant: { findUnique: jest.fn().mockResolvedValue({ visaRibs: false }) },
       ribSalarie: {
         findMany: jest.fn().mockResolvedValue([
           { salarieId: 's-1', estPrincipal: true, devise: 'USD', titulaire: null, banque: 'Equity', iban: null, numeroCompte: '99', codeBanque: null, codeGuichet: null, cle: null, codeBic: null },

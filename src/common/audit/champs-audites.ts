@@ -185,6 +185,11 @@ export const MODELES_AUDITES = new Set<string>([
   // art. 22, 7°) · établi, terminé ou interrompu, chaque pas se lit au
   // journal ; retouché après coup, il attesterait un état qui n'a pas été remis.
   'ExtraitPeriode',
+  // Ligne suppression-essais · la trace d'un dossier d'essai SUPPRIMÉ par l'opérateur
+  // (2026-10-17). L'acte est irréversible · il s'écrit dans la chaîne du dossier
+  // de l'opérateur (le dossier supprimé n'a plus de chaîne), avec qui, quand et
+  // combien de lignes, jamais une donnée du client.
+  'DossierEssaiSupprime',
   // Ligne sage-l2, fonction 1 · un mode de règlement est une structure du
   // dossier (sa nature porte le contrôle de l'art. 59 bis de la TVA).
   'ModeReglement',
@@ -452,6 +457,8 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   OptionAbonnement: "Options d'un abonnement de l'éditeur, hors dossier.",
   FactureAbonnement:
     "Lien de l'éditeur vers la facture émise, elle-même journalisée dans le dossier de l'éditeur.",
+  RappelSuppressionEssai:
+    "Suivi de l'éditeur, hors dossier · le rappel part dans la file du dossier (journalisée) et la suppression qui le suit laisse sa propre trace, journalisée.",
 };
 
 /**

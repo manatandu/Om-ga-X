@@ -11,6 +11,7 @@ import {
   ModifierFormeSyscohadaDto,
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
+  ModifierVisaRibsDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
   ModifierSeuilEcartReglementDto,
@@ -176,6 +177,16 @@ export class TenantController {
     @Body() dto: ModifierDoubleRegardDto,
   ) {
     return this.tenantService.modifierDoubleRegard(user.tenantId, dto.doubleRegardValidation);
+  }
+
+  /** Visa des RIB par un second utilisateur · voir `tiers/visa-rib.ts`. */
+  @Patch('visa-ribs')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierVisaRibs(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierVisaRibsDto,
+  ) {
+    return this.tenantService.modifierVisaRibs(user.tenantId, dto.visaRibs);
   }
 
   /** Création d'un compte pendant la saisie · ligne sage-l1, fonction 14. */

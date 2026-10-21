@@ -128,7 +128,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // non sur son émission (audit final F270, relecture adverse) · un jeton
     // prolongé dans la seconde d'une révocation lui échappait sinon.
     if (sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant)) {
-      throw new UnauthorizedException('Session close · reconnectez-vous');
+      // Le motif nomme les causes possibles · depuis le 2026-10-21,
+      // l'administrateur du dossier peut aussi fermer ces sessions, et le
+      // titulaire ne savait pas pourquoi il était sorti.
+      throw new UnauthorizedException(
+        "Session close · reconnectez-vous. Elle a été fermée par un changement de vos accès, par vous-même ou par l'administrateur du dossier.",
+      );
     }
     // L'opérateur garde sa session longue (décision de Manasse du
     // 2026-10-09) · la console, elle, exige une authentification de moins de

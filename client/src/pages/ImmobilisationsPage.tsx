@@ -1,5 +1,5 @@
 import { TableauxImmobilisationsPage } from './TableauxImmobilisationsPage';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { sousFonctionServie } from '../lib/profil-dossier';
@@ -62,6 +62,7 @@ import {
   naturesProposees,
   compteSelonNature,
   numerosNonProposesPourNature,
+  natureGardeeAvecLeCompte,
 } from '../lib/bareme-fiscal';
 import { contrepartieCessionProposee } from '../lib/contrepartie-cession';
 import { compte29EnPlace, depreciationEnCoursATransferer } from '../lib/depreciation-en-cours';
@@ -172,6 +173,10 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   // financés (SYCEBNL Partie 3 ch. 3 § 2.5) · le serveur l'exige et le refuse ailleurs.
   const projetDeveloppement = utilisateur?.tenant.jeuEtatsFinanciersSycebnl === 'PROJETS_DEVELOPPEMENT';
   const [fiscalOuvertPour, setFiscalOuvertPour] = useState<string | null>(null);
+  // L'option fiscale choisie au formulaire · la fiche fiscale du bien créé
+  // s'ouvre sur elle (le serveur tient seul les conditions, art. 31 à 38).
+  const [iPlanFiscal, setIPlanFiscal] = useState<'' | 'DEGRESSIF' | 'EXCEPTIONNEL'>('');
+  const [exceptionnelPropose, setExceptionnelPropose] = useState(false);
   const { exerciceCourant } = useExercice();
   const [familles, setFamilles] = useState<FamilleImmobilisation[] | null>(null);
   const [immobilisations, setImmobilisations] = useState<Immobilisation[] | null>(null);
@@ -193,7 +198,9 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [journaux, setJournaux] = useState<Journal[]>([]);
 
   // Lieux des biens · référentiel du dossier (Sage Immobilisations).
-  const [lieux, setLieux] = useState<LieuBien[]>([]);
+  // Null tant que la liste n'est pas LUE · « aucun lieu » ne se dit que sur une liste lue.
+  const [lieuxLus, setLieux] = useState<LieuBien[] | null>(null);
+  const lieux = lieuxLus ?? [];
   const [iLieuId, setILieuId] = useState('');
   const [afficherFormImmo, setAfficherFormImmo] = useState(false);
   // Ligne sage-l4, n° 68 · la fenêtre « Créer depuis les écritures ».
@@ -526,6 +533,24 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     };
   }, [syscohada, iDateAcquisition]);
   const unitesServies = !(utilisateur?.tenant?.referentiel === 'SYSCOHADA' && utilisateur?.tenant?.systemeComptableSyscohada === 'MINIMAL_TRESORERIE');
+  // L'option fiscale ne s'offre qu'au bien qui peut la recevoir · jamais au
+  // Système minimal (Titre X, « linéaire »), jamais à un incorporel, et
+  // seulement mis en service (loi n° 23/053, art. 31 à 35 · le plan fiscal
+  // part de la mise en service). Masquée, elle est retirée · un choix caché
+  // ouvrait quand même la fiche fiscale après la création.
+  const optionFiscaleServie =
+    syscohada && !iRepris && !enLA && unitesServies && !incorporelSyscohada && !iPasEncoreEnService && !!iDateMiseEnService;
+  useEffect(() => {
+    if (!optionFiscaleServie) setIPlanFiscal('');
+  }, [optionFiscaleServie]);
+  // Le formulaire refermé (Annuler, création) ne garde pas l'option · rouvert,
+  // il ouvrirait la fiche fiscale d'un autre bien.
+  useEffect(() => {
+    if (!afficherFormImmo) setIPlanFiscal('');
+  }, [afficherFormImmo]);
+  // Un journal de situation n'enregistre aucune opération (AUDCIF art. 19,
+  // 22, 2°) · l'écriture d'acquisition n'y a pas sa place.
+  const journauxAcquisition = journaux.filter((j) => j.estActif && j.type !== 'SITUATION');
 
   // DUPLIQUER UNE FICHE (ligne sage-l4, n° 66) · la copie servie par le
   // serveur remplit le formulaire de création, que le cabinet confirme · la
@@ -534,6 +559,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const dupliquerFiche = (p: PropositionDuplication) => {
     setFicheOuvertePour(null);
     setIRepris(false);
+    setIPlanFiscal('');
     setEstComposant(false);
     setIPasEncoreEnService(false);
     setIDesignation(p.designation);
@@ -553,10 +579,68 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     setInfo('Copie préparée dans « Nouvelle immobilisation » · vérifiez les dates et le financement, puis enregistrez.');
   };
 
+  // LE COMPTE QUE PROPOSE LA NATURE DU BARÈME, ADOPTÉ D'UN CLIC (demande de
+  // Manasse du 2026-10-16, « pourquoi compte de biens est peu de compte ? ») ·
+  // la liste ne sert que les comptes personnalisés (décision du 2026-10-09) ;
+  // personnaliser le compte du plan est le geste qu'elle demande, posé ici
+  // par l'administrateur seul, comme au Plan comptable (PATCH réservé).
+  // Une réponse arrivée après un second clic ou un changement de choix est
+  // jetée · elle aurait posé un compte que l'écran ne demande plus.
+  const jetonPersonnalisation = useRef(0);
+  const [personnalisationEnCours, setPersonnalisationEnCours] = useState(false);
+  const personnaliserCompteDeNature = async (numero: string) => {
+    if (personnalisationEnCours) return;
+    const jeton = ++jetonPersonnalisation.current;
+    setErreur(null);
+    setPersonnalisationEnCours(true);
+    let personnalise = false;
+    try {
+      // Lu par son numéro, usage compris · le plan entier ne sert à rien ici,
+      // et seul `usage` dit si le compte est subdivisé.
+      const plan = await api.get<Compte[]>(`/comptes?typeCompte=DETAIL&usage=true&recherche=${encodeURIComponent(numero)}`);
+      if (jeton !== jetonPersonnalisation.current) return;
+      const compte = plan.find((c) => c.numero === numero);
+      if (!compte) {
+        setErreur(`Le compte ${numero} n'est pas au plan du dossier · ouvrez-le dans Plan comptable.`);
+        return;
+      }
+      // Les deux refus du Plan comptable · un compte en sommeil ne reçoit
+      // rien, un compte subdivisé ne se saisit plus (ses sous-comptes, si).
+      if (!compte.estActif) {
+        setErreur(`Le compte ${numero} est en sommeil · réactivez-le dans Plan comptable avant de le choisir.`);
+        return;
+      }
+      if (compte.subdivise) {
+        setErreur(`Le compte ${numero} est subdivisé · personnalisez l'un de ses sous-comptes dans Plan comptable.`);
+        return;
+      }
+      await api.patch(`/comptes/${compte.id}`, { estRetenu: true });
+      personnalise = true;
+      await charger();
+      const duBien = (await api.get<CompteDuBien[]>(`/immobilisations/comptes-du-bien?${RETENUS}`)).find((c) => c.id === compte.id);
+      if (jeton !== jetonPersonnalisation.current) return;
+      setICompteBienId(compte.id);
+      setIModeAcquisition('');
+      setICompteContrepartie('');
+      setICompteEnCoursId(duBien ? compteEnCoursInitial(duBien) : '');
+    } catch (err) {
+      const motif = err instanceof ApiError ? err.message : 'serveur injoignable';
+      // Le compte personnalisé reste personnalisé · seul son choix n'a pas été posé.
+      setErreur(
+        personnalise
+          ? `Le compte ${numero} est personnalisé, mais la liste n'a pu être relue · ${motif}. Choisissez-le dans « Compte du bien ».`
+          : `Personnalisation impossible · ${motif}`,
+      );
+    } finally {
+      if (jeton === jetonPersonnalisation.current) setPersonnalisationEnCours(false);
+    }
+  };
+
   const onCreerImmo = async (e: FormEvent) => {
     e.preventDefault();
     setErreur(null);
     setEnvoi(true);
+    let creeId: string | null = null;
     try {
       if (enLA) {
         const corps = corpsCreation(iCompteBienId, contratLA, {
@@ -571,7 +655,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
         if (!corps) throw new ApiError(400, 'Complétez le contrat · durée, loyer, et taux ou valeur du bien.');
         await api.post('/immobilisations/location-acquisition', corps);
         setContratLA(saisieInitiale(new Date().toISOString().slice(0, 10)));
-      } else await api.post('/immobilisations', {
+      } else creeId = (await api.post<{ id: string }>('/immobilisations', {
         compteImmobilisationId: iCompteBienId,
         designation: iDesignation,
         numeroInventaire: iNumeroInventaire || undefined,
@@ -612,7 +696,10 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               ...(iTauxDem ? { tauxActualisationDemantelementPourcent: Number(iTauxDem) } : {}),
             }
           : {}),
-      });
+      })).id;
+      const planFiscalChoisi = optionFiscaleServie ? iPlanFiscal : '';
+      const designationCreee = iDesignation;
+      setIPlanFiscal('');
       setIDesignation('');
       setIPrincipal('');
       setIJustification('');
@@ -638,6 +725,17 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
       setITauxDem('');
       setAfficherFormImmo(false);
       await charger();
+      if (creeId && planFiscalChoisi) {
+        setExceptionnelPropose(planFiscalChoisi === 'EXCEPTIONNEL');
+        setFiscalOuvertPour(creeId);
+        // L'option n'est pas encore déclarée · le bien est créé linéaire, et le
+        // dit, sa fiche fiscale ouverte sous lui.
+        setInfo(
+          `« ${designationCreee} » est créé · déclarez maintenant ${planFiscalChoisi === 'EXCEPTIONNEL' ? "l'amortissement exceptionnel" : 'le dégressif fiscal'} dans sa fiche fiscale, ouverte sous le bien.`,
+        );
+        const cible = creeId;
+        window.setTimeout(() => document.getElementById(`fiscal-${cible}`)?.scrollIntoView({ block: 'center' }), 0);
+      }
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : "Impossible de créer cette immobilisation");
     } finally {
@@ -1134,7 +1232,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 N° inventaire
                 <input value={iNumeroInventaire} onChange={(e) => setINumeroInventaire(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal font-mono" />
               </label>
-              <label className="text-[11.5px] font-semibold text-text-dim">
+              <div>
+                <label className="block text-[11.5px] font-semibold text-text-dim">
                 <span className="flex items-center gap-1">
                   Lieu
                   <Aide
@@ -1143,13 +1242,131 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     source="Référentiel des lieux du dossier"
                   />
                 </span>
-                <select value={iLieuId} onChange={(e) => setILieuId(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal">
+                <select
+                  value={iLieuId}
+                  onChange={(e) => setILieuId(e.target.value)}
+                  aria-describedby={lieuxLus !== null && lieuxLus.length === 0 ? 'lieu-indication' : undefined}
+                  className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal">
                   <option value="">Non placé</option>
                   {lieux.map((l) => (
                     <option key={l.id} value={l.id}>{l.code} · {l.intitule}</option>
                   ))}
                 </select>
-              </label>
+                </label>
+                {lieuxLus !== null && lieuxLus.length === 0 && (
+                  <span id="lieu-indication" className="block mt-1 text-[11px] font-normal text-text-dim">
+                    Aucun lieu dans le dossier (bureau, dépôt, site…).{' '}
+                    {estAdmin ? (
+                      <button type="button" onClick={() => choisirOnglet('lieux')} className="underline text-sel">
+                        Créer les lieux
+                      </button>
+                    ) : (
+                      "L'administrateur les crée dans l'onglet Lieux."
+                    )}
+                  </span>
+                )}
+              </div>
+              {bareme.length > 0 && (
+                // Un cadre, non une étiquette · il porte aussi la case « Toutes
+                // les catégories » et les boutons du compte proposé, qu'une
+                // étiquette englobante aurait renvoyés vers la liste.
+                <div className="text-[11.5px] font-semibold text-text-dim">
+                  <span className="flex items-center gap-1">
+                    <label htmlFor="nature-bareme">Nature du bien (barème fiscal)</label>
+                    <Aide
+                      titre="Barème fiscal"
+                      texte="Choisir la nature propose sa durée d'amortissement. La durée saisie reste libre : un écart au barème est signalé, jamais refusé. Un taux supérieur au barème n'est admis que si l'entreprise en justifie les circonstances lors du contrôle, sous peine de rejet. Un bien en location-acquisition a une durée plancher : 7 ans pour les constructions, 4 ans pour les équipements, 3 ans pour le matériel de transport. Barème en vigueur depuis le 1er janvier 2026."
+                      source="Arrêté n° 013/CAB/MIN/FINANCES/2025, art. 2, 4, 5 et 6 · loi n° 23/053, art. 28"
+                    />
+                  </span>
+                  <select
+                    id="nature-bareme"
+                    value={iNatureFiscale}
+                    onChange={(e) => {
+                      setINatureFiscale(e.target.value);
+                      const n = bareme.find((x) => x.cle === e.target.value);
+                      if (n) setIDuree(String(n.dureeAns));
+                      // Le compte unique de la nature est POSÉ, modifiable ensuite ;
+                      // le compte déjà choisi parmi les proposés est gardé ; plusieurs
+                      // restent proposés (lib/bareme-fiscal.ts, compteSelonNature).
+                      const { aPoser } = compteSelonNature(n, comptesDefinitifs(comptesBien ?? [], iPasEncoreEnService), compteBien);
+                      if (aPoser) {
+                        setICompteBienId(aPoser.id);
+                        setIModeAcquisition('');
+                        setICompteContrepartie('');
+                        setICompteEnCoursId(compteEnCoursInitial(aPoser));
+                      }
+                    }}
+                    className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal"
+                  >
+                    <option value="">Non précisée</option>
+                    {sectionsDuBareme(naturesProposees(bareme, compteBien, toutesCategories))
+                      .map((g) => (
+                      <optgroup key={g.section} label={`${g.section} · ${g.intitule}`}>
+                        {g.lignes.map((n) => (
+                          <option key={n.cle} value={n.cle}>{n.designation} · {n.dureeAns} ans</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {/* Les catégories proposées pour le compte sont une lecture de
+                      l'éditeur (compte-du-bien.ts) · jamais un refus. */}
+                  <span className="flex items-center gap-1 mt-1 text-[11px] font-normal">
+                    <input id="toutes-categories" type="checkbox" checked={toutesCategories} onChange={(e) => setToutesCategories(e.target.checked)} />
+                    <label htmlFor="toutes-categories">Toutes les catégories</label>
+                  </span>
+                  {/* La nature propose ses comptes quand ils sont plusieurs (lot 6,
+                      D-4) · un clic en pose un, sans toucher à la nature ; un
+                      compte unique est déjà posé au choix de la nature. */}
+                  {(() => {
+                    const nature = bareme.find((n) => n.cle === iNatureFiscale);
+                    const { proposes } = compteSelonNature(nature, comptesDefinitifs(comptesBien ?? [], iPasEncoreEnService), compteBien);
+                    // Le compte de la nature que la liste des comptes retenus ne
+                    // porte pas se dit · jamais une proposition qui disparaît.
+                    const absents = comptesBien ? numerosNonProposesPourNature(nature, comptesBien, compteBien) : [];
+                    if (proposes.length === 0) {
+                      return absents.length > 0 ? (
+                        <span className="block mt-1 text-[11px] font-normal text-warning">
+                          Le compte que cette catégorie propose ({absents.join(', ')}) n'est pas encore personnalisé.{' '}
+                          {estAdmin ? (
+                            <button
+                              type="button"
+                              disabled={personnalisationEnCours}
+                              onClick={() => void personnaliserCompteDeNature(absents[0])}
+                              className="underline text-sel disabled:opacity-40"
+                            >
+                              Le personnaliser et le choisir
+                            </button>
+                          ) : (
+                            "L'administrateur le personnalise dans Plan comptable."
+                          )}
+                        </span>
+                      ) : null;
+                    }
+                    return (
+                      <span className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] font-normal">
+                        Compte proposé
+                        {proposes.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setICompteBienId(c.id);
+                              setIModeAcquisition('');
+                              setICompteContrepartie('');
+                              setICompteEnCoursId(compteEnCoursInitial(c));
+                            }}
+                            className="border border-border-dark px-1.5 py-0.5 hover:bg-sel/10"
+                          >
+                            {c.numero} · {c.intitule}
+                          </button>
+                        ))}
+                        {nature?.remarque && <Aide titre="Compte proposé" texte={nature.remarque} source="Proposition de l'éditeur · aucun texte ne relie une nature du barème à un compte du plan" />}
+                      </span>
+                    );
+                  })()}
+                </div>
+              )}
               <label className="text-[11.5px] font-semibold text-text-dim col-span-2">
                 <span className="flex items-center gap-1">
                   Compte du bien
@@ -1163,8 +1380,12 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                   required
                   value={iCompteBienId}
                   onChange={(e) => {
+                    const choisi = (comptesBien ?? []).find((c) => c.id === e.target.value) ?? null;
                     setICompteBienId(e.target.value);
-                    setINatureFiscale('');
+                    // La nature déjà choisie reste si elle couvre ce compte (ou un de
+                    // ses sous-comptes) · l'effacer défaisait le choix que le compte
+                    // proposé venait de servir.
+                    if (!natureGardeeAvecLeCompte(bareme.find((n) => n.cle === iNatureFiscale), choisi)) setINatureFiscale('');
                     setIModeAcquisition('');
                     setICompteContrepartie('');
                     setICompteEnCoursId(compteEnCoursInitial((comptesBien ?? []).find((c) => c.id === e.target.value) ?? null));
@@ -1277,92 +1498,6 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 <input type="number" step="0.01" min={0} value={iValeurResiduelle} onChange={(e) => setIValeurResiduelle(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal font-mono" />
               </label>
               </>
-              )}
-              {bareme.length > 0 && (
-                <label className="text-[11.5px] font-semibold text-text-dim">
-                  <span className="flex items-center gap-1">
-                    Nature du bien (barème fiscal)
-                    <Aide
-                      titre="Barème fiscal"
-                      texte="Choisir la nature propose sa durée d'amortissement. La durée saisie reste libre : un écart au barème est signalé, jamais refusé. Un taux supérieur au barème n'est admis que si l'entreprise en justifie les circonstances lors du contrôle, sous peine de rejet. Un bien en location-acquisition a une durée plancher : 7 ans pour les constructions, 4 ans pour les équipements, 3 ans pour le matériel de transport. Barème en vigueur depuis le 1er janvier 2026."
-                      source="Arrêté n° 013/CAB/MIN/FINANCES/2025, art. 2, 4, 5 et 6 · loi n° 23/053, art. 28"
-                    />
-                  </span>
-                  <select
-                    value={iNatureFiscale}
-                    onChange={(e) => {
-                      setINatureFiscale(e.target.value);
-                      const n = bareme.find((x) => x.cle === e.target.value);
-                      if (n) setIDuree(String(n.dureeAns));
-                      // Le compte unique de la nature est POSÉ, modifiable ensuite ;
-                      // le compte déjà choisi parmi les proposés est gardé ; plusieurs
-                      // restent proposés (lib/bareme-fiscal.ts, compteSelonNature).
-                      const { aPoser } = compteSelonNature(n, comptesDefinitifs(comptesBien ?? [], iPasEncoreEnService), compteBien);
-                      if (aPoser) {
-                        setICompteBienId(aPoser.id);
-                        setIModeAcquisition('');
-                        setICompteContrepartie('');
-                        setICompteEnCoursId(compteEnCoursInitial(aPoser));
-                      }
-                    }}
-                    className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal"
-                  >
-                    <option value="">Non précisée</option>
-                    {sectionsDuBareme(naturesProposees(bareme, compteBien, toutesCategories))
-                      .map((g) => (
-                      <optgroup key={g.section} label={`${g.section} · ${g.intitule}`}>
-                        {g.lignes.map((n) => (
-                          <option key={n.cle} value={n.cle}>{n.designation} · {n.dureeAns} ans</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  {/* Les catégories proposées pour le compte sont une lecture de
-                      l'éditeur (compte-du-bien.ts) · jamais un refus. */}
-                  <span className="flex items-center gap-1 mt-1 text-[11px] font-normal">
-                    <input type="checkbox" checked={toutesCategories} onChange={(e) => setToutesCategories(e.target.checked)} />
-                    Toutes les catégories
-                  </span>
-                  {/* La nature propose ses comptes quand ils sont plusieurs (lot 6,
-                      D-4) · un clic en pose un, sans toucher à la nature ; un
-                      compte unique est déjà posé au choix de la nature. */}
-                  {(() => {
-                    const nature = bareme.find((n) => n.cle === iNatureFiscale);
-                    const { proposes } = compteSelonNature(nature, comptesDefinitifs(comptesBien ?? [], iPasEncoreEnService), compteBien);
-                    // Le compte de la nature que la liste des comptes retenus ne
-                    // porte pas se dit · jamais une proposition qui disparaît.
-                    const absents = comptesBien ? numerosNonProposesPourNature(nature, comptesBien, compteBien) : [];
-                    if (proposes.length === 0) {
-                      return absents.length > 0 ? (
-                        <span className="block mt-1 text-[11px] font-normal text-warning">
-                          Le compte que cette catégorie propose ({absents.join(', ')}) n'est pas personnalisé · personnalisez-le dans
-                          Plan comptable (ou ouvrez-le s'il manque au plan).
-                        </span>
-                      ) : null;
-                    }
-                    return (
-                      <span className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] font-normal">
-                        Compte proposé
-                        {proposes.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              setICompteBienId(c.id);
-                              setIModeAcquisition('');
-                              setICompteContrepartie('');
-                              setICompteEnCoursId(compteEnCoursInitial(c));
-                            }}
-                            className="border border-border-dark px-1.5 py-0.5 hover:bg-sel/10"
-                          >
-                            {c.numero} · {c.intitule}
-                          </button>
-                        ))}
-                        {nature?.remarque && <Aide titre="Compte proposé" texte={nature.remarque} source="Proposition de l'éditeur · aucun texte ne relie une nature du barème à un compte du plan" />}
-                      </span>
-                    );
-                  })()}
-                </label>
               )}
               <label className="text-[11.5px] font-semibold text-text-dim">
                 <span className="flex items-center gap-1">
@@ -1569,7 +1704,49 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                       ))}
                     </select>
                   </label>
+                  {/* L'écriture d'acquisition naît au brouillard de CE journal
+                      (opérations diverses à défaut) · elle se lit aussitôt au
+                      journal, au grand livre et à la balance, et entre aux états
+                      à sa validation (Brouillard). Dit, jamais choisi en silence. */}
+                  <label className="text-[11.5px] font-semibold text-text-dim">
+                    <span className="flex items-center gap-1">
+                      Journal de l'écriture
+                      <Aide
+                        titre="Écriture d'acquisition"
+                        texte="La création du bien passe son écriture (débit du compte du bien, crédit de la contrepartie) au brouillard de ce journal. Elle se voit aussitôt au journal, au grand livre et à la balance ; elle entre au livre-journal et aux états financiers quand vous la validez (État > Livres comptables > Brouillard)."
+                        source="AUDCIF art. 22, 2°"
+                      />
+                    </span>
+                    <select required value={iJournalId} onChange={(e) => setIJournalId(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal">
+                      <option value="">Choisir…</option>
+                      {journauxAcquisition.map((j) => (
+                        <option key={j.id} value={j.id}>{j.code} · {j.intitule}</option>
+                      ))}
+                    </select>
+                    {journauxAcquisition.length === 0 && (
+                      <span className="block mt-1 text-[11px] font-normal text-warning">
+                        Aucun journal actif ne reçoit l'écriture · ouvrez-en un dans Structure &gt; Codes journaux.
+                      </span>
+                    )}
+                  </label>
                 </>
+              )}
+              {optionFiscaleServie && (
+                <label className="text-[11.5px] font-semibold text-text-dim">
+                  <span className="flex items-center gap-1">
+                    Amortissement fiscal
+                    <Aide
+                      titre="Dégressif fiscal et exceptionnel"
+                      texte="Au SYSCOHADA, le plan comptable reste linéaire (ou aux unités d'œuvre) : le dégressif et l'amortissement exceptionnel de la loi n° 23/053 sont des options FISCALES, passées en amortissement dérogatoire (dotation au 851, crédit du 151). Choisissez-en une ici et, le bien créé, sa fiche fiscale s'ouvre pour déclarer la catégorie, la durée fiscale et, pour l'exceptionnel, l'activité industrielle et le chiffre d'affaires à l'exportation. Réservés aux sociétés, pour un bien neuf mis en service depuis le 1er janvier 2026."
+                      source="AUDCIF, fiche du compte 68 · loi n° 23/053, art. 31 à 38"
+                    />
+                  </span>
+                  <select value={iPlanFiscal} onChange={(e) => setIPlanFiscal(e.target.value as typeof iPlanFiscal)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal">
+                    <option value="">Aucun</option>
+                    <option value="DEGRESSIF">Dégressif fiscal</option>
+                    <option value="EXCEPTIONNEL">Exceptionnel (entreprise industrielle)</option>
+                  </select>
+                </label>
               )}
               </>
               )}
@@ -1889,7 +2066,12 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                         )}
                         {syscohada && (
                           <button
-                            onClick={() => setFiscalOuvertPour(fiscalOuvertPour === immo.id ? null : immo.id)}
+                            onClick={() => {
+                              // Ouverte à la main, la fiche ne présélectionne rien · le
+                              // choix fait à la création ne vaut que pour l'ouverture qui le suit.
+                              setExceptionnelPropose(false);
+                              setFiscalOuvertPour(fiscalOuvertPour === immo.id ? null : immo.id);
+                            }}
                             title="Dégressif fiscal et amortissement dérogatoire"
                             className="text-[11px] text-sel hover:underline"
                           >
@@ -1950,12 +2132,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                   </span>
                 </div>
                 {fiscalOuvertPour === immo.id && (
+                  <div id={`fiscal-${immo.id}`}>
                   <PlanFiscalDegressif
                     immoId={immo.id}
+                    exceptionnelPropose={exceptionnelPropose}
                     journalId={(journaux.find((j) => j.code === 'OD') ?? journaux[0])?.id}
                     exerciceId={exerciceCourant?.id}
                     peutEcrire={peutEcrire}
                   />
+                  </div>
                 )}
                 {reclassementOuvertPour === immo.id && (
                   <form onSubmit={(e) => onReclasser(e, immo.id)} className="bg-chrome border-b border-border px-4 py-3">

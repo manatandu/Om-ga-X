@@ -337,6 +337,21 @@ export class ExportController {
   }
 
   /**
+   * Les tableaux des immobilisations en UN classeur · immobilisations à la
+   * date d'arrêté (fin de l'exercice à défaut), amortissements et
+   * réévaluation de l'exercice, une feuille chacun.
+   */
+  @Get('tableaux-immobilisations')
+  async tableauxImmobilisations(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('dateArret') dateArret?: string,
+  ) {
+    envoyerXlsx(res, await this.exportService.tableauxImmobilisationsExcel(user.tenantId, exerciceId, dateArret));
+  }
+
+  /**
    * LA LIASSE COMPLÈTE · tous les états du jeu retenu par le dossier dans un
    * seul classeur, précédés d'un sommaire. C'est ce fichier-là qui se dépose
    * au CPCC ou s'envoie à un bailleur ; les exports unitaires ci-dessous

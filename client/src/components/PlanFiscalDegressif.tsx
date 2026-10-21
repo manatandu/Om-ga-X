@@ -46,11 +46,14 @@ export function PlanFiscalDegressif({
   journalId,
   exerciceId,
   peutEcrire,
+  exceptionnelPropose = false,
 }: {
   immoId: string;
   journalId: string | undefined;
   exerciceId: string | undefined;
   peutEcrire: boolean;
+  /** Choisi au formulaire de création · la case de l'exceptionnel part cochée, rien n'est déclaré pour autant. */
+  exceptionnelPropose?: boolean;
 }) {
   const [plan, setPlan] = useState<PlanFiscal | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export function PlanFiscalDegressif({
   // d'affaires HT de l'année de mise en service et leur source ; le prorata
   // et le seuil de 20 % se jugent au serveur.
   const [exceptionnel, setExceptionnel] = useState({
-    retenu: false,
+    retenu: exceptionnelPropose,
     activiteIndustrielle: false,
     export: '',
     total: '',

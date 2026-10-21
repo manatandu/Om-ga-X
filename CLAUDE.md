@@ -80,7 +80,9 @@ scripts/         extracteurs des compétences (règles par compte, schémas des
 docs/            plan de construction, audits, guides pilote, notes de droit
                  · historique/ range les documents révolus, sous bandeau (F267)
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
-.claude/skills/  la compétence sage-i7, versionnée avec le dépôt (§ 1)
+.claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
+                 et ses six compagnes, impeccable (§ 11)
+.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max et d'impeccable (§ 11)
 ```
 
 ## 3. Commandes
@@ -215,7 +217,21 @@ JOURNAL EXPORTÉ COMME L'ÉDITION DE SAGE, choisi par Manasse sur aperçu
 (« Comme Sage »), une demande expresse valant levée du gel pour elle seule ;
 puis le même jour la CAISSE PROVISIONNÉE (« on ne peut pas payer un tiers par
 caisse pour un montant supérieur au solde de cette caisse »), demande
-expresse de même. Rien d'autre n'entre.
+expresse de même ;
+puis, le 2026-10-17, l'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI de trente
+jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu ; et le même
+jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
+(« Oui tu peux modifier selon ce style »), avec le bandeau de consentement
+que la loi impose à la mesure de l'interface, et le domaine
+`omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
+PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
+touche pas au serveur ; et la SUPPRESSION DES DOSSIERS D'ESSAI ÉCHUS cent
+quatre-vingts jours après leur terme (« Construit maintenant ») ; puis, le
+2026-10-21, la DÉCONNEXION D'UN UTILISATEUR PAR L'ADMINISTRATEUR, vue chez
+Microfina++ (« la 2e possibilité. Fais le proprement »), et le même jour
+le VISA D'UN RIB par un second utilisateur (« Lève le gel pour le visa d'un
+RIB »), les autres idées de ce logiciel restant au suivi.
+Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,
@@ -3961,6 +3977,31 @@ avec MOTIF, pièces libérées non défaites ; pièce tenue non supprimable
 L'état ne bloque pas la validation. Liste en tranche (audit final F207) · total et
 nombre à imprimer sur tout le dossier, même filtre par état, état inconnu refusé.
 
+**Visa des RIB par un second utilisateur (2026-10-21, gel levé par Manasse,
+vu chez Microfina++).** `tiers/visa-rib.ts` · une OPTION du dossier
+(`Tenant.visaRibs`), désactivée par défaut comme le double regard · aucun
+texte lu ne l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2), l'art. 69 lui
+étant exclu par son art. 3). (1) Le visa porte sur les COORDONNÉES seules
+(banque, titulaire, codes, numéro, clé, IBAN, BIC, devise), jamais sur le
+commentaire ni la marque de principal. (2) Toute saisie des coordonnées, la
+création comprise, le fait tomber et nomme son auteur (`saisiPar`,
+`saisiLe`), jugée sous verrou du RIB. (3) L'auteur ne vise pas son propre RIB
+(403) ; un RIB d'avant la règle n'a pas d'auteur connu, il se vise, et la
+réponse le DIT, rien n'est présumé visé. (4) Le visa vise ce qui a été LU ·
+l'écran renvoie l'instant de la saisie montrée, un RIB changé depuis est
+refusé (409). (5) Activée, l'ordre de virement refuse, AVANT la première
+pièce, un RIB principal non visé, tiers (`preparer`) ou salarié
+(`preparerSalaries`), en nommant les bénéficiaires ; l'ordre recopie le RIB
+visé. Viser · administrateur ou comptable (`@ReserveAuComptable`), une mise
+à jour unitaire au journal d'audit ; le RIB du DONNEUR n'est pas visé (le
+changer ne détourne rien vers un tiers). (6) UN RIB QUI CHANGE DE
+BÉNÉFICIAIRE PERD SON VISA · la fusion de deux tiers tient les RIB du doublon
+pour saisis par l'auteur de la fusion, une mise à jour par RIB, sans quoi un
+RIB visé pour un doublon créé à dessein payait le vrai tiers. Un dossier
+introuvable fait refuser l'ordre, jamais « rien d'exigé ». LIMITES ÉCRITES ·
+le visa ne porte pas sur le rattachement des comptes au tiers, et l'option se
+retire par l'administrateur seul, au journal d'audit, comme le double regard.
+
 **Rubriques de paie, avances et prêts (2026-09-26, priorité 2).**
 `personnel/rubriques-paie.ts`, `personnel/avances-salaire.ts`. (1) La rubrique
 NOMME, la NATURE (art. 7, point 8 du Code du travail) décide assiettes et compte ;
@@ -4169,6 +4210,80 @@ l'éditeur, refus. (4) Cellules alignées sur la mère (audit final F46,
 « Lecture simple ») · `LicenceGuard` laisse passer GET et HEAD, refuse toute
 écriture en le disant ; une licence SUSPENDUE reste fermée en entier.
 
+**Dossiers d'essai échus · conservés cent quatre-vingts jours, puis supprimés PAR
+L'OPÉRATEUR (ligne suppression-essais, décision de Manasse du 2026-10-17).**
+`plateforme/essais-echus/`. (1) Un dossier d'ESSAI non souscrit (licence
+`ABONNEMENT` de trente jours née de l'inscription en libre-service, reconnue par
+`estUnDossierDEssai` ET par le courriel d'inscription retrouvé dans sa file) reste
+en lecture seule CENT QUATRE-VINGTS JOURS après son terme · un nombre de JOURS au
+jour de Kinshasa, jamais « six mois calendaires » (`JOURS_CONSERVATION_ESSAI`,
+conservé jusqu'au terme + 180 inclus, supprimable le lendemain). Un rappel part à
+l'adresse de l'administrateur AU MOINS TRENTE jours avant la suppression
+(`JOURS_RAPPEL_AVANT_SUPPRESSION`, trente jours PLEINS après le jour de l'ENVOI,
+supprimable à D + 31 comme la conservation l'est au lendemain du dernier jour ;
+un rappel tardif repousse la suppression et ne raccourcit jamais le préavis ; la
+date du courriel est un MINIMUM, la réelle se relit sur l'envoi constaté), avec la voie
+d'exportation (Fichier > Restituer le dossier complet). Fenêtre d'envoi du rappel
+· du soixantième au trentième jour avant la première date de suppression,
+convention d'OmegaX (`JOURS_FENETRE_RAPPEL`). (2) LA SUPPRESSION EST UN GESTE DE
+L'OPÉRATEUR, JAMAIS UNE TÂCHE PLANIFIÉE · Cloud Run n'a pas d'ordonnanceur dans ce
+dépôt et un effacement irréversible gagne à rester une décision humaine ; la
+console de l'éditeur liste (`GET /plateforme/essais-echus`), envoie les rappels
+(`POST …/rappels`) et supprime (`POST …/:tenantId/supprimer`), l'opérateur
+RETAPANT l'identifiant. Le serveur ne se fie pas à la liste · il relit TOUT dans
+la transaction, sous le verrou consultatif et le `FOR UPDATE` du dossier, et
+refuse (409) si l'état n'est pas `SUPPRIMABLE` (rappel constaté ENVOYÉ depuis
+trente jours, terme + 180 dépassés), si une licence a été prolongée (sa ligne
+est prise `FOR UPDATE` avant la lecture, une prolongation concurrente attend), si
+un abonnement ou un groupe vise le dossier. La liste lit TOUS les candidats par
+pages, par la clé (échéance, dossier), ce que la base dit non concerné écarté en
+SQL, compte sur tous (`total`, `aRappeler`, `supprimables`) et n'en rend qu'une
+tranche qui se dit ; l'envoi tente cinquante rappels par appel
+(`RAPPELS_PAR_APPEL`) et compte ceux qui restent dus. EN CAS DE DOUTE, NON CONCERNÉ · licence
+autre qu'un essai exact, éditeur, vitrine, mère ou cellule d'un groupe, abonnement
+enregistré (`AbonnementCabinet`), suspendue, courriel d'inscription absent. (3) UN
+RAPPEL N'EST « PARTI » QUE QUAND SON MESSAGE L'EST · la ligne de suivi
+(`RappelSuppressionEssai`, unique par dossier ET par terme, hors dossier comme
+l'abonnement) est RÉSERVÉE avant l'envoi, ce qui ferme le doublon ; un essai
+redonné a un terme nouveau, et le rappel de l'ancien (autre terme, ou parti avant
+la fenêtre du terme courant) ne vaut jamais préavis (`rappelDuTermeCourant`),
+et son message n'est jamais adopté par le rappel du terme nouveau ; un message en file reste
+sans date d'envoi et se RETENTE par lui-même (`CourrierService.retenter`, jamais
+la reprise générale, qui rejouerait les relances que le dossier avait mises en
+file) ; sans messagerie, rien n'est fait. (4) LA PURGE (`purger-dossier.ts`) est
+LUE DANS LE SCHÉMA (DMMF) · toutes les tables qui portent `tenantId` et celles que
+leur parent porte, feuilles d'abord, cycles dénoués en annulant d'abord la clé
+NULLABLE qui les ferme, en SQL borné `WHERE "tenantId" = $1` ou par la
+sous-requête du parent, dans la transaction de l'acte. Le client Prisma n'est PAS
+employé, et c'est voulu · son cloisonnement refuserait de toucher un autre dossier
+que celui de la session, et son journal d'audit écrirait un maillon par ligne
+dans la chaîne en cours de destruction. `purger-dossier.spec.ts` fait tomber le
+test si un modèle du schéma n'est ni purgé ni exclu AVEC SON MOTIF
+(`MODELES_EXCLUS_DE_LA_PURGE`). Les utilisateurs partent avec le dossier. (5) LA
+TRACE (`DossierEssaiSupprime`, sans clé étrangère, hors dossier, journalisée dans
+la chaîne du dossier de l'OPÉRATEUR) ne porte que l'identifiant, des dates et des
+NOMBRES · aucun nom d'entité, aucune adresse, aucun montant ; la liste de la
+console non plus (VMG ne voit jamais les informations d'un client), ni le compte
+rendu des rappels, ni le journal du serveur · un échec d'envoi n'y paraît que
+par sa CATÉGORIE (`cause-echec-envoi.ts` · refus du destinataire,
+authentification, réseau, autre), jamais par le texte du transport, qui cite
+l'adresse. La preuve d'inscription est le courriel de l'inscription dont
+l'origine est le dossier OU l'un de ses utilisateurs (le renvoi). Les relations
+qui franchissent la frontière d'un dossier (`RELATIONS_ENTRE_DOSSIERS` · mère,
+combinaison, tiers de cellule, abonnement, rappel) sont classées avec leur
+traitement, et `purger-dossier.spec.ts` tombe sur une relation nouvelle de
+cette forme. Les
+sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu'à leur propre
+terme (la politique de confidentialité le dit). (6) `essais-echus.service.ts`
+est dans la liste GELÉE des fichiers qui sortent du cloisonnement
+(`cloisonnement.spec.ts`). Preuve sur vraie base ·
+`scripts/rejouer-suppression-essais.cjs` (base jetable, serveur compilé, boîte
+SMTP de poche) ouvre un essai par l'API, le peuple à travers une clôture, envoie
+le rappel, vieillit, supprime, et prouve zéro ligne résiduelle (tables avec
+`tenantId` comptées, les autres par différence exacte), un voisin intact, le
+dossier de l'opérateur intact, la trace écrite, deux suppressions simultanées
+dont une seule passe, et un essai redonné qui repasse par un nouveau rappel.
+
 **Factures et licences par courriel (2026-09-26).**
 `abonnements/courriels-editeur.ts`, `CourrielsEditeurService`. (1) File
 (`CourrierService.mettreEnFile`) · SANS_TRANSPORT, « en file », jamais « envoyé ».
@@ -4220,6 +4335,26 @@ consulte pas le contenu des dossiers, et chacun de ses accès techniques
 l'interface que la publication pose (`OMEGAX_MISE_EN_PRODUCTION`,
 `firebase-hosting-merge.yml`, jour de Kinshasa), sinon « non
 renseignée », et la langue (français, seule).
+
+**La page publique (`/vitrine/`, 2026-10-17, demande de Manasse).** Page STATIQUE
+de `client/public/vitrine/` (HTML, CSS et JS, sans build), servie par Firebase
+Hosting sous la politique de sécurité du site · aucune ressource externe, aucun
+script ni style en ligne, polices de `/polices/`, marque en tracés. ELLE NE DIT
+QUE CE QUE LE CODE TIENT, et `client/src/vitrine-publique.spec.ts` la relit :
+liens contre les routes du HashRouter, intitulés de comptes contre les DEUX semis
+(4181, 192 et la retraite obligatoire, un numéro deux sens), nombres de notes
+contre le § 6, refus d'une écriture déséquilibrée contre le service, charte
+(aucune couleur d'accent, liste fermée, contrastes mesurés sur les jetons, filet
+de clôture du § 9 de la charte), mouvement réduit. LE LIEN D'ESSAI NE S'OFFRE QUE
+SUR UNE PORTE LUE OUVERTE (`GET /api/auth/inscription-essai/etat`, même critère
+que `lib/essai.ts`) · caché au départ, une lecture absente, échouée ou fermée le
+laisse caché et la page donne l'adresse de VMG ; la durée affichée est celle que
+le serveur rend, jamais écrite en dur. La feuille de journal du haut de page est
+un exemple FICTIF qui ne s'enregistre nulle part, et le dit. Les `?v=` de la
+feuille de style et du script se montent ENSEMBLE à chaque changement (cache par
+défaut de Firebase Hosting). Les compétences `ui-ux-pro-max` et `impeccable` et le
+serveur `magicuidesign-mcp` (§ 11) ont servi à la concevoir · leurs conseils ne
+priment pas sur la charte.
 
 **Dossiers de démonstration (2026-09-26).** Une association (SYCEBNL), une SARL
 (SYSCOHADA), UNE par référentiel. (1) Comptes du scénario
@@ -4805,6 +4940,26 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   `INSCRIPTION_PUBLIQUE=true`. Un dossier naît depuis la console VMG ou par le
   siège d'un groupe. `AuthService.register` reste le pipeline commun de toutes
   les créations : ne pas en écrire un second.
+  **L'ESSAI EN LIBRE-SERVICE EST UNE AUTRE PORTE, FERMÉE PAR SA PROPRE
+  VARIABLE** (2026-10-17, `src/modules/auth/inscription-essai.ts`) ·
+  `POST /auth/inscription-essai` n'ouvre que si `INSCRIPTION_ESSAI` vaut
+  exactement `true` (variable du dépôt GitHub, pas un secret, passée par
+  `deploy-cloud-run.yml` ; `GET /auth/inscription-essai/etat` dit l'état et
+  l'écran `#/essai` n'offre son lien que sur une porte lue ouverte).
+  `register` reste fermé, et il reste le seul pipeline de création
+  (`inscrireEnEssai` l'appelle). L'essai est une licence `ABONNEMENT` de trente
+  jours (`JOURS_ESSAI`), jamais un autre type ; échu, le dossier passe en
+  lecture seule (`LicenceGuard`). Le mot de passe provisoire est TIRÉ AU SORT
+  par le serveur et part au seul courriel saisi, directement, jamais par la
+  file en clair (`CourrierService.envoyerUnSecret`) ; aucune session n'est
+  rendue, `doitChangerMotDePasse` est posé. La réponse est la même pour une
+  adresse neuve et pour une adresse connue ; un renvoi n'est servi qu'à
+  l'administrateur d'un dossier d'essai de moins de 72 heures, dix minutes
+  après le dernier envoi. Sans messagerie, 503 · aucun dossier ne naît sans
+  pouvoir être ouvert. Cinq demandes par heure et par adresse IP. Limites
+  écrites · l'écart de durée entre adresse neuve et adresse connue n'est pas
+  supprimé ; l'acceptation du contrat de licence n'est pas encore branchée sur
+  l'essai ; le CI ne peut pas le rejouer de bout en bout (aucune messagerie).
 - `estOperateurPlateforme` n'apparaît dans **aucun** DTO. Il s'accorde au
   démarrage depuis `OPERATEURS_PLATEFORME`, en accord seulement, jamais en
   retrait.
@@ -4853,7 +5008,10 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   changement de mot de passe et d'adresse, à la réinitialisation, à la
   désactivation, au changement de rôle, de profil de fonctions ou de journaux
   autorisés, à l'activation et au retrait de la double authentification, par
-  « Fermer toutes mes sessions » et par « Déconnecter mes autres appareils » ·
+  « Fermer toutes mes sessions », par « Déconnecter mes autres appareils » et
+  par l'administrateur du dossier (« Déconnecter », `POST
+  /utilisateurs/:id/deconnecter`, 2026-10-21 · les sessions d'un
+  collaborateur, rien d'autre, jamais les siennes) ·
   sans cela un mot de passe volé restait utile jusqu'à l'échéance du jeton. La
   comparaison porte sur la dernière authentification explicite (claim
   `authentification` · la connexion, ou la réémission qui suit un acte
@@ -5007,7 +5165,15 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   spec fait tourner le vrai SDK et relit l'enveloppe émise. PostHog par
   `posthog-js/no-external` (aucun script tiers), `$pageview` manuel seul,
   autocapture et enregistrement coupés, aucun `identify` (rôle et référentiel
-  seulement), `$geoip_disable`, stockage local ou mémoire, jamais de cookie. Les SDK se chargent
+  seulement), `$geoip_disable`, stockage local ou mémoire, jamais de cookie.
+  DANS LE NAVIGATEUR, RIEN NE PART SANS ACCORD (décision par la loi du
+  2026-10-17 · Code du numérique, art. 192, consentement ou obligation légale,
+  seuls fondements ; art. 196, retirer aussi simplement que donner) ·
+  `lib/consentement-mesure.ts`, bandeau à deux boutons de même poids
+  (`BandeauConsentementMesure`), rouvert par « Préférences relatives aux
+  témoins » ; `null` n'est pas un accord, un retrait recharge la page. Les
+  erreurs du SERVEUR n'en dépendent pas · elles partent de Cloud Run sans
+  l'adresse de la personne. Les SDK se chargent
   À LA DEMANDE et seulement actifs · sur site (`MODE_INSTALLATION=SUR_SITE`,
   ou interface construite en `meme-origine`), ils ne sont jamais chargés.
 - **Restitution du dossier** (`src/modules/exports/restitution/`) · une
@@ -5466,6 +5632,45 @@ dossiers qui n'ont pas activé l'option. Rien n'est dévalidé rétroactivement.
 Les compétences (`skills`) ne sont déployées que par **Manasse**, à la main,
 via Réglages → Compétences. Ne pas tenter de les installer, modifier ou
 publier depuis une session.
+EXCEPTION ÉCRITE (2026-10-17, demandes expresses de Manasse · « Installe dans le
+dépôt », puis « Installe tout. Et impeccable aussi ») · deux projets tiers sont
+COPIÉS dans le dépôt, et rien n'y est exécuté à l'installation.
+(1) COMPÉTENCES VIVANTES, chargées à l'ouverture d'une session · `ui-ux-pro-max`
+(conseils de design d'interface, recherche locale par `scripts/search.py`) et
+les six que son archive porte (`banner-design`, `brand`, `design`,
+`design-system`, `slides`, `ui-styling`), puis `impeccable` et ses quatre
+agents (`.claude/agents/impeccable-*.md`, modèle hérité de la session). Une
+seule retouche · les tirets cadratins des fichiers sont remplacés par « · »
+(§ 4, `cadratins.spec.ts` relit ces dossiers).
+(2) SOURCES AMONT, en entier, sous `.claude/amont/ui-ux-pro-max-skill/` (tout
+l'archive reçue) et `.claude/amont/impeccable/` (tout, sauf les dix-huit copies
+que son archive engendre pour d'AUTRES outils · Cursor, Gemini, Trae, Kiro et
+autres, 2,3 Mo chacune, que `skill/` régénère). Trois retouches · le
+`CLAUDE.md` et l'`AGENTS.md` de chaque projet sont renommés en `.amont.md` et
+leur `settings.json` en `settings.amont.json`, pour ne pas être lus comme les
+nôtres. Ce dossier est EXCLU de la relecture des cadratins (le caractère y est
+parfois une donnée que le détecteur d'impeccable cherche) et de l'envoi à Cloud
+Build (`.gcloudignore`, le Dockerfile ne copie que `src` et ce qu'il nomme).
+(3) LES CROCHETS D'IMPECCABLE SONT ÉTEINTS · son `settings.json` lance un
+programme à chaque écriture de fichier, à l'ouverture et à l'arrêt de session ;
+il est rangé en `.claude/settings-impeccable.EXEMPLE.json`, comme les crochets
+d'ECC, et ne s'active que si Manasse le demande (copie dans
+`.claude/settings.json`). Son lanceur peut télécharger un programme
+(`scripts/impeccable`) · raison de plus.
+Les conseils de ces compétences ne priment JAMAIS sur ce fichier · la charte
+OmegaX (§ 9 bis), le modèle Sage (§ 9 ter) et « aucun paragraphe explicatif à
+l'écran » l'emportent là où elles les contredisent. Cela ne remplace pas leur
+déploiement par Réglages → Compétences, que Manasse tient seul.
+
+SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
+« Installe ce MCP ») · déclaré dans `.mcp.json` à la racine, composants Magic UI
+pour l'interface. VERSION ÉPINGLÉE (`@magicuidesign/mcp@2.0.0`, paquet
+d'éditeur public, aucun script d'installation, deux dépendances) au lieu de
+`@latest` demandé · un `@latest` exécuterait à chaque démarrage le code que
+l'éditeur publiera demain. Monter de version est un geste daté, comme une
+dépendance. Il ne reçoit AUCUN secret ni variable d'environnement du dépôt ;
+ses suggestions de composants ne priment pas sur la charte (§ 9 bis) ni sur
+le § 9 ter (rendu de Sage, mouvement sobre).
 
 Ce fichier-ci, en revanche, est un fichier du dépôt : il se modifie et se
 committe comme le reste, et il doit être tenu à jour quand une règle change.

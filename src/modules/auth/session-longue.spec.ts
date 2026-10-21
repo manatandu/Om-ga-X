@@ -538,14 +538,14 @@ describe('le contrôleur · un seul chemin pour le cookie, et la route nouvelle'
         60_000,
       ]);
     }
-    // Et chaque route du contrôleur, hors les trois portes d'entrée, passe par
+    // Et chaque route du contrôleur, hors les portes d'entrée, passe par
     // JwtAuthGuard · c'est elle qui lit la révocation et le mot de passe
     // provisoire.
     const sansGarde = Object.getOwnPropertyNames(proto)
       .filter((m) => m !== 'constructor' && Reflect.getMetadata(PATH_METADATA, proto[m]) !== undefined)
       .filter((m) => !((Reflect.getMetadata(GUARDS_METADATA, proto[m]) ?? []) as unknown[]).includes(JwtAuthGuard))
       .sort();
-    expect(sansGarde).toEqual(['login', 'logout', 'register']);
+    expect(sansGarde).toEqual(['etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
   });
 
   it('la route est ouverte à tous les rôles, et n’est PAS une sortie de mot de passe provisoire', () => {

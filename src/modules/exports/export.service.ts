@@ -1,6 +1,6 @@
 import { HORS_SITUATION, avecStatut, estJournalDeSituation, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
-import { ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { type ImpressionAEnregistrer, enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
@@ -98,7 +98,8 @@ import {
   sommeColonneBalance,
   titreNote,
 } from './theme-etafi';
-import { divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
+import { arrondi as arrondi2, divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
+import { PLAFOND_PERIMETRE } from '../immobilisations/reevaluation-bilan.service';
 import {
   construireFeuilleEtat,
   NIVEAUX_ETAT_PROJETS,
@@ -1831,10 +1832,47 @@ export class ExportService {
    * classeur.
    */
   async tableauImmobilisationsExcel(tenantId: string, dateArret?: string): Promise<ClasseurExporte> {
-    const t = await this.immos.tableauImmobilisations(tenantId, { dateArret });
-    const identite = await this.identiteEtat(tenantId, {});
-
     const classeur = this.nouveauClasseur();
+    const t = await this.feuilleImmobilisations(classeur, tenantId, dateArretLisible(dateArret));
+    return {
+      buffer: await this.versBuffer(classeur),
+      nomFichier: `tableau-immobilisations${t.dateArret ? `-au-${t.dateArret}` : ''}.xlsx`,
+    };
+  }
+
+  /**
+   * LES TABLEAUX DES IMMOBILISATIONS EN UN SEUL CLASSEUR (demande de Manasse
+   * du 2026-10-16, « un classeur avec deux feuilles », puis une troisième pour
+   * la réévaluation). Chaque feuille est celle de son export propre, bâtie par
+   * la même fonction · deux fichiers séparés ne se recoupaient qu'à la main.
+   * Les biens à la date d'arrêté (fin de l'exercice à défaut, pour que les
+   * trois feuilles parlent de la même date), les amortissements de
+   * l'exercice, la réévaluation de l'exercice.
+   */
+  async tableauxImmobilisationsExcel(tenantId: string, exerciceId: string, dateArret?: string): Promise<ClasseurExporte> {
+    const exercice = await this.exerciceDuDossier(tenantId, exerciceId);
+    const arret = dateArretDansLExercice(dateArret, exercice);
+    const classeur = this.nouveauClasseur();
+    await this.feuilleImmobilisations(classeur, tenantId, arret, { exerciceId });
+    await this.feuilleAmortissements(classeur, tenantId, exerciceId);
+    await this.feuilleReevaluations(classeur, tenantId, exerciceId);
+    return {
+      buffer: await this.versBuffer(classeur),
+      nomFichier: `tableaux-immobilisations${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
+    };
+  }
+
+  private async feuilleImmobilisations(
+    classeur: ExcelJS.Workbook,
+    tenantId: string,
+    dateArret?: string,
+    // Dans le classeur des trois feuilles, la coiffe dit l'exercice · « Toutes
+    // périodes » sous un titre « AU 31/12 » ne disait pas de quel exercice.
+    periode: { exerciceId?: string } = {},
+  ) {
+    const t = await this.immos.tableauImmobilisations(tenantId, { dateArret });
+    const identite = await this.identiteEtat(tenantId, periode);
+
     const feuille = classeur.addWorksheet('Immobilisations');
 
     const colonnes = [
@@ -1954,11 +1992,7 @@ export class ExportService {
       : 'TABLEAU DES IMMOBILISATIONS';
     const enteteImmo = this.coifferEtat(feuille, identite, titreImmo, colonnes.length);
     this.finaliserTableau(feuille, colonnes.length, derniereLigneDonnees + 3, enteteImmo);
-
-    return {
-      buffer: await this.versBuffer(classeur),
-      nomFichier: `tableau-immobilisations${t.dateArret ? `-au-${t.dateArret}` : ''}.xlsx`,
-    };
+    return t;
   }
 
   /**
@@ -1971,10 +2005,18 @@ export class ExportService {
    * ne se recouperait avec aucun compte.
    */
   async tableauAmortissementsExcel(tenantId: string, exerciceId: string): Promise<ClasseurExporte> {
+    const classeur = this.nouveauClasseur();
+    await this.feuilleAmortissements(classeur, tenantId, exerciceId);
+    return {
+      buffer: await this.versBuffer(classeur),
+      nomFichier: `tableau-amortissements${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
+    };
+  }
+
+  private async feuilleAmortissements(classeur: ExcelJS.Workbook, tenantId: string, exerciceId: string) {
     const t = await this.immos.tableauAmortissements(tenantId, exerciceId);
     const identite = await this.identiteEtat(tenantId, { exerciceId });
 
-    const classeur = this.nouveauClasseur();
     const feuille = classeur.addWorksheet('Amortissements');
 
     const entetes = [
@@ -2177,11 +2219,132 @@ export class ExportService {
     this.piedDePageEtat(feuille, identite);
     const enteteAmort = this.coifferEtat(feuille, identite, 'TABLEAU DES AMORTISSEMENTS', entetes.length);
     this.finaliserTableau(feuille, entetes.length, derniereLigneDonnees + 3, enteteAmort);
+  }
 
-    return {
-      buffer: await this.versBuffer(classeur),
-      nomFichier: `tableau-amortissements${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
-    };
+  /**
+   * LA RÉÉVALUATION DE L'EXERCICE, bien par bien · la lecture de la pièce que
+   * l'opération a passée (AUDCIF Titre VIII ch. 28 · une opération à la
+   * clôture sur l'ensemble des biens réévaluables). Une réévaluation annulée
+   * quitte sa table (ligne sage-l4, n° 67) · ce qui reste est ce qui tient.
+   * Le bien non réévalué garde sa ligne et son motif, jamais une absence.
+   */
+  private async feuilleReevaluations(classeur: ExcelJS.Workbook, tenantId: string, exerciceId: string) {
+    const identite = await this.identiteEtat(tenantId, { exerciceId });
+    const feuille = classeur.addWorksheet('Réévaluations');
+    const reevaluation = await this.prisma.reevaluationBilan.findFirst({
+      where: { tenantId, exerciceId },
+      select: {
+        dateReevaluation: true,
+        decision: true,
+        totalEcart: true,
+        ecriture: { select: { numeroPiece: true, statut: true, journal: { select: { code: true } } } },
+        lignes: {
+          // L'ordre de l'écran (`ReevaluationBilanService`) · la feuille se
+          // recoupe ligne à ligne avec ce qu'il montre. Borné par l'opération
+          // elle-même · `reevaluer` refuse un périmètre au-delà de
+          // PLAFOND_PERIMETRE biens (art. 62, jamais en partie).
+          orderBy: { id: 'asc' },
+          take: PLAFOND_PERIMETRE,
+          select: {
+            coefficientRetenu: true,
+            brutAvant: true,
+            amortissementsAvant: true,
+            valeurNetteAvant: true,
+            valeurReevaluee: true,
+            ecart: true,
+            brutApres: true,
+            amortissementsApres: true,
+            compteEcart: true,
+            motifNonReevalue: true,
+            immobilisation: { select: { designation: true, numeroInventaire: true } },
+          },
+        },
+      },
+    });
+    const entetes = [
+      'Bien',
+      'N° inventaire',
+      'Coefficient',
+      `Val. brute avant (${identite.devise})`,
+      'Amort. avant',
+      'Val. nette avant',
+      'Valeur réévaluée',
+      'Écart',
+      'Val. brute après',
+      'Amort. après',
+      "Compte de l'écart",
+      'Observations',
+    ];
+    const enteteRow = feuille.addRow(entetes);
+    enteteRow.font = ENTETE_FONT;
+    if (!reevaluation) {
+      feuille.addRow(["Aucune réévaluation n'est passée dans cet exercice."]);
+    } else {
+      // Les montants des colonnes 4 à 10 · « après » se recoupe aux comptes 2
+      // et 28 que la pièce mouvemente, l'écart au 106 ou au 154.
+      const montants = (l: (typeof reevaluation.lignes)[number]) => [
+        Number(l.brutAvant),
+        Number(l.amortissementsAvant),
+        Number(l.valeurNetteAvant),
+        Number(l.valeurReevaluee),
+        Number(l.ecart),
+        Number(l.brutApres),
+        Number(l.amortissementsApres),
+      ];
+      const sommes = [0, 0, 0, 0, 0, 0, 0];
+      for (const l of reevaluation.lignes) {
+        const m = montants(l);
+        m.forEach((v, i) => (sommes[i] += v));
+        // Un zéro est une cellule vide, comme aux deux autres feuilles.
+        feuille.addRow([
+          l.immobilisation.designation,
+          l.immobilisation.numeroInventaire ?? '',
+          Number(l.coefficientRetenu) || null,
+          ...m.map((v) => v || null),
+          l.compteEcart ?? '',
+          l.motifNonReevalue ?? '',
+        ]);
+      }
+      const premiere = enteteRow.number + 1;
+      const derniere = feuille.rowCount;
+      // Le TOTAL est une formule sur les lignes (« un total écrit en dur est
+      // un chiffre que personne ne peut vérifier »), posée sur des rangs déjà
+      // décalés de la coiffe, et HORS de l'autofiltre.
+      const total = feuille.addRow(['Total']);
+      for (let i = 0; i < sommes.length; i++) {
+        const col = feuille.getColumn(4 + i).letter;
+        total.getCell(4 + i).value = reevaluation.lignes.length
+          ? this.formule(`SUM(${col}${this.ligneCoiffee(premiere)}:${col}${this.ligneCoiffee(derniere)})`, arrondi2(sommes[i]))
+          : null;
+      }
+      total.font = ENTETE_FONT;
+      const piece = reevaluation.ecriture;
+      feuille.addRow([]);
+      feuille.addRow([
+        `Réévaluation du ${reevaluation.dateReevaluation.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} · pièce ${piece.journal.code} ${piece.numeroPiece ?? '·'}${piece.statut === 'BROUILLARD' ? ' (au brouillard)' : ''} · ${reevaluation.decision}`,
+      ]);
+      // Le total enregistré par l'opération est confronté à la somme des
+      // lignes · une divergence se dit, jamais une seconde somme qui la masque.
+      if (Math.abs(arrondi2(sommes[4]) - Number(reevaluation.totalEcart)) >= 0.005) {
+        feuille.addRow([
+          `Total des écarts enregistré par l'opération · ${Number(reevaluation.totalEcart).toFixed(2)}, différent de la somme des lignes.`,
+        ]);
+      }
+    }
+    const derniereLigneDonnees = reevaluation ? enteteRow.number + reevaluation.lignes.length : enteteRow.number + 1;
+    feuille.getColumn(1).width = 46;
+    // Le coefficient est gardé à dix décimales (Decimal(18,10)) · six
+    // l'arrondissaient à l'affichage.
+    feuille.getColumn(3).numFmt = '0.0000000000';
+    feuille.getColumn(3).width = 16;
+    for (let i = 4; i <= 10; i++) {
+      feuille.getColumn(i).numFmt = FORMAT_MONTANT;
+      feuille.getColumn(i).width = 18;
+    }
+    feuille.getColumn(12).width = 44;
+    this.piedDePageEtat(feuille, identite);
+    const entete = this.coifferEtat(feuille, identite, 'RÉÉVALUATION DES IMMOBILISATIONS', entetes.length);
+    this.finaliserTableau(feuille, entetes.length, derniereLigneDonnees + 3, entete);
   }
 
   /**
@@ -8008,4 +8171,40 @@ function formaterQuantiteEtPrix(ws: ExcelJS.Worksheet, r: number) {
   const prix = ws.getCell(r, 4);
   prix.numFmt = '#,##0.00';
   prix.alignment = { horizontal: 'right', vertical: 'middle' };
+}
+
+/**
+ * LA DATE D'ARRÊTÉ DU CLASSEUR DES TROIS FEUILLES · absente ou vide, la fin
+ * de l'exercice ; illisible, un 400 nommé (elle partait à Prisma en
+ * « Invalid Date » et rendait un 500) ; hors de l'exercice, refusée · la
+ * première feuille parlerait d'une autre date que les deux autres, qui sont
+ * celles de l'exercice.
+ */
+export function dateArretDansLExercice(
+  dateArret: string | undefined,
+  exercice: { dateDebut: Date; dateFin: Date },
+): string {
+  const debut = exercice.dateDebut.toISOString().slice(0, 10);
+  const fin = exercice.dateFin.toISOString().slice(0, 10);
+  const lue = dateArretLisible(dateArret);
+  if (lue === undefined) return fin;
+  if (lue < debut || lue > fin) {
+    throw new BadRequestException(
+      `La date d'arrêté ${lue} est hors de l'exercice (${debut} au ${fin}) · le classeur porte aussi les amortissements et la réévaluation de cet exercice. Choisissez une date dans l'exercice, ou l'exercice qui la contient.`,
+    );
+  }
+  return lue;
+}
+
+/** Vide = absente ; illisible = 400 nommé, jamais un « Invalid Date » envoyé à la base. */
+export function dateArretLisible(dateArret: string | undefined): string | undefined {
+  if (dateArret === undefined || dateArret.trim() === '') return undefined;
+  const lue = dateArret.trim();
+  // Une date inexistante (30 février) rend « Invalid Date », dont
+  // `toISOString` LÈVE · le temps se lit d'abord.
+  const d = new Date(`${lue}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lue) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== lue) {
+    throw new BadRequestException(`Date d'arrêté illisible (« ${lue} ») · attendu AAAA-MM-JJ.`);
+  }
+  return lue;
 }

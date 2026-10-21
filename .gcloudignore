@@ -1,0 +1,9 @@
+# Ce que `gcloud run deploy --source .` envoie à Cloud Build (deploy-cloud-run.yml).
+# Le Dockerfile ne COPIE que package*.json, prisma, tsconfig.json, nest-cli.json et
+# src · le reste n'est que du poids téléversé à chaque déploiement. `.claude/`
+# porte les compétences et les sources amont de deux projets tiers (plus de 70 Mo,
+# demande de Manasse du 2026-10-17), qui n'ont rien à faire dans la construction
+# du serveur. Les règles par défaut de gcloud (le .gitignore) sont gardées.
+#!include:.gitignore
+.git
+.claude/

@@ -1,0 +1,321 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const convention_financement_service_1 = require("./convention-financement.service");
+const BAILLEUR = { id: 'b1', code: 'UE-01', nom: 'Union européenne' };
+function service(options = {}) {
+    const prisma = {
+        bailleur: { findFirst: jest.fn().mockResolvedValue(options.bailleur === undefined ? BAILLEUR : options.bailleur) },
+        conventionFinancement: {
+            findFirst: jest.fn().mockImplementation(({ where, include }) => {
+                if ('reference' in where)
+                    return Promise.resolve(options.doublon ?? null);
+                const c = options.convention;
+                if (!c)
+                    return Promise.resolve(null);
+                if (include?.tranches || !('tranches' in c))
+                    return Promise.resolve(c);
+                const { tranches: _t, ...sans } = c;
+                return Promise.resolve(sans);
+            }),
+            findMany: jest.fn().mockResolvedValue(options.conventions ?? []),
+            create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'c1', ...data })),
+            update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'c1', ...data })),
+        },
+        trancheFinancement: {
+            findFirst: jest.fn().mockResolvedValue(options.tranche ?? null),
+            create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 't1', ...data })),
+            update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 't1', ...data })),
+            delete: jest.fn().mockResolvedValue({}),
+        },
+        rapportBailleur: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'r1', ...data })),
+            update: jest.fn().mockResolvedValue({}),
+            delete: jest.fn().mockResolvedValue({}),
+        },
+    };
+    return { service: new convention_financement_service_1.ConventionFinancementService(prisma), prisma };
+}
+const DTO = {
+    bailleurId: 'b1',
+    reference: 'UE-2026-001',
+    objet: 'Programme de santé communautaire',
+    ecritSigne: true,
+    signataire: 'Chef de délégation',
+    dateSignature: '2026-01-15',
+    dateDebut: '2026-01-01',
+    dateFin: '2028-12-31',
+    montantAccorde: 500_000_000,
+    caractere: 'FERME_INCONDITIONNEL',
+};
+describe('§ 5.4.2.4 · ce qui devient une créance, et ce qui reste une mention', () => {
+    it('ferme ET écrit signé donne une créance à recevoir', () => {
+        expect(convention_financement_service_1.ConventionFinancementService.traitement({ caractere: 'FERME_INCONDITIONNEL', ecritSigne: true })).toBe('CREANCE_A_RECEVOIR');
+    });
+    it("ferme SANS écrit signé ne donne PAS de créance", () => {
+        expect(convention_financement_service_1.ConventionFinancementService.traitement({ caractere: 'FERME_INCONDITIONNEL', ecritSigne: false })).toBe('MENTION_NOTES_ANNEXES');
+    });
+    it("conditionnel ne donne PAS de créance, même avec un écrit signé", () => {
+        expect(convention_financement_service_1.ConventionFinancementService.traitement({ caractere: 'CONDITIONNEL', ecritSigne: true })).toBe('MENTION_NOTES_ANNEXES');
+    });
+});
+describe('les mentions de Notes annexes que le texte impose', () => {
+    it("rend une phrase par engagement conditionnel, avec ses conditions et son reste", async () => {
+        const { service: s } = service({
+            conventions: [
+                {
+                    reference: 'UE-2026-002',
+                    objet: 'Volet nutrition',
+                    montantAccorde: 200_000_000,
+                    conditions: 'Rapport d’évaluation à mi-parcours jugé satisfaisant',
+                    statut: 'EN_COURS',
+                    bailleur: { code: 'UE-01', nom: 'Union européenne' },
+                    tranches: [{ montantEncaisse: 50_000_000 }],
+                },
+            ],
+        });
+        const [mention] = await s.mentionsEngagementsConditionnels('t1');
+        expect(mention).toContain('CONDITIONNEL');
+        expect(mention).toContain('Rapport d’évaluation à mi-parcours');
+        expect(mention).toContain((150_000_000).toLocaleString('fr-FR'));
+        expect(mention).toContain('§ 5.4.2.4');
+    });
+    it("ne lit que les CONDITIONNELS non résiliés", async () => {
+        const { service: s, prisma } = service({ conventions: [] });
+        await s.mentionsEngagementsConditionnels('t1');
+        const where = prisma.conventionFinancement.findMany.mock.calls[0][0].where;
+        expect(where.tenantId).toBe('t1');
+        expect(where.caractere).toBe('CONDITIONNEL');
+        expect(where.statut).toEqual({ not: 'RESILIEE' });
+    });
+});
+describe('les créances à recevoir', () => {
+    it("ne retient que les fermes AVEC écrit signé, et pour leur reste", async () => {
+        const { service: s, prisma } = service({
+            conventions: [
+                {
+                    reference: 'UE-2026-001',
+                    montantAccorde: 500_000_000,
+                    statut: 'EN_COURS',
+                    bailleur: { code: 'UE-01', nom: 'Union européenne' },
+                    tranches: [{ montantEncaisse: 200_000_000 }],
+                },
+            ],
+        });
+        const creances = await s.creancesARecevoir('t1');
+        expect(creances[0].resteARecevoir).toBe(300_000_000);
+        const where = prisma.conventionFinancement.findMany.mock.calls[0][0].where;
+        expect(where.caractere).toBe('FERME_INCONDITIONNEL');
+        expect(where.ecritSigne).toBe(true);
+        expect(where.statut).toBe('EN_COURS');
+    });
+    it("écarte une convention entièrement encaissée", async () => {
+        const { service: s } = service({
+            conventions: [
+                {
+                    reference: 'UE-2026-001',
+                    montantAccorde: 100_000,
+                    statut: 'EN_COURS',
+                    bailleur: { code: 'UE-01', nom: 'UE' },
+                    tranches: [{ montantEncaisse: 100_000 }],
+                },
+            ],
+        });
+        expect(await s.creancesARecevoir('t1')).toEqual([]);
+    });
+});
+describe('ce que la création refuse', () => {
+    it("refuse un engagement CONDITIONNEL sans ses conditions", async () => {
+        const { service: s } = service();
+        await expect(s.creer('t1', 'u1', { ...DTO, caractere: 'CONDITIONNEL' })).rejects.toThrow(/doit dire à quoi il est conditionné/i);
+    });
+    it("refuse un écrit signé sans signataire nommé", async () => {
+        const { service: s } = service();
+        await expect(s.creer('t1', 'u1', { ...DTO, signataire: '  ' })).rejects.toThrow(/signataire/i);
+    });
+    it('refuse une date de fin antérieure au début', async () => {
+        const { service: s } = service();
+        await expect(s.creer('t1', 'u1', { ...DTO, dateFin: '2025-01-01' })).rejects.toThrow(/précède sa date de début/i);
+    });
+    it('refuse un montant nul', async () => {
+        const { service: s } = service();
+        await expect(s.creer('t1', 'u1', { ...DTO, montantAccorde: 0 })).rejects.toThrow(/strictement positif/i);
+    });
+    it('refuse deux exemplaires de la même convention chez le même bailleur', async () => {
+        const { service: s } = service({ doublon: { id: 'deja' } });
+        await expect(s.creer('t1', 'u1', DTO)).rejects.toThrow(/porte déjà une convention/i);
+    });
+    it('accepte une convention ordinaire et la borne au dossier', async () => {
+        const { service: s, prisma } = service();
+        await s.creer('t1', 'u1', DTO);
+        expect(prisma.conventionFinancement.create.mock.calls[0][0].data).toMatchObject({
+            tenantId: 't1',
+            bailleurId: 'b1',
+            reference: 'UE-2026-001',
+            caractere: 'FERME_INCONDITIONNEL',
+            ecritSigne: true,
+            createdBy: 'u1',
+        });
+    });
+});
+describe('la modification vérifie la FUSION, pas le seul envoi', () => {
+    it("refuse de passer une convention à CONDITIONNEL sans joindre ses conditions", async () => {
+        const { service: s } = service({
+            convention: {
+                id: 'c1',
+                caractere: 'FERME_INCONDITIONNEL',
+                conditions: null,
+                ecritSigne: true,
+                signataire: 'Chef de délégation',
+                montantAccorde: 500_000,
+                dateDebut: new Date('2026-01-01'),
+                dateFin: new Date('2028-12-31'),
+            },
+        });
+        await expect(s.modifier('t1', 'c1', { caractere: 'CONDITIONNEL' })).rejects.toThrow(/doit dire à quoi il est conditionné/i);
+    });
+});
+describe('la clôture et la résiliation', () => {
+    it('exige un motif à la RÉSILIATION', async () => {
+        const { service: s } = service({ convention: { id: 'c1', statut: 'EN_COURS' } });
+        await expect(s.clore('t1', 'c1', { statut: 'RESILIEE', motif: ' ' })).rejects.toThrow(/motif de résiliation/i);
+    });
+    it("n'exige pas de motif à la clôture normale", async () => {
+        const { service: s } = service({ convention: { id: 'c1', statut: 'EN_COURS' } });
+        await expect(s.clore('t1', 'c1', { statut: 'CLOTUREE' })).resolves.toMatchObject({ statut: 'CLOTUREE' });
+    });
+});
+describe('les tranches', () => {
+    const CONVENTION = { id: 'c1', montantAccorde: 500_000, tranches: [{ numero: 1, montant: 300_000 }] };
+    it('refuse un total de tranches supérieur au montant accordé', async () => {
+        const { service: s } = service({ convention: CONVENTION });
+        await expect(s.ajouterTranche('t1', 'c1', { numero: 2, libelle: 'Solde', montant: 300_000, datePrevue: '2027-06-30' })).rejects.toThrow(/dépasserait le montant accordé/i);
+    });
+    it('accepte une tranche qui tient dans le montant accordé', async () => {
+        const { service: s } = service({ convention: CONVENTION });
+        await expect(s.ajouterTranche('t1', 'c1', { numero: 2, libelle: 'Solde', montant: 200_000, datePrevue: '2027-06-30' })).resolves.toMatchObject({ numero: 2, montant: 200_000 });
+    });
+    it('refuse un numéro de tranche déjà pris', async () => {
+        const { service: s } = service({ convention: CONVENTION });
+        await expect(s.ajouterTranche('t1', 'c1', { numero: 1, libelle: 'Doublon', montant: 100_000, datePrevue: '2027-06-30' })).rejects.toThrow(/existe déjà/i);
+    });
+    it("refuse d'effacer une tranche encaissée", async () => {
+        const { service: s } = service({ tranche: { id: 't1', dateEncaissement: new Date('2026-03-01') } });
+        await expect(s.supprimerTranche('t1', 'c1', 't1')).rejects.toThrow(/ne s'efface pas/i);
+    });
+    it('refuse de ré-encaisser une tranche déjà encaissée', async () => {
+        const { service: s } = service({ tranche: { id: 't1', dateEncaissement: new Date('2026-03-01') } });
+        await expect(s.encaisserTranche('t1', 'c1', 't1', { dateEncaissement: '2026-04-01', montantEncaisse: 10 })).rejects.toThrow(/déjà encaissée/i);
+    });
+});
+describe('la validité de la convention, lue sur sa date de fin', () => {
+    it("marque expirée une convention EN COURS dont la date de fin est passée", async () => {
+        const { service: s } = service({
+            conventions: [
+                {
+                    id: 'c1',
+                    bailleur: BAILLEUR,
+                    reference: 'UE-2026-001',
+                    objet: 'Programme',
+                    ecritSigne: true,
+                    signataire: 'X',
+                    dateSignature: new Date('2024-01-01'),
+                    dateDebut: new Date('2024-01-01'),
+                    dateFin: new Date('2025-12-31'),
+                    montantAccorde: 100_000,
+                    caractere: 'FERME_INCONDITIONNEL',
+                    conditions: null,
+                    statut: 'EN_COURS',
+                    motifCloture: null,
+                    tranches: [],
+                    rapports: [],
+                },
+            ],
+        });
+        const [c] = await s.lister('t1', new Date('2026-09-05'));
+        expect(c.expiree).toBe(true);
+    });
+    it('signale une tranche non encaissée dont la date prévue est passée', async () => {
+        const { service: s } = service({
+            conventions: [
+                {
+                    id: 'c1',
+                    bailleur: BAILLEUR,
+                    reference: 'UE-2026-001',
+                    objet: 'Programme',
+                    ecritSigne: true,
+                    signataire: 'X',
+                    dateSignature: new Date('2026-01-01'),
+                    dateDebut: new Date('2026-01-01'),
+                    dateFin: new Date('2028-12-31'),
+                    montantAccorde: 100_000,
+                    caractere: 'FERME_INCONDITIONNEL',
+                    conditions: null,
+                    statut: 'EN_COURS',
+                    motifCloture: null,
+                    tranches: [
+                        { id: 't1', numero: 1, libelle: 'Première', montant: 50_000, datePrevue: new Date('2026-03-31'), dateEncaissement: null, montantEncaisse: null },
+                    ],
+                    rapports: [
+                        { id: 'r1', intitule: 'Rapport financier S1', nature: 'FINANCIER', dateEcheance: new Date('2026-07-31'), dateTransmission: null, observation: null },
+                    ],
+                },
+            ],
+        });
+        const [c] = await s.lister('t1', new Date('2026-09-05'));
+        expect(c.tranches[0].enRetard).toBe(true);
+        expect(c.rapports[0].enRetard).toBe(true);
+        expect(c.resteARecevoir).toBe(100_000);
+        expect(c.traitement).toBe('CREANCE_A_RECEVOIR');
+    });
+    it("une convention RÉSILIÉE n'attend plus rien", async () => {
+        const { service: s } = service({
+            conventions: [
+                {
+                    id: 'c1',
+                    bailleur: BAILLEUR,
+                    reference: 'UE-2026-001',
+                    objet: 'Programme',
+                    ecritSigne: true,
+                    signataire: 'X',
+                    dateSignature: new Date('2026-01-01'),
+                    dateDebut: new Date('2026-01-01'),
+                    dateFin: new Date('2028-12-31'),
+                    montantAccorde: 100_000,
+                    caractere: 'FERME_INCONDITIONNEL',
+                    conditions: null,
+                    statut: 'RESILIEE',
+                    motifCloture: 'Programme interrompu',
+                    tranches: [],
+                    rapports: [],
+                },
+            ],
+        });
+        const [c] = await s.lister('t1', new Date('2026-09-05'));
+        expect(c.resteARecevoir).toBe(0);
+        expect(c.expiree).toBe(false);
+    });
+});
+describe('F147 · le montant accordé ne descend pas sous le total des tranches', () => {
+    const CONVENTION_TRANCHEE = {
+        id: 'c1',
+        caractere: 'FERME_INCONDITIONNEL',
+        conditions: null,
+        ecritSigne: true,
+        signataire: 'Chef de délégation',
+        montantAccorde: 500_000,
+        dateDebut: new Date('2026-01-01'),
+        dateFin: new Date('2028-12-31'),
+        tranches: [{ montant: 300_000 }, { montant: 150_000 }],
+    };
+    it('refuse un accordé inférieur aux tranches prévues', async () => {
+        const { service: s } = service({ convention: CONVENTION_TRANCHEE });
+        await expect(s.modifier('t1', 'c1', { montantAccorde: 400_000 })).rejects.toThrow(/inférieur au total des tranches \(450000\.00\)/);
+    });
+    it('accepte l’accordé égal aux tranches, et une modification qui ne le touche pas', async () => {
+        const { service: s } = service({ convention: CONVENTION_TRANCHEE });
+        await expect(s.modifier('t1', 'c1', { montantAccorde: 450_000 })).resolves.toBeDefined();
+        await expect(s.modifier('t1', 'c1', { objet: 'Renforcement' })).resolves.toBeDefined();
+    });
+});
+//# sourceMappingURL=convention-de-financement.spec.js.map

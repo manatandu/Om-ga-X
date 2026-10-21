@@ -287,6 +287,31 @@ position de l'ONEC sur les outils informatiques, son site étant bloqué.
 
 ---
 
+## Les secrets GitHub du dépôt · état relevé le 2026-10-17
+
+Relevé sur l'écran « Settings, Secrets and variables, Actions » par Manasse,
+comparé aux `secrets.*` que lisent les workflows (`grep secrets\. .github/workflows`).
+Seuls les NOMS figurent ici, jamais une valeur. Avant de dire qu'un secret
+manque, relire cette liste.
+
+**Posés (16)** · `API_CLE_PRIVEE_LICENCE` (posé le 2026-10-16), `API_COURRIER_EXPEDITEUR`,
+`API_DATABASE_URL`, `API_DATABASE_URL_POOLED` (nom tronqué à l'écran, posé le mois
+dernier), `API_JWT_EXPIRES_IN`, `API_JWT_SECRET`, `API_OPERATEURS_PLATEFORME`,
+`API_SENTRY_DSN`, `API_SMTP_HOST`, `API_SMTP_PASS`, `API_SMTP_PORT`, `API_SMTP_USER`,
+`CLIENT_POSTHOG_CLE`, `CLIENT_SENTRY_DSN`, `FIREBASE_SERVICE_ACCOUNT_OMEGA_X_EC07A`,
+`GCP_SA_KEY`.
+
+**Absent, facultatif** · `API_SMTP_SECURE` (le workflow la dit facultative).
+
+**Pas un secret** · `CLE_AGE_SAUVEGARDES` est une VARIABLE de dépôt
+(`sauvegarde-base.yml`), elle ne figure donc pas dans cette liste.
+
+**Les valeurs, elles, ne se lisent pas d'ici** · pour savoir si une clé Sentry
+ou PostHog est bien celle de la région UE, regarder le journal de démarrage du
+serveur (« Sentry · actif ») après un déploiement.
+
+---
+
 ## Ce qui est déjà réglé, pour mémoire
 
 ### Réglé depuis l'établissement de la liste, retiré des points ouverts le 2026-09-28

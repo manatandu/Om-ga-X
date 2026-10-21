@@ -1,0 +1,145 @@
+import { type GratificationStipulee, type IndemniteStipulee, type PropositionGratification } from './decompte-retenues-stipulations';
+export declare const PREAVIS_PLANCHER_JOURS = 14;
+export declare const PREAVIS_PAR_ANNEE_JOURS = 7;
+export declare const PREAVIS_DELEGUE_MULTIPLICATEUR = 2;
+export declare const PREAVIS_DELEGUE_PLANCHER_MOIS = 3;
+export declare const CANDIDAT_NON_ELU_MOIS = 6;
+export declare const JOURS_OUVRABLES_MAXIMUM_EN_TROIS_MOIS: number;
+export declare const PREAVIS_ESSAI_JOURS = 3;
+export declare const JOURS_D_ESSAI_SANS_PREAVIS = 3;
+export declare const CONGE_JOURS_PAR_MOIS_MAJEUR = 1;
+export declare const CONGE_JOURS_PAR_MOIS_MINEUR = 1.5;
+export declare const CONGE_AJOUT_PAR_TRANCHE_JOURS = 1;
+export declare const CONGE_TRANCHE_ANNEES = 5;
+export declare const DELAI_PAIEMENT_JOURS_OUVRABLES = 2;
+export declare const MOIS_DE_MOYENNE = 12;
+export declare const JOURS_PAR_MOIS_DE_MOYENNE: 26;
+export declare const REGLE_MOYENNE_AU_JOUR: string;
+export declare const LIVRE_DE_PAIE_CONGE_PAR_JOUR: string;
+export declare const DIVISEUR_ANNUEL: 312;
+export type InitiativeRupture = 'EMPLOYEUR' | 'TRAVAILLEUR';
+export type MotifRupture = 'LICENCIEMENT' | 'DEMISSION' | 'FAUTE_LOURDE' | 'FORCE_MAJEURE' | 'TERME_DU_CDD' | 'COMMUN_ACCORD';
+export type TypeContratDecompte = 'DUREE_INDETERMINEE' | 'DUREE_DETERMINEE';
+export type ExecutionPreavis = 'PRESTE' | 'NON_OBSERVE' | 'DISPENSE_PAR_EMPLOYEUR' | 'DISPENSE_A_LA_DEMANDE_DU_TRAVAILLEUR' | 'DEPART_A_MI_PREAVIS' | 'DEPART_POUR_NOUVEL_EMPLOI';
+export declare const DELAI_NOUVEL_EMPLOI_MAXIMUM_JOURS = 7;
+export type VerdictPreavis = {
+    readonly joursOuvrables: number | null;
+    readonly delaiDeDateADate?: {
+        readonly du: string;
+        readonly auExclu: string;
+    } | null;
+    readonly motifAucunPreavis: string | null;
+    readonly motifIndetermine: string | null;
+    readonly fondement: string;
+    readonly reserves: readonly string[];
+};
+export declare function joursOuvrablesDeTroisMois(dateNotification: string): {
+    jours: number;
+    du: string;
+    auExclu: string;
+} | {
+    refus: string;
+};
+export declare function preavisLegal(params: {
+    anneesAnciennete: number;
+    initiative: InitiativeRupture;
+    motif: MotifRupture;
+    typeContrat?: TypeContratDecompte | null;
+    periodeDEssai?: boolean;
+    joursDEssaiEcoules?: number | null;
+    delegueSyndical?: boolean;
+    dateNotification?: string | null;
+    preavisRetenuJours?: number | null;
+    forceMajeureConstateeParInspecteur?: boolean;
+    deuxMoisDeSuspension?: boolean;
+}): VerdictPreavis;
+export type VerdictConge = {
+    readonly joursOuvrables: number;
+    readonly joursDeBase: number;
+    readonly joursDAnciennete: number;
+    readonly reserves: readonly string[];
+};
+export declare const trancheDAnciennete: (anneesAnciennete: number) => number;
+export declare function allocationDeConge(p: {
+    jours: number;
+    remunerationJournaliereFc: number | null;
+    moyenneMensuelleArticle142Fc: number | null;
+}): {
+    montantFc: number | null;
+    tauxJournalierFc: number | null;
+    motif: string | null;
+};
+export declare function congeLegal(params: {
+    moisNonCouvertsParUnConge: number;
+    moinsDeDixHuitAns: boolean;
+    anneesAnciennete: number;
+}): VerdictConge;
+export declare const prorataAnnuel: (montantAnnuelFc: number, joursPrestes: number) => number;
+export type RubriqueDecompte = {
+    readonly cle: string;
+    readonly libelle: string;
+    readonly montantFc: number | null;
+    readonly fondement: string;
+    readonly reserve: string | null;
+    readonly avantagesInclusFc?: number;
+};
+export type VerdictDecompteFinal = {
+    readonly preavis: VerdictPreavis;
+    readonly conge: VerdictConge;
+    readonly rubriques: readonly RubriqueDecompte[];
+    readonly totalBrutFc: number | null;
+    readonly horsBrut: readonly RubriqueDecompte[];
+    readonly totalDuAuTravailleurFc: number | null;
+    readonly duParLeTravailleur: readonly RubriqueDecompte[];
+    readonly echeancePaiement: string;
+    readonly reserves: readonly string[];
+    readonly propositionGratification: PropositionGratification | null;
+};
+export declare const PREFIXE_GRATIFICATION_STIPULEE = "GRATIFICATION STIPUL\u00C9E";
+export type ParametresDecompte = {
+    anneesAnciennete: number;
+    moisNonCouvertsParUnConge: number;
+    moinsDeDixHuitAns: boolean;
+    initiative: InitiativeRupture;
+    motif: MotifRupture;
+    typeContrat: TypeContratDecompte | null;
+    periodeDEssai?: boolean;
+    joursDEssaiEcoules?: number | null;
+    delegueSyndical?: boolean;
+    dateNotification?: string | null;
+    preavisRetenuJours?: number | null;
+    forceMajeureConstateeParInspecteur?: boolean;
+    deuxMoisDeSuspension?: boolean;
+    executionPreavis?: ExecutionPreavis | null;
+    joursPreavisNonObserves?: number | null;
+    partieResponsable?: InitiativeRupture | null;
+    remunerationJournaliereFc: number | null;
+    remunerationMensuelleFc?: number | null;
+    moyenneMensuelleArticle66Fc?: number | null;
+    moyenneMensuelleArticle142Fc?: number | null;
+    avantagesPendantPreavisFc?: number | null;
+    dateRuptureContrat?: string | null;
+    dateTermeContrat?: string | null;
+    avantagesJusquAuTermeFc?: number | null;
+    avantagesEnNatureRestantsFc?: number | null;
+    nouvelEmploiJustifie?: boolean | null;
+    delaiDepartNouvelEmploiJours?: number | null;
+    montantConvenuCommunAccordFc?: number | null;
+    arrieresFc?: number | null;
+    gratificationFc?: number | null;
+    gratificationStipulee?: GratificationStipulee | null;
+    indemniteStipulee?: IndemniteStipulee | null;
+    enfantsBeneficiairesAllocations?: number | null;
+    joursAllocationsFamiliales?: number | null;
+    allocationFamilialeParEnfantFc?: number | null;
+    explicationAllocationFamiliale?: string | null;
+};
+export declare function motifRefusDecompte(p: {
+    initiative: InitiativeRupture;
+    motif: MotifRupture;
+    typeContrat?: TypeContratDecompte | null;
+    executionPreavis?: ExecutionPreavis | null;
+}): string | null;
+export declare const RESERVE_DEPART_AVANT_LA_MOITIE: string;
+export declare const CLE_REMUNERATION_PREAVIS_RESTANT = "remuneration-preavis-restant";
+export declare function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal;

@@ -20,12 +20,14 @@ import { peutEcrirePourRole } from '../lib/roles-cantonnes';
 
 const EXEMPTS: Record<string, string> = {
   'pages/AuthPage.tsx': "la connexion elle-même · personne n'a encore de rôle",
+  'pages/EssaiPage.tsx': "l'essai en libre-service · le visiteur n'a ni session ni rôle, la porte est close ou ouverte par le serveur",
   'components/ModaleMonCompte.tsx': 'chacun règle la sécurité de son propre compte (mot de passe, sessions), lecture seule comprise',
   'components/ModaleMonAdresse.tsx': 'chacun change sa propre adresse de connexion, lecture seule comprise',
   'components/ModaleDoubleAuth.tsx': 'chacun protège son propre compte par un second facteur, lecture seule comprise',
   'components/NouveauFichierWizard.tsx': "création d'un dossier depuis la porte d'ouverture, avant toute session",
   'components/PanneauSurSite.tsx': "dépôt de la licence sur site depuis la porte d'ouverture, avant qu'aucun compte n'existe",
   'components/AbonnementsConsole.tsx': "abonnements et facturation des cabinets, dans la console de l'éditeur gardée par estOperateurPlateforme",
+  'components/EssaisEchusConsole.tsx': "rappels et suppression des dossiers d'essai échus, dans la console de l'éditeur gardée par estOperateurPlateforme",
   'components/DemonstrationConsole.tsx': "dossiers de démonstration, dans la console de l'éditeur gardée par estOperateurPlateforme",
   'components/LicencesSurSiteConsole.tsx': "émission des licences sur site, dans la console de l'éditeur gardée par estOperateurPlateforme",
   'pages/PlateformePage.tsx': "console de l'éditeur, gardée par estOperateurPlateforme et non par le rôle du dossier",

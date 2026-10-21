@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cibleDuLien, type CheminPagePublique } from '../lib/lien-page-legale';
+import { LienPreferencesMesure } from './BandeauConsentementMesure';
 
 /**
  * LES PAGES PUBLIQUES D'OMEGAX · politique de confidentialité, contrat de
@@ -43,6 +44,7 @@ export function CadrePagePublique({ titre, sousTitre, children }: { titre: strin
               {p.libelle}
             </a>
           ))}
+          <LienPreferencesMesure className="text-sel underline" />
           <button type="button" onClick={() => window.print()} className="ml-auto text-sel underline">
             Imprimer
           </button>
