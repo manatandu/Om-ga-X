@@ -1,7 +1,8 @@
 import { ForbiddenException } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { dansContexteAudit } from '../audit/contexte-audit';
+import { dansContexteAudit, journaliserDansTransaction } from '../audit/contexte-audit';
+import { raisonHorsCloisonnement } from '../cloisonnement/contexte-cloisonnement';
 import { garderPerimetreJournaux, journalHorsPerimetre, MESSAGE_HORS_PERIMETRE } from './extension-perimetre-journaux';
 import { RoleUtilisateur } from '@prisma/client';
 import { UtilisateurService } from '../../modules/utilisateurs/utilisateur.service';
@@ -66,6 +67,26 @@ describe('la saisie est gardée sur le client Prisma', () => {
   it('refuse de déplacer une écriture vers un journal hors périmètre', async () => {
     const { appeler } = faire(['j1']);
     await expect(appeler(['j1'], 'Ecriture', 'update', { where: { id: 'e' }, data: { journalId: 'j2' } })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('dans une transaction, relit le journal des écritures visées PAR LA TRANSACTION, hors cloisonnement (ligne k6-defauts)', async () => {
+    const raisons: unknown[] = [];
+    const tx = {
+      ecriture: {
+        findMany: jest.fn().mockImplementation(async () => {
+          raisons.push(raisonHorsCloisonnement());
+          return [{ journalId: 'j-autre' }];
+        }),
+      },
+    };
+    const { appeler, query, findMany } = faire([]);
+    await expect(
+      journaliserDansTransaction(tx as never, () => appeler(['j-ca'], 'Ecriture', 'update', { where: { id: 'e-1' }, data: { libelle: 'x' } })),
+    ).rejects.toThrow(MESSAGE_HORS_PERIMETRE);
+    expect(tx.ecriture.findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    expect(raisons).toEqual([expect.stringContaining('relecture du journal')]);
   });
 
   it('laisse la lecture et les autres tables, lettrage compris', async () => {

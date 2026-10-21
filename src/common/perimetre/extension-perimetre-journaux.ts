@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { acteurCourant } from '../audit/contexte-audit';
+import { acteurCourant, transactionAuditee } from '../audit/contexte-audit';
+import { horsCloisonnement } from '../cloisonnement/contexte-cloisonnement';
 
 /**
  * JOURNAUX AUTORISÉS PAR UTILISATEUR (priorité 5 de la comparaison avec les
@@ -80,6 +81,22 @@ function ecritureDeLaDonnee(data: unknown): string | undefined {
  * rien toucher à l'écriture. Toute écriture sur une ligne qui touche la saisie
  * relit le journal de son écriture ; le lettrage et le pointage passent.
  */
+/**
+ * LE LECTEUR DE LA GARDE (ligne k6-defauts, test de charge § 4.11) · la
+ * transaction en cours quand il y en a une, sinon `base`. Lue par `base`
+ * dans une transaction, la relecture prenait une SECONDE connexion du pool
+ * pendant que la transaction tenait la première (même schéma que la
+ * pré-image du journal d'audit, corrigé en 4.1). Le client de la transaction
+ * porte le cloisonnement, qui refuserait ces `findMany` sans borne de
+ * dossier et rendrait « inexistante » une écriture d'un autre dossier · la
+ * relecture se fait donc hors cloisonnement, comme par `base`, et c'est le
+ * cloisonnement qui, lui, juge ensuite l'écriture elle-même.
+ */
+function lecteurDeLaGarde(base: PrismaClient): PrismaClient {
+  return (transactionAuditee() ?? base) as unknown as PrismaClient;
+}
+const RAISON_RELECTURE = 'garde du périmètre des journaux · relecture du journal des écritures visées';
+
 async function garderLignes(
   base: PrismaClient,
   operation: string,
@@ -89,7 +106,9 @@ async function garderLignes(
   const verifierEcritures = async (ids: (string | undefined)[]) => {
     const connus = ids.filter((x): x is string => !!x);
     if (connus.length === 0) return;
-    const e = (await base.ecriture.findMany({ where: { id: { in: connus } }, select: { journalId: true } })) as EcritureCiblee[];
+    const e = (await horsCloisonnement(RAISON_RELECTURE, () =>
+      lecteurDeLaGarde(base).ecriture.findMany({ where: { id: { in: connus } }, select: { journalId: true } }),
+    )) as EcritureCiblee[];
     if (e.some((x) => journalHorsPerimetre(x.journalId, autorises))) throw new ForbiddenException(MESSAGE_HORS_PERIMETRE);
   };
   if (CREATIONS.includes(operation)) {
@@ -103,10 +122,12 @@ async function garderLignes(
   if (!suppression && !toucheLaSaisie(donnee) && !(operation === 'upsert' && a.create)) return;
   // Une ligne déplacée vers une autre écriture · la cible aussi.
   await verifierEcritures([ecritureDeLaDonnee(donnee), operation === 'upsert' ? ecritureDeLaDonnee(a.create) : undefined]);
-  const visees = (await base.ligneEcriture.findMany({
-    where: a.where as Prisma.LigneEcritureWhereInput,
-    select: { ecriture: { select: { journalId: true } } },
-  })) as { ecriture: EcritureCiblee }[];
+  const visees = (await horsCloisonnement(RAISON_RELECTURE, () =>
+    lecteurDeLaGarde(base).ligneEcriture.findMany({
+      where: a.where as Prisma.LigneEcritureWhereInput,
+      select: { ecriture: { select: { journalId: true } } },
+    }),
+  )) as { ecriture: EcritureCiblee }[];
   if (visees.some((l) => journalHorsPerimetre(l.ecriture.journalId, autorises))) {
     throw new ForbiddenException(MESSAGE_HORS_PERIMETRE);
   }
@@ -145,7 +166,9 @@ export async function garderPerimetreJournaux(
     }
     // ET LES ÉCRITURES VISÉES doivent toutes être dans le périmètre · on relit
     // leur journal, le filtre ne le porte pas.
-    const visees = (await base.ecriture.findMany({ where: a.where as Prisma.EcritureWhereInput, select: { journalId: true } })) as EcritureCiblee[];
+    const visees = (await horsCloisonnement(RAISON_RELECTURE, () =>
+      lecteurDeLaGarde(base).ecriture.findMany({ where: a.where as Prisma.EcritureWhereInput, select: { journalId: true } }),
+    )) as EcritureCiblee[];
     if (visees.some((e) => journalHorsPerimetre(e.journalId, autorises))) {
       throw new ForbiddenException(MESSAGE_HORS_PERIMETRE);
     }

@@ -1,8 +1,9 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { acteurCourant } from '../audit/contexte-audit';
+import { acteurCourant, transactionAuditee } from '../audit/contexte-audit';
 import { MODELES_CLOISONNES } from './modeles-cloisonnes';
 import {
   CloisonnementViole,
+  horsCloisonnement,
   perimetreCourant,
   raisonHorsCloisonnement,
 } from './contexte-cloisonnement';
@@ -317,9 +318,20 @@ export async function garderCloisonnement(
       );
     }
     const propriete = model.charAt(0).toLowerCase() + model.slice(1);
-    const existante = await (
-      base as unknown as Record<string, { findFirst: (x: unknown) => Promise<unknown> }>
-    )[propriete].findFirst({ where: a?.where as never, select: { tenantId: true } as never });
+    // LA RELECTURE PASSE PAR LA TRANSACTION EN COURS (ligne k6-defauts,
+    // test de charge § 4.11, même schéma que la pré-image du journal
+    // d'audit) · lue par `base`, elle prenait une SECONDE connexion du pool
+    // pendant que la transaction tenait la première, et dès que les
+    // transactions simultanées atteignaient la taille du pool, chacune
+    // attendait la connexion que les autres retenaient. Le client de la
+    // transaction porte les extensions, celle-ci comprise · la garde se
+    // SUSPEND pour sa propre relecture (`horsCloisonnement`), sans quoi la
+    // ligne d'un autre dossier lui reviendrait « inexistante » et l'écriture
+    // passerait sur elle. Hors transaction, `base` comme avant.
+    const lecteur = (transactionAuditee() ?? base) as unknown as Record<string, { findFirst: (x: unknown) => Promise<unknown> }>;
+    const existante = await horsCloisonnement('garde du cloisonnement · relecture du propriétaire de la ligne visée', () =>
+      lecteur[propriete].findFirst({ where: a?.where as never, select: { tenantId: true } as never }),
+    );
     const proprietaire = dossierDeLaLigne(existante);
     // Ligne absente · on laisse Prisma rendre son erreur habituelle, qui est
     // celle que le code appelant sait traiter. `upsert` créera, et la création

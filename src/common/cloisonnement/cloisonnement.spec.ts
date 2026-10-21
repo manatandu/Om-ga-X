@@ -2,8 +2,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODELES_CLOISONNES, MODELES_HORS_DOSSIER, MODELES_PORTES_PAR_LEUR_PARENT } from './modeles-cloisonnes';
 import { filtreBorne, garderCloisonnement } from './extension-cloisonnement';
-import { horsCloisonnement, CloisonnementViole } from './contexte-cloisonnement';
-import { dansContexteAudit } from '../audit/contexte-audit';
+import { horsCloisonnement, CloisonnementViole, raisonHorsCloisonnement } from './contexte-cloisonnement';
+import { dansContexteAudit, journaliserDansTransaction } from '../audit/contexte-audit';
 
 /**
  * CLOISONNEMENT MULTI-LOCATAIRE.
@@ -164,6 +164,41 @@ describe('la garde, règle par règle', () => {
     expect(r).toMatchObject({ intitule: 'Caisse siège' });
   });
 
+  it('B · dans une transaction, relit le propriétaire PAR LA TRANSACTION, hors cloisonnement, jamais par la connexion de base', async () => {
+    // Test de charge § 4.11 (ligne k6-defauts) · lue par `base`, la relecture
+    // prenait une seconde connexion du pool pendant que la transaction
+    // tenait la première. Relue par le client de la transaction, qui porte
+    // la garde, elle doit la SUSPENDRE · sinon la ligne d'un autre dossier
+    // lui reviendrait « inexistante », et l'écriture passerait.
+    const raisons: unknown[] = [];
+    const tx = {
+      compte: {
+        findFirst: jest.fn().mockImplementation(async () => {
+          raisons.push(raisonHorsCloisonnement());
+          return { tenantId: 'd-2' };
+        }),
+      },
+    };
+    const b = base({ tenantId: 'd-1' });
+    await expect(
+      dansDossier('d-1', () =>
+        journaliserDansTransaction(tx as never, () =>
+          garderCloisonnement(b, {
+            model: 'Compte',
+            operation: 'update',
+            args: { where: { id: 'c-1' }, data: { intitule: 'volé' } },
+            query: async () => {
+              throw new Error("l'écriture n'aurait jamais dû être tentée");
+            },
+          }),
+        ),
+      ),
+    ).rejects.toBeInstanceOf(CloisonnementViole);
+    expect(tx.compte.findFirst).toHaveBeenCalledTimes(1);
+    expect(b.compte.findFirst).not.toHaveBeenCalled();
+    expect(raisons).toEqual([expect.stringContaining('relecture du propriétaire')]);
+  });
+
   it('B · ne relit pas quand le filtre porte déjà la borne', async () => {
     const b = base({ tenantId: 'd-1' });
     await dansDossier('d-1', () =>
@@ -287,6 +322,11 @@ describe('balayage du code · toute collection porte sa borne', () => {
       .filter((f) => !f.startsWith('src/common/cloisonnement/'))
       .filter((f) => readFileSync(join(RACINE, f), 'utf8').includes('horsCloisonnement('));
     expect(utilisatrices.sort()).toEqual([
+      // La garde du périmètre des journaux relit le journal des écritures
+      // visées par la transaction en cours (ligne k6-defauts, § 4.11) · le
+      // client de la transaction porte le cloisonnement, qui refuserait la
+      // relecture ; c'est lui qui juge l'écriture elle-même, après.
+      'src/common/perimetre/extension-perimetre-journaux.ts',
       'src/modules/auth/auth.service.ts',
       'src/modules/groupe/groupe.service.ts',
       // La console lit et supprime des dossiers d'essai échus qui ne sont pas celui de
