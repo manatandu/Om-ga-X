@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { MODELES_EXCLUS_DE_LA_PURGE, planDePurge, purgerDossier, tableDuDossier } from './purger-dossier';
+import { MODELES_EXCLUS_DE_LA_PURGE, planDePurge, purgerDossier, RELATIONS_ENTRE_DOSSIERS, tableDuDossier } from './purger-dossier';
 
 /**
  * LE MOTEUR DE PURGE, LU CONTRE LE SCHÉMA · ce qui casserait en silence : un
@@ -190,5 +190,39 @@ describe('un schéma de poche, pour les cas limites', () => {
     const modeles = [{ name: 'X', dbName: 'a"; DROP TABLE tenants; --', fields: [champ('id'), champ('tenantId')] }];
     const plan = planDePurge(modeles as never);
     expect(plan[0].sql).toBe('DELETE FROM "a""; DROP TABLE tenants; --" WHERE "tenantId" = $1');
+  });
+});
+
+describe('LA GARDE LATENTE DES CLÉS ÉTRANGÈRES · les relations qui franchissent la frontière d’un dossier', () => {
+  // Lu dans le schéma · toute clé vers le dossier par une AUTRE colonne que
+  // `tenantId`, et toute clé d'une table HORS dossier (exclue de la purge) vers
+  // une table d'un dossier. Une relation nouvelle de cette forme entre deux
+  // dossiers ferait tomber la suppression, ou emporterait le voisin en silence.
+  const avecTenant = new Set(MODELES.filter((m) => m.fields.some((f) => f.name === 'tenantId' && f.kind === 'scalar')).map((m) => m.name));
+  const horsDossier = new Set(Object.keys(MODELES_EXCLUS_DE_LA_PURGE).filter((n) => n !== 'Tenant'));
+  const trouvees: string[] = [];
+  for (const m of MODELES) {
+    for (const f of m.fields) {
+      const de = (f.relationFromFields ?? []) as readonly string[];
+      if (f.kind !== 'object' || de.length === 0) continue;
+      const cle = `${m.name}.${de.join(',')}`;
+      if (f.type === 'Tenant' && !(de.length === 1 && de[0] === 'tenantId')) trouvees.push(cle);
+      else if (horsDossier.has(m.name) && (avecTenant.has(f.type) || f.type === 'Tenant')) trouvees.push(cle);
+    }
+  }
+
+  it('le recensement trouve encore quelque chose (une liste vide ne prouverait rien)', () => {
+    expect(trouvees.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('chaque relation de cette forme est CLASSÉE avec son traitement, et la liste ne nomme rien que le schéma n’a plus', () => {
+    expect([...trouvees].sort()).toEqual(Object.keys(RELATIONS_ENTRE_DOSSIERS).sort());
+    for (const [cle, motif] of Object.entries(RELATIONS_ENTRE_DOSSIERS)) expect([cle, motif.trim().length > 30]).toEqual([cle, true]);
+  });
+
+  it('les cas connus sont là (cellule, combinaison, tiers de cellule, abonnement, rappel)', () => {
+    for (const cle of ['Tenant.dossierMereId', 'Tenant.dossierCombinaisonId', 'Tiers.celluleGroupeId', 'AbonnementCabinet.cabinetId', 'RappelSuppressionEssai.cabinetId']) {
+      expect(trouvees).toContain(cle);
+    }
   });
 });

@@ -47,6 +47,32 @@ export const MODELES_EXCLUS_DE_LA_PURGE: Readonly<Record<string, string>> = {
   DossierEssaiSupprime: 'la trace de la suppression, hors dossier et sans clé étrangère · elle survit au dossier par construction',
 };
 
+/**
+ * LES RELATIONS QUI FRANCHISSENT LA FRONTIÈRE D'UN DOSSIER · liste FERMÉE, chacune
+ * avec la façon dont la suppression la traite.
+ *
+ * La purge borne chaque table par `tenantId` (ou par son parent) · elle ne voit
+ * que les lignes DU dossier. Une clé qui vise le dossier (ou une table d'un
+ * dossier) DEPUIS UNE AUTRE colonne que `tenantId`, ou depuis une table hors
+ * dossier, peut être portée par la ligne d'un AUTRE dossier · en `RESTRICT` elle
+ * fait tomber la suppression (bruyant), en `CASCADE` elle emporte la ligne du
+ * voisin sans un mot, en `SET NULL` elle dénoue le voisin en silence. Chacune
+ * doit donc être refusée AVANT la purge, ou partir avec le dossier par
+ * construction. `purger-dossier.spec.ts` relit le schéma et tombe dès qu'une
+ * relation de cette forme y entre sans être classée ici.
+ */
+export const RELATIONS_ENTRE_DOSSIERS: Readonly<Record<string, string>> = {
+  'Tenant.dossierMereId':
+    'cellule vers sa mère · un dossier mère ou cellule n’est jamais concerné (`toucheUnGroupe`, écarté en SQL et relu dans la transaction)',
+  'Tenant.dossierCombinaisonId': 'combinaison vers son siège · même refus que la mère, relu dans la transaction',
+  'Tiers.celluleGroupeId':
+    'tiers d’un siège, DANS SON dossier, vers la cellule · un dossier ainsi visé n’est jamais concerné (`toucheUnGroupe`, écarté en SQL)',
+  'AbonnementCabinet.cabinetId': 'abonnement de l’éditeur sur son client · un dossier qui en a un n’est jamais supprimable (refus relu dans la transaction)',
+  'AbonnementCabinet.tiersId': 'tiers facturé, dans le dossier de l’ÉDITEUR · jamais touché par la purge d’un client (l’abonnement la refuse)',
+  'FactureAbonnement.factureId': 'facture née dans le dossier de l’ÉDITEUR · même refus que l’abonnement qui la porte',
+  'RappelSuppressionEssai.cabinetId': 'suivi de l’éditeur sur ce dossier, en CASCADE · il part avec le dossier, et ne vise que lui',
+};
+
 export type EtapeDePurge =
   | { type: 'DETACHER'; modele: string; table: string; colonne: string; sql: string }
   | { type: 'SUPPRIMER'; modele: string; table: string; sql: string };
