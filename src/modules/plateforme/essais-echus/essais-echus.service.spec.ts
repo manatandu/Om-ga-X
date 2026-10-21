@@ -37,6 +37,8 @@ interface Scenario {
   abonnement?: boolean;
   groupe?: boolean;
   inscrit?: boolean;
+  /** Le courriel d'inscription porte l'identifiant d'un UTILISATEUR (renvoi), et non celui du dossier. */
+  preuve?: { origineId: string };
   transport?: boolean;
   admin?: { email: string } | null;
   envoi?: { statut: StatutMessage; erreur?: string | null };
@@ -97,7 +99,7 @@ function monter(s: Scenario = {}) {
     message: {
       findMany: jest.fn(async (args: { where: { origine?: string; id?: { in: string[] } } }) =>
         args.where.origine === ORIGINE_INSCRIPTION_ESSAI
-          ? s.inscrit === false ? [] : [{ tenantId: T, origineId: T }]
+          ? s.inscrit === false ? [] : [{ tenantId: T, origineId: s.preuve?.origineId ?? T }]
           : (args.where.id?.in ?? []).map((id) => ({ id, statut: s.rappel?.statut ?? StatutMessage.ENVOYE, erreur: s.rappel?.erreur ?? null })),
       ),
       findFirst: jest.fn(async (args: { where: { origine?: string } }) =>
@@ -127,6 +129,10 @@ function monter(s: Scenario = {}) {
     },
     user: {
       groupBy: jest.fn().mockResolvedValue([{ tenantId: T, _count: { _all: 2 } }]),
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'u-admin', tenantId: T },
+        { id: 'u-autre-dossier', tenantId: 'dossier-voisin' },
+      ]),
       findFirst: jest.fn().mockResolvedValue(s.admin === undefined ? { email: 'admin@client.invalid' } : s.admin),
     },
     exercice: { groupBy: jest.fn().mockResolvedValue([{ tenantId: T, _count: { _all: 3 } }]) },
@@ -166,6 +172,18 @@ describe('lister · identifiants, dates, état et nombres, JAMAIS une donnée du
   it('un dossier non concerné n’est pas proposé (abonnement, groupe, hors inscription en libre-service)', async () => {
     for (const s of [{ abonnement: true }, { groupe: true }, { inscrit: false }]) {
       const { service } = monter(s);
+      expect((await service.lister(MAINTENANT)).essais).toEqual([]);
+    }
+  });
+
+  it('LA PREUVE D’INSCRIPTION · le courriel du renvoi (origineId = un utilisateur du dossier) prouve la porte', async () => {
+    const { service } = monter({ preuve: { origineId: 'u-admin' } });
+    expect((await service.lister(MAINTENANT)).essais.map((e) => e.etat)).toEqual(['RAPPEL_A_ENVOYER']);
+  });
+
+  it('un courriel d’inscription portant l’utilisateur d’un AUTRE dossier, ou rien de connu, ne prouve rien', async () => {
+    for (const origineId of ['u-autre-dossier', 'inconnu']) {
+      const { service } = monter({ preuve: { origineId } });
       expect((await service.lister(MAINTENANT)).essais).toEqual([]);
     }
   });

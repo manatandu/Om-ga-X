@@ -145,7 +145,7 @@ export class EssaisEchusService {
    */
   private async lire(client: Lecteur, ids: string[]): Promise<Map<string, DossierLu>> {
     if (ids.length === 0) return new Map();
-    const [tenants, licences, abonnements, mereOuCellule, tiersCellule, preuves, rappels, utilisateurs, exercices, ecritures] = await Promise.all([
+    const [tenants, licences, abonnements, mereOuCellule, tiersCellule, preuves, comptesUtilisateurs, rappels, utilisateurs, exercices, ecritures] = await Promise.all([
       client.tenant.findMany({
         where: { id: { in: ids } },
         select: { id: true, estDemonstration: true, dossierMereId: true, dossierCombinaisonId: true },
@@ -162,10 +162,17 @@ export class EssaisEchusService {
       // Une lecture ENTRE dossiers, déclarée (`cloisonnement.spec.ts`) · le siège d'un groupe
       // porte, dans SON dossier, la cellule qu'il vise ; ce n'est pas le dossier visé qui la porte.
       client.tiers.findMany({ where: { celluleGroupeId: { in: ids } }, select: { celluleGroupeId: true } }),
+      // LA PREUVE DE L'INSCRIPTION · le courriel de l'inscription en libre-service
+      // porte `origineId` = le dossier quand il part à la création, mais le RENVOI
+      // (auth.service, titulaire qui n'a rien reçu) l'écrit avec l'identifiant de
+      // l'UTILISATEUR, et un premier envoi échoué n'écrit rien du tout. Les deux
+      // formes prouvent la même porte · seul le renvoi existe pour un dossier
+      // dont le premier courriel n'est pas parti.
       client.message.findMany({
-        where: { tenantId: { in: ids }, origine: ORIGINE_INSCRIPTION_ESSAI, origineId: { in: ids } },
+        where: { tenantId: { in: ids }, origine: ORIGINE_INSCRIPTION_ESSAI },
         select: { tenantId: true, origineId: true },
       }),
+      client.user.findMany({ where: { tenantId: { in: ids } }, select: { id: true, tenantId: true } }),
       client.rappelSuppressionEssai.findMany({ where: { cabinetId: { in: ids } } }),
       client.user.groupBy({ by: ['tenantId'], where: { tenantId: { in: ids } }, _count: { _all: true } }),
       client.exercice.groupBy({ by: ['tenantId'], where: { tenantId: { in: ids } }, _count: { _all: true } }),
@@ -185,7 +192,10 @@ export class EssaisEchusService {
       if (t.dossierCombinaisonId) groupe.add(t.dossierCombinaisonId);
     }
     for (const t of tiersCellule) if (t.celluleGroupeId) groupe.add(t.celluleGroupeId);
-    const inscrits = new Set(preuves.filter((p) => p.origineId === p.tenantId).map((p) => p.tenantId));
+    const utilisateurDe = new Map(comptesUtilisateurs.map((u) => [u.id, u.tenantId]));
+    const inscrits = new Set(
+      preuves.filter((p) => p.origineId === p.tenantId || (p.origineId !== null && utilisateurDe.get(p.origineId) === p.tenantId)).map((p) => p.tenantId),
+    );
     // UN RAPPEL PAR TERME · seul celui du terme de la licence COURANTE est lu. Un
     // essai redonné (terme nouveau) laisse le rappel de l'ancien terme dans la
     // table, et il n'y vaut pas préavis (`rappelDuTermeCourant`).
