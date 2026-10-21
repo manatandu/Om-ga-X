@@ -22,6 +22,8 @@ function fabrique(
     exerciceClosQuiLaPorte?: boolean;
     /** La clôture de cet exercice précède la création de la fiche. */
     clotureAvantLaFiche?: boolean;
+    /** Le maillon qui laisse l'exercice clos a une pré-image ILLISIBLE (ligne k6-defauts). */
+    preImageIllisible?: boolean;
     numerotation?: 'CONTINUE_JOURNAL' | 'MENSUELLE';
   } = {},
 ) {
@@ -127,7 +129,7 @@ function fabrique(
                 {
                   entiteId: 'ex-clos',
                   action: 'MODIFICATION',
-                  avant: { statut: 'OUVERT' },
+                  avant: options.preImageIllisible ? { preImageIllisible: true } : { statut: 'OUVERT' },
                   horodatage: options.clotureAvantLaFiche ? new Date('2025-12-01T00:00:00Z') : new Date('2027-02-01T00:00:00Z'),
                 },
               ]
@@ -197,6 +199,16 @@ describe('le bien repris qu’un exercice clos a porté (relecture M4)', () => {
     await expect(service.modifier('t-1', 'u-1', ID, { amortissementAnterieur: 1_000_000 })).resolves.toBeDefined();
     expect(prisma.immobilisation.update).toHaveBeenCalled();
     await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
+  });
+
+  it('un maillon à pré-image ILLISIBLE postérieur à la fiche est tenu pour une clôture · le doute fige', async () => {
+    // Le journal d'audit n'a pas pu lire l'exercice avant ce maillon (pool
+    // saturé) · il laisse l'exercice CLOTURE, on ne sait pas s'il l'y a mis.
+    // Lu comme « rien avant », il figeait déjà ; lu comme un inconnu, il fige
+    // encore, et la règle est écrite (`preImageIllisible`, ligne k6-defauts).
+    const { service, prisma } = fabrique({ repris: true, exerciceClosQuiLaPorte: true, preImageIllisible: true });
+    await expect(service.modifier('t-1', 'u-1', ID, { amortissementAnterieur: 1_000_000 })).rejects.toThrow(/clos le 2026-12-31 a porté ce bien/);
+    expect(prisma.immobilisation.update).not.toHaveBeenCalled();
   });
 
   it('sans exercice clos qui le porte, la désignation comme la valeur restent modifiables', async () => {

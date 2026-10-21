@@ -543,6 +543,22 @@ describe('Cinquième reprise · saisie après la liquidation, reconstitution inc
     expect(d.reconstitutionsIncertaines.map((r) => r.facture)).toEqual(['Facture F']);
   });
 
+  it('un lettrage supprimé après la liquidation dont la pré-image est ILLISIBLE · le compte est inconnu, la reconstitution est incertaine', async () => {
+    // Le maillon de suppression ne porte pas le compte du groupe (pool saturé
+    // à la lecture de la pré-image, `preImageIllisible`, ligne k6-defauts) ·
+    // écarté sans un mot, la reconstitution se disait sûre.
+    const ligne = vente({ id: 'F', date: '2026-01-15', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    const liq = [{ id: 'liqF', dateDebut: mois('2026-02')[0], dateFin: mois('2026-02')[1], createdAt: jour('2026-03-01'), tvaEncaissementFigee: null }];
+    const audit = [{ id: 'e1', action: 'SUPPRESSION', entiteId: 'G1', horodatage: jour('2026-03-05'), avant: { preImageIllisible: true }, apres: null }];
+    const s = new TauxTvaService(prisma([ligne], liq, audit), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-04'));
+    expect(d.reconstitutionsIncertaines.map((r) => r.facture)).toEqual(['Facture F']);
+    // Une suppression ANTÉRIEURE à la liquidation, même illisible, ne pèse pas.
+    const avant = [{ id: 'e0', action: 'SUPPRESSION', entiteId: 'G0', horodatage: jour('2026-02-20'), avant: { preImageIllisible: true }, apres: null }];
+    const d2 = await new TauxTvaService(prisma([ligne], liq, avant), {} as EcritureService).declaration('t1', ...mois('2026-04'));
+    expect(d2.reconstitutionsIncertaines).toEqual([]);
+  });
+
   it('sans ancienne liquidation, le journal d’audit n’est pas lu', async () => {
     const p = prisma(JEUX['avoir dans le groupe'].lignes);
     await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-03'));

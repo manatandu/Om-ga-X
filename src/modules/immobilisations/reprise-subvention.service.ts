@@ -41,8 +41,14 @@ export class RepriseSubventionService {
               lignes: { some: { credit: { gt: 0 }, OR: racines.map((r) => ({ compte: { numero: { startsWith: r } } })) } },
             },
           },
-          // Lot 5 · la subvention en numéraire RATTACHÉE au bien.
-          { subventions: { some: {} } },
+          // Lot 5 · la subvention en numéraire RATTACHÉE au bien. LE
+          // SOUS-FILTRE PORTE LE DOSSIER (ligne k6-defauts, jumeau du
+          // correctif 4.3 du test de charge) · `some: {}` se traduit en
+          // `id IN (SELECT immobilisationId FROM subventions_immobilisations)`,
+          // sans borne, la table de TOUS les cabinets ; avec `tenantId`, la
+          // sous-requête se lit par l'index `(tenantId)` de la table. Même
+          // résultat · une subvention rattachée est toujours du dossier du bien.
+          { subventions: { some: { tenantId } } },
         ],
       },
       select: { id: true },

@@ -3,6 +3,7 @@ import { reporterLesPieces } from '../comptabilite/pieces-jointes-ecriture';
 import { ActionAudit, ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { preImageIllisible } from '../../common/audit/pre-image';
 import { referencesVers } from '../../common/suppression/references';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
@@ -413,7 +414,12 @@ export class FicheImmobilisationService {
       }),
       db.evenementAudit.findFirst({ where: { tenantId }, orderBy: { rang: 'asc' }, select: { horodatage: true } }),
     ]);
-    const etaitClos = (avant: unknown) => !!avant && typeof avant === 'object' && (avant as { statut?: unknown }).statut === StatutExercice.CLOTURE;
+    // Un maillon qui laisse l'exercice CLOTURE est une CLÔTURE sauf s'il
+    // le trouvait déjà clos · sa pré-image le dit. Une pré-image ILLISIBLE
+    // (`preImageIllisible`, ligne k6-defauts) ne dit rien · le maillon est
+    // tenu pour une clôture, le doute fige, jamais il ne délie.
+    const etaitClos = (avant: unknown) =>
+      !preImageIllisible(avant) && !!avant && typeof avant === 'object' && (avant as { statut?: unknown }).statut === StatutExercice.CLOTURE;
     const clotures = maillons.filter((m) => m.action === ActionAudit.CREATION || !etaitClos(m.avant));
     return exerciceClosQuiPorteLaFiche({
       ficheCreeeLe: fiche.createdAt,

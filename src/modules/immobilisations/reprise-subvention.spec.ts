@@ -132,6 +132,17 @@ describe('reprise au 799 · le service', () => {
     return { svc: new RepriseSubventionService(prisma as never, { creer, retirerCompensation: retirer } as never), creer, retirer, prisma };
   }
 
+  it('la liste des biens à reprendre borne la subvention rattachée au dossier (ligne k6-defauts)', async () => {
+    // `subventions: { some: {} }` se traduisait en une sous-requête sur la
+    // table de TOUS les cabinets (jumeau du correctif 4.3 du test de charge).
+    const { svc, prisma } = monter();
+    (prisma as any).immobilisation.findMany = jest.fn().mockResolvedValue([]);
+    await svc.lister('t', 'e26');
+    const { where } = (prisma as any).immobilisation.findMany.mock.calls[0][0];
+    expect(where.tenantId).toBe('t');
+    expect(where.OR).toContainEqual({ subventions: { some: { tenantId: 't' } } });
+  });
+
   it('D 14 au prorata des comptes crédités à l’acquisition, C 799, à la clôture', async () => {
     const { svc, creer } = monter();
     await svc.passer('t', 'u', 'b1', { exerciceId: 'e26', journalId: 'j' });

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { preImageIllisible } from './pre-image';
 import { calculerEmpreinte, EMPREINTE_ORIGINE, ContenuEmpreinte } from './empreinte-audit';
 import { masquer, estChampSensible, MARQUEUR_MASQUE, MODELES_AUDITES } from './champs-audites';
 import { JournalAuditService } from './journal-audit.service';
@@ -664,8 +665,9 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     );
     expect(query).toHaveBeenCalledTimes(1);
     expect(maillons).toHaveLength(1);
-    // Sans pré-image, le maillon la range vide · rien d'inventé.
-    expect([null, {}]).toContainEqual(maillons[0].avant);
+    // Sans pré-image, le maillon le DIT · rien d'inventé, et jamais un vide
+    // qu'un lecteur prendrait pour « rien avant » (ligne k6-defauts).
+    expect(maillons[0].avant).toEqual({ preImageIllisible: true });
   });
 
   it('une clé unique composée se déplie pour la pré-image · `findFirst` la refuserait', () => {
@@ -692,6 +694,39 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
       }),
     );
     expect(base.journal.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('hors transaction, une pré-image illisible est DITE sur le maillon, jamais rangée vide', async () => {
+    // Pool saturé, lecture tombée · l'opération passe (choix de CLAUDE.md
+    // § 5) et le maillon porte le marqueur que `pre-image.ts` définit. Rangé
+    // `null`, il se lisait comme « rien avant » (ligne k6-defauts).
+    const maillons: any[] = [];
+    const base: any = {
+      journal: { findFirst: jest.fn().mockRejectedValue(new Error('Timed out fetching a new connection from the connection pool')) },
+      $transaction: jest.fn().mockImplementation(async (f: any) =>
+        f({
+          $executeRaw: jest.fn().mockResolvedValue(1),
+          evenementAudit: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockImplementation(async ({ data }: any) => {
+              maillons.push(data);
+              return data;
+            }),
+          },
+        }),
+      ),
+    };
+    const query = jest.fn(async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }));
+    await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+      intercepterEcriture(base, { model: 'Journal', operation: 'update', args: { where: { id: 'j-1' }, data: { intitule: 'Après' } }, query }),
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(maillons).toHaveLength(1);
+    expect(maillons[0].avant).toEqual({ preImageIllisible: true });
+    expect(preImageIllisible(maillons[0].avant)).toBe(true);
+    // Une ligne qui n'existait pas reste « rien avant » · les deux ne se confondent pas.
+    expect(preImageIllisible(null)).toBe(false);
+    expect(preImageIllisible({ statut: 'OUVERT' })).toBe(false);
   });
 
   it('la création du dossier ouvre SA chaîne, pas celle de l’acteur', async () => {

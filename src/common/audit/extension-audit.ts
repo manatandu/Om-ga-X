@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { acteurCourant, ACTEUR_SYSTEME, transactionAuditee } from './contexte-audit';
 import { MODELES_AUDITES, colonnesExclues, masquer } from './champs-audites';
 import { calculerEmpreinte, EMPREINTE_ORIGINE } from './empreinte-audit';
+import { PRE_IMAGE_ILLISIBLE } from './pre-image';
 
 const journal = new Logger('JournalAudit');
 
@@ -323,7 +324,10 @@ export async function intercepterEcriture(
       // geste juste.
       if (enTransaction && !(erreur instanceof Prisma.PrismaClientValidationError)) throw erreur;
       journal.warn(`Pré-image illisible · ${model}.${operation} · ${erreur instanceof Error ? erreur.message : String(erreur)}`);
-      avant = null;
+      // LE MAILLON DIT QUE SA PRÉ-IMAGE N'A PAS ÉTÉ LUE (ligne k6-defauts) ·
+      // rangée `null`, elle se lisait comme « rien avant », et deux lecteurs
+      // du journal en tiraient une conclusion (`pre-image.ts`).
+      avant = PRE_IMAGE_ILLISIBLE;
     }
   }
 

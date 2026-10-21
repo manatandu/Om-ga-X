@@ -4403,6 +4403,11 @@ export class TauxTvaService {
     */
     const modificationsDeGroupe = new Map<string, Date[]>();
     const suppressionsParCompte = new Map<string, Array<{ le: Date; creeLe: Date | null }>>();
+    // Les suppressions dont la pré-image n'a pas été lue (`preImageIllisible`,
+    // ligne k6-defauts) · le compte du groupe est INCONNU, elles pèsent sur
+    // tout compte de tiers. Jusque-là, `!avant?.compteId` les écartait sans
+    // un mot, et la reconstitution se disait sûre.
+    const suppressionsSansCompte: Date[] = [];
     const anciennes = liquidationsLues.filter((l) => !l.figee);
     if (anciennes.length > 0) {
       const depuis = new Date(Math.min(...anciennes.map((l) => l.createdAt.getTime())));
@@ -4417,7 +4422,10 @@ export class TauxTvaService {
           const avant = (e.avant ?? null) as { solde?: unknown; compteId?: string; createdAt?: string } | null;
           const apres = (e.apres ?? null) as { solde?: unknown; filtre?: { id?: string } } | null;
           if (e.action === 'SUPPRESSION') {
-            if (!avant?.compteId) return;
+            if (!avant?.compteId) {
+              suppressionsSansCompte.push(e.horodatage);
+              return;
+            }
             const liste = suppressionsParCompte.get(avant.compteId) ?? [];
             liste.push({ le: e.horodatage, creeLe: avant.createdAt ? new Date(avant.createdAt) : null });
             suppressionsParCompte.set(avant.compteId, liste);
@@ -5899,7 +5907,8 @@ export class TauxTvaService {
               const groupeSupprime = l.ecriture.lignes.some(
                 (x) =>
                   x.compte?.classe === ClasseCompte.CLASSE_4 &&
-                  (suppressionsParCompte.get(x.compteId) ?? []).some((sup) => sup.le > T && (!sup.creeLe || sup.creeLe <= T)),
+                  ((suppressionsParCompte.get(x.compteId) ?? []).some((sup) => sup.le > T && (!sup.creeLe || sup.creeLe <= T)) ||
+                    suppressionsSansCompte.some((le) => le > T)),
               );
               if (!groupeTouche && !groupeSupprime) continue;
               const cle = `${l.id}|${liq.id}`;

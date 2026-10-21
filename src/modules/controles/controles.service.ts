@@ -713,11 +713,18 @@ export class ControlesService {
     // Comptes de caisse : le 57 des DEUX plans (« Caisse » au SYCEBNL comme
     // au SYSCOHADA), plus tout compte rattaché à un
     // journal de trésorerie dont le code ou l'intitulé parle de caisse.
+    // LE SOUS-FILTRE PORTE LE DOSSIER (ligne k6-defauts, jumeau du correctif
+    // 4.3 du test de charge) · `some: {}` se traduit en `id IN (SELECT
+    // compteTresorerieId FROM journaux WHERE compteTresorerieId IS NOT NULL)`,
+    // sans borne et sans index sur cette colonne · un balayage des journaux
+    // de TOUS les cabinets à chaque contrôle ; avec `tenantId`, la
+    // sous-requête se lit par l'index `(tenantId, code)`. Même résultat · le
+    // journal qui tient un compte est toujours du dossier du compte.
     const comptes = await this.prisma.compte.findMany({
       where: {
         tenantId,
         typeCompte: TypeCompteDetailTotal.DETAIL,
-        OR: [{ numero: { startsWith: '57' } }, { journauxTresorerie: { some: {} } }],
+        OR: [{ numero: { startsWith: '57' } }, { journauxTresorerie: { some: { tenantId } } }],
       },
       include: { journauxTresorerie: { select: { code: true, intitule: true } } },
     });

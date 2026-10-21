@@ -50,6 +50,22 @@ function service(lignes: { date: string; debit: number; credit: number }[]) {
 }
 
 describe('contrôle de caisse', () => {
+  it('cherche les comptes tenus par un journal de trésorerie DU DOSSIER (ligne k6-defauts)', async () => {
+    // `journauxTresorerie: { some: {} }` se traduisait en `id IN (SELECT
+    // compteTresorerieId FROM journaux …)` sans borne, les journaux de TOUS
+    // les cabinets, sans index sur la colonne (jumeau du correctif 4.3 du
+    // test de charge).
+    const prisma = {
+      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
+      compte: { findMany: jest.fn().mockResolvedValue([]) },
+      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+    } as Faux;
+    await new ControlesService(prisma as unknown as PrismaService).controleCaisse('t1', 'ex1');
+    const { where } = (prisma.compte as { findMany: jest.Mock }).findMany.mock.calls[0][0];
+    expect(where.tenantId).toBe('t1');
+    expect(where.OR).toContainEqual({ journauxTresorerie: { some: { tenantId: 't1' } } });
+  });
+
   it('ne signale rien quand la caisse reste positive', async () => {
     const r = await service([
       { date: '2026-03-01', debit: 500000, credit: 0 },
