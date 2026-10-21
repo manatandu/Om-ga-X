@@ -400,6 +400,19 @@ describe('UN RAPPEL ANCIEN NE VAUT PAS PRÉAVIS POUR UN TERME NOUVEAU (essai red
     expect(courrier.mettreEnFile).toHaveBeenCalledTimes(1);
   });
 
+  it('le message que tient le rappel d’un AUTRE terme n’est jamais adopté, même écrit après l’ouverture de la fenêtre', async () => {
+    // Rejeu sur vraie base · essai redonné avec un terme déjà échu, sa fenêtre s'ouvre AVANT le rappel de l'ancien terme.
+    const { service, lecteur } = monter({ termeIlYa: 160, rappel: { envoyeLeIlYa: 2, termeAnterieurDe: 30, messageId: 'm-ancien' } });
+    lecteur.rappelSuppressionEssai.findMany.mockImplementation(async (a: { where: { messageId?: unknown } }) =>
+      // La lecture du calendrier ne voit que le rappel du terme courant (aucun ici) ; la recherche des
+      // messages tenus voit celui de l'ancien terme.
+      a.where.messageId ? [{ messageId: 'm-ancien' }] : [],
+    );
+    await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    const adoption = lecteur.message.findFirst.mock.calls[0][0] as { where: { id: { notIn: string[] } } };
+    expect(adoption.where.id.notIn).toEqual(['m-ancien']);
+  });
+
   it('la suppression est REFUSÉE (409) sur le seul rappel de l’ancien terme', async () => {
     const { service, appels } = monter({ termeIlYa: 200, rappel: { envoyeLeIlYa: 31, termeAnterieurDe: 60 } });
     await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toBeInstanceOf(ConflictException);

@@ -519,7 +519,16 @@ export class EssaisEchusService {
       // 4. Un message déjà écrit pour ce dossier ET CE TERME (processus tombé après
       // l'écriture) est ADOPTÉ. Le rappel d'un terme ancien, écrit avant l'ouverture
       // de la fenêtre du terme courant, ne l'est jamais · il annonçait une autre date.
+      // Le message qu'une AUTRE ligne de suivi tient (le rappel d'un autre terme)
+      // ne l'est jamais non plus, quelle que soit sa date · rejeu sur vraie base du
+      // 2026-10-21, un essai redonné avec un terme déjà échu ouvrait sa fenêtre
+      // AVANT le rappel de l'ancien terme, qui était adopté pour « parti » sans
+      // qu'aucun courriel n'annonce la date nouvelle.
       const ouvertureFenetre = new Date(debutDeLaFenetreDeRappel(termeLe).getTime() - DECALAGE_KINSHASA_MS);
+      const tenus = await this.prisma.rappelSuppressionEssai.findMany({
+        where: { cabinetId: tenantId, id: { not: reservation.id }, messageId: { not: '' } },
+        select: { messageId: true },
+      });
       const existant = await this.prisma.message.findFirst({
         where: {
           tenantId,
@@ -527,6 +536,7 @@ export class EssaisEchusService {
           origineId: tenantId,
           statut: { not: StatutMessage.ABANDONNE },
           createdAt: { gte: ouvertureFenetre },
+          id: { notIn: tenus.map((t) => t.messageId) },
         },
         orderBy: { createdAt: 'desc' },
         select: { id: true, statut: true, envoyeAt: true, erreur: true },

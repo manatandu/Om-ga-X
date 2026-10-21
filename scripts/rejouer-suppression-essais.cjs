@@ -720,6 +720,29 @@ async function principal() {
     const maillon = await prisma.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "evenements_audit" WHERE "tenantId" = $1 AND "entite" = 'DossierEssaiSupprime'`, tenantOperateur);
     verifier(maillon[0].n === 1, 'l’acte est journalisé dans la chaîne du dossier de l’opérateur');
 
+    console.log('== Essai redonné au voisin · un terme nouveau, le rappel de l’ancien ne vaut pas préavis');
+    // L'opérateur redonne trente jours d'essai · terme nouveau, déjà échu de 150 jours
+    // (rappel dû). Le rappel parti pour l'ancien terme reste en table, ignoré.
+    await vieillir(voisin.tenantId, 150);
+    liste = await console_.get('/plateforme/essais-echus');
+    verifier(ligne(voisin.tenantId)?.etat === 'RAPPEL_A_ENVOYER', `voisin · terme nouveau, état RAPPEL_A_ENVOYER (lu : ${ligne(voisin.tenantId)?.etat})`);
+    refus = await console_.appeler('POST', `/plateforme/essais-echus/${voisin.tenantId}/supprimer`, { confirmation: voisin.tenantId }, { attendu: [409] });
+    verifier(refus.statut === 409, 'voisin · suppression refusée (409) sur le seul rappel de l’ancien terme');
+    const avantRedonne = courriels.length;
+    const redonne = await console_.post('/plateforme/essais-echus/rappels');
+    const pourVoisin = (redonne.resultats ?? []).find((r) => r.tenantId === voisin.tenantId);
+    verifier(pourVoisin?.issue === 'ENVOYE', `voisin · un nouveau rappel part pour le terme nouveau (issue : ${pourVoisin?.issue})`);
+    await attendre(500);
+    const nouveaux = courriels.slice(avantRedonne);
+    const nouveauxRappels = nouveaux.filter((m) => /supprimé/.test(m.corps));
+    verifier(
+      nouveauxRappels.length === 1 && nouveauxRappels[0].a.some((a) => a.includes(voisin.email)),
+      `un seul nouveau courriel de rappel, à l’administrateur du voisin (lus : ${nouveaux.length}, rappels : ${nouveauxRappels.length}, résultats : ${(redonne.resultats ?? []).map((r) => r.issue).join(', ')})`,
+    );
+    const [{ n: rappelsVoisin }] = await prisma.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "rappels_suppression_essai" WHERE "cabinetId" = $1`, voisin.tenantId);
+    verifier(rappelsVoisin === 2, `voisin · deux rappels en table, un par terme (lu : ${rappelsVoisin})`);
+    verifier(!JSON.stringify(redonne).includes('@'), 'le compte rendu des rappels ne porte aucune adresse');
+
     console.log('== Le serveur n’a pas écrit de panne');
     verifier(!/Maillon d'audit NON écrit/.test(journal()), 'aucun « Maillon d’audit NON écrit » au journal du serveur');
 

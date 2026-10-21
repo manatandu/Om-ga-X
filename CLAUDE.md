@@ -4154,8 +4154,10 @@ en lecture seule CENT QUATRE-VINGTS JOURS après son terme · un nombre de JOURS
 jour de Kinshasa, jamais « six mois calendaires » (`JOURS_CONSERVATION_ESSAI`,
 conservé jusqu'au terme + 180 inclus, supprimable le lendemain). Un rappel part à
 l'adresse de l'administrateur AU MOINS TRENTE jours avant la suppression
-(`JOURS_RAPPEL_AVANT_SUPPRESSION`, compté du jour de l'ENVOI, un rappel tardif
-repousse la suppression et ne raccourcit jamais le préavis), avec la voie
+(`JOURS_RAPPEL_AVANT_SUPPRESSION`, trente jours PLEINS après le jour de l'ENVOI,
+supprimable à D + 31 comme la conservation l'est au lendemain du dernier jour ;
+un rappel tardif repousse la suppression et ne raccourcit jamais le préavis ; la
+date du courriel est un MINIMUM, la réelle se relit sur l'envoi constaté), avec la voie
 d'exportation (Fichier > Restituer le dossier complet). Fenêtre d'envoi du rappel
 · du soixantième au trentième jour avant la première date de suppression,
 convention d'OmegaX (`JOURS_FENETRE_RAPPEL`). (2) LA SUPPRESSION EST UN GESTE DE
@@ -4166,13 +4168,21 @@ console de l'éditeur liste (`GET /plateforme/essais-echus`), envoie les rappels
 RETAPANT l'identifiant. Le serveur ne se fie pas à la liste · il relit TOUT dans
 la transaction, sous le verrou consultatif et le `FOR UPDATE` du dossier, et
 refuse (409) si l'état n'est pas `SUPPRIMABLE` (rappel constaté ENVOYÉ depuis
-trente jours, terme + 180 dépassés), si une licence a été prolongée, si un
-abonnement ou un groupe vise le dossier. EN CAS DE DOUTE, NON CONCERNÉ · licence
+trente jours, terme + 180 dépassés), si une licence a été prolongée (sa ligne
+est prise `FOR UPDATE` avant la lecture, une prolongation concurrente attend), si
+un abonnement ou un groupe vise le dossier. La liste lit TOUS les candidats par
+pages, par la clé (échéance, dossier), ce que la base dit non concerné écarté en
+SQL, compte sur tous (`total`, `aRappeler`, `supprimables`) et n'en rend qu'une
+tranche qui se dit ; l'envoi tente cinquante rappels par appel
+(`RAPPELS_PAR_APPEL`) et compte ceux qui restent dus. EN CAS DE DOUTE, NON CONCERNÉ · licence
 autre qu'un essai exact, éditeur, vitrine, mère ou cellule d'un groupe, abonnement
 enregistré (`AbonnementCabinet`), suspendue, courriel d'inscription absent. (3) UN
 RAPPEL N'EST « PARTI » QUE QUAND SON MESSAGE L'EST · la ligne de suivi
-(`RappelSuppressionEssai`, `cabinetId` unique, hors dossier comme l'abonnement)
-est RÉSERVÉE avant l'envoi, ce qui ferme le doublon ; un message en file reste
+(`RappelSuppressionEssai`, unique par dossier ET par terme, hors dossier comme
+l'abonnement) est RÉSERVÉE avant l'envoi, ce qui ferme le doublon ; un essai
+redonné a un terme nouveau, et le rappel de l'ancien (autre terme, ou parti avant
+la fenêtre du terme courant) ne vaut jamais préavis (`rappelDuTermeCourant`),
+et son message n'est jamais adopté par le rappel du terme nouveau ; un message en file reste
 sans date d'envoi et se RETENTE par lui-même (`CourrierService.retenter`, jamais
 la reprise générale, qui rejouerait les relances que le dossier avait mises en
 file) ; sans messagerie, rien n'est fait. (4) LA PURGE (`purger-dossier.ts`) est
@@ -4188,7 +4198,16 @@ test si un modèle du schéma n'est ni purgé ni exclu AVEC SON MOTIF
 TRACE (`DossierEssaiSupprime`, sans clé étrangère, hors dossier, journalisée dans
 la chaîne du dossier de l'OPÉRATEUR) ne porte que l'identifiant, des dates et des
 NOMBRES · aucun nom d'entité, aucune adresse, aucun montant ; la liste de la
-console non plus (VMG ne voit jamais les informations d'un client). Les
+console non plus (VMG ne voit jamais les informations d'un client), ni le compte
+rendu des rappels, ni le journal du serveur · un échec d'envoi n'y paraît que
+par sa CATÉGORIE (`cause-echec-envoi.ts` · refus du destinataire,
+authentification, réseau, autre), jamais par le texte du transport, qui cite
+l'adresse. La preuve d'inscription est le courriel de l'inscription dont
+l'origine est le dossier OU l'un de ses utilisateurs (le renvoi). Les relations
+qui franchissent la frontière d'un dossier (`RELATIONS_ENTRE_DOSSIERS` · mère,
+combinaison, tiers de cellule, abonnement, rappel) sont classées avec leur
+traitement, et `purger-dossier.spec.ts` tombe sur une relation nouvelle de
+cette forme. Les
 sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu'à leur propre
 terme (la politique de confidentialité le dit). (6) `essais-echus.service.ts`
 est dans la liste GELÉE des fichiers qui sortent du cloisonnement
@@ -4198,7 +4217,7 @@ SMTP de poche) ouvre un essai par l'API, le peuple à travers une clôture, envo
 le rappel, vieillit, supprime, et prouve zéro ligne résiduelle (tables avec
 `tenantId` comptées, les autres par différence exacte), un voisin intact, le
 dossier de l'opérateur intact, la trace écrite, deux suppressions simultanées
-dont une seule passe.
+dont une seule passe, et un essai redonné qui repasse par un nouveau rappel.
 
 **Factures et licences par courriel (2026-09-26).**
 `abonnements/courriels-editeur.ts`, `CourrielsEditeurService`. (1) File
