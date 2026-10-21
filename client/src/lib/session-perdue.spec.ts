@@ -40,7 +40,15 @@ describe('F164 · câblage', () => {
     const corps = api.slice(api.indexOf('async function refus('), api.indexOf('async function request<'));
     expect(corps).toContain('motifDeSessionPerdue(res.status, body)');
     expect(corps).toContain('signalerSessionPerdue(motif)');
-    expect(api.match(/if \(!res\.ok\) throw await refus\(res\);/g)).toHaveLength(3);
+    // Trois lectures du refus, une par appel au serveur. `request` ne jette
+    // plus le sien tel quel · depuis la ligne k6-defauts il le garde le temps
+    // de juger si un 409 de concurrence se rejoue (`reprise-conflit.ts`), puis
+    // le jette ; les deux autres appels le jettent sur place.
+    expect(api.match(/await refus\(res\)/g)).toHaveLength(3);
+    expect(api.match(/if \(!res\.ok\) throw await refus\(res\);/g)).toHaveLength(2);
+    const request = api.slice(api.indexOf('async function request<'));
+    expect(request).toContain('const erreur = await refus(res);');
+    expect(request).toContain('throw erreur;');
   });
 
   it('l’écouteur ne ferme que la session ouverte, et vide tout ce qu’elle tenait', () => {
