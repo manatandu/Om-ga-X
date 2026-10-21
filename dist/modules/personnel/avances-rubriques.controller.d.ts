@@ -6,12 +6,12 @@ export declare class AvancesRubriquesController {
     constructor(service: AvancesRubriquesService);
     listerRubriques(user: AuthenticatedUser): Promise<{
         rubriques: {
-            nature: string;
             id: string;
-            tenantId: string;
             createdAt: Date;
-            code: string;
+            tenantId: string;
+            nature: string;
             libelle: string;
+            code: string;
             fondement: string;
             actif: boolean;
         }[];
@@ -21,31 +21,31 @@ export declare class AvancesRubriquesController {
         tronque: boolean;
     }>;
     creerRubrique(user: AuthenticatedUser, dto: RubriquePaieDto): Promise<{
-        nature: string;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        code: string;
+        tenantId: string;
+        nature: string;
         libelle: string;
+        code: string;
         fondement: string;
         actif: boolean;
     }>;
     modifierRubrique(user: AuthenticatedUser, id: string, dto: ModifierRubriquePaieDto): Promise<{
-        nature: string;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        code: string;
+        tenantId: string;
+        nature: string;
         libelle: string;
+        code: string;
         fondement: string;
         actif: boolean;
     }>;
     listerModeles(user: AuthenticatedUser): Promise<{
         modeles: {
-            nom: string;
             id: string;
-            tenantId: string;
+            nom: string;
             createdAt: Date;
+            tenantId: string;
             creePar: string;
             categorie: string | null;
             deviseStipulation: string;
@@ -56,10 +56,10 @@ export declare class AvancesRubriquesController {
         tronque: boolean;
     }>;
     creerModele(user: AuthenticatedUser, dto: ModeleBulletinDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         creePar: string;
         categorie: string | null;
         deviseStipulation: string;
@@ -76,7 +76,7 @@ export declare class AvancesRubriquesController {
             matricule: string | null;
             type: import(".prisma/client").$Enums.TypeAvanceSalaire;
             categoriePret: import(".prisma/client").$Enums.CategoriePretPersonnel | null;
-            littera: "f" | "c" | "g";
+            littera: "c" | "f" | "g";
             compte: {
                 compte: string;
                 intitule: string;
@@ -103,14 +103,14 @@ export declare class AvancesRubriquesController {
         tronque: boolean;
     }>;
     creerAvance(user: AuthenticatedUser, salarieId: string, dto: AvanceSalaireDto): Promise<{
+        id: string;
+        createdAt: Date;
+        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
+        tenantId: string;
+        dateFin: Date | null;
         montantFc: import("@prisma/client/runtime/library").Decimal;
         retenueMensuelleFc: import("@prisma/client/runtime/library").Decimal | null;
         objet: string;
-        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        dateFin: Date | null;
         creePar: string;
         destinataire: string | null;
         dateOctroi: Date;
@@ -121,14 +121,14 @@ export declare class AvancesRubriquesController {
         greffe: string | null;
     }>;
     terminerSaisie(user: AuthenticatedUser, id: string, dto: FinSaisieArretDto): Promise<{
+        id: string;
+        createdAt: Date;
+        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
+        tenantId: string;
+        dateFin: Date | null;
         montantFc: import("@prisma/client/runtime/library").Decimal;
         retenueMensuelleFc: import("@prisma/client/runtime/library").Decimal | null;
         objet: string;
-        type: import(".prisma/client").$Enums.TypeAvanceSalaire;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        dateFin: Date | null;
         creePar: string;
         destinataire: string | null;
         dateOctroi: Date;

@@ -26,23 +26,23 @@ export declare class QuestionnaireService {
     private referentielDuDossier;
     creer(tenantId: string, userId: string, dto: CreerQuestionnaireDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutQuestionnaire;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         closLe: Date | null;
         closPar: string | null;
         motifCloture: string | null;
         cycles: import(".prisma/client").$Enums.CycleQuestionnaire[];
     }>;
     repondre(tenantId: string, questionnaireId: string, userId: string, dto: RepondreDto): Promise<{
-        commentaire: string | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        commentaire: string | null;
         updatedAt: Date;
         code: string;
         questionnaireId: string;
@@ -55,13 +55,13 @@ export declare class QuestionnaireService {
     }>;
     clore(tenantId: string, questionnaireId: string, userId: string, dto: ClorerQuestionnaireDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutQuestionnaire;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         closLe: Date | null;
         closPar: string | null;
         motifCloture: string | null;
@@ -73,13 +73,13 @@ export declare class QuestionnaireService {
         };
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutQuestionnaire;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         closLe: Date | null;
         closPar: string | null;
         motifCloture: string | null;
@@ -89,10 +89,10 @@ export declare class QuestionnaireService {
         lignes: {
             ouvert: boolean;
             reponse: {
-                commentaire: string | null;
                 id: string;
-                tenantId: string;
                 createdAt: Date;
+                tenantId: string;
+                commentaire: string | null;
                 updatedAt: Date;
                 code: string;
                 questionnaireId: string;
@@ -131,10 +131,10 @@ export declare class QuestionnaireService {
         };
         motifsRefusCloture: string[];
         reponses: {
-            commentaire: string | null;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
+            commentaire: string | null;
             updatedAt: Date;
             code: string;
             questionnaireId: string;
@@ -146,13 +146,13 @@ export declare class QuestionnaireService {
             reponduPar: string | null;
         }[];
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutQuestionnaire;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         closLe: Date | null;
         closPar: string | null;
         motifCloture: string | null;

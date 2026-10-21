@@ -44,13 +44,13 @@ export declare class BaremesPaieService {
     ajouter(tenantId: string, auteur: string, dto: VersionBaremePaieDto): Promise<{
         version: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            saisiPar: string;
+            tenantId: string;
             reference: string;
             bareme: string;
             aPartirDu: string;
             valeurs: Prisma.JsonValue;
+            saisiPar: string;
         };
         bulletinsDejaEmis: {
             numero: number;

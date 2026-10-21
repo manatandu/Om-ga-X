@@ -59,7 +59,7 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
             throw new common_1.UnauthorizedException('Compte désactivé ou introuvable');
         }
         if (sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant)) {
-            throw new common_1.UnauthorizedException("Session close · reconnectez-vous. Elle a été fermée par un changement de vos accès, par vous-même ou par l'administrateur du dossier.");
+            throw new common_1.UnauthorizedException('Session close · reconnectez-vous');
         }
         const session = (0, session_longue_1.sessionDuJeton)(payload, Math.floor(maintenant / 1000));
         if (porteParCookie && this.jwt && (0, session_longue_1.prolongationDue)(session, Math.floor(maintenant / 1000))) {

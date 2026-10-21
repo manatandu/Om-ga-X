@@ -132,9 +132,6 @@ let ExportController = class ExportController {
     async tableauAmortissements(user, res, exerciceId) {
         envoyerXlsx(res, await this.exportService.tableauAmortissementsExcel(user.tenantId, exerciceId));
     }
-    async tableauxImmobilisations(user, res, exerciceId, dateArret) {
-        envoyerXlsx(res, await this.exportService.tableauxImmobilisationsExcel(user.tenantId, exerciceId, dateArret));
-    }
     async liasseComplete(user, res, exerciceId, paiementsEnInstance) {
         const paiements = (0, paiements_en_instance_1.lirePaiementsEnInstance)(paiementsEnInstance);
         envoyerXlsx(res, await this.exportService.liasseCompleteExcel(user.tenantId, exerciceId, paiements));
@@ -354,16 +351,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object, String]),
     __metadata("design:returntype", Promise)
 ], ExportController.prototype, "tableauAmortissements", null);
-__decorate([
-    (0, common_1.Get)('tableaux-immobilisations'),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
-    __param(1, (0, common_1.Res)()),
-    __param(2, (0, common_1.Query)('exerciceId', exercice_requis_1.EXERCICE_REQUIS)),
-    __param(3, (0, common_1.Query)('dateArret')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object, String, String]),
-    __metadata("design:returntype", Promise)
-], ExportController.prototype, "tableauxImmobilisations", null);
 __decorate([
     (0, referentiels_decorator_1.ReferentielsAutorises)(client_1.Referentiel.SYCEBNL),
     (0, common_1.Get)('etats-financiers/liasse-complete'),

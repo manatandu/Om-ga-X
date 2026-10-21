@@ -17,8 +17,8 @@ export declare class AccordCadreService {
         accords: {
             etat: import("./conditions-ong-etrangere").EtatAccordCadre;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
             updatedAt: Date;
             reference: string;
             dateSignature: Date;
@@ -52,8 +52,8 @@ export declare class AccordCadreService {
         attestationsBonneConduiteLe?: string | null;
     }): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;
@@ -74,8 +74,8 @@ export declare class AccordCadreService {
         date: string;
     }): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;
@@ -95,8 +95,8 @@ export declare class AccordCadreService {
         motif: string;
     }): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;

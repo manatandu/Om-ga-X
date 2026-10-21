@@ -31,15 +31,15 @@ export declare class PlateformeService implements OnModuleInit {
             numeroImpot: string | null;
             createdAt: Date;
             licence: {
-                type: import(".prisma/client").$Enums.TypeLicence;
                 statut: import(".prisma/client").$Enums.StatutLicence;
+                type: import(".prisma/client").$Enums.TypeLicence;
                 dateDebut: Date;
                 dateExpiration: Date | null;
                 dernierHeartbeatAt: Date | null;
             } | null;
             dossierMere: {
-                nom: string;
                 id: string;
+                nom: string;
             } | null;
             plafondCellules: number | null;
             nbCellules: number;
@@ -50,8 +50,8 @@ export declare class PlateformeService implements OnModuleInit {
     private refuserAttributionSurSite;
     modifierLicence(tenantId: string, dto: ModifierLicenceDto): Promise<{
         cellulesEnCascade: number;
-        type: import(".prisma/client").$Enums.TypeLicence;
         statut: import(".prisma/client").$Enums.StatutLicence;
+        type: import(".prisma/client").$Enums.TypeLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;
@@ -84,8 +84,8 @@ export declare class PlateformeService implements OnModuleInit {
             numeroImpot: string | null;
         };
         exercice: {
-            id: string;
             tenantId: string;
+            id: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
             dateFin: Date;
@@ -115,8 +115,8 @@ export declare class PlateformeService implements OnModuleInit {
         courriel: import(".prisma/client").$Enums.StatutMessage;
     }>;
     designerDossierEditeur(tenantId: string): Promise<{
-        type: import(".prisma/client").$Enums.TypeLicence;
         statut: import(".prisma/client").$Enums.StatutLicence;
+        type: import(".prisma/client").$Enums.TypeLicence;
         dateDebut: Date;
         dateExpiration: Date | null;
         dernierHeartbeatAt: Date | null;

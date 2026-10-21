@@ -19,20 +19,19 @@ export declare class TenantService {
         telephone?: string;
     }, client?: Prisma.TransactionClient): Promise<{
         licence: {
-            type: import(".prisma/client").$Enums.TypeLicence;
             id: string;
-            tenantId: string;
+            type: import(".prisma/client").$Enums.TypeLicence;
             statut: import(".prisma/client").$Enums.StatutLicence;
             dateDebut: Date;
             dateExpiration: Date | null;
             dernierHeartbeatAt: Date | null;
             joursGraceHorsLigne: number;
+            tenantId: string;
         } | null;
     } & {
-        email: string | null;
-        nom: string;
         devise: string | null;
         id: string;
+        nom: string;
         referentiel: import(".prisma/client").$Enums.Referentiel;
         jeuEtatsFinanciersSycebnl: import(".prisma/client").$Enums.JeuEtatsFinanciersSycebnl;
         systemeComptableSyscohada: import(".prisma/client").$Enums.SystemeComptableSyscohada | null;
@@ -43,6 +42,7 @@ export declare class TenantService {
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         siteWeb: string | null;
         capitalSocial: Prisma.Decimal | null;
         capitalVariable: boolean;
@@ -92,7 +92,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: Prisma.Decimal | null;
         assujettiTva: boolean;
         assujettissementTvaRepondu: boolean;
@@ -103,8 +102,8 @@ export declare class TenantService {
         dateAutorisationDebitsTva: Date | null;
         effectifPermanent: number;
         numeroAffiliationCnssEmployeur: string | null;
-        dossierMereId: string | null;
         plafondCellules: number | null;
+        dossierMereId: string | null;
         dossierCombinaisonId: string | null;
     }>;
     demarrage(tenantId: string): Promise<{
@@ -165,7 +164,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -239,7 +237,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -313,7 +310,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -400,7 +396,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -502,7 +497,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -576,7 +570,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -650,7 +643,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -724,7 +716,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -798,7 +789,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -873,7 +863,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -947,7 +936,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -1021,7 +1009,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -1095,7 +1082,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -1169,81 +1155,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
-        seuilEcartReglement: number | null;
-        attestationExemptionIs: string | null;
-        dateAttestationExemptionIs: Date | null;
-        formeJuridique: import(".prisma/client").$Enums.FormeJuridiqueEbnl | null;
-        formeJuridiqueSyscohada: import(".prisma/client").$Enums.FormeJuridiqueSyscohada | null;
-        droitEtranger: boolean | null;
-        longueurCompte: number;
-        longueurCompteMinimale: number;
-        longueurCompteExemple: string;
-        assujettiTva: boolean;
-        assujettissementTva: boolean | null;
-        venteBiensServices: boolean | null;
-        modulesActives: import(".prisma/client").$Enums.ModuleOptionnel[];
-        dateOptionTva: Date | null;
-        regimeExigibiliteTva: import(".prisma/client").$Enums.RegimeExigibiliteTva;
-        dateAutorisationDebitsTva: Date | null;
-        effectifPermanent: number;
-        numeroAffiliationCnssEmployeur: string | null;
-        methodeCotisations: import(".prisma/client").$Enums.MethodeCotisations | null;
-        methodeInventaireStocks: import(".prisma/client").$Enums.MethodeInventaireStocks | null;
-        nombreEcritures: number;
-    }>;
-    modifierVisaRibs(tenantId: string, visaRibs: boolean): Promise<{
-        id: string;
-        nom: string;
-        referentiel: import(".prisma/client").$Enums.Referentiel;
-        jeuEtatsFinanciersSycebnl: import(".prisma/client").$Enums.JeuEtatsFinanciersSycebnl | null;
-        systemeComptableSyscohada: import(".prisma/client").$Enums.SystemeComptableSyscohada | null;
-        activite: string | null;
-        codeActivitePrincipale: string | null;
-        avertissementCodeActivitePrincipale: string | null;
-        groupesActivites: import("../etats-financiers-syscohada/correspondance-notes-syscohada-3").CodeTable[];
-        adresse: string | null;
-        ville: string | null;
-        pays: string | null;
-        telephone: string | null;
-        email: string | null;
-        siteWeb: string | null;
-        capitalSocial: number | null;
-        capitalVariable: boolean;
-        mentionsSociete: import("./mentions-societe").MentionsSociete;
-        devise: string;
-        deviseFonctionnelle: string | null;
-        numeroImpot: string | null;
-        idNat: string | null;
-        rccm: string | null;
-        numeroDeclarationActivite: string | null;
-        locataireGerantFonds: boolean | null;
-        numeroRegistreCooperatives: string | null;
-        varianteCooperative: import(".prisma/client").$Enums.VarianteCooperative | null;
-        modeAdministrationSa: import(".prisma/client").$Enums.ModeAdministrationSa | null;
-        associeUnique: boolean | null;
-        entreprisePortefeuilleEtat: boolean | null;
-        dateDissolution: Date | null;
-        liquidateurs: string | null;
-        dateNominationLiquidateur: Date | null;
-        regimeLiquidation: import(".prisma/client").$Enums.RegimeLiquidation | null;
-        associeUniquePersonneMorale: boolean | null;
-        dateClotureLiquidation: Date | null;
-        dateDeclarationCotisationActivite: Date | null;
-        dateDeclarationCotisationLiquidation: Date | null;
-        portefeuilleSecteurMinier: boolean | null;
-        quotePartEtatCapital: number | null;
-        sourceQuotePartEtat: string | null;
-        formeJuridiqueSyscohadaAnterieure: import(".prisma/client").$Enums.FormeJuridiqueSyscohada | null;
-        dateTransformationForme: Date | null;
-        actePersonnaliteJuridique: string | null;
-        dateActePersonnalite: Date | null;
-        numeroEnregistrementSecteur: string | null;
-        certificatEnregistrementPlan: string | null;
-        doubleRegardValidation: boolean;
-        refusClotureJournalNonImprime: boolean;
-        creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -1317,7 +1228,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;
@@ -1400,7 +1310,6 @@ export declare class TenantService {
         doubleRegardValidation: boolean;
         refusClotureJournalNonImprime: boolean;
         creationCompteEnSaisie: boolean;
-        visaRibs: boolean;
         seuilEcartReglement: number | null;
         attestationExemptionIs: string | null;
         dateAttestationExemptionIs: Date | null;

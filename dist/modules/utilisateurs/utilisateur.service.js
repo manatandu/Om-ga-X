@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UtilisateurService = exports.MOTIF_DERNIER_ADMINISTRATEUR = exports.MOTIF_DECONNEXION_DE_SOI = exports.MOTIF_ADRESSE_PRISE = void 0;
+exports.UtilisateurService = exports.MOTIF_DERNIER_ADMINISTRATEUR = exports.MOTIF_ADRESSE_PRISE = void 0;
 exports.retireUnAdministrateur = retireUnAdministrateur;
 const common_1 = require("@nestjs/common");
 const courriel_1 = require("../../common/courriel");
@@ -35,8 +35,6 @@ const SELECTION = {
     journauxAutorises: true,
 };
 exports.MOTIF_ADRESSE_PRISE = 'Un compte existe déjà avec cet email';
-exports.MOTIF_DECONNEXION_DE_SOI = "Votre propre session ne se ferme pas d'ici · ouvrez Fichier > Mon compte, « Déconnecter mes autres appareils », qui garde " +
-    "l'appareil en cours ouvert.";
 exports.MOTIF_DERNIER_ADMINISTRATEUR = "C'est le dernier administrateur actif du dossier · nommez d'abord un autre administrateur, sans quoi plus personne ne " +
     'pourrait gérer les comptes ni les paramètres du dossier.';
 function retireUnAdministrateur(user, dto) {
@@ -157,27 +155,6 @@ let UtilisateurService = class UtilisateurService {
             },
         });
         return { reinitialise: true, email: user.email };
-    }
-    async deconnecter(tenantId, userId, utilisateurCourantId) {
-        if (userId === utilisateurCourantId)
-            throw new common_1.BadRequestException(exports.MOTIF_DECONNEXION_DE_SOI);
-        const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
-        if (!user) {
-            throw new common_1.NotFoundException('Utilisateur introuvable pour ce tenant');
-        }
-        try {
-            return await this.prisma.user.update({
-                where: { id: userId },
-                data: { sessionsInvalidesAvant: new Date(Math.ceil(Date.now() / 1000) * 1000) },
-                select: SELECTION,
-            });
-        }
-        catch (err) {
-            if (err instanceof client_1.Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-                throw new common_1.NotFoundException('Utilisateur introuvable pour ce tenant');
-            }
-            throw err;
-        }
     }
     async deverrouiller(tenantId, userId) {
         const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });

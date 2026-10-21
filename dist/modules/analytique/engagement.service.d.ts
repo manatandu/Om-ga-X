@@ -35,33 +35,33 @@ export declare class EngagementService {
             ecriture: {
                 id: string;
                 statut: import(".prisma/client").$Enums.StatutEcriture;
+                libelle: string;
                 date: Date;
                 numeroPiece: number | null;
-                libelle: string;
             };
         }[];
     }[]>;
     creer(tenantId: string, userId: string, dto: CreerEngagementDto): Promise<{
+        id: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
+        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;
         beneficiaire: string;
     }>;
     rattacherExecution(tenantId: string, userId: string, engagementId: string, dto: RattacherExecutionDto): Promise<{
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
+        montant: import("@prisma/client/runtime/library").Decimal;
         createdBy: string;
         ecritureId: string;
         engagementId: string;
@@ -70,34 +70,34 @@ export declare class EngagementService {
         detache: boolean;
     }>;
     clore(tenantId: string, engagementId: string, dto: CloreEngagementDto): Promise<{
+        id: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
+        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;
         beneficiaire: string;
     }>;
     rouvrir(tenantId: string, engagementId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        statut: import(".prisma/client").$Enums.StatutEngagement;
+        tenantId: string;
         objet: string;
         nature: import(".prisma/client").$Enums.NatureEngagement;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        statut: import(".prisma/client").$Enums.StatutEngagement;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string;
         motifCloture: string | null;
         sectionId: string;
@@ -109,10 +109,10 @@ export declare class EngagementService {
     ecrituresRattachables(tenantId: string, exerciceId: string, recherche?: string): Promise<{
         ecritures: {
             id: string;
+            libelle: string;
             date: Date;
             reference: string | null;
             numeroPiece: number | null;
-            libelle: string;
         }[];
         total: number;
         tronque: boolean;

@@ -61,23 +61,23 @@ describe('RibsTiersService · un seul principal par tiers', () => {
     }
     it("le premier RIB d'un tiers est principal d'office", async () => {
         const { service } = monter(0);
-        const r = (await service.creer('t', 'ti', { banque: 'Rawbank', numeroCompte: '1' }, 'u1'));
+        const r = (await service.creer('t', 'ti', { banque: 'Rawbank', numeroCompte: '1' }));
         expect(r.estPrincipal).toBe(true);
     });
     it("un second RIB n'est principal que s'il est coché, et retire alors la marque au précédent, AVANT de créer", async () => {
         const sans = monter(1);
-        expect((await sans.service.creer('t', 'ti', { banque: 'B', numeroCompte: '2' }, 'u1')).estPrincipal).toBe(false);
+        expect((await sans.service.creer('t', 'ti', { banque: 'B', numeroCompte: '2' })).estPrincipal).toBe(false);
         expect(sans.tx.ribTiers.updateMany).not.toHaveBeenCalled();
         const avec = monter(1);
-        await avec.service.creer('t', 'ti', { banque: 'B', numeroCompte: '2', estPrincipal: true }, 'u1');
+        await avec.service.creer('t', 'ti', { banque: 'B', numeroCompte: '2', estPrincipal: true });
         expect(avec.tx.ribTiers.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'ti' }, data: { estPrincipal: false } });
         expect(avec.appels).toEqual(['retire', 'cree']);
     });
     it("normalise l'IBAN avant de le ranger, et refuse un RIB qui ne permet pas de payer", async () => {
         const { service } = monter(0);
-        const r = (await service.creer('t', 'ti', { banque: 'B', iban: 'gb82 west 1234 5698 7654 32' }, 'u1'));
+        const r = (await service.creer('t', 'ti', { banque: 'B', iban: 'gb82 west 1234 5698 7654 32' }));
         expect(r.iban).toBe('GB82WEST12345698765432');
-        await expect(service.creer('t', 'ti', { banque: 'B' }, 'u1')).rejects.toThrow(/ni numéro de compte/);
+        await expect(service.creer('t', 'ti', { banque: 'B' })).rejects.toThrow(/ni numéro de compte/);
     });
 });
 describe('suppression du tiers · ses RIB partent avec lui, un ordre de virement le retient', () => {

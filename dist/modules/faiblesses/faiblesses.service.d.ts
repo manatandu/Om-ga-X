@@ -22,15 +22,15 @@ export declare class FaiblessesService {
     private registre;
     private faiblesse;
     creer(tenantId: string, userId: string, dto: CreerRegistreFaiblessesDto): Promise<{
-        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRegistreFaiblesses;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
+        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         emetteur: string | null;
         dateLettre: Date | null;
         referenceLettre: string | null;
@@ -40,11 +40,11 @@ export declare class FaiblessesService {
     }>;
     ajouter(tenantId: string, registreId: string, userId: string, dto: AjouterFaiblesseDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -72,11 +72,11 @@ export declare class FaiblessesService {
     }>;
     qualifier(tenantId: string, faiblesseId: string, userId: string, dto: QualifierDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -104,11 +104,11 @@ export declare class FaiblessesService {
     }>;
     communiquer(tenantId: string, faiblesseId: string, dto: CommuniquerDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -136,11 +136,11 @@ export declare class FaiblessesService {
     }>;
     reponseDirection(tenantId: string, faiblesseId: string, userId: string, dto: ReponseDirectionDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -168,11 +168,11 @@ export declare class FaiblessesService {
     }>;
     suivre(tenantId: string, faiblesseId: string, dto: SuivreDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -200,11 +200,11 @@ export declare class FaiblessesService {
     }>;
     reporter(tenantId: string, faiblesseId: string, dto: ReporterDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -232,11 +232,11 @@ export declare class FaiblessesService {
     }>;
     escalader(tenantId: string, faiblesseId: string, userId: string, dto: EscaladerDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutFaiblesse;
-        intitule: string;
+        tenantId: string;
         updatedAt: Date;
+        intitule: string;
         reference: string;
         registreId: string;
         description: string;
@@ -263,15 +263,15 @@ export declare class FaiblessesService {
         escaladeeMotif: string | null;
     }>;
     clore(tenantId: string, registreId: string, userId: string, dto: ClorerRegistreDto): Promise<{
-        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRegistreFaiblesses;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
+        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         emetteur: string | null;
         dateLettre: Date | null;
         referenceLettre: string | null;
@@ -284,15 +284,15 @@ export declare class FaiblessesService {
             faiblesses: number;
         };
     } & {
-        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRegistreFaiblesses;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
+        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         emetteur: string | null;
         dateLettre: Date | null;
         referenceLettre: string | null;
@@ -329,11 +329,11 @@ export declare class FaiblessesService {
             } | null;
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutFaiblesse;
-            intitule: string;
+            tenantId: string;
             updatedAt: Date;
+            intitule: string;
             reference: string;
             registreId: string;
             description: string;
@@ -359,15 +359,15 @@ export declare class FaiblessesService {
             escaladeeLe: Date | null;
             escaladeeMotif: string | null;
         })[];
-        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRegistreFaiblesses;
-        updatedAt: Date;
-        createdBy: string;
+        tenantId: string;
+        origine: import(".prisma/client").$Enums.OrigineFaiblesse;
         exerciceId: string;
+        updatedAt: Date;
         libelle: string;
+        createdBy: string;
         emetteur: string | null;
         dateLettre: Date | null;
         referenceLettre: string | null;

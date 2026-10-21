@@ -22,11 +22,11 @@ export declare class PiecesJointesEcritureController {
     deposer(user: AuthenticatedUser, ecritureId: string, fichier: FichierRecu | undefined, dto: DeposerPieceJointeDto): Promise<import("../../common/pieces-jointes/pieces-jointes.service").PieceListee>;
     detachees(user: AuthenticatedUser): Promise<{
         pieces: {
+            id: string;
+            createdAt: Date;
             nomFichier: string;
             commentaire: string | null;
             empreinte: string;
-            id: string;
-            createdAt: Date;
             typeMime: string;
             taille: number;
             deposePar: string | null;

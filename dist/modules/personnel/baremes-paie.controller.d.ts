@@ -42,13 +42,13 @@ export declare class BaremesPaieController {
     ajouter(user: AuthenticatedUser, dto: VersionBaremePaieDto): Promise<{
         version: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            saisiPar: string;
+            tenantId: string;
             reference: string;
             bareme: string;
             aPartirDu: string;
             valeurs: import("@prisma/client/runtime/library").JsonValue;
+            saisiPar: string;
         };
         bulletinsDejaEmis: {
             numero: number;

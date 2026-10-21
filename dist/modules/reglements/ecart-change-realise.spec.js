@@ -402,7 +402,7 @@ function monter(referentiel = 'SYSCOHADA', lignesEnPlus = []) {
     const completer = jest.fn(async () => ({ lettre: 'A', statut: 'SOLDE', solde: 0 }));
     const propositionEcartChange = jest.fn();
     const retirerCompensation = jest.fn(async () => undefined);
-    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation, verifierCaisseProvisionnee: jest.fn() }, { lettrerManuel, completer, propositionEcartChange }, {});
+    const service = new reglements_service_1.ReglementsService(prisma, { creer, retirerCompensation }, { lettrerManuel, completer, propositionEcartChange }, {});
     return { service, creer, lettrerManuel, completer, propositionEcartChange, retirerCompensation, prisma };
 }
 const base = { exerciceId: 'ex', journalId: 'bq', date: '2026-11-30' };

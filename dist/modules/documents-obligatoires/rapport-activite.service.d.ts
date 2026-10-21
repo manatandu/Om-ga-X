@@ -27,8 +27,8 @@ export declare class RapportActiviteService {
     constructor(prisma: PrismaService, etatsFinanciers: EtatsFinanciersService, donationService: DonationService, etatsSyscohada: EtatsFinanciersSyscohadaService);
     lister(tenantId: string, exerciceId: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         exerciceId: string;
         version: number;
         etabliLe: Date;
@@ -45,8 +45,8 @@ export declare class RapportActiviteService {
     }[]>;
     courant(tenantId: string, exerciceId: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         exerciceId: string;
         version: number;
         etabliLe: Date;
@@ -64,8 +64,8 @@ export declare class RapportActiviteService {
     private regimeRapport;
     etablir(tenantId: string, userId: string, dto: EtablirRapportActiviteDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         exerciceId: string;
         version: number;
         etabliLe: Date;

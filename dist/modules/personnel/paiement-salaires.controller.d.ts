@@ -1,5 +1,5 @@
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { RibTiersDto, VisaRibDto } from '../tiers/dto/ribs-tiers.dto';
+import { RibTiersDto } from '../tiers/dto/ribs-tiers.dto';
 import { RibsSalariesService } from './ribs-salaries.service';
 import { PaiementSalairesService } from './paiement-salaires.service';
 import { AnnulationPaiementSalairesDto, ModePaiementSalarieDto, PaiementSalairesDto } from './dto/paiement-salaires.dto';
@@ -11,7 +11,11 @@ export declare class PaiementSalairesController {
         modePaiement: import(".prisma/client").$Enums.ModePaiementSalaire | null;
         ribs: {
             coordonnees: string;
-            visa: import("../tiers/visa-rib").VisaPresente;
+            devise: string | null;
+            banque: string;
+            id: string;
+            createdAt: Date;
+            tenantId: string;
             commentaire: string | null;
             titulaire: string | null;
             codeBanque: string | null;
@@ -20,16 +24,7 @@ export declare class PaiementSalairesController {
             cle: string | null;
             iban: string | null;
             codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
             estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
             salarieId: string;
         }[];
         total: number;
@@ -39,7 +34,11 @@ export declare class PaiementSalairesController {
         modePaiement: import(".prisma/client").$Enums.ModePaiementSalaire | null;
         ribs: {
             coordonnees: string;
-            visa: import("../tiers/visa-rib").VisaPresente;
+            devise: string | null;
+            banque: string;
+            id: string;
+            createdAt: Date;
+            tenantId: string;
             commentaire: string | null;
             titulaire: string | null;
             codeBanque: string | null;
@@ -48,22 +47,18 @@ export declare class PaiementSalairesController {
             cle: string | null;
             iban: string | null;
             codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
             estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
             salarieId: string;
         }[];
         total: number;
         tronque: boolean;
     }>;
     creerRib(user: AuthenticatedUser, salarieId: string, dto: RibTiersDto): Promise<{
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -72,19 +67,15 @@ export declare class PaiementSalairesController {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
         salarieId: string;
     }>;
     modifierRib(user: AuthenticatedUser, id: string, dto: RibTiersDto): Promise<{
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -93,41 +84,8 @@ export declare class PaiementSalairesController {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
         salarieId: string;
-    }>;
-    viserRib(user: AuthenticatedUser, id: string, dto: VisaRibDto): Promise<{
-        rib: {
-            commentaire: string | null;
-            titulaire: string | null;
-            codeBanque: string | null;
-            codeGuichet: string | null;
-            numeroCompte: string | null;
-            cle: string | null;
-            iban: string | null;
-            codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
-            estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
-            salarieId: string;
-        };
-        avertissement: string | null;
     }>;
     supprimerRib(user: AuthenticatedUser, id: string): Promise<{
         supprime: boolean;

@@ -54,7 +54,7 @@ const RESTENT_A_ECHAPPER = {
     'src/modules/etats-financiers/correspondance-projet-emplois-ressources.spec.ts': 4,
 };
 const DOSSIERS_IGNORES = new Set(['.git', 'node_modules', 'dist', 'dist-e2e', 'test-results', 'playwright-report', '__pycache__', 'coverage']);
-const CHEMINS_IGNORES = new Set(['.claude/worktrees', '.claude/amont']);
+const CHEMINS_IGNORES = new Set(['.claude/worktrees']);
 const EXTENSIONS_IGNOREES = new Set(['.woff', '.woff2', '.ttf', '.otf', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.pdf', '.xlsx', '.docx', '.zip', '.exe', '.tsbuildinfo', '.log']);
 const FICHIERS_IGNORES = new Set(['.env', '.env.local']);
 function fichiersDuDepot(dossier) {

@@ -15,7 +15,6 @@ const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../../common/prisma.service");
 const monnaie_de_tenue_1 = require("../../common/monnaie-de-tenue");
 const ribs_tiers_1 = require("../tiers/ribs-tiers");
-const visa_rib_1 = require("../tiers/visa-rib");
 const transaction_journalisee_1 = require("../../common/audit/transaction-journalisee");
 const echeance_1 = require("../../common/echeance");
 const mentions_societe_1 = require("../tenant/mentions-societe");
@@ -35,13 +34,11 @@ let OrdresVirementService = class OrdresVirementService {
             select: {
                 id: true,
                 numero: true,
-                tiersCompte: { select: { tiers: { select: { id: true, code: true, nom: true, ribs: { where: { tenantId, estPrincipal: true }, orderBy: { createdAt: 'asc' } } } } } },
+                tiersCompte: { select: { tiers: { select: { id: true, code: true, nom: true, ribs: { where: { tenantId, estPrincipal: true } } } } } },
             },
         });
-        const exigeVisa = await this.exigeLeVisa(tenantId);
         const beneficiaires = new Map();
         const manques = [];
-        const nonVises = [];
         for (const id of compteIds) {
             const c = comptes.find((x) => x.id === id);
             const tiers = c?.tiersCompte?.tiers;
@@ -52,10 +49,6 @@ let OrdresVirementService = class OrdresVirementService {
             const principal = tiers.ribs[0];
             if (!principal) {
                 manques.push(`${tiers.code} · ${tiers.nom} n'a pas de RIB principal`);
-                continue;
-            }
-            if (exigeVisa && !(0, visa_rib_1.estVise)(principal)) {
-                nonVises.push(`${tiers.code} · ${tiers.nom}`);
                 continue;
             }
             beneficiaires.set(id, {
@@ -70,22 +63,16 @@ let OrdresVirementService = class OrdresVirementService {
         if (manques.length) {
             throw new common_1.BadRequestException(`Ordre de virement impossible · ${manques.join(' ; ')}. Renseignez les coordonnées bancaires dans la fiche du tiers, ou décochez l'ordre de virement.`);
         }
-        if (nonVises.length) {
-            throw new common_1.BadRequestException((0, visa_rib_1.refusOrdreRibsNonVises)(nonVises, 'la fiche du tiers, volet Coordonnées bancaires'));
-        }
         return { donneur, beneficiaires };
     }
     async preparerSalaries(tenantId, journalId, salaries) {
         const donneur = await this.donneurDuJournal(tenantId, journalId);
         const ribs = await this.prisma.ribSalarie.findMany({
             where: { tenantId, estPrincipal: true, salarieId: { in: salaries.map((s) => s.id) } },
-            orderBy: { createdAt: 'asc' },
         });
-        const exigeVisa = await this.exigeLeVisa(tenantId);
         const beneficiaires = new Map();
         const manques = [];
         const enDevise = [];
-        const nonVises = [];
         for (const s of salaries) {
             const principal = ribs.find((r) => r.salarieId === s.id);
             if (!principal) {
@@ -95,10 +82,6 @@ let OrdresVirementService = class OrdresVirementService {
             const devise = (principal.devise ?? '').trim().toUpperCase();
             if (devise && devise !== monnaie_de_tenue_1.MONNAIE_DE_TENUE) {
                 enDevise.push(`${s.nomComplet} (${devise})`);
-                continue;
-            }
-            if (exigeVisa && !(0, visa_rib_1.estVise)(principal)) {
-                nonVises.push(s.nomComplet);
                 continue;
             }
             beneficiaires.set(s.id, {
@@ -116,16 +99,7 @@ let OrdresVirementService = class OrdresVirementService {
         if (enDevise.length) {
             throw new common_1.BadRequestException(`Ordre de virement impossible · le RIB principal de ${enDevise.join(', ')} est tenu hors de la monnaie de tenue, quand l'ordre des salaires est en ${monnaie_de_tenue_1.MONNAIE_DE_TENUE} · la banque convertirait à un cours que le bulletin ne dit pas. Désignez un RIB principal en ${monnaie_de_tenue_1.MONNAIE_DE_TENUE} (Registre du personnel, administrateur), ou payez ces salariés par un autre mode.`);
         }
-        if (nonVises.length) {
-            throw new common_1.BadRequestException((0, visa_rib_1.refusOrdreRibsNonVises)(nonVises, 'le Registre du personnel, volet Paiement'));
-        }
         return { donneur, beneficiaires };
-    }
-    async exigeLeVisa(tenantId) {
-        const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaRibs: true } });
-        if (!dossier)
-            throw new common_1.NotFoundException('Dossier introuvable');
-        return dossier.visaRibs === true;
     }
     async donneurDuJournal(tenantId, journalId) {
         const rib = await this.prisma.ribBanque.findFirst({

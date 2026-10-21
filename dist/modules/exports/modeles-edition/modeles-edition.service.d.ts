@@ -5,8 +5,8 @@ export declare class ModelesEditionService {
     constructor(prisma: PrismaService);
     lister(tenantId: string, edition: EditionModele): Promise<{
         modeles: {
-            nom: string;
             id: string;
+            nom: string;
             edition: import(".prisma/client").$Enums.EditionModele;
             creeLe: Date;
             modifieLe: Date;
@@ -21,8 +21,8 @@ export declare class ModelesEditionService {
         colonnes: unknown;
         saut?: unknown;
     }): Promise<{
-        nom: string;
         id: string;
+        nom: string;
         edition: import(".prisma/client").$Enums.EditionModele;
         creeLe: Date;
         modifieLe: Date;
@@ -33,8 +33,8 @@ export declare class ModelesEditionService {
         colonnes: unknown;
         saut?: unknown;
     }): Promise<{
-        nom: string;
         id: string;
+        nom: string;
         edition: import(".prisma/client").$Enums.EditionModele;
         creeLe: Date;
         modifieLe: Date;

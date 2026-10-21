@@ -104,8 +104,8 @@ export declare class ImmobilisationController {
     listerFamilles(user: AuthenticatedUser): Promise<({
         compteAmortissement: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -123,8 +123,8 @@ export declare class ImmobilisationController {
         };
         compteImmobilisation: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -142,8 +142,8 @@ export declare class ImmobilisationController {
         };
         compteDotation: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -161,9 +161,9 @@ export declare class ImmobilisationController {
         };
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         intitule: string;
         code: string;
         compteImmobilisationId: string;
@@ -182,8 +182,8 @@ export declare class ImmobilisationController {
     }[]>;
     creerLieu(user: AuthenticatedUser, dto: LieuBienDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
     }>;
@@ -334,8 +334,8 @@ export declare class ImmobilisationController {
     lister(user: AuthenticatedUser, statut?: StatutImmobilisation): Promise<({
         compteAmortissement: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -353,9 +353,9 @@ export declare class ImmobilisationController {
         };
         famille: {
             id: string;
-            tenantId: string;
             createdAt: Date;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteImmobilisationId: string;
@@ -371,8 +371,8 @@ export declare class ImmobilisationController {
         } | null;
         compteImmobilisation: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -394,20 +394,20 @@ export declare class ImmobilisationController {
             intitule: string;
         } | null;
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
         depreciations: {
-            nature: import(".prisma/client").$Enums.NatureMouvementDepreciation;
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
-            createdBy: string;
+            nature: import(".prisma/client").$Enums.NatureMouvementDepreciation;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
+            createdBy: string;
             ecritureId: string;
             immobilisationId: string;
             compteContrepartieId: string;
@@ -418,9 +418,9 @@ export declare class ImmobilisationController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -520,18 +520,18 @@ export declare class ImmobilisationController {
     creerEnLocationAcquisition(user: AuthenticatedUser, dto: CreerLocationAcquisitionDto): Promise<{
         immobilisation: {
             dotations: {
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
                 createdAt: Date;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 exerciceId: string;
                 ecritureId: string;
                 immobilisationId: string;
             }[];
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutImmobilisation;
+            tenantId: string;
             compteImmobilisationId: string;
             compteAmortissementId: string;
             compteDotationId: string;
@@ -643,18 +643,18 @@ export declare class ImmobilisationController {
     }>;
     acquerirAPrixAleatoire(user: AuthenticatedUser, dto: AcquerirAPrixAleatoireDto): Promise<{
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -747,18 +747,18 @@ export declare class ImmobilisationController {
     }>;
     creer(user: AuthenticatedUser, dto: CreerImmobilisationDto): Promise<{
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -850,9 +850,9 @@ export declare class ImmobilisationController {
         prixCession: number | null;
     }>;
     passerDotation(user: AuthenticatedUser, id: string, dto: PasserDotationDto): Promise<{
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
+        montant: import("@prisma/client/runtime/library").Decimal;
         exerciceId: string;
         ecritureId: string;
         immobilisationId: string;
@@ -885,8 +885,8 @@ export declare class ImmobilisationController {
     saisirConsommation(user: AuthenticatedUser, id: string, dto: SaisirConsommationDto): Promise<{
         id: string;
         tenantId: string;
-        updatedAt: Date;
         exerciceId: string;
+        updatedAt: Date;
         source: string;
         immobilisationId: string;
         unitesConsommees: import("@prisma/client/runtime/library").Decimal;
@@ -894,12 +894,12 @@ export declare class ImmobilisationController {
         saisiePar: string;
     }>;
     deprecier(user: AuthenticatedUser, id: string, dto: DepreciationDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureMouvementDepreciation;
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
         createdAt: Date;
-        createdBy: string;
+        nature: import(".prisma/client").$Enums.NatureMouvementDepreciation;
+        montant: import("@prisma/client/runtime/library").Decimal;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         immobilisationId: string;
         compteContrepartieId: string;
@@ -916,18 +916,18 @@ export declare class ImmobilisationController {
     }>;
     renouveler(user: AuthenticatedUser, id: string, dto: RenouvelerComposantDto): Promise<{
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -1026,18 +1026,18 @@ export declare class ImmobilisationController {
         };
         remplacant: {
             dotations: {
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
                 createdAt: Date;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 exerciceId: string;
                 ecritureId: string;
                 immobilisationId: string;
             }[];
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutImmobilisation;
+            tenantId: string;
             compteImmobilisationId: string;
             compteAmortissementId: string;
             compteDotationId: string;
@@ -1141,9 +1141,9 @@ export declare class ImmobilisationController {
             montant: number;
         };
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
@@ -1153,9 +1153,9 @@ export declare class ImmobilisationController {
             montant: number;
         })[];
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -1239,18 +1239,18 @@ export declare class ImmobilisationController {
     }>;
     declarerReservePropriete(user: AuthenticatedUser, id: string, dto: ReserveProprieteDto): Promise<{
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -1343,14 +1343,14 @@ export declare class ImmobilisationController {
     }>;
     incorporerCoutsEmprunt(user: AuthenticatedUser, id: string, dto: IncorporerCoutsEmpruntDto): Promise<{
         montant: number;
-        nature: import(".prisma/client").$Enums.NatureEmpruntIncorpore;
         id: string;
-        tenantId: string;
         createdAt: Date;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
-        createdBy: string;
+        nature: import(".prisma/client").$Enums.NatureEmpruntIncorpore;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         immobilisationId: string;
         debutPreparation: Date;
@@ -1386,8 +1386,8 @@ export declare class ImmobilisationController {
         immobilisation: {
             compteAmortissement: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -1405,8 +1405,8 @@ export declare class ImmobilisationController {
             };
             compteImmobilisation: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -1424,8 +1424,8 @@ export declare class ImmobilisationController {
             };
             compteDotation: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -1443,9 +1443,9 @@ export declare class ImmobilisationController {
             };
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutImmobilisation;
+            tenantId: string;
             compteImmobilisationId: string;
             compteAmortissementId: string;
             compteDotationId: string;
@@ -1521,11 +1521,11 @@ export declare class ImmobilisationController {
         };
         ecriture: {
             journal: {
-                type: import(".prisma/client").$Enums.TypeJournal;
                 id: string;
-                tenantId: string;
                 createdAt: Date;
+                type: import(".prisma/client").$Enums.TypeJournal;
                 estActif: boolean;
+                tenantId: string;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -1534,9 +1534,9 @@ export declare class ImmobilisationController {
             };
             lignes: {
                 id: string;
+                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
-                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: import("@prisma/client/runtime/library").Decimal;
@@ -1554,17 +1554,17 @@ export declare class ImmobilisationController {
             }[];
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
+            tenantId: string;
+            exerciceId: string;
+            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
-            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
-            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -1586,18 +1586,18 @@ export declare class ImmobilisationController {
     echanger(user: AuthenticatedUser, id: string, dto: EchangerImmobilisationDto): Promise<{
         nouveau: {
             dotations: {
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
                 createdAt: Date;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 exerciceId: string;
                 ecritureId: string;
                 immobilisationId: string;
             }[];
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutImmobilisation;
+            tenantId: string;
             compteImmobilisationId: string;
             compteAmortissementId: string;
             compteDotationId: string;
@@ -1696,9 +1696,9 @@ export declare class ImmobilisationController {
                 fiscal: string | null;
             } | null;
             dotations: {
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
                 createdAt: Date;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 exerciceId: string;
                 ecritureId: string;
                 immobilisationId: string;
@@ -1708,9 +1708,9 @@ export declare class ImmobilisationController {
                 montant: number;
             })[];
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutImmobilisation;
+            tenantId: string;
             compteImmobilisationId: string;
             compteAmortissementId: string;
             compteDotationId: string;
@@ -1803,9 +1803,9 @@ export declare class ImmobilisationController {
             fiscal: string | null;
         } | null;
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
@@ -1815,9 +1815,9 @@ export declare class ImmobilisationController {
             montant: number;
         })[];
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;

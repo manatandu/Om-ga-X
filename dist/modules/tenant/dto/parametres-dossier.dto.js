@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ModifierSeuilEcartReglementDto = exports.SEUIL_ECART_REGLEMENT_MAX = exports.ModifierCreationCompteEnSaisieDto = exports.ModifierModulesDto = exports.ModifierLongueurCompteDto = exports.ModifierRefusClotureNonImprimeDto = exports.ModifierVisaRibsDto = exports.ModifierDoubleRegardDto = exports.ModifierMethodeInventaireStocksDto = exports.ModifierMethodeCotisationsDto = exports.ModifierRegimeDto = exports.REPONSES_FAIT = exports.ModifierFormeSyscohadaDto = exports.ModifierFormeJuridiqueDto = exports.ModifierIdentiteDto = exports.ModifierCoordonneesDto = exports.ModifierSystemeSyscohadaDto = exports.ModifierJeuEtatsDto = void 0;
+exports.ModifierSeuilEcartReglementDto = exports.SEUIL_ECART_REGLEMENT_MAX = exports.ModifierCreationCompteEnSaisieDto = exports.ModifierModulesDto = exports.ModifierLongueurCompteDto = exports.ModifierRefusClotureNonImprimeDto = exports.ModifierDoubleRegardDto = exports.ModifierMethodeInventaireStocksDto = exports.ModifierMethodeCotisationsDto = exports.ModifierRegimeDto = exports.REPONSES_FAIT = exports.ModifierFormeSyscohadaDto = exports.ModifierFormeJuridiqueDto = exports.ModifierIdentiteDto = exports.ModifierCoordonneesDto = exports.ModifierSystemeSyscohadaDto = exports.ModifierJeuEtatsDto = void 0;
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 const facultatif_non_nul_1 = require("../../../common/facultatif-non-nul");
@@ -370,13 +370,6 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], ModifierDoubleRegardDto.prototype, "doubleRegardValidation", void 0);
-class ModifierVisaRibsDto {
-}
-exports.ModifierVisaRibsDto = ModifierVisaRibsDto;
-__decorate([
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], ModifierVisaRibsDto.prototype, "visaRibs", void 0);
 class ModifierRefusClotureNonImprimeDto {
 }
 exports.ModifierRefusClotureNonImprimeDto = ModifierRefusClotureNonImprimeDto;

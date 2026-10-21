@@ -335,9 +335,6 @@ let PaiementSalairesService = class PaiementSalairesService {
         const referencePiece = mode === client_1.ModePaiementSalaire.CHEQUE
             ? `Chèques n° ${lignes.map((l) => reference(l.bulletinId)).join(', ')}`.slice(0, 190)
             : `Paiement des salaires ${mois} · ${lignes.length} salarié(s)`;
-        await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
-            { date: dto.date, lignes: [{ compteId: journal.compteTresorerie.id, debit: 0, credit: total }] },
-        ]);
         try {
             const r = await this.ecritures.creerAvec(tenantId, userId, {
                 exerciceId: dto.exerciceId,

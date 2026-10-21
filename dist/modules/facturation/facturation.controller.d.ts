@@ -60,8 +60,8 @@ export declare class FacturationController {
             dateFacture: Date;
             dateReception: Date | null;
             tiers: {
-                nom: string;
                 id: string;
+                nom: string;
                 code: string;
             } | null;
             emetteurNom: string;

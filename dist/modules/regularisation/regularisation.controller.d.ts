@@ -24,13 +24,13 @@ export declare class RegularisationController {
             numeroPiece: number | null;
         } | null;
     } & {
-        type: import(".prisma/client").$Enums.TypeRegularisation;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        type: import(".prisma/client").$Enums.TypeRegularisation;
+        tenantId: string;
         exerciceId: string;
         libelle: string;
+        createdBy: string;
         compteChargeProduitId: string;
         compteDifferId: string;
         montantTotal: import("@prisma/client/runtime/library").Decimal;
@@ -72,13 +72,13 @@ export declare class RegularisationController {
             intitule: string;
         };
     } & {
-        type: import(".prisma/client").$Enums.TypeRegularisation;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        type: import(".prisma/client").$Enums.TypeRegularisation;
+        tenantId: string;
         exerciceId: string;
         libelle: string;
+        createdBy: string;
         compteChargeProduitId: string;
         compteDifferId: string;
         montantTotal: import("@prisma/client/runtime/library").Decimal;
@@ -103,13 +103,13 @@ export declare class RegularisationController {
             numeroPiece: number | null;
         } | null;
     } & {
-        type: import(".prisma/client").$Enums.TypeRegularisation;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        type: import(".prisma/client").$Enums.TypeRegularisation;
+        tenantId: string;
         exerciceId: string;
         libelle: string;
+        createdBy: string;
         compteChargeProduitId: string;
         compteDifferId: string;
         montantTotal: import("@prisma/client/runtime/library").Decimal;
@@ -125,8 +125,8 @@ export declare class RegularisationController {
             code: string;
         };
         echeances: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             date: Date;
             ecritureId: string | null;
         }[];
@@ -139,15 +139,15 @@ export declare class RegularisationController {
             intitule: string;
         };
     } & {
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        estActif: boolean;
         dateDebut: Date;
+        estActif: boolean;
+        tenantId: string;
+        dateFin: Date;
+        montant: import("@prisma/client/runtime/library").Decimal;
         intitule: string;
         code: string;
-        dateFin: Date;
         journalId: string;
         createdBy: string;
         periodicite: import(".prisma/client").$Enums.PeriodiciteAbonnement;
@@ -156,22 +156,22 @@ export declare class RegularisationController {
     })[]>;
     creerAbonnement(user: AuthenticatedUser, dto: CreerAbonnementDto): Promise<{
         echeances: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             date: Date;
             ecritureId: string | null;
             abonnementId: string;
         }[];
     } & {
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        estActif: boolean;
         dateDebut: Date;
+        estActif: boolean;
+        tenantId: string;
+        dateFin: Date;
+        montant: import("@prisma/client/runtime/library").Decimal;
         intitule: string;
         code: string;
-        dateFin: Date;
         journalId: string;
         createdBy: string;
         periodicite: import(".prisma/client").$Enums.PeriodiciteAbonnement;
@@ -179,15 +179,15 @@ export declare class RegularisationController {
         compteCreditId: string;
     }>;
     modifierAbonnement(user: AuthenticatedUser, id: string, dto: ModifierAbonnementDto): Promise<{
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        estActif: boolean;
         dateDebut: Date;
+        estActif: boolean;
+        tenantId: string;
+        dateFin: Date;
+        montant: import("@prisma/client/runtime/library").Decimal;
         intitule: string;
         code: string;
-        dateFin: Date;
         journalId: string;
         createdBy: string;
         periodicite: import(".prisma/client").$Enums.PeriodiciteAbonnement;

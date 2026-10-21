@@ -50,8 +50,8 @@ export declare class AuthService {
             numeroImpot: string | null;
         };
         exercice: {
-            id: string;
             tenantId: string;
+            id: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
             dateFin: Date;

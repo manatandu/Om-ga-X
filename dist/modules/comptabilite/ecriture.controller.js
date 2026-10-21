@@ -40,7 +40,7 @@ let EcritureController = class EcritureController {
         await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
         await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
         await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
-        return this.ecritureService.creer(user.tenantId, user.userId, dto, { saisie: true, jugerLaCaisse: true });
+        return this.ecritureService.creer(user.tenantId, user.userId, dto, { saisie: true });
     }
     async imputerOuverture(user, dto) {
         return this.ecritureService.imputerAuxCapitauxPropresDOuverture(user.tenantId, user.userId, dto);
@@ -65,7 +65,7 @@ let EcritureController = class EcritureController {
         await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
         await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
         await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
-        return this.ecritureService.modifier(user.tenantId, id, dto, { jugerLaCaisse: true });
+        return this.ecritureService.modifier(user.tenantId, id, dto);
     }
     async transferer(user, id, dto) {
         return this.ecritureService.transfererDansUnJournalOrdinaire(user.tenantId, id, dto);

@@ -22,19 +22,19 @@ export declare class AffectationController {
                 intitule: string;
             };
         } & {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
     } & {
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        tenantId: string;
+        montant: import("@prisma/client/runtime/library").Decimal;
         exerciceId: string;
+        createdBy: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;
@@ -72,19 +72,19 @@ export declare class AffectationController {
                     intitule: string;
                 };
             } & {
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 libelle: string | null;
                 compteId: string;
                 affectationId: string;
             })[];
         } & {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
+            createdBy: string;
             dateDecision: Date;
             organe: string;
             reference: string | null;
@@ -106,18 +106,18 @@ export declare class AffectationController {
                 intitule: string;
             };
         } & {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        tenantId: string;
+        montant: import("@prisma/client/runtime/library").Decimal;
         exerciceId: string;
+        createdBy: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CourrierService = exports.LISTE_PAR_DEFAUT = exports.REPRISE_PAR_APPEL = exports.ORIGINE_RAPPEL_SUPPRESSION_ESSAI = exports.ORIGINE_CONDITIONS_LICENCE = exports.ORIGINE_DOUBLE_AUTHENTIFICATION = exports.ORIGINE_FACTURE_ABONNEMENT = exports.ORIGINE_LICENCE_SUR_SITE = exports.ORIGINE_MOT_DE_PASSE_TEMPORAIRE = exports.ORIGINE_RELANCE = void 0;
+exports.CourrierService = exports.LISTE_PAR_DEFAUT = exports.REPRISE_PAR_APPEL = exports.ORIGINE_CONDITIONS_LICENCE = exports.ORIGINE_DOUBLE_AUTHENTIFICATION = exports.ORIGINE_FACTURE_ABONNEMENT = exports.ORIGINE_LICENCE_SUR_SITE = exports.ORIGINE_MOT_DE_PASSE_TEMPORAIRE = exports.ORIGINE_RELANCE = void 0;
 const common_1 = require("@nestjs/common");
 const crypto_1 = require("crypto");
 const client_1 = require("@prisma/client");
@@ -23,7 +23,6 @@ exports.ORIGINE_LICENCE_SUR_SITE = 'LICENCE_SUR_SITE';
 exports.ORIGINE_FACTURE_ABONNEMENT = 'FACTURE_ABONNEMENT';
 exports.ORIGINE_DOUBLE_AUTHENTIFICATION = 'DOUBLE_AUTHENTIFICATION';
 exports.ORIGINE_CONDITIONS_LICENCE = 'CONDITIONS_LICENCE';
-exports.ORIGINE_RAPPEL_SUPPRESSION_ESSAI = 'RAPPEL_SUPPRESSION_ESSAI';
 const DELAI_ORPHELIN_MS = 5 * 60_000;
 exports.REPRISE_PAR_APPEL = 25;
 const REPRISE_MAXIMUM = 100;
@@ -199,20 +198,6 @@ let CourrierService = class CourrierService {
             where: this.filtreEligibles(tenantId, new Date()),
         });
         return bilan;
-    }
-    async retenter(tenantId, id) {
-        const ligne = await this.prisma.message.findFirst({ where: { id, tenantId } });
-        if (!ligne)
-            throw new common_1.NotFoundException('Message introuvable dans ce dossier');
-        if (ligne.statut === client_1.StatutMessage.ENVOYE || ligne.statut === client_1.StatutMessage.ABANDONNE) {
-            return { id: ligne.id, statut: ligne.statut, erreur: ligne.erreur };
-        }
-        if (!this.transport.etat().configure)
-            return { id: ligne.id, statut: ligne.statut, erreur: ligne.erreur };
-        if (!(await this.revendiquer(tenantId, ligne, new Date()))) {
-            throw new common_1.ConflictException('Ce message est déjà en cours d\'envoi.');
-        }
-        return this.tenter(tenantId, ligne);
     }
     async lister(tenantId, options = {}) {
         const plafond = Math.min(Math.max(1, Math.trunc(options.limite ?? exports.LISTE_PAR_DEFAUT)), LISTE_MAXIMUM);

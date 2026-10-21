@@ -16,19 +16,19 @@ export declare class LotsVirementController {
         }[];
     }[]>;
     creer(user: AuthenticatedUser, dto: LotVirementDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         journalId: string | null;
         creePar: string;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: LotVirementDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         journalId: string | null;
         creePar: string;

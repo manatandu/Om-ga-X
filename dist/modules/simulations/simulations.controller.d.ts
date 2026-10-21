@@ -14,10 +14,10 @@ export declare class SimulationsController {
             dateFin: Date;
         };
     } & {
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;
@@ -66,10 +66,10 @@ export declare class SimulationsController {
         reserves: string[];
     }>;
     creer(user: AuthenticatedUser, dto: SimulationBudgetaireDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;
@@ -79,10 +79,10 @@ export declare class SimulationsController {
         seuilRougePct: import("@prisma/client/runtime/library").Decimal;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: SimulationBudgetaireDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         creePar: string;
         exerciceReferenceId: string;

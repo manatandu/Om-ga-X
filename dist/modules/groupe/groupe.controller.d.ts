@@ -74,8 +74,8 @@ export declare class GroupeController {
             credit: number;
         };
         cellule: {
-            nom: string;
             id: string;
+            nom: string;
         };
     }>;
     canevas(user: AuthenticatedUser, res: Response, celluleId: string): Promise<void>;
@@ -87,7 +87,7 @@ export declare class GroupeController {
             message: string;
         }[];
         reference?: undefined;
-        readonly statut?: undefined;
+        statut?: undefined;
     } | {
         importe: boolean;
         lignesImportees: number;

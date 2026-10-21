@@ -50,10 +50,10 @@ export declare class DeclarationDeviseANouveauService {
         messages: string[];
         declaration: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
             exerciceId: string;
+            createdBy: string;
             compteId: string;
             source: string;
             ecritureOrigineId: string;
@@ -69,10 +69,10 @@ export declare class DeclarationDeviseANouveauService {
     } | {
         declaration: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
             exerciceId: string;
+            createdBy: string;
             compteId: string;
             source: string;
             ecritureOrigineId: string;

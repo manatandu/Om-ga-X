@@ -9,26 +9,26 @@ export declare class TiersController {
     lister(user: AuthenticatedUser, type?: TypeTiers, recherche?: string, actifsSeuls?: string): Promise<({
         modeleReglement: {
             id: string;
-            tenantId: string;
             createdAt: Date;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             modeReglementId: string | null;
             delaiJours: number;
             echeance: import(".prisma/client").$Enums.ConditionEcheance;
         } | null;
         modeReglement: {
-            nature: import(".prisma/client").$Enums.NatureModeReglement;
             id: string;
             estActif: boolean;
+            nature: import(".prisma/client").$Enums.NatureModeReglement;
             intitule: string;
             code: string;
         } | null;
         comptesRattaches: ({
             compte: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -52,18 +52,18 @@ export declare class TiersController {
             compteId: string;
         })[];
     } & {
-        email: string | null;
-        nom: string;
-        type: import(".prisma/client").$Enums.TypeTiers;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         numeroImpot: string | null;
+        type: import(".prisma/client").$Enums.TypeTiers;
         estActif: boolean;
+        tenantId: string;
         code: string;
         contact: string | null;
         boitePostale: string | null;
@@ -136,26 +136,26 @@ export declare class TiersController {
     obtenir(user: AuthenticatedUser, id: string): Promise<{
         modeleReglement: {
             id: string;
-            tenantId: string;
             createdAt: Date;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             modeReglementId: string | null;
             delaiJours: number;
             echeance: import(".prisma/client").$Enums.ConditionEcheance;
         } | null;
         modeReglement: {
-            nature: import(".prisma/client").$Enums.NatureModeReglement;
             id: string;
             estActif: boolean;
+            nature: import(".prisma/client").$Enums.NatureModeReglement;
             intitule: string;
             code: string;
         } | null;
         comptesRattaches: ({
             compte: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -179,18 +179,18 @@ export declare class TiersController {
             compteId: string;
         })[];
     } & {
-        email: string | null;
-        nom: string;
-        type: import(".prisma/client").$Enums.TypeTiers;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         numeroImpot: string | null;
+        type: import(".prisma/client").$Enums.TypeTiers;
         estActif: boolean;
+        tenantId: string;
         code: string;
         contact: string | null;
         boitePostale: string | null;
@@ -217,18 +217,18 @@ export declare class TiersController {
             collectif: string;
         } | null;
         panoplie: import("./tiers.service").PanoplieTiers | null;
-        email: string | null;
-        nom: string;
-        type: import(".prisma/client").$Enums.TypeTiers;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         numeroImpot: string | null;
+        type: import(".prisma/client").$Enums.TypeTiers;
         estActif: boolean;
+        tenantId: string;
         code: string;
         contact: string | null;
         boitePostale: string | null;
@@ -249,18 +249,18 @@ export declare class TiersController {
         modeleImpressionRappelId: string | null;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierTiersDto): Promise<{
-        email: string | null;
-        nom: string;
-        type: import(".prisma/client").$Enums.TypeTiers;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         numeroImpot: string | null;
+        type: import(".prisma/client").$Enums.TypeTiers;
         estActif: boolean;
+        tenantId: string;
         code: string;
         contact: string | null;
         boitePostale: string | null;
@@ -315,8 +315,8 @@ export declare class ModeleReglementController {
     constructor(tiersService: TiersService);
     lister(user: AuthenticatedUser): Promise<({
         echeances: {
-            type: import(".prisma/client").$Enums.TypeEcheance;
             id: string;
+            type: import(".prisma/client").$Enums.TypeEcheance;
             ordre: number;
             modeleReglementId: string;
             modeReglementId: string | null;
@@ -326,9 +326,9 @@ export declare class ModeleReglementController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         intitule: string;
         modeReglementId: string | null;
         delaiJours: number;
@@ -336,9 +336,9 @@ export declare class ModeleReglementController {
     })[]>;
     creer(user: AuthenticatedUser, dto: CreerModeleReglementDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         intitule: string;
         modeReglementId: string | null;
         delaiJours: number;
@@ -346,17 +346,17 @@ export declare class ModeleReglementController {
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierModeleReglementDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         intitule: string;
         modeReglementId: string | null;
         delaiJours: number;
         echeance: import(".prisma/client").$Enums.ConditionEcheance;
     }>;
     listerEcheances(user: AuthenticatedUser, id: string): Promise<{
-        type: import(".prisma/client").$Enums.TypeEcheance;
         id: string;
+        type: import(".prisma/client").$Enums.TypeEcheance;
         ordre: number;
         modeleReglementId: string;
         modeReglementId: string | null;
@@ -365,8 +365,8 @@ export declare class ModeleReglementController {
         echeance: import(".prisma/client").$Enums.ConditionEcheance;
     }[]>;
     ajouterEcheance(user: AuthenticatedUser, id: string, dto: CreerEcheanceReglementDto): Promise<{
-        type: import(".prisma/client").$Enums.TypeEcheance;
         id: string;
+        type: import(".prisma/client").$Enums.TypeEcheance;
         ordre: number;
         modeleReglementId: string;
         modeReglementId: string | null;

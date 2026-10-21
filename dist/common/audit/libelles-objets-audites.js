@@ -32,7 +32,6 @@ exports.LIBELLES_OBJETS_AUDITES = {
     ExportEcritures: 'Export des écritures',
     ImpressionDifferee: 'Impression différée',
     ExtraitPeriode: 'Extrait de période',
-    DossierEssaiSupprime: 'Dossier d’essai supprimé',
     SelectionEdition: "Sélection d'une édition",
     ModeleEdition: "Modèle d'édition",
     SequenceSaisie: 'Séquence de saisie',

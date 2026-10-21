@@ -80,12 +80,12 @@ export interface ImpressionAEnregistrer {
 }
 export declare function enregistrerImpression(prisma: ClientTransactionnel, p: ImpressionAEnregistrer): Promise<{
     id: string;
-    tenantId: string;
     dateDebut: Date;
-    numero: number;
+    tenantId: string;
     dateFin: Date;
-    journalId: string | null;
     exerciceId: string;
+    numero: number;
+    journalId: string | null;
     forme: import(".prisma/client").$Enums.FormeImpressionJournal;
     nombreEcritures: number;
     imprimeAt: Date;
@@ -93,12 +93,12 @@ export declare function enregistrerImpression(prisma: ClientTransactionnel, p: I
 }>;
 export declare function enregistrerImpressionDans(tx: Prisma.TransactionClient, p: ImpressionAEnregistrer): Promise<{
     id: string;
-    tenantId: string;
     dateDebut: Date;
-    numero: number;
+    tenantId: string;
     dateFin: Date;
-    journalId: string | null;
     exerciceId: string;
+    numero: number;
+    journalId: string | null;
     forme: import(".prisma/client").$Enums.FormeImpressionJournal;
     nombreEcritures: number;
     imprimeAt: Date;

@@ -68,9 +68,9 @@ export declare class ExportModificationsService {
     lister(tenantId: string, avant?: number): Promise<{
         exports: {
             produitPar: string;
+            id: string;
             nomFichier: string;
             empreinte: string;
-            id: string;
             numero: number;
             taille: number;
             nombreEcritures: number;

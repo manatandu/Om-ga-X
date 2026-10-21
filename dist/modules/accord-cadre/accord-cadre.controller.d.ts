@@ -15,8 +15,8 @@ export declare class AccordCadreController {
         accords: {
             etat: import("./conditions-ong-etrangere").EtatAccordCadre;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
             updatedAt: Date;
             reference: string;
             dateSignature: Date;
@@ -42,8 +42,8 @@ export declare class AccordCadreController {
     }>;
     enregistrer(user: AuthenticatedUser, dto: EnregistrerAccordCadreDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;
@@ -60,8 +60,8 @@ export declare class AccordCadreController {
     }>;
     declarerMainOeuvre(user: AuthenticatedUser, id: string, dto: DeclarerMainOeuvreDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;
@@ -78,8 +78,8 @@ export declare class AccordCadreController {
     }>;
     denoncer(user: AuthenticatedUser, id: string, dto: DenoncerAccordCadreDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         reference: string;
         dateSignature: Date;

@@ -141,24 +141,24 @@ export declare class DevisesService {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
     })[]>;
     creer(tenantId: string, dto: CreerDeviseDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
     }>;
     modifier(tenantId: string, deviseId: string, dto: ModifierDeviseDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
@@ -199,11 +199,11 @@ export declare class DevisesService {
     }): Promise<{
         avertissement: string | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -234,11 +234,11 @@ export declare class DevisesService {
     private motifContrePassationIntegrale;
     annulerContrePassation(tenantId: string, userId: string, reevaluationId: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -269,11 +269,11 @@ export declare class DevisesService {
     declarerContrePassationManuelle(tenantId: string, userId: string, reevaluationId: string, ecritureId: string, motif: string): Promise<{
         avertissement: string | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -308,19 +308,19 @@ export declare class DevisesService {
     candidatesContrePassationManuelle(tenantId: string, reevaluationId: string): Promise<{
         montants: string;
         candidates: {
-            journal: {
-                code: string;
-            };
             exercice: {
                 statut: import(".prisma/client").$Enums.StatutExercice;
                 dateDebut: Date;
                 dateFin: Date;
             };
+            journal: {
+                code: string;
+            };
             id: string;
             statut: import(".prisma/client").$Enums.StatutEcriture;
+            libelle: string;
             date: Date;
             numeroPiece: number | null;
-            libelle: string;
         }[];
         tronque: boolean;
         motifHorsModule: string | null;
@@ -328,11 +328,11 @@ export declare class DevisesService {
     }>;
     attesterEtatDeLEcart(tenantId: string, userId: string, reevaluationId: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -361,11 +361,11 @@ export declare class DevisesService {
     }>;
     retirerAttestationEtatDeLEcart(tenantId: string, userId: string, reevaluationId: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -394,11 +394,11 @@ export declare class DevisesService {
     }>;
     retirerContrePassationManuelle(tenantId: string, userId: string, reevaluationId: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -427,11 +427,11 @@ export declare class DevisesService {
     }>;
     annulerReevaluation(tenantId: string, userId: string, reevaluationId: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -499,11 +499,11 @@ export declare class DevisesService {
             numeroPiece: number | null;
         } | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -584,10 +584,10 @@ export declare class DevisesService {
         provisionModuleContestee?: boolean;
         motifContestation?: string;
     }): Promise<{
-        montant: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        montant: Prisma.Decimal;
         updatedAt: Date;
         createdBy: string;
         compteProvision: string;
@@ -609,11 +609,11 @@ export declare class DevisesService {
     private sommesDesDisponibilitesALaReevaluation;
     declarerVentilationDisponibilites(tenantId: string, userId: string, reevaluationId: string, dto: DeclarerVentilationDisponibilitesDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;

@@ -81,8 +81,8 @@ export declare class DocumentsObligatoiresController {
     }>;
     rapports(user: AuthenticatedUser, exerciceId: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         exerciceId: string;
         version: number;
         etabliLe: Date;
@@ -185,8 +185,8 @@ export declare class DocumentsObligatoiresController {
     }>;
     etablir(user: AuthenticatedUser, dto: EtablirRapportActiviteDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         exerciceId: string;
         version: number;
         etabliLe: Date;
@@ -204,8 +204,8 @@ export declare class DocumentsObligatoiresController {
     manuels(user: AuthenticatedUser): Promise<{
         sections: import("./manuel-procedures.service").SectionManuel[];
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         createdBy: string;
         version: number;
         dateApplication: Date;
@@ -222,8 +222,8 @@ export declare class DocumentsObligatoiresController {
     squeletteManuel(): Promise<import("./manuel-procedures.service").SectionManuel[]>;
     enregistrerManuel(user: AuthenticatedUser, dto: EnregistrerManuelDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         createdBy: string;
         version: number;
         dateApplication: Date;

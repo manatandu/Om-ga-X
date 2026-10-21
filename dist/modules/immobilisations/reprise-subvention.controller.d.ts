@@ -76,13 +76,13 @@ export declare class RepriseSubventionController {
         dateSortie: Date | null;
     }>;
     passer(user: AuthenticatedUser, id: string, dto: RepriseSubventionDto): Promise<{
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureRepriseSubvention;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        createdBy: string;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         immobilisationId: string;
     }>;

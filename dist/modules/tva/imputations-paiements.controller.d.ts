@@ -69,8 +69,8 @@ export declare class ImputationsPaiementsController {
         imputations: {
             montant: number;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
             createdBy: string;
             retireeLe: Date | null;
             retireePar: string | null;

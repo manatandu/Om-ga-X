@@ -187,7 +187,5 @@ exports.MODELES_HORS_DOSSIER = {
     AbonnementCabinet: 'abonnement d’un dossier client, donnée de l’éditeur sur son client · le dossier lit le sien, sur sa clé, ou une cellule celui de son siège, avant d’accepter les conditions de licence (formule, options et dates, jamais le tiers facturé)',
     OptionAbonnement: 'options souscrites par un abonnement, portées par lui',
     FactureAbonnement: 'lien entre une période facturée et la facture née dans le dossier de l’éditeur',
-    RappelSuppressionEssai: 'suivi de l’éditeur sur un dossier d’essai échu (rappel de suppression), cabinetId et non tenantId comme l’abonnement · il part avec le dossier (cascade), ce n’est pas une donnée du client',
-    DossierEssaiSupprime: 'trace durable d’un dossier d’essai supprimé, sans clé étrangère · dates et nombres seulement, aucune donnée du client',
 };
 //# sourceMappingURL=modeles-cloisonnes.js.map

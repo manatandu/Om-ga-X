@@ -73,12 +73,12 @@ export declare class ExonerationsService {
             joursAvantExpiration: number | null;
             alerte: "EXPIRE" | "A_RENOUVELER" | null;
             valeurBiens: number | null;
-            objet: string;
-            type: import(".prisma/client").$Enums.TypeDemandeExoneration;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeDemandeExoneration;
             statut: import(".prisma/client").$Enums.StatutExoneration;
+            tenantId: string;
+            objet: string;
             updatedAt: Date;
             createdBy: string;
             dateArrete: Date | null;
@@ -109,12 +109,12 @@ export declare class ExonerationsService {
         piecesFournies?: string[];
         observations?: string;
     }): Promise<{
-        objet: string;
-        type: import(".prisma/client").$Enums.TypeDemandeExoneration;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        type: import(".prisma/client").$Enums.TypeDemandeExoneration;
         statut: import(".prisma/client").$Enums.StatutExoneration;
+        tenantId: string;
+        objet: string;
         updatedAt: Date;
         createdBy: string;
         dateArrete: Date | null;
@@ -128,12 +128,12 @@ export declare class ExonerationsService {
         piecesFournies: string[];
     }>;
     modifier(tenantId: string, id: string, dto: Record<string, unknown>): Promise<{
-        objet: string;
-        type: import(".prisma/client").$Enums.TypeDemandeExoneration;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        type: import(".prisma/client").$Enums.TypeDemandeExoneration;
         statut: import(".prisma/client").$Enums.StatutExoneration;
+        tenantId: string;
+        objet: string;
         updatedAt: Date;
         createdBy: string;
         dateArrete: Date | null;

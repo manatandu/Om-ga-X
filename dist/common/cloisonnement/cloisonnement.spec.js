@@ -194,7 +194,6 @@ describe('balayage du code · toute collection porte sa borne', () => {
         expect(utilisatrices.sort()).toEqual([
             'src/modules/auth/auth.service.ts',
             'src/modules/groupe/groupe.service.ts',
-            'src/modules/plateforme/essais-echus/essais-echus.service.ts',
             'src/modules/plateforme/plateforme.service.ts',
         ]);
     });

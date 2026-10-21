@@ -215,8 +215,8 @@ export declare class GroupeService {
             credit: number;
         };
         cellule: {
-            nom: string;
             id: string;
+            nom: string;
         };
     }>;
     private balanceCelluleDuGroupe;
@@ -230,7 +230,7 @@ export declare class GroupeService {
             message: string;
         }[];
         reference?: undefined;
-        readonly statut?: undefined;
+        statut?: undefined;
     } | {
         importe: boolean;
         lignesImportees: number;

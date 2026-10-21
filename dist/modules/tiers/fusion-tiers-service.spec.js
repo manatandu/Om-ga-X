@@ -26,7 +26,7 @@ describe('Fusion de tiers · le service', () => {
             devis: maj(),
             consignation: maj(),
             documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
-            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(1), findMany: jest.fn().mockResolvedValue([{ id: 'rib-doublon' }]), update: jest.fn() },
+            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(1) },
             lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
             ligneOrdreVirement: maj(),
             abonnementCabinet: maj(),
@@ -43,7 +43,7 @@ describe('Fusion de tiers · le service', () => {
             $transaction: jest.fn((fn) => fn(tx)),
         };
         const s = new tiers_service_1.TiersService(prisma);
-        const r = await s.fusionner('t', 'doublon', 'garde', 'u1');
+        const r = await s.fusionner('t', 'doublon', 'garde');
         for (const m of ['relance', 'demandeConfirmation', 'facture', 'devis', 'consignation', 'documentTiers', 'ligneOrdreVirement']) {
             expect(tx[m].updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon', tenantId: 't' }, data: { tiersId: 'garde' } });
         }
@@ -51,13 +51,6 @@ describe('Fusion de tiers · le service', () => {
         expect(tx.abonnementCabinet.updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon' }, data: { tiersId: 'garde' } });
         expect(tx.ribTiers.count).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'garde', estPrincipal: true } });
         expect(tx.ribTiers.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'doublon' }, data: { estPrincipal: false } });
-        expect(tx.ribTiers.findMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'doublon' }, select: { id: true } });
-        expect(tx.ribTiers.update).toHaveBeenCalledWith({
-            where: { id: 'rib-doublon' },
-            data: { saisiPar: 'u1', saisiLe: expect.any(Date), visePar: null, viseLe: null },
-        });
-        const report = tx.ribTiers.updateMany.mock.calls.findIndex((c) => 'tiersId' in c[0].data);
-        expect(tx.ribTiers.update.mock.invocationCallOrder[0]).toBeLessThan(tx.ribTiers.updateMany.mock.invocationCallOrder[report]);
         expect(tx.tiers.update).toHaveBeenCalledWith({ where: { id: 'garde' }, data: { numeroImpot: 'A123' } });
         expect(tx.tiers.delete).toHaveBeenCalledWith({ where: { id: 'doublon' } });
         expect(tx.contratLocationAcquisition.updateMany).toHaveBeenCalledWith({
@@ -83,7 +76,7 @@ describe('Fusion de tiers · le service', () => {
         };
         const tx = {
             tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
-            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
+            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0) }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
             lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
             contratLocationAcquisition: maj(), documentTiers,
             tiers: { update: jest.fn(), delete: jest.fn() },
@@ -95,7 +88,7 @@ describe('Fusion de tiers · le service', () => {
             },
             $transaction: jest.fn((fn) => fn(tx)),
         };
-        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde', 'u1');
+        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde');
         expect(documentTiers.findMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'garde' }, select: { empreinte: true } });
         expect(documentTiers.deleteMany).toHaveBeenCalledWith({
             where: { tenantId: 't', tiersId: 'doublon', empreinte: { in: ['abc'] } },
@@ -104,7 +97,7 @@ describe('Fusion de tiers · le service', () => {
     });
     it("sans RIB principal sur la fiche gardée, ceux du doublon arrivent tels quels", async () => {
         const maj = () => ({ updateMany: jest.fn().mockResolvedValue({ count: 0 }) });
-        const ribTiers = { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() };
+        const ribTiers = { ...maj(), count: jest.fn().mockResolvedValue(0) };
         const tx = {
             tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
             ribTiers, ligneOrdreVirement: maj(), abonnementCabinet: maj(), contratLocationAcquisition: maj(),
@@ -119,7 +112,7 @@ describe('Fusion de tiers · le service', () => {
             },
             $transaction: jest.fn((fn) => fn(tx)),
         };
-        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde', 'u1');
+        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde');
         expect(ribTiers.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { estPrincipal: false } }));
         expect(ribTiers.updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon', tenantId: 't' }, data: { tiersId: 'garde' } });
     });
@@ -133,7 +126,7 @@ describe('Fusion de tiers · le service', () => {
         };
         const tx = {
             tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
-            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
+            ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0) }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
             contratLocationAcquisition: maj(), lieuLivraison,
             documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
             tiers: { update: jest.fn(), delete: jest.fn() },
@@ -145,7 +138,7 @@ describe('Fusion de tiers · le service', () => {
             },
             $transaction: jest.fn((fn) => fn(tx)),
         };
-        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde', 'u1');
+        await new tiers_service_1.TiersService(prisma).fusionner('t', 'doublon', 'garde');
         expect(lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'doublon' }, data: { estPrincipal: false } });
         expect(lieuLivraison.update).toHaveBeenCalledTimes(1);
         expect(lieuLivraison.update).toHaveBeenCalledWith({ where: { id: 'l1' }, data: { intitule: 'ENTREPÔT · DOUBLON' } });

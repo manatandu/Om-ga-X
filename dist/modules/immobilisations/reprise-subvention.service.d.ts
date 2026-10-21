@@ -82,13 +82,13 @@ export declare class RepriseSubventionService {
         journalId: string;
         dureeInalienabiliteAns?: number | null;
     }): Promise<{
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureRepriseSubvention;
         montant: Prisma.Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        createdBy: string;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         immobilisationId: string;
     }>;

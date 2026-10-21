@@ -13,11 +13,11 @@ export declare class OperationSpecifiqueController {
     proposer(user: AuthenticatedUser, dto: ProposerModeleDto): Promise<import("./operation-specifique.types").EcritureProposee>;
     appliquer(user: AuthenticatedUser, dto: AppliquerModeleDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -26,9 +26,9 @@ export declare class OperationSpecifiqueController {
         };
         lignes: {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -46,17 +46,17 @@ export declare class OperationSpecifiqueController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;

@@ -26,18 +26,18 @@ export declare class CreationDepuisEcrituresController {
     }>;
     creer(user: AuthenticatedUser, dto: CreerDepuisEcritureDto): Promise<{
         dotations: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
             createdAt: Date;
+            montant: import("@prisma/client/runtime/library").Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;

@@ -24,7 +24,6 @@ function comptes(ribs) {
 }
 function monter(opts = {}) {
     const prisma = {
-        tenant: { findUnique: jest.fn(async () => ({ visaRibs: opts.visaRibs === true })) },
         ribBanque: { findFirst: jest.fn(async () => (opts.rib === undefined ? ribJournal : opts.rib)) },
         journal: { findFirst: jest.fn(async () => ({ code: 'BQ' })) },
         compte: { findMany: jest.fn(async () => comptes(opts.ribs ?? {})) },
@@ -42,33 +41,6 @@ const principal = (extra = {}) => ({
     codeBic: null,
     ...extra,
 });
-describe("préparer l'ordre · le visa des RIB, quand le dossier l'exige (tiers/visa-rib.ts)", () => {
-    const vise = { visePar: 'u2', viseLe: new Date('2026-10-21T10:00:00Z') };
-    it("sans l'option, un RIB principal non visé part comme avant", async () => {
-        const { service } = monter({ ribs: { tA: [principal()] } });
-        const p = await service.preparer('t', 'bq', ['c401']);
-        expect(p.beneficiaires.get('c401')?.banque).toBe('Equity BCDC');
-    });
-    it("avec l'option, refuse AVANT toute pièce et nomme chaque tiers dont le RIB principal n'est pas visé", async () => {
-        const { service } = monter({ visaRibs: true, ribs: { tA: [principal()], tB: [principal({ ...vise })] } });
-        await expect(service.preparer('t', 'bq', ['c401', 'c402'])).rejects.toThrow(/F001 · Fournisseur A n'est pas visé.*autre que celui qui l'a saisi.*fiche du tiers/);
-        await expect(service.preparer('t', 'bq', ['c401', 'c402'])).rejects.not.toThrow(/F002/);
-    });
-    it("avec l'option, un RIB visé part, et l'ordre recopie ce qui a été visé", async () => {
-        const { service } = monter({ visaRibs: true, ribs: { tA: [principal({ ...vise, titulaire: 'SARL A' })] } });
-        const p = await service.preparer('t', 'bq', ['c401']);
-        expect(p.beneficiaires.get('c401')).toMatchObject({ beneficiaire: 'SARL A', coordonnees: '00011 777 12' });
-    });
-    it("un dossier introuvable n'est pas un dossier qui n'exige rien · le contrôle se ferme", async () => {
-        const { service, prisma } = monter({ ribs: { tA: [principal()] } });
-        prisma.tenant.findUnique.mockResolvedValueOnce(null);
-        await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/Dossier introuvable/);
-    });
-    it("un visa à moitié posé (auteur sans date) n'est pas un visa", async () => {
-        const { service } = monter({ visaRibs: true, ribs: { tA: [principal({ visePar: 'u2', viseLe: null })] } });
-        await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/n'est pas visé/);
-    });
-});
 describe("préparer l'ordre · tout ce qu'il exige, avant la première pièce", () => {
     it('recopie le donneur (RIB du journal) et le RIB principal de chaque tiers', async () => {
         const { service, prisma } = monter({ ribs: { tA: [principal({ titulaire: 'SARL A' })], tB: [principal({ iban: 'GB82WEST12345698765432' })] } });
@@ -77,7 +49,7 @@ describe("préparer l'ordre · tout ce qu'il exige, avant la première pièce", 
         expect(p.beneficiaires.get('c401')).toMatchObject({ tiersId: 'tA', beneficiaire: 'SARL A', coordonnees: '00011 777 12' });
         expect(p.beneficiaires.get('c402')).toMatchObject({ beneficiaire: 'Fournisseur B', coordonnees: 'IBAN GB82 WEST 1234 5698 7654 32' });
         const select = prisma.compte.findMany.mock.calls[0][0];
-        expect(select.select.tiersCompte.select.tiers.select.ribs).toEqual({ where: { tenantId: 't', estPrincipal: true }, orderBy: { createdAt: 'asc' } });
+        expect(select.select.tiersCompte.select.tiers.select.ribs).toEqual({ where: { tenantId: 't', estPrincipal: true } });
     });
     it("refuse un journal sans RIB · l'ordre n'aurait pas de compte à débiter", async () => {
         const { service } = monter({ rib: null, ribs: { tA: [principal()] } });

@@ -4,27 +4,27 @@ export declare class BailleurService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     lister(tenantId: string, actifsSeuls?: boolean): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         code: string;
     }[]>;
     creer(tenantId: string, dto: CreerBailleurDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         code: string;
     }>;
     modifier(tenantId: string, bailleurId: string, dto: ModifierBailleurDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         estActif: boolean;
+        tenantId: string;
         code: string;
     }>;
 }

@@ -18,19 +18,19 @@ export declare class LotsVirementService {
     private lignes;
     private conflit;
     creer(tenantId: string, auteur: string, dto: LotVirementDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         journalId: string | null;
         creePar: string;
     }>;
     modifier(tenantId: string, id: string, dto: LotVirementDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         journalId: string | null;
         creePar: string;

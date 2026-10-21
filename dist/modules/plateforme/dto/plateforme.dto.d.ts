@@ -71,6 +71,3 @@ export declare class EnvoyerParCourrielDto {
 export declare class MarquerPayeeDto {
     payeeLe: string;
 }
-export declare class SupprimerEssaiEchuDto {
-    confirmation: string;
-}

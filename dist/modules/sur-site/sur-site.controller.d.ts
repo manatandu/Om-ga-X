@@ -11,7 +11,7 @@ export declare class SurSiteController {
     etat(): Promise<{
         surSite: boolean;
         premierDossierAttendu?: undefined;
-        readonly statut?: undefined;
+        statut?: undefined;
         motif?: undefined;
         empreinte?: undefined;
         dateVersion?: undefined;
@@ -35,7 +35,7 @@ export declare class SurSiteController {
     deposer(dto: DeposerLicenceDto): Promise<{
         surSite: boolean;
         premierDossierAttendu?: undefined;
-        readonly statut?: undefined;
+        statut?: undefined;
         motif?: undefined;
         empreinte?: undefined;
         dateVersion?: undefined;

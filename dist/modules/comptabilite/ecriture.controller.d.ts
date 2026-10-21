@@ -10,11 +10,11 @@ export declare class EcritureController {
     constructor(ecritureService: EcritureService);
     creer(user: AuthenticatedUser, dto: CreerEcritureDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -23,9 +23,9 @@ export declare class EcritureController {
         };
         lignes: {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -43,17 +43,17 @@ export declare class EcritureController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -68,17 +68,17 @@ export declare class EcritureController {
     }>;
     imputerOuverture(user: AuthenticatedUser, dto: ImputationOuvertureDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -113,11 +113,11 @@ export declare class EcritureController {
     }>;
     corriger(user: AuthenticatedUser, id: string, dto: CorrigerEcritureDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -126,9 +126,9 @@ export declare class EcritureController {
         };
         lignes: {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -146,17 +146,17 @@ export declare class EcritureController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -220,11 +220,11 @@ export declare class EcritureController {
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierEcritureDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -234,8 +234,8 @@ export declare class EcritureController {
         lignes: ({
             compte: {
                 id: string;
-                tenantId: string;
                 estActif: boolean;
+                tenantId: string;
                 numero: string;
                 intitule: string;
                 classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -253,9 +253,9 @@ export declare class EcritureController {
             };
         } & {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -273,17 +273,17 @@ export declare class EcritureController {
         })[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -329,11 +329,11 @@ export declare class EcritureController {
     lister(user: AuthenticatedUser, exerciceId?: string, journalId?: string, dateDebut?: string, dateFin?: string, recherche?: string, inclureBrouillard?: string, limite?: string, compte?: string, montant?: string, montantMax?: string, numeroPiece?: string, reference?: string, plusRecentes?: string): Promise<{
         ecritures: ({
             journal: {
-                type: import(".prisma/client").$Enums.TypeJournal;
                 id: string;
-                tenantId: string;
                 createdAt: Date;
+                type: import(".prisma/client").$Enums.TypeJournal;
                 estActif: boolean;
+                tenantId: string;
                 intitule: string;
                 code: string;
                 compteTresorerieId: string | null;
@@ -343,8 +343,8 @@ export declare class EcritureController {
             lignes: ({
                 compte: {
                     id: string;
-                    tenantId: string;
                     estActif: boolean;
+                    tenantId: string;
                     numero: string;
                     intitule: string;
                     classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -362,9 +362,9 @@ export declare class EcritureController {
                 };
             } & {
                 id: string;
+                libelle: string | null;
                 modeReglementId: string | null;
                 ecritureId: string;
-                libelle: string | null;
                 compteId: string;
                 ligneReleveId: string | null;
                 debit: import("@prisma/client/runtime/library").Decimal;
@@ -382,9 +382,9 @@ export declare class EcritureController {
             })[];
             corrigeEcriture: {
                 id: string;
+                libelle: string;
                 date: Date;
                 numeroPiece: number | null;
-                libelle: string;
             } | null;
             correction: {
                 id: string;
@@ -393,17 +393,17 @@ export declare class EcritureController {
             } | null;
         } & {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutEcriture;
+            tenantId: string;
+            exerciceId: string;
+            libelle: string;
             journalId: string;
             createdBy: string;
             date: Date;
-            exerciceId: string;
             reference: string | null;
             numeroPiece: number | null;
             dateValeur: Date | null;
-            libelle: string;
             valideeAt: Date | null;
             valideeBy: string | null;
             secondRegardNom: string | null;
@@ -632,8 +632,8 @@ export declare class EcritureController {
         report?: import("./periode-extrait").ReportALaVeille | null | undefined;
         compte: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;

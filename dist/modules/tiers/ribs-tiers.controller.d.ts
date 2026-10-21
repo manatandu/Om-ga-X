@@ -1,11 +1,15 @@
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { RibsTiersService } from './ribs-tiers.service';
-import { RibTiersDto, VisaRibDto } from './dto/ribs-tiers.dto';
+import { RibTiersDto } from './dto/ribs-tiers.dto';
 export declare class RibsTiersController {
     private readonly ribs;
     constructor(ribs: RibsTiersService);
     lister(user: AuthenticatedUser, tiersId: string): Promise<{
-        visa: import("./visa-rib").VisaPresente;
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -14,19 +18,15 @@ export declare class RibsTiersController {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
     }[]>;
     creer(user: AuthenticatedUser, tiersId: string, dto: RibTiersDto): Promise<{
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -35,19 +35,15 @@ export declare class RibsTiersController {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: RibTiersDto): Promise<{
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -56,41 +52,8 @@ export declare class RibsTiersController {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         tiersId: string;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
-    }>;
-    viser(user: AuthenticatedUser, id: string, dto: VisaRibDto): Promise<{
-        rib: {
-            commentaire: string | null;
-            titulaire: string | null;
-            codeBanque: string | null;
-            codeGuichet: string | null;
-            numeroCompte: string | null;
-            cle: string | null;
-            iban: string | null;
-            codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
-            tiersId: string;
-            estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
-        };
-        avertissement: string | null;
     }>;
     supprimer(user: AuthenticatedUser, id: string): Promise<{
         supprime: boolean;

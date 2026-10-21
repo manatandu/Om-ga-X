@@ -5,10 +5,10 @@ export declare class EtatsPersonnalisesController {
     private readonly service;
     constructor(service: EtatsPersonnalisesService);
     lister(user: AuthenticatedUser): import(".prisma/client").Prisma.PrismaPromise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         lignes: import("@prisma/client/runtime/library").JsonValue;
     }[]>;
@@ -27,18 +27,18 @@ export declare class EtatsPersonnalisesController {
         }[];
     }>;
     creer(user: AuthenticatedUser, dto: EtatPersonnaliseDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         lignes: import("@prisma/client/runtime/library").JsonValue;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: EtatPersonnaliseDto): Promise<{
-        nom: string;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         lignes: import("@prisma/client/runtime/library").JsonValue;
     }>;

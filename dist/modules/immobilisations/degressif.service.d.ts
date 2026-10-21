@@ -131,10 +131,10 @@ export declare class DegressifService {
     private enregistrer;
     private compte;
     passer(tenantId: string, userId: string, id: string, dto: PasserDerogatoireDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         exerciceId: string;
         ecritureId: string | null;
         immobilisationId: string;
@@ -145,10 +145,10 @@ export declare class DegressifService {
         excedentAReintegrer: Prisma.Decimal;
     }>;
     solder(tenantId: string, userId: string, id: string, dto: PasserDerogatoireDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         exerciceId: string;
         ecritureId: string | null;
         immobilisationId: string;

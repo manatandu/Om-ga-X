@@ -10,15 +10,15 @@ export declare class ProvisionsController {
             intitule: string;
         } | null;
     } & {
-        objet: string;
-        nature: import(".prisma/client").$Enums.NatureProvision;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutProvision;
+        tenantId: string;
+        objet: string;
+        nature: import(".prisma/client").$Enums.NatureProvision;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
-        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -103,15 +103,15 @@ export declare class ProvisionsController {
         conditionsPropres: Partial<Record<import(".prisma/client").$Enums.NatureProvision, import("./court-terme-et-conditions").ConditionPropre[]>>;
     }>;
     creer(user: AuthenticatedUser, exerciceId: string, dto: CreerProvisionDto): Promise<{
-        objet: string;
-        nature: import(".prisma/client").$Enums.NatureProvision;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutProvision;
+        tenantId: string;
+        objet: string;
+        nature: import(".prisma/client").$Enums.NatureProvision;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
-        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -134,15 +134,15 @@ export declare class ProvisionsController {
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierProvisionDto): Promise<{
         avertissements: string[];
-        objet: string;
-        nature: import(".prisma/client").$Enums.NatureProvision;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutProvision;
+        tenantId: string;
+        objet: string;
+        nature: import(".prisma/client").$Enums.NatureProvision;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
-        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;
@@ -165,15 +165,15 @@ export declare class ProvisionsController {
     }>;
     statuer(user: AuthenticatedUser, id: string, dto: StatuerProvisionDto): Promise<{
         avertissements: string[];
-        objet: string;
-        nature: import(".prisma/client").$Enums.NatureProvision;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutProvision;
+        tenantId: string;
+        objet: string;
+        nature: import(".prisma/client").$Enums.NatureProvision;
+        exerciceId: string;
         updatedAt: Date;
         createdBy: string;
-        exerciceId: string;
         compteId: string | null;
         obligationExiste: boolean;
         resulteEvenementPasse: boolean;

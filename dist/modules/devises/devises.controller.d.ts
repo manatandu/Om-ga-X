@@ -18,10 +18,10 @@ export declare class DevisesController {
         messages: string[];
         declaration: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
             exerciceId: string;
+            createdBy: string;
             compteId: string;
             source: string;
             ecritureOrigineId: string;
@@ -37,10 +37,10 @@ export declare class DevisesController {
     } | {
         declaration: {
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
             exerciceId: string;
+            createdBy: string;
             compteId: string;
             source: string;
             ecritureOrigineId: string;
@@ -65,24 +65,24 @@ export declare class DevisesController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
     })[]>;
     creer(user: AuthenticatedUser, dto: CreerDeviseDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierDeviseDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         intitule: string;
         code: string;
         estActive: boolean;
@@ -143,11 +143,11 @@ export declare class DevisesController {
             numeroPiece: number | null;
         } | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -214,10 +214,10 @@ export declare class DevisesController {
         }[];
     }>;
     declarerProvisionOuverture(user: AuthenticatedUser, dto: DeclarerProvisionOuvertureDto): Promise<{
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        montant: import("@prisma/client/runtime/library").Decimal;
         updatedAt: Date;
         createdBy: string;
         compteProvision: string;
@@ -235,11 +235,11 @@ export declare class DevisesController {
     extourner(user: AuthenticatedUser, id: string, body: ExtournerReevaluationDto): Promise<{
         avertissement: string | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -268,11 +268,11 @@ export declare class DevisesController {
     }>;
     annulerContrePassation(user: AuthenticatedUser, id: string, body: AnnulerReevaluationDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -302,19 +302,19 @@ export declare class DevisesController {
     candidatesContrePassationManuelle(user: AuthenticatedUser, id: string): Promise<{
         montants: string;
         candidates: {
-            journal: {
-                code: string;
-            };
             exercice: {
                 statut: import(".prisma/client").$Enums.StatutExercice;
                 dateDebut: Date;
                 dateFin: Date;
             };
+            journal: {
+                code: string;
+            };
             id: string;
             statut: import(".prisma/client").$Enums.StatutEcriture;
+            libelle: string;
             date: Date;
             numeroPiece: number | null;
-            libelle: string;
         }[];
         tronque: boolean;
         motifHorsModule: string | null;
@@ -323,11 +323,11 @@ export declare class DevisesController {
     declarerContrePassationManuelle(user: AuthenticatedUser, id: string, body: DeclarerContrePassationManuelleDto): Promise<{
         avertissement: string | null;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -356,11 +356,11 @@ export declare class DevisesController {
     }>;
     retirerContrePassationManuelle(user: AuthenticatedUser, id: string, body: RetirerContrePassationManuelleDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -389,11 +389,11 @@ export declare class DevisesController {
     }>;
     attesterEtatDeLEcart(user: AuthenticatedUser, id: string, body: MotifAttestationEtatDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -422,11 +422,11 @@ export declare class DevisesController {
     }>;
     retirerAttestationEtatDeLEcart(user: AuthenticatedUser, id: string, body: MotifAttestationEtatDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -455,11 +455,11 @@ export declare class DevisesController {
     }>;
     annulerReevaluation(user: AuthenticatedUser, id: string, body: AnnulerReevaluationDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;
@@ -488,11 +488,11 @@ export declare class DevisesController {
     }>;
     declarerVentilationDisponibilites(user: AuthenticatedUser, id: string, body: DeclarerVentilationDisponibilitesDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         createdBy: string;
         motifAnnulation: string | null;
-        exerciceId: string;
         dateReevaluation: Date;
         ecritureEcartsId: string | null;
         ecritureProvisionId: string | null;

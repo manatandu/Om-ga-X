@@ -28,8 +28,8 @@ export declare class VirementsFondsController {
         virements: {
             montant: number;
             pieces: {
-                nomFichier: string;
                 id: string;
+                nomFichier: string;
                 operation: import(".prisma/client").$Enums.OperationVirementFonds | null;
                 taille: number;
             }[];
@@ -47,16 +47,16 @@ export declare class VirementsFondsController {
                 statut: import(".prisma/client").$Enums.StatutEcriture;
                 numeroPiece: number | null;
             } | null;
-            objet: string;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
+            objet: string;
+            exerciceId: string;
             createdBy: string;
             date: Date;
             annuleLe: Date | null;
             annulePar: string | null;
             motifAnnulation: string | null;
-            exerciceId: string;
             ecritureOrigineId: string | null;
             sens: import(".prisma/client").$Enums.SensVirementFonds;
             journalOrigineId: string;
@@ -84,16 +84,16 @@ export declare class VirementsFondsController {
             numero: string;
             intitule: string;
         };
-        objet: string;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        objet: string;
+        exerciceId: string;
         createdBy: string;
         date: Date;
         annuleLe: Date | null;
         annulePar: string | null;
         motifAnnulation: string | null;
-        exerciceId: string;
         ecritureOrigineId: string | null;
         sens: import(".prisma/client").$Enums.SensVirementFonds;
         journalOrigineId: string;
@@ -112,17 +112,17 @@ export declare class VirementsFondsController {
         ecritureNegatifDestinationId: string | null;
     }>;
     annuler(user: AuthenticatedUser, id: string, dto: AnnulerVirementDto): Promise<{
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         objet: string;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
+        exerciceId: string;
         createdBy: string;
         date: Date;
         annuleLe: Date | null;
         annulePar: string | null;
         motifAnnulation: string | null;
-        exerciceId: string;
         ecritureOrigineId: string | null;
         sens: import(".prisma/client").$Enums.SensVirementFonds;
         journalOrigineId: string;
@@ -144,10 +144,10 @@ export declare class VirementsFondsController {
         originalname: string;
         buffer: Buffer;
     } | undefined): Promise<{
-        nomFichier: string;
         id: string;
-        operation: import(".prisma/client").$Enums.OperationVirementFonds | null;
         createdAt: Date;
+        nomFichier: string;
+        operation: import(".prisma/client").$Enums.OperationVirementFonds | null;
         taille: number;
     }>;
     telechargerPiece(user: AuthenticatedUser, id: string, res: Response): Promise<void>;

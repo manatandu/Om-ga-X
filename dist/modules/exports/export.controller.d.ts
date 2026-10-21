@@ -22,7 +22,6 @@ export declare class ExportController {
     evolutionSoldes(user: AuthenticatedUser, res: Response, nbExercices?: string): Promise<void>;
     tableauImmobilisations(user: AuthenticatedUser, res: Response, dateArret?: string): Promise<void>;
     tableauAmortissements(user: AuthenticatedUser, res: Response, exerciceId: string): Promise<void>;
-    tableauxImmobilisations(user: AuthenticatedUser, res: Response, exerciceId: string, dateArret?: string): Promise<void>;
     liasseComplete(user: AuthenticatedUser, res: Response, exerciceId: string, paiementsEnInstance?: string): Promise<void>;
     bilan(user: AuthenticatedUser, res: Response, exerciceId: string): Promise<void>;
     compteDeResultat(user: AuthenticatedUser, res: Response, exerciceId: string): Promise<void>;

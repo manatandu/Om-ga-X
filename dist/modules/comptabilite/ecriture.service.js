@@ -48,7 +48,6 @@ const exercice_introuvable_1 = require("../../common/exercice-introuvable");
 const familles_tiers_1 = require("./familles-tiers");
 const subdivisions_du_plan_1 = require("../comptes/subdivisions-du-plan");
 const comptes_proposes_1 = require("../comptes/comptes-proposes");
-const caisse_provisionnee_1 = require("./caisse-provisionnee");
 function estLigneDebit(l) {
     return Math.abs(Number(l.debit)) > 0.005;
 }
@@ -300,9 +299,6 @@ let EcritureService = EcritureService_1 = class EcritureService {
                 justificationImputationOuverture: dto.justification.trim(),
             },
         });
-    }
-    async verifierCaisseProvisionnee(tenantId, exerciceId, pieces, ecritureRemplaceeId) {
-        await (0, caisse_provisionnee_1.verifierCaisseProvisionnee)(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
     }
     async verifierComptesEnSommeil(tenantId, lignes, confirme) {
         if (confirme || !lignes || lignes.length === 0)
@@ -585,16 +581,6 @@ let EcritureService = EcritureService_1 = class EcritureService {
         for (const dto of dtos) {
             controles.push({ dto, ...(await this.controlesDEntree(tenantId, { ...dto, journalDeSituationAdmis: options.saisie === true })) });
         }
-        if (options.jugerLaCaisse) {
-            const parExercice = new Map();
-            for (const { dto, journal, date } of controles) {
-                if ((0, ecritures_de_situation_1.estJournalDeSituation)(journal))
-                    continue;
-                parExercice.set(dto.exerciceId, [...(parExercice.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
-            }
-            for (const [exerciceId, pieces] of parExercice)
-                await (0, caisse_provisionnee_1.verifierCaisseProvisionnee)(this.prisma, tenantId, exerciceId, pieces);
-        }
         return (0, prisma_retry_util_1.avecRetrySerialisable)(this.prisma, async (tx) => {
             const ecritures = [];
             for (const { dto, journal, date, dateValeur, sectionsParId } of controles) {
@@ -704,7 +690,7 @@ let EcritureService = EcritureService_1 = class EcritureService {
         }
         return ecriture;
     }
-    async modifier(tenantId, ecritureId, dto, options = {}) {
+    async modifier(tenantId, ecritureId, dto) {
         const ecriture = await this.trouverEnBrouillard(tenantId, ecritureId);
         await this.verifierAucunModuleNeLaTient(tenantId, [ecritureId], 'se modifie');
         const facture = await this.prisma.facture.findFirst({
@@ -724,17 +710,6 @@ let EcritureService = EcritureService_1 = class EcritureService {
             journalDeSituationAdmis: true,
             modesDejaPortes: modesPortesPar(ecriture.lignes),
         });
-        if (options.jugerLaCaisse && !(0, ecritures_de_situation_1.estJournalDeSituation)(ecriture.journal)) {
-            const lignes = dto.lignes ??
-                ecriture.lignes.map((l) => ({
-                    compteId: l.compteId,
-                    debit: Number(l.debit),
-                    credit: Number(l.credit),
-                    deviseId: l.deviseId,
-                    montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
-                }));
-            await (0, caisse_provisionnee_1.verifierCaisseProvisionnee)(this.prisma, tenantId, ecriture.exerciceId, [{ date, lignes }], ecritureId);
-        }
         const changeDeMois = ecriture.journal.numerotation === client_1.NumerotationPiece.MENSUELLE &&
             (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
         return (0, prisma_retry_util_1.avecRetrySerialisable)(this.prisma, async (tx) => {
@@ -1314,19 +1289,6 @@ let EcritureService = EcritureService_1 = class EcritureService {
             for (const groupe of parEcriture.values()) {
                 await this.exerciceService.verifierEcritureAutorisee(tenantId, groupe[0].ecriture.journalId, date);
             }
-        }
-        if (cible.numero.startsWith(caisse_provisionnee_1.RACINE_CAISSE)) {
-            const versLaCaisse = (l) => ({
-                compteId: cible.id,
-                debit: Number(l.debit),
-                credit: Number(l.credit),
-                deviseId: l.deviseId ?? null,
-                montantDevise: l.montantDevise == null ? null : Number(l.montantDevise),
-            });
-            await this.verifierCaisseProvisionnee(tenantId, exercice.id, [
-                ...auBrouillard.map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
-                ...(validees.length ? [{ date, lignes: validees.map(versLaCaisse) }] : []),
-            ]);
         }
         if (options.simuler)
             return { auBrouillard: auBrouillard.length, validees: validees.length, ecrituresPassees: [] };

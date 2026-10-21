@@ -123,10 +123,10 @@ export declare class DegressifController {
         amortissementExceptionnel: boolean;
     }>;
     passer(user: AuthenticatedUser, id: string, dto: PasserDerogatoireDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         exerciceId: string;
         ecritureId: string | null;
         immobilisationId: string;
@@ -137,10 +137,10 @@ export declare class DegressifController {
         excedentAReintegrer: import("@prisma/client/runtime/library").Decimal;
     }>;
     solder(user: AuthenticatedUser, id: string, dto: PasserDerogatoireDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureDerogatoire;
         exerciceId: string;
         ecritureId: string | null;
         immobilisationId: string;

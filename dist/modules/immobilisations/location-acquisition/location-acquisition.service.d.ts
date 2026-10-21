@@ -58,10 +58,10 @@ export declare class LocationAcquisitionService {
         journalId: string;
     }): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        tenantId: string;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         ecritureExtourneId: string | null;
         contratId: string;
@@ -71,10 +71,10 @@ export declare class LocationAcquisitionService {
         interetsCourus: Prisma.Decimal;
     }>;
     declarerGarantie(tenantId: string, contratId: string, appelee: boolean): Promise<{
-        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         createdBy: string;
         reference: string | null;
         immobilisationId: string;
@@ -109,10 +109,10 @@ export declare class LocationAcquisitionService {
         cessionCourante?: boolean;
         compteReserveEcartId?: string;
     }): Promise<{
-        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         createdBy: string;
         reference: string | null;
         immobilisationId: string;
@@ -147,9 +147,9 @@ export declare class LocationAcquisitionService {
             fiscal: string | null;
         } | null;
         dotations: {
-            montant: Prisma.Decimal;
             id: string;
             createdAt: Date;
+            montant: Prisma.Decimal;
             exerciceId: string;
             ecritureId: string;
             immobilisationId: string;
@@ -159,9 +159,9 @@ export declare class LocationAcquisitionService {
             montant: number;
         })[];
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutImmobilisation;
+        tenantId: string;
         compteImmobilisationId: string;
         compteAmortissementId: string;
         compteDotationId: string;
@@ -247,10 +247,10 @@ export declare class LocationAcquisitionService {
             dateSortie: string | null;
             motif: string;
         };
-        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        nature: import(".prisma/client").$Enums.NatureLocationAcquisition;
         createdBy: string;
         reference: string | null;
         immobilisationId: string;

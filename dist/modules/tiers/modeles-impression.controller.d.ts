@@ -6,20 +6,20 @@ export declare class ModelesImpressionController {
     constructor(modeles: ModelesImpressionService);
     lister(user: AuthenticatedUser): Promise<{
         nombreTiers: number;
-        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         id: string;
+        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         intitule: string;
         texte: string;
     }[]>;
     creer(user: AuthenticatedUser, dto: CreerModeleImpressionDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         id: string;
+        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         intitule: string;
         texte: string;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierModeleImpressionDto): Promise<{
-        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         id: string;
+        nature: import(".prisma/client").$Enums.NatureModeleImpression;
         intitule: string;
         texte: string;
     }>;

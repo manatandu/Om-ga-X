@@ -7,11 +7,11 @@ export declare class DocumentsTiersController {
     private readonly documents;
     constructor(documents: DocumentsTiersService);
     lister(user: AuthenticatedUser, tiersId: string): Promise<{
+        id: string;
+        createdAt: Date;
         nomFichier: string;
         commentaire: string | null;
         empreinte: string;
-        id: string;
-        createdAt: Date;
         tiersId: string;
         typeMime: string;
         taille: number;
@@ -21,11 +21,11 @@ export declare class DocumentsTiersController {
         originalname: string;
         buffer: Buffer;
     } | undefined, dto: DeposerDocumentDto): Promise<{
+        id: string;
+        createdAt: Date;
         nomFichier: string;
         commentaire: string | null;
         empreinte: string;
-        id: string;
-        createdAt: Date;
         tiersId: string;
         typeMime: string;
         taille: number;
@@ -33,11 +33,11 @@ export declare class DocumentsTiersController {
     }>;
     telecharger(user: AuthenticatedUser, id: string, res: Response): Promise<void>;
     modifier(user: AuthenticatedUser, id: string, dto: CommentaireDocumentDto): Promise<{
+        id: string;
+        createdAt: Date;
         nomFichier: string;
         commentaire: string | null;
         empreinte: string;
-        id: string;
-        createdAt: Date;
         tiersId: string;
         typeMime: string;
         taille: number;

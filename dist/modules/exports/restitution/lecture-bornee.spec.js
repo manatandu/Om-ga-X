@@ -12,7 +12,7 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     it('compte exactement les modèles du schéma, Tenant mis à part', () => {
         const schema = (0, node_fs_1.readFileSync)((0, node_path_1.join)(RACINE, 'prisma/schema.prisma'), 'utf8');
         const modeles = [...schema.matchAll(/^model (\w+) \{/gm)].map(([, n]) => n);
-        expect(modeles).toHaveLength(184);
+        expect(modeles).toHaveLength(182);
         expect([...tables_restitution_1.TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in modeles_cloisonnes_1.MODELES_HORS_DOSSIER)).sort());
         for (const m of Object.keys(modeles_cloisonnes_1.MODELES_HORS_DOSSIER)) {
             expect(modeles).toContain(m);

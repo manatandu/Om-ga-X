@@ -65,9 +65,6 @@ let TenantController = class TenantController {
     async modifierDoubleRegard(user, dto) {
         return this.tenantService.modifierDoubleRegard(user.tenantId, dto.doubleRegardValidation);
     }
-    async modifierVisaRibs(user, dto) {
-        return this.tenantService.modifierVisaRibs(user.tenantId, dto.visaRibs);
-    }
     async modifierCreationCompteEnSaisie(user, dto) {
         return this.tenantService.modifierCreationCompteEnSaisie(user.tenantId, dto.creationCompteEnSaisie);
     }
@@ -195,15 +192,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, parametres_dossier_dto_1.ModifierDoubleRegardDto]),
     __metadata("design:returntype", Promise)
 ], TenantController.prototype, "modifierDoubleRegard", null);
-__decorate([
-    (0, common_1.Patch)('visa-ribs'),
-    (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
-    __param(1, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, parametres_dossier_dto_1.ModifierVisaRibsDto]),
-    __metadata("design:returntype", Promise)
-], TenantController.prototype, "modifierVisaRibs", null);
 __decorate([
     (0, common_1.Patch)('creation-compte-en-saisie'),
     (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET),

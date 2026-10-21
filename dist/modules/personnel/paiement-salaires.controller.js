@@ -32,19 +32,16 @@ let PaiementSalairesController = class PaiementSalairesController {
         this.paiements = paiements;
     }
     lire(user, salarieId) {
-        return this.ribs.lire(user.tenantId, salarieId, user.userId);
+        return this.ribs.lire(user.tenantId, salarieId);
     }
     definirMode(user, salarieId, dto) {
-        return this.ribs.definirMode(user.tenantId, salarieId, dto.modePaiement, user.userId);
+        return this.ribs.definirMode(user.tenantId, salarieId, dto.modePaiement);
     }
     creerRib(user, salarieId, dto) {
-        return this.ribs.creer(user.tenantId, salarieId, dto, user.userId);
+        return this.ribs.creer(user.tenantId, salarieId, dto);
     }
     modifierRib(user, id, dto) {
-        return this.ribs.modifier(user.tenantId, id, dto, user.userId);
-    }
-    viserRib(user, id, dto) {
-        return this.ribs.viser(user.tenantId, id, user.userId, dto.saisiLeLu);
+        return this.ribs.modifier(user.tenantId, id, dto);
     }
     supprimerRib(user, id) {
         return this.ribs.supprimer(user.tenantId, id);
@@ -99,17 +96,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, ribs_tiers_dto_1.RibTiersDto]),
     __metadata("design:returntype", void 0)
 ], PaiementSalairesController.prototype, "modifierRib", null);
-__decorate([
-    (0, common_1.Post)('ribs-salaries/:id/viser'),
-    (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET, client_1.RoleUtilisateur.COMPTABLE),
-    (0, acces_roles_cantonnes_decorator_1.ReserveAuComptable)(),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
-    __param(1, (0, common_1.Param)('id')),
-    __param(2, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, ribs_tiers_dto_1.VisaRibDto]),
-    __metadata("design:returntype", void 0)
-], PaiementSalairesController.prototype, "viserRib", null);
 __decorate([
     (0, common_1.Delete)('ribs-salaries/:id'),
     (0, roles_decorator_1.Roles)(client_1.RoleUtilisateur.ADMIN_CABINET),

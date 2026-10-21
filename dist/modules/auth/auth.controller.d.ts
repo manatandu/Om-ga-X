@@ -28,8 +28,8 @@ export declare class AuthController {
             numeroImpot: string | null;
         };
         exercice: {
-            id: string;
             tenantId: string;
+            id: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
             dateFin: Date;

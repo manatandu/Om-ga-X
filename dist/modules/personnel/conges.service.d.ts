@@ -35,9 +35,9 @@ export declare class CongesService {
     constructor(prisma: PrismaService);
     compteur(tenantId: string, salarieId: string, aLaBrut?: string): Promise<{
         aLa: string;
-        compteur: {
+        compteur: import("./conges-acquis").CompteurConges | {
             refus: string;
-        } | import("./conges-acquis").CompteurConges;
+        };
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -105,9 +105,9 @@ export declare class CongesService {
     }>;
     declarerReprise(tenantId: string, userEmail: string, salarieId: string, dto: RepriseCongesDto): Promise<{
         aLa: string;
-        compteur: {
+        compteur: import("./conges-acquis").CompteurConges | {
             refus: string;
-        } | import("./conges-acquis").CompteurConges;
+        };
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -157,9 +157,9 @@ export declare class CongesService {
     creerConge(tenantId: string, userEmail: string, salarieId: string, dto: CongeSalarieDto): Promise<{
         avertissements: string[];
         aLa: string;
-        compteur: {
+        compteur: import("./conges-acquis").CompteurConges | {
             refus: string;
-        } | import("./conges-acquis").CompteurConges;
+        };
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;
@@ -211,9 +211,9 @@ export declare class CongesService {
     private verifierAllocation;
     modifierAllocation(tenantId: string, id: string, dto: AllocationCongeDto): Promise<{
         aLa: string;
-        compteur: {
+        compteur: import("./conges-acquis").CompteurConges | {
             refus: string;
-        } | import("./conges-acquis").CompteurConges;
+        };
         reprise: {
             arreteAu: string;
             joursNesNonPris: number;

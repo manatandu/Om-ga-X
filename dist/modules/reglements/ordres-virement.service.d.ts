@@ -33,16 +33,15 @@ export declare class OrdresVirementService {
         id: string;
         nomComplet: string;
     }[]): Promise<PreparationOrdre>;
-    private exigeLeVisa;
     private donneurDuJournal;
     creer(tenantId: string, email: string, journalId: string, date: string, preparation: PreparationOrdre, lignes: LigneAOrdonner[]): Promise<{
-        total: Prisma.Decimal;
         id: string;
+        total: Prisma.Decimal;
         numero: number;
     }>;
     creerDans(tx: Prisma.TransactionClient, tenantId: string, email: string, journalId: string, date: string, preparation: PreparationOrdre, lignes: LigneAOrdonner[]): Promise<{
-        total: Prisma.Decimal;
         id: string;
+        total: Prisma.Decimal;
         numero: number;
     }>;
     lister(tenantId: string, statut?: StatutOrdreVirement, personnelOuvert?: boolean): Promise<{
@@ -55,11 +54,11 @@ export declare class OrdresVirementService {
                 lignes: number;
             };
         } & {
-            total: Prisma.Decimal;
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutOrdreVirement;
+            tenantId: string;
+            total: Prisma.Decimal;
             numero: number;
             journalId: string;
             date: Date;
@@ -85,11 +84,11 @@ export declare class OrdresVirementService {
             code: string;
         };
         lignes: {
-            montant: Prisma.Decimal;
-            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
+            montant: Prisma.Decimal;
+            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -101,11 +100,11 @@ export declare class OrdresVirementService {
             imputationDeclaree: string | null;
         }[];
     } & {
-        total: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
+        tenantId: string;
+        total: Prisma.Decimal;
         numero: number;
         journalId: string;
         date: Date;
@@ -126,11 +125,11 @@ export declare class OrdresVirementService {
             code: string;
         };
         lignes: {
-            montant: Prisma.Decimal;
-            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
+            montant: Prisma.Decimal;
+            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -142,11 +141,11 @@ export declare class OrdresVirementService {
             imputationDeclaree: string | null;
         }[];
     } & {
-        total: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
+        tenantId: string;
+        total: Prisma.Decimal;
         numero: number;
         journalId: string;
         date: Date;
@@ -183,11 +182,11 @@ export declare class OrdresVirementService {
             code: string;
         };
         lignes: {
-            montant: Prisma.Decimal;
-            codeBic: string | null;
             banque: string;
             id: string;
             tenantId: string;
+            montant: Prisma.Decimal;
+            codeBic: string | null;
             tiersId: string | null;
             reference: string | null;
             ecritureId: string | null;
@@ -199,11 +198,11 @@ export declare class OrdresVirementService {
             imputationDeclaree: string | null;
         }[];
     } & {
-        total: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutOrdreVirement;
+        tenantId: string;
+        total: Prisma.Decimal;
         numero: number;
         journalId: string;
         date: Date;

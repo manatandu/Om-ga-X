@@ -37,9 +37,9 @@ export declare class ExerciceService {
     private refuserBilanDesequilibre;
     creerExerciceCourant(tenantId: string, client?: Prisma.TransactionClient): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -58,9 +58,9 @@ export declare class ExerciceService {
     }>;
     lister(tenantId: string): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -79,9 +79,9 @@ export declare class ExerciceService {
     }[]>;
     creer(tenantId: string, dto: CreerExerciceDto, client?: Prisma.TransactionClient): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -131,9 +131,9 @@ export declare class ExerciceService {
     }>;
     arreterComptes(tenantId: string, exerciceId: string, dto: ArreterComptesDto): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -152,9 +152,9 @@ export declare class ExerciceService {
     }>;
     declarerFicheR2(tenantId: string, exerciceId: string, dto: FicheR2Dto): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -173,9 +173,9 @@ export declare class ExerciceService {
     }>;
     declarerDatesPortefeuille(tenantId: string, exerciceId: string, dto: DatesPortefeuilleDto): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -199,9 +199,9 @@ export declare class ExerciceService {
     }): Promise<{
         exercice: {
             id: string;
-            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
+            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -233,9 +233,9 @@ export declare class ExerciceService {
         cloturesRattachees: number;
         exercice: {
             id: string;
-            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
+            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -266,9 +266,9 @@ export declare class ExerciceService {
     }): Promise<{
         exercice: {
             id: string;
-            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
+            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -297,9 +297,9 @@ export declare class ExerciceService {
         cloturesRattachees: number;
         exercice: {
             id: string;
-            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
+            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -319,9 +319,9 @@ export declare class ExerciceService {
         exerciceDeLiquidation: null;
         exerciceSuivant: {
             id: string;
-            tenantId: string;
             statut: import(".prisma/client").$Enums.StatutExercice;
             dateDebut: Date;
+            tenantId: string;
             dateFin: Date;
             dateArreteComptes: Date | null;
             motifOuvertureSuivanteConservee: string | null;
@@ -347,9 +347,9 @@ export declare class ExerciceService {
         actesRetires: string[];
         relevesARevoir: string[];
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -368,9 +368,9 @@ export declare class ExerciceService {
     }>;
     modifierFinDeLiquidation(tenantId: string, exerciceId: string, dto: FinLiquidationDto): Promise<{
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -390,11 +390,11 @@ export declare class ExerciceService {
     private trouverExercice;
     clorePartielle(tenantId: string, exerciceId: string, userId: string, dto: ClorePartielleDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -403,11 +403,11 @@ export declare class ExerciceService {
     }>;
     cloreTotale(tenantId: string, exerciceId: string, userId: string, dto: CloreTotaleDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -416,11 +416,11 @@ export declare class ExerciceService {
     }>;
     clorePeriode(tenantId: string, exerciceId: string, userId: string, dto: ClorePeriodeDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -430,11 +430,11 @@ export declare class ExerciceService {
     private refuserSiNonImprime;
     listerClotures(tenantId: string, exerciceId: string): Promise<({
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -443,11 +443,11 @@ export declare class ExerciceService {
         } | null;
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -456,11 +456,11 @@ export declare class ExerciceService {
     })[]>;
     annulerCloture(tenantId: string, clotureId: string, userId: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -473,11 +473,11 @@ export declare class ExerciceService {
     verifierEcritureAutorisee(tenantId: string, journalId: string, date: Date): Promise<void>;
     cloturesApplicables(tenantId: string, journalId: string, db?: Prisma.TransactionClient): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        exerciceId: string;
         journalId: string | null;
         createdBy: string;
-        exerciceId: string;
         granularite: import(".prisma/client").$Enums.GranulariteCloture;
         dateLimite: Date;
         annulable: boolean;
@@ -495,9 +495,9 @@ export declare class ExerciceService {
         } | null;
         issueOuverture: string[];
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;
@@ -524,9 +524,9 @@ export declare class ExerciceService {
             compte: string;
         } | null;
         id: string;
-        tenantId: string;
         statut: import(".prisma/client").$Enums.StatutExercice;
         dateDebut: Date;
+        tenantId: string;
         dateFin: Date;
         dateArreteComptes: Date | null;
         motifOuvertureSuivanteConservee: string | null;

@@ -24,8 +24,8 @@ export declare class MagasinController {
     }>;
     creerArticle(user: AuthenticatedUser, dto: CreerArticleStockDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
         updatedAt: Date;
         code: string;
         createdBy: string;
@@ -78,10 +78,11 @@ export declare class MagasinController {
         refus: import("./valorisation-stocks").RefusValorisation[];
     }>;
     enregistrerMouvement(user: AuthenticatedUser, articleId: string, dto: EnregistrerMouvementStockDto): Promise<{
-        piece: string;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        piece: string;
+        libelle: string | null;
         ordre: number;
         createdBy: string;
         date: Date;
@@ -89,7 +90,6 @@ export declare class MagasinController {
         annulePar: string | null;
         motifAnnulation: string | null;
         ecritureId: string | null;
-        libelle: string | null;
         sens: import(".prisma/client").$Enums.SensMouvementStock;
         articleId: string;
         quantite: import("@prisma/client/runtime/library").Decimal;
@@ -120,11 +120,11 @@ export declare class MagasinController {
     }>;
     enregistrerRegularisation(user: AuthenticatedUser, dto: EnregistrerRegularisationInventaireDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -133,9 +133,9 @@ export declare class MagasinController {
         };
         lignes: {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -153,17 +153,17 @@ export declare class MagasinController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;

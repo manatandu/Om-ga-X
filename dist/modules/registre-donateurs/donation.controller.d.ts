@@ -7,18 +7,18 @@ export declare class DonationController {
     lister(user: AuthenticatedUser, filtre: FiltreRegistreDto): Promise<({
         ecriture: {
             id: string;
+            libelle: string;
             date: Date;
             numeroPiece: number | null;
-            libelle: string;
         } | null;
     } & {
+        id: string;
         nom: string | null;
+        createdAt: Date;
+        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -85,13 +85,13 @@ export declare class DonationController {
         };
     }>;
     inscrire(user: AuthenticatedUser, dto: InscrireDonationDto): Promise<{
+        id: string;
         nom: string | null;
+        createdAt: Date;
+        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -114,13 +114,13 @@ export declare class DonationController {
         montant: number;
     }>;
     modifier(user: AuthenticatedUser, id: string, dto: ModifierDonationDto): Promise<{
+        id: string;
         nom: string | null;
+        createdAt: Date;
+        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -143,13 +143,13 @@ export declare class DonationController {
         montant: number;
     }>;
     signer(user: AuthenticatedUser, id: string, dto: SignerDonationDto): Promise<{
+        id: string;
         nom: string | null;
+        createdAt: Date;
+        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;
@@ -172,13 +172,13 @@ export declare class DonationController {
         montant: number;
     }>;
     annuler(user: AuthenticatedUser, id: string, dto: AnnulerDonationDto): Promise<{
+        id: string;
         nom: string | null;
+        createdAt: Date;
+        tenantId: string;
         prenoms: string | null;
         nature: import(".prisma/client").$Enums.NatureLiberalite;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         numero: number;
         createdBy: string;
         motifAnnulation: string | null;

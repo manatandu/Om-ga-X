@@ -6,13 +6,13 @@ export declare class SubventionRattacheeController {
     constructor(service: SubventionRattacheeService);
     lister(user: AuthenticatedUser, immobilisationId?: string): Promise<{
         subventions: {
-            montant: import("@prisma/client/runtime/library").Decimal;
             immobilisation: {
                 id: string;
                 designation: string;
                 numeroInventaire: string | null;
             };
             id: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             reference: string;
             dateOctroi: Date;
             dureeInalienabiliteAns: number | null;
@@ -23,10 +23,10 @@ export declare class SubventionRattacheeController {
                 intitule: string;
             };
             reductions: {
-                nature: import(".prisma/client").$Enums.NatureReductionSubvention;
-                montant: import("@prisma/client/runtime/library").Decimal;
                 id: string;
                 createdAt: Date;
+                nature: import(".prisma/client").$Enums.NatureReductionSubvention;
+                montant: import("@prisma/client/runtime/library").Decimal;
                 motif: string;
             }[];
         }[];
@@ -62,11 +62,11 @@ export declare class SubventionRattacheeController {
     }>;
     enregistrerOctroi(user: AuthenticatedUser, dto: OctroiSubventionDto): Promise<{
         journal: {
-            type: import(".prisma/client").$Enums.TypeJournal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            type: import(".prisma/client").$Enums.TypeJournal;
             estActif: boolean;
+            tenantId: string;
             intitule: string;
             code: string;
             compteTresorerieId: string | null;
@@ -75,9 +75,9 @@ export declare class SubventionRattacheeController {
         };
         lignes: {
             id: string;
+            libelle: string | null;
             modeReglementId: string | null;
             ecritureId: string;
-            libelle: string | null;
             compteId: string;
             ligneReleveId: string | null;
             debit: import("@prisma/client/runtime/library").Decimal;
@@ -95,17 +95,17 @@ export declare class SubventionRattacheeController {
         }[];
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutEcriture;
+        tenantId: string;
+        exerciceId: string;
+        libelle: string;
         journalId: string;
         createdBy: string;
         date: Date;
-        exerciceId: string;
         reference: string | null;
         numeroPiece: number | null;
         dateValeur: Date | null;
-        libelle: string;
         valideeAt: Date | null;
         valideeBy: string | null;
         secondRegardNom: string | null;
@@ -128,10 +128,10 @@ export declare class SubventionRattacheeController {
         aDesComposants: boolean;
     }>;
     rattacher(user: AuthenticatedUser, dto: RattacherSubventionDto): Promise<{
-        montant: import("@prisma/client/runtime/library").Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        montant: import("@prisma/client/runtime/library").Decimal;
         createdBy: string;
         reference: string;
         immobilisationId: string;
@@ -141,13 +141,13 @@ export declare class SubventionRattacheeController {
         motifSansVentilation: string | null;
     }[]>;
     reduire(user: AuthenticatedUser, id: string, dto: ReduireSubventionDto): Promise<{
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         nature: import(".prisma/client").$Enums.NatureReductionSubvention;
         montant: import("@prisma/client/runtime/library").Decimal;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
-        createdBy: string;
         exerciceId: string;
+        createdBy: string;
         ecritureId: string;
         motif: string;
         subventionId: string;

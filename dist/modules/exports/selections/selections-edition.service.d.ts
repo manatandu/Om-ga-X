@@ -7,8 +7,8 @@ export declare class SelectionsEditionService {
         selections: {
             creePar: string;
             journalIntrouvable: boolean;
-            nom: string;
             id: string;
+            nom: string;
             criteres: Prisma.JsonValue;
             edition: import(".prisma/client").$Enums.EditionSelection;
             creeLe: Date;
@@ -18,14 +18,14 @@ export declare class SelectionsEditionService {
         tronque: boolean;
     }>;
     creer(tenantId: string, userId: string, edition: EditionSelection, nomBrut: unknown, brut: unknown): Promise<{
-        nom: string;
         id: string;
+        nom: string;
         criteres: Prisma.JsonValue;
         edition: import(".prisma/client").$Enums.EditionSelection;
     }>;
     remplacer(tenantId: string, id: string, brut: unknown): Promise<{
-        nom: string;
         id: string;
+        nom: string;
         criteres: Prisma.JsonValue;
         edition: import(".prisma/client").$Enums.EditionSelection;
     }>;

@@ -37,19 +37,19 @@ export declare class AffectationService {
                     intitule: string;
                 };
             } & {
-                montant: Prisma.Decimal;
                 id: string;
+                montant: Prisma.Decimal;
                 libelle: string | null;
                 compteId: string;
                 affectationId: string;
             })[];
         } & {
-            montant: Prisma.Decimal;
             id: string;
-            tenantId: string;
             createdAt: Date;
-            createdBy: string;
+            tenantId: string;
+            montant: Prisma.Decimal;
             exerciceId: string;
+            createdBy: string;
             dateDecision: Date;
             organe: string;
             reference: string | null;
@@ -75,19 +75,19 @@ export declare class AffectationService {
                 intitule: string;
             };
         } & {
-            montant: Prisma.Decimal;
             id: string;
+            montant: Prisma.Decimal;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
     } & {
-        montant: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        tenantId: string;
+        montant: Prisma.Decimal;
         exerciceId: string;
+        createdBy: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;
@@ -108,18 +108,18 @@ export declare class AffectationService {
                 intitule: string;
             };
         } & {
-            montant: Prisma.Decimal;
             id: string;
+            montant: Prisma.Decimal;
             libelle: string | null;
             compteId: string;
             affectationId: string;
         })[];
-        montant: Prisma.Decimal;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        createdBy: string;
+        tenantId: string;
+        montant: Prisma.Decimal;
         exerciceId: string;
+        createdBy: string;
         dateDecision: Date;
         organe: string;
         reference: string | null;

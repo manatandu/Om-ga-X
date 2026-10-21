@@ -29,22 +29,22 @@ export declare class AbonnementsService {
     formules(): Promise<{
         prixMensuelUsd: number | null;
         prixAnnuelUsd: number | null;
-        contenu: string | null;
-        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
         id: string;
-        code: string;
+        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
         libelle: string;
+        code: string;
         actif: boolean;
+        contenu: string | null;
     }[]>;
     fixerPrix(code: string, prixMensuelUsd: number | null, prixAnnuelUsd: number | null): Promise<{
         prixMensuelUsd: number | null;
         prixAnnuelUsd: number | null;
-        contenu: string | null;
-        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
         id: string;
-        code: string;
+        type: import(".prisma/client").$Enums.TypeFormuleAbonnement;
         libelle: string;
+        code: string;
         actif: boolean;
+        contenu: string | null;
     }[]>;
     private dossierEditeur;
     lister(): Promise<{
@@ -56,12 +56,12 @@ export declare class AbonnementsService {
             cabinetId: string;
             cabinet: string;
             formule: {
-                code: string;
                 libelle: string;
+                code: string;
             };
             options: {
-                code: string;
                 libelle: string;
+                code: string;
             }[];
             dossiersSupplementaires: number;
             periodicite: import(".prisma/client").$Enums.PeriodiciteFacturationEditeur;

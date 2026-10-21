@@ -6,30 +6,30 @@ export declare class RelancesController {
     private readonly relances;
     constructor(relances: RelancesService);
     listerNiveaux(user: AuthenticatedUser): Promise<{
-        type: import(".prisma/client").$Enums.TypeRelance;
         id: string;
-        tenantId: string;
+        type: import(".prisma/client").$Enums.TypeRelance;
         estActif: boolean;
+        tenantId: string;
         libelle: string;
         niveau: number;
         joursApresEcheance: number;
         modeleTexte: string;
     }[]>;
     creerNiveau(user: AuthenticatedUser, dto: CreerNiveauDto): Promise<{
-        type: import(".prisma/client").$Enums.TypeRelance;
         id: string;
-        tenantId: string;
+        type: import(".prisma/client").$Enums.TypeRelance;
         estActif: boolean;
+        tenantId: string;
         libelle: string;
         niveau: number;
         joursApresEcheance: number;
         modeleTexte: string;
     }>;
     modifierNiveau(user: AuthenticatedUser, id: string, dto: ModifierNiveauDto): Promise<{
-        type: import(".prisma/client").$Enums.TypeRelance;
         id: string;
-        tenantId: string;
+        type: import(".prisma/client").$Enums.TypeRelance;
         estActif: boolean;
+        tenantId: string;
         libelle: string;
         niveau: number;
         joursApresEcheance: number;
@@ -101,18 +101,18 @@ export declare class RelancesController {
         }[];
     }>;
     horsRelance(user: AuthenticatedUser, tiersId: string, dto: HorsRelanceDto): Promise<{
-        email: string | null;
-        nom: string;
-        type: import(".prisma/client").$Enums.TypeTiers;
         id: string;
-        tenantId: string;
+        nom: string;
         createdAt: Date;
         adresse: string | null;
         ville: string | null;
         pays: string | null;
         telephone: string | null;
+        email: string | null;
         numeroImpot: string | null;
+        type: import(".prisma/client").$Enums.TypeTiers;
         estActif: boolean;
+        tenantId: string;
         code: string;
         contact: string | null;
         boitePostale: string | null;
@@ -146,10 +146,10 @@ export declare class RelancesController {
                 niveau: number;
             };
         } & {
-            montant: import("@prisma/client/runtime/library").Decimal;
             id: string;
-            tenantId: string;
             createdAt: Date;
+            tenantId: string;
+            montant: import("@prisma/client/runtime/library").Decimal;
             createdBy: string;
             tiersId: string | null;
             compteId: string;

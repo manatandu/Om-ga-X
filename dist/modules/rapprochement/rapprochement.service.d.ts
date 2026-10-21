@@ -58,8 +58,8 @@ export declare class RapprochementService {
     lister(tenantId: string, compteId?: string): Promise<({
         compte: {
             id: string;
-            tenantId: string;
             estActif: boolean;
+            tenantId: string;
             numero: string;
             intitule: string;
             classe: import(".prisma/client").$Enums.ClasseCompte;
@@ -77,9 +77,9 @@ export declare class RapprochementService {
         };
     } & {
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
+        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -93,9 +93,9 @@ export declare class RapprochementService {
     })[]>;
     ouvrir(tenantId: string, userId: string, dto: OuvrirRapprochementDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
+        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -110,9 +110,9 @@ export declare class RapprochementService {
     obtenir(tenantId: string, id: string): Promise<{
         rapprochement: {
             id: string;
-            tenantId: string;
             createdAt: Date;
             statut: import(".prisma/client").$Enums.StatutRapprochement;
+            tenantId: string;
             createdBy: string;
             compteId: string;
             dateReleve: Date;
@@ -178,9 +178,9 @@ export declare class RapprochementService {
     private assurerPremierEnCours;
     declarerDepart(tenantId: string, id: string, dto: DeclarerDepartDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
+        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -194,11 +194,11 @@ export declare class RapprochementService {
     }>;
     declarerEncours(tenantId: string, userId: string, id: string, dto: DeclarerEncoursDto): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
+        tenantId: string;
+        libelle: string;
         createdBy: string;
         date: Date;
-        libelle: string;
         declareSurId: string;
         pointeSurId: string | null;
         ligneReleveId: string | null;
@@ -216,9 +216,9 @@ export declare class RapprochementService {
     }>;
     cloturer(tenantId: string, id: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
+        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;
@@ -235,9 +235,9 @@ export declare class RapprochementService {
     }>;
     rouvrir(tenantId: string, userId: string, id: string, motif: string): Promise<{
         id: string;
-        tenantId: string;
         createdAt: Date;
         statut: import(".prisma/client").$Enums.StatutRapprochement;
+        tenantId: string;
         createdBy: string;
         compteId: string;
         dateReleve: Date;

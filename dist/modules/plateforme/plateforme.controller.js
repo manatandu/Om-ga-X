@@ -20,16 +20,14 @@ const plateforme_service_1 = require("./plateforme.service");
 const licences_sur_site_service_1 = require("./licences-sur-site.service");
 const abonnements_service_1 = require("./abonnements/abonnements.service");
 const courriels_editeur_service_1 = require("./abonnements/courriels-editeur.service");
-const essais_echus_service_1 = require("./essais-echus/essais-echus.service");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 const plateforme_dto_1 = require("./dto/plateforme.dto");
 let PlateformeController = class PlateformeController {
-    constructor(plateformeService, licencesSurSite, abonnements, courriels, essaisEchus) {
+    constructor(plateformeService, licencesSurSite, abonnements, courriels) {
         this.plateformeService = plateformeService;
         this.licencesSurSite = licencesSurSite;
         this.abonnements = abonnements;
         this.courriels = courriels;
-        this.essaisEchus = essaisEchus;
     }
     formules() {
         return this.abonnements.formules();
@@ -87,15 +85,6 @@ let PlateformeController = class PlateformeController {
     }
     reinitialiserAdmin(tenantId, dto) {
         return this.plateformeService.reinitialiserAdmin(tenantId, dto);
-    }
-    listeEssaisEchus() {
-        return this.essaisEchus.lister();
-    }
-    envoyerRappelsEssaisEchus(operateur) {
-        return this.essaisEchus.envoyerRappels({ userId: operateur.userId, email: operateur.email });
-    }
-    supprimerEssaiEchu(tenantId, dto, operateur) {
-        return this.essaisEchus.supprimer(tenantId, { userId: operateur.userId, email: operateur.email }, dto.confirmation);
     }
 };
 exports.PlateformeController = PlateformeController;
@@ -240,35 +229,12 @@ __decorate([
     __metadata("design:paramtypes", [String, plateforme_dto_1.ReinitialiserAdminDto]),
     __metadata("design:returntype", void 0)
 ], PlateformeController.prototype, "reinitialiserAdmin", null);
-__decorate([
-    (0, common_1.Get)('essais-echus'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", void 0)
-], PlateformeController.prototype, "listeEssaisEchus", null);
-__decorate([
-    (0, common_1.Post)('essais-echus/rappels'),
-    __param(0, (0, current_user_decorator_1.CurrentUser)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], PlateformeController.prototype, "envoyerRappelsEssaisEchus", null);
-__decorate([
-    (0, common_1.Post)('essais-echus/:tenantId/supprimer'),
-    __param(0, (0, common_1.Param)('tenantId')),
-    __param(1, (0, common_1.Body)()),
-    __param(2, (0, current_user_decorator_1.CurrentUser)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, plateforme_dto_1.SupprimerEssaiEchuDto, Object]),
-    __metadata("design:returntype", void 0)
-], PlateformeController.prototype, "supprimerEssaiEchu", null);
 exports.PlateformeController = PlateformeController = __decorate([
     (0, common_1.Controller)('plateforme'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, operateur_plateforme_guard_1.OperateurPlateformeGuard),
     __metadata("design:paramtypes", [plateforme_service_1.PlateformeService,
         licences_sur_site_service_1.LicencesSurSiteService,
         abonnements_service_1.AbonnementsService,
-        courriels_editeur_service_1.CourrielsEditeurService,
-        essais_echus_service_1.EssaisEchusService])
+        courriels_editeur_service_1.CourrielsEditeurService])
 ], PlateformeController);
 //# sourceMappingURL=plateforme.controller.js.map

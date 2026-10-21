@@ -8,11 +8,15 @@ export declare class RibsSalariesService {
     private salarie;
     private trouver;
     private donnees;
-    lire(tenantId: string, salarieId: string, utilisateurId: string): Promise<{
+    lire(tenantId: string, salarieId: string): Promise<{
         modePaiement: import(".prisma/client").$Enums.ModePaiementSalaire | null;
         ribs: {
             coordonnees: string;
-            visa: import("../tiers/visa-rib").VisaPresente;
+            devise: string | null;
+            banque: string;
+            id: string;
+            createdAt: Date;
+            tenantId: string;
             commentaire: string | null;
             titulaire: string | null;
             codeBanque: string | null;
@@ -21,26 +25,21 @@ export declare class RibsSalariesService {
             cle: string | null;
             iban: string | null;
             codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
             estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
             salarieId: string;
         }[];
         total: number;
         tronque: boolean;
     }>;
-    definirMode(tenantId: string, salarieId: string, mode: ModePaiementSalaire | null | undefined, utilisateurId: string): Promise<{
+    definirMode(tenantId: string, salarieId: string, mode: ModePaiementSalaire | null | undefined): Promise<{
         modePaiement: import(".prisma/client").$Enums.ModePaiementSalaire | null;
         ribs: {
             coordonnees: string;
-            visa: import("../tiers/visa-rib").VisaPresente;
+            devise: string | null;
+            banque: string;
+            id: string;
+            createdAt: Date;
+            tenantId: string;
             commentaire: string | null;
             titulaire: string | null;
             codeBanque: string | null;
@@ -49,22 +48,18 @@ export declare class RibsSalariesService {
             cle: string | null;
             iban: string | null;
             codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
             estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
             salarieId: string;
         }[];
         total: number;
         tronque: boolean;
     }>;
-    creer(tenantId: string, salarieId: string, dto: RibTiersDto, utilisateurId: string): Promise<{
+    creer(tenantId: string, salarieId: string, dto: RibTiersDto): Promise<{
+        devise: string | null;
+        banque: string;
+        id: string;
+        createdAt: Date;
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -73,19 +68,15 @@ export declare class RibsSalariesService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
+        estPrincipal: boolean;
+        salarieId: string;
+    }>;
+    modifier(tenantId: string, id: string, dto: RibTiersDto): Promise<{
         devise: string | null;
         banque: string;
         id: string;
-        tenantId: string;
         createdAt: Date;
-        estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
-        salarieId: string;
-    }>;
-    modifier(tenantId: string, id: string, dto: RibTiersDto, utilisateurId: string): Promise<{
+        tenantId: string;
         commentaire: string | null;
         titulaire: string | null;
         codeBanque: string | null;
@@ -94,41 +85,8 @@ export declare class RibsSalariesService {
         cle: string | null;
         iban: string | null;
         codeBic: string | null;
-        devise: string | null;
-        banque: string;
-        id: string;
-        tenantId: string;
-        createdAt: Date;
         estPrincipal: boolean;
-        saisiPar: string | null;
-        saisiLe: Date | null;
-        visePar: string | null;
-        viseLe: Date | null;
         salarieId: string;
-    }>;
-    viser(tenantId: string, id: string, utilisateurId: string, saisiLeLu: string | null): Promise<{
-        rib: {
-            commentaire: string | null;
-            titulaire: string | null;
-            codeBanque: string | null;
-            codeGuichet: string | null;
-            numeroCompte: string | null;
-            cle: string | null;
-            iban: string | null;
-            codeBic: string | null;
-            devise: string | null;
-            banque: string;
-            id: string;
-            tenantId: string;
-            createdAt: Date;
-            estPrincipal: boolean;
-            saisiPar: string | null;
-            saisiLe: Date | null;
-            visePar: string | null;
-            viseLe: Date | null;
-            salarieId: string;
-        };
-        avertissement: string | null;
     }>;
     supprimer(tenantId: string, id: string): Promise<{
         supprime: boolean;

@@ -9,10 +9,10 @@ export declare class JournalAuditController {
         page: number;
         taille: number;
         evenements: {
-            rang: number;
-            empreinte: string;
             id: string;
             tenantId: string | null;
+            rang: number;
+            empreinte: string;
             entiteId: string | null;
             horodatage: Date;
             acteurId: string | null;

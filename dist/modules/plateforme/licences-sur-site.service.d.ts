@@ -18,9 +18,9 @@ export declare class LicencesSurSiteService {
         tronque: boolean;
         plafond: number;
         licences: {
-            titulaire: string;
             id: string;
             createdAt: Date;
+            titulaire: string;
             numero: string;
             empreinteMachine: string;
             emiseLe: string;

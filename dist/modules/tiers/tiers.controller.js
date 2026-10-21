@@ -52,7 +52,7 @@ let TiersController = class TiersController {
         return this.tiersService.modifier(user.tenantId, id, dto);
     }
     async fusionner(user, id, cibleId) {
-        return this.tiersService.fusionner(user.tenantId, id, cibleId, user.userId);
+        return this.tiersService.fusionner(user.tenantId, id, cibleId);
     }
     async supprimer(user, id) {
         return this.tiersService.supprimer(user.tenantId, id);
