@@ -2,7 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import { Prisma } from '@prisma/client';
 import { journaliserDansTransaction, transactionAuditee } from './contexte-audit';
-import { transactionJournalisee } from './transaction-journalisee';
+import { transactionJournalisee, CODE_SERVEUR_SATURE, estPoolEpuise } from './transaction-journalisee';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 /**
  * AUDIT FINAL F159 · toute transaction du serveur porte son journal d'audit.
@@ -103,5 +104,26 @@ describe('journaliserDansTransaction et la promesse paresseuse (ligne k6-defauts
   it('un rejet traverse, et une valeur simple est rendue telle quelle', async () => {
     await expect(journaliserDansTransaction({}, () => Promise.reject(new Error('boum')))).rejects.toThrow('boum');
     expect(journaliserDansTransaction({}, () => 7)).toBe(7);
+  });
+});
+
+describe('le pool épuisé est un 503 nommé (ligne k6-defauts, relecture M1)', () => {
+  const p2028 = (message: string) => new Prisma.PrismaClientKnownRequestError(message, { code: 'P2028', clientVersion: 'x' });
+
+  it('« Unable to start a transaction » devient un 503 au code SERVEUR_SATURE, en français', async () => {
+    const prisma = { $transaction: jest.fn(async () => { throw p2028('Transaction API error: Unable to start a transaction in the given time.'); }) };
+    const erreur = await transactionJournalisee(prisma as never, async () => 1).catch((e: unknown) => e);
+    expect(erreur).toBeInstanceOf(ServiceUnavailableException);
+    expect((erreur as ServiceUnavailableException).getResponse()).toEqual(
+      expect.objectContaining({ code: CODE_SERVEUR_SATURE, message: expect.stringMatching(/saturé/) }),
+    );
+  });
+
+  it('un autre P2028 (transaction expirée) et toute autre erreur traversent tels quels', async () => {
+    const expiree = p2028('Transaction API error: Transaction already closed');
+    expect(estPoolEpuise(expiree)).toBe(false);
+    await expect(transactionJournalisee({ $transaction: jest.fn(async () => { throw expiree; }) } as never, async () => 1)).rejects.toBe(expiree);
+    const autre = new Error('boum');
+    await expect(transactionJournalisee({ $transaction: jest.fn(async () => { throw autre; }) } as never, async () => 1)).rejects.toBe(autre);
   });
 });

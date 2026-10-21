@@ -1,5 +1,5 @@
 import { ActionAudit, Prisma, PrismaClient } from '@prisma/client';
-import { Logger } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { acteurCourant, ACTEUR_SYSTEME, transactionAuditee } from './contexte-audit';
 import { MODELES_AUDITES, colonnesExclues, masquer } from './champs-audites';
 import { calculerEmpreinte, EMPREINTE_ORIGINE } from './empreinte-audit';
@@ -269,6 +269,24 @@ function dossier(model: string, avant: unknown, apres: unknown, secours: string 
 /** Le client ÉTENDU, par lequel l'acte et son maillon partagent une transaction. */
 export type ClientEtendu = Parameters<typeof transactionJournalisee>[0];
 
+/** Attente du verrou du dossier par un acte audité hors transaction, en millisecondes · convention d'OmegaX, sous les cinq secondes de la transaction. */
+export const ATTENTE_VERROU_DOSSIER_MS = 3000;
+export const CODE_DOSSIER_OCCUPE = 'DOSSIER_OCCUPE';
+export const MESSAGE_DOSSIER_OCCUPE =
+  "Une autre opération tient ce dossier (clôture, validation ou lettrage par lot en cours) · rien n'a été enregistré, veuillez réessayer dans un instant.";
+
+/**
+ * L'attente d'un verrou qui a expiré (`lock_timeout`, état SQL 55P03), où
+ * qu'elle se loge · `$executeRaw` la rend en P2010 avec le code dans son
+ * message, une requête de modèle en erreur inconnue qui le porte aussi.
+ */
+export function estAttenteDeVerrouExpiree(erreur: unknown): boolean {
+  for (let e: unknown = erreur, n = 0; e && n < 5; e = (e as { cause?: unknown }).cause, n++) {
+    if (e instanceof Error && /55P03|lock timeout/i.test(e.message)) return true;
+  }
+  return false;
+}
+
 export async function intercepterEcriture(
   base: PrismaClient,
   contexte: {
@@ -300,12 +318,42 @@ export async function intercepterEcriture(
   // RIEN n'est fait et la requête tombe · l'utilisateur la rejoue, sans
   // doublon, puisque rien n'a été écrit. Sans client étendu (tests, appels
   // directs), l'ancien chemin reste, et consigne le maillon manqué.
+  //
+  // LE VERROU DU DOSSIER AVANT L'ACTE, ET BORNÉ (relecture TypeScript de la
+  // ligne, MAJEUR 1 et 2, reproduits sur vraie base). Le maillon prend le
+  // verrou consultatif du dossier (`ecrireMaillon`), tenu par toute
+  // transaction journalisée du dossier jusqu'à son commit · une clôture, une
+  // validation ou un lettrage par lot le tiennent longtemps. Rejoué dans sa
+  // transaction, l'acte court VERROUILLAIT D'ABORD SA LIGNE puis attendait ce
+  // verrou · (1) interblocage avec la transaction longue qui voulait ensuite
+  // la même ligne, et c'est la LONGUE que PostgreSQL tuait (40P01), tout son
+  // travail perdu ; (2) sans interblocage, l'attente dépassait les cinq
+  // secondes de la transaction et rendait un 500 qui accusait le maillon.
+  // Le verrou se prend donc AVANT l'acte (ordre verrou → lignes, le même que
+  // toute transaction journalisée · plus de cycle court/long), et son attente
+  // est bornée (`SET LOCAL lock_timeout`) · passé ce délai, la transaction
+  // est annulée, rien n'est écrit, et le refus est un 409 NOMMÉ au code
+  // `DOSSIER_OCCUPE`, que l'interface rejoue sur les routes qui le demandent
+  // (`reprise-conflit.ts`). La clé est celle du maillon quand le dossier de
+  // l'acte est celui de l'acteur (le cas de toute requête d'un cabinet) ; un
+  // opérateur qui agit sur un autre dossier prend les deux, et le délai
+  // borne ce que l'ordre ne garantit plus.
   const client = etendu?.();
   if (client && !transactionAuditee()) {
     const propriete = model.charAt(0).toLowerCase() + model.slice(1);
-    return transactionJournalisee(client, (tx) =>
-      (tx as unknown as Record<string, Record<string, (x: unknown) => Promise<unknown>>>)[propriete][operation](args),
-    );
+    const cle = acteurCourant()?.tenantId ?? 'plateforme';
+    return transactionJournalisee(client, async (tx) => {
+      // `SET` ne prend aucun paramètre lié · la valeur est un entier CONSTANT
+      // du module, jamais une donnée, d'où `Prisma.raw` sans danger.
+      await tx.$executeRaw(Prisma.sql`SET LOCAL lock_timeout = ${Prisma.raw(String(ATTENTE_VERROU_DOSSIER_MS))}`);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cle}))`;
+      return (tx as unknown as Record<string, Record<string, (x: unknown) => Promise<unknown>>>)[propriete][operation](args);
+    }).catch((erreur: unknown) => {
+      if (estAttenteDeVerrouExpiree(erreur)) {
+        throw new ConflictException({ message: MESSAGE_DOSSIER_OCCUPE, code: CODE_DOSSIER_OCCUPE });
+      }
+      throw erreur;
+    });
   }
 
   const a = args as { where?: Record<string, unknown>; data?: unknown };

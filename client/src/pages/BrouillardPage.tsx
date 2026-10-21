@@ -313,7 +313,7 @@ export function BrouillardPage() {
         ...corpsModification(edition),
         ...(confirmerComptesEnSommeil ? { confirmerComptesEnSommeil: true } : {}),
       };
-      await api.patch(`/ecritures/${edition.id}`, corps);
+      await api.patch(`/ecritures/${edition.id}`, corps, { rejouerConflit: true });
       setEdition(null);
       setInfo('Écriture du brouillard modifiée.');
       await charger();

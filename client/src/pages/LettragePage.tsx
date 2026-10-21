@@ -234,6 +234,7 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
         const r = await api.post<{ lettre: string; statut: string; solde: number; nombreLignes: number }>(
           `/comptes/${compteId}/lettrage/${completerId}/completer`,
           { ligneIds: [...selection] },
+          { rejouerConflit: true },
         );
         return r.statut === 'SOLDE'
           ? `Lettrage ${r.lettre} soldé · ${r.nombreLignes} ligne(s).`
@@ -242,6 +243,7 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
       const r = await api.post<{ lettre: string; statut: string; solde: number; ecartChange: number | null; nombreLignes: number }>(
         `/comptes/${compteId}/lettrage`,
         { ligneIds: [...selection], autoriserPartiel, ...(lettreChoisie.trim() ? { lettre: lettreChoisie.trim().toUpperCase() } : {}) },
+        { rejouerConflit: true },
       );
       setLettreChoisie('');
       const change = r.ecartChange !== null && r.ecartChange !== 0

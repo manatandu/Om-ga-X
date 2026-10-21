@@ -1,5 +1,30 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { journaliserDansTransaction } from './contexte-audit';
+
+/**
+ * LE POOL ÉPUISÉ EST UN 503 NOMMÉ, JAMAIS UN 500 BRUT (relecture « échecs
+ * silencieux » de la ligne k6-defauts, M1). Sous saturation, Prisma ne peut
+ * pas ouvrir la transaction dans son délai (`P2028`, « Unable to start a
+ * transaction in the given time ») · rien n'a commencé, donc rien n'est
+ * écrit par cette transaction, et le message anglais de Prisma partait tel
+ * quel à l'écran, compté par Sentry comme une panne. Le refus dit ce qu'il
+ * est, porte un code que l'interface peut rejouer comme le 409 de
+ * sérialisation (`reprise-conflit.ts`, sur les seules routes à une
+ * transaction), et reste un 5xx · l'écran le lit comme une issue incertaine
+ * de la REQUÊTE, qui a pu commettre une transaction antérieure.
+ */
+export const CODE_SERVEUR_SATURE = 'SERVEUR_SATURE';
+export const MESSAGE_SERVEUR_SATURE =
+  "Le serveur est saturé · cette opération n'a pas été enregistrée, veuillez réessayer dans un instant.";
+
+export function estPoolEpuise(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === 'P2028' &&
+    /Unable to start a transaction/i.test(err.message)
+  );
+}
 
 /**
  * LA SEULE PORTE D'UNE TRANSACTION (audit final F159).
@@ -35,5 +60,9 @@ export function transactionJournalisee<T>(
   options?: OptionsTransaction,
 ): Promise<T> {
   const acte = (tx: Prisma.TransactionClient) => journaliserDansTransaction(tx, () => fn(tx));
-  return options === undefined ? prisma.$transaction(acte) : prisma.$transaction(acte, options);
+  const transaction = options === undefined ? prisma.$transaction(acte) : prisma.$transaction(acte, options);
+  return transaction.catch((err: unknown) => {
+    if (estPoolEpuise(err)) throw new ServiceUnavailableException({ message: MESSAGE_SERVEUR_SATURE, code: CODE_SERVEUR_SATURE });
+    throw err;
+  });
 }

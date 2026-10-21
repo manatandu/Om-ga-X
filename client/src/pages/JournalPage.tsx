@@ -588,7 +588,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     setErreur(null);
     setCorrectionEnCours(true);
     try {
-      await api.post(`/ecritures/${aCorriger.id}/correction`, { motifCorrection: motif });
+      await api.post(`/ecritures/${aCorriger.id}/correction`, { motifCorrection: motif }, { rejouerConflit: true });
       setACorriger(null);
       charger();
     } catch (e) {

@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { preImageIllisible } from './pre-image';
 import { calculerEmpreinte, EMPREINTE_ORIGINE, ContenuEmpreinte } from './empreinte-audit';
@@ -776,6 +777,50 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
       expect(maillons).toHaveLength(1);
       expect(maillons[0]).toMatchObject({ entite: 'Journal', avant: { intitule: 'Avant' }, apres: { intitule: 'Après' } });
       expect(base.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('le verrou du dossier se prend AVANT l’acte, borné, sur la clé de l’acteur (relecture TypeScript, MAJEUR 1 et 2)', async () => {
+      const { etendu, tx, base, query } = etenduFactice();
+      const ordre: string[] = [];
+      // Un appel en gabarit (`$executeRaw\`…\``) reçoit les morceaux puis les
+      // valeurs ; un appel par `Prisma.sql` reçoit l'objet et son `sql`.
+      const texteDe = (q: any) => (Array.isArray(q) ? q.join('?') : String(q?.sql ?? q));
+      tx.$executeRaw.mockImplementation(async (q: any) => {
+        ordre.push(texteDe(q));
+        return 1;
+      });
+      tx.journal.update.mockImplementation((args: unknown) => {
+        ordre.push('acte');
+        return intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query });
+      });
+      await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never),
+      );
+      expect(ordre[0]).toMatch(/SET LOCAL lock_timeout = 3000/);
+      expect(ordre[1]).toMatch(/pg_advisory_xact_lock/);
+      expect(ordre.indexOf('acte')).toBe(2);
+      // La clé du verrou est le dossier de l'acteur, celle que le maillon reprendra.
+      expect(tx.$executeRaw.mock.calls[1].slice(1)).toEqual(['d-1']);
+    });
+
+    it('un verrou du dossier qui expire rend un 409 nommé DOSSIER_OCCUPE, rien n’est écrit', async () => {
+      const { etendu, tx, base, query } = etenduFactice();
+      tx.$executeRaw.mockImplementation(async (q: any) => {
+        if (/pg_advisory_xact_lock/.test(Array.isArray(q) ? q.join('?') : String(q?.sql ?? q))) {
+          throw new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `55P03`. Message: `canceling statement due to lock timeout`', {
+            code: 'P2010',
+            clientVersion: 'x',
+          });
+        }
+        return 1;
+      });
+      const erreur = await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never),
+      ).catch((e: unknown) => e);
+      expect(erreur).toBeInstanceOf(ConflictException);
+      expect((erreur as ConflictException).getResponse()).toEqual(expect.objectContaining({ code: 'DOSSIER_OCCUPE' }));
+      expect(query).not.toHaveBeenCalled();
+      expect(tx.journal.update).not.toHaveBeenCalled();
     });
 
     it('le maillon qui ne peut pas s’écrire fait tomber l’acte avec lui · jamais un acte sans sa trace', async () => {

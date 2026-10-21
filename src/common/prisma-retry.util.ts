@@ -16,6 +16,14 @@ const CODE_CONFLIT_TRANSACTION = 'P2034';
  * cumulée avant le 409, que l'interface rejoue encore (`reprise-conflit.ts`).
  */
 export const TENTATIVES_MAX = 8;
+/**
+ * LE 409 À BOUT DE TENTATIVES PORTE UN CODE (relecture « échecs silencieux »
+ * de la ligne k6-defauts, B1 et M4). L'interface ne rejoue que le refus qui
+ * porte ce code, sur les seules routes dont elle sait qu'elles tiennent dans
+ * UNE transaction · elle le reconnaissait à son texte (« au même instant »),
+ * qu'un 409 à effet déjà commis aurait pu porter un jour sans le vouloir.
+ */
+export const CODE_CONFLIT_SERIALISATION = 'CONFLIT_SERIALISATION';
 export const DELAI_REPRISE_BASE_MS = 20;
 export const DELAI_REPRISE_ALEATOIRE_MS = 40;
 
@@ -33,6 +41,13 @@ export function delaiDeReprise(tentative: number, aleatoire: () => number = Math
  */
 export function estConflitDeSerialisation(err: unknown): boolean {
   for (let e: unknown = err, n = 0; e && n < 5; e = (e as { cause?: unknown }).cause, n++) {
+    // UN INTERBLOCAGE SE REJOUE COMME UN CONFLIT (relecture TypeScript de la
+    // ligne k6-defauts, MAJEUR 2) · PostgreSQL annule la transaction victime
+    // (40P01), et Prisma la rend en erreur INCONNUE quand la requête tuée est
+    // une requête de modèle dans la transaction interactive, jamais en P2034 ·
+    // une clôture ou un lettrage automatique tués par une modification
+    // concurrente finissaient en 500 après tout leur travail, au lieu de repartir.
+    if (e instanceof Prisma.PrismaClientUnknownRequestError && /40P01|deadlock detected/i.test(e.message)) return true;
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === CODE_CONFLIT_TRANSACTION) return true;
       if (e.code === 'P2010' && (e.meta as { code?: string } | undefined)?.code === '40001') return true;
@@ -101,7 +116,7 @@ export async function avecRetrySerialisable<T>(
     } catch (err) {
       const estConflit = estConflitDeSerialisation(err);
       if (!estConflit) throw err;
-      if (tentative === TENTATIVES_MAX) throw new ConflictException(messageConflit);
+      if (tentative === TENTATIVES_MAX) throw new ConflictException({ message: messageConflit, code: CODE_CONFLIT_SERIALISATION });
       await attendre(delaiDeReprise(tentative));
     }
   }

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { avecRetrySerialisable, estConflitDeSerialisation, TENTATIVES_MAX, delaiDeReprise } from './prisma-retry.util';
+import { avecRetrySerialisable, estConflitDeSerialisation, TENTATIVES_MAX, delaiDeReprise, CODE_CONFLIT_SERIALISATION } from './prisma-retry.util';
+import { ConflictException } from '@nestjs/common';
 import { transactionAuditee } from './audit/contexte-audit';
 import { ErreurMaillonDansTransaction } from './audit/extension-audit';
 
@@ -70,6 +71,16 @@ describe('transaction sérialisable et journal d’audit', () => {
     expect(n).toBe(2);
   });
 
+  it('un interblocage (40P01) rendu en erreur INCONNUE est un conflit à rejouer (relecture TypeScript, MAJEUR 2)', () => {
+    const tuee = new Prisma.PrismaClientUnknownRequestError(
+      'ConnectorError(ConnectorError { kind: QueryError(PostgresError { code: "40P01", message: "deadlock detected" }) })',
+      { clientVersion: 'x' },
+    );
+    expect(estConflitDeSerialisation(tuee)).toBe(true);
+    expect(estConflitDeSerialisation(Object.assign(new Error('x'), { cause: tuee }))).toBe(true);
+    expect(estConflitDeSerialisation(new Prisma.PrismaClientUnknownRequestError('autre chose', { clientVersion: 'x' }))).toBe(false);
+  });
+
   it('une autre erreur brute n’est pas prise pour un conflit', () => {
     const autre = new Prisma.PrismaClientKnownRequestError('x', { code: 'P2010', clientVersion: 'x', meta: { code: '23505' } });
     expect(estConflitDeSerialisation(Object.assign(new Error('e'), { cause: autre }))).toBe(false);
@@ -88,5 +99,24 @@ describe('la reprise après conflit (ligne k6-defauts, test de charge § 4.4)', 
     let cumul = 0;
     for (let t = 1; t < TENTATIVES_MAX; t++) cumul += delaiDeReprise(t, () => 0.999);
     expect(cumul).toBeLessThan(2000);
+  });
+});
+
+describe('le 409 à bout de tentatives porte son code (ligne k6-defauts, relecture B1 et M4)', () => {
+  it('message lisible ET code structuré · c’est le code, jamais le texte, que l’interface rejoue', async () => {
+    // Une transaction qui tombe en conflit à chaque tentative, sans attente réelle.
+    const conflit = new Prisma.PrismaClientKnownRequestError('conflit', { code: 'P2034', clientVersion: 'x' });
+    const prisma = { $transaction: jest.fn(async () => { throw conflit; }) };
+    jest.useFakeTimers();
+    const promesse = avecRetrySerialisable(prisma as never, async () => 1, 'Trop d’écritures au même instant · réessayez.');
+    const attente = expect(promesse).rejects.toBeInstanceOf(ConflictException);
+    await jest.runAllTimersAsync();
+    await attente;
+    jest.useRealTimers();
+    const erreur = (await promesse.catch((e: unknown) => e)) as ConflictException;
+    expect(erreur.message).toBe('Trop d’écritures au même instant · réessayez.');
+    expect(erreur.getResponse()).toEqual({ message: 'Trop d’écritures au même instant · réessayez.', code: CODE_CONFLIT_SERIALISATION });
+    expect(CODE_CONFLIT_SERIALISATION).toBe('CONFLIT_SERIALISATION');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(TENTATIVES_MAX);
   });
 });

@@ -9,10 +9,21 @@ import { delaiDeReprise, estConflitAReprendre, REPRISES_MAX } from './reprise-co
 const API_URL = adresseApi(import.meta.env.VITE_API_URL);
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** Le CODE structuré du refus, quand le serveur en pose un (`reprise-conflit.ts`) · sinon null. */
+  constructor(public status: number, message: string, public code: string | null = null) {
     super(message);
   }
 }
+
+/** Options propres à OmegaX d'un appel qui écrit, à côté de celles de `fetch`. */
+export type OptionsAppel = {
+  /**
+   * Rejouer le refus qui n'a rien écrit (409 de sérialisation, 503 de pool
+   * épuisé) · à poser SEULEMENT sur une route qui tient dans une seule
+   * transaction (`reprise-conflit.ts`, liste fermée dans son spec).
+   */
+  rejouerConflit?: boolean;
+};
 
 /**
  * SESSION EN COOKIE httpOnly · le jeton de session n'est PLUS stocké ici :
@@ -72,13 +83,16 @@ async function refus(res: Response): Promise<ApiError> {
     // rabat sur la phrase d'état, VIDE en HTTP/2, puis sur le code
     // (`messageDuRefus`, relecture M1 de sage-l7).
   }
-  return new ApiError(res.status, messageDuRefus(res.status, res.statusText, body));
+  const code = (body as { code?: unknown } | null)?.code;
+  return new ApiError(res.status, messageDuRefus(res.status, res.statusText, body), typeof code === 'string' ? code : null);
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  // UN CONFLIT DE SÉRIALISATION SE REJOUE (ligne k6-defauts, `reprise-conflit.ts`)
-  // · le 409 « au même instant » n'a rien écrit, le même appel repart, deux
-  // fois au plus, après un délai aléatoire. Tout autre refus part tel quel.
+async function request<T>(path: string, options: RequestInit = {}, appel: OptionsAppel = {}): Promise<T> {
+  // UN CONFLIT DE SÉRIALISATION SE REJOUE SUR DEMANDE (ligne k6-defauts,
+  // `reprise-conflit.ts`) · le refus au code `CONFLIT_SERIALISATION` ou
+  // `SERVEUR_SATURE` n'a rien écrit, et sur une route à UNE transaction le
+  // même appel repart, deux fois au plus, après un délai aléatoire. Tout
+  // autre refus, et tout appel sans `rejouerConflit`, part tel quel.
   for (let tentative = 0; ; tentative++) {
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -92,7 +106,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
     if (!res.ok) {
       const erreur = await refus(res);
-      if (tentative < REPRISES_MAX && estConflitAReprendre(erreur.status, erreur.message)) {
+      if (appel.rejouerConflit === true && tentative < REPRISES_MAX && estConflitAReprendre(erreur.status, erreur.code)) {
         await new Promise((r) => setTimeout(r, delaiDeReprise(tentative + 1)));
         continue;
       }
@@ -222,19 +236,19 @@ function getAvecCache<T>(path: string): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => getAvecCache<T>(path),
-  post: <T>(path: string, body?: unknown) => {
+  post: <T>(path: string, body?: unknown, appel: OptionsAppel = {}) => {
     viderCachePour(path);
-    return request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }).finally(() => viderCachePour(path));
+    return request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }, appel).finally(() => viderCachePour(path));
   },
   // Un PUT est une écriture comme les autres · il ne vidait rien, et une
   // route PUT qui touche un référentiel l'aurait laissé servi trente secondes.
-  put: <T>(path: string, body?: unknown) => {
+  put: <T>(path: string, body?: unknown, appel: OptionsAppel = {}) => {
     viderCachePour(path);
-    return request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }).finally(() => viderCachePour(path));
+    return request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }, appel).finally(() => viderCachePour(path));
   },
-  patch: <T>(path: string, body?: unknown) => {
+  patch: <T>(path: string, body?: unknown, appel: OptionsAppel = {}) => {
     viderCachePour(path);
-    return request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }).finally(() => viderCachePour(path));
+    return request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }, appel).finally(() => viderCachePour(path));
   },
   // Corps optionnel : `DELETE /notes-annexes/rattachements` identifie la
   // ligne à retirer par (jeu, codeNote, cleRubrique, compteId), pas par un

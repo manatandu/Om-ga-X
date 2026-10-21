@@ -63,9 +63,33 @@ banc k6 en CI, puis les lignes Sage L3, L8, L9.
    FAIT, résultats dans `docs/test-de-charge-k6.md` § 4.4 (premiers 409 de
    152 à 63, résistants de 56 à 13, incohérences en aval de 10 à 3, zéro 5xx
    et zéro maillon manqué dans les deux lancements).
-6. Bloc § 3 des deux côtés, `silent-failure-hunter` et `typescript-reviewer`
-   (deux tours), scénario sur vraie base à travers une clôture, intégration
-   sur `main`, déploiement relu, fiche retirée.
+6. PREMIER TOUR DE RELECTURE FAIT (2026-10-21) · `silent-failure-hunter`
+   (B1 BLOQUANT · la reprise cliente rejouait tout POST, règlement des tiers
+   compris, qui commet une pièce par tiers · un 409 sur le second rejoué
+   entier payait le premier deux fois) et `typescript-reviewer` (MAJEUR 1 et
+   2, reproduits sur vraie base · l'acte court rejoué dans sa transaction
+   verrouillait sa ligne puis attendait le verrou du maillon tenu par une
+   transaction longue du dossier · interblocage qui tuait la longue, ou 500
+   après cinq secondes). Corrigé · reprise cliente OPT-IN par appel
+   (`rejouerConflit: true`, liste fermée dans `reprise-conflit.spec.ts`,
+   jamais `/reglements`) et sur un CODE structuré (`CONFLIT_SERIALISATION`
+   du 409, `DOSSIER_OCCUPE`, `SERVEUR_SATURE`), jamais un texte ; pré-verrou
+   du dossier AVANT l'acte, borné par `lock_timeout` à 3 s, 409 nommé
+   `DOSSIER_OCCUPE` ; 40P01 en erreur inconnue rejoué par
+   `avecRetrySerialisable` ; P2028 « Unable to start » rendu en 503 nommé
+   `SERVEUR_SATURE`. Rejeu `scratchpad/rejeu-verrou.cjs` sur k6apres ·
+   A · 409 nommé après 3 016 ms, ligne inchangée ; B · plus d'interblocage,
+   les deux passent. MINEURS gardés en relevé · ordre des extensions (gardes
+   jugées deux fois hors transaction, écrit au § 4.5 de la doc), M5/M7
+   (`suppressionsSansCompte` lit `!avant?.compteId` et non le seul marqueur,
+   équivalent tant qu'aucun `lettrage.deleteMany` n'existe), M6 (le motif du
+   refus de la fiche ne dit pas que la clôture est présumée faute de
+   pré-image), MINEUR 4 et 5 (`lowerFirst` écrit trois fois, cast du lecteur
+   en `PrismaClient`).
+7. Reste · bloc § 3 des deux côtés sur ce tour, SECOND tour de relecture,
+   scénario sur vraie base à travers une clôture (`scenario-perimetre.mjs`)
+   rejoué sur cette construction, tests navigateur, intégration sur `main`,
+   déploiement relu, fiche retirée.
 
 ## Mesures
 

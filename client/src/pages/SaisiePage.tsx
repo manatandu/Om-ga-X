@@ -1577,7 +1577,7 @@ export function SaisiePage() {
             .filter(Boolean)
             .map((sectionId) => ({ sectionId, debit: l.debit || undefined, credit: l.credit || undefined })),
         })),
-      });
+      }, { rejouerConflit: true }); // une transaction sérialisable, rejouée sur un 409 qui n'a rien écrit (reprise-conflit.ts)
       setSucces(
         reporterAuPremierJourOuvert
           ? 'Pièce enregistrée au premier jour de la période ouverte, sa date réelle gardée comme date de valeur (AUDCIF art. 22, 4°).'
