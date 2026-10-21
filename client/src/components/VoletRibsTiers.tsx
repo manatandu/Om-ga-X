@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from './chrome/Aide';
+import { auteurDeLaSaisie, corpsDuVisa, etatDuVisa, peutViser, type VisaRibLu } from '../lib/visa-rib';
 
 interface RibTiers {
   id: string;
@@ -16,6 +17,7 @@ interface RibTiers {
   devise: string | null;
   estPrincipal: boolean;
   commentaire: string | null;
+  visa?: VisaRibLu;
 }
 
 const VIDE = { banque: '', titulaire: '', iban: '', codeBanque: '', codeGuichet: '', numeroCompte: '', cle: '', codeBic: '', devise: '' };
@@ -33,8 +35,10 @@ function coordonnees(r: RibTiers): string {
  * Le RIB principal est celui que l'ordre de virement recopie.
  */
 export function VoletRibsTiers({ tiersId }: { tiersId: string }) {
-  const { estAdmin } = useAuth();
-  const [ribs, setRibs] = useState<RibTiers[]>([]);
+  const { estAdmin, peutValider } = useAuth();
+  // Null tant que la liste n'est pas LUE · « Aucun RIB » ne se dit que sur une liste lue.
+  const [ribs, setRibs] = useState<RibTiers[] | null>(null);
+  const [avis, setAvis] = useState<string | null>(null);
   const [saisie, setSaisie] = useState(VIDE);
   const [ouvert, setOuvert] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -49,6 +53,9 @@ export function VoletRibsTiers({ tiersId }: { tiersId: string }) {
   // changement de tiers ne s'affiche pas sous la fiche suivante.
   useEffect(() => {
     let actuel = true;
+    setRibs(null);
+    setErreur(null);
+    setAvis(null);
     api
       .get<RibTiers[]>(`/tiers/${tiersId}/ribs`)
       .then((l) => actuel && setRibs(l))
@@ -86,6 +93,20 @@ export function VoletRibsTiers({ tiersId }: { tiersId: string }) {
     }
   };
 
+  // Le serveur juge qui vise (jamais l'auteur des coordonnées) et refuse un RIB
+  // changé depuis la lecture · l'écran renvoie l'instant de la saisie qu'il a montrée.
+  const viser = async (r: RibTiers) => {
+    setErreur(null);
+    setAvis(null);
+    try {
+      const rep = await api.post<{ avertissement: string | null }>(`/ribs-tiers/${r.id}/viser`, corpsDuVisa(r.visa!));
+      setAvis(rep.avertissement);
+      await recharger();
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Visa non enregistré');
+    }
+  };
+
   const retirer = async (r: RibTiers) => {
     if (!window.confirm(`Retirer le RIB ${r.banque} · ${coordonnees(r)} ?`)) return;
     setErreur(null);
@@ -116,10 +137,17 @@ export function VoletRibsTiers({ tiersId }: { tiersId: string }) {
           texte="RIB ou IBAN du tiers, recopiés sur l'ordre de virement préparé depuis Règlement des tiers. Le RIB principal est celui que l'ordre retient ; le premier RIB l'est d'office. Seul l'IBAN est contrôlé (clé ISO 13616) ; le RIB national se conserve tel qu'il est saisi. Modification réservée à l'administrateur."
           source="Sage, Moyens de paiement · RIB/IBAN/BIC par tiers · règles d'OmegaX"
         />
+        <Aide
+          titre="Visa des RIB"
+          texte="Quand le dossier exige le visa des RIB (Paramètres du dossier), un ordre de virement ne part que sur un RIB principal visé par un administrateur ou un comptable autre que celui qui a saisi ses coordonnées. Changer la banque, le numéro, l'IBAN, le BIC ou la devise fait tomber le visa ; le commentaire et la marque de principal non. Un RIB saisi avant cette règle n'a pas d'auteur connu, et sa réponse le dit."
+          source="Option d'OmegaX · aucun texte ne l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2)"
+        />
       </div>
       {erreur && <div className="text-[11px] text-danger mb-1.5">{erreur}</div>}
-      {ribs.length === 0 && <div className="text-[11.5px] text-text-dim mb-2">Aucun RIB.</div>}
-      {ribs.map((r) => (
+      {avis && <div className="text-[11px] text-warning mb-1.5">{avis}</div>}
+      {ribs === null && !erreur && <div className="text-[11.5px] text-text-dim mb-2">Chargement…</div>}
+      {ribs !== null && ribs.length === 0 && <div className="text-[11.5px] text-text-dim mb-2">Aucun RIB.</div>}
+      {(ribs ?? []).map((r) => (
         <div key={r.id} className="border border-border mb-1.5 px-2.5 py-1.5 text-[11.5px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold truncate">{r.banque}</span>
@@ -129,16 +157,32 @@ export function VoletRibsTiers({ tiersId }: { tiersId: string }) {
           <div className="text-[11px] text-text-dim truncate">
             {[r.titulaire, r.codeBic && `BIC ${r.codeBic}`, r.devise].filter(Boolean).join(' · ')}
           </div>
-          {estAdmin && (
+          {/* Absent d'une réponse d'un serveur d'avant le visa · rien n'est dit plutôt qu'un état inventé. */}
+          {r.visa && (
+            <div
+              className={`text-[11px] truncate ${!r.visa.vise && r.visa.exige ? 'text-warning' : 'text-text-dim'}`}
+              title={auteurDeLaSaisie(r.visa)}
+            >
+              {etatDuVisa(r.visa)}
+            </div>
+          )}
+          {(estAdmin || peutViser(r.visa, peutValider)) && (
             <div className="flex gap-2.5 mt-1">
-              {!r.estPrincipal && (
+              {peutViser(r.visa, peutValider) && (
+                <button type="button" onClick={() => viser(r)} className="text-[11px] text-sel hover:underline">
+                  Viser
+                </button>
+              )}
+              {estAdmin && !r.estPrincipal && (
                 <button type="button" onClick={() => rendrePrincipal(r)} className="text-[11px] text-sel hover:underline">
                   Rendre principal
                 </button>
               )}
-              <button type="button" onClick={() => retirer(r)} className="text-[11px] text-danger hover:underline">
-                Retirer
-              </button>
+              {estAdmin && (
+                <button type="button" onClick={() => retirer(r)} className="text-[11px] text-danger hover:underline">
+                  Retirer
+                </button>
+              )}
             </div>
           )}
         </div>

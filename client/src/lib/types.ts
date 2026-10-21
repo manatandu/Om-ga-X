@@ -1819,6 +1819,8 @@ export interface ParametresDossier {
    * concerne.
    */
   doubleRegardValidation: boolean;
+  /** Visa des RIB par un second utilisateur avant tout ordre de virement (option, faux par défaut). */
+  visaRibs: boolean;
   /** Ligne sage-l1, fonction 60 · refus de clôturer un journal non imprimé (option, faux par défaut). */
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */

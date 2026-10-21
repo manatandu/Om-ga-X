@@ -511,6 +511,23 @@ export function ParametresDossierPage() {
     }
   };
 
+  const changerVisaRibs = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/visa-ribs', { visaRibs: actif }));
+      setInfo(
+        actif
+          ? 'Visa des RIB exigé · un ordre de virement ne part plus sur un RIB principal non visé.'
+          : 'Visa des RIB retiré.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const changerDoubleRegard = async (actif: boolean) => {
     setEnvoi(true);
     setErreur(null);
@@ -1850,6 +1867,25 @@ export function ParametresDossierPage() {
                         ? 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (SYCEBNL art. 16, 2) ; l’art. 69 de l’AUDCIF est exclu par l’art. 3 du SYCEBNL).'
                         : 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (AUDCIF art. 69).'}
                     </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.visaRibs}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerVisaRibs(e.target.checked)}
+                  />
+                  <span>
+                    Visa des RIB par un second utilisateur{' '}
+                    <Aide
+                      titre="Visa des RIB"
+                      texte={`Un ordre de virement, des tiers comme des salaires, ne part que sur un RIB principal visé par un administrateur ou un comptable autre que celui qui a saisi ses coordonnées. Toute saisie de la banque, du numéro, de l’IBAN, du BIC ou de la devise fait tomber le visa ; le commentaire et la marque de principal non. Le visa se pose depuis la fiche du tiers ou du salarié. Un RIB saisi avant cette option n’a pas d’auteur connu · il se vise, et la réponse le dit. Aucun texte n’impose ce second regard · procédure que l’entité se donne (${
+                        params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
+                      }). L’activer ne vise rien d’office.`}
+                      source={params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2) · option d’OmegaX' : 'AUDCIF art. 69 · option d’OmegaX'}
+                    />
                   </span>
                 </label>
                 <label className="flex items-start gap-2 text-[11.5px]">
