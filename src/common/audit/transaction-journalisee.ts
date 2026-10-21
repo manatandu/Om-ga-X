@@ -16,7 +16,7 @@ import { journaliserDansTransaction } from './contexte-audit';
  */
 export const CODE_SERVEUR_SATURE = 'SERVEUR_SATURE';
 export const MESSAGE_SERVEUR_SATURE =
-  "Le serveur est saturé · cette opération n'a pas été enregistrée, veuillez réessayer dans un instant.";
+  "Le serveur est saturé · cette étape n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez le journal, puis réessayez dans un instant.";
 
 export function estPoolEpuise(err: unknown): boolean {
   return (

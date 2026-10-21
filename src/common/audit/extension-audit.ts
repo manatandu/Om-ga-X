@@ -5,6 +5,7 @@ import { MODELES_AUDITES, colonnesExclues, masquer } from './champs-audites';
 import { calculerEmpreinte, EMPREINTE_ORIGINE } from './empreinte-audit';
 import { PRE_IMAGE_ILLISIBLE } from './pre-image';
 import { transactionJournalisee } from './transaction-journalisee';
+import { estConflitDeSerialisation } from '../prisma-retry.util';
 
 const journal = new Logger('JournalAudit');
 
@@ -272,8 +273,36 @@ export type ClientEtendu = Parameters<typeof transactionJournalisee>[0];
 /** Attente du verrou du dossier par un acte audité hors transaction, en millisecondes · convention d'OmegaX, sous les cinq secondes de la transaction. */
 export const ATTENTE_VERROU_DOSSIER_MS = 3000;
 export const CODE_DOSSIER_OCCUPE = 'DOSSIER_OCCUPE';
+/**
+ * « CETTE ÉTAPE », jamais « rien » (second tour de relecture) · le refus vaut
+ * de la transaction annulée, pas de la requête, qui a pu commettre une étape
+ * avant (un règlement crée une pièce par tiers). Le texte le dit.
+ */
 export const MESSAGE_DOSSIER_OCCUPE =
-  "Une autre opération tient ce dossier (clôture, validation ou lettrage par lot en cours) · rien n'a été enregistré, veuillez réessayer dans un instant.";
+  "Une autre opération tient ce dossier ou cette ligne (clôture, validation ou lettrage par lot, autre saisie) · cette étape n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez le journal, puis réessayez dans un instant.";
+
+/**
+ * LA CLÉ DU VERROU DU DOSSIER, CALCULÉE COMME LE MAILLON LA CALCULERA
+ * (`dossier(model, avant, apres, acteur)`), avant d'avoir lu la ligne · le
+ * dossier visé par l'acte (`Tenant` par son `id`, sinon le `tenantId` du
+ * filtre ou des données), à défaut celui de l'acteur, à défaut la chaîne de
+ * la plateforme. Quand la clé diffère de celle du maillon (opérateur de la
+ * console sur un dossier dont la ligne ne nomme pas le `tenantId`), les deux
+ * sont prises dans cet ordre, et la borne de `lock_timeout` tient ce que
+ * l'ordre ne garantit plus.
+ */
+export function cleDuVerrouDuDossier(model: string, args: unknown, acteurTenantId: string | null | undefined): string {
+  const a = (args ?? {}) as { where?: Record<string, unknown>; data?: Record<string, unknown> };
+  if (model === 'Tenant' && typeof a.where?.id === 'string') return a.where.id;
+  if (typeof a.where?.tenantId === 'string') return a.where.tenantId;
+  if (typeof a.data?.tenantId === 'string') return a.data.tenantId;
+  return acteurTenantId ?? 'plateforme';
+}
+
+/** Le verrou consultatif du dossier, réentrant dans la session · `ecrireMaillon` le reprend sans attendre. */
+async function prendreLeVerrouDuDossier(tx: Prisma.TransactionClient, cle: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cle}))`;
+}
 
 /**
  * L'attente d'un verrou qui a expiré (`lock_timeout`, état SQL 55P03), où
@@ -330,7 +359,10 @@ export async function intercepterEcriture(
   // travail perdu ; (2) sans interblocage, l'attente dépassait les cinq
   // secondes de la transaction et rendait un 500 qui accusait le maillon.
   // Le verrou se prend donc AVANT l'acte (ordre verrou → lignes, le même que
-  // toute transaction journalisée · plus de cycle court/long), et son attente
+  // tout acte AUDITÉ dans une transaction journalisée, voir plus bas · plus de
+  // cycle entre deux actes audités ; un verrou de ligne non audité pris avant
+  // le premier acte audité d'une transaction longue reste possible, et c'est
+  // la borne et le `.catch` qui en répondent), et son attente
   // est bornée (`SET LOCAL lock_timeout`) · passé ce délai, la transaction
   // est annulée, rien n'est écrit, et le refus est un 409 NOMMÉ au code
   // `DOSSIER_OCCUPE`, que l'interface rejoue sur les routes qui le demandent
@@ -341,15 +373,21 @@ export async function intercepterEcriture(
   const client = etendu?.();
   if (client && !transactionAuditee()) {
     const propriete = model.charAt(0).toLowerCase() + model.slice(1);
-    const cle = acteurCourant()?.tenantId ?? 'plateforme';
+    const cle = cleDuVerrouDuDossier(model, args, acteurCourant()?.tenantId);
     return transactionJournalisee(client, async (tx) => {
       // `SET` ne prend aucun paramètre lié · la valeur est un entier CONSTANT
       // du module, jamais une donnée, d'où `Prisma.raw` sans danger.
       await tx.$executeRaw(Prisma.sql`SET LOCAL lock_timeout = ${Prisma.raw(String(ATTENTE_VERROU_DOSSIER_MS))}`);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cle}))`;
+      await prendreLeVerrouDuDossier(tx, cle);
       return (tx as unknown as Record<string, Record<string, (x: unknown) => Promise<unknown>>>)[propriete][operation](args);
     }).catch((erreur: unknown) => {
-      if (estAttenteDeVerrouExpiree(erreur)) {
+      // Attente expirée (55P03) OU victime d'un interblocage (40P01 · un
+      // verrou de ligne NON audité d'une transaction longue, `FOR UPDATE`
+      // ou requête brute, précède toujours son premier verrou du dossier,
+      // et PostgreSQL peut tuer l'acte court avant la borne) · dans les deux
+      // cas la transaction courte est annulée entière, rien n'est écrit, et
+      // le refus est le même 409 nommé, que l'écran sait rejouer.
+      if (estAttenteDeVerrouExpiree(erreur) || estConflitDeSerialisation(erreur)) {
         throw new ConflictException({ message: MESSAGE_DOSSIER_OCCUPE, code: CODE_DOSSIER_OCCUPE });
       }
       throw erreur;
@@ -357,6 +395,17 @@ export async function intercepterEcriture(
   }
 
   const a = args as { where?: Record<string, unknown>; data?: unknown };
+
+  // DANS UNE TRANSACTION, LE VERROU DU DOSSIER AVANT LA LIGNE (second tour de
+  // relecture) · `ecrireMaillon` le prenait APRÈS l'acte, qui avait déjà
+  // verrouillé sa ligne · ordre lignes → verrou pour la transaction longue,
+  // verrou → lignes pour l'acte court, le cycle que le chemin court croyait
+  // fermé. Pris ici, réentrant, il coûte un aller-retour et met tout acte
+  // audité dans le même ordre ; le maillon le reprend sans attendre.
+  {
+    const tx = transactionAuditee();
+    if (tx) await prendreLeVerrouDuDossier(tx as Prisma.TransactionClient, cleDuVerrouDuDossier(model, args, acteurCourant()?.tenantId));
+  }
 
   // L'état AVANT n'existe que si on le lit avant de le détruire. On ne le fait
   // que pour les opérations qui désignent une ligne · un `updateMany` en

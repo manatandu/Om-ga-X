@@ -79,6 +79,15 @@ describe('transaction sérialisable et journal d’audit', () => {
     expect(estConflitDeSerialisation(tuee)).toBe(true);
     expect(estConflitDeSerialisation(Object.assign(new Error('x'), { cause: tuee }))).toBe(true);
     expect(estConflitDeSerialisation(new Prisma.PrismaClientUnknownRequestError('autre chose', { clientVersion: 'x' }))).toBe(false);
+    // Sur une requête BRUTE (le verrou du maillon), Prisma rend P2010 avec l'état SQL en meta.code (second tour, Z2bis).
+    const brute = new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `40P01`. Message: `deadlock detected`', {
+      code: 'P2010',
+      clientVersion: 'x',
+      meta: { code: '40P01', message: 'ERROR: deadlock detected' },
+    });
+    expect(estConflitDeSerialisation(brute)).toBe(true);
+    const autreBrute = new Prisma.PrismaClientKnownRequestError('Raw query failed', { code: 'P2010', clientVersion: 'x', meta: { code: '23505' } });
+    expect(estConflitDeSerialisation(autreBrute)).toBe(false);
   });
 
   it('une autre erreur brute n’est pas prise pour un conflit', () => {

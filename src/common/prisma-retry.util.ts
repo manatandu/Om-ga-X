@@ -50,7 +50,12 @@ export function estConflitDeSerialisation(err: unknown): boolean {
     if (e instanceof Prisma.PrismaClientUnknownRequestError && /40P01|deadlock detected/i.test(e.message)) return true;
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === CODE_CONFLIT_TRANSACTION) return true;
-      if (e.code === 'P2010' && (e.meta as { code?: string } | undefined)?.code === '40001') return true;
+      // 40001 ou 40P01 sur une requête BRUTE (le verrou consultatif du
+      // maillon, sa lecture brute) · rendus en P2010 avec l'état SQL en
+      // `meta.code` (second tour de relecture, reproduit · la transaction
+      // longue qui attendait le verrou du dossier et que PostgreSQL tuait
+      // n'était pas rejouée).
+      if (e.code === 'P2010' && /^(40001|40P01)$/.test(String((e.meta as { code?: unknown } | undefined)?.code ?? ''))) return true;
     }
   }
   return false;

@@ -5,7 +5,7 @@ import { calculerEmpreinte, EMPREINTE_ORIGINE, ContenuEmpreinte } from './emprei
 import { masquer, estChampSensible, MARQUEUR_MASQUE, MODELES_AUDITES } from './champs-audites';
 import { JournalAuditService } from './journal-audit.service';
 import { JournalAuditController } from './journal-audit.controller';
-import { intercepterEcriture, filtrePreImage } from './extension-audit';
+import { intercepterEcriture, filtrePreImage, cleDuVerrouDuDossier } from './extension-audit';
 import { dansContexteAudit, ACTEUR_SYSTEME, journaliserDansTransaction } from './contexte-audit';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -821,6 +821,45 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
       expect((erreur as ConflictException).getResponse()).toEqual(expect.objectContaining({ code: 'DOSSIER_OCCUPE' }));
       expect(query).not.toHaveBeenCalled();
       expect(tx.journal.update).not.toHaveBeenCalled();
+    });
+
+    it('un verrou de LIGNE qui expire (erreur inconnue, 55P03 dans le message) et un interblocage (40P01) rendent le même 409', async () => {
+      for (const message of [
+        'ConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { code: "55P03", message: "canceling statement due to lock timeout" }) })',
+        'ConnectorError(ConnectorError { kind: QueryError(PostgresError { code: "40P01", message: "deadlock detected" }) })',
+      ]) {
+        const { etendu, tx, base, query } = etenduFactice();
+        tx.journal.update.mockRejectedValue(new Prisma.PrismaClientUnknownRequestError(message, { clientVersion: 'x' }));
+        const erreur = await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+          intercepterEcriture(base, { model: 'Journal', operation: 'update', args, query }, () => etendu as never),
+        ).catch((e: unknown) => e);
+        expect(erreur).toBeInstanceOf(ConflictException);
+        expect((erreur as ConflictException).getResponse()).toEqual(expect.objectContaining({ code: 'DOSSIER_OCCUPE' }));
+      }
+    });
+
+    it('la clé du verrou est celle que le maillon prendra · le dossier visé par l’acte avant celui de l’acteur', () => {
+      expect(cleDuVerrouDuDossier('Tenant', { where: { id: 'd-cible' } }, 'd-editeur')).toBe('d-cible');
+      expect(cleDuVerrouDuDossier('User', { where: { id: 'u-1', tenantId: 'd-cible' } }, 'd-editeur')).toBe('d-cible');
+      expect(cleDuVerrouDuDossier('Journal', { data: { tenantId: 'd-cible', code: 'J' } }, 'd-editeur')).toBe('d-cible');
+      expect(cleDuVerrouDuDossier('Journal', { where: { id: 'j-1' } }, 'd-1')).toBe('d-1');
+      expect(cleDuVerrouDuDossier('Journal', { where: { id: 'j-1' } }, undefined)).toBe('plateforme');
+    });
+
+    it('dans une transaction, le verrou du dossier se prend AVANT la pré-image et l’acte (ordre verrou → lignes)', async () => {
+      const ordre: string[] = [];
+      const tx: any = {
+        $executeRaw: jest.fn(async (q: any) => { ordre.push(Array.isArray(q) ? q.join('?') : String(q?.sql ?? q)); return 1; }),
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        evenementAudit: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({ data }: any) => data) },
+        journal: { findFirst: jest.fn(async () => { ordre.push('pré-image'); return { id: 'j-1', tenantId: 'd-1', intitule: 'Avant' }; }) },
+      };
+      const query = jest.fn(async () => { ordre.push('acte'); return { id: 'j-1', tenantId: 'd-1', intitule: 'Après' }; });
+      await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        journaliserDansTransaction(tx, () => intercepterEcriture({} as any, { model: 'Journal', operation: 'update', args, query })),
+      );
+      expect(ordre[0]).toMatch(/pg_advisory_xact_lock/);
+      expect(ordre.slice(1, 3)).toEqual(['pré-image', 'acte']);
     });
 
     it('le maillon qui ne peut pas s’écrire fait tomber l’acte avec lui · jamais un acte sans sa trace', async () => {

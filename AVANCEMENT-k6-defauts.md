@@ -86,10 +86,29 @@ banc k6 en CI, puis les lignes Sage L3, L8, L9.
    refus de la fiche ne dit pas que la clôture est présumée faute de
    pré-image), MINEUR 4 et 5 (`lowerFirst` écrit trois fois, cast du lecteur
    en `PrismaClient`).
-7. Reste · bloc § 3 des deux côtés sur ce tour, SECOND tour de relecture,
-   scénario sur vraie base à travers une clôture (`scenario-perimetre.mjs`)
-   rejoué sur cette construction, tests navigateur, intégration sur `main`,
-   déploiement relu, fiche retirée.
+7. SECOND TOUR FAIT (2026-10-21, dernier · CLAUDE.md § 11). Échecs
+   silencieux · aucun BLOQUANT ; MAJEUR, les messages « rien n'a été
+   enregistré » valaient de la transaction, pas de la requête (règlement
+   multi-tiers) · corrigé (« cette étape », étape précédente possible) ;
+   MINEURS · clé du pré-verrou calculée comme le maillon
+   (`cleDuVerrouDuDossier`), spec de la liste fermée par (fichier, chemin)
+   et motif tolérant. TypeScript · aucun BLOQUANT ; MAJEUR 1, le 40P01 d'une
+   requête brute (P2010, meta.code) n'était pas rejoué · corrigé ; MAJEUR 2,
+   le cycle court/long restait ouvert par l'ordre lignes → verrou des actes
+   audités EN transaction · verrou pris avant la pré-image et l'acte dans la
+   transaction aussi, `.catch` du chemin court qui traduit un interblocage en
+   409 nommé ; MINEUR, seconde forme (erreur inconnue 55P03) gelée au spec.
+   Rejeux `formes-erreurs-2.cjs` et `rejeu-verrou.cjs` · tous conformes.
+   Bloc § 3 serveur (950 suites, 13 820 tests) et client (301 fichiers) verts
+   sur le tour 1 ; scénario `scenario-perimetre.mjs` 12/12 à travers la
+   clôture de N, zéro maillon manqué ; Playwright 139/139 sous Chromium sur
+   le tour 1. Reste · bloc § 3 et Playwright rejoués sur ce dernier commit,
+   intégration sur `main`, déploiement relu, fiche retirée. Relevés en
+   attente (aucun tour de plus) · ordre des extensions (gardes jugées deux
+   fois hors transaction), `suppressionsSansCompte` sur `!avant?.compteId`,
+   motif de la fiche qui ne dit pas « clôture présumée », `lowerFirst` écrit
+   trois fois, cast du lecteur en `PrismaClient`, le règlement des tiers qui
+   perd `resultats` sur un refus du second tiers (à nommer au suivi).
 
 ## Mesures
 

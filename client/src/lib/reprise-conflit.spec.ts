@@ -46,26 +46,32 @@ describe('reprise automatique d’un conflit de sérialisation (ligne k6-defauts
    * vérifié sur le service qu'il appelle.
    */
   it('seuls les appels d’une route à une transaction demandent la reprise, jamais un règlement', () => {
-    const demandes = sources(RACINE)
-      .flatMap((f) => {
-        const texte = readFileSync(f, 'utf8');
-        const n = (texte.match(/rejouerConflit: true/g) ?? []).length;
-        return n === 0 ? [] : [`${relative(RACINE, f).split('\\').join('/')} × ${n}`];
-      })
-      .sort();
-    expect(demandes).toEqual([
-      'pages/BrouillardPage.tsx × 1', // PATCH /ecritures/:id · EcritureService.modifier
-      'pages/JournalPage.tsx × 1', // POST /ecritures/:id/correction · corrigerParInscriptionEnNegatif
-      'pages/LettragePage.tsx × 2', // POST .../lettrage (lettrer) et .../completer
-      'pages/SaisiePage.tsx × 1', // POST /ecritures · EcritureService.creer
-    ]);
+    // Chaque appel qui demande la reprise est relevé avec le CHEMIN qu'il vise
+    // (premier argument littéral) · un `rejouerConflit` déplacé sur un autre
+    // appel du même fichier change la liste. Le nombre d'appels relevés doit
+    // égaler le nombre de demandes, sinon une demande a échappé au motif.
+    const demandes: string[] = [];
     for (const f of sources(RACINE)) {
       const texte = readFileSync(f, 'utf8');
-      if (!/rejouerConflit: true/.test(texte)) continue;
-      // L'appel qui demande la reprise ne vise jamais une route de règlement.
-      for (const appel of texte.match(/api\.(post|put|patch)\([^;]*?rejouerConflit: true/gs) ?? []) {
-        expect(appel).not.toMatch(/\/reglements/);
+      const attendues = (texte.match(/rejouerConflit\s*:\s*true/g) ?? []).length;
+      if (attendues === 0) continue;
+      // Le type générique de l'appel (`api.post<{ … }>(`) ne porte aucune
+      // parenthèse ; la demande se cherche SANS franchir un `;` ni un autre
+      // appel, sans quoi un appel voisin sans reprise prenait le chemin du suivant.
+      const appels = texte.match(/api\.(post|put|patch)(?:<[^(]*>)?\(\s*(`[^`]*`|'[^']*')(?:(?!api\.(?:post|put|patch))[^;])*?rejouerConflit\s*:\s*true/g) ?? [];
+      expect([f, appels.length]).toEqual([f, attendues]);
+      for (const appel of appels) {
+        const chemin = /api\.(post|put|patch)(?:<[^(]*>)?\(\s*(`[^`]*`|'[^']*')/.exec(appel)![2].slice(1, -1);
+        demandes.push(`${relative(RACINE, f).split('\\').join('/')} · ${chemin}`);
       }
     }
+    expect(demandes.sort()).toEqual([
+      'pages/BrouillardPage.tsx · /ecritures/${edition.id}', // EcritureService.modifier · une transaction
+      'pages/JournalPage.tsx · /ecritures/${aCorriger.id}/correction', // corrigerParInscriptionEnNegatif · une transaction
+      'pages/LettragePage.tsx · /comptes/${compteId}/lettrage', // lettrerManuel · une transaction
+      'pages/LettragePage.tsx · /comptes/${compteId}/lettrage/${completerId}/completer', // completer · une transaction
+      'pages/SaisiePage.tsx · /ecritures', // EcritureService.creer · une transaction
+    ]);
+    for (const d of demandes) expect(d).not.toMatch(/\/reglements/);
   });
 });
