@@ -1873,7 +1873,7 @@ export function ParametresDossierPage() {
                   <input
                     type="checkbox"
                     className="mt-[3px]"
-                    checked={params.visaRibs}
+                    checked={params.visaRibs === true}
                     disabled={!estAdmin || envoi}
                     onChange={(e) => changerVisaRibs(e.target.checked)}
                   />

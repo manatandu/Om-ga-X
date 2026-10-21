@@ -3961,7 +3961,13 @@ pièce, un RIB principal non visé, tiers (`preparer`) ou salarié
 (`preparerSalaries`), en nommant les bénéficiaires ; l'ordre recopie le RIB
 visé. Viser · administrateur ou comptable (`@ReserveAuComptable`), une mise
 à jour unitaire au journal d'audit ; le RIB du DONNEUR n'est pas visé (le
-changer ne détourne rien vers un tiers).
+changer ne détourne rien vers un tiers). (6) UN RIB QUI CHANGE DE
+BÉNÉFICIAIRE PERD SON VISA · la fusion de deux tiers tient les RIB du doublon
+pour saisis par l'auteur de la fusion, une mise à jour par RIB, sans quoi un
+RIB visé pour un doublon créé à dessein payait le vrai tiers. Un dossier
+introuvable fait refuser l'ordre, jamais « rien d'exigé ». LIMITES ÉCRITES ·
+le visa ne porte pas sur le rattachement des comptes au tiers, et l'option se
+retire par l'administrateur seul, au journal d'audit, comme le double regard.
 
 **Rubriques de paie, avances et prêts (2026-09-26, priorité 2).**
 `personnel/rubriques-paie.ts`, `personnel/avances-salaire.ts`. (1) La rubrique

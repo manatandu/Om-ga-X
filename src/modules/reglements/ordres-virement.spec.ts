@@ -68,6 +68,12 @@ describe("préparer l'ordre · le visa des RIB, quand le dossier l'exige (tiers/
     expect(p.beneficiaires.get('c401')).toMatchObject({ beneficiaire: 'SARL A', coordonnees: '00011 777 12' });
   });
 
+  it("un dossier introuvable n'est pas un dossier qui n'exige rien · le contrôle se ferme", async () => {
+    const { service, prisma } = monter({ ribs: { tA: [principal()] } });
+    prisma.tenant.findUnique.mockResolvedValueOnce(null as never);
+    await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/Dossier introuvable/);
+  });
+
   it("un visa à moitié posé (auteur sans date) n'est pas un visa", async () => {
     const { service } = monter({ visaRibs: true, ribs: { tA: [principal({ visePar: 'u2', viseLe: null })] } });
     await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/n'est pas visé/);
@@ -83,7 +89,7 @@ describe("préparer l'ordre · tout ce qu'il exige, avant la première pièce", 
     expect(p.beneficiaires.get('c402')).toMatchObject({ beneficiaire: 'Fournisseur B', coordonnees: 'IBAN GB82 WEST 1234 5698 7654 32' });
     // Seul le principal est lu · le filtre est dans la REQUÊTE, pas dans une doublure qui rendrait tout.
     const select = (prisma.compte.findMany.mock.calls[0] as unknown as [{ select: { tiersCompte: { select: { tiers: { select: { ribs: unknown } } } } } }])[0];
-    expect(select.select.tiersCompte.select.tiers.select.ribs).toEqual({ where: { tenantId: 't', estPrincipal: true } });
+    expect(select.select.tiersCompte.select.tiers.select.ribs).toEqual({ where: { tenantId: 't', estPrincipal: true }, orderBy: { createdAt: 'asc' } });
   });
 
   it("refuse un journal sans RIB · l'ordre n'aurait pas de compte à débiter", async () => {

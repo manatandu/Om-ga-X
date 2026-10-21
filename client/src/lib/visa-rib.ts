@@ -21,7 +21,11 @@ const jour = (iso: string) => new Date(iso).toLocaleDateString('fr-FR');
 
 /** L'état du visa en une ligne · « Visé par … le … », ou « Non visé ». */
 export function etatDuVisa(v: VisaRibLu): string {
-  if (v.vise) return `Visé par ${v.visePar ?? 'un utilisateur'}${v.viseLe ? ` le ${jour(v.viseLe)}` : ''}`;
+  if (v.vise) {
+    const vise = `Visé par ${v.visePar ?? 'un utilisateur'}${v.viseLe ? ` le ${jour(v.viseLe)}` : ''}`;
+    // Saisi avant la règle · le visa ne garantit pas un second regard, et la ligne le garde dit.
+    return v.saisiPar ? vise : `${vise} · auteur de la saisie inconnu`;
+  }
   return v.exige ? 'Non visé · exigé pour les virements' : 'Non visé';
 }
 
@@ -39,4 +43,15 @@ export function peutViser(v: VisaRibLu | undefined, peutValider: boolean): boole
 /** Le corps du visa · l'instant de la saisie montrée, que le serveur confronte à la base (409 sinon). */
 export function corpsDuVisa(v: VisaRibLu): { saisiLeLu: string | null } {
   return { saisiLeLu: v.saisiLe };
+}
+
+/**
+ * La source citée dans la bulle, selon le référentiel du dossier · l'art. 69 de
+ * l'AUDCIF est exclu par l'art. 3 du SYCEBNL, et les deux chemins ne se servent
+ * jamais l'un pour l'autre (CLAUDE.md, § 10 ter).
+ */
+export function sourceDuVisa(referentiel: string | undefined): string {
+  if (referentiel === 'SYCEBNL') return "Option d'OmegaX · aucun texte ne l'impose (SYCEBNL art. 16, 2))";
+  if (referentiel === 'SYSCOHADA') return "Option d'OmegaX · aucun texte ne l'impose (AUDCIF art. 69)";
+  return "Option d'OmegaX · aucun texte ne l'impose";
 }

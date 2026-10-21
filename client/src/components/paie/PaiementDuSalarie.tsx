@@ -3,7 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Aide } from '../chrome/Aide';
 import { BoutonsPaie, CHAMP_PAIE, ChampPaie, ModalePaie, useEnvoiPaie } from './ModalePaie';
-import { auteurDeLaSaisie, corpsDuVisa, etatDuVisa, peutViser } from '../../lib/visa-rib';
+import { auteurDeLaSaisie, corpsDuVisa, etatDuVisa, peutViser, sourceDuVisa } from '../../lib/visa-rib';
 import { LIBELLE_MODE, MODES, type ModePaiement, type PaiementDuSalarieLu, type RibSalarieLu } from '../../lib/paiement-salaires';
 
 /**
@@ -15,7 +15,7 @@ import { LIBELLE_MODE, MODES, type ModePaiement, type PaiementDuSalarieLu, type 
  * RIB.
  */
 export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
-  const { peutEcrire, peutValider, estAdmin } = useAuth();
+  const { peutEcrire, peutValider, estAdmin, utilisateur } = useAuth();
   // Null tant que la fiche n'est pas LUE · « aucun RIB » ne se dit que sur une liste lue.
   const [lu, setLu] = useState<PaiementDuSalarieLu | null>(null);
   const [erreur, setErreur] = useState('');
@@ -51,6 +51,9 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
       charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Opération refusée.');
+      // Refusé (RIB changé, déjà visé) · la fiche se relit, sans quoi elle garderait
+      // des coordonnées qui ne sont plus celles de la base.
+      charger();
     } finally {
       setEnvoi(false);
     }
@@ -68,7 +71,7 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
         <Aide
           titre="Visa des RIB"
           texte="Quand le dossier exige le visa des RIB (Paramètres du dossier), l'ordre de virement des salaires ne part que sur un RIB principal visé par un administrateur ou un comptable autre que celui qui a saisi ses coordonnées. Changer la banque, le numéro, l'IBAN, le BIC ou la devise fait tomber le visa. Un RIB saisi avant cette règle n'a pas d'auteur connu, et sa réponse le dit."
-          source="Option d'OmegaX · aucun texte ne l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2)"
+          source={sourceDuVisa(utilisateur?.tenant.referentiel)}
         />
       </div>
       {erreur && (
@@ -76,7 +79,11 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
           {erreur}
         </div>
       )}
-      {avis && <div className="text-warning mb-1.5">{avis}</div>}
+      {avis && (
+        <div role="status" className="text-warning mb-1.5">
+          {avis}
+        </div>
+      )}
       {!lu && !erreur && <div className="text-text-dim">Chargement…</div>}
       {lu && (
         <>
@@ -132,8 +139,9 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
                     <td className="px-2 py-1">{r.titulaire ?? ''}</td>
                     <td className="px-2 py-1">{r.coordonnees}</td>
                     <td className="px-2 py-1">{r.devise ?? ''}</td>
-                    <td className={`px-2 py-1 ${r.visa && !r.visa.vise && r.visa.exige ? 'text-warning' : ''}`} title={r.visa ? auteurDeLaSaisie(r.visa) : undefined}>
+                    <td className={`px-2 py-1 ${r.visa && !r.visa.vise && r.visa.exige ? 'text-warning' : ''}`} >
                       {r.visa ? etatDuVisa(r.visa) : ''}
+                      {r.visa && <span className="block text-text-dim">{auteurDeLaSaisie(r.visa)}</span>}
                     </td>
                     <td className="px-2 py-1 text-right">
                       {peutViser(r.visa, peutValider) && (
@@ -141,6 +149,7 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
                           type="button"
                           className="text-sel hover:underline mr-2"
                           disabled={envoi}
+                          aria-label={`Viser le RIB ${r.banque}`}
                           onClick={() =>
                             void geste(async () => {
                               const rep = await api.post<{ avertissement: string | null }>(`/personnel/ribs-salaries/${r.id}/viser`, corpsDuVisa(r.visa!));
@@ -187,6 +196,7 @@ export function PaiementDuSalarie({ salarieId }: { salarieId: string }) {
           onFermer={() => setModale(null)}
           onFait={() => {
             setModale(null);
+            setAvis(null);
             charger();
           }}
         />

@@ -70,7 +70,7 @@ export class OrdresVirementService {
       select: {
         id: true,
         numero: true,
-        tiersCompte: { select: { tiers: { select: { id: true, code: true, nom: true, ribs: { where: { tenantId, estPrincipal: true } } } } } },
+        tiersCompte: { select: { tiers: { select: { id: true, code: true, nom: true, ribs: { where: { tenantId, estPrincipal: true }, orderBy: { createdAt: 'asc' } } } } } },
       },
     });
     const exigeVisa = await this.exigeLeVisa(tenantId);
@@ -123,6 +123,9 @@ export class OrdresVirementService {
     const donneur = await this.donneurDuJournal(tenantId, journalId);
     const ribs = await this.prisma.ribSalarie.findMany({
       where: { tenantId, estPrincipal: true, salarieId: { in: salaries.map((s) => s.id) } },
+      // Même ordre que l'écran (le premier principal créé) · deux principaux
+      // nés d'une course ne laissent pas l'ordre juger un autre RIB que celui montré.
+      orderBy: { createdAt: 'asc' },
     });
     const exigeVisa = await this.exigeLeVisa(tenantId);
     const beneficiaires: PreparationOrdre['beneficiaires'] = new Map();
@@ -181,7 +184,10 @@ export class OrdresVirementService {
    */
   private async exigeLeVisa(tenantId: string): Promise<boolean> {
     const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaRibs: true } });
-    return dossier?.visaRibs === true;
+    // Un contrôle contre le détournement se ferme par défaut · un dossier
+    // introuvable n'est pas un dossier qui n'exige rien.
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    return dossier.visaRibs === true;
   }
 
   /** Le compte à débiter · le RIB du journal, en monnaie de tenue, avec ses coordonnées. */

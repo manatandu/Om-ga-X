@@ -2170,7 +2170,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   </>
                 )}
                 {/* Ligne sage-l5, fonction 75 · le mode convenu et les RIB du salarié. */}
-                <PaiementDuSalarie salarieId={choisi.id} />
+                <PaiementDuSalarie key={choisi.id} salarieId={choisi.id} />
                 {/* Ligne sage-l5, fonction 88 · sa répartition entre sections analytiques. */}
                 <RepartitionAnalytique salarieId={choisi.id} />
                 {/* Ligne sage-l6, fonction n° 22 · les documents du salarié, aux droits du registre. */}

@@ -17,6 +17,12 @@ describe('visa des RIB · ce que l’écran montre', () => {
     expect(etatDuVisa({ ...base, vise: true, visePar: 'b@cabinet.cd', viseLe: '2026-10-21T09:00:00.000Z' })).toMatch(/^Visé par b@cabinet\.cd le /);
   });
 
+  it("un RIB saisi avant la règle, une fois visé, garde dit que son auteur est inconnu", () => {
+    expect(etatDuVisa({ ...base, saisiPar: null, saisiLe: null, vise: true, visePar: 'b@cabinet.cd', viseLe: null })).toBe(
+      'Visé par b@cabinet.cd · auteur de la saisie inconnu',
+    );
+  });
+
   it("n'offre « Viser » ni à l'auteur, ni sur un RIB visé, ni à qui ne valide pas", () => {
     expect(peutViser(base, true)).toBe(true);
     expect(peutViser({ ...base, saisiParVous: true }, true)).toBe(false);

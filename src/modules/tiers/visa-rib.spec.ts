@@ -52,6 +52,12 @@ describe('visa des RIB · les règles (tiers/visa-rib.ts)', () => {
     expect(estVise({ ...ribSaisi, visePar: null, viseLe: new Date() })).toBe(false);
   });
 
+  it("refuse de présenter un RIB lu sans ses traces · l'auteur se verrait offrir le visa", () => {
+    expect(() => presenterVisa({ saisiPar: undefined, saisiLe: saisiLe, visePar: null, viseLe: null } as never, true, 'u1', new Map())).toThrow(
+      /sans ses traces/,
+    );
+  });
+
   it('nomme les auteurs par leur courriel, et un utilisateur retiré comme tel', () => {
     const courriels = new Map([['u1', 'a@cabinet.cd']]);
     const p = presenterVisa({ ...ribSaisi, visePar: 'u9', viseLe: saisiLe }, true, 'u1', courriels);

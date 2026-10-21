@@ -37,6 +37,15 @@
  *     RECOPIE le RIB lu au moment où il naît (ribs-tiers.ts, règle 4), donc ce
  *     qui part est exactement ce qui a été visé. Le RIB du DONNEUR (Structure
  *     > Banques) n'est pas visé · le changer ne détourne rien vers un tiers.
+ * (6) UN RIB QUI CHANGE DE BÉNÉFICIAIRE PERD SON VISA · la fusion de deux
+ *     tiers reporte les RIB du doublon sur la fiche conservée ; elle les tient
+ *     pour saisis par l'auteur de la fusion (`TiersService.fusionner`), sans
+ *     quoi un RIB visé pour un tiers créé à dessein payait un autre tiers.
+ *
+ * LIMITES ÉCRITES. Le visa porte sur les coordonnées et le tiers qui les
+ * porte, pas sur le rattachement des comptes au tiers (un compte rattaché à un
+ * tiers dont le RIB est visé paie ce RIB) ; l'option se retire par
+ * l'administrateur seul, au journal d'audit, comme le double regard.
  */
 
 /** Les coordonnées que le visa couvre · un changement de l'une d'elles le fait tomber. */
@@ -113,8 +122,9 @@ export function refusOrdreRibsNonVises(noms: readonly string[], ou: string): str
 }
 
 /** La façon dont l'écran nomme l'auteur d'une saisie ou d'un visa. */
-export function nommerUtilisateur(id: string | null, courriels: ReadonlyMap<string, string>): string | null {
-  if (id === null) return null;
+export function nommerUtilisateur(id: string | null | undefined, courriels: ReadonlyMap<string, string>): string | null {
+  // `== null` · un champ absent (requête trop étroite) n'est pas un utilisateur retiré.
+  if (id == null) return null;
   return courriels.get(id) ?? 'utilisateur retiré du dossier';
 }
 
@@ -132,6 +142,11 @@ export interface VisaPresente {
 }
 
 export function presenterVisa(rib: EtatVisa, exige: boolean, utilisateurId: string, courriels: ReadonlyMap<string, string>): VisaPresente {
+  // Une trace ABSENTE (select trop étroit) ferait offrir le visa à l'auteur et
+  // perdre l'instant lu · on refuse de présenter plutôt que de mentir.
+  if (rib.saisiPar === undefined || rib.saisiLe === undefined || rib.visePar === undefined || rib.viseLe === undefined) {
+    throw new Error('presenterVisa · le RIB est lu sans ses traces de saisie et de visa');
+  }
   return {
     exige,
     vise: estVise(rib),
