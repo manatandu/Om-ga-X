@@ -247,7 +247,31 @@ export function comptesProposesPourNature<C extends { id: string; numero: string
   if (numeros.length === 0) return [];
   const racine = (n: string) => n.replace(/0+$/, '');
   if (compteChoisi && numeros.some((n) => compteChoisi.numero === n || compteChoisi.numero.startsWith(racine(n)))) return [];
-  return numeros.map((n) => comptesDuDossier.find((c) => c.numero === n)).filter((c): c is C => !!c);
+  // Le compte du plan d'abord ; à défaut, les sous-comptes que le cabinet a
+  // ouverts dessous · un 24410000 subdivisé ne se saisit plus, c'est son
+  // sous-compte personnalisé qu'il faut proposer (comptes personnalisés, § 6).
+  return numeros.flatMap((n) => {
+    const exact = comptesDuDossier.find((c) => c.numero === n);
+    if (exact) return [exact];
+    return comptesDuDossier.filter((c) => c.numero.startsWith(racine(n)));
+  });
+}
+
+/**
+ * LA NATURE CHOISIE RESTE-T-ELLE AVEC CE COMPTE ? · la nature se choisit
+ * AVANT le compte (demande de Manasse du 2026-10-16) ; choisir ensuite le
+ * compte dans la liste ne l'efface que s'il ne la porte pas (ni parmi ses
+ * natures, ni parmi les comptes qu'elle propose), sans quoi la durée posée
+ * par la nature restait seule et l'écart au barème se taisait.
+ */
+export function natureGardeeAvecLeCompte(
+  nature: NatureBaremeFiscal | undefined,
+  compte: { numero: string; naturesBareme?: string[]; sectionsBareme: string[] | null } | null,
+): boolean {
+  if (!nature || !compte) return false;
+  const racine = (n: string) => n.replace(/0+$/, '');
+  if ((nature.comptes ?? []).some((n) => compte.numero === n || compte.numero.startsWith(racine(n)))) return true;
+  return naturesProposees([nature], compte, false).length > 0;
 }
 
 /**
@@ -287,5 +311,7 @@ export function numerosNonProposesPourNature(
   const numeros = nature?.comptes ?? [];
   const racine = (n: string) => n.replace(/0+$/, '');
   if (compteChoisi && numeros.some((n) => compteChoisi.numero === n || compteChoisi.numero.startsWith(racine(n)))) return [];
-  return numeros.filter((n) => !comptesDuDossier.some((c) => c.numero === n));
+  // Un sous-compte personnalisé sous le compte proposé le PORTE · il est
+  // proposé, jamais dit absent.
+  return numeros.filter((n) => !comptesDuDossier.some((c) => c.numero === n || c.numero.startsWith(racine(n))));
 }

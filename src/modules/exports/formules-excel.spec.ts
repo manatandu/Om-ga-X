@@ -1,4 +1,5 @@
 import * as ExcelJS from 'exceljs';
+import { BadRequestException } from '@nestjs/common';
 import { ExportService } from './export.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -237,5 +238,108 @@ describe('exports · les totaux sont des formules Excel', () => {
     const textes: string[] = [];
     r.eachRow((ligne) => textes.push(String(ligne.getCell(1).value ?? '')));
     expect(textes).toContain("Aucune réévaluation n'est passée dans cet exercice.");
+  });
+
+  it('la feuille Réévaluations rend chaque bien, un total en formule hors du filtre, et refuse une date hors de l\'exercice', async () => {
+    const immos = {
+      tableauImmobilisations: jest.fn().mockResolvedValue({
+        dateArret: '2025-12-31',
+        groupes: [],
+        sortis: [],
+        totaux: { brut: 0, amortissements: 0, depreciations: 0, net: 0 },
+      }),
+      tableauAmortissements: jest.fn().mockResolvedValue({
+        exercice: { dateDebut: '2025-01-01', dateFin: '2025-12-31' },
+        mois: Array.from({ length: 12 }, (_, i) => ({ cle: `2025-${i + 1}`, libelle: `M${i + 1}` })),
+        groupes: [],
+        totaux: { parMois: Array.from({ length: 12 }, () => 0), dotation: 0, cumulN1: 0, cumulN: 0, depreciations: 0, net: 0 },
+      }),
+    } as unknown as ImmobilisationService;
+    const ligne = (designation: string, valeurs: Partial<Record<string, number>>, motif: string | null) => ({
+      coefficientRetenu: valeurs.coefficient ?? 0,
+      brutAvant: valeurs.brutAvant ?? 0,
+      amortissementsAvant: valeurs.amortAvant ?? 0,
+      valeurNetteAvant: valeurs.netAvant ?? 0,
+      valeurReevaluee: valeurs.reevaluee ?? 0,
+      ecart: valeurs.ecart ?? 0,
+      brutApres: valeurs.brutApres ?? 0,
+      amortissementsApres: valeurs.amortApres ?? 0,
+      compteEcart: motif ? null : '10610000',
+      motifNonReevalue: motif,
+      immobilisation: { designation, numeroInventaire: null },
+    });
+    const reevaluationBilan = {
+      findFirst: jest.fn().mockResolvedValue({
+        dateReevaluation: new Date('2025-12-31T00:00:00Z'),
+        decision: 'AGE du 15 décembre 2025',
+        totalEcart: 2_000_000,
+        ecriture: { numeroPiece: 7, statut: 'BROUILLARD', journal: { code: 'OD' } },
+        lignes: [
+          ligne(
+            'Bâtiment administratif',
+            { coefficient: 1.25, brutAvant: 10_000_000, amortAvant: 2_000_000, netAvant: 8_000_000, reevaluee: 10_000_000, ecart: 2_000_000, brutApres: 12_500_000, amortApres: 2_500_000 },
+            null,
+          ),
+          ligne('Terrain nu', { brutAvant: 3_000_000, netAvant: 3_000_000 }, 'Valeur actuelle non établie'),
+        ],
+      }),
+    };
+    const prisma = {
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(TENANT) },
+      exercice: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') }),
+      },
+      reevaluationBilan,
+    } as unknown as PrismaService;
+    const vide = {} as never;
+    const service = new ExportService(prisma, vide, vide, vide, vide, vide, vide, vide, vide, vide, undefined, undefined, immos);
+    const classeur = await classeurDepuis((await service.tableauxImmobilisationsExcel('tn', 'ex')).buffer);
+    const r = classeur.getWorksheet('Réévaluations')!;
+
+    // Lignes retrouvées par leur désignation, jamais par un rang supposé.
+    const rangDe = (texte: string) => {
+      let rang = 0;
+      r.eachRow((l, n) => {
+        if (l.getCell(1).value === texte) rang = n;
+      });
+      return rang;
+    };
+    const batiment = rangDe('Bâtiment administratif');
+    const terrain = rangDe('Terrain nu');
+    const total = rangDe('Total');
+    expect([batiment > 0, terrain === batiment + 1, total === terrain + 1]).toEqual([true, true, true]);
+
+    expect(r.getRow(batiment).getCell(3).value).toBe(1.25);
+    expect(r.getRow(batiment).getCell(8).value).toBe(2_000_000);
+    expect(r.getRow(batiment).getCell(11).value).toBe('10610000');
+    // Le bien non réévalué garde sa ligne, son motif, et ses zéros en cellules VIDES.
+    expect(r.getRow(terrain).getCell(8).value).toBeNull();
+    expect(r.getRow(terrain).getCell(3).value).toBeNull();
+    expect(r.getRow(terrain).getCell(12).value).toBe('Valeur actuelle non établie');
+
+    // Le total est une formule sur les rangs écrits, résultat au centime.
+    const sommeBrut = r.getRow(total).getCell(4).value as ExcelJS.CellFormulaValue;
+    expect({ formule: sommeBrut.formula, resultat: sommeBrut.result }).toEqual({
+      formule: `SUM(D${batiment}:D${terrain})`,
+      resultat: 13_000_000,
+    });
+    const sommeEcart = r.getRow(total).getCell(8).value as ExcelJS.CellFormulaValue;
+    expect(sommeEcart.formula).toBe(`SUM(H${batiment}:H${terrain})`);
+    // L'autofiltre s'arrête à la dernière ligne de biens, le total n'y entre pas.
+    const filtre = r.autoFilter as { from: { row: number }; to: { row: number } } | string;
+    const fin = typeof filtre === 'string' ? Number(filtre.split(':')[1].replace(/\D/g, '')) : filtre.to.row;
+    expect(fin).toBe(terrain);
+    // Formats exigés en VALEUR, jamais « défini ».
+    expect(r.getColumn(3).numFmt).toBe('0.0000000000');
+    expect(r.getColumn(4).numFmt).toBe('#,##0.00');
+    expect(r.getColumn(10).numFmt).toBe('#,##0.00');
+    // La pièce est nommée, brouillard compris.
+    const textes: string[] = [];
+    r.eachRow((l) => textes.push(String(l.getCell(1).value ?? '')));
+    expect(textes).toContain('Réévaluation du 31/12/2025 · pièce OD 7 (au brouillard) · AGE du 15 décembre 2025');
+
+    // Une date d'arrêté hors de l'exercice, ou illisible, est refusée avant toute lecture.
+    await expect(service.tableauxImmobilisationsExcel('tn', 'ex', '2026-01-15')).rejects.toThrow(BadRequestException);
+    await expect(service.tableauxImmobilisationsExcel('tn', 'ex', '2025-02-30')).rejects.toThrow(BadRequestException);
   });
 });
