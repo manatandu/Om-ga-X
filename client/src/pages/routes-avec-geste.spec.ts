@@ -217,7 +217,7 @@ const GESTES: Array<{ route: string; controleur: string; decorateur: string; pag
     controleur: 'comptabilite/ecriture.controller.ts',
     decorateur: "@Patch(':id')",
     page: 'BrouillardPage.tsx',
-    appel: 'api.patch(`/ecritures/${edition.id}`, corps)',
+    appel: 'api.patch(`/ecritures/${edition.id}`, corps, { rejouerConflit: true })',
   },
   {
     route: 'POST /plateforme/cabinets/:tenantId/dossier-editeur',
