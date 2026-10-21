@@ -225,8 +225,9 @@ PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
 touche pas au serveur ; et la SUPPRESSION DES DOSSIERS D'ESSAI ÉCHUS cent
 quatre-vingts jours après leur terme (« Construit maintenant ») ; puis, le
 2026-10-21, la DÉCONNEXION D'UN UTILISATEUR PAR L'ADMINISTRATEUR, vue chez
-Microfina++ (« la 2e possibilité. Fais le proprement »), les autres idées
-de ce logiciel restant au suivi.
+Microfina++ (« la 2e possibilité. Fais le proprement »), et le même jour
+le VISA D'UN RIB par un second utilisateur (« Lève le gel pour le visa d'un
+RIB »), les autres idées de ce logiciel restant au suivi.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -3942,6 +3943,25 @@ avec MOTIF, pièces libérées non défaites ; pièce tenue non supprimable
 (`verifierAucunModuleNeLaTient`), tiers payé non plus, ses RIB partant avec lui.
 L'état ne bloque pas la validation. Liste en tranche (audit final F207) · total et
 nombre à imprimer sur tout le dossier, même filtre par état, état inconnu refusé.
+
+**Visa des RIB par un second utilisateur (2026-10-21, gel levé par Manasse,
+vu chez Microfina++).** `tiers/visa-rib.ts` · une OPTION du dossier
+(`Tenant.visaRibs`), désactivée par défaut comme le double regard · aucun
+texte lu ne l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2), l'art. 69 lui
+étant exclu par son art. 3). (1) Le visa porte sur les COORDONNÉES seules
+(banque, titulaire, codes, numéro, clé, IBAN, BIC, devise), jamais sur le
+commentaire ni la marque de principal. (2) Toute saisie des coordonnées, la
+création comprise, le fait tomber et nomme son auteur (`saisiPar`,
+`saisiLe`), jugée sous verrou du RIB. (3) L'auteur ne vise pas son propre RIB
+(403) ; un RIB d'avant la règle n'a pas d'auteur connu, il se vise, et la
+réponse le DIT, rien n'est présumé visé. (4) Le visa vise ce qui a été LU ·
+l'écran renvoie l'instant de la saisie montrée, un RIB changé depuis est
+refusé (409). (5) Activée, l'ordre de virement refuse, AVANT la première
+pièce, un RIB principal non visé, tiers (`preparer`) ou salarié
+(`preparerSalaries`), en nommant les bénéficiaires ; l'ordre recopie le RIB
+visé. Viser · administrateur ou comptable (`@ReserveAuComptable`), une mise
+à jour unitaire au journal d'audit ; le RIB du DONNEUR n'est pas visé (le
+changer ne détourne rien vers un tiers).
 
 **Rubriques de paie, avances et prêts (2026-09-26, priorité 2).**
 `personnel/rubriques-paie.ts`, `personnel/avances-salaire.ts`. (1) La rubrique

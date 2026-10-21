@@ -678,6 +678,17 @@ model Tenant {
   // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
   // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
   creationCompteEnSaisie        Boolean  @default(false)
+  // VISA DES RIB PAR UN SECOND UTILISATEUR (décision de Manasse du
+  // 2026-10-21, « Lève le gel pour le visa d'un RIB », vu chez Microfina++).
+  // Une OPTION, désactivée par défaut, comme le double regard · aucun texte lu
+  // ne l'impose. L'AUDCIF art. 69 laisse à l'entité les procédures de contrôle
+  // interne (SYSCOHADA), le SYCEBNL les demande par son art. 16, 2), l'art. 69
+  // lui étant exclu par son art. 3. Activée, un ordre de virement est refusé
+  // tant que le RIB principal d'un bénéficiaire (tiers ou salarié) n'est pas
+  // visé par un autre utilisateur que celui qui l'a saisi ou changé en dernier
+  // (`tiers/visa-rib.ts`). Un RIB modifié en silence détourne un paiement ·
+  // le visa met un second regard entre la saisie et l'argent qui part.
+  visaRibs                      Boolean  @default(false)
   // SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36 · Sage, « écart
   // de règlement » sous un montant paramétré) · le reste qu'un règlement peut
   // passer en charge en soldant le tiers (`reglements/ecart-escompte.ts` ·
@@ -9113,6 +9124,15 @@ model RibTiers {
   commentaire  String?
   createdAt    DateTime @default(now())
 
+  /// VISA DU RIB (`tiers/visa-rib.ts`) · qui a saisi ou changé les
+  /// coordonnées en dernier, et quand · null sur un RIB d'avant la règle,
+  /// dont l'auteur n'est pas connu. Le visa tombe à chaque changement des
+  /// coordonnées, jamais sur le commentaire ni sur la marque de principal.
+  saisiPar     String?
+  saisiLe      DateTime?
+  visePar      String?
+  viseLe       DateTime?
+
   @@index([tenantId, tiersId])
   @@map("ribs_tiers")
 }
@@ -10794,6 +10814,15 @@ model RibSalarie {
   estPrincipal Boolean  @default(false)
   commentaire  String?  @db.VarChar(200)
   createdAt    DateTime @default(now())
+
+  /// VISA DU RIB (`tiers/visa-rib.ts`) · qui a saisi ou changé les
+  /// coordonnées en dernier, et quand · null sur un RIB d'avant la règle,
+  /// dont l'auteur n'est pas connu. Le visa tombe à chaque changement des
+  /// coordonnées, jamais sur le commentaire ni sur la marque de principal.
+  saisiPar     String?
+  saisiLe      DateTime?
+  visePar      String?
+  viseLe       DateTime?
 
   @@index([tenantId, salarieId])
   @@map("ribs_salaries")

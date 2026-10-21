@@ -8,6 +8,7 @@ import {
   motifRefusDeviseDonneur,
   motifRefusImpression,
 } from '../tiers/ribs-tiers';
+import { estVise, refusOrdreRibsNonVises } from '../tiers/visa-rib';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
 import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
@@ -72,8 +73,10 @@ export class OrdresVirementService {
         tiersCompte: { select: { tiers: { select: { id: true, code: true, nom: true, ribs: { where: { tenantId, estPrincipal: true } } } } } },
       },
     });
+    const exigeVisa = await this.exigeLeVisa(tenantId);
     const beneficiaires: PreparationOrdre['beneficiaires'] = new Map();
     const manques: string[] = [];
+    const nonVises: string[] = [];
     for (const id of compteIds) {
       const c = comptes.find((x) => x.id === id);
       const tiers = c?.tiersCompte?.tiers;
@@ -84,6 +87,10 @@ export class OrdresVirementService {
       const principal = tiers.ribs[0];
       if (!principal) {
         manques.push(`${tiers.code} · ${tiers.nom} n'a pas de RIB principal`);
+        continue;
+      }
+      if (exigeVisa && !estVise(principal)) {
+        nonVises.push(`${tiers.code} · ${tiers.nom}`);
         continue;
       }
       beneficiaires.set(id, {
@@ -100,6 +107,9 @@ export class OrdresVirementService {
         `Ordre de virement impossible · ${manques.join(' ; ')}. Renseignez les coordonnées bancaires dans la fiche du tiers, ou décochez l'ordre de virement.`,
       );
     }
+    if (nonVises.length) {
+      throw new BadRequestException(refusOrdreRibsNonVises(nonVises, 'la fiche du tiers, volet Coordonnées bancaires'));
+    }
     return { donneur, beneficiaires };
   }
 
@@ -114,9 +124,11 @@ export class OrdresVirementService {
     const ribs = await this.prisma.ribSalarie.findMany({
       where: { tenantId, estPrincipal: true, salarieId: { in: salaries.map((s) => s.id) } },
     });
+    const exigeVisa = await this.exigeLeVisa(tenantId);
     const beneficiaires: PreparationOrdre['beneficiaires'] = new Map();
     const manques: string[] = [];
     const enDevise: string[] = [];
+    const nonVises: string[] = [];
     for (const s of salaries) {
       const principal = ribs.find((r) => r.salarieId === s.id);
       if (!principal) {
@@ -131,6 +143,10 @@ export class OrdresVirementService {
       const devise = (principal.devise ?? '').trim().toUpperCase();
       if (devise && devise !== MONNAIE_DE_TENUE) {
         enDevise.push(`${s.nomComplet} (${devise})`);
+        continue;
+      }
+      if (exigeVisa && !estVise(principal)) {
+        nonVises.push(s.nomComplet);
         continue;
       }
       beneficiaires.set(s.id, {
@@ -152,7 +168,20 @@ export class OrdresVirementService {
         `Ordre de virement impossible · le RIB principal de ${enDevise.join(', ')} est tenu hors de la monnaie de tenue, quand l'ordre des salaires est en ${MONNAIE_DE_TENUE} · la banque convertirait à un cours que le bulletin ne dit pas. Désignez un RIB principal en ${MONNAIE_DE_TENUE} (Registre du personnel, administrateur), ou payez ces salariés par un autre mode.`,
       );
     }
+    if (nonVises.length) {
+      throw new BadRequestException(refusOrdreRibsNonVises(nonVises, 'le Registre du personnel, volet Paiement'));
+    }
     return { donneur, beneficiaires };
+  }
+
+  /**
+   * L'OPTION « VISA DES RIB » DU DOSSIER (`tiers/visa-rib.ts`, règle 5) · lue
+   * avec l'ordre, jamais présumée · un dossier qui ne l'a pas cochée garde ses
+   * virements tels qu'avant.
+   */
+  private async exigeLeVisa(tenantId: string): Promise<boolean> {
+    const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaRibs: true } });
+    return dossier?.visaRibs === true;
   }
 
   /** Le compte à débiter · le RIB du journal, en monnaie de tenue, avec ses coordonnées. */

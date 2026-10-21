@@ -210,6 +210,8 @@ export class TenantService {
       refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
       // Ligne sage-l1, fonction 14 · aux deux référentiels.
       creationCompteEnSaisie: tenant.creationCompteEnSaisie,
+      // Visa des RIB (`tiers/visa-rib.ts`) · aux deux référentiels, comme le double regard.
+      visaRibs: tenant.visaRibs,
       // Ligne sage-l2, fonction 36 · aux deux référentiels ; `null` = aucun seuil fixé.
       seuilEcartReglement: tenant.seuilEcartReglement === null ? null : Number(tenant.seuilEcartReglement),
       attestationExemptionIs: tenant.attestationExemptionIs,
@@ -1233,6 +1235,16 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { refusClotureJournalNonImprime } });
+    return this.parametres(tenantId);
+  }
+
+  /** Le visa des RIB par un second utilisateur (`tiers/visa-rib.ts`), option du dossier. */
+  async modifierVisaRibs(tenantId: string, visaRibs: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaRibs } });
     return this.parametres(tenantId);
   }
 

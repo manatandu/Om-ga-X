@@ -344,8 +344,24 @@ describe('la liste d’exclusion est fermée sur User', () => {
     ],
     // LIGNE SAGE-L5, FONCTION 75 · LE RIB D'UN SALARIÉ · le journal dit qu'il
     // a changé, qui l'a changé et quand, la banque et la devise ; les
-    // numéros, le titulaire et le commentaire sont masqués.
-    RibSalarie: ['id', 'tenantId', 'tenant', 'salarieId', 'salarie', 'banque', 'devise', 'estPrincipal', 'createdAt'],
+    // numéros, le titulaire et le commentaire sont masqués. Le VISA (auteur
+    // de la saisie, viseur, et leurs dates) est la trace même que le journal
+    // doit garder (tiers/visa-rib.ts).
+    RibSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'banque',
+      'devise',
+      'estPrincipal',
+      'createdAt',
+      'saisiPar',
+      'saisiLe',
+      'visePar',
+      'viseLe',
+    ],
     // LE PAIEMENT DES SALAIRES · identifiable (mois, mode, journal, pièce,
     // ordre, annulation) ; le total et le billetage sont masqués.
     PaiementSalaires: [
