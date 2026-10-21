@@ -12,6 +12,7 @@ import { TiersModule } from '../tiers/tiers.module';
 import { ComptabiliteModule } from '../comptabilite/comptabilite.module';
 import { GarnissageDemonstrationService } from './garnissage-demonstration.service';
 import { CourrielsEditeurService } from './abonnements/courriels-editeur.service';
+import { EssaisEchusService } from './essais-echus/essais-echus.service';
 import { ImmobilisationsModule } from '../immobilisations/immobilisations.module';
 import { PersonnelModule } from '../personnel/personnel.module';
 import { RapprochementModule } from '../rapprochement/rapprochement.module';
@@ -38,6 +39,7 @@ import { QuestionnaireModule } from '../questionnaire/questionnaire.module';
     PlateformeService,
     AbonnementsService,
     CourrielsEditeurService,
+    EssaisEchusService,
     GarnissageDemonstrationService,
     OperateurPlateformeGuard,
     // Fabrique · l'environnement et la clé publique sont des paramètres par

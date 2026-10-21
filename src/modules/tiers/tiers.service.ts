@@ -4,6 +4,7 @@ import { libelleReference, referencesVers, refuserSiReferences, reporterReferenc
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
 import { normaliserQualite } from './qualite-tiers';
 import { renommagesALaFusion } from './lieux-livraison';
+import { saisieDesCoordonnees } from './visa-rib';
 import { copieDuTiers, type CopieDuTiers } from './duplication-tiers';
 import {
   numeroIndividuelAligne,
@@ -566,7 +567,7 @@ export class TiersService {
    * supprimé. Une seule transaction · une fusion à moitié faite laisserait
    * deux fiches se partager les comptes d'un même tiers.
    */
-  async fusionner(tenantId: string, sourceId: string, cibleId: string) {
+  async fusionner(tenantId: string, sourceId: string, cibleId: string, utilisateurId: string) {
     const [source, cible] = await Promise.all([
       this.prisma.tiers.findFirst({ where: { id: sourceId, tenantId } }),
       this.prisma.tiers.findFirst({ where: { id: cibleId, tenantId }, include: { comptesRattaches: true } }),
@@ -620,6 +621,16 @@ export class TiersService {
         await tx.documentTiers.deleteMany({
           where: { tenantId, tiersId: source.id, empreinte: { in: detenues.map((d) => d.empreinte) } },
         });
+      }
+      // UN RIB QUI CHANGE DE BÉNÉFICIAIRE PERD SON VISA (visa-rib.ts, règle 6) ·
+      // reporté sur la fiche conservée, il est tenu pour saisi par l'auteur de
+      // la fusion, sans quoi un RIB visé pour un doublon créé à dessein payait
+      // le vrai tiers sans second regard. Une mise à jour par RIB · le journal
+      // d'audit nomme chacun, là où le report en bloc ne laisse qu'un filtre.
+      const maintenant = new Date();
+      const ribsDuDoublon = await tx.ribTiers.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true } });
+      for (const rib of ribsDuDoublon) {
+        await tx.ribTiers.update({ where: { id: rib.id }, data: saisieDesCoordonnees(utilisateurId, maintenant) });
       }
       const r = await reporterReferences(tx, 'Tiers', source.id, cible.id, tenantId);
       const complement = coordonneesAComblement(source, cible);

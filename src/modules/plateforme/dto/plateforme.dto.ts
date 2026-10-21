@@ -278,3 +278,15 @@ export class MarquerPayeeDto {
   @IsDateString({ strict: true })
   payeeLe!: string;
 }
+
+/**
+ * Suppression d'un dossier d'essai échu · l'opérateur RETAPE l'identifiant du
+ * dossier (le service le compare à celui de l'adresse). Rien d'autre ne se
+ * reçoit du client : ni date, ni état, ni nombre, qui se relisent sous verrou.
+ */
+export class SupprimerEssaiEchuDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  confirmation!: string;
+}

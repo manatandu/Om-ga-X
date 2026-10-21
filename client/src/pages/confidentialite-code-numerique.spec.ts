@@ -273,11 +273,30 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
     expect(page).not.toMatch(/de façon anonyme/);
     // Cinq demandes par heure · la durée de la limite est celle que la route porte.
     expect(serveur('src/modules/auth/auth.controller.ts')).toContain('@Throttle({ default: { ttl: 3_600_000, limit: 5 } })');
-    // Quatre-vingt-dix jours · décision de Manasse du 2026-10-17. La suppression
-    // automatique n'existe pas encore (aucune purge de dossier dans le dépôt) · la
-    // page le DIT, elle ne promet pas un effacement qu'aucun code n'exécute.
-    expect(deplie).toContain('<strong>quatre-vingt-dix jours après le terme</strong> de l’essai');
-    expect(deplie).toContain('la suppression automatique du dossier n’est pas encore en service');
+    // Cent quatre-vingts jours · décision de Manasse du 2026-10-17 (« 180 jours »,
+    // jamais « six mois calendaires »). La suppression existe (console de l'éditeur,
+    // `plateforme/essais-echus/`) mais c'est un GESTE de l'opérateur, pas une tâche
+    // planifiée · la page le DIT, et elle ne promet que ce que le code garantit.
+    expect(deplie).toContain('<strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime');
+    expect(deplie).toContain('<strong>au moins trente jours avant</strong> la suppression');
+    expect(deplie).toContain('(Fichier &gt; Restituer le dossier complet)');
+    expect(deplie).toContain('faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche automatique');
+    expect(deplie).toContain('Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre terme');
+    expect(deplie).not.toContain('quatre-vingt-dix jours après le terme');
+    // Le fond a changé · la politique porte la date de cette modification (le
+    // bandeau de consentement se rouvre une fois, c'est voulu).
+    const date = readFileSync(join(__dirname, '../lib/date-politique-confidentialite.ts'), 'utf8');
+    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '21 octobre 2026';");
+    expect(page).toContain('Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}');
+    expect(deplie).not.toContain('n’est pas encore en service');
+    // Les deux nombres de la page sont ceux du calendrier du serveur.
+    const calendrier = serveur('src/modules/plateforme/essais-echus/essais-echus.ts');
+    expect(calendrier).toContain('export const JOURS_CONSERVATION_ESSAI = 180;');
+    expect(calendrier).toContain('export const JOURS_RAPPEL_AVANT_SUPPRESSION = 30;');
+    // La route de suppression existe, et elle est gardée comme le reste de la console.
+    const controleur = serveur('src/modules/plateforme/plateforme.controller.ts');
+    expect(controleur).toContain("@Post('essais-echus/:tenantId/supprimer')");
+    expect(controleur).toMatch(/@UseGuards\(JwtAuthGuard, OperateurPlateformeGuard\)/);
   });
 
   it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {

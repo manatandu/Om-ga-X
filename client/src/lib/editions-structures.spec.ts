@@ -66,7 +66,7 @@ describe('Éditions des structures', () => {
     const base = {
       nom: 'Démo', referentiel: 'SYSCOHADA', activite: null, adresse: null, ville: null, pays: 'RD Congo', telephone: null, email: null, siteWeb: null,
       capitalSocial: 1000000, capitalVariable: true, rccm: null, numeroImpot: null, idNat: null, devise: 'CDF', deviseFonctionnelle: null,
-      longueurCompte: 8, assujettiTva: false, doubleRegardValidation: false,
+      longueurCompte: 8, assujettiTva: false, doubleRegardValidation: false, visaRibs: false,
     } as unknown as ParametresDossier;
     const s = editionParametres(base, { jeuOuSysteme: 'Système normal', forme: null });
     const cles = s.lignes.map((l) => l[0]);

@@ -17,7 +17,7 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * nouveau à payer ; celui du virement annulé emporte son ordre.
  */
 interface Exercice { id: string; dateDebut: string; dateFin: string; statut: string }
-interface Journal { id: string; code: string; type: string }
+interface Journal { id: string; code: string; type: string; compteTresorerieId: string | null }
 interface Bulletin { id: string; netAPayerFc: number | string }
 interface LigneBalance { numero: string; reportCredit: number; mouvementDebit: number; mouvementCredit: number; solde: number }
 interface Proposition {
@@ -89,6 +89,15 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: '2026-12-31' });
   const suivant = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
   await appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`);
+  // Une caisse ne paie que ce qu'elle contient (fiche du compte 57) · le net de
+  // MUTOMBO y entre depuis la banque avant d'en sortir en espèces.
+  await appelApi(page, 'POST', '/ecritures', {
+    exerciceId: suivant.id, journalId: ca.id, date: '2027-01-02', libelle: 'Approvisionnement de la caisse',
+    lignes: [
+      { compteId: ca.compteTresorerieId, libelle: 'Approvisionnement', debit: netM, credit: 0 },
+      { compteId: bq.compteTresorerieId, libelle: 'Approvisionnement', debit: 0, credit: netM },
+    ],
+  });
   const balance = async () => (await appelApi<{ lignes: LigneBalance[] }>(page, 'GET', `/ecritures/balance?exerciceId=${suivant.id}`)).lignes;
   const ligne = (lignes: LigneBalance[], numero: string) => lignes.find((l) => l.numero === numero);
   expect(ligne(await balance(), '42200000')?.reportCredit).toBeCloseTo(netK + netM, 2);
@@ -149,12 +158,12 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
   const ordre = await appelApi<Ordre>(page, 'GET', `/ordres-virement/${ordres.find((o) => o.numero === virement.ordreVirement!.numero)!.id}`);
   expect([Number(ordre.total), ordre.lignes.map((l) => [l.beneficiaire.toUpperCase(), l.salarieId, Number(l.montant)])]).toEqual([netK, [['KASONGO JEAN', kasongo.id, netK]]]);
 
-  // Validé, le 422 est soldé, la caisse créditée du net de MUTOMBO.
+  // Validé, le 422 est soldé, la caisse vidée du net de MUTOMBO qu'elle avait reçu.
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: suivant.id, dateLimite: '2027-01-31' });
   let lignes = await balance();
   expect(ligne(lignes, '42200000')?.solde).toBeCloseTo(0, 2);
   const caisse = lignes.find((l) => l.numero.startsWith('57'))!;
-  expect(caisse.solde).toBeCloseTo(-netM, 2);
+  expect(caisse.solde).toBeCloseTo(0, 2);
 
   // L'annulation des espèces, validées · inscrites en négatif.
   const especes = apres.paiements.find((p) => p.mode === 'ESPECES')!;
@@ -162,8 +171,8 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: suivant.id, dateLimite: '2027-01-31' });
   lignes = await balance();
   expect(ligne(lignes, '42200000')?.solde).toBeCloseTo(-netM, 2);
-  // La caisse revient à zéro · son mouvement et son négatif s'annulent, et la balance ne la porte plus.
-  expect(lignes.find((l) => l.numero === caisse.numero)?.solde ?? 0).toBeCloseTo(0, 2);
+  // La caisse retrouve les espèces · la sortie et son négatif s'annulent.
+  expect(lignes.find((l) => l.numero === caisse.numero)?.solde).toBeCloseTo(netM, 2);
   const relu = await lire();
   expect(relu.aPayer.map((l) => [l.nomComplet.toUpperCase(), l.montant])).toEqual([['MUTOMBO ALAIN', netM]]);
   // Le virement de janvier 2027 est vu au 422 (hors de l'ouverture de 2027) · il ne reste que le net de MUTOMBO.
@@ -208,6 +217,16 @@ test('SYCEBNL · paiement en espèces au brouillard, annulé · la pièce est re
   const net = Number(b.netAPayerFc);
   const journaux = await appelApi<Journal[]>(page, 'GET', '/journaux');
   const ca = journaux.find((j) => j.code === 'CA')!;
+  const bq = journaux.find((j) => j.code === 'BQ')!;
+  // Une caisse ne paie que ce qu'elle contient (fiche du compte 57) · de quoi
+  // payer le bulletin et son réémis, depuis la banque.
+  await appelApi(page, 'POST', '/ecritures', {
+    exerciceId: dossier.exerciceId, journalId: ca.id, date: '2026-10-01', libelle: 'Approvisionnement de la caisse',
+    lignes: [
+      { compteId: ca.compteTresorerieId, libelle: 'Approvisionnement', debit: 3_000_000, credit: 0 },
+      { compteId: bq.compteTresorerieId, libelle: 'Approvisionnement', debit: 0, credit: 3_000_000 },
+    ],
+  });
   const lire = () => appelApi<Proposition>(page, 'GET', '/personnel/paiement-salaires/2026-09');
 
   // Sans mode convenu, le salarié se dit et ne se paie pas.

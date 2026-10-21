@@ -35,6 +35,10 @@ import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 export { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 import { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 
+// Mise à jour du 21 octobre 2026 · le sort des dossiers d'essai non souscrits
+// (cent quatre-vingts jours après le terme, rappel d'au moins trente jours,
+// suppression par VMG Consulting depuis sa console), ligne suppression-essais.
+//
 // Mise à jour du 17 octobre 2026 · présentation sur le modèle des politiques
 // des grands éditeurs (demande de Manasse, d'après celle de Cloudflare) ·
 // engagement en tête, sommaire, champ d'application, fondement de chaque
@@ -459,10 +463,13 @@ export function ContenuConfidentialite() {
         {!surSite && (
           <P>
             Un <strong>dossier d’essai</strong> arrivé à son terme passe en lecture seule · ses données restent
-            consultables et exportables, rien ne s’y écrit plus. VMG Consulting a arrêté sa conservation à{' '}
-            <strong>quatre-vingt-dix jours après le terme</strong> de l’essai, sauf souscription d’un abonnement ;
-            la suppression automatique du dossier n’est pas encore en service. Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre
-            terme (ci-dessous).
+            consultables et exportables, rien ne s’y écrit plus. Sauf souscription d’un abonnement, VMG Consulting le
+            conserve <strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime. Un courriel
+            de rappel part à l’adresse de l’administrateur du dossier <strong>au moins trente jours avant</strong> la
+            suppression, avec la voie d’exportation (Fichier &gt; Restituer le dossier complet). La suppression est
+            faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche
+            automatique · elle est irréversible. Les sauvegardes chiffrées de la nuit gardent une trace du dossier
+            jusqu’à leur propre terme (ci-dessus).
           </P>
         )}
 

@@ -417,6 +417,11 @@ export class PaiementSalairesService {
       mode === ModePaiementSalaire.CHEQUE
         ? `Chèques n° ${lignes.map((l) => reference(l.bulletinId)).join(', ')}`.slice(0, 190)
         : `Paiement des salaires ${mois} · ${lignes.length} salarié(s)`;
+    // Une paie en espèces ne sort que ce que la caisse contient (fiche du
+    // compte 57, `comptabilite/caisse-provisionnee.ts`).
+    await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+      { date: dto.date, lignes: [{ compteId: journal!.compteTresorerie!.id, debit: 0, credit: total }] },
+    ]);
     try {
       const r = await this.ecritures.creerAvec(
         tenantId,

@@ -190,6 +190,12 @@ test('SYSCOHADA · seuls les comptes personnalisés se saisissent et se rattache
   expect(sousLoyer).toMatchObject({ estRetenu: true, lettrable: loyer.lettrable, modeReportANouveau: loyer.modeReportANouveau });
   // Le compte de caisse du plan, ADOPTÉ tel quel, avec l'intitulé du cabinet.
   await appelApi(page, 'PATCH', `/comptes/${caisse.id}`, { estRetenu: true, intitule: 'Caisse siège' });
+  // Une caisse ne paie que ce qu'elle contient (fiche du compte 57) · l'apport
+  // d'abord, le loyer ensuite.
+  const capital = du('10130000');
+  await appelApi(page, 'PATCH', `/comptes/${capital.id}`, { estRetenu: true });
+  const dateApport = `${exercice.dateDebut.slice(0, 4)}-05-02`;
+  await appelApi(page, 'POST', '/ecritures', piece(exercice.id, dateApport, [{ compteId: caisse.id, debit: 1_000_000, credit: 0 }, { compteId: capital.id, debit: 0, credit: 1_000_000 }], 'Apport en caisse'), {}, sansAdopter);
   await appelApi(page, 'POST', '/ecritures', piece(exercice.id, date, [{ compteId: sousLoyer.id, debit: 300_000, credit: 0 }, { compteId: caisse.id, debit: 0, credit: 300_000 }], 'Loyer de mai'), {}, sansAdopter);
   // Le compte du plan qu'il subdivise reste refusé · le refus de la subdivision
   // passe d'abord, il nomme le sous-compte où la ligne doit aller.
@@ -225,7 +231,7 @@ test('SYSCOHADA · seuls les comptes personnalisés se saisissent et se rattache
   for (const c of resultat) expect(proposesN1).toContain(c.numero);
   // Les comptes du dossier passent la clôture · le loyer se saisit encore en N+1, au solde reporté.
   const { lignes } = await appelApi<{ lignes: LigneBalance[] }>(page, 'GET', `/ecritures/balance?exerciceId=${suivant.id}`);
-  expect(lignes.find((l) => l.numero === caisse.numero)).toMatchObject({ reportCredit: 300_000 });
+  expect(lignes.find((l) => l.numero === caisse.numero)).toMatchObject({ reportDebit: 700_000 });
   const dateN1 = `${debutSuivant.slice(0, 4)}-01-31`;
   await appelApi(page, 'POST', '/ecritures', piece(suivant.id, dateN1, [{ compteId: sousLoyer.id, debit: 300_000, credit: 0 }, { compteId: caisse.id, debit: 0, credit: 300_000 }], 'Loyer de janvier'), {}, sansAdopter);
   await expect(

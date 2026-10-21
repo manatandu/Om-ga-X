@@ -912,19 +912,12 @@ export class ReglementsService {
       preparation = await this.ordres.preparer(tenantId, dto.journalId, idsComptes);
     }
 
-    const resultats = [];
-    const aOrdonner: LigneAOrdonner[] = [];
-    for (const { r, compte, du, montant, tiers, escompte, ecart, compteEscompteId, compteEcartId, plan, enDevise, reduite, parts, groupe } of prepares) {
-      const libelle = `Règlement ${compte.tiersCompte?.tiers.nom ?? compte.intitule}`.slice(0, 190);
-      const ecriture = await this.ecritures.creer(tenantId, userId, {
-        exerciceId: dto.exerciceId,
-        journalId: dto.journalId,
-        date: dto.date,
-        libelle,
-        // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
-        // référence du règlement, et se lit sur la pièce comptable.
-        reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
-        lignes: avecLeMode(mode?.id ?? null, [r.compteId, compteTresorerieId], enDevise
+    // LES LIGNES DE CHAQUE PIÈCE, posées AVANT la première · une caisse ne
+    // paie que ce qu'elle contient (`comptabilite/caisse-provisionnee.ts`,
+    // fiche du compte 57), et cinq règlements dont le cinquième la rendrait
+    // créditrice se refusent ensemble, jamais après quatre pièces passées.
+    const lignesDe = ({ r, montant, escompte, ecart, compteEscompteId, compteEcartId, plan, enDevise, parts }: (typeof prepares)[number], libelle: string) =>
+      avecLeMode(mode?.id ?? null, [r.compteId, compteTresorerieId], enDevise
           ? lignesDuReglementEnDevise({
               sens: dto.sens,
               compteTiersId: r.compteId,
@@ -951,7 +944,29 @@ export class ReglementsService {
                   ecart: compteEcartId ? { montant: ecart, compteId: compteEcartId } : null,
                   libelle,
                 })
-              : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
+              : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }));
+    const libelleDe = (p: (typeof prepares)[number]) => `Règlement ${p.compte.tiersCompte?.tiers.nom ?? p.compte.intitule}`.slice(0, 190);
+    // Une caisse ne paie que ce qu'elle contient · toutes les pièces du
+    // règlement ensemble, avant la première (le journal, de trésorerie, n'est
+    // jamais un journal de situation).
+    await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+      { date: dto.date, lignes: prepares.flatMap((p) => lignesDe(p, libelleDe(p))) },
+    ]);
+
+    const resultats = [];
+    const aOrdonner: LigneAOrdonner[] = [];
+    for (const preparee of prepares) {
+      const { r, compte, du, montant, tiers, escompte, ecart, enDevise, reduite, parts, groupe } = preparee;
+      const libelle = libelleDe(preparee);
+      const ecriture = await this.ecritures.creer(tenantId, userId, {
+        exerciceId: dto.exerciceId,
+        journalId: dto.journalId,
+        date: dto.date,
+        libelle,
+        // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
+        // référence du règlement, et se lit sur la pièce comptable.
+        reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
+        lignes: lignesDe(preparee, libelle),
       });
       if (parts) {
         // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation

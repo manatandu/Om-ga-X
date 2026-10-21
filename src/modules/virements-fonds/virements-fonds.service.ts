@@ -235,6 +235,13 @@ export class VirementsFondsService {
       reference: reference(p),
       lignes: l,
     });
+    // UNE CAISSE NE DONNE QUE CE QU'ELLE CONTIENT (fiche du compte 57,
+    // `comptabilite/caisse-provisionnee.ts`) · la sortie d'une caisse se juge
+    // à sa date, l'entrée à la sienne ; une banque d'origine reste libre.
+    await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+      { date: sortie.date, lignes: lignes.origine },
+      { date: entree.date, lignes: lignes.destination },
+    ]);
     const r = await this.ecritures.creerPlusieursAvec(
       tenantId,
       userId,

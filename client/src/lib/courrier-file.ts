@@ -182,6 +182,9 @@ export const LIBELLES_ORIGINE: Record<string, string> = {
   // L'accusé de réception d'une acceptation des conditions de licence, le
   // texte accepté joint (Code du numérique, art. 55 et 56).
   CONDITIONS_LICENCE: 'Conditions de licence',
+  // Le rappel qui précède la suppression d'un dossier d'essai échu, envoyé par la
+  // console de l'éditeur à l'administrateur du dossier.
+  RAPPEL_SUPPRESSION_ESSAI: 'Rappel avant suppression du dossier d’essai',
 };
 
 export function libelleOrigine(origine: string): string {

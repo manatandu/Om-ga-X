@@ -5,6 +5,7 @@ import { PlateformeService } from './plateforme.service';
 import { LicencesSurSiteService } from './licences-sur-site.service';
 import { AbonnementsService } from './abonnements/abonnements.service';
 import { CourrielsEditeurService } from './abonnements/courriels-editeur.service';
+import { EssaisEchusService } from './essais-echus/essais-echus.service';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import {
   CreerCabinetDto,
@@ -19,6 +20,7 @@ import {
   ModifierLicenceDto,
   PreparerDemonstrationDto,
   ReinitialiserAdminDto,
+  SupprimerEssaiEchuDto,
 } from './dto/plateforme.dto';
 
 /**
@@ -38,6 +40,7 @@ export class PlateformeController {
     private readonly licencesSurSite: LicencesSurSiteService,
     private readonly abonnements: AbonnementsService,
     private readonly courriels: CourrielsEditeurService,
+    private readonly essaisEchus: EssaisEchusService,
   ) {}
 
   @Get('formules')
@@ -154,5 +157,32 @@ export class PlateformeController {
   @Post('cabinets/:tenantId/reinitialiser-admin')
   reinitialiserAdmin(@Param('tenantId') tenantId: string, @Body() dto: ReinitialiserAdminDto) {
     return this.plateformeService.reinitialiserAdmin(tenantId, dto);
+  }
+
+  /**
+   * DOSSIERS D'ESSAI ÉCHUS (décision de Manasse du 2026-10-17) · conservés cent
+   * quatre-vingts jours après leur terme, rappel au moins trente jours avant,
+   * puis supprimés PAR L'OPÉRATEUR, depuis cette console. La liste rend des
+   * identifiants, des dates, un état et des nombres, jamais une donnée du client.
+   */
+  @Get('essais-echus')
+  listeEssaisEchus() {
+    return this.essaisEchus.lister();
+  }
+
+  /** Envoie le rappel à l'administrateur de chaque dossier dont l'heure est venue, une fois par dossier. */
+  @Post('essais-echus/rappels')
+  envoyerRappelsEssaisEchus(@CurrentUser() operateur: AuthenticatedUser) {
+    return this.essaisEchus.envoyerRappels({ userId: operateur.userId, email: operateur.email });
+  }
+
+  /** Supprime un dossier d'essai échu · irréversible, l'identifiant est retapé et le calendrier relu sous verrou. */
+  @Post('essais-echus/:tenantId/supprimer')
+  supprimerEssaiEchu(
+    @Param('tenantId') tenantId: string,
+    @Body() dto: SupprimerEssaiEchuDto,
+    @CurrentUser() operateur: AuthenticatedUser,
+  ) {
+    return this.essaisEchus.supprimer(tenantId, { userId: operateur.userId, email: operateur.email }, dto.confirmation);
   }
 }

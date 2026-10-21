@@ -535,7 +535,7 @@ function monter(referentiel: 'SYSCOHADA' | 'SYCEBNL' = 'SYSCOHADA', lignesEnPlus
   const retirerCompensation = jest.fn(async () => undefined);
   const service = new ReglementsService(
     prisma,
-    { creer, retirerCompensation } as unknown as EcritureService,
+    { creer, retirerCompensation, verifierCaisseProvisionnee: jest.fn() } as unknown as EcritureService,
     { lettrerManuel, completer, propositionEcartChange } as unknown as LettrageService,
     {} as unknown as OrdresVirementService,
   );

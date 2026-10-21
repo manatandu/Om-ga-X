@@ -285,6 +285,7 @@ export function editionParametres(
     ['Assujetti à la TVA', p.assujettissementTva == null ? 'non renseigné' : ouiNon(p.assujettissementTva)],
     ['Vente de biens ou de services', p.venteBiensServices == null ? 'non renseigné' : ouiNon(p.venteBiensServices)],
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
+    ['Visa des RIB par un second utilisateur', ouiNon(p.visaRibs)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],
     // Ligne sage-l2, fonction 36 · `null` est « aucun seuil », jamais zéro.

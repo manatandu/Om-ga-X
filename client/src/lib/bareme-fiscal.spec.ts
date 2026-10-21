@@ -9,6 +9,8 @@ import {
   naturesProposees,
   comptesProposesPourNature,
   compteSelonNature,
+  numerosNonProposesPourNature,
+  natureGardeeAvecLeCompte,
   SOURCE_AIDE_SEUIL_IMMOBILISATION,
   texteAideSeuilImmobilisation,
   type NatureBaremeFiscal,
@@ -190,6 +192,22 @@ describe('lot 6 · le barème et les comptes dans les deux sens (D-4)', () => {
     expect(comptesProposesPourNature(bareme[1], plan, { numero: '24511000' })).toEqual([]);
     expect(comptesProposesPourNature(bareme[2], plan, { numero: '24210000' })).toEqual([]);
     expect(comptesProposesPourNature(undefined, plan, null)).toEqual([]);
+  });
+
+  it('un compte proposé subdivisé par le cabinet propose son sous-compte, jamais « non personnalisé »', () => {
+    // Le 24510000 du plan n'est pas dans la liste (non retenu) ; son sous-compte 24510001 l'est.
+    const plan = [{ id: 's', numero: '24510001' }];
+    expect(comptesProposesPourNature(bareme[0], plan, null).map((c) => c.id)).toEqual(['s']);
+    expect(numerosNonProposesPourNature(bareme[0], plan, null)).toEqual([]);
+    expect(numerosNonProposesPourNature(bareme[0], [], null)).toEqual(['24510000']);
+  });
+
+  it('choisir le compte garde la nature qu’il porte, efface celle qu’il ne porte pas', () => {
+    expect(natureGardeeAvecLeCompte(bareme[0], { numero: '24510000', sectionsBareme: null })).toBe(true);
+    expect(natureGardeeAvecLeCompte(bareme[0], { numero: '24511000', sectionsBareme: null })).toBe(true);
+    expect(natureGardeeAvecLeCompte(bareme[0], { numero: '24210000', naturesBareme: [bareme[0].cle], sectionsBareme: null })).toBe(true);
+    expect(natureGardeeAvecLeCompte(bareme[0], { numero: '24210000', naturesBareme: ['AUTRE'], sectionsBareme: null })).toBe(false);
+    expect(natureGardeeAvecLeCompte(undefined, { numero: '24210000', sectionsBareme: null })).toBe(false);
   });
 
   it('choisir la nature POSE son compte s’il est unique, le garde s’il est déjà choisi, laisse plusieurs proposés', () => {
