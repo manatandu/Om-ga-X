@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { montant } from '../lib/montants';
@@ -64,7 +64,11 @@ export function TraitementsImmobilisation({
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const motifTape = !!choisi && motif.trim().length > 0;
-  useEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre: motifTape }), [envoi, motifTape, onEtatTravail]);
+  // AVANT TOUT ÉVÉNEMENT SUIVANT (tests navigateur, WebKit, 2026-10-21) ·
+  // signalé par un useEffect, l'état « non enregistré » arrivait à la fiche un
+  // tour plus tard, et un Échap tapé aussitôt après la saisie la fermait sans
+  // rien demander. Le useLayoutEffect le pose dans le même passage.
+  useLayoutEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre: motifTape }), [envoi, motifTape, onEtatTravail]);
   const champMotif = useRef<HTMLTextAreaElement>(null);
   // Une réponse arrivée après un rechargement plus récent est jetée.
   const jeton = useRef(0);

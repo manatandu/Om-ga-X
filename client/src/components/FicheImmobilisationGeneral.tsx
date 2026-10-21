@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { montant } from '../lib/montants';
@@ -92,7 +92,11 @@ export function FicheImmobilisationGeneral({
   // CE QUE LA FERMETURE PERDRAIT (relecture de la ligne) · un envoi en cours,
   // ou une saisie qui diffère de la fiche lue, dits à la fenêtre de la fiche.
   const nonEnregistre = !!etat && !!saisie && Object.keys(corpsModification(etat.valeurs, saisie).corps).length > 0;
-  useEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre }), [envoi, nonEnregistre, onEtatTravail]);
+  // AVANT TOUT ÉVÉNEMENT SUIVANT (tests navigateur, WebKit, 2026-10-21) ·
+  // signalé par un useEffect, l'état « non enregistré » arrivait à la fiche un
+  // tour plus tard, et un Échap tapé aussitôt après la saisie la fermait sans
+  // rien demander. Le useLayoutEffect le pose dans le même passage.
+  useLayoutEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre }), [envoi, nonEnregistre, onEtatTravail]);
 
   const effetOuvert = !!etat?.modificationAEffet.ouverte && peutEcrire;
   // Les listes de comptes ne servent qu'aux champs à effet · lues seulement s'ils s'ouvrent.
