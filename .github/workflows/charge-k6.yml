@@ -122,6 +122,10 @@ jobs:
           tar -xzf k6.tar.gz
           sudo install -m 0755 "k6-v${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
           k6 version
+          # `surveiller.sh` divise par `bc`, absent de l'image du coureur · sans
+          # lui, les colonnes cpu_serveur et cpu_base sortaient vides, et c'est
+          # justement celles qui prouvent le bridage à un cœur.
+          sudo apt-get install -y -q bc > /dev/null
 
       # LE SERVEUR BRIDÉ COMME EN PRODUCTION (docs/test-de-charge-k6.md § 2.2)
       # · un cœur (`taskset -c 0`), tas de 460 Mio, pool de 10 par la chaîne
@@ -163,13 +167,26 @@ jobs:
           VUS: ${{ inputs.vus }}
           DUREE: ${{ inputs.duree }}
         run: |
+          # Le puits doit écouter AVANT k6 · sinon chaque essai public tombe
+          # en 503 et le rouge accuserait le serveur.
+          curl -sf "http://127.0.0.1:2526/mot-de-passe?courriel=sonde@omegax.test" > /dev/null || [ "$?" = "22" ] || { echo "::error::Le puits de courriel n'écoute pas"; cat /tmp/puits.log; exit 1; }
+          # LES CŒURS DU COUREUR SE DISENT · sur deux vCPU, k6, la base et le
+          # puits se partagent le cœur qui reste, et les latences mesurées
+          # incluent l'attente de k6 lui-même · elles ne se comparent pas à
+          # celles de docs/test-de-charge-k6.md (quatre cœurs).
+          echo "nproc=$(nproc)" | tee /tmp/coeurs.txt
+          echo "serveur · $(taskset -p "$(cat /tmp/serveur.pid)")" | tee -a /tmp/coeurs.txt
+          if [ "$(nproc)" -lt 3 ]; then echo "::warning::Coureur à $(nproc) cœurs · k6 et la base partagent le cœur restant, latences non comparables au poste de référence" | tee -a /tmp/coeurs.txt; fi
           set +e
-          nohup e2e/k6/surveiller.sh "$(cat /tmp/serveur.pid)" /tmp/surveillance.csv > /dev/null 2>&1 &
-          taskset -c 1-3 k6 run \
+          nohup e2e/k6/surveiller.sh "$(cat /tmp/serveur.pid)" /tmp/surveillance.csv > /tmp/surveiller.log 2>&1 &
+          # k6 écrit ses erreurs d'initialisation et les anomalies nommées
+          # par le script sur STDERR · tout va dans k6.txt. Aucun rapport
+          # d'usage à Grafana.
+          taskset -c 1-3 k6 run --no-usage-report \
             -e PROFIL="$PROFIL" -e VUS="$VUS" -e DUREE="$DUREE" \
             -e BASE=http://127.0.0.1:8080 -e SINK=http://127.0.0.1:2526 \
             -e RUN="${GITHUB_RUN_ID}-pg${{ matrix.postgres }}" \
-            --summary-export /tmp/k6-resume.json e2e/k6/usage-complet.js | tee /tmp/k6.txt
+            --summary-export /tmp/k6-resume.json e2e/k6/usage-complet.js 2>&1 | tee /tmp/k6.txt
           echo "k6 rc=${PIPESTATUS[0]}" | tee /tmp/k6-rc.txt
           kill "$(cat /tmp/serveur.pid)" 2>/dev/null || true
           sleep 2
@@ -181,26 +198,57 @@ jobs:
       # d'audit non écrit ou un pool épuisé se lisent au journal du serveur
       # seulement.
       - name: Résumé et verdict
+        env:
+          PROFIL: ${{ inputs.profil }}
+          VUS: ${{ inputs.vus }}
         run: |
+          set -o pipefail
+          # LES PREUVES ATTENDUES EXISTENT, OU LE JOB LE DIT · l'artefact se
+          # téléverse même quand un fichier manque, et un résumé vide passait
+          # pour un résumé.
+          for f in /tmp/serveur.log /tmp/k6.txt /tmp/k6-rc.txt /tmp/puits.log; do
+            [ -s "$f" ] || { echo "::error::Preuve absente ou vide · $f"; exit 1; }
+          done
+          rc=$(sed 's/k6 rc=//' /tmp/k6-rc.txt)
+          case "$rc" in
+            0) ;;
+            99) echo "::error::k6 a conclu en échec (code 99) · un seuil du script est franchi (5xx, fuite entre dossiers, incohérence comptable, refus inattendu) · voir k6.txt dans les artefacts" ;;
+            107|108) echo "::error::k6 n'a pas pu exécuter le script (code $rc · erreur du script ou abandon) · voir k6.txt" ;;
+            127) echo "::error::k6 est absent du coureur (code 127)" ;;
+            *) echo "::error::k6 a rendu le code $rc · voir k6.txt" ;;
+          esac
+          if [ "$rc" != "0" ]; then
+            grep -m 15 "5xx\|FUITE\|refus inattendu\|incoh" /tmp/k6.txt || true
+            echo "--- fin du journal du serveur"; tail -60 /tmp/serveur.log
+          fi
+          [ -s /tmp/k6-resume.json ] || { echo "::error::Aucun résumé k6 (k6-resume.json absent) · rien n'a été mesuré"; exit 1; }
           node -e '
             const s = require("/tmp/k6-resume.json").metrics;
-            const v = (n, k) => (s[n] && s[n][k] !== undefined) ? s[n][k] : "·";
-            console.log(JSON.stringify({
-              postgres: "${{ matrix.postgres }}", profil: "${{ inputs.profil }}",
+            const v = (n, k) => (s[n] && s[n][k] !== undefined) ? s[n][k] : null;
+            const r = {
+              postgres: "${{ matrix.postgres }}", profil: process.env.PROFIL, coeurs: require("fs").readFileSync("/tmp/coeurs.txt", "utf8").trim(),
               requetes: v("http_reqs", "count"), iterations: v("iterations", "count"),
               cabinets_termines: v("cabinets_termines", "count"), ecritures_saisies: v("ecritures_saisies", "count"),
               conflits_409: v("conflits_409", "count"), refus_inattendus: v("refus_inattendus", "count"),
               reponses_5xx: v("reponses_5xx", "count"), fuites_entre_dossiers: v("fuites_entre_dossiers", "count"),
               incoherences_comptables: v("incoherences_comptables", "count"),
               p50_ms: v("http_req_duration", "med"), p95_ms: v("http_req_duration", "p(95)"),
-            }, null, 1));
+            };
+            console.log(JSON.stringify(r, null, 1));
           ' | tee /tmp/resume.json
+          # UN BANC QUI N'A RIEN MESURÉ N'EST PAS VERT · des seuils sur des
+          # métriques sans échantillon sont tenus pour passés par k6.
+          requetes=$(node -p 'require("/tmp/resume.json").requetes ?? 0')
+          cabinets=$(node -p 'require("/tmp/resume.json").cabinets_termines ?? 0')
+          if [ "$requetes" = "0" ] || [ "$cabinets" = "0" ]; then echo "::error::Aucune requête ou aucun cabinet terminé · le banc n'a rien mesuré"; rc=1; fi
+          if [ "$PROFIL" != "fumee" ] && [ "$cabinets" -lt "$VUS" ]; then echo "::warning::$cabinets cabinet(s) terminé(s) pour $VUS lancés · le palier n'a pas laissé chaque cabinet finir, chiffres à lire avec cette réserve"; fi
           maillons=$(grep -c "Maillon d'audit NON écrit" /tmp/serveur.log || true)
           pool=$(grep -c "Timed out fetching" /tmp/serveur.log || true)
           echo "maillons non écrits · $maillons · pool épuisé · $pool"
-          rc=$(sed 's/k6 rc=//' /tmp/k6-rc.txt)
-          if [ "$rc" != "0" ]; then echo "::error::k6 a conclu en échec (code $rc) · un seuil du script est franchi, voir /tmp/k6.txt dans les artefacts"; fi
-          if [ "$maillons" != "0" ]; then echo "::error::$maillons maillon(s) d'audit NON écrit(s) · la chaîne a des trous"; fi
+          if [ "$maillons" != "0" ]; then echo "::error::$maillons maillon(s) d'audit NON écrit(s) · la chaîne a des trous"; grep -m 5 -A2 "Maillon d'audit NON écrit" /tmp/serveur.log; fi
+          if [ "$pool" != "0" ]; then echo "::warning::$pool fois « Timed out fetching » au journal du serveur · pool épuisé hors requête (file du courrier, audit), invisible pour k6"; fi
+          lignes=$(wc -l < /tmp/surveillance.csv 2>/dev/null || echo 0)
+          if [ "$lignes" -lt 3 ]; then echo "::warning::La surveillance n'a rien relevé ($lignes ligne(s)) · voir surveiller.log"; fi
           [ "$rc" = "0" ] && [ "$maillons" = "0" ]
 
       - name: Artefacts du banc
@@ -215,5 +263,7 @@ jobs:
             /tmp/k6.txt
             /tmp/k6-rc.txt
             /tmp/surveillance.csv
+            /tmp/surveiller.log
+            /tmp/coeurs.txt
             /tmp/serveur.log
             /tmp/puits.log

@@ -26,6 +26,21 @@ section 6, et c'est dit à Manasse.
 2. CLAUDE.md § 5 (table, relue par `reglement-interieur.spec.ts`) et § 10 ;
    `docs/test-de-charge-k6.md` § 6 et § 8 ; `e2e/k6/README.md`.
 
+3. Relecture « échecs silencieux » du workflow (un tour, 2026-10-21) · aucun
+   BLOQUANT ; M1 (un banc qui n'a rien mesuré passait au vert · k6 tient
+   pour passés des seuils sans échantillon) et M2 (coureur à deux cœurs ·
+   k6 et la base se partagent le cœur restant, latences non comparables)
+   corrigés · le verdict exige des requêtes et au moins un cabinet terminé,
+   avertit sous VUS cabinets, dit `nproc` et le masque du serveur ; MINEURS
+   corrigés · codes de k6 distingués (99, 107, 127), stderr de k6 capturé,
+   `bc` installé pour `surveiller.sh`, preuves exigées une à une, `pipefail`,
+   pool épuisé averti, puits vérifié avant k6, `--no-usage-report`, journal
+   du serveur en queue sur un rouge. Verdict rejoué en local sur un résumé
+   k6 réel (vert avec rc 0, rouge avec rc 99). ATTENDU · le profil `palier`
+   à 20 cabinets peut rester ROUGE par les seuils du script tant que le
+   § 4.4 n'est que « réduit » (13 refus résistants et 3 incohérences au
+   dernier banc local) · c'est la mesure, pas un défaut du workflow.
+
 ## Reste
 
 3. Specs `reglement-interieur`, `chaine-de-livraison`, `cadratins` ; relecture
