@@ -104,7 +104,7 @@ test('visa des RIB · refus, visa par un second utilisateur, visa qui tient à l
   await page.goto('/#/tiers');
   await page.getByRole('button', { name: /FRS-VISA/ }).click();
   await expect(page.getByText('Non visé · exigé pour les virements')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Viser', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Viser le RIB Equity BCDC', exact: true })).toHaveCount(0);
   expect(await refusDe(appelApi(page, 'POST', `/ribs-tiers/${rib.id}/viser`, { saisiLeLu: rib.visa.saisiLe }))).toMatch(/403/);
 
   // LE COMPTABLE LE VISE DEPUIS LA FICHE DU TIERS.
@@ -141,6 +141,17 @@ test('visa des RIB · refus, visa par un second utilisateur, visa qui tient à l
   const ordre = await appelApi<{ lignes: Array<{ numeroCompte: string | null; coordonnees?: string }> }>(page, 'GET', `/ordres-virement/${troisieme.ordre.id}`);
   expect(JSON.stringify(ordre)).toContain('0005555');
 
+  // UN RIB QUI CHANGE DE BÉNÉFICIAIRE PERD SON VISA · un doublon au RIB visé,
+  // fusionné dans le fournisseur, n'apporte pas son visa.
+  const doublon = await appelApi<{ id: string }>(page, 'POST', '/tiers', { type: 'FOURNISSEUR', code: 'FRS-DBL', nom: 'Imprimerie du Fleuve bis' });
+  await appelApi(page, 'POST', `/tiers/${doublon.id}/ribs`, { banque: 'Rawbank', numeroCompte: '0004444' });
+  const [ribDoublon] = await appelApi<Rib[]>(page, 'GET', `/tiers/${doublon.id}/ribs`);
+  await appelApi(autre, 'POST', `/ribs-tiers/${ribDoublon.id}/viser`, { saisiLeLu: ribDoublon.visa.saisiLe }, entetes);
+  expect((await appelApi<Rib[]>(page, 'GET', `/tiers/${doublon.id}/ribs`))[0].visa.vise).toBe(true);
+  await appelApi(page, 'POST', `/tiers/${doublon.id}/fusion/${fournisseur.id}`);
+  const apresFusion = (await ribs()).find((r) => r.id === ribDoublon.id)!;
+  expect(apresFusion.visa).toMatchObject({ vise: false, saisiParVous: true });
+
   await autre.context().close();
   expect(pannes).toEqual([]);
 });
@@ -151,6 +162,6 @@ async function viserALEcran(autre: Page) {
   await expect(autre.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
   await autre.goto('/#/tiers');
   await autre.getByRole('button', { name: /FRS-VISA/ }).click();
-  await autre.getByRole('button', { name: 'Viser', exact: true }).click();
+  await autre.getByRole('button', { name: 'Viser le RIB Equity BCDC', exact: true }).click();
   await expect(autre.getByText(/^Visé par /)).toBeVisible();
 }
