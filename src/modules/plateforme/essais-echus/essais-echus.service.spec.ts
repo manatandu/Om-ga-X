@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { StatutMessage } from '@prisma/client';
 import { ORIGINE_INSCRIPTION_ESSAI } from '../../auth/inscription-essai';
 import { ORIGINE_RAPPEL_SUPPRESSION_ESSAI } from '../../courrier/courrier.service';
@@ -28,6 +28,8 @@ interface Scenario {
     envoyeLeIlYa: number | null;
     messageId?: string;
     statut?: StatutMessage;
+    /** Le texte brut que le transport a laissé sur le message (porte souvent l'adresse du client). */
+    erreur?: string | null;
     misEnFileIlYaMinutes?: number;
     /** Le rappel annonçait un AUTRE terme (essai redonné depuis) · jours entre ce terme ancien et le terme courant. */
     termeAnterieurDe?: number;
@@ -96,10 +98,12 @@ function monter(s: Scenario = {}) {
       findMany: jest.fn(async (args: { where: { origine?: string; id?: { in: string[] } } }) =>
         args.where.origine === ORIGINE_INSCRIPTION_ESSAI
           ? s.inscrit === false ? [] : [{ tenantId: T, origineId: T }]
-          : (args.where.id?.in ?? []).map((id) => ({ id, statut: s.rappel?.statut ?? StatutMessage.ENVOYE, erreur: null })),
+          : (args.where.id?.in ?? []).map((id) => ({ id, statut: s.rappel?.statut ?? StatutMessage.ENVOYE, erreur: s.rappel?.erreur ?? null })),
       ),
       findFirst: jest.fn(async (args: { where: { origine?: string } }) =>
-        args.where.origine === ORIGINE_RAPPEL_SUPPRESSION_ESSAI ? null : { statut: s.rappel?.statut ?? StatutMessage.ENVOYE, envoyeAt: jours(-31), erreur: null },
+        args.where.origine === ORIGINE_RAPPEL_SUPPRESSION_ESSAI
+          ? null
+          : { statut: s.rappel?.statut ?? StatutMessage.ENVOYE, envoyeAt: jours(-31), erreur: s.rappel?.erreur ?? null },
       ),
     },
     rappelSuppressionEssai: {
@@ -208,10 +212,11 @@ describe('envoyerRappels', () => {
   });
 
   it('UN RAPPEL MIS EN FILE MAIS PAS PARTI N’EST PAS « PARTI » · pas de date d’envoi, et c’est dit', async () => {
-    const { service, lecteur } = monter({ envoi: { statut: StatutMessage.EN_ATTENTE, erreur: 'Connexion refusée' } });
+    const { service, lecteur } = monter({ envoi: { statut: StatutMessage.EN_ATTENTE, erreur: 'Error · connect ECONNREFUSED 10.0.0.5:587' } });
     const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
-    expect(r.resultats[0]).toMatchObject({ tenantId: T, issue: 'EN_FILE' });
-    expect(r.resultats[0].detail).toContain('Connexion refusée');
+    expect(r.resultats[0]).toMatchObject({ tenantId: T, issue: 'EN_FILE', cause: 'RESEAU' });
+    expect(r.resultats[0].detail).toContain('injoignable');
+    expect(r.resultats[0].detail).not.toContain('ECONNREFUSED');
     expect((lecteur.rappelSuppressionEssai.update.mock.calls[0][0] as { data: { envoyeLe: Date | null } }).data.envoyeLe).toBeNull();
     expect(r.enFile).toBe(1);
   });
@@ -264,11 +269,66 @@ describe('envoyerRappels', () => {
 
   it('un échec d’écriture du message LIBÈRE la réservation et remonte dans le compte rendu, sans arrêter les autres', async () => {
     const { service, courrier, lecteur } = monter();
-    courrier.mettreEnFile.mockRejectedValueOnce(new BadRequestException('Adresse de destinataire inutilisable'));
+    courrier.mettreEnFile.mockRejectedValueOnce(new BadRequestException('Adresse de destinataire inutilisable · « jean@client.cd ». Le message n’a pas été mis en file.'));
     const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
-    expect(r.resultats[0]).toMatchObject({ issue: 'ECHEC' });
-    expect(r.resultats[0].detail).toContain('Adresse de destinataire inutilisable');
+    expect(r.resultats[0]).toMatchObject({ issue: 'ECHEC', cause: 'REFUS_DESTINATAIRE' });
     expect(lecteur.rappelSuppressionEssai.deleteMany).toHaveBeenCalled();
+  });
+});
+
+describe('L’ADRESSE D’UN CLIENT NE REMONTE JAMAIS À LA CONSOLE NI AU JOURNAL DU SERVEUR (CLAUDE.md § 8)', () => {
+  const ADRESSE = 'jean@client.cd';
+  const REFUS_SMTP = `550 5.1.1 <${ADRESSE}>: Recipient address rejected: User unknown in virtual mailbox table`;
+  let erreursJournal: string[];
+  beforeEach(() => {
+    erreursJournal = [];
+    jest.spyOn(Logger.prototype, 'error').mockImplementation((message: unknown) => {
+      erreursJournal.push(String(message));
+    });
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      erreursJournal.push(String(message));
+    });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('liste · la catégorie seule, jamais le texte du transport', async () => {
+    const { service } = monter({ rappel: { envoyeLeIlYa: null, statut: StatutMessage.ECHEC, erreur: REFUS_SMTP } });
+    const r = await service.lister(MAINTENANT);
+    expect(r.essais[0].rappel).toMatchObject({ statutCourrier: StatutMessage.ECHEC, causeEchec: 'REFUS_DESTINATAIRE' });
+    expect(JSON.stringify(r)).not.toContain(ADRESSE);
+    expect(JSON.stringify(r)).not.toContain('@');
+  });
+
+  it('retour de /rappels · message en file avec un refus qui cite l’adresse', async () => {
+    const { service } = monter({ envoi: { statut: StatutMessage.ECHEC, erreur: REFUS_SMTP } });
+    const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(r.resultats[0]).toMatchObject({ issue: 'EN_FILE', cause: 'REFUS_DESTINATAIRE' });
+    expect(JSON.stringify(r)).not.toContain('@');
+  });
+
+  it('retour de /rappels · message retenté puis abandonné, la cause seule', async () => {
+    const { service } = monter({ rappel: { envoyeLeIlYa: null, statut: StatutMessage.ABANDONNE, erreur: REFUS_SMTP } });
+    const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(r.resultats[0]).toMatchObject({ issue: 'ECHEC', cause: 'REFUS_DESTINATAIRE' });
+    expect(JSON.stringify(r)).not.toContain('@');
+  });
+
+  it('exception levée qui cite l’adresse · ni la console ni le journal du serveur ne la reçoivent', async () => {
+    const { service, courrier } = monter();
+    courrier.mettreEnFile.mockRejectedValueOnce(new BadRequestException(`Adresse de destinataire inutilisable · « ${ADRESSE} ».`));
+    const r = await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(r.resultats[0]).toMatchObject({ issue: 'ECHEC', cause: 'REFUS_DESTINATAIRE' });
+    expect(JSON.stringify(r)).not.toContain('@');
+    expect(erreursJournal.length).toBeGreaterThan(0);
+    expect(erreursJournal.join('\n')).not.toContain('@');
+  });
+
+  it('un échec de libération de la réservation ne journalise pas non plus le texte', async () => {
+    const { service, courrier, lecteur } = monter();
+    courrier.mettreEnFile.mockRejectedValueOnce(new Error(REFUS_SMTP));
+    lecteur.rappelSuppressionEssai.deleteMany.mockRejectedValueOnce(new Error(`clé ${ADRESSE}`));
+    await service.envoyerRappels(OPERATEUR, MAINTENANT);
+    expect(erreursJournal.join('\n')).not.toContain('@');
   });
 
   it('un dossier dont le rappel est déjà parti n’est pas rappelé', async () => {

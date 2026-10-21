@@ -9,6 +9,7 @@ import { ORIGINE_INSCRIPTION_ESSAI } from '../../auth/inscription-essai';
 import { JOURS_ESSAI } from '../abonnements/facturation-abonnements';
 import { PLAFOND_LISTE_CONSOLE, tranche } from '../plafond-console';
 import { avisRappelSuppression } from './courriel-rappel';
+import { causeDeLException, causeEchecEnvoi, CauseEchecEnvoi, LIBELLES_CAUSE_ECHEC } from './cause-echec-envoi';
 import { dateDeSuppression, debutDeLaFenetreDeRappel, etatDeLEssai, FaitsDossierEssai, termeDeLaLicence, VerdictEssai } from './essais-echus';
 import { purgerDossier } from './purger-dossier';
 
@@ -41,8 +42,13 @@ export type IssueRappel = 'ENVOYE' | 'EN_FILE' | 'DEJA_ENVOYE' | 'EN_COURS' | 'S
 export interface ResultatRappel {
   tenantId: string;
   issue: IssueRappel;
-  /** Le motif en clair quand ce n'est pas un envoi. */
+  /**
+   * Le motif en clair quand ce n'est pas un envoi · écrit par OmegaX, JAMAIS le
+   * texte du transport (qui porte l'adresse du client), seulement sa catégorie.
+   */
   detail: string | null;
+  /** La catégorie de l'échec d'envoi, quand il y en a un (`cause-echec-envoi.ts`). */
+  cause?: CauseEchecEnvoi | null;
 }
 
 export interface LigneEssaiEchu {
@@ -52,7 +58,11 @@ export interface LigneEssaiEchu {
   conserveJusquAu: string | null;
   supprimableLe: string | null;
   rappelDepuisLe: string | null;
-  rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: StatutMessage | null; erreur: string | null } | null;
+  /**
+   * `causeEchec` est une CATÉGORIE, jamais le texte de l'erreur · celui-ci cite
+   * l'adresse du client, que VMG ne voit pas (CLAUDE.md § 8).
+   */
+  rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: StatutMessage | null; causeEchec: CauseEchecEnvoi | null } | null;
   nombreUtilisateurs: number;
   nombreExercices: number;
   nombreEcritures: number;
@@ -83,6 +93,17 @@ interface DossierLu {
 }
 
 type Lecteur = PrismaService | Prisma.TransactionClient;
+
+/** Un message en file, pas parti · sa catégorie d'échec s'il en a une, jamais le texte du transport. */
+function enFile(tenantId: string, statut: StatutMessage, erreur: string | null): ResultatRappel {
+  const cause = causeEchecEnvoi(erreur);
+  return {
+    tenantId,
+    issue: 'EN_FILE',
+    detail: `Le message est ${statut}${cause ? ` (${LIBELLES_CAUSE_ECHEC[cause]})` : ''} · il sera retenté à la prochaine demande.`,
+    cause,
+  };
+}
 
 @Injectable()
 export class EssaisEchusService {
@@ -231,7 +252,7 @@ export class EssaisEchusService {
                 misEnFileLe: l.rappelMisEnFileLe.toISOString(),
                 envoyeLe: l.rappelEnvoyeLe ? l.rappelEnvoyeLe.toISOString() : null,
                 statutCourrier: message?.statut ?? null,
-                erreur: message?.erreur ?? null,
+                causeEchec: causeEchecEnvoi(message?.erreur),
               }
             : null,
           nombreUtilisateurs: l.nombreUtilisateurs,
@@ -243,7 +264,11 @@ export class EssaisEchusService {
     });
   }
 
-  /** L'état courant des messages de rappel (statut et erreur seulement, jamais le corps ni l'adresse). */
+  /**
+   * L'état courant des messages de rappel (statut et erreur seulement, jamais le
+   * corps ni l'adresse). L'erreur est lue pour être CATÉGORISÉE, elle ne quitte
+   * pas le serveur.
+   */
   private async statutsDesRappels(dossiers: { tenantId: string; lu: DossierLu }[]) {
     const portes = dossiers.filter((d) => d.lu.rappelMessageId);
     if (portes.length === 0) return new Map<string, { statut: StatutMessage; erreur: string | null }>();
@@ -300,9 +325,18 @@ export class EssaisEchusService {
         try {
           resultats.push(await this.rappelerUn(id, l, v, operateur, maintenant));
         } catch (erreur) {
-          const detail = erreur instanceof Error ? erreur.message : String(erreur);
-          this.logger.error(`Rappel de suppression · échec pour le dossier ${id} · ${detail}`);
-          resultats.push({ tenantId: id, issue: 'ECHEC', detail });
+          if (erreur instanceof ConflictException) {
+            // `retenter` · un autre geste envoie ce message à l'instant.
+            resultats.push({ tenantId: id, issue: 'EN_COURS', detail: 'Un envoi est déjà en cours pour ce dossier.', cause: null });
+            continue;
+          }
+          // Ni le message de l'erreur ni sa pile · le refus de la file cite
+          // l'adresse de l'administrateur. Le journal du serveur reçoit le NOM de
+          // l'erreur et sa catégorie, la console la catégorie.
+          const cause = causeDeLException(erreur);
+          const nom = erreur instanceof Error ? erreur.name : typeof erreur;
+          this.logger.error(`Rappel de suppression · échec pour le dossier ${id} · ${nom} · ${LIBELLES_CAUSE_ECHEC[cause]}`);
+          resultats.push({ tenantId: id, issue: 'ECHEC', detail: `L’envoi du rappel a échoué · ${LIBELLES_CAUSE_ECHEC[cause]}.`, cause });
         }
       }
       const compte = (i: IssueRappel) => resultats.filter((r) => r.issue === i).length;
@@ -410,13 +444,13 @@ export class EssaisEchusService {
         data: { messageId, envoyeLe: statut === StatutMessage.ENVOYE ? (envoyeAt ?? maintenant) : null },
       });
       if (statut === StatutMessage.ENVOYE) return { tenantId, issue: 'ENVOYE', detail: null };
-      return { tenantId, issue: 'EN_FILE', detail: erreur ?? `Le message est ${statut} · il sera retenté à la prochaine demande.` };
+      return enFile(tenantId, statut, erreur);
     } catch (echec) {
       // L'envoi n'a pas pu s'écrire (adresse inutilisable, base) · la réservation
       // est LIBÉRÉE pour qu'un nouvel appel puisse réessayer, et l'erreur remonte.
       await this.prisma.rappelSuppressionEssai
         .deleteMany({ where: { id: reservation.id, messageId: '', envoyeLe: null } })
-        .catch((e) => this.logger.error(`Rappel de suppression · réservation du dossier ${tenantId} non libérée · ${e instanceof Error ? e.message : e}`));
+        .catch((e) => this.logger.error(`Rappel de suppression · réservation du dossier ${tenantId} non libérée · ${e instanceof Error ? e.name : typeof e}`));
       throw echec;
     }
   }
@@ -437,7 +471,13 @@ export class EssaisEchusService {
     let erreur = message.erreur;
     if (statut === StatutMessage.ABANDONNE) {
       await this.prisma.rappelSuppressionEssai.deleteMany({ where: { id: rappelId, envoyeLe: null } });
-      return { tenantId, issue: 'ECHEC', detail: `Le message est abandonné après plusieurs essais (${erreur ?? 'cause non gardée'}) · la réservation est levée, recommencez.` };
+      const cause = causeEchecEnvoi(erreur);
+      return {
+        tenantId,
+        issue: 'ECHEC',
+        detail: `Le message est abandonné après plusieurs essais (${cause ? LIBELLES_CAUSE_ECHEC[cause] : 'cause non gardée'}) · la réservation est levée, recommencez.`,
+        cause,
+      };
     }
     if (statut !== StatutMessage.ENVOYE) {
       const r = await this.courrier.retenter(tenantId, messageId);
@@ -449,7 +489,7 @@ export class EssaisEchusService {
       await this.prisma.rappelSuppressionEssai.update({ where: { id: rappelId }, data: { envoyeLe: envoyeAt ?? maintenant } });
       return { tenantId, issue: 'ENVOYE', detail: null };
     }
-    return { tenantId, issue: 'EN_FILE', detail: erreur ?? `Le message est ${statut}.` };
+    return enFile(tenantId, statut, erreur);
   }
 
   // ----------------------------------------------------------------------

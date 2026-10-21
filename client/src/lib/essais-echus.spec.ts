@@ -1,4 +1,4 @@
-import { dateDuJour, etatEssai, libelleIssueRappel, statutDuRappel, type EssaiEchu } from './essais-echus';
+import { dateDuJour, etatEssai, libelleCauseEchec, libelleIssueRappel, statutDuRappel, type EssaiEchu } from './essais-echus';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
 
@@ -46,14 +46,17 @@ describe('statutDuRappel · « en file » n’est pas « parti »', () => {
   });
 
   it('parti seulement quand le serveur a constaté l’envoi', () => {
-    const parti = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: '2026-06-10T10:00:01Z', statutCourrier: 'ENVOYE', erreur: null } });
+    const parti = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: '2026-06-10T10:00:01Z', statutCourrier: 'ENVOYE', causeEchec: null } });
     expect(parti.libelle).toBe('parti le 10/06/2026');
-    const enFile = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: null, statutCourrier: 'EN_ATTENTE', erreur: null } });
+    const enFile = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: null, statutCourrier: 'EN_ATTENTE', causeEchec: null } });
     expect(enFile).toMatchObject({ libelle: 'en file, pas parti', alerte: false });
   });
 
-  it('un échec d’envoi se montre en alerte avec sa cause', () => {
-    const echec = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: null, statutCourrier: 'ECHEC', erreur: 'Connexion refusée' } });
-    expect(echec).toMatchObject({ libelle: 'en échec', alerte: true, detail: 'Connexion refusée' });
+  it('un échec d’envoi se montre en alerte avec sa CATÉGORIE, jamais un texte du transport', () => {
+    const echec = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: null, statutCourrier: 'ECHEC', causeEchec: 'REFUS_DESTINATAIRE' } });
+    expect(echec).toMatchObject({ libelle: 'en échec', alerte: true, detail: 'adresse refusée par le serveur du destinataire' });
+    expect(libelleCauseEchec('RESEAU')).toBe('serveur de messagerie injoignable');
+    expect(libelleCauseEchec(null)).toBeNull();
+    expect(libelleCauseEchec('NOUVELLE')).toBe('NOUVELLE');
   });
 });

@@ -13,7 +13,11 @@ export interface EssaiEchu {
   conserveJusquAu: string | null;
   supprimableLe: string | null;
   rappelDepuisLe: string | null;
-  rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: string | null; erreur: string | null } | null;
+  /**
+   * `causeEchec` est une CATÉGORIE servie par le serveur, jamais le texte de
+   * l'erreur du transport (il cite l'adresse du client, que VMG ne voit pas).
+   */
+  rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: string | null; causeEchec: string | null } | null;
   nombreUtilisateurs: number;
   nombreExercices: number;
   nombreEcritures: number;
@@ -25,6 +29,20 @@ export interface ResultatRappel {
   tenantId: string;
   issue: IssueRappel;
   detail: string | null;
+  cause?: string | null;
+}
+
+/** Les catégories d'un échec d'envoi, servies par le serveur (`cause-echec-envoi.ts`) · une inconnue se dit telle quelle. */
+const CAUSES: Record<string, string> = {
+  REFUS_DESTINATAIRE: 'adresse refusée par le serveur du destinataire',
+  AUTHENTIFICATION: 'authentification de la messagerie refusée',
+  RESEAU: 'serveur de messagerie injoignable',
+  AUTRE: 'autre cause',
+};
+
+export function libelleCauseEchec(cause: string | null | undefined): string | null {
+  if (!cause) return null;
+  return CAUSES[cause] ?? cause;
 }
 
 const ETATS: Record<EtatEssaiEchu, { libelle: string; classe: string }> = {
@@ -75,6 +93,6 @@ export function statutDuRappel(e: EssaiEchu): { libelle: string; alerte: boolean
   return {
     libelle: echec ? 'en échec' : 'en file, pas parti',
     alerte: echec,
-    detail: e.rappel.erreur,
+    detail: libelleCauseEchec(e.rappel.causeEchec),
   };
 }
