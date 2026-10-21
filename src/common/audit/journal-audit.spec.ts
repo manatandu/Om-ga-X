@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { calculerEmpreinte, EMPREINTE_ORIGINE, ContenuEmpreinte } from './empreinte-audit';
 import { masquer, estChampSensible, MARQUEUR_MASQUE, MODELES_AUDITES } from './champs-audites';
 import { JournalAuditService } from './journal-audit.service';
@@ -619,6 +620,52 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
     expect(maillons).toHaveLength(1);
     expect(maillons[0].avant).toMatchObject({ intitule: 'Avant' });
     expect(maillons[0].apres).toMatchObject({ intitule: 'Après' });
+  });
+
+  it('dans une transaction, l’échec de la pré-image remonte tel quel, sans lancer l’opération', async () => {
+    // Avalé, il laissait l'opération partir sur une transaction morte, et un
+    // conflit de sérialisation que la reprise aurait rejoué devenait un 500.
+    const { tx, base, maillons } = transactionFactice(null);
+    const conflit = Object.assign(new Error('could not serialize access'), { code: 'P2034' });
+    (tx as any).journal = { findFirst: jest.fn().mockRejectedValue(conflit) };
+    const query = jest.fn(async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }));
+    await expect(
+      dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+        journaliserDansTransaction(tx, () =>
+          intercepterEcriture(base, {
+            model: 'Journal',
+            operation: 'update',
+            args: { where: { id: 'j-1' }, data: { intitule: 'Après' } },
+            query,
+          }),
+        ),
+      ),
+    ).rejects.toBe(conflit);
+    expect(query).not.toHaveBeenCalled();
+    expect(maillons).toHaveLength(0);
+  });
+
+  it('dans une transaction, une erreur de validation du client (avant tout envoi) laisse passer l’opération', async () => {
+    // Une clé composée qu'un `findFirst` ne sait pas relire · la transaction
+    // est saine, le geste passe, le maillon part sans pré-image.
+    const { tx, base, maillons } = transactionFactice(null);
+    const validation = new Prisma.PrismaClientValidationError('Unknown argument tenantId_nature', { clientVersion: 'test' });
+    (tx as any).journal = { findFirst: jest.fn().mockRejectedValue(validation) };
+    const query = jest.fn(async () => ({ id: 'j-1', tenantId: 'd-1', intitule: 'Après' }));
+    await dansContexteAudit({ acteurEmail: 'chef@cabinet.cd', tenantId: 'd-1' }, () =>
+      journaliserDansTransaction(tx, () =>
+        intercepterEcriture(base, {
+          model: 'Journal',
+          operation: 'update',
+          args: { where: { id: 'j-1' }, data: { intitule: 'Après' } },
+          query,
+        }),
+      ),
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(maillons).toHaveLength(1);
+    // Sans pré-image, le maillon la range vide · rien d'inventé.
+    expect([null, {}]).toContainEqual(maillons[0].avant);
   });
 
   it('hors transaction, la pré-image se lit toujours par la connexion de base', async () => {

@@ -257,6 +257,7 @@ export async function intercepterEcriture(
   let avant: unknown = null;
   const cible = ['update', 'delete', 'upsert'].includes(operation);
   if (cible && a.where) {
+    const enTransaction = transactionAuditee();
     try {
       // LA PRÉ-IMAGE SE LIT PAR LA CONNEXION DE LA TRANSACTION QUAND IL Y EN A
       // UNE (test de charge k6, 2026-10-17). Lue par `base`, elle prenait une
@@ -270,7 +271,7 @@ export async function intercepterEcriture(
       // l'instance attendaient avec elles. Lue dans la transaction, la
       // pré-image est aussi la bonne : celle que la transaction voit, non
       // l'état validé avant elle.
-      const lecteur = (transactionAuditee() ?? base) as unknown as Record<
+      const lecteur = (enTransaction ?? base) as unknown as Record<
         string,
         { findFirst: (x: unknown) => Promise<unknown> }
       >;
@@ -278,9 +279,22 @@ export async function intercepterEcriture(
         where: a.where,
         ...selectPreImage(model),
       });
-    } catch {
-      // Une lecture de pré-image impossible ne doit pas empêcher l'opération ·
-      // l'événement sera simplement moins riche.
+    } catch (erreur) {
+      // DANS UNE TRANSACTION, L'ÉCHEC REMONTE TEL QUEL (relecture TypeScript,
+      // MAJEUR) · une requête qui échoue invalide toute la transaction
+      // PostgreSQL ; l'avaler laissait l'opération partir sur une transaction
+      // morte (« current transaction is aborted »), et un conflit de
+      // sérialisation (P2034, 40001) que la reprise aurait rejoué devenait un
+      // 500 au motif trompeur. Hors transaction, la lecture tient sa propre
+      // connexion · son échec ne doit pas empêcher l'opération, l'événement
+      // sera moins riche, et l'échec est consigné.
+      // Seule l'erreur de VALIDATION du client Prisma naît avant tout envoi à
+      // la base et laisse la transaction saine (relecture « échecs
+      // silencieux ») · une clé composée qu'un `findFirst` ne sait pas relire
+      // (`tenantId_nature` des natures de compte) ne doit pas faire échouer un
+      // geste juste.
+      if (enTransaction && !(erreur instanceof Prisma.PrismaClientValidationError)) throw erreur;
+      journal.warn(`Pré-image illisible · ${model}.${operation} · ${erreur instanceof Error ? erreur.message : String(erreur)}`);
       avant = null;
     }
   }

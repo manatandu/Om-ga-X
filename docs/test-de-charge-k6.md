@@ -541,6 +541,14 @@ Même schéma que 4.1, dans deux gardes qui lisent par `base` (le client sans ex
 
 ---
 
+### 4.12 Relecture avant l'intégration (2026-10-21)
+
+Deux relectures (échecs silencieux, TypeScript), sans BLOQUANT.
+
+- **MAJEUR, introduit par le correctif 4.1, corrigé.** Lue dans la transaction, une pré-image dont la lecture échoue côté base invalide toute la transaction PostgreSQL ; le `catch` l'avalait, l'opération partait sur une transaction morte (« current transaction is aborted »), et un conflit de sérialisation que la reprise aurait rejoué devenait un 500 au motif trompeur. Désormais, dans une transaction, l'échec remonte tel quel (la reprise le reconnaît) ; seule l'erreur de VALIDATION du client Prisma, qui naît avant tout envoi et laisse la transaction saine, se rattrape (clé composée qu'un `findFirst` ne relit pas, `tenantId_nature`). Hors transaction, l'échec est consigné au journal du serveur et l'événement part sans pré-image. Deux tests le gèlent.
+- **MINEUR, antérieur à la ligne, consigné.** Une pré-image absente se range vide, et deux lecteurs la prennent pour « rien avant » (`fiche-immobilisation.service.ts`, la clôture d'un exercice ; `taux-tva.service.ts`, la suppression d'un lettrage qui rend une reconstitution incertaine). Marquer le maillon « pré-image illisible » et relire une clé composée par `findUnique` est une ligne à part.
+- **MINEUR, à mesurer.** Deux sous-filtres `some: {}` sans borne du dossier, jumeaux possibles de 4.3 · `reprise-subvention.service.ts` (`subventions`) et `controles.service.ts` (`journauxTresorerie`). Hors des chemins de saisie, coût non mesuré.
+
 ## 5. Ce que coûte un cabinet
 
 Chiffres tirés de l'essai d'endurance (3.11), les seuls où le processeur a été mesuré sur une durée longue et stable :
