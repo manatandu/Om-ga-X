@@ -223,7 +223,10 @@ que la loi impose à la mesure de l'interface, et le domaine
 `omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
 PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
 touche pas au serveur ; et la SUPPRESSION DES DOSSIERS D'ESSAI ÉCHUS cent
-quatre-vingts jours après leur terme (« Construit maintenant »).
+quatre-vingts jours après leur terme (« Construit maintenant ») ; puis, le
+2026-10-21, la DÉCONNEXION D'UN UTILISATEUR PAR L'ADMINISTRATEUR, vue chez
+Microfina++ (« la 2e possibilité. Fais le proprement »), les autres idées
+de ce logiciel restant au suivi.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4946,7 +4949,10 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   changement de mot de passe et d'adresse, à la réinitialisation, à la
   désactivation, au changement de rôle, de profil de fonctions ou de journaux
   autorisés, à l'activation et au retrait de la double authentification, par
-  « Fermer toutes mes sessions » et par « Déconnecter mes autres appareils » ·
+  « Fermer toutes mes sessions », par « Déconnecter mes autres appareils » et
+  par l'administrateur du dossier (« Déconnecter », `POST
+  /utilisateurs/:id/deconnecter`, 2026-10-21 · les sessions d'un
+  collaborateur, rien d'autre, jamais les siennes) ·
   sans cela un mot de passe volé restait utile jusqu'à l'échéance du jeton. La
   comparaison porte sur la dernière authentification explicite (claim
   `authentification` · la connexion, ou la réémission qui suit un acte

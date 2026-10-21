@@ -32,6 +32,14 @@ const SELECTION = {
 /** Ne dit pas à qui l'adresse appartient · même phrase à la lecture et à la base. */
 export const MOTIF_ADRESSE_PRISE = 'Un compte existe déjà avec cet email';
 
+/**
+ * Se déconnecter soi-même par cette route couperait la session qui fait le
+ * geste · « Mon compte » le fait sans perdre l'appareil en cours.
+ */
+export const MOTIF_DECONNEXION_DE_SOI =
+  "Votre propre session ne se ferme pas d'ici · ouvrez Fichier > Mon compte, « Déconnecter mes autres appareils », qui garde " +
+  "l'appareil en cours ouvert.";
+
 export const MOTIF_DERNIER_ADMINISTRATEUR =
   "C'est le dernier administrateur actif du dossier · nommez d'abord un autre administrateur, sans quoi plus personne ne " +
   'pourrait gérer les comptes ni les paramètres du dossier.';
@@ -217,6 +225,39 @@ export class UtilisateurService {
       },
     });
     return { reinitialise: true, email: user.email };
+  }
+
+  /**
+   * DÉCONNECTER UN UTILISATEUR (2026-10-21, gel levé par Manasse · « la 2e
+   * possibilité. Fais le proprement », fonction vue dans le manuel de
+   * Microfina++, p. 18). L'administrateur ferme TOUTES les sessions d'un
+   * collaborateur, et rien d'autre · ni mot de passe, ni rôle, ni verrou, ni
+   * second facteur. C'est le geste du poste resté ouvert ou de l'appareil dont
+   * on doute · la réinitialisation ferait remettre un mot de passe provisoire
+   * pour rien, la désactivation fermerait aussi la porte. Le titulaire se
+   * reconnecte avec son propre mot de passe.
+   *
+   * Même pose que les autres révocations (`sessionsInvalidesAvant`, relue à
+   * chaque requête par `JwtStrategy`, qui rend alors la session perdue
+   * nommée), même seconde tronquée · un jeton signé dans la seconde même du
+   * geste lui survit, comme partout ailleurs (jwt.strategy.ts). Le modèle User
+   * est au journal d'audit · qui a déconnecté qui, et quand, y est écrit.
+   *
+   * Le compte doit être du dossier (404 sinon, comme les autres gestes). Un
+   * compte désactivé n'a déjà plus de session (`estActif` relu à chaque
+   * requête) · le geste reste admis, il ne change rien de faux.
+   */
+  async deconnecter(tenantId: string, userId: string, utilisateurCourantId: string) {
+    if (userId === utilisateurCourantId) throw new BadRequestException(MOTIF_DECONNEXION_DE_SOI);
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+    }
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { sessionsInvalidesAvant: new Date() },
+      select: SELECTION,
+    });
   }
 
   /**
