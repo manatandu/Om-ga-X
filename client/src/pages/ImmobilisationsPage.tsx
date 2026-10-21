@@ -1267,9 +1267,12 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 )}
               </div>
               {bareme.length > 0 && (
-                <label className="text-[11.5px] font-semibold text-text-dim">
+                // Un cadre, non une étiquette · il porte aussi la case « Toutes
+                // les catégories » et les boutons du compte proposé, qu'une
+                // étiquette englobante aurait renvoyés vers la liste.
+                <div className="text-[11.5px] font-semibold text-text-dim">
                   <span className="flex items-center gap-1">
-                    Nature du bien (barème fiscal)
+                    <label htmlFor="nature-bareme">Nature du bien (barème fiscal)</label>
                     <Aide
                       titre="Barème fiscal"
                       texte="Choisir la nature propose sa durée d'amortissement. La durée saisie reste libre : un écart au barème est signalé, jamais refusé. Un taux supérieur au barème n'est admis que si l'entreprise en justifie les circonstances lors du contrôle, sous peine de rejet. Un bien en location-acquisition a une durée plancher : 7 ans pour les constructions, 4 ans pour les équipements, 3 ans pour le matériel de transport. Barème en vigueur depuis le 1er janvier 2026."
@@ -1277,6 +1280,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     />
                   </span>
                   <select
+                    id="nature-bareme"
                     value={iNatureFiscale}
                     onChange={(e) => {
                       setINatureFiscale(e.target.value);
@@ -1361,7 +1365,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                       </span>
                     );
                   })()}
-                </label>
+                </div>
               )}
               <label className="text-[11.5px] font-semibold text-text-dim col-span-2">
                 <span className="flex items-center gap-1">

@@ -12,8 +12,17 @@
   création, ouvre la fiche fiscale après l'enregistrement (fiche du compte 68 ; loi
   n° 23/053, art. 31 à 38). Le mode comptable reste linéaire ou unités d'œuvre.
 
+- Relecture (deux tours) faite · constats corrigés le 2026-10-21 · feuille Réévaluations à
+  douze colonnes, total en formule hors du filtre, pièce nommée, coefficient à dix
+  décimales ; date d'arrêté bornée à l'exercice (400 nommé) ; la nature reste quand elle
+  couvre le compte choisi (sous-compte compris) ; personnalisation refusée sur un compte
+  subdivisé ou en sommeil, réponse périmée jetée ; option fiscale ni au Système minimal,
+  ni à un incorporel, ni sans mise en service, retirée à la fermeture du formulaire ;
+  journal de situation écarté de l'écriture d'acquisition ; l'export n'envoie que la date
+  montrée à l'écran.
+
 ## Reste
-- Relecture react-reviewer et silent-failure-hunter, scénario sur vraie base, intégration.
+- Scénario sur vraie base à travers une clôture, intégration sur main, déploiement vérifié.
 
 ## Vérification
 - `npx tsc --noEmit` des deux côtés, `npx jest src/modules/exports`, `npx vitest run src/pages`.
