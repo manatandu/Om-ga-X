@@ -1,4 +1,4 @@
-import { dateDuJour, etatEssai, libelleCauseEchec, libelleIssueRappel, statutDuRappel, type EssaiEchu } from './essais-echus';
+import { dateDuJour, etatEssai, jourDeKinshasa, libelleCauseEchec, libelleIssueRappel, statutDuRappel, type EssaiEchu } from './essais-echus';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
 
@@ -50,6 +50,16 @@ describe('statutDuRappel · « en file » n’est pas « parti »', () => {
     expect(parti.libelle).toBe('parti le 10/06/2026');
     const enFile = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T10:00:00Z', envoyeLe: null, statutCourrier: 'EN_ATTENTE', causeEchec: null } });
     expect(enFile).toMatchObject({ libelle: 'en file, pas parti', alerte: false });
+  });
+
+  it('la date d’envoi se lit au JOUR DE KINSHASA, comme le calcul du serveur', () => {
+    // Le 10 juin à 23 h 30 UTC = le 11 juin à 0 h 30 à Kinshasa.
+    const tard = statutDuRappel({ ...base, rappel: { misEnFileLe: '2026-06-10T23:29:00Z', envoyeLe: '2026-06-10T23:30:00Z', statutCourrier: 'ENVOYE', causeEchec: null } });
+    expect(tard.libelle).toBe('parti le 11/06/2026');
+    expect(jourDeKinshasa('2026-06-10T22:59:59Z')).toBe('2026-06-10');
+    expect(jourDeKinshasa('2026-06-10T23:00:00Z')).toBe('2026-06-11');
+    expect(jourDeKinshasa(null)).toBeNull();
+    expect(jourDeKinshasa('illisible')).toBeNull();
   });
 
   it('un échec d’envoi se montre en alerte avec sa CATÉGORIE, jamais un texte du transport', () => {

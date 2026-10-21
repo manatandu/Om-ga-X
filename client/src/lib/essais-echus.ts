@@ -78,6 +78,20 @@ export function dateDuJour(iso: string | null): string {
 }
 
 /**
+ * Le JOUR de Kinshasa (UTC+1, sans heure d'été) d'un instant ISO, écrit
+ * AAAA-MM-JJ · la règle du serveur (`common/echeance.ts`), qui compte le préavis
+ * sur ce jour-là. Lu au jour UTC, un rappel parti entre minuit et une heure à
+ * Kinshasa s'affichait la veille, et l'écran contredisait la date de suppression
+ * que le serveur en tire. `null` sur un instant illisible, jamais une date inventée.
+ */
+export function jourDeKinshasa(instant: string | null): string | null {
+  if (!instant) return null;
+  const t = Date.parse(instant);
+  if (Number.isNaN(t)) return null;
+  return new Date(t + 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
  * Le rappel d'un dossier, pour la colonne · un rappel mis en file n'est PAS un
  * rappel parti (le serveur ne laisse supprimer que sur un message constaté
  * envoyé), et un échec d'envoi se montre en alerte.
@@ -88,7 +102,7 @@ export function statutDuRappel(e: EssaiEchu): { libelle: string; alerte: boolean
       ? { libelle: 'à envoyer', alerte: false, detail: null }
       : { libelle: `dû dès le ${dateDuJour(e.rappelDepuisLe)}`, alerte: false, detail: null };
   }
-  if (e.rappel.envoyeLe) return { libelle: `parti le ${dateDuJour(e.rappel.envoyeLe.slice(0, 10))}`, alerte: false, detail: null };
+  if (e.rappel.envoyeLe) return { libelle: `parti le ${dateDuJour(jourDeKinshasa(e.rappel.envoyeLe))}`, alerte: false, detail: null };
   const echec = e.rappel.statutCourrier === 'ECHEC' || e.rappel.statutCourrier === 'ABANDONNE';
   return {
     libelle: echec ? 'en échec' : 'en file, pas parti',
