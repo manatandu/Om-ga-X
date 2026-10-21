@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import { Prisma } from '@prisma/client';
-import { transactionAuditee } from './contexte-audit';
+import { journaliserDansTransaction, transactionAuditee } from './contexte-audit';
 import { transactionJournalisee } from './transaction-journalisee';
 
 /**
@@ -77,5 +77,31 @@ describe('F159 · une seule porte pour une transaction', () => {
     expect(sansCommentaires("await this.prisma.$transaction([a]); // $transaction(")).toContain('this.prisma.$transaction([a]);');
     expect(sansCommentaires('/* this.prisma.$transaction( */ x')).not.toContain('$transaction');
     expect(sansCommentaires("const u = 'https://exemple.cd'; this.prisma.$transaction(f)")).toContain('$transaction(f)');
+  });
+});
+
+describe('journaliserDansTransaction et la promesse paresseuse (ligne k6-defauts)', () => {
+  it('une promesse dont le `.then` serait appelé hors de la portée voit quand même la transaction', async () => {
+    // Le `.then` d'une requête Prisma non attendue est appelé par Prisma une
+    // fois la portée refermée · sans abonnement dans la portée, la
+    // transaction disparaissait du contexte et le crochet d'audit en ouvrait
+    // une autre, à l'infini (rejeu sur vraie base).
+    const tx = { nom: 'tx-1' };
+    let vuAuThen: unknown = 'jamais';
+    const paresseuse = {
+      then(ok: (v: number) => void) {
+        vuAuThen = transactionAuditee();
+        ok(42);
+      },
+    };
+    const r = await journaliserDansTransaction(tx, () => paresseuse as unknown as Promise<number>);
+    expect(r).toBe(42);
+    expect(vuAuThen).toBe(tx);
+    expect(transactionAuditee()).toBeUndefined();
+  });
+
+  it('un rejet traverse, et une valeur simple est rendue telle quelle', async () => {
+    await expect(journaliserDansTransaction({}, () => Promise.reject(new Error('boum')))).rejects.toThrow('boum');
+    expect(journaliserDansTransaction({}, () => 7)).toBe(7);
   });
 });

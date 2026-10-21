@@ -45,7 +45,22 @@ export type ClientTransactionAudit = unknown;
 const transactions = new AsyncLocalStorage<ClientTransactionAudit>();
 
 export function journaliserDansTransaction<T>(tx: ClientTransactionAudit, suite: () => T): T {
-  return transactions.run(tx, suite);
+  return transactions.run(tx, () => {
+    const resultat = suite();
+    // UNE PROMESSE PARESSEUSE S'ABONNE ICI, DANS LA PORTÉE (ligne k6-defauts,
+    // rejeu sur vraie base). Une requête Prisma non attendue (`tx.x.update(…)`
+    // rendu tel quel) n'exécute rien avant son `.then`, que Prisma appelle
+    // une fois cette portée refermée · le crochet d'audit ne voyait plus la
+    // transaction, repartait en ouvrir une par le client étendu, et ainsi de
+    // suite jusqu'à épuiser le pool (« Unable to start a transaction »). On
+    // appelle `.then` nous-mêmes tant que la portée est ouverte, comme
+    // `dansLaPortee` du cloisonnement · la propagation du contexte suit alors
+    // la promesse, où que Prisma l'attende.
+    if (resultat && typeof (resultat as { then?: unknown }).then === 'function') {
+      return new Promise((resoudre, rejeter) => (resultat as unknown as PromiseLike<unknown>).then(resoudre, rejeter)) as unknown as T;
+    }
+    return resultat;
+  });
 }
 
 export function transactionAuditee(): ClientTransactionAudit | undefined {
