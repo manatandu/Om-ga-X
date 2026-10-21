@@ -33,10 +33,10 @@ export class EcritureController {
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
-    // Une caisse ne paie que ce qu'elle contient (`caisse-provisionnee.ts`).
-    await this.ecritureService.verifierCaisseProvisionneeEnSaisie(user.tenantId, dto);
-    // LA SAISIE, seule porte d'un journal de situation (ligne sage-l1).
-    return this.ecritureService.creer(user.tenantId, user.userId, dto, { saisie: true });
+    // LA SAISIE, seule porte d'un journal de situation (ligne sage-l1). Une
+    // caisse ne paie que ce qu'elle contient (`caisse-provisionnee.ts`), jugé
+    // après les contrôles d'entrée, à la date inscrite.
+    return this.ecritureService.creer(user.tenantId, user.userId, dto, { saisie: true, jugerLaCaisse: true });
   }
 
   /**
@@ -144,8 +144,7 @@ export class EcritureController {
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
-    await this.ecritureService.verifierCaisseProvisionneeEnModification(user.tenantId, id, dto);
-    return this.ecritureService.modifier(user.tenantId, id, dto);
+    return this.ecritureService.modifier(user.tenantId, id, dto, { jugerLaCaisse: true });
   }
 
   /**

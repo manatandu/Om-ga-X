@@ -17,26 +17,22 @@ pour un montant supérieur au solde de cette caisse. Idem pour les virements.
   (fiche 55, « débiteur ou nul » sans présomption).
 - Dossier déjà créditeur non enfermé · seul ce qui l'enfonce est refusé.
 
-## Reste
-- Bloc § 3 complet, scénario sur vraie base à travers une clôture, intégration
-  sur main après la ligne virement-natures, déploiement vérifié.
-
 ## Vérifier
 npx tsc --noEmit ; npx jest src/modules/comptabilite src/modules/reglements src/modules/virements-fonds src/modules/personnel src/common
 
-## Relectures du 2026-10-16 · à corriger AVANT intégration
-- BLOQUANT · l'à-nouveau PROVISOIRE est lu comme une ouverture qui fait foi
-  (`caisse-provisionnee.ts`, `lireLignes` et condition d'arrêt de `lignesDOuverture`).
-  Correctif · exclure `estANouveauProvisoire: true` des deux, remonter dans le
-  précédent ouvert, brouillard compris (règle A7 ter B1 de CLAUDE.md). Scénario ·
-  provisoire lancé, puis recette de décembre au brouillard, sortie de janvier.
-- MAJEUR · une OD du premier jour qui ne touche pas la caisse arrête la remontée ·
-  n'arrêter que sur une ouverture qui porte une ligne sur CETTE caisse.
-- MAJEUR · lecture · agréger par jour en base au lieu de rapatrier les lignes (§ 8 bis).
-- MAJEUR · chemins non jugés · réimputation, transfert depuis la situation,
-  acquisition d'immobilisation et bouquet de rente payés en caisse ; la baisse
-  d'une entrée refusée alors que sa suppression passe (trancher).
-- mineurs · `idApres` au lieu de `pageApres`, centimes entiers, `tenantId` sur la
-  devise, jugement à la date inscrite (art. 22, 4°), contrôle de caisse APRÈS les
-  contrôles propres de creer et modifier, JSDoc de `verifierComptesEnSommeil` à
-  remettre, journal relu deux fois dans le règlement.
+## Relectures du 2026-10-16 · corrigées le 2026-10-21
+- À-nouveau provisoire exclu de la lecture, il n'arrête plus la remontée ;
+  seule une ouverture qui porte CETTE caisse l'arrête (A7 ter, B1).
+- Lecture agrégée par jour en base (`$queryRaw`, § 8 bis), centimes entiers,
+  `tenantId` sur la devise, jugement à la date inscrite (art. 22, 4°), après les
+  contrôles propres de creer et modifier (option `jugerLaCaisse`), journal du
+  règlement lu une fois, JSDoc du sommeil remise.
+- Chemins jugés · acquisition d'un bien (bouquet compris), réimputation sur un 57.
+  Transfert depuis la situation · non rejugé, il ne fait que repousser la date.
+- Décision par la loi · SEULE UNE SORTIE NOUVELLE SE JUGE (fiche du 57,
+  « débourser ») ; entrée réduite ou retirée jamais refusée, CAISSE_CREDITRICE
+  la dit.
+
+## Reste
+- Scénario sur vraie base à travers une clôture, bloc § 3 des deux côtés,
+  silent-failure-hunter et typescript-reviewer (second tour), intégration, déploiement.

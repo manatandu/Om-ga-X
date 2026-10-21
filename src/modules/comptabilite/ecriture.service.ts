@@ -62,7 +62,7 @@ import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
 import { compteSemeSubdivise, estCompteDePassage, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
-import { verifierCaisseProvisionnee, type LigneProposee, type PieceProposee } from './caisse-provisionnee';
+import { RACINE_CAISSE, verifierCaisseProvisionnee, type PieceProposee } from './caisse-provisionnee';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -614,6 +614,16 @@ async function comptesDeLaPiece(
   return comptes.filter((c): c is Compte => c !== null);
 }
 
+/**
+ * Les options d'une création · `saisie` ouvre le journal de situation (la
+ * saisie en est la seule porte), `jugerLaCaisse` refuse la sortie qui rendrait
+ * une caisse créditrice (saisie, acquisition d'un bien payée en caisse).
+ */
+export interface OptionsCreation {
+  saisie?: boolean;
+  jugerLaCaisse?: boolean;
+}
+
 @Injectable()
 export class EcritureService {
   constructor(
@@ -736,6 +746,20 @@ export class EcritureService {
   }
 
   /**
+   * UNE CAISSE NE PAIE QUE CE QU'ELLE CONTIENT (`caisse-provisionnee.ts`,
+   * fiche du compte 57 des deux plans), sur des pièces déjà composées · les
+   * modules qui PAIENT (règlement des tiers, virement de fonds, paiement des
+   * salaires) l'appellent avant leur première pièce, la saisie et les gestes
+   * qui posent une ligne sur une caisse par l'option `jugerLaCaisse` de
+   * `creer` et `modifier`, APRÈS leurs propres contrôles et à la date
+   * INSCRITE. Jamais la clôture, le report ni les annulations, qui ne paient
+   * personne.
+   */
+  async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string) {
+    await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
+  }
+
+  /**
    * MISE EN SOMMEIL D'UN COMPTE · la saisie se CONFIRME. La source ne dit pas
    * que le sommeil interdit : elle dit « désactivation réversible,
    * confirmation requise en saisie » (skill sage-i7, tiers.md), et le plan
@@ -751,56 +775,6 @@ export class EcritureService {
    * ne « saisit », et une clôture ne doit jamais tomber parce qu'un compte de
    * charge mouvementé dans l'exercice a été endormi depuis.
    */
-  /**
-   * UNE CAISSE NE PAIE QUE CE QU'ELLE CONTIENT (`caisse-provisionnee.ts`,
-   * fiche du compte 57 des deux plans). Appelée par le CONTRÔLEUR, comme le
-   * sommeil, et par les modules qui PAIENT (règlement des tiers, virement de
-   * fonds, paiement des salaires) avant leur première pièce · jamais par
-   * `creer`, que la clôture, le report et les annulations empruntent.
-   * Une saisie dans un journal de situation ne fait sortir aucun billet.
-   */
-  async verifierCaisseProvisionneeEnSaisie(
-    tenantId: string,
-    dto: { exerciceId: string; journalId: string; date: string; lignes: LigneProposee[] },
-  ) {
-    const journal = await this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { type: true } });
-    if (!journal || estJournalDeSituation(journal)) return;
-    await verifierCaisseProvisionnee(this.prisma, tenantId, dto.exerciceId, [{ date: dto.date, lignes: dto.lignes }]);
-  }
-
-  /** La règle sur des pièces déjà composées par un module (virement de fonds, paie des salaires). */
-  async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[]) {
-    await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces);
-  }
-
-  /** La même règle à la modification d'un brouillard · ses lignes d'avant sortent, les nouvelles entrent. */
-  async verifierCaisseProvisionneeEnModification(
-    tenantId: string,
-    ecritureId: string,
-    dto: { date?: string; lignes?: LigneProposee[] },
-  ) {
-    const ecriture = await this.prisma.ecriture.findFirst({
-      where: { id: ecritureId, tenantId, ...HORS_SITUATION },
-      select: {
-        exerciceId: true,
-        date: true,
-        lignes: { select: { compteId: true, debit: true, credit: true, deviseId: true, montantDevise: true } },
-      },
-    });
-    // Absente ou en simulation · la modification dira elle-même son refus.
-    if (!ecriture) return;
-    const lignes =
-      dto.lignes ??
-      ecriture.lignes.map((l) => ({
-        compteId: l.compteId,
-        debit: Number(l.debit),
-        credit: Number(l.credit),
-        deviseId: l.deviseId,
-        montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
-      }));
-    await verifierCaisseProvisionnee(this.prisma, tenantId, ecriture.exerciceId, [{ date: dto.date ?? ecriture.date, lignes }], ecritureId);
-  }
-
   async verifierComptesEnSommeil(
     tenantId: string,
     lignes: { compteId: string }[] | undefined,
@@ -1282,7 +1256,7 @@ export class EcritureService {
    * SITUATION (`ecritures-de-situation.ts`). Un traitement qui appelle
    * `creer` ne le pose pas, et un journal de situation lui est refusé.
    */
-  async creer(tenantId: string, createdBy: string, dto: CreerEcritureDto, options: { saisie?: boolean } = {}) {
+  async creer(tenantId: string, createdBy: string, dto: CreerEcritureDto, options: OptionsCreation = {}) {
     return (await this.creerAvec(tenantId, createdBy, dto, async () => undefined, options)).ecriture;
   }
 
@@ -1301,7 +1275,7 @@ export class EcritureService {
     createdBy: string,
     dto: CreerEcritureDto,
     suite: (tx: Prisma.TransactionClient, ecriture: { id: string }) => Promise<T>,
-    options: { saisie?: boolean } = {},
+    options: OptionsCreation = {},
   ) {
     const r = await this.creerPlusieursAvec(tenantId, createdBy, [dto], (tx, [ecriture]) => suite(tx, ecriture), options);
     return { ecriture: r.ecritures[0], suite: r.suite };
@@ -1323,11 +1297,25 @@ export class EcritureService {
     createdBy: string,
     dtos: readonly CreerEcritureDto[],
     suite: (tx: Prisma.TransactionClient, ecritures: Array<{ id: string; lignes: Array<{ id: string; compteId: string }> }>) => Promise<T>,
-    options: { saisie?: boolean } = {},
+    options: OptionsCreation = {},
   ) {
     const controles: Array<{ dto: CreerEcritureDto } & Awaited<ReturnType<EcritureService['controlesDEntree']>>> = [];
     for (const dto of dtos) {
       controles.push({ dto, ...(await this.controlesDEntree(tenantId, { ...dto, journalDeSituationAdmis: options.saisie === true })) });
+    }
+    // UNE CAISSE NE PAIE QUE CE QU'ELLE CONTIENT (`caisse-provisionnee.ts`),
+    // APRÈS les contrôles d'entrée (le refus d'une date hors exercice ou d'un
+    // journal fermé passe avant celui de la caisse) et à la date INSCRITE ·
+    // reportée au premier jour ouvert (art. 22, 4°), la sortie se juge à ce
+    // jour-là, où les entrées intercalées la couvrent. Une simulation ne
+    // fait sortir aucun billet.
+    if (options.jugerLaCaisse) {
+      const parExercice = new Map<string, PieceProposee[]>();
+      for (const { dto, journal, date } of controles) {
+        if (estJournalDeSituation(journal)) continue;
+        parExercice.set(dto.exerciceId, [...(parExercice.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
+      }
+      for (const [exerciceId, pieces] of parExercice) await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces);
     }
 
     // Le calcul du numéro de pièce (lire le max actuel, l'incrémenter) et la
@@ -1553,7 +1541,7 @@ export class EcritureService {
    * un total, le journal un autre, et rien ne le signalait. Ce refus était
    * écrit dans ce commentaire sans qu'une ligne l'exécute.
    */
-  async modifier(tenantId: string, ecritureId: string, dto: ModifierEcritureDto) {
+  async modifier(tenantId: string, ecritureId: string, dto: ModifierEcritureDto, options: { jugerLaCaisse?: boolean } = {}) {
     const ecriture = await this.trouverEnBrouillard(tenantId, ecritureId);
     await this.verifierAucunModuleNeLaTient(tenantId, [ecritureId], 'se modifie');
     const facture = await this.prisma.facture.findFirst({
@@ -1576,6 +1564,20 @@ export class EcritureService {
       journalDeSituationAdmis: true,
       modesDejaPortes: modesPortesPar(ecriture.lignes),
     });
+    // La caisse après les contrôles propres de la modification, à la date
+    // inscrite · la version d'avant sort du solde, la nouvelle y entre.
+    if (options.jugerLaCaisse && !estJournalDeSituation(ecriture.journal)) {
+      const lignes =
+        dto.lignes ??
+        ecriture.lignes.map((l) => ({
+          compteId: l.compteId,
+          debit: Number(l.debit),
+          credit: Number(l.credit),
+          deviseId: l.deviseId,
+          montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+        }));
+      await verifierCaisseProvisionnee(this.prisma, tenantId, ecriture.exerciceId, [{ date, lignes }], ecritureId);
+    }
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
     // déplacée dans un autre mois gardait le numéro de son mois d'origine ·
@@ -1682,6 +1684,12 @@ export class EcritureService {
       date: ecriture.date,
       reporterAuPremierJourOuvert: dto.reporterAuPremierJourOuvert === true,
     });
+
+    // La caisse n'est pas rejugée ici (fiche du compte 57 des deux plans) · le
+    // brouillard hérité compte déjà dans la caisse, et le transfert ne fait
+    // que repousser sa date (report au premier jour ouvert, art. 22, 4°) ·
+    // une sortie repoussée laisse la caisse plus garnie entre les deux dates,
+    // jamais moins (`premierJourRefuse` ne trouverait aucun jour).
 
     return avecRetrySerialisable(
       this.prisma,
@@ -2657,6 +2665,26 @@ export class EcritureService {
       for (const groupe of parEcriture.values()) {
         await this.exerciceService.verifierEcritureAutorisee(tenantId, groupe[0].ecriture.journalId, date);
       }
+    }
+
+    // UNE CAISSE NE REÇOIT PAS UNE SORTIE QU'ELLE NE PEUT PAYER (fiche du
+    // compte 57 des deux plans) · réimputer sur un 57 y pose des lignes
+    // nouvelles, au brouillard à la date de leur écriture, validées à la date
+    // de la pièce exacte. Débits et crédits partent ensemble · la fusion de
+    // deux caisses ne doit pas lire les sorties de l'absorbée sans ses entrées.
+    // Jugé avant la simulation, qu'une fusion joue exercice par exercice.
+    if (cible.numero.startsWith(RACINE_CAISSE)) {
+      const versLaCaisse = (l: (typeof lignes)[number]) => ({
+        compteId: cible.id,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        deviseId: l.deviseId ?? null,
+        montantDevise: l.montantDevise == null ? null : Number(l.montantDevise),
+      });
+      await this.verifierCaisseProvisionnee(tenantId, exercice.id, [
+        ...auBrouillard.map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
+        ...(validees.length ? [{ date, lignes: validees.map(versLaCaisse) }] : []),
+      ]);
     }
 
     // Une fusion vérifie TOUS ses exercices avant d'en écrire un seul.

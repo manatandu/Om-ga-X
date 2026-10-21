@@ -64,12 +64,11 @@ describe('premierJourRefuse · le jour où la pièce rend la caisse créditrice'
 });
 
 describe('uniteDuJugement · une caisse tenue en devise se juge dans sa devise', () => {
+  // netDevise · le net en devise agrégé par la base, null quand une ligne en
+  // devise n'en porte pas le montant.
   const ligne = (deviseId: string | null, montantDevise: number | null, deChange = false) => ({
-    jour: '2026-03-01',
-    debit: 1,
-    credit: 0,
     deviseId,
-    montantDevise,
+    netDevise: deviseId === null ? 0 : montantDevise === null ? null : montantDevise * 100,
     deChange,
   });
 
@@ -91,21 +90,38 @@ describe('uniteDuJugement · une caisse tenue en devise se juge dans sa devise',
   });
 });
 
-/** Une doublure minimale qui honore les filtres que le module pose. */
+/**
+ * Une doublure minimale qui honore les filtres que le module pose · la lecture
+ * des mouvements est une requête SQL agrégée (gabarit `$queryRaw`, valeurs
+ * dans l'ordre · pièce remplacée, compte, dossier, exercice), rejouée ici par
+ * jour, devise et pièce remplacée, simulation et à-nouveau provisoire écartés.
+ */
 function doublure(opts: {
   comptes: { id: string; numero: string; intitule: string }[];
-  exercices: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice; ouverture?: boolean }[];
-  lignes: { id: string; compteId: string; exerciceId: string; ecritureId: string; date: string; debit: number; credit: number; statut?: string; deviseId?: string | null; montantDevise?: number | null }[];
+  exercices: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice; ouvertureSur?: string[] }[];
+  lignes: { id: string; compteId: string; exerciceId: string; ecritureId: string; date: string; debit: number; credit: number; statut?: string; provisoire?: boolean; deviseId?: string | null; montantDevise?: number | null }[];
 }) {
+  const queryRaw = jest.fn(async (_gabarit: TemplateStringsArray, remplacee: string, compteId: string, _tenantId: string, exerciceId: string) => {
+    const groupes = new Map<string, { jour: string; deviseId: string | null; deChange: boolean; remplacee: boolean; netFrancs: bigint; netDevise: bigint | null }>();
+    for (const l of opts.lignes) {
+      if (l.compteId !== compteId || l.exerciceId !== exerciceId || l.statut === 'SITUATION' || l.provisoire) continue;
+      const deviseId = l.deviseId ?? null;
+      const cle = `${l.date}|${deviseId}|${l.ecritureId === remplacee}`;
+      const g = groupes.get(cle) ?? { jour: l.date, deviseId, deChange: false, remplacee: l.ecritureId === remplacee, netFrancs: 0n, netDevise: 0n as bigint | null };
+      g.netFrancs += BigInt(Math.round((l.debit - l.credit) * 100));
+      if (deviseId !== null) {
+        if (l.montantDevise == null) g.netDevise = null;
+        else if (g.netDevise !== null) g.netDevise += BigInt(Math.round((l.debit > 0 ? l.montantDevise : -l.montantDevise) * 100));
+      }
+      groupes.set(cle, g);
+    }
+    return [...groupes.values()];
+  });
   return {
+    $queryRaw: queryRaw,
     compte: {
       findMany: jest.fn(async ({ where }: any) =>
-        opts.comptes.filter(
-          (c) =>
-            (!where.id?.in || where.id.in.includes(c.id)) &&
-            (!where.numero?.startsWith || c.numero.startsWith(where.numero.startsWith)) &&
-            (!where.lignesEcriture || opts.lignes.some((l) => l.compteId === c.id && l.ecritureId === where.lignesEcriture.some.ecritureId)),
-        ),
+        opts.comptes.filter((c) => (!where.id?.in || where.id.in.includes(c.id)) && (!where.numero?.startsWith || c.numero.startsWith(where.numero.startsWith))),
       ),
     },
     exercice: {
@@ -116,29 +132,13 @@ function doublure(opts: {
       }),
     },
     ecriture: {
+      // L'ouverture qui arrête la remontée · celle de l'exercice, qui porte CETTE caisse.
       count: jest.fn(async ({ where }: any) => {
-        const ex = opts.exercices.find((e) => e.id === where.exerciceId);
-        if (where.estANouveauProvisoire === true) return 0;
-        return ex?.ouverture ? 1 : 0;
+        const ex = opts.exercices.find((e) => e.id === where.AND[0].exerciceId);
+        return ex?.ouvertureSur?.includes(where.AND[1].lignes.some.compteId) ? 1 : 0;
       }),
     },
     devise: { findFirst: jest.fn(async () => ({ code: 'USD' })) },
-    ligneEcriture: {
-      findMany: jest.fn(async ({ where, cursor }: any) => {
-        if (cursor) return [];
-        return opts.lignes
-          .filter((l) => l.compteId === where.compteId && l.exerciceId === where.ecriture.exerciceId && !(where.ecriture.statut?.not === 'SITUATION' && l.statut === 'SITUATION'))
-          .map((l) => ({
-            id: l.id,
-            debit: l.debit,
-            credit: l.credit,
-            deviseId: l.deviseId ?? null,
-            montantDevise: l.montantDevise ?? null,
-            ecritureId: l.ecritureId,
-            ecriture: { date: new Date(`${l.date}T00:00:00.000Z`), reevaluationEcarts: null, reevaluationExtourne: null, reevaluationContrePassationDeclaree: null, corrigeEcriture: null },
-          }));
-      }),
-    },
   } as any;
 }
 
@@ -168,7 +168,7 @@ describe('motifCaisseNonProvisionnee · la lecture du solde', () => {
     expect(await motifCaisseNonProvisionnee(prisma, 't', 'n', [{ date: '2026-02-10', lignes: [{ compteId: 'banque', credit: 1_000_000 }] }])).toBeNull();
   });
 
-  it('ignore une simulation · elle ne fait sortir aucun billet', async () => {
+  it('ignore une simulation · elle ne fait entrer aucun billet', async () => {
     const prisma = doublure({
       comptes: [CAISSE],
       exercices: [N],
@@ -203,10 +203,49 @@ describe('motifCaisseNonProvisionnee · la lecture du solde', () => {
   it("avec une ouverture dans l'exercice, ne relit pas le précédent · elle porte déjà la caisse", async () => {
     const prisma = doublure({
       comptes: [CAISSE],
-      exercices: [N, { ...N1, ouverture: true }],
+      exercices: [N, { ...N1, ouvertureSur: ['caisse'] }],
       lignes: [{ id: 'l1', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e1', date: '2026-06-01', debit: 300_000, credit: 0 }],
     });
     expect(await motifCaisseNonProvisionnee(prisma, 't', 'n1', [{ date: '2027-01-05', lignes: [{ compteId: 'caisse', credit: 200_000 }] }])).not.toBeNull();
+  });
+
+  it("ne lit pas l'à-nouveau provisoire, et il n'arrête pas la remontée vers l'exercice précédent", async () => {
+    // N encore ouvert garde 300 000 en caisse (dont 100 000 reçus au brouillard) ;
+    // l'à-nouveau provisoire de N+1 n'en recopie que le livre-journal.
+    const prisma = doublure({
+      comptes: [CAISSE],
+      exercices: [N, N1],
+      lignes: [
+        { id: 'l1', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e1', date: '2026-06-01', debit: 200_000, credit: 0 },
+        { id: 'l2', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e2', date: '2026-12-20', debit: 100_000, credit: 0, statut: 'BROUILLARD' },
+        { id: 'l3', compteId: 'caisse', exerciceId: 'n1', ecritureId: 'an', date: '2027-01-01', debit: 200_000, credit: 0, provisoire: true },
+      ],
+    });
+    expect(await motifCaisseNonProvisionnee(prisma, 't', 'n1', [{ date: '2027-01-05', lignes: [{ compteId: 'caisse', credit: 300_000 }] }])).toBeNull();
+    expect(await motifCaisseNonProvisionnee(prisma, 't', 'n1', [{ date: '2027-01-05', lignes: [{ compteId: 'caisse', credit: 300_001 }] }])).toContain('il manque');
+  });
+
+  it("une ouverture du premier jour qui ne porte pas la caisse n'arrête pas la remontée", async () => {
+    const prisma = doublure({
+      comptes: [CAISSE],
+      exercices: [N, { ...N1, ouvertureSur: ['banque'] }],
+      lignes: [{ id: 'l1', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e1', date: '2026-06-01', debit: 300_000, credit: 0 }],
+    });
+    expect(await motifCaisseNonProvisionnee(prisma, 't', 'n1', [{ date: '2027-01-05', lignes: [{ compteId: 'caisse', credit: 200_000 }] }])).toBeNull();
+  });
+
+  it("ne refuse jamais une pièce qui ne fait rien sortir · l'entrée réduite d'une caisse déjà sortie passe", async () => {
+    // 100 000 reçus, 80 000 payés ; l'entrée corrigée à 50 000 laisse la caisse à -30 000,
+    // que le contrôle CAISSE_CREDITRICE dira · refuser obligerait à garder l'entrée fausse.
+    const prisma = doublure({
+      comptes: [CAISSE],
+      exercices: [N],
+      lignes: [
+        { id: 'l1', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e1', date: '2026-02-01', debit: 100_000, credit: 0 },
+        { id: 'l2', compteId: 'caisse', exerciceId: 'n', ecritureId: 'e2', date: '2026-02-10', debit: 0, credit: 80_000 },
+      ],
+    });
+    expect(await motifCaisseNonProvisionnee(prisma, 't', 'n', [{ date: '2026-02-01', lignes: [{ compteId: 'caisse', debit: 50_000 }] }], 'e1')).toBeNull();
   });
 
   it('juge une caisse en dollars dans sa devise · le cours ne la rend pas créditrice', async () => {
@@ -226,16 +265,28 @@ describe('motifCaisseNonProvisionnee · la lecture du solde', () => {
 describe('les portes qui paient', () => {
   const lire = (chemin: string) => readFileSync(join(__dirname, '..', chemin), 'utf8');
 
-  it('la saisie et la modification du brouillard se jugent au contrôleur', () => {
+  it('la saisie et la modification se jugent au contrôleur, par leur option', () => {
     const source = lire('comptabilite/ecriture.controller.ts');
-    expect(source).toContain('verifierCaisseProvisionneeEnSaisie(user.tenantId, dto)');
-    expect(source).toContain('verifierCaisseProvisionneeEnModification(user.tenantId, id, dto)');
+    expect(source).toContain("creer(user.tenantId, user.userId, dto, { saisie: true, jugerLaCaisse: true })");
+    expect(source).toContain('modifier(user.tenantId, id, dto, { jugerLaCaisse: true })');
+    const service = lire('comptabilite/ecriture.service.ts');
+    // Après les contrôles d'entrée, à la date INSCRITE.
+    const creer = service.slice(service.indexOf('  async creerPlusieursAvec<T>('));
+    expect(creer.indexOf('options.jugerLaCaisse')).toBeGreaterThan(creer.indexOf('controlesDEntree'));
+  });
+
+  it("l'acquisition d'un bien et la réimputation sur une caisse se jugent", () => {
+    expect(lire('immobilisations/immobilisation.service.ts')).toContain('}, { jugerLaCaisse: true });');
+    const service = lire('comptabilite/ecriture.service.ts');
+    const reimputer = service.slice(service.indexOf('  async reimputer('));
+    expect(reimputer.indexOf('this.verifierCaisseProvisionnee(')).toBeGreaterThan(-1);
+    expect(reimputer.indexOf('this.verifierCaisseProvisionnee(')).toBeLessThan(reimputer.indexOf('if (options.simuler)'));
   });
 
   it('règlement des tiers, virement de fonds et paiement des salaires se jugent avant leur première pièce', () => {
     const reglements = lire('reglements/reglements.service.ts');
-    expect(reglements.indexOf('verifierCaisseProvisionneeEnSaisie')).toBeGreaterThan(-1);
-    expect(reglements.indexOf('verifierCaisseProvisionneeEnSaisie')).toBeLessThan(reglements.indexOf('const ecriture = await this.ecritures.creer('));
+    expect(reglements.indexOf('this.ecritures.verifierCaisseProvisionnee(')).toBeGreaterThan(-1);
+    expect(reglements.indexOf('this.ecritures.verifierCaisseProvisionnee(')).toBeLessThan(reglements.indexOf('const ecriture = await this.ecritures.creer('));
     const virements = lire('virements-fonds/virements-fonds.service.ts');
     expect(virements.indexOf('this.ecritures.verifierCaisseProvisionnee(')).toBeGreaterThan(-1);
     expect(virements.indexOf('this.ecritures.verifierCaisseProvisionnee(')).toBeLessThan(virements.indexOf('this.ecritures.creerPlusieursAvec('));

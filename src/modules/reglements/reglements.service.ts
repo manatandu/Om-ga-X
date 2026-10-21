@@ -946,12 +946,12 @@ export class ReglementsService {
                 })
               : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }));
     const libelleDe = (p: (typeof prepares)[number]) => `Règlement ${p.compte.tiersCompte?.tiers.nom ?? p.compte.intitule}`.slice(0, 190);
-    await this.ecritures.verifierCaisseProvisionneeEnSaisie(tenantId, {
-      exerciceId: dto.exerciceId,
-      journalId: dto.journalId,
-      date: dto.date,
-      lignes: prepares.flatMap((p) => lignesDe(p, libelleDe(p))),
-    });
+    // Une caisse ne paie que ce qu'elle contient · toutes les pièces du
+    // règlement ensemble, avant la première (le journal, de trésorerie, n'est
+    // jamais un journal de situation).
+    await this.ecritures.verifierCaisseProvisionnee(tenantId, dto.exerciceId, [
+      { date: dto.date, lignes: prepares.flatMap((p) => lignesDe(p, libelleDe(p))) },
+    ]);
 
     const resultats = [];
     const aOrdonner: LigneAOrdonner[] = [];

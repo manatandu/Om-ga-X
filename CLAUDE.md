@@ -3385,21 +3385,30 @@ Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse
 constitue une présomption d'irrégularité de la comptabilité »
 (`comptabilite/caisse-provisionnee.ts`). Une sortie qui rendrait un 57
-CRÉDITEUR est REFUSÉE à la saisie et à la modification (au CONTRÔLEUR, comme
-le sommeil), au règlement des tiers, au virement de fonds et au paiement des
-salaires, avant la première pièce ; la banque peut être négative (découvert,
-fiche du compte 52) et le 55, « débiteur ou nul » sans présomption, garde son
-avertissement. Solde JOUR PAR JOUR sur tout l'exercice, brouillard compris,
-simulation exclue, ouverture lue sur l'à-nouveau ou, sans lui, sur les
-exercices précédents non clôturés ; une sortie ANTIDATÉE qui ferait passer
+CRÉDITEUR est REFUSÉE à la saisie et à la modification (au CONTRÔLEUR,
+option `jugerLaCaisse` de `creer` et `modifier`, après leurs propres
+contrôles), au règlement des tiers, au virement de fonds, au paiement des
+salaires, à l'acquisition d'un bien payé comptant et à la réimputation sur
+une caisse, avant la première pièce ; la banque peut être négative
+(découvert, fiche du compte 52) et le 55, « débiteur ou nul » sans
+présomption, garde son avertissement. SEULE UNE SORTIE NOUVELLE SE JUGE
+(décision par la loi du 2026-10-16) · la fiche vise ce qu'on « débourse » ;
+une entrée réduite ou retirée, une sortie retirée passent toujours, et
+`CAISSE_CREDITRICE` dit la caisse qu'elles laissent créditrice. Solde JOUR
+PAR JOUR sur tout l'exercice, agrégé par la base, à la date INSCRITE
+(art. 22, 4°), brouillard compris, simulation et à-nouveau PROVISOIRE exclus
+(A7 ter, B1) ; sans ouverture qui porte CETTE caisse, les exercices
+précédents non clôturés (une opération diverse du premier jour sans ligne
+de caisse n'arrête pas la remontée) ; une sortie ANTIDATÉE qui ferait passer
 sous zéro une sortie postérieure est refusée ; la caisse jugée dans sa devise
-quand toutes ses lignes en portent une seule ; comparé en centimes. Un
+quand toutes ses lignes en portent une seule ; en centimes entiers. Un
 dossier dont la caisse est DÉJÀ créditrice n'est pas enfermé · seul ce qui
 l'enfonce est refusé, l'encaissement passe. Le message nomme la caisse, la
 date, ce qui manque, et trois issues (approvisionner par un virement de
 fonds, payer par la banque, dater après l'entrée). Non jugés, et c'est
-écrit · clôture, report, imports, annulations en négatif, exercices
-postérieurs, deux saisies concurrentes.
+écrit · clôture, report, imports, annulations en négatif, transfert depuis
+la situation (il ne fait que repousser la date), fiche d'un bien retouchée
+en place, exercices postérieurs, deux saisies concurrentes.
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·

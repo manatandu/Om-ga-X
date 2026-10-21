@@ -1,8 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma, StatutExercice } from '@prisma/client';
-import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
-import { HORS_SITUATION } from './ecritures-de-situation';
 
 /**
  * UNE CAISSE NE PAIE QUE CE QU'ELLE CONTIENT (demande de Manasse du
@@ -24,20 +22,32 @@ import { HORS_SITUATION } from './ecritures-de-situation';
  * présomption, et le contrôle le tient en AVERTISSEMENT (controles.service).
  *
  * LA RÈGLE · le solde de chaque caisse est reconstitué JOUR PAR JOUR sur
- * l'exercice, ouverture comprise, avant et après la pièce ; un jour où il
- * devient créditeur, ou plus créditeur qu'il ne l'était, refuse la pièce.
- * Jamais un jour déjà créditeur que la pièce ne touche pas, ni une pièce qui
- * améliore la caisse · un dossier qui porte déjà une caisse créditrice n'est
- * pas enfermé, l'encaissement et la correction passent.
+ * l'exercice, ouverture comprise, avant et après la pièce, en centimes
+ * entiers ; un jour où il devient créditeur, ou plus créditeur qu'il ne
+ * l'était, refuse la pièce. SEULE UNE PIÈCE QUI FAIT SORTIR quelque chose de
+ * la caisse se juge · une entrée, une entrée réduite ou retirée, une sortie
+ * retirée passent toujours, et la caisse créditrice qu'elles révèlent reste
+ * dite par `CAISSE_CREDITRICE`. Un dossier qui porte déjà une caisse
+ * créditrice n'est pas enfermé.
  *
- * Tous les statuts sauf la simulation · une sortie au brouillard a quitté la
- * caisse autant qu'une sortie validée.
+ * Tous les statuts sauf la simulation et l'à-nouveau provisoire · une sortie
+ * au brouillard a quitté la caisse autant qu'une sortie validée. Le jour est
+ * celui de la date INSCRITE (art. 22, 4°).
+ *
+ * LES PORTES JUGÉES · la saisie et la modification (au contrôleur, option
+ * `jugerLaCaisse` de `creer` et `modifier`, après leurs propres contrôles),
+ * le règlement des tiers, le virement de fonds, le paiement des salaires,
+ * l'acquisition d'un bien payé comptant (bouquet de rente compris) et la
+ * réimputation sur une caisse.
  *
  * LIMITES ÉCRITES · les écritures d'un module qui ne paie personne (clôture,
  * report, import, inscriptions en négatif d'une annulation) ne sont pas
  * jugées · refuser l'annulation d'une entrée de caisse déjà dépensée
- * enfermerait le dossier ; un exercice postérieur déjà ouvert n'est pas relu ;
- * deux sorties envoyées à la même seconde se jugent chacune sans l'autre.
+ * enfermerait le dossier ; le transfert d'un brouillard depuis la situation
+ * ne fait que repousser sa date, jamais vider la caisse ; la fiche d'un bien
+ * retouchée en place (`modifierPieceDuModule`) n'est pas rejugée ; un
+ * exercice postérieur déjà ouvert n'est pas relu ; deux sorties envoyées à la
+ * même seconde se jugent chacune sans l'autre.
  */
 
 type Client = Prisma.TransactionClient;
@@ -51,7 +61,7 @@ export interface LigneProposee {
   montantDevise?: number | null;
 }
 
-/** Une pièce proposée · sa date (celle que lisent la balance et les états) et ses lignes. */
+/** Une pièce proposée · sa date INSCRITE (celle que lisent la balance et les états) et ses lignes. */
 export interface PieceProposee {
   date: Date | string;
   lignes: LigneProposee[];
@@ -65,15 +75,20 @@ function jourDe(date: Date | string): string {
   return (typeof date === 'string' ? new Date(date) : date).toISOString().slice(0, 10);
 }
 
-const centimes = (x: number) => Math.round(x * 100);
+/** Un montant saisi, en centimes ENTIERS · tout le jugement se fait en centimes (CLAUDE.md, « un seuil se juge en centimes entiers »). */
+const enCentimes = (x: number | null | undefined) => Math.round(Number(x ?? 0) * 100);
 
-/** Une ligne lue, réduite à ce que le jugement retient. */
-interface LigneLue {
+/**
+ * Un mouvement de la caisse, en centimes entiers · une ligne proposée, ou les
+ * lignes d'un même jour agrégées par la base (même devise, même nature).
+ */
+export interface MouvementLu {
   jour: string;
-  debit: number;
-  credit: number;
+  /** Débit moins crédit, en centimes. */
+  netFrancs: number;
   deviseId: string | null;
-  montantDevise: number | null;
+  /** Le net dans la devise, en centimes · null quand une ligne en devise n'en porte pas le montant. */
+  netDevise: number | null;
   /** Une écriture de change (écarts de réévaluation, leur extourne, leur contre-passation, leurs négatifs) · sans devise par construction. */
   deChange: boolean;
 }
@@ -81,7 +96,8 @@ interface LigneLue {
 /**
  * Le montant en devise est stocké SANS SIGNE, le sens vient de la ligne ·
  * même règle que `sommesDansLUnite` (inventaire/solde-caisse-au-comptage.ts),
- * une inscription en négatif portant un débit ou un crédit négatif.
+ * une inscription en négatif portant un débit ou un crédit négatif. La
+ * requête de `mouvementsParJour` écrit la même règle en SQL.
  */
 function netEnDevise(l: { debit: number; credit: number; montantDevise: number | null }): number {
   const m = Number(l.montantDevise ?? 0);
@@ -95,20 +111,20 @@ function netEnDevise(l: { debit: number; credit: number; montantDevise: number |
 /**
  * L'UNITÉ DU JUGEMENT · une caisse tenue en devise se juge dans sa devise, sans
  * quoi cent dollars reçus à 2 800 et payés à 2 900 la rendaient créditrice en
- * francs alors qu'elle est vide. Devise quand toutes les lignes qui en portent
- * une portent la MÊME, montant compris, et que les lignes sans devise sont
+ * francs alors qu'elle est vide. Devise quand tous les mouvements qui en portent
+ * une portent la MÊME, montant compris, et que les mouvements sans devise sont
  * seulement des écritures de change (réévaluation de clôture, son extourne) ·
  * elles ne font ni entrer ni sortir un billet. Sinon, francs · débit moins
  * crédit, au cours historique de chaque ligne.
  */
-export function uniteDuJugement(lignes: LigneLue[]): { devise: string | null } {
+export function uniteDuJugement(mouvements: Pick<MouvementLu, 'deviseId' | 'netDevise' | 'deChange'>[]): { devise: string | null } {
   const devises = new Set<string>();
   let sansDeviseHorsChange = 0;
-  for (const l of lignes) {
-    if (l.deviseId) {
-      if (l.montantDevise === null || l.montantDevise === undefined) return { devise: null };
-      devises.add(l.deviseId);
-    } else if (!l.deChange) {
+  for (const m of mouvements) {
+    if (m.deviseId) {
+      if (m.netDevise === null) return { devise: null };
+      devises.add(m.deviseId);
+    } else if (!m.deChange) {
       sansDeviseHorsChange += 1;
     }
   }
@@ -116,9 +132,9 @@ export function uniteDuJugement(lignes: LigneLue[]): { devise: string | null } {
   return { devise: null };
 }
 
-function netDansLUnite(l: LigneLue, devise: string | null): number {
-  if (devise === null) return l.debit - l.credit;
-  return l.deviseId ? netEnDevise(l) : 0;
+function netDansLUnite(m: MouvementLu, devise: string | null): number {
+  if (devise === null) return m.netFrancs;
+  return m.deviseId ? (m.netDevise ?? 0) : 0;
 }
 
 /** Le premier jour où la pièce rend la caisse créditrice, ou plus créditrice. */
@@ -132,8 +148,9 @@ export interface JourRefuse {
 
 /**
  * LE JUGEMENT, PUR · `avant` et `apres` sont les mouvements nets par jour,
- * l'ouverture le solde d'entrée de l'exercice. Un jour est refusé quand le
- * solde d'après est créditeur ET inférieur au solde d'avant, au centime.
+ * l'ouverture le solde d'entrée de l'exercice, le tout en centimes entiers
+ * (l'arrondi n'y est qu'une garde). Un jour est refusé quand le solde d'après
+ * est créditeur ET inférieur au solde d'avant.
  */
 export function premierJourRefuse(ouverture: number, avant: Map<string, number>, apres: Map<string, number>): JourRefuse | null {
   const jours = [...new Set([...avant.keys(), ...apres.keys()])].sort();
@@ -142,95 +159,118 @@ export function premierJourRefuse(ouverture: number, avant: Map<string, number>,
   for (const jour of jours) {
     cumulAvant += avant.get(jour) ?? 0;
     cumulApres += apres.get(jour) ?? 0;
-    if (centimes(cumulApres) < 0 && centimes(cumulApres) < centimes(cumulAvant)) {
+    if (Math.round(cumulApres) < 0 && Math.round(cumulApres) < Math.round(cumulAvant)) {
       return { jour, avant: cumulAvant, apres: cumulApres };
     }
   }
   return null;
 }
 
-/** Les lignes d'une caisse dans un exercice, statut de simulation écarté. */
-async function lireLignes(
+/** Une rangée de la requête · sommes en centimes, rendues en bigint par la base. */
+interface RangeeMouvement {
+  jour: string;
+  deviseId: string | null;
+  deChange: boolean;
+  remplacee: boolean;
+  netFrancs: bigint | number;
+  netDevise: bigint | number | null;
+}
+
+/**
+ * LES MOUVEMENTS D'UNE CAISSE DANS UN EXERCICE, AGRÉGÉS PAR LA BASE (§ 8 bis ·
+ * « une somme se demande à la base, jamais à une boucle sur des lignes
+ * rapatriées ») · un jour, une devise, une nature (change ou non), et la pièce
+ * que la modification remplace à part. Tous les statuts sauf la simulation ·
+ * une sortie au brouillard a quitté la caisse autant qu'une sortie validée.
+ * JAMAIS L'À-NOUVEAU PROVISOIRE (A7 ter, B1) · il recopie la clôture
+ * reconstituée du seul livre-journal et ignore le brouillard de l'exercice
+ * précédent, que `mouvementsDOuverture` relit · le compter ajouterait la caisse
+ * d'ouverture une seconde fois (validé), ou la tiendrait pour vide
+ * (brouillard). Le jour est celui de la date INSCRITE (art. 22, 4°).
+ */
+async function mouvementsParJour(
   prisma: Client,
   tenantId: string,
   compteId: string,
   exerciceId: string,
   ecritureRemplaceeId: string | undefined,
-  surLigne: (l: LigneLue, remplacee: boolean) => void,
-) {
-  const CHANGE = { select: { id: true } } as const;
-  await lireParLots(
-    (curseur) =>
-      prisma.ligneEcriture.findMany({
-        where: { compteId, ecriture: { tenantId, exerciceId, ...HORS_SITUATION } },
-        select: {
-          id: true,
-          debit: true,
-          credit: true,
-          deviseId: true,
-          montantDevise: true,
-          ecritureId: true,
-          ecriture: {
-            select: {
-              date: true,
-              reevaluationEcarts: CHANGE,
-              reevaluationExtourne: CHANGE,
-              reevaluationContrePassationDeclaree: CHANGE,
-              corrigeEcriture: { select: { reevaluationEcarts: CHANGE, reevaluationExtourne: CHANGE, reevaluationContrePassationDeclaree: CHANGE } },
-            },
-          },
-        },
-        ...pageApres(curseur, LOT_LECTURE),
-      }),
-    (l) => {
-      const e = l.ecriture;
-      const c = e.corrigeEcriture;
-      const deChange =
-        !!(e.reevaluationEcarts || e.reevaluationExtourne || e.reevaluationContrePassationDeclaree) ||
-        !!(c && (c.reevaluationEcarts || c.reevaluationExtourne || c.reevaluationContrePassationDeclaree));
-      surLigne(
-        {
-          jour: jourDe(e.date),
-          debit: Number(l.debit),
-          credit: Number(l.credit),
-          deviseId: l.deviseId ?? null,
-          montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
-          deChange,
-        },
-        ecritureRemplaceeId !== undefined && l.ecritureId === ecritureRemplaceeId,
-      );
-    },
-  );
+): Promise<Array<MouvementLu & { remplacee: boolean }>> {
+  const remplacee = ecritureRemplaceeId ?? '';
+  const rangees = (await prisma.$queryRaw`
+    SELECT to_char(e."date", 'YYYY-MM-DD') AS "jour",
+           l."deviseId" AS "deviseId",
+           EXISTS (
+             SELECT 1 FROM "reevaluations" r
+             WHERE r."ecritureEcartsId" IN (e."id", e."corrigeEcritureId")
+                OR r."ecritureExtourneId" IN (e."id", e."corrigeEcritureId")
+                OR r."contrePassationDeclareeId" IN (e."id", e."corrigeEcritureId")
+           ) AS "deChange",
+           (e."id" = ${remplacee}) AS "remplacee",
+           (SUM(l."debit" - l."credit") * 100)::bigint AS "netFrancs",
+           CASE WHEN COUNT(*) FILTER (WHERE l."deviseId" IS NOT NULL AND l."montantDevise" IS NULL) > 0 THEN NULL
+                ELSE (SUM(CASE WHEN l."deviseId" IS NULL THEN 0
+                               WHEN l."debit" > 0 THEN l."montantDevise"
+                               WHEN l."debit" < 0 THEN -l."montantDevise"
+                               WHEN l."credit" > 0 THEN -l."montantDevise"
+                               WHEN l."credit" < 0 THEN l."montantDevise"
+                               ELSE 0 END) * 100)::bigint
+           END AS "netDevise"
+    FROM "lignes_ecriture" l
+    JOIN "ecritures" e ON e."id" = l."ecritureId"
+    WHERE l."compteId" = ${compteId}
+      AND e."tenantId" = ${tenantId}
+      AND e."exerciceId" = ${exerciceId}
+      AND e."statut" <> 'SITUATION'
+      AND e."estANouveauProvisoire" = false
+    GROUP BY 1, 2, 3, 4
+  `) as RangeeMouvement[];
+  return rangees.map((r) => ({
+    jour: r.jour,
+    deviseId: r.deviseId,
+    deChange: r.deChange,
+    remplacee: r.remplacee,
+    netFrancs: Number(r.netFrancs),
+    netDevise: r.netDevise === null ? null : Number(r.netDevise),
+  }));
 }
 
 /**
- * LES LIGNES QUI FONT L'OUVERTURE quand l'exercice n'en porte aucune · un
- * exercice ouvert avant la clôture du précédent, sans report à-nouveau
- * (provisoire ou définitif) ni bilan d'ouverture, a sa caisse d'ouverture dans
- * les écritures du précédent. Sans elles, la première sortie de janvier se
- * jugeait sur une caisse vide. On remonte de précédent en précédent tant
- * qu'aucun n'est clôturé et qu'aucun n'a d'ouverture ; un précédent clôturé
- * a reporté sa caisse dans le suivant par sa clôture.
+ * LES MOUVEMENTS QUI FONT L'OUVERTURE quand l'exercice n'en porte aucune sur
+ * cette caisse · un exercice ouvert avant la clôture du précédent a sa caisse
+ * d'ouverture dans les écritures du précédent. Sans elles, la première sortie
+ * de janvier se jugeait sur une caisse vide. On remonte de précédent en
+ * précédent tant qu'aucun n'est clôturé et qu'aucun n'a d'ouverture qui porte
+ * CETTE caisse ; un précédent clôturé a reporté sa caisse dans le suivant par
+ * sa clôture (rien reporté · elle était vide).
+ *
+ * Deux relectures de la ligne (2026-10-16). L'à-nouveau PROVISOIRE n'arrête
+ * jamais la remontée (il est écarté de toute lecture, voir
+ * `mouvementsParJour`). Une écriture d'ouverture qui ne touche pas la caisse
+ * (une opération diverse du premier jour) ne l'arrête pas non plus · elle ne
+ * dit rien de la caisse, et la tenir pour l'ouverture rendait la caisse vide
+ * au 1er janvier, toute sortie refusée. LIMITE ÉCRITE · un bilan d'ouverture
+ * importé SANS ligne de caisse (caisse vide à l'ouverture) au-dessus d'un
+ * précédent encore ouvert lit la caisse de ce précédent · la règle laisse
+ * alors passer ce qu'elle aurait pu refuser, jamais l'inverse.
  */
-async function lignesDOuverture(prisma: Client, tenantId: string, compteId: string, exercice: { id: string; dateDebut: Date }): Promise<LigneLue[]> {
-  const lignes: LigneLue[] = [];
+async function mouvementsDOuverture(prisma: Client, tenantId: string, compteId: string, exercice: { id: string; dateDebut: Date }): Promise<MouvementLu[]> {
+  const mouvements: MouvementLu[] = [];
   let courant = exercice;
   for (let rang = 0; rang < 20; rang++) {
-    const [ouverture, provisoire] = await Promise.all([
-      prisma.ecriture.count({ where: filtreOuverturePasseeAuPremierJour(tenantId, courant) }),
-      prisma.ecriture.count({ where: { tenantId, exerciceId: courant.id, estANouveauProvisoire: true, ...HORS_SITUATION } }),
-    ]);
-    if (ouverture > 0 || provisoire > 0) return lignes;
+    const ouverture = await prisma.ecriture.count({
+      where: { AND: [filtreOuverturePasseeAuPremierJour(tenantId, courant), { lignes: { some: { compteId } } }] },
+    });
+    if (ouverture > 0) return mouvements;
     const precedent = await prisma.exercice.findFirst({
       where: { tenantId, dateFin: { lt: courant.dateDebut } },
       orderBy: { dateFin: 'desc' },
       select: { id: true, dateDebut: true, statut: true },
     });
-    if (!precedent || precedent.statut === StatutExercice.CLOTURE) return lignes;
-    await lireLignes(prisma, tenantId, compteId, precedent.id, undefined, (l) => lignes.push(l));
+    if (!precedent || precedent.statut === StatutExercice.CLOTURE) return mouvements;
+    mouvements.push(...(await mouvementsParJour(prisma, tenantId, compteId, precedent.id, undefined)));
     courant = precedent;
   }
-  return lignes;
+  return mouvements;
 }
 
 function montantFr(x: number): string {
@@ -244,8 +284,19 @@ function dateFr(jour: string): string {
 
 /**
  * LE MOTIF DU REFUS, ou null · `pieces` les pièces proposées (une sortie, ou
- * les deux pièces d'un virement), `ecritureRemplaceeId` la pièce du brouillard
- * que la modification remplace (ses lignes comptent AVANT, plus APRÈS).
+ * les deux pièces d'un virement), à leur date INSCRITE, `ecritureRemplaceeId`
+ * la pièce du brouillard que la modification remplace (ses lignes comptent
+ * AVANT, plus APRÈS).
+ *
+ * SEULE UNE SORTIE NOUVELLE SE JUGE (décision par la loi du 2026-10-16,
+ * relecture de la ligne). La fiche du compte 57 interdit de « débourser
+ * davantage d'espèces » qu'on n'en a reçu · c'est la SORTIE qu'elle vise. Une
+ * pièce qui ne fait sortir aucun billet de la caisse (une entrée, une entrée
+ * réduite, retirée ou déplacée, une sortie retirée) n'est jamais refusée,
+ * comme la suppression d'un brouillard ne l'est pas · refuser la correction
+ * d'une entrée trop forte obligerait à garder une écriture fausse pour
+ * satisfaire la règle, et la caisse créditrice qu'elle révèle reste dite par
+ * le contrôle `CAISSE_CREDITRICE` (« présomption d'irrégularité »).
  */
 export async function motifCaisseNonProvisionnee(
   prisma: Client,
@@ -254,64 +305,62 @@ export async function motifCaisseNonProvisionnee(
   pieces: PieceProposee[],
   ecritureRemplaceeId?: string,
 ): Promise<string | null> {
-  const ids = [...new Set(pieces.flatMap((p) => p.lignes.map((l) => l.compteId)))];
-  if (ids.length === 0) return null;
+  // Les comptes où une pièce fait SORTIR quelque chose · le seul qui se juge.
+  const sortants = new Set(
+    pieces.flatMap((p) => p.lignes.filter((l) => enCentimes(l.debit) - enCentimes(l.credit) < 0).map((l) => l.compteId)),
+  );
+  if (sortants.size === 0) return null;
   const caisses = await prisma.compte.findMany({
-    where: { tenantId, id: { in: ids }, numero: { startsWith: RACINE_CAISSE } },
+    where: { tenantId, id: { in: [...sortants] }, numero: { startsWith: RACINE_CAISSE } },
     select: { id: true, numero: true, intitule: true },
     orderBy: { numero: 'asc' },
   });
-  // La modification qui RETIRE une caisse de sa pièce la juge aussi · la
-  // sortie retirée ne fait pas de mal, mais une entrée retirée peut en faire.
-  if (ecritureRemplaceeId) {
-    const deLaPiece = await prisma.compte.findMany({
-      where: { tenantId, numero: { startsWith: RACINE_CAISSE }, lignesEcriture: { some: { ecritureId: ecritureRemplaceeId } } },
-      select: { id: true, numero: true, intitule: true },
-    });
-    for (const c of deLaPiece) if (!caisses.some((x) => x.id === c.id)) caisses.push(c);
-  }
   if (caisses.length === 0) return null;
   const exercice = await prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
   if (!exercice) return null;
 
   for (const caisse of caisses) {
-    const existantes: { ligne: LigneLue; remplacee: boolean }[] = [];
-    await lireLignes(prisma, tenantId, caisse.id, exercice.id, ecritureRemplaceeId, (ligne, remplacee) => existantes.push({ ligne, remplacee }));
-    const ouverture = await lignesDOuverture(prisma, tenantId, caisse.id, exercice);
-    const nouvelles: LigneLue[] = pieces.flatMap((p) =>
+    const existants = await mouvementsParJour(prisma, tenantId, caisse.id, exercice.id, ecritureRemplaceeId);
+    const ouverture = await mouvementsDOuverture(prisma, tenantId, caisse.id, exercice);
+    const nouveaux: MouvementLu[] = pieces.flatMap((p) =>
       p.lignes
         .filter((l) => l.compteId === caisse.id)
-        .map((l) => ({
-          jour: jourDe(p.date),
-          debit: Number(l.debit ?? 0),
-          credit: Number(l.credit ?? 0),
-          deviseId: l.deviseId ?? null,
-          montantDevise: l.montantDevise === null || l.montantDevise === undefined ? null : Number(l.montantDevise),
-          deChange: false,
-        })),
+        .map((l) => {
+          const debit = Number(l.debit ?? 0);
+          const credit = Number(l.credit ?? 0);
+          const montantDevise = l.montantDevise === null || l.montantDevise === undefined ? null : Number(l.montantDevise);
+          return {
+            jour: jourDe(p.date),
+            netFrancs: enCentimes(debit) - enCentimes(credit),
+            deviseId: l.deviseId ?? null,
+            netDevise: l.deviseId ? (montantDevise === null ? null : enCentimes(netEnDevise({ debit, credit, montantDevise }))) : 0,
+            deChange: false,
+          };
+        }),
     );
-    const { devise } = uniteDuJugement([...ouverture, ...existantes.map((x) => x.ligne), ...nouvelles]);
+    const { devise } = uniteDuJugement([...ouverture, ...existants, ...nouveaux]);
 
-    const soldeOuverture = ouverture.reduce((s, l) => s + netDansLUnite(l, devise), 0);
+    const soldeOuverture = ouverture.reduce((s, m) => s + netDansLUnite(m, devise), 0);
     const avant = new Map<string, number>();
     const apres = new Map<string, number>();
     const ajouter = (m: Map<string, number>, jour: string, net: number) => m.set(jour, (m.get(jour) ?? 0) + net);
-    for (const { ligne, remplacee } of existantes) {
-      const net = netDansLUnite(ligne, devise);
-      ajouter(avant, ligne.jour, net);
-      if (!remplacee) ajouter(apres, ligne.jour, net);
+    for (const m of existants) {
+      const net = netDansLUnite(m, devise);
+      ajouter(avant, m.jour, net);
+      if (!m.remplacee) ajouter(apres, m.jour, net);
     }
-    for (const ligne of nouvelles) ajouter(apres, ligne.jour, netDansLUnite(ligne, devise));
+    for (const m of nouveaux) ajouter(apres, m.jour, netDansLUnite(m, devise));
 
     const refuse = premierJourRefuse(soldeOuverture, avant, apres);
     if (!refuse) continue;
-    const code = devise ? (await prisma.devise.findFirst({ where: { id: devise }, select: { code: true } }))?.code ?? 'devise' : null;
+    const code = devise ? (await prisma.devise.findFirst({ where: { id: devise, tenantId }, select: { code: true } }))?.code ?? 'devise' : null;
     const unite = code ? ` ${code}` : '';
     const disponible = Math.max(0, refuse.avant);
+    const manque = Math.min(-refuse.apres, refuse.avant - refuse.apres);
     return (
       `La caisse ${caisse.numero} ${caisse.intitule} deviendrait créditrice le ${dateFr(refuse.jour)} · solde ` +
-      `${montantFr(refuse.avant)}${unite} sans cette pièce, ${montantFr(refuse.apres)}${unite} avec elle ` +
-      `(disponible ${montantFr(disponible)}${unite}, il manque ${montantFr(Math.min(-refuse.apres, refuse.avant - refuse.apres))}${unite}). ` +
+      `${montantFr(refuse.avant / 100)}${unite} sans cette pièce, ${montantFr(refuse.apres / 100)}${unite} avec elle ` +
+      `(disponible ${montantFr(disponible / 100)}${unite}, il manque ${montantFr(manque / 100)}${unite}). ` +
       'Le solde du compte caisse ne doit être que débiteur ou nul (fiche du compte 57) · approvisionnez d’abord la caisse ' +
       '(virement de fonds depuis la banque), payez par la banque, ou datez la sortie après l’entrée qui la couvre.'
     );

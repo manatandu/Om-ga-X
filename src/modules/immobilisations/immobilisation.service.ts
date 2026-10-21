@@ -2408,7 +2408,10 @@ export class ImmobilisationService {
                   )
               : [{ compteId: dto.compteContrepartieId!, debit: 0, credit: dto.valeurOrigine }]),
           ],
-        });
+          // Un bien payé comptant sort de la caisse · la caisse ne paie que
+          // ce qu'elle contient (fiche du compte 57 des deux plans), jugée
+          // avant que l'écriture et la fiche ne naissent.
+        }, { jugerLaCaisse: true });
 
     let immobilisation;
     try {
