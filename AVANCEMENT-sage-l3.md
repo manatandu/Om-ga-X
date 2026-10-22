@@ -46,11 +46,24 @@ financements, placements.
   unité. Non repris · la ligne de la liste ouverte à la souris seule
   (préexistant, relevé en attente), le RIB lu deux fois (refus nommé dans les
   deux sens, pas une faute).
+- #37 · second tour de relecture (mêmes trois agents) · aucun BLOQUANT, un
+  MAJEUR et quatre MINEURS corrigés · `creerDans` lisait la devise deux fois
+  (porte puis garde) et pouvait admettre une ligne sans montant en devise ·
+  une seule lecture (`deviseDuDonneur`), chaque ligne d'un ordre en devise
+  doit porter un montant en devise fini, sinon refus nommé avant toute
+  pièce ; le total en francs est la somme des lignes ARRONDIES comme
+  `totalDevise` ; l'avis d'un ordre en devise lève un 409 nommé sur une
+  ligne sans montant en devise (jamais une contrevaleur muette) ; le code
+  d'une devise est trois LETTRES à la porte (`CreerDeviseDto`, `@Matches`,
+  « US » suivi d'un blanc passait la longueur) et le service le range
+  débarrassé des blancs ; spec `code-devise-dto.spec.ts`. Rejoué · tsc,
+  specs des règlements, des RIB et des devises (507 tests), test navigateur
+  sur vraie base.
 
 ## Reste
 
-- #37 · deux tours de relecture (silent-failure-hunter, typescript-reviewer,
-  react-reviewer), puis parité recomptée à l'intégration.
+- #37 · parité recomptée à l'intégration (les deux tours de relecture sont
+  faits).
 - #40 · module `remises/` (bordereau de remise de chèques ou de cartes,
   types de remise, modèle de bordereau imprimé, écriture par le 51x).
 - #39 · module `effets/` (portefeuille, remise à l'encaissement ou à

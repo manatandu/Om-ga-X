@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import type { StatutOrdreVirement } from '@prisma/client';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import { jourImprime } from '../tiers/modeles-impression';
@@ -56,9 +57,13 @@ export function documentAvisReglement(
   // Une ligne d'un ordre en devise SANS montant en devise est un état que
   // `creerDans` refuse d'écrire · s'il se présentait (reprise de données),
   // imprimer la contrevaleur en francs ferait croire à un virement en francs.
-  // On refuse plutôt que d'imprimer faux (relecture « échecs silencieux »).
+  // On refuse, NOMMÉ (409, comme une référence retirée · jamais une panne
+  // 500 qui alerterait Sentry sans dire à l'écran ce qui manque), plutôt que
+  // d'imprimer faux (relecture « échecs silencieux », second tour).
   if (devise !== null && !(typeof ligne.montantDevise === 'number' && Number.isFinite(ligne.montantDevise))) {
-    throw new Error(`L'ordre n° ${ordre.numero} est en ${devise} et sa ligne ne porte pas de montant en devise · avis non établi.`);
+    throw new ConflictException(
+      `L'ordre n° ${ordre.numero} est en ${devise} et sa ligne vers ${ligne.banque} ne porte pas de montant en devise · aucun avis n'est établi, relisez l'ordre.`,
+    );
   }
   const somme =
     devise !== null

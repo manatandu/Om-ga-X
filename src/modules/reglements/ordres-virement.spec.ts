@@ -218,12 +218,14 @@ describe("créer, imprimer, annuler", () => {
       // Deux demi-centimes · chaque ligne s'écrit 0,01 et le total les somme (0,02), jamais la somme brute arrondie (0,01).
       { compteId: 'c401', montant: 14.5, montantDevise: 0.005, devise: 'USD', reference: null, ecritureId: 'e2b', pieceReglement: 'BQ 8b' },
       { compteId: 'c401', montant: 14.5, montantDevise: 0.005, devise: 'USD', reference: null, ecritureId: 'e2c', pieceReglement: 'BQ 8c' },
+      // Un code mal formé (« usd  ») se lit comme à la porte · admis, jamais un ordre refusé après les pièces.
+      { compteId: 'c401', montant: 29, montantDevise: 0.01, devise: ' usd ', reference: null, ecritureId: 'e2d', pieceReglement: 'BQ 8d' },
     ]);
     const data = (create.mock.calls[0] as unknown as [{ data: { devise: string; total: number; totalDevise: number; lignes: { create: { montantDevise: number }[] } } }])[0].data;
     expect(data.devise).toBe('USD');
-    expect(data.total).toBe(3_190_029);
-    expect(data.totalDevise).toBe(1_100.02);
-    expect(data.lignes.create.map((l) => l.montantDevise)).toEqual([1_000, 100, 0.01, 0.01]);
+    expect(data.total).toBe(3_190_058);
+    expect(data.totalDevise).toBe(1_100.03);
+    expect(data.lignes.create.map((l) => l.montantDevise)).toEqual([1_000, 100, 0.01, 0.01, 0.01]);
     await expect(
       service.creer('t', 'x@y.cd', 'bq', '2026-09-25', preparation, [
         { compteId: 'c401', montant: 100, montantDevise: null, devise: null, reference: null, ecritureId: 'e3', pieceReglement: 'BQ 9' },

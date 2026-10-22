@@ -872,7 +872,7 @@ export class DevisesService {
   }
 
   async creer(tenantId: string, dto: CreerDeviseDto) {
-    const code = dto.code.toUpperCase();
+    const code = dto.code.trim().toUpperCase();
     const existante = await this.prisma.devise.findFirst({ where: { tenantId, code } });
     if (existante) throw new ConflictException(`La devise ${code} existe déjà dans ce dossier`);
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });

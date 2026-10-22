@@ -287,27 +287,38 @@ export class OrdresVirementService {
     preparation: PreparationOrdre,
     lignes: LigneAOrdonner[],
   ) {
-    const total = round2(lignes.reduce((s, l) => s + l.montant, 0));
+    // Total = somme des lignes ARRONDIES (règle P9 du règlement, « total de
+    // bloc = somme des lignes arrondies ») · deux lignes à 0,005 écrites 0,01
+    // chacune faisaient un total de 0,01, et l'ordre imprimé ne sommait plus
+    // ses lignes (relecture TypeScript, mineur 1) · la même règle pour les
+    // francs et pour la devise.
+    const total = round2(lignes.reduce((s, l) => s + round2(l.montant), 0));
+    // La clé du bénéficiaire préparé · un compte pour un tiers, un salarié
+    // pour la paie, jamais les deux sur une ligne.
+    const cleDe = (l: LigneAOrdonner) => l.salarieId ?? l.compteId ?? '';
     // L'ORDRE EN DEVISE PORTE LE MONTANT QUE LA BANQUE EXÉCUTE (fonction 37) ·
     // chaque ligne doit alors porter sa devise, celle du donneur, et son
     // montant en devise. Une ligne qui en manque est une faute de l'appelant
     // (la règle ligne à ligne passe avant la première pièce) · l'ordre ne
     // naît pas plutôt que de faire exécuter une contrevaleur en francs par un
-    // compte en dollars.
+    // compte en dollars. UNE SEULE LECTURE de la devise d'une ligne, celle de
+    // la porte (`deviseDuDonneur` · majuscules, blancs retirés, le franc en
+    // toutes lettres valant « aucune ») · lue brute ici, un code mal formé
+    // passait la porte et tombait après les pièces de règlement, qui restaient
+    // lettrées sans leur ordre (second tour, majeur).
     const devise = preparation.donneur.devise;
+    const montantsDevise = new Map<LigneAOrdonner, number>();
     for (const l of lignes) {
-      if ((l.devise ?? null) !== devise || (devise !== null && !(typeof l.montantDevise === 'number' && Number.isFinite(l.montantDevise)))) {
+      const enDevise = devise !== null && typeof l.montantDevise === 'number' && Number.isFinite(l.montantDevise);
+      if (deviseDuDonneur(l.devise) !== devise || (devise !== null && !enDevise)) {
         throw new BadRequestException(
-          `La ligne de ${preparation.beneficiaires.get(l.compteId ?? l.salarieId ?? '')?.beneficiaire ?? l.compteId ?? l.salarieId ?? ''} ` +
+          `La ligne de ${preparation.beneficiaires.get(cleDe(l))?.beneficiaire ?? cleDe(l)} ` +
             `n'est pas réglée dans la monnaie du donneur (${devise ?? MONNAIE_DE_TENUE}) · l'ordre n'est pas créé.`,
         );
       }
+      if (enDevise) montantsDevise.set(l, round2(l.montantDevise as number));
     }
-    // Total = somme des lignes ARRONDIES (règle P9 du règlement, « total de
-    // bloc = somme des lignes arrondies ») · deux lignes à 0,005 écrites 0,01
-    // chacune faisaient un total de 0,01, et l'ordre imprimé ne sommait plus
-    // ses lignes (relecture TypeScript, mineur 1).
-    const totalDevise = devise === null ? null : round2(lignes.reduce((s, l) => s + round2(l.montantDevise ?? 0), 0));
+    const totalDevise = devise === null ? null : round2([...montantsDevise.values()].reduce((s, m) => s + m, 0));
     const dernier = await tx.ordreVirement.aggregate({ where: { tenantId }, _max: { numero: true } });
     return tx.ordreVirement.create({
       data: {
@@ -324,7 +335,7 @@ export class OrdresVirementService {
         creePar: email,
         lignes: {
           create: lignes.map((l) => {
-            const cle = l.salarieId ?? l.compteId ?? '';
+            const cle = cleDe(l);
             const b = preparation.beneficiaires.get(cle);
             // Une ligne sans bénéficiaire préparé est une faute de l'appelant ·
             // l'ordre ne naît pas plutôt que de payer un inconnu.
@@ -338,7 +349,7 @@ export class OrdresVirementService {
               coordonnees: b.coordonnees,
               codeBic: b.codeBic,
               montant: round2(l.montant),
-              montantDevise: devise === null ? null : round2(l.montantDevise ?? 0),
+              montantDevise: montantsDevise.get(l) ?? null,
               reference: l.reference,
               pieceReglement: l.pieceReglement,
               imputationDeclaree: l.imputationDeclaree ?? null,

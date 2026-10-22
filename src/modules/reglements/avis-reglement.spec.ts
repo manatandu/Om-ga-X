@@ -36,6 +36,10 @@ describe('le document', () => {
     );
     expect(texte).toMatch(/la somme de 1\s000,00 USD \(contrevaleur comptable 2\s900\s000,00 CDF\)/);
     // En francs, rien ne change · ni mention de devise, ni contrevaleur.
+    // Un ordre en devise dont la ligne n'a pas de montant en devise ne s'imprime pas en francs · refus nommé.
+    expect(() =>
+      documentAvisReglement({ montant: 500, banque: 'Equity', reference: null, imputationDeclaree: null, montantDevise: null }, { ...ORDRE, devise: 'USD' }, 'SARL Kin'),
+    ).toThrow(/en USD et sa ligne vers Equity ne porte pas de montant en devise/);
     const francs = documentAvisReglement({ montant: 500, banque: 'Equity', reference: null, imputationDeclaree: null, montantDevise: null }, ORDRE, 'SARL Kin');
     expect(francs).not.toContain('contrevaleur');
   });

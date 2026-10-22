@@ -13,11 +13,16 @@ import {
   Length,
   Min,
   ValidateNested,
+  Matches,
 } from 'class-validator';
 
 export class CreerDeviseDto {
   @IsString()
   @Length(3, 3, { message: 'Le code devise est un code ISO à trois lettres (USD, EUR…)' })
+  // Trois LETTRES · « US » suivi d'un blanc passait la longueur et faisait un
+  // code que les lectures majusculées ne retrouvaient plus (second tour du
+  // n° 37, ligne sage-l3).
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Le code devise est un code ISO à trois lettres (USD, EUR…)' })
   code!: string;
 
   @IsString()
