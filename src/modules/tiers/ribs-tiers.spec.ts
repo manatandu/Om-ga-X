@@ -1,8 +1,10 @@
 import {
   coordonneesImprimees,
   motifRefusAnnulation,
+  deviseDuDonneur,
   motifRefusDeviseDonneur,
   motifRefusImpression,
+  motifRefusLignesHorsDeviseDonneur,
   motifRefusRibTiers,
 } from './ribs-tiers';
 import { RibsTiersService } from './ribs-tiers.service';
@@ -29,11 +31,35 @@ describe('RIB des tiers · ce qui permet de payer', () => {
   });
 });
 
-describe("ordre de virement · le donneur d'ordre en monnaie de tenue", () => {
-  it('admet le franc et un RIB sans devise, refuse toute autre monnaie', () => {
+describe("ordre de virement · la monnaie du donneur d'ordre (n° 37, ligne sage-l3)", () => {
+  it('lit la devise du RIB en code ISO, le franc et le RIB sans devise valant « aucune »', () => {
+    expect(deviseDuDonneur(null)).toBeNull();
+    expect(deviseDuDonneur('  ')).toBeNull();
+    expect(deviseDuDonneur('cdf')).toBeNull();
+    expect(deviseDuDonneur(' usd ')).toBe('USD');
+  });
+
+  it("l'ordre de paiement des SALAIRES reste en francs · un RIB en devise le refuse", () => {
     expect(motifRefusDeviseDonneur(null, 'BQ')).toBeNull();
     expect(motifRefusDeviseDonneur('cdf', 'BQ')).toBeNull();
     expect(motifRefusDeviseDonneur('USD', 'BQ')).toMatch(/USD.*CDF/);
+    expect(motifRefusDeviseDonneur('USD', 'BQ')).toMatch(/salaires/);
+  });
+
+  it('chaque ligne réglée est dans la monnaie du donneur, sinon refus nommé avec son issue', () => {
+    const base = { journalCode: 'BQ', monnaieDeTenue: 'CDF' };
+    expect(motifRefusLignesHorsDeviseDonneur({ ...base, deviseDonneur: 'USD', lignes: [{ compte: '40110001', devise: 'USD' }] })).toBeNull();
+    expect(motifRefusLignesHorsDeviseDonneur({ ...base, deviseDonneur: null, lignes: [{ compte: '40110001', devise: null }] })).toBeNull();
+    // Une ligne en francs ne part pas d'un compte en dollars · l'ordre ferait exécuter une contrevaleur.
+    expect(
+      motifRefusLignesHorsDeviseDonneur({ ...base, deviseDonneur: 'USD', lignes: [{ compte: '40110001', devise: 'USD' }, { compte: '40110002', devise: null }] }),
+    ).toMatch(/tenu en USD.*40110002.*Moyen de paiement en devise/);
+    // Un donneur sans devise renseignée reçoit une ligne en dollars · l'issue est de renseigner le RIB, ou de changer de journal.
+    expect(motifRefusLignesHorsDeviseDonneur({ ...base, deviseDonneur: null, lignes: [{ compte: '40110001', devise: 'USD' }] })).toMatch(
+      /aucune devise renseignée.*40110001.*Structure > Banques/,
+    );
+    // Le franc écrit en toutes lettres sur une ligne vaut « aucune devise ».
+    expect(motifRefusLignesHorsDeviseDonneur({ ...base, deviseDonneur: null, lignes: [{ compte: '40110001', devise: 'CDF' }] })).toBeNull();
   });
 });
 

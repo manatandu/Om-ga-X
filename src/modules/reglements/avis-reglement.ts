@@ -44,15 +44,24 @@ const montantImprime = (x: number) =>
 
 /** Le corps de l'avis d'une ligne de l'ordre, signé de l'entité. */
 export function documentAvisReglement(
-  ligne: { montant: number; banque: string; reference: string | null; imputationDeclaree: string | null },
-  ordre: { numero: number; date: Date },
+  ligne: { montant: number; banque: string; reference: string | null; imputationDeclaree: string | null; montantDevise?: number | null },
+  ordre: { numero: number; date: Date; devise?: string | null },
   entite: string,
 ): string {
+  // UN ORDRE EN DEVISE (n° 37, ligne sage-l3) dit au bénéficiaire la somme
+  // que la banque vire DANS CETTE MONNAIE, et sa contrevaleur en francs au
+  // livre (AUDCIF art. 17, 1°) · la seule contrevaleur ferait croire à un
+  // virement en francs.
+  const devise = ordre.devise ?? null;
+  const somme =
+    devise !== null && typeof ligne.montantDevise === 'number'
+      ? `${montantImprime(ligne.montantDevise)} ${devise} (contrevaleur comptable ${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE})`
+      : `${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE}`;
   return [
     'Madame, Monsieur,',
     '',
     `Notre ordre de virement n° ${ordre.numero} du ${jourImprime(ordre.date)} porte en votre faveur la somme de ` +
-      `${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE}, au crédit de votre compte ouvert auprès de ${ligne.banque}.`,
+      `${somme}, au crédit de votre compte ouvert auprès de ${ligne.banque}.`,
     ...(ligne.reference ? [`Référence du paiement : ${ligne.reference}.`] : []),
     ...(ligne.imputationDeclaree ? [`${ligne.imputationDeclaree}.`] : []),
     '',

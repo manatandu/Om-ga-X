@@ -158,8 +158,9 @@ function monter(
   const ordres = {
     preparer: jest.fn(async () => {
       ordre('preparer');
-      return { donneur: { banque: 'B', coordonnees: 'X', codeBic: null }, beneficiaires: new Map() };
+      return { donneur: { banque: 'B', coordonnees: 'X', codeBic: null, devise: null }, beneficiaires: new Map() };
     }),
+    refuserLignesHorsDevise: jest.fn(),
     creer: jest.fn(async () => ({ id: 'o1', numero: 1, total: 0 })),
   };
   creer.mockImplementation(async (_t: string, _u: string, dto: { lignes: { compteId: string }[] }): Promise<Piece> => {
@@ -313,9 +314,15 @@ describe('ordre de virement préparé avec les règlements', () => {
     );
     expect(ordre.mock.calls.map((c) => c[0])).toEqual(['preparer', 'piece', 'piece']);
     expect(ordres.preparer).toHaveBeenCalledWith('t', 'bq', ['c401', 'c402']);
+    // N° 37 · la monnaie de chaque ligne est jugée contre celle du donneur
+    // AVANT la première pièce, avec les lignes réglées (en francs ici).
+    expect(ordres.refuserLignesHorsDevise).toHaveBeenCalledWith(expect.anything(), 'BQ', [
+      { compte: '40110000', devise: null },
+      { compte: '40120000', devise: null },
+    ]);
     expect(ordres.creer).toHaveBeenCalledWith('t', 'compta@exemple.cd', 'bq', '2026-09-25', expect.anything(), [
-      { compteId: 'c401', montant: 1000, reference: 'VIR 12', ecritureId: 'e1', pieceReglement: 'BQ' },
-      { compteId: 'c402', montant: 300, reference: null, ecritureId: 'e2', pieceReglement: 'BQ' },
+      { compteId: 'c401', montant: 1000, reference: 'VIR 12', ecritureId: 'e1', pieceReglement: 'BQ', montantDevise: null, devise: null },
+      { compteId: 'c402', montant: 300, reference: null, ecritureId: 'e2', pieceReglement: 'BQ', montantDevise: null, devise: null },
     ]);
     expect(r.ordre).toEqual({ id: 'o1', numero: 1, total: 0 });
   });

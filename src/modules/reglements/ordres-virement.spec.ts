@@ -84,7 +84,7 @@ describe("préparer l'ordre · tout ce qu'il exige, avant la première pièce", 
   it('recopie le donneur (RIB du journal) et le RIB principal de chaque tiers', async () => {
     const { service, prisma } = monter({ ribs: { tA: [principal({ titulaire: 'SARL A' })], tB: [principal({ iban: 'GB82WEST12345698765432' })] } });
     const p = await service.preparer('t', 'bq', ['c401', 'c402']);
-    expect(p.donneur).toEqual({ banque: 'Rawbank', coordonnees: '0001', codeBic: 'RAWBCDKI' });
+    expect(p.donneur).toEqual({ banque: 'Rawbank', coordonnees: '0001', codeBic: 'RAWBCDKI', devise: null });
     expect(p.beneficiaires.get('c401')).toMatchObject({ tiersId: 'tA', beneficiaire: 'SARL A', coordonnees: '00011 777 12' });
     expect(p.beneficiaires.get('c402')).toMatchObject({ beneficiaire: 'Fournisseur B', coordonnees: 'IBAN GB82 WEST 1234 5698 7654 32' });
     // Seul le principal est lu · le filtre est dans la REQUÊTE, pas dans une doublure qui rendrait tout.
@@ -97,9 +97,26 @@ describe("préparer l'ordre · tout ce qu'il exige, avant la première pièce", 
     await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/Aucun RIB .* journal BQ/);
   });
 
-  it('refuse un compte donneur tenu dans une autre monnaie que la monnaie de tenue', async () => {
+  // N° 37 (ligne sage-l3) · un RIB en devise PORTE l'ordre (loi n° 23/053,
+  // art. 141, 1° vise la tenue des comptes, non la monnaie du compte
+  // bancaire) · le refus d'avant est levé, la devise est rendue, et c'est la
+  // règle ligne à ligne qui garde que chaque règlement soit dans sa monnaie.
+  it('rend la devise du donneur quand le RIB du journal est tenu en devise, le franc comme « aucune »', async () => {
+    const usd = monter({ rib: { ...ribJournal, devise: 'usd' }, ribs: { tA: [principal()] } });
+    expect((await usd.service.preparer('t', 'bq', ['c401'])).donneur.devise).toBe('USD');
+    const cdf = monter({ rib: { ...ribJournal, devise: 'CDF' }, ribs: { tA: [principal()] } });
+    expect((await cdf.service.preparer('t', 'bq', ['c401'])).donneur.devise).toBeNull();
+  });
+
+  it("refuse, avant la première pièce, une ligne réglée dans une autre monnaie que celle du donneur", async () => {
     const { service } = monter({ rib: { ...ribJournal, devise: 'USD' }, ribs: { tA: [principal()] } });
-    await expect(service.preparer('t', 'bq', ['c401'])).rejects.toThrow(/USD/);
+    const p = await service.preparer('t', 'bq', ['c401']);
+    expect(() => service.refuserLignesHorsDevise(p, 'BQ', [{ compte: '40110001', devise: 'USD' }])).not.toThrow();
+    expect(() => service.refuserLignesHorsDevise(p, 'BQ', [{ compte: '40110001', devise: null }])).toThrow(/tenu en USD.*40110001/);
+    // Donneur en francs, ligne réglée en dollars · même refus, l'issue nommée.
+    const francs = monter({ ribs: { tA: [principal()] } });
+    const pf = await francs.service.preparer('t', 'bq', ['c401']);
+    expect(() => francs.service.refuserLignesHorsDevise(pf, 'BQ', [{ compte: '40110001', devise: 'USD' }])).toThrow(/aucune devise renseignée.*Structure > Banques/);
   });
 
   it('nomme TOUS les tiers sans RIB principal et tout compte sans tiers, en un seul refus', async () => {
@@ -171,7 +188,7 @@ describe("créer, imprimer, annuler", () => {
     const prisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
     const service = new OrdresVirementService(prisma as never);
     const preparation = {
-      donneur: { banque: 'Rawbank', coordonnees: '0001', codeBic: null },
+      donneur: { banque: 'Rawbank', coordonnees: '0001', codeBic: null, devise: null },
       beneficiaires: new Map([['c401', { tiersId: 'tA', salarieId: null, beneficiaire: 'A', banque: 'B', coordonnees: '1', codeBic: null }]]),
     };
     const r = await service.creer('t', 'x@y.cd', 'bq', '2026-09-25', preparation, [
@@ -182,6 +199,45 @@ describe("créer, imprimer, annuler", () => {
     expect(r.total).toBe(100.3);
     const lignes = (create.mock.calls[1] as unknown as [{ data: { lignes: { create: { tiersId: string; ecritureId: string }[] } } }])[0].data.lignes.create;
     expect(lignes.map((l) => [l.tiersId, l.ecritureId])).toEqual([['tA', 'e1'], ['tA', 'e2']]);
+  });
+
+  // N° 37 · l'ordre en devise porte le montant que la banque exécute, ligne
+  // par ligne et en total, à côté de la contrevaleur en francs du livre.
+  it("en devise, l'ordre écrit la devise, le total et le montant en devise de chaque ligne ; une ligne en francs le refuse", async () => {
+    const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'o', ...data }));
+    const tx = { ordreVirement: { aggregate: jest.fn(async () => ({ _max: { numero: null } })), create } };
+    const prisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
+    const service = new OrdresVirementService(prisma as never);
+    const preparation = {
+      donneur: { banque: 'Rawbank', coordonnees: '0001', codeBic: null, devise: 'USD' },
+      beneficiaires: new Map([['c401', { tiersId: 'tA', salarieId: null, beneficiaire: 'A', banque: 'B', coordonnees: '1', codeBic: null }]]),
+    };
+    await service.creer('t', 'x@y.cd', 'bq', '2026-09-25', preparation, [
+      { compteId: 'c401', montant: 2_900_000, montantDevise: 1_000, devise: 'USD', reference: null, ecritureId: 'e1', pieceReglement: 'BQ 7' },
+      { compteId: 'c401', montant: 290_000, montantDevise: 100.004, devise: 'USD', reference: null, ecritureId: 'e2', pieceReglement: 'BQ 8' },
+    ]);
+    const data = (create.mock.calls[0] as unknown as [{ data: { devise: string; total: number; totalDevise: number; lignes: { create: { montantDevise: number }[] } } }])[0].data;
+    expect(data.devise).toBe('USD');
+    expect(data.total).toBe(3_190_000);
+    expect(data.totalDevise).toBe(1_100);
+    expect(data.lignes.create.map((l) => l.montantDevise)).toEqual([1_000, 100]);
+    await expect(
+      service.creer('t', 'x@y.cd', 'bq', '2026-09-25', preparation, [
+        { compteId: 'c401', montant: 100, montantDevise: null, devise: null, reference: null, ecritureId: 'e3', pieceReglement: 'BQ 9' },
+      ]),
+    ).rejects.toThrow(/monnaie du donneur \(USD\)/);
+    // Donneur en francs · une ligne qui porte une devise est aussi refusée, et rien n'est écrit en devise.
+    const francs = { ...preparation, donneur: { ...preparation.donneur, devise: null } };
+    await expect(
+      service.creer('t', 'x@y.cd', 'bq', '2026-09-25', francs, [
+        { compteId: 'c401', montant: 100, montantDevise: 1, devise: 'USD', reference: null, ecritureId: 'e4', pieceReglement: 'BQ 9' },
+      ]),
+    ).rejects.toThrow(/monnaie du donneur \(CDF\)/);
+    await service.creer('t', 'x@y.cd', 'bq', '2026-09-25', francs, [
+      { compteId: 'c401', montant: 100, reference: null, ecritureId: 'e5', pieceReglement: 'BQ 9' },
+    ]);
+    const enFrancs = (create.mock.calls[1] as unknown as [{ data: { devise: null; totalDevise: null; lignes: { create: { montantDevise: null }[] } } }])[0].data;
+    expect([enFrancs.devise, enFrancs.totalDevise, enFrancs.lignes.create[0].montantDevise]).toEqual([null, null, null]);
   });
 });
 

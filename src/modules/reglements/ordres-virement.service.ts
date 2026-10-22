@@ -4,9 +4,12 @@ import { PrismaService } from '../../common/prisma.service';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import {
   coordonneesImprimees,
+  deviseDuDonneur,
   motifRefusAnnulation,
   motifRefusDeviseDonneur,
   motifRefusImpression,
+  motifRefusLignesHorsDeviseDonneur,
+  type LigneReglee,
 } from '../tiers/ribs-tiers';
 import { estVise, refusOrdreRibsNonVises } from '../tiers/visa-rib';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -22,7 +25,12 @@ import { CADRE_AVIS_PAR_DEFAUT, documentAvisReglement, motifRefusAvis } from './
  * La clé est le compte réglé pour un tiers, le salarié pour un salaire.
  */
 export interface PreparationOrdre {
-  donneur: { banque: string; coordonnees: string; codeBic: string | null };
+  /**
+   * `devise` · la monnaie dans laquelle la banque exécute l'ordre, lue sur le
+   * RIB du journal (ligne sage-l3, fonction 37, décision D1) · `null` pour la
+   * monnaie de tenue. Un ordre de SALAIRES est toujours en francs.
+   */
+  donneur: { banque: string; coordonnees: string; codeBic: string | null; devise: string | null };
   beneficiaires: Map<
     string,
     { tiersId: string | null; salarieId: string | null; beneficiaire: string; banque: string; coordonnees: string; codeBic: string | null }
@@ -33,7 +41,16 @@ export interface LigneAOrdonner {
   /** Le compte réglé (Règlement des tiers) · ou `salarieId` pour un salaire. */
   compteId?: string;
   salarieId?: string;
+  /** La contrevaleur en francs de la pièce de règlement, toujours servie. */
   montant: number;
+  /**
+   * Le montant que la banque exécute quand le donneur est tenu en devise
+   * (ligne sage-l3, fonction 37) · celui de la ligne en devise de la pièce
+   * (F49). `null` ou absent pour un règlement en francs.
+   */
+  montantDevise?: number | null;
+  /** La monnaie du règlement de la ligne (code ISO), `null` ou absent en francs. */
+  devise?: string | null;
   reference: string | null;
   ecritureId: string;
   pieceReglement: string;
@@ -63,7 +80,7 @@ export class OrdresVirementService {
    * passées sans l'ordre qui devait les exécuter.
    */
   async preparer(tenantId: string, journalId: string, compteIds: string[]): Promise<PreparationOrdre> {
-    const donneur = await this.donneurDuJournal(tenantId, journalId);
+    const donneur = await this.donneurDuJournal(tenantId, journalId, 'TIERS');
 
     const comptes = await this.prisma.compte.findMany({
       where: { tenantId, id: { in: compteIds } },
@@ -120,7 +137,7 @@ export class OrdresVirementService {
    * nomme les salariés, AVANT la pièce de paiement.
    */
   async preparerSalaries(tenantId: string, journalId: string, salaries: readonly { id: string; nomComplet: string }[]): Promise<PreparationOrdre> {
-    const donneur = await this.donneurDuJournal(tenantId, journalId);
+    const donneur = await this.donneurDuJournal(tenantId, journalId, 'SALAIRES');
     const ribs = await this.prisma.ribSalarie.findMany({
       where: { tenantId, estPrincipal: true, salarieId: { in: salaries.map((s) => s.id) } },
       // Même ordre que l'écran (le premier principal créé) · deux principaux
@@ -190,8 +207,27 @@ export class OrdresVirementService {
     return dossier.visaRibs === true;
   }
 
-  /** Le compte à débiter · le RIB du journal, en monnaie de tenue, avec ses coordonnées. */
-  private async donneurDuJournal(tenantId: string, journalId: string): Promise<PreparationOrdre['donneur']> {
+  /**
+   * CHAQUE LIGNE EST PAYÉE DANS LA MONNAIE DU DONNEUR (ligne sage-l3, fonction
+   * 37) · vérifié par l'appelant AVANT la première pièce, sur ce qu'il sait du
+   * lot (la devise de chaque règlement), jamais après coup. Refus nommé.
+   */
+  refuserLignesHorsDevise(preparation: PreparationOrdre, journalCode: string, lignes: readonly LigneReglee[]): void {
+    const motif = motifRefusLignesHorsDeviseDonneur({
+      deviseDonneur: preparation.donneur.devise,
+      journalCode,
+      monnaieDeTenue: MONNAIE_DE_TENUE,
+      lignes,
+    });
+    if (motif) throw new BadRequestException(motif);
+  }
+
+  /**
+   * Le compte à débiter · le RIB du journal, avec ses coordonnées et sa
+   * monnaie. Pour des TIERS, un RIB en devise fait un ordre en devise
+   * (décision D1) ; pour des SALAIRES, le franc seul (`motifRefusDeviseDonneur`).
+   */
+  private async donneurDuJournal(tenantId: string, journalId: string, pour: 'TIERS' | 'SALAIRES'): Promise<PreparationOrdre['donneur']> {
     const rib = await this.prisma.ribBanque.findFirst({
       where: { tenantId, journalId },
       include: { banque: { select: { intitule: true } }, journal: { select: { code: true } } },
@@ -202,9 +238,16 @@ export class OrdresVirementService {
         `Aucun RIB n'est rattaché au journal ${journal?.code ?? ''} (Structure > Banques) · l'ordre de virement n'aurait pas de compte à débiter.`,
       );
     }
-    const refusDevise = motifRefusDeviseDonneur(rib.devise, rib.journal?.code ?? '');
-    if (refusDevise) throw new BadRequestException(refusDevise);
-    const donneur = { banque: rib.banque.intitule, coordonnees: coordonneesImprimees({ ...rib, banque: rib.banque.intitule }), codeBic: rib.codeBic };
+    if (pour === 'SALAIRES') {
+      const refusDevise = motifRefusDeviseDonneur(rib.devise, rib.journal?.code ?? '');
+      if (refusDevise) throw new BadRequestException(refusDevise);
+    }
+    const donneur = {
+      banque: rib.banque.intitule,
+      coordonnees: coordonneesImprimees({ ...rib, banque: rib.banque.intitule }),
+      codeBic: rib.codeBic,
+      devise: pour === 'SALAIRES' ? null : deviseDuDonneur(rib.devise),
+    };
     if (!donneur.coordonnees) {
       throw new BadRequestException(`Le RIB ${rib.abrege} ne porte ni IBAN ni numéro de compte · complétez-le dans Structure > Banques.`);
     }
@@ -245,6 +288,21 @@ export class OrdresVirementService {
     lignes: LigneAOrdonner[],
   ) {
     const total = round2(lignes.reduce((s, l) => s + l.montant, 0));
+    // L'ORDRE EN DEVISE PORTE LE MONTANT QUE LA BANQUE EXÉCUTE (fonction 37) ·
+    // chaque ligne doit alors porter sa devise, celle du donneur, et son
+    // montant en devise. Une ligne qui en manque est une faute de l'appelant
+    // (la règle ligne à ligne passe avant la première pièce) · l'ordre ne
+    // naît pas plutôt que de faire exécuter une contrevaleur en francs par un
+    // compte en dollars.
+    const devise = preparation.donneur.devise;
+    for (const l of lignes) {
+      if ((l.devise ?? null) !== devise || (devise !== null && !(typeof l.montantDevise === 'number' && Number.isFinite(l.montantDevise)))) {
+        throw new BadRequestException(
+          `La ligne ${l.compteId ?? l.salarieId ?? ''} n'est pas réglée dans la monnaie du donneur (${devise ?? MONNAIE_DE_TENUE}) · l'ordre n'est pas créé.`,
+        );
+      }
+    }
+    const totalDevise = devise === null ? null : round2(lignes.reduce((s, l) => s + (l.montantDevise ?? 0), 0));
     const dernier = await tx.ordreVirement.aggregate({ where: { tenantId }, _max: { numero: true } });
     return tx.ordreVirement.create({
       data: {
@@ -256,6 +314,8 @@ export class OrdresVirementService {
         donneurCoordonnees: preparation.donneur.coordonnees,
         donneurBic: preparation.donneur.codeBic,
         total,
+        devise,
+        totalDevise,
         creePar: email,
         lignes: {
           create: lignes.map((l) => {
@@ -273,6 +333,7 @@ export class OrdresVirementService {
               coordonnees: b.coordonnees,
               codeBic: b.codeBic,
               montant: round2(l.montant),
+              montantDevise: devise === null ? null : round2(l.montantDevise ?? 0),
               reference: l.reference,
               pieceReglement: l.pieceReglement,
               imputationDeclaree: l.imputationDeclaree ?? null,
@@ -281,7 +342,7 @@ export class OrdresVirementService {
           }),
         },
       },
-      select: { id: true, numero: true, total: true },
+      select: { id: true, numero: true, total: true, devise: true, totalDevise: true },
     });
   }
 
@@ -400,8 +461,14 @@ export class OrdresVirementService {
       avis: lignesTiers.map((l) => {
         const cadre = cadres.get(l.tiersId) ?? null;
         const document = documentAvisReglement(
-          { montant: Number(l.montant), banque: l.banque, reference: l.reference, imputationDeclaree: l.imputationDeclaree },
-          ordre,
+          {
+            montant: Number(l.montant),
+            banque: l.banque,
+            reference: l.reference,
+            imputationDeclaree: l.imputationDeclaree,
+            montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+          },
+          { numero: ordre.numero, date: ordre.date, devise: ordre.devise },
           entite,
         );
         return { ligneId: l.id, beneficiaire: l.beneficiaire, montant: Number(l.montant), modele: cadre?.modele ?? null, texte: habiller(cadre, document) };

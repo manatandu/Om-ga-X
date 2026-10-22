@@ -25,6 +25,7 @@ import { compteDeLEcart, referentielDuDossier } from './compte-ecart-change';
 import { lignesDeReevaluationSurLesTiers } from './lignes-de-reevaluation';
 import { avertissementExtourneManquante, issueReevaluationDejaPassee, motifReglementDejaReevalue } from './reevaluation-et-ecart-realise';
 import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.service';
+import type { LigneReglee } from '../tiers/ribs-tiers';
 import { modeDuDossier } from './modes-reglement.service';
 import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte, SEUIL_ART_59_BIS } from './modes-reglement';
 import { classerTransactions, estDAnouveau, transactionsDesLignes, type TransactionReglee } from './transactions-art-59-bis';
@@ -757,14 +758,23 @@ export class ReglementsService {
     // première pièce (`motifRefusTresorerieEnDevise`). TOUJOURS confrontée
     // (A6 bis, B3) · un lot tout en francs n'y échappait pas moins à la
     // règle quand le RIB du journal est tenu en devise.
+    // Les codes des devises servent aussi à l'ordre de virement (n° 37,
+    // ligne sage-l3) · lus une fois, hors du bloc qui juge le moyen de
+    // paiement.
+    const idsDevises = [
+      ...new Set([...prepares.flatMap((x) => (x.enDevise ? [x.enDevise.deviseId] : [])), ...(dto.deviseTresorerieId ? [dto.deviseTresorerieId] : [])]),
+    ];
+    const devisesLues = idsDevises.length
+      ? await this.prisma.devise.findMany({ where: { tenantId, id: { in: idsDevises } }, select: { id: true, code: true } })
+      : [];
+    const code = (id: string) => devisesLues.find((d) => d.id === id)?.code ?? '?';
+    // LA DEVISE QUE L'ORDRE DE VIREMENT PORTE pour une ligne · celle du
+    // moyen de paiement DÉCLARÉ (A6), jamais celle de la facture seule · un
+    // règlement en francs d'une facture en dollars reste un virement en
+    // francs.
+    const deviseDeLOrdre = (x: { enDevise: ReglementEnDevise | null }) =>
+      dto.tresorerieEnDevise === true && x.enDevise ? code(x.enDevise.deviseId) : null;
     {
-      const idsDevises = [
-        ...new Set([...prepares.flatMap((x) => (x.enDevise ? [x.enDevise.deviseId] : [])), ...(dto.deviseTresorerieId ? [dto.deviseTresorerieId] : [])]),
-      ];
-      const devisesLues = idsDevises.length
-        ? await this.prisma.devise.findMany({ where: { tenantId, id: { in: idsDevises } }, select: { id: true, code: true } })
-        : [];
-      const code = (id: string) => devisesLues.find((d) => d.id === id)?.code ?? '?';
       if (dto.deviseTresorerieId !== undefined && !devisesLues.some((d) => d.id === dto.deviseTresorerieId)) {
         throw new NotFoundException('Devise du moyen de paiement introuvable pour ce dossier.');
       }
@@ -910,6 +920,16 @@ export class ReglementsService {
         throw new BadRequestException("Un ordre de virement paie un fournisseur · l'encaissement d'un client ne s'ordonne pas.");
       }
       preparation = await this.ordres.preparer(tenantId, dto.journalId, idsComptes);
+      // Un ordre part DANS LA MONNAIE DU DONNEUR (n° 37, ligne sage-l3 ·
+      // RIB en devise admis, loi n° 23/053, art. 141, 1° visant la tenue des
+      // comptes, non la monnaie du compte bancaire) · chaque ligne réglée
+      // doit être dans cette monnaie, et le refus tombe ICI, avant la
+      // première pièce, comme le reste de l'ordre.
+      this.ordres.refuserLignesHorsDevise(
+        preparation,
+        journal.code,
+        prepares.map((x): LigneReglee => ({ compte: x.compte.numero, devise: deviseDeLOrdre(x) })),
+      );
     }
 
     // LES LIGNES DE CHAQUE PIÈCE, posées AVANT la première · une caisse ne
@@ -1006,6 +1026,8 @@ export class ReglementsService {
           pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
           // L'ordre IMPRIME l'imputation déclarée (art. 151, M6).
           imputationDeclaree: imputationImprimee(parts),
+          montantDevise: enDevise ? enDevise.montantDevise : null,
+          devise: deviseDeLOrdre({ enDevise }),
         });
         continue;
       }
@@ -1058,6 +1080,8 @@ export class ReglementsService {
           reference: r.reference || null,
           ecritureId: ecriture.id,
           pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
+          montantDevise: enDevise ? enDevise.montantDevise : null,
+          devise: deviseDeLOrdre({ enDevise }),
         });
         continue;
       }
@@ -1101,6 +1125,8 @@ export class ReglementsService {
         reference: r.reference || null,
         ecritureId: ecriture.id,
         pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
+        montantDevise: enDevise ? enDevise.montantDevise : null,
+        devise: deviseDeLOrdre({ enDevise }),
       });
     }
     const ordre = preparation

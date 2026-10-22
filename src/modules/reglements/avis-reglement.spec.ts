@@ -28,6 +28,18 @@ describe('le document', () => {
     expect(texte.endsWith('SARL Kin\nRCCM CD/KIN/RCCM/26-B-1')).toBe(true);
   });
 
+  it('un ordre en devise dit la somme virée dans sa monnaie, et la contrevaleur au livre (n° 37)', () => {
+    const texte = documentAvisReglement(
+      { montant: 2_900_000, banque: 'Rawbank', reference: null, imputationDeclaree: null, montantDevise: 1_000 },
+      { ...ORDRE, devise: 'USD' },
+      'SARL Kin',
+    );
+    expect(texte).toMatch(/la somme de 1\s000,00 USD \(contrevaleur comptable 2\s900\s000,00 CDF\)/);
+    // En francs, rien ne change · ni mention de devise, ni contrevaleur.
+    const francs = documentAvisReglement({ montant: 500, banque: 'Equity', reference: null, imputationDeclaree: null, montantDevise: null }, ORDRE, 'SARL Kin');
+    expect(francs).not.toContain('contrevaleur');
+  });
+
   it('sans référence ni imputation déclarée, rien n’est inventé', () => {
     const texte = documentAvisReglement({ montant: 500, banque: 'Equity', reference: null, imputationDeclaree: null }, ORDRE, 'SARL Kin');
     expect(texte).not.toContain('Référence du paiement');

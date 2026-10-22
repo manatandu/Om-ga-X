@@ -9159,7 +9159,13 @@ model OrdreVirement {
   donneurBanque         String
   donneurCoordonnees    String
   donneurBic            String?
+  /// La contrevaleur en francs des pièces de règlement, toujours servie.
   total                 Decimal              @db.Decimal(18, 2)
+  /// LA MONNAIE QUE LA BANQUE EXÉCUTE (ligne sage-l3, fonction 37, décision
+  /// D1) · celle du RIB du journal, code ISO, `null` pour la monnaie de tenue.
+  /// Posée, chaque ligne porte son `montantDevise` et `totalDevise` les somme.
+  devise                String?
+  totalDevise           Decimal?             @db.Decimal(18, 2)
   statut                StatutOrdreVirement  @default(A_IMPRIMER)
   premiereImpressionLe  DateTime?
   premiereImpressionPar String?
@@ -9196,7 +9202,11 @@ model LigneOrdreVirement {
   banque             String
   coordonnees        String
   codeBic            String?
+  /// La contrevaleur en francs de la pièce de règlement.
   montant            Decimal       @db.Decimal(18, 2)
+  /// Le montant exécuté par la banque dans la devise de l'ordre (fonction 37),
+  /// celui de la ligne en devise de la pièce (F49) · `null` sur un ordre en francs.
+  montantDevise      Decimal?      @db.Decimal(18, 2)
   reference          String?
   /// Journal et numéro de la pièce de règlement, recopiés · l'ordre annulé
   /// libère la pièce (ecritureId à null) sans perdre ce qu'il exécutait.

@@ -66,23 +66,77 @@ export function coordonneesImprimees(rib: CoordonneesRib): string {
 }
 
 /**
- * Le compte du donneur d'ordre doit être tenu dans la MONNAIE DE TENUE · les
- * montants de l'ordre sont ceux des pièces de règlement, qui sont en francs
- * congolais (loi n° 23/053 art. 141, 1° · AUDCIF art. 17, 1°). Un ordre en
- * francs sur un compte en dollars demanderait à la banque de débiter une
- * somme dans une monnaie que le compte ne porte pas. Un RIB sans devise est
- * pris pour la monnaie de tenue · c'est ce qu'un compte congolais saisi sans
- * précision est le plus souvent, et le refuser bloquerait chaque dossier qui
- * n'a pas rempli le champ.
+ * LA MONNAIE DU DONNEUR D'ORDRE (ligne sage-l3, fonction 37, décision D1 de
+ * `docs/comparaison-sage/reproduction/architecture.md`). Loi n° 23/053,
+ * art. 141, 1° · « Cette comptabilité est exprimée en Franc congolais » · le
+ * texte vise la COMPTABILITÉ, pas la monnaie du compte bancaire. Les pièces
+ * de règlement restent tenues en francs ; l'ordre, lui, demande à la banque
+ * de débiter le compte dans SA monnaie · un RIB tenu en dollars exécute des
+ * dollars, et c'est le montant en devise de chaque ligne (F49) que l'ordre
+ * porte, la contrevaleur en francs restant pour mémoire. Un RIB sans devise
+ * est lu dans la monnaie de tenue · c'est ce qu'un compte congolais saisi
+ * sans précision est le plus souvent, et le refuser bloquerait chaque dossier
+ * qui n'a pas rempli le champ. Rend `null` pour la monnaie de tenue.
  */
-export function motifRefusDeviseDonneur(devise: string | null | undefined, journalCode: string): string | null {
+export function deviseDuDonneur(devise: string | null | undefined): string | null {
   if (vide(devise)) return null;
   const code = devise!.trim().toUpperCase();
-  if (code === MONNAIE_DE_TENUE) return null;
+  return code === MONNAIE_DE_TENUE ? null : code;
+}
+
+/**
+ * LE PAIEMENT DES SALAIRES RESTE EN FRANCS (ligne sage-l5, relecture L5,
+ * mineur 7) · le bulletin dit un net en francs, et un ordre en devise ferait
+ * convertir la banque au cours qu'elle choisit, que le bulletin ne dit pas.
+ * Seul l'ordre des SALAIRES garde ce refus · l'ordre des tiers suit
+ * `deviseDuDonneur` et la règle ligne à ligne ci-dessous.
+ */
+export function motifRefusDeviseDonneur(devise: string | null | undefined, journalCode: string): string | null {
+  const code = deviseDuDonneur(devise);
+  if (code === null) return null;
   return (
-    `Le RIB du journal ${journalCode} est tenu en ${code} · les règlements sont en ${MONNAIE_DE_TENUE}, ` +
-    "monnaie de tenue. Un ordre de virement ne s'émet que sur un compte en " +
+    `Le RIB du journal ${journalCode} est tenu en ${code} · les salaires sont payés en ${MONNAIE_DE_TENUE}, ` +
+    "monnaie de tenue. L'ordre de paiement des salaires ne s'émet que sur un compte en " +
     `${MONNAIE_DE_TENUE}.`
+  );
+}
+
+/** Une ligne de règlement telle que l'ordre la juge · le compte réglé et la monnaie dans laquelle il est payé (`null` · francs). */
+export interface LigneReglee {
+  compte: string;
+  devise: string | null;
+}
+
+/**
+ * CHAQUE LIGNE DE L'ORDRE EST PAYÉE DANS LA MONNAIE DU DONNEUR, vérifié AVANT
+ * la première pièce. Un RIB en dollars qui exécuterait une ligne réglée en
+ * francs, ou un RIB en francs à qui l'on demanderait des dollars, remettrait à
+ * la banque un montant dans une monnaie que le compte ne porte pas · la banque
+ * convertirait au cours qu'elle choisit, que la pièce ne dit pas, et le 52 ne
+ * porterait pas la position que la clôture doit convertir (AUDCIF art. 57).
+ * Le refus nomme chaque ligne et son issue ; `null` si toutes concordent.
+ */
+export function motifRefusLignesHorsDeviseDonneur(p: {
+  deviseDonneur: string | null;
+  journalCode: string;
+  monnaieDeTenue: string;
+  lignes: readonly LigneReglee[];
+}): string | null {
+  const donneur = p.deviseDonneur ?? p.monnaieDeTenue;
+  const horsDevise = p.lignes.filter((l) => (l.devise ?? p.monnaieDeTenue) !== donneur);
+  if (horsDevise.length === 0) return null;
+  const nommees = horsDevise.map((l) => `${l.compte} (réglé en ${l.devise ?? p.monnaieDeTenue})`).join(', ');
+  if (p.deviseDonneur === null) {
+    return (
+      `Le RIB du journal ${p.journalCode} est lu en ${p.monnaieDeTenue} (aucune devise renseignée) et ${horsDevise.length > 1 ? 'des lignes sont réglées' : 'une ligne est réglée'} ` +
+      `dans une autre monnaie · ${nommees}. Renseignez la devise du RIB (Structure > Banques) si le compte est tenu dans cette monnaie, ` +
+      "ou réglez ces factures depuis le journal d'un compte tenu dans leur monnaie."
+    );
+  }
+  return (
+    `Le RIB du journal ${p.journalCode} est tenu en ${donneur} et ${horsDevise.length > 1 ? 'des lignes sont réglées' : 'une ligne est réglée'} ` +
+    `dans une autre monnaie · ${nommees}. Un ordre de virement n'exécute que la monnaie du compte débité · réglez ces factures ` +
+    `en ${donneur} (« Moyen de paiement en devise »), ou depuis le journal d'un compte tenu dans leur monnaie.`
   );
 }
 
