@@ -78,10 +78,18 @@ function motifTaux(v: number | null | undefined, nom: string): string | null {
   return null;
 }
 
-/** Un montant · positif ou nul, au centime. */
+/**
+ * Le plus grand montant que la colonne garde (`Decimal(18,2)` · seize chiffres
+ * avant la virgule). Au-delà, la base refusait l'écriture d'une erreur
+ * anonyme · le refus se nomme ici (premier tour, constat m3).
+ */
+export const MONTANT_MAX = 9_999_999_999_999_999.99;
+
+/** Un montant · positif ou nul, au centime, sous la borne de la colonne. */
 function motifMontant(v: number | null | undefined, nom: string): string | null {
   if (v === null || v === undefined) return null;
   if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `${nom} · un montant positif ou nul.`;
+  if (v > MONTANT_MAX) return `${nom} · au-delà du plus grand montant qu'OmegaX tient.`;
   if (Math.round(v * 100) / 100 !== v) return `${nom} · au centime.`;
   return null;
 }
@@ -99,19 +107,30 @@ export function motifRefusConditions(c: ConditionsSaisies): string | null {
   if (!estUnJour(c.dateEffet)) return "La date d'effet des conditions doit être un jour (AAAA-MM-JJ).";
   const convention = motifConvention(c.referenceConvention, c.dateConvention);
   if (convention) return convention;
+  // LA FORME D'ABORD (premier tour, constats M2 et M4) · le DTO ne fait que
+  // laisser passer ces champs, et une chaîne, un objet ou un palier `null`
+  // tombaient en erreur 500 au premier `.entries()` ; un type inconnu
+  // s'enregistrait et s'affichait « par intervalle ».
+  if (c.typePalier != null && !TYPES_PALIER.includes(c.typePalier)) return 'Type de palier · par intervalle ou par seuil.';
+  if (c.paliers != null && (!Array.isArray(c.paliers) || c.paliers.some((p) => typeof p !== 'object' || p === null))) {
+    return 'Les paliers du découvert · une liste de plafonds et de taux.';
+  }
   const paliers = c.paliers ?? [];
   if (paliers.length > PALIERS_MAX) return `Le découvert porte ${PALIERS_MAX} paliers au plus.`;
   if (paliers.length > 0 && !c.typePalier) return 'Le découvert à paliers dit s’ils jouent par intervalle ou par seuil.';
   if (paliers.length === 0 && c.typePalier) return 'Un type de palier sans palier · déclarez au moins un palier, ou retirez le type.';
   let precedent = 0;
   for (const [i, p] of paliers.entries()) {
+    // Un plafond absent est une faute du palier, jamais « les plafonds ne
+    // montent pas » (premier tour, m1) · `null <= 0` le faisait dire.
+    if (typeof p.plafond !== 'number') return `Palier ${i + 1} · le plafond est exigé.`;
+    if (typeof p.taux !== 'number') return `Palier ${i + 1} · le taux est exigé.`;
     const motifPlafond = motifMontant(p.plafond, `Palier ${i + 1}, plafond`);
     if (motifPlafond) return motifPlafond;
     if (p.plafond <= precedent) return `Palier ${i + 1} · les plafonds montent strictement d'un palier au suivant.`;
     precedent = p.plafond;
     const motif = motifTaux(p.taux, `Palier ${i + 1}, taux`);
     if (motif) return motif;
-    if (p.taux === null || p.taux === undefined) return `Palier ${i + 1} · le taux est exigé.`;
   }
   for (const [v, nom] of [
     [c.tauxInteretsCrediteurs, 'Taux des intérêts créditeurs'],
@@ -180,7 +199,9 @@ export interface AutorisationSaisie {
 
 export function motifRefusAutorisation(a: AutorisationSaisie): string | null {
   if (!NATURES_AUTORISATION.includes(a.nature)) return "Nature de l'autorisation · découvert, facilité de caisse, crédit de trésorerie, escompte ou autre.";
-  if (typeof a.montant !== 'number' || !Number.isFinite(a.montant) || a.montant <= 0) return "Le montant autorisé est strictement positif.";
+  if (typeof a.montant !== 'number' || !Number.isFinite(a.montant)) return 'Le montant autorisé est exigé, en chiffres.';
+  if (a.montant <= 0) return 'Le montant autorisé est strictement positif.';
+  if (a.montant > MONTANT_MAX) return "Le montant autorisé · au-delà du plus grand montant qu'OmegaX tient.";
   if (Math.round(a.montant * 100) / 100 !== a.montant) return 'Le montant autorisé · au centime.';
   if (!estUnJour(a.dateDebut)) return "La date de début de l'autorisation doit être un jour (AAAA-MM-JJ).";
   if (a.dateFin != null && a.dateFin !== '') {
@@ -220,6 +241,26 @@ export function situationAutorisation(a: { nature: NatureAutorisation; montant: 
     nonUtilise: Math.max(0, autorise - utilise) / 100,
     depassement: Math.max(0, utilise - autorise) / 100,
   };
+}
+
+/**
+ * PLUSIEURS AUTORISATIONS SUR LE MÊME SOLDE (premier tour, constat M4 des
+ * trois relecteurs) · un découvert de 1 000 000 et une facilité de 500 000
+ * en cours sur le même compte, créditeur de 1 200 000 · confrontée SEULE au
+ * solde entier, chacune rendait 1 200 000 utilisés et un dépassement
+ * (200 000 et 700 000), en rouge, quand l'enveloppe de 1 500 000 n'était pas
+ * dépassée. C'est le contrôle qui fabrique une anomalie (CLAUDE.md § 10 bis).
+ * Le solde se confronte donc au TOTAL de ce qui se lit sur lui, une ligne
+ * par RIB ; chacune des autorisations dit pourquoi elle n'a pas la sienne.
+ * Aucune n'est imputée avant l'autre · aucun texte ne dit l'ordre où une
+ * banque tire ses lignes.
+ */
+export const MOTIF_SITUATION_SUR_LE_TOTAL =
+  'Plusieurs autorisations en cours se lisent sur le même compte · leur situation est donnée sur leur total, à la ligne du RIB.';
+
+export function situationSurLeTotal(montants: readonly number[], soldeDuCompte: number | null): SituationAutorisation & { autorise: number } {
+  const autorise = Math.round(montants.reduce((s, m) => s + Math.round(m * 100), 0)) / 100;
+  return { autorise, ...situationAutorisation({ nature: 'DECOUVERT', montant: autorise }, soldeDuCompte) };
 }
 
 export interface InscriptionHorsBilan {
@@ -271,15 +312,58 @@ export function normaliserCodeUnion(code: string): string {
   return code.trim().toUpperCase();
 }
 
-export function motifRefusUnion(u: UnionSaisie, ribs: readonly { id: string; abrege: string; devise: string | null }[]): string | null {
-  const code = normaliserCodeUnion(u.code ?? '');
+/** Une union réunit au plus autant de comptes que la liste des RIB en sert (`LIMITE_RIBS` du service). */
+export const MEMBRES_MAX_UNION = 200;
+
+/**
+ * LA FORME D'UNE UNION, jugée AVANT toute lecture de la base (premier tour,
+ * constat M3) · des identifiants qui ne sont pas des chaînes tombaient en
+ * erreur 500 dans la requête, une chaîne seule était éclatée en caractères,
+ * et au-delà de la borne de lecture des RIB du dossier se disaient
+ * « introuvables ».
+ */
+export function motifFormeUnion(u: UnionSaisie): string | null {
+  const code = normaliserCodeUnion(typeof u.code === 'string' ? u.code : '');
   if (!/^[A-Z0-9]{1,10}$/.test(code)) return "Le code de l'union · lettres et chiffres, dix au plus.";
-  const intitule = (u.intitule ?? '').trim();
+  const intitule = (typeof u.intitule === 'string' ? u.intitule : '').trim();
   if (intitule.length === 0 || [...intitule].length > 60) return "L'intitulé de l'union · de un à soixante caractères.";
-  const ids = [...new Set(u.ribIds ?? [])];
-  if (ids.length < 2) return 'Une union réunit au moins deux comptes bancaires.';
-  if (ids.length !== (u.ribIds ?? []).length) return 'Un même RIB figure deux fois dans l’union.';
+  if (!Array.isArray(u.ribIds) || u.ribIds.some((id) => typeof id !== 'string' || id.length === 0)) return "Les comptes de l'union · une liste de RIB.";
+  if (u.ribIds.length > MEMBRES_MAX_UNION) return `Une union réunit ${MEMBRES_MAX_UNION} comptes au plus.`;
+  const ids = new Set(u.ribIds);
+  if (ids.size < 2) return 'Une union réunit au moins deux comptes bancaires.';
+  if (ids.size !== u.ribIds.length) return 'Un même RIB figure deux fois dans l’union.';
+  return null;
+}
+
+export interface RibDUnion {
+  id: string;
+  abrege: string;
+  devise: string | null;
+  /** Le compte de trésorerie du journal du RIB · deux RIB sur le même compte compteraient deux fois son solde. */
+  compteId?: string | null;
+  /** Le compte est tenu en devise (racine du plan ou ligne en devise) sans que le RIB le dise. */
+  compteEnDevise?: boolean;
+}
+
+export function motifRefusUnion(u: UnionSaisie, ribs: readonly RibDUnion[]): string | null {
+  const forme = motifFormeUnion(u);
+  if (forme) return forme;
+  const ids = [...new Set(u.ribIds)];
   if (ids.some((id) => !ribs.some((r) => r.id === id))) return "Un des RIB choisis est introuvable dans ce dossier · relisez la liste.";
+  const membres = ids.map((id) => ribs.find((r) => r.id === id)!);
+  // UN COMPTE EN DEVISE SE DIT AU RIB (premier tour, M3) · sans quoi sa
+  // contrevaleur en francs s'additionnait à un vrai compte en francs.
+  const muet = membres.find((r) => r.compteEnDevise && monnaieDuRib(r.devise) === null);
+  if (muet) return `Le compte du RIB ${muet.abrege} est tenu en devise, et le RIB ne dit pas laquelle · renseignez sa devise (Structure › Paramètres de saisie › Banques).`;
+  // UN COMPTE, UNE FOIS (premier tour, M4) · deux journaux d'un dossier hérité
+  // peuvent tenir le même compte, et la position l'aurait compté deux fois.
+  const vus = new Map<string, string>();
+  for (const r of membres) {
+    if (!r.compteId) continue;
+    const deja = vus.get(r.compteId);
+    if (deja) return `Les RIB ${deja} et ${r.abrege} lisent le même compte comptable · une union ne compte un compte qu'une fois.`;
+    vus.set(r.compteId, r.abrege);
+  }
   // UNE MONNAIE PAR UNION (Sage, F_UNION.N_Devise, unique) · additionner des
   // francs et des dollars donnerait une position sans unité.
   const monnaies = new Set(ids.map((id) => monnaieDuRib(ribs.find((r) => r.id === id)!.devise)));
@@ -294,11 +378,22 @@ export interface PositionUnion {
   total: number | null;
   /** Les comptes dont le solde n'a pas pu se lire · le total est alors `null`, jamais partiel. */
   nonLus: string[];
+  /** Pourquoi le total n'est pas servi, quand ce n'est pas un solde manquant. */
+  motif: string | null;
 }
 
-/** La position d'une union · la somme des soldes de ses comptes, ou rien si un solde manque (un total partiel passerait pour la position). */
-export function positionUnion(soldes: readonly { abrege: string; solde: number | null }[]): PositionUnion {
+/**
+ * La position d'une union · la somme des soldes de ses comptes, ou rien si un
+ * solde manque (un total partiel passerait pour la position), ou si deux
+ * membres lisent le même compte (une union créée avant la règle, premier
+ * tour M4 · le solde aurait compté deux fois).
+ */
+export function positionUnion(soldes: readonly { abrege: string; solde: number | null; compteId?: string | null }[]): PositionUnion {
   const nonLus = soldes.filter((s) => s.solde === null).map((s) => s.abrege);
-  if (nonLus.length > 0) return { total: null, nonLus };
-  return { total: Math.round(soldes.reduce((s, x) => s + Math.round((x.solde as number) * 100), 0)) / 100, nonLus: [] };
+  if (nonLus.length > 0) return { total: null, nonLus, motif: null };
+  const comptes = soldes.map((s) => s.compteId).filter((c): c is string => typeof c === 'string');
+  if (new Set(comptes).size !== comptes.length) {
+    return { total: null, nonLus: [], motif: "Deux comptes de l'union lisent le même compte comptable · la position le compterait deux fois." };
+  }
+  return { total: Math.round(soldes.reduce((s, x) => s + Math.round((x.solde as number) * 100), 0)) / 100, nonLus: [], motif: null };
 }

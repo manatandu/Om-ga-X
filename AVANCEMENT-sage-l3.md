@@ -401,14 +401,42 @@ financements, placements.
   (administrateur seul, `ecriture-masquee.spec.ts`). Rejoué · tsc des deux
   côtés, 21 tests unitaires, gardes du dépôt, scénario navigateur
   `sage-l3-conditions` sur vraie base à travers une clôture (N+1 ouvert
-  avant et après la clôture de N, même découvert utilisé). Reste · deux
-  tours de relecture.
+  avant et après la clôture de N, même découvert utilisé).
+  Premier tour (échecs silencieux, serveur, écran · aucun BLOQUANT), corrigé ·
+  (M1 serveur) le solde se lit jusqu'au LENDEMAIN exclu, une correction
+  horodatée l'après-midi échappait à minuit, l'exercice précédent sans borne
+  de date ; (M4 des trois) plusieurs découverts ou facilités en cours sur le
+  même compte se lisent sur leur TOTAL (`situationSurLeTotal`, ligne du RIB),
+  chacune contre le solde entier fabriquait deux dépassements ; (M2) un RIB
+  qui porte des déclarations garde sa devise et son journal (`modifierRib`,
+  409) ; (M3) un compte tenu en devise par la racine du plan ou une ligne en
+  devise n'est pas lu en francs, et une union refuse le RIB qui le tait ;
+  (M4 union) deux RIB sur le même compte refusés, position « non calculée »
+  pour l'existant ; formes illisibles (type de palier, paliers, membres
+  d'union) refusées par leur nom avant la base ; montant borné à la colonne ;
+  hors bilan proposé aux seules autorisations en cours ; déclarations des
+  seuls RIB servis, les plus récentes d'abord, total compté, version en
+  vigueur tue sur liste tronquée ; conflits P2025, P2003 et P2002 nommés ;
+  `fusionEchelles` booléen, inchangé quand absent ; remontée épuisée « non
+  calculée » ; somme en décimal exact ; soldes lus par paquets de quatre.
+  Écran · (M1) saisie lue par `lib/conditions-bancaires-saisie.ts`, illisible
+  refusé avec son nom, jamais envoyé en `null` (test Vitest) ; (M2) la
+  lecture se range avec sa date (`lueePour`), lue à la sortie du champ ;
+  (M3) un geste à la fois, boutons désactivés ; refus au bloc qui l'a
+  demandé (`role="alert"`), succès en `role="status"` ; colonne hors bilan
+  retirée au SYCEBNL, motif dans l'aide ; en-têtes d'action nommés, zones de
+  défilement focalisables, membre d'union non lu avec son motif. Écarté ·
+  (m9 écran) la page est dans `ADMIN_SEULEMENT`, pas dans les exemptions.
+  Rejoué · tsc des deux côtés, specs du module, Vitest, scénario
+  `sage-l3-conditions` étendu (facilité de caisse en janvier lue sur le
+  total, échue en avril sans hors bilan, devise du RIB retenu refusée, taux
+  illisible refusé à l'écran). Reste · second tour.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #46 · deux tours de relecture.
+- #46 · second tour de relecture.
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les
   OPCVM se tranchent par la loi avant de coder.
 - Docs · `features.csv` (colonne clone de la ligne 47),

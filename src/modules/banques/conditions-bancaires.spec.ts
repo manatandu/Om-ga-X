@@ -2,14 +2,17 @@ import 'reflect-metadata';
 import { ConflictException } from '@nestjs/common';
 import { Referentiel } from '@prisma/client';
 import {
+  MONTANT_MAX,
   MOTIF_SANS_HORS_BILAN_SYCEBNL,
   conditionsEnVigueur,
+  motifFormeUnion,
   inscriptionHorsBilan,
   motifRefusAutorisation,
   motifRefusConditions,
   motifRefusUnion,
   positionUnion,
   situationAutorisation,
+  situationSurLeTotal,
   type ConditionsSaisies,
 } from './conditions-bancaires';
 import { ConditionsBancairesService, motifRibRetenu } from './conditions-bancaires.service';
@@ -58,6 +61,19 @@ describe('Conditions bancaires · la convention est recopiée, jamais présumée
     expect(motifRefusConditions({ ...BASE, fraisTenueCompte: 15_000, periodiciteFrais: 'TRIMESTRIELLE', baseCalcul: 360 })).toBeNull();
   });
 
+  it('une forme illisible est refusée par son nom, jamais en erreur 500 ni lue de travers (premier tour, M2, M4, m1)', () => {
+    const c = (x: unknown) => motifRefusConditions({ ...BASE, ...(x as object) } as ConditionsSaisies);
+    expect(c({ typePalier: 'FOO', paliers: [{ plafond: 1, taux: 1 }] })).toMatch(/par intervalle ou par seuil/);
+    expect(c({ typePalier: 'SEUIL', paliers: 'abcd' })).toMatch(/une liste de plafonds et de taux/);
+    expect(c({ typePalier: 'SEUIL', paliers: {} })).toMatch(/une liste de plafonds et de taux/);
+    expect(c({ typePalier: 'SEUIL', paliers: [null] })).toMatch(/une liste de plafonds et de taux/);
+    // Un plafond absent se nomme, jamais « les plafonds montent strictement ».
+    expect(c({ typePalier: 'SEUIL', paliers: [{ plafond: null, taux: 12 }] })).toBe('Palier 1 · le plafond est exigé.');
+    expect(c({ typePalier: 'SEUIL', paliers: [{ plafond: 1_000, taux: null }] })).toBe('Palier 1 · le taux est exigé.');
+    expect(c({ fraisTenueCompte: 1e17, periodiciteFrais: 'MENSUELLE' })).toMatch(/plus grand montant/);
+    expect(c({ fraisTenueCompte: MONTANT_MAX, periodiciteFrais: 'MENSUELLE' })).toBeNull();
+  });
+
   it('la version en vigueur est la plus tardive sans dépasser la date, et aucune avant la première', () => {
     const v = [
       { id: 'a', dateEffet: new Date('2025-01-01T00:00:00Z') },
@@ -77,6 +93,19 @@ describe("Autorisation de financement · un engagement de la banque, jamais une 
     expect(motifRefusAutorisation({ ...A, dateFin: '2025-12-31' })).toMatch(/précède sa date de début/);
     expect(motifRefusAutorisation({ ...A, referenceConvention: '' })).toMatch(/convention/);
     expect(motifRefusAutorisation(A)).toBeNull();
+  });
+
+  it('un montant illisible ou démesuré se nomme (premier tour, m1, m3)', () => {
+    expect(motifRefusAutorisation({ ...A, montant: null as unknown as number })).toMatch(/exigé, en chiffres/);
+    expect(motifRefusAutorisation({ ...A, montant: 1e17 })).toMatch(/plus grand montant/);
+  });
+
+  it("plusieurs autorisations sur le même solde se lisent sur leur TOTAL, jamais chacune contre le solde entier (premier tour, M4)", () => {
+    // Découvert de 1 000 000 et facilité de 500 000, compte créditeur de 1 200 000 · aucun dépassement, 300 000 non utilisés.
+    expect(situationSurLeTotal([1_000_000, 500_000], -1_200_000)).toEqual({ autorise: 1_500_000, utilise: 1_200_000, nonUtilise: 300_000, depassement: 0 });
+    // Confrontées une à une, elles auraient rendu deux dépassements fabriqués.
+    expect(situationAutorisation({ ...A, montant: 1_000_000 }, -1_200_000).depassement).toBe(200_000);
+    expect(situationSurLeTotal([1_000_000, 500_000], null)).toEqual({ autorise: 1_500_000, utilise: null, nonUtilise: null, depassement: null });
   });
 
   it('le découvert utilisé est le solde CRÉDITEUR du compte · le dépassement se dit, il ne se refuse pas', () => {
@@ -120,9 +149,33 @@ describe("Union de comptes · une vue, sans compensation au bilan (fiche du comp
     expect(motifRefusUnion({ code: 'u1', intitule: 'Rawbank', ribIds: ['r1', 'r2'] }, RIBS)).toBeNull();
   });
 
-  it('la position est la somme des soldes, ou rien quand un solde manque', () => {
-    expect(positionUnion([{ abrege: 'A', solde: 100.1 }, { abrege: 'B', solde: -40.05 }])).toEqual({ total: 60.05, nonLus: [] });
-    expect(positionUnion([{ abrege: 'A', solde: 100 }, { abrege: 'B', solde: null }])).toEqual({ total: null, nonLus: ['B'] });
+  it('la forme se juge avant toute requête (premier tour, M3)', () => {
+    const u = (ribIds: unknown) => motifFormeUnion({ code: 'U1', intitule: 'Rawbank', ribIds: ribIds as string[] });
+    expect(u(5)).toMatch(/une liste de RIB/);
+    expect(u({})).toMatch(/une liste de RIB/);
+    expect(u('ab')).toMatch(/une liste de RIB/);
+    expect(u([1, 2])).toMatch(/une liste de RIB/);
+    expect(u([null, 'x'])).toMatch(/une liste de RIB/);
+    expect(u(Array.from({ length: 201 }, (_, i) => `r${i}`))).toMatch(/200 comptes au plus/);
+    expect(u(['r1', 'r2'])).toBeNull();
+  });
+
+  it('un compte en devise que le RIB tait, ou un compte lu deux fois, est refusé (premier tour, M3 et M4)', () => {
+    const avec = [
+      { id: 'r1', abrege: 'RAW-CDF', devise: null, compteId: 'c1' },
+      { id: 'r2', abrege: 'RAW-5215', devise: null, compteId: 'c2', compteEnDevise: true },
+      { id: 'r4', abrege: 'RAW-BIS', devise: null, compteId: 'c1' },
+    ];
+    expect(motifRefusUnion({ code: 'U1', intitule: 'R', ribIds: ['r1', 'r2'] }, avec)).toMatch(/RAW-5215 est tenu en devise/);
+    expect(motifRefusUnion({ code: 'U1', intitule: 'R', ribIds: ['r1', 'r4'] }, avec)).toMatch(/RAW-CDF et RAW-BIS lisent le même compte/);
+  });
+
+  it('la position est la somme des soldes, ou rien quand un solde manque ou qu’un compte est lu deux fois', () => {
+    expect(positionUnion([{ abrege: 'A', solde: 100.1 }, { abrege: 'B', solde: -40.05 }])).toEqual({ total: 60.05, nonLus: [], motif: null });
+    expect(positionUnion([{ abrege: 'A', solde: 100 }, { abrege: 'B', solde: null }])).toEqual({ total: null, nonLus: ['B'], motif: null });
+    const double = positionUnion([{ abrege: 'A', solde: -1_000_000, compteId: 'c1' }, { abrege: 'B', solde: -1_000_000, compteId: 'c1' }]);
+    expect(double.total).toBeNull();
+    expect(double.motif).toMatch(/même compte comptable/);
   });
 });
 
@@ -132,7 +185,7 @@ describe('Un RIB qui porte ses déclarations ne se retire pas en silence', () =>
   it('motifRibRetenu nomme chaque usage', async () => {
     const prisma = { conditionBancaire: compteur(2), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(1) } as unknown as PrismaService;
     expect(await motifRibRetenu(prisma, 't1', ['r1'])).toBe(
-      "Le RIB porte 2 version(s) de conditions bancaires, 1 appartenance(s) à une union de comptes · retirez-les d'abord (Structure › Paramètres de saisie › Banques).",
+      "Le RIB porte 2 version(s) de conditions bancaires, 1 appartenance(s) à une union de comptes · retirez-les d'abord (Structure › Paramètres de saisie › Conditions bancaires).",
     );
     const vide = { conditionBancaire: compteur(0), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(0) } as unknown as PrismaService;
     expect(await motifRibRetenu(vide, 't1', ['r1'])).toBeNull();
@@ -149,32 +202,78 @@ describe('Un RIB qui porte ses déclarations ne se retire pas en silence', () =>
     await expect(new BanquesService(prisma).supprimerRib('t1', 'r1')).rejects.toBeInstanceOf(ConflictException);
     expect(supprime).not.toHaveBeenCalled();
   });
+
+  it('BanquesService.modifierRib refuse de changer la devise d’un RIB qui porte des déclarations (premier tour, M2)', async () => {
+    const maj = jest.fn();
+    const prisma = {
+      ribBanque: { findFirst: jest.fn(async () => ({ id: 'r1', tenantId: 't1', devise: 'USD', journalId: null })), update: maj },
+      conditionBancaire: compteur(0),
+      autorisationFinancement: compteur(1),
+      elementUnionComptesBancaires: compteur(0),
+    } as unknown as PrismaService;
+    const service = new BanquesService(prisma);
+    await expect(service.modifierRib('t1', 'r1', { devise: '' } as never)).rejects.toThrow(/La devise de ce RIB ne change pas.*1 autorisation/);
+    expect(maj).not.toHaveBeenCalled();
+  });
 });
 
 describe('Le solde du compte d’un RIB · lu, ou dit non lu', () => {
-  it('un RIB sans journal ou en devise n’a pas de solde, jamais un zéro', async () => {
-    const service = new ConditionsBancairesService({} as PrismaService);
-    expect(await service.soldeDuRib('t1', { devise: null, journal: null }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/sans journal/) });
-    expect(await service.soldeDuRib('t1', { devise: 'USD', journal: { compteTresorerieId: 'c1' } }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/USD/) });
+  it('un RIB sans journal, en devise, ou dont le compte est tenu en devise n’a pas de solde, jamais un zéro (premier tour, M3)', async () => {
+    const sansLigne = { ligneEcriture: { findFirst: jest.fn(async () => null) } } as unknown as PrismaService;
+    const service = new ConditionsBancairesService(sansLigne);
+    expect(await service.soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: null }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/sans journal/) });
+    expect(await service.soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: 'USD', journal: { compteTresorerieId: 'c1' } }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/USD/) });
+    // Le 5215 est semé « en devises » au SYSCOHADA · la contrevaleur en francs ne se confronte pas à une autorisation en francs.
+    const racine = PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === '52150000')!.numero;
+    expect(await service.soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: { compteTresorerieId: 'c1', compteTresorerie: { numero: racine } } }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/tenu en devise/) });
+    const avecLigne = { ligneEcriture: { findFirst: jest.fn(async () => ({ id: 'l1' })) } } as unknown as PrismaService;
+    expect(await new ConditionsBancairesService(avecLigne).soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: { compteTresorerieId: 'c1', compteTresorerie: { numero: '52110000' } } }, new Date())).toEqual({ solde: null, motif: expect.stringMatching(/52110000 porte des lignes en devise/) });
   });
 
-  it("remonte l'exercice précédent non clôturé quand l'ouverture ne porte pas le compte", async () => {
+  /**
+   * La doublure HONORE la requête (CLAUDE.md, passe F4b) · le jour du solde
+   * se lit jusqu'au LENDEMAIN exclu, et l'exercice précédent sans borne de
+   * date. Une correction horodatée à 14 h le jour lu compte (premier tour,
+   * constat M1 de la relecture serveur).
+   */
+  it("lit le jour en entier, et remonte l'exercice précédent non clôturé quand l'ouverture ne porte pas le compte", async () => {
     const N = { id: 'n', dateDebut: new Date('2027-01-01T00:00:00Z') };
     const N1 = { id: 'n1', dateDebut: new Date('2026-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z'), statut: 'OUVERT' };
-    const aggregate = jest.fn(async ({ where }: { where: { ecriture: { exerciceId: string } } }) =>
-      where.ecriture.exerciceId === 'n' ? { _sum: { debit: 0, credit: 30_000 } } : { _sum: { debit: 100_000, credit: 250_000 } },
-    );
+    const lignes = [
+      { exerciceId: 'n', date: new Date('2027-01-10T14:00:00Z'), debit: 0, credit: 30_000 },
+      { exerciceId: 'n', date: new Date('2027-01-11T00:00:00Z'), debit: 0, credit: 999_000 },
+      { exerciceId: 'n1', date: new Date('2026-12-31T16:00:00Z'), debit: 100_000, credit: 250_000 },
+    ];
+    const aggregate = jest.fn(async ({ where }: { where: { ecriture: { exerciceId: string; date?: { lt: Date } } } }) => {
+      const retenues = lignes.filter((l) => l.exerciceId === where.ecriture.exerciceId && (!where.ecriture.date || l.date < where.ecriture.date.lt));
+      return { _sum: { debit: retenues.reduce((s, l) => s + l.debit, 0), credit: retenues.reduce((s, l) => s + l.credit, 0) } };
+    });
     const prisma = {
       exercice: {
-        // Le précédent de N est N1, et N1 n'en a aucun · la doublure honore la borne `lt`.
         findFirst: jest.fn(async ({ where }: { where: { dateFin?: { lt?: Date } } }) =>
           where.dateFin?.lt === undefined ? N : where.dateFin.lt.getTime() > N1.dateFin.getTime() ? N1 : null,
         ),
       },
       ecriture: { count: jest.fn(async () => 0) },
-      ligneEcriture: { aggregate },
+      ligneEcriture: { aggregate, findFirst: jest.fn(async () => null) },
     } as unknown as PrismaService;
-    const lu = await new ConditionsBancairesService(prisma).soldeDuRib('t1', { devise: null, journal: { compteTresorerieId: 'c1' } }, new Date('2027-01-10T00:00:00Z'));
+    const lu = await new ConditionsBancairesService(prisma).soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: { compteTresorerieId: 'c1' } }, new Date('2027-01-10T00:00:00Z'));
     expect(lu).toEqual({ solde: -180_000, motif: null });
+    const bornes = aggregate.mock.calls.map(([a]) => a.where.ecriture.date?.lt?.toISOString() ?? null);
+    expect(bornes).toEqual(['2027-01-11T00:00:00.000Z', null]);
+  });
+
+  it("au-delà de la remontée bornée, le solde n'est pas servi plutôt que partiel (premier tour, m9)", async () => {
+    let n = 0;
+    const prisma = {
+      exercice: {
+        findFirst: jest.fn(async () => ({ id: `e${n++}`, dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z'), statut: 'OUVERT' })),
+      },
+      ecriture: { count: jest.fn(async () => 0) },
+      ligneEcriture: { aggregate: jest.fn(async () => ({ _sum: { debit: 0, credit: 0 } })), findFirst: jest.fn(async () => null) },
+    } as unknown as PrismaService;
+    const lu = await new ConditionsBancairesService(prisma).soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: { compteTresorerieId: 'c1' } }, new Date('2027-01-10T00:00:00Z'));
+    expect(lu.solde).toBeNull();
+    expect(lu.motif).toMatch(/exercices ouverts se suivent/);
   });
 });

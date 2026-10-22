@@ -23,8 +23,9 @@ interface Lecture {
     abrege: string;
     conditions: Array<{ id: string; dateEffet: string; enVigueur: boolean }>;
     autorisations: Array<{ id: string; situation: Situation | null; motifSituation: string | null; horsBilan: { debit: string; credit: string } | null }>;
+    situationTotale: (Situation & { autorise: number; nombre: number }) | null;
   }>;
-  unions: Array<{ code: string; position: { total: number | null; nonLus: string[] } }>;
+  unions: Array<{ code: string; position: { total: number | null; nonLus: string[]; motif: string | null } }>;
 }
 
 const jour = (iso: string) => iso.slice(0, 10);
@@ -116,11 +117,43 @@ test('conditions bancaires · découvert utilisé lu sur le solde, à travers un
   await appelApi(page, 'POST', `/exercices/${N.id}/cloturer`);
   expect((await situation(`${suivante}-01-10`)).autorisations[0].situation).toEqual(attendue);
 
+  // (6 bis) Une facilité de caisse de 400 000 court AUSSI en janvier · les deux
+  // se lisent sur leur TOTAL (premier tour, M4), jamais chacune contre le
+  // solde entier, qui fabriquait deux dépassements.
+  await appelApi(page, 'POST', `/conditions-bancaires/ribs/${rib.id}/autorisations`, {
+    nature: 'FACILITE_CAISSE',
+    montant: 400_000,
+    dateDebut: `${suivante}-01-01`,
+    dateFin: `${suivante}-03-31`,
+    irrevocable: false,
+    referenceConvention: 'AUT-RAW-2',
+    dateConvention: `${suivante}-01-01`,
+  });
+  const janvier = await situation(`${suivante}-01-10`);
+  expect(janvier.autorisations.map((a) => a.situation)).toEqual([null, null]);
+  expect(janvier.autorisations.map((a) => a.motifSituation)).toEqual([expect.stringMatching(/sur leur total/), expect.stringMatching(/sur leur total/)]);
+  expect(janvier.situationTotale).toEqual({
+    autorise: 900_000,
+    utilise,
+    nonUtilise: Math.max(0, 900_000 - utilise),
+    depassement: Math.max(0, utilise - 900_000),
+    motif: null,
+    nombre: 2,
+  });
+  // En avril, la facilité est échue · le découvert seul se lit, et l'échue ne propose plus de hors-bilan.
+  const avril = await situation(`${suivante}-04-10`);
+  expect(avril.situationTotale).toBeNull();
+  expect(avril.autorisations[0].situation).toEqual(attendue);
+  expect(avril.autorisations[1].horsBilan).toBeNull();
+
+  // (6 ter) Le RIB qui porte des déclarations garde sa monnaie (premier tour, M2).
+  expect(await refusDe(appelApi(page, 'PATCH', `/ribs-banque/${rib.id}`, { devise: 'USD' }))).toMatch(/409|ne change pas/);
+
   // (7) Unions · une même monnaie se crée, sa position dit le compte non lu ; deux monnaies refusées.
   expect(await refusDe(appelApi(page, 'POST', '/conditions-bancaires/unions', { code: 'MIX', intitule: 'Mélange', ribIds: [rib.id, ribUsd.id] }))).toMatch(/400|même monnaie/);
   await appelApi(page, 'POST', '/conditions-bancaires/unions', { code: 'raw', intitule: 'Rawbank francs', ribIds: [rib.id, rib2.id], fusionEchelles: true });
   const lecture = await appelApi<Lecture>(page, 'GET', `/conditions-bancaires?au=${suivante}-01-10`);
-  expect(lecture.unions.map((u) => [u.code, u.position])).toEqual([['RAW', { total: null, nonLus: ['RAW-CDF2'] }]]);
+  expect(lecture.unions.map((u) => [u.code, u.position])).toEqual([['RAW', { total: null, nonLus: ['RAW-CDF2'], motif: null }]]);
 
   // (8) Le RIB qui porte ses déclarations ne se retire pas, ni sa banque.
   expect(await refusDe(appelApi(page, 'DELETE', `/ribs-banque/${rib.id}`))).toMatch(/409|retirez-les/);
@@ -131,5 +164,10 @@ test('conditions bancaires · découvert utilisé lu sur le solde, à travers un
   await expect(page.getByRole('table', { name: 'Conditions du RIB RAW-CDF' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Autorisations du RIB RAW-CDF' })).toContainText('Découvert autorisé · irrévocable');
   await expect(page.getByRole('table', { name: 'Unions' })).toContainText('Rawbank francs');
+  // Un taux illisible se refuse à l'écran en le nommant, et rien ne part (premier tour, M1).
+  const formulaire = page.getByRole('form', { name: 'Déclarer des conditions sur RAW-CDF', exact: true });
+  await formulaire.getByLabel('Conditions · intérêts créditeurs').fill('deux pour cent');
+  await formulaire.getByRole('button', { name: 'Déclarer les conditions' }).click();
+  await expect(page.getByRole('region', { name: 'RIB RAW-CDF', exact: true }).getByRole('alert')).toContainText('Intérêts créditeurs · illisible.');
   expect(pannes).toEqual([]);
 });

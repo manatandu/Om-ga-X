@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { ibanValide, motifRefusJournalBanque, normaliserIban } from './banques';
 import { BanqueDto, LibelleDto, ModifierBanqueDto, ModifierLibelleDto, RibDto } from './dto/banques.dto';
+import { monnaieDuRib } from './conditions-bancaires';
 import { motifRibRetenu } from './conditions-bancaires.service';
 
 /** Chaîne vide = effacement (`null`), absent = inchangé. */
@@ -145,6 +146,23 @@ export class BanquesService {
     const rib = await this.prisma.ribBanque.findFirst({ where: { id: ribId, tenantId } });
     if (!rib) throw new NotFoundException('RIB introuvable');
     const champs = await this.champsRib(tenantId, dto, ribId);
+    // UN RIB QUI PORTE DES DÉCLARATIONS GARDE SA MONNAIE ET SON JOURNAL
+    // (fonction 46, premier tour, M2) · les montants déclarés (autorisation,
+    // paliers, frais) sont dans la monnaie du RIB, et sa situation se lit sur
+    // le compte de son journal · changés après coup, 50 000 dollars se
+    // seraient lus en francs, ou contre le solde d'un autre compte, sans un
+    // mot. Refus nommé ; l'issue est de retirer les déclarations, puis de les
+    // déclarer à nouveau sur le RIB tel qu'il devient.
+    const deviseChange = champs.devise !== undefined && monnaieDuRib(champs.devise) !== monnaieDuRib(rib.devise);
+    const journalChange = champs.journalId !== undefined && (champs.journalId ?? null) !== (rib.journalId ?? null);
+    if (deviseChange || journalChange) {
+      const retenu = await motifRibRetenu(this.prisma, tenantId, [ribId]);
+      if (retenu) {
+        throw new ConflictException(
+          `${deviseChange ? 'La devise' : 'Le journal'} de ce RIB ne change pas tant qu'il porte des déclarations · ${retenu.replace(/^Le RIB porte /, 'il porte ')}`,
+        );
+      }
+    }
     return this.doublon(
       this.prisma.ribBanque.update({ where: { id: ribId }, data: champs }),
       `Un RIB « ${dto.abrege?.trim()} » existe déjà dans ce dossier.`,

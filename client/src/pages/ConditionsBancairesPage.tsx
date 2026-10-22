@@ -3,8 +3,11 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Aide } from "../components/chrome/Aide";
 import { montant } from "../lib/montants";
-import { montantSaisi } from "../lib/montant-saisi";
 import { messageOuDefaut } from "../lib/message-refus";
+import {
+  corpsAutorisation,
+  corpsConditions,
+} from "../lib/conditions-bancaires-saisie";
 
 /**
  * CONDITIONS BANCAIRES, AUTORISATIONS DE FINANCEMENT, UNIONS DE COMPTES
@@ -64,6 +67,10 @@ interface RibServi {
   compte: string | null;
   conditions: Condition[];
   autorisations: Autorisation[];
+  /** Plusieurs autorisations en cours sur le même solde · leur situation sur le total (premier tour, M4). */
+  situationTotale:
+    | (Situation & { autorise: number; motif: string | null; nombre: number })
+    | null;
 }
 interface UnionServie {
   id: string;
@@ -76,7 +83,7 @@ interface UnionServie {
     solde: number | null;
     motif: string | null;
   }>;
-  position: { total: number | null; nonLus: string[] };
+  position: { total: number | null; nonLus: string[]; motif: string | null };
 }
 interface Lecture {
   date: string;
@@ -86,6 +93,8 @@ interface Lecture {
   ribsTronques: boolean;
   totalRibs: number;
   declarationsTronquees: boolean;
+  totalConditions: number;
+  totalAutorisations: number;
   unions: UnionServie[];
   unionsTronquees: boolean;
 }
@@ -106,28 +115,43 @@ const taux = (v: number | null) =>
     : `${v.toLocaleString("fr-FR", { maximumFractionDigits: 6 })} %`;
 const champ = "border border-border-dark px-2 py-1 text-[11.5px] w-full";
 const etiquette = "flex flex-col gap-0.5 text-[10.5px] text-text-dim";
-/** Un taux tapé (virgule ou point), ou rien · une saisie illisible reste au serveur, qui la refuse nommée. */
-const tauxSaisi = (t: string): number | null =>
-  t.trim() === "" ? null : Number(t.replace(/\s/g, "").replace(",", "."));
+const bouton =
+  "bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold rounded-full disabled:opacity-50";
+const thActions = (
+  <th scope="col">
+    <span className="sr-only">Actions</span>
+  </th>
+);
 
 export function ConditionsBancairesPage() {
   const { estAdmin } = useAuth();
+  // La date DEMANDÉE (vide · aujourd'hui) et la date TAPÉE · la lecture ne
+  // part qu'à la sortie du champ ou sur Entrée, jamais à chaque chiffre
+  // (premier tour, m7 · Chrome rendait 0002, 0020, 0202, 2026).
   const [au, setAu] = useState("");
-  const [lecture, setLecture] = useState<Lecture | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [auTape, setAuTape] = useState("");
+  // UNE LECTURE SE RANGE AVEC LA DATE QU'ELLE SERT (premier tour, M2) · les
+  // situations d'une date ne s'affichent jamais sous une autre, ni pendant le
+  // chargement, ni sous l'erreur d'une lecture manquée.
+  const [lecture, setLecture] = useState<{
+    lueePour: string;
+    l: Lecture;
+  } | null>(null);
+  const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [jeton, setJeton] = useState(0);
+  const [envoi, setEnvoi] = useState(false);
 
   useEffect(() => {
     let vivant = true;
-    setErreur(null);
+    setErreurLecture(null);
     api
       .get<Lecture>(`/conditions-bancaires${au ? `?au=${au}` : ""}`)
-      .then((l) => vivant && setLecture(l))
+      .then((l) => vivant && setLecture({ lueePour: au, l }))
       .catch(
         (e) =>
           vivant &&
-          setErreur(
+          setErreurLecture(
             `Lecture impossible · ${messageOuDefaut(e, "serveur injoignable")}`,
           ),
       );
@@ -136,18 +160,32 @@ export function ConditionsBancairesPage() {
     };
   }, [au, jeton]);
 
-  const agir = async (fn: () => Promise<unknown>, message: string) => {
-    setErreur(null);
+  const servie = lecture && lecture.lueePour === au ? lecture.l : null;
+
+  /**
+   * UN GESTE À LA FOIS (premier tour, M3) · un double clic créait deux
+   * autorisations identiques (aucune clé unique), et un second retrait
+   * rendait un 404 sous « retirées ». Le refus revient au bloc qui l'a
+   * demandé, près de son formulaire, jamais en haut de page.
+   */
+  const agir: Agir = async (fn, message) => {
+    if (envoi) return { ok: false, refus: null };
+    setEnvoi(true);
     setInfo(null);
     try {
       await fn();
       setInfo(message);
       setJeton((j) => j + 1);
-      return true;
+      return { ok: true, refus: null };
     } catch (e) {
-      setErreur(messageOuDefaut(e, "Action refusée."));
-      return false;
+      return { ok: false, refus: messageOuDefaut(e, "Action refusée.") };
+    } finally {
+      setEnvoi(false);
     }
+  };
+
+  const valider = () => {
+    if (auTape !== au) setAu(auTape);
   };
 
   return (
@@ -157,21 +195,27 @@ export function ConditionsBancairesPage() {
           Situation au
           <input
             type="date"
-            aria-label="Situation au"
-            value={au || lecture?.date || ""}
-            onChange={(e) => setAu(e.target.value)}
+            value={auTape || servie?.date || ""}
+            onChange={(e) => setAuTape(e.target.value)}
+            onBlur={valider}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") valider();
+            }}
             className="mt-1 block border border-border-dark px-2.5 py-1.5 text-[12px] font-normal font-mono"
           />
         </label>
         <Aide
           titre="Conditions, autorisations et unions"
-          texte="Les conditions recopient la convention signée avec la banque (référence et date exigées), versionnées par date d'effet · OmegaX ne calcule aucun agio, la banque compte en dates de valeur que le relevé importé ne porte pas. L'autorisation de financement est un engagement de la banque, jamais une dette · son utilisation se lit sur le solde créditeur du compte pour un découvert ou une facilité de caisse, le dépassement se dit sans rien refuser ; au SYSCOHADA son inscription hors bilan est proposée (classe 9, facultative), au SYCEBNL elle se décrit aux notes annexes. Une union réunit des comptes d'une même monnaie en une position de trésorerie, sans compensation au bilan."
+          texte={`Les conditions recopient la convention signée avec la banque (référence et date exigées), versionnées par date d'effet · OmegaX ne calcule aucun agio, la banque compte en dates de valeur que le relevé importé ne porte pas. L'autorisation de financement est un engagement de la banque, jamais une dette · son utilisation se lit sur le solde créditeur du compte pour un découvert ou une facilité de caisse, le dépassement se dit sans rien refuser ; plusieurs autorisations en cours sur le même compte se lisent sur leur total. Au SYSCOHADA son inscription hors bilan est proposée (classe 9, facultative). ${servie?.motifSansHorsBilan ?? ""} Une union réunit des comptes d'une même monnaie en une position de trésorerie, sans compensation au bilan.`}
           source="AUDCIF, fiches des comptes 52, 56, 9011 et 9018 ; SYCEBNL, fiches des comptes 52 et 56 · Sage 100, Structure des fichiers, F_EBANQUECOND, F_AUTORISATIONFINBQ, F_UNION"
         />
       </div>
-      {erreur && (
-        <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5 mb-3 max-w-[900px]">
-          {erreur}{" "}
+      {erreurLecture && (
+        <div
+          role="alert"
+          className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5 mb-3 max-w-[900px]"
+        >
+          {erreurLecture}{" "}
           <button
             type="button"
             onClick={() => setJeton((j) => j + 1)}
@@ -181,32 +225,31 @@ export function ConditionsBancairesPage() {
           </button>
         </div>
       )}
-      {info && <div className="text-[11.5px] text-success mb-2">{info}</div>}
-      {!lecture && !erreur && (
+      <div role="status" className="text-[11.5px] text-success mb-2">
+        {info}
+      </div>
+      {!servie && !erreurLecture && (
         <div className="text-[11.5px] text-text-dim">Chargement…</div>
       )}
-      {lecture && lecture.ribs.length === 0 && (
+      {servie && servie.ribs.length === 0 && (
         <div className="text-[11.5px] text-text-dim">
           Aucun RIB dans ce dossier · déclarez d’abord la banque et son RIB
           (Structure › Paramètres de saisie › Banques).
         </div>
       )}
-      {lecture?.ribsTronques && (
+      {servie?.ribsTronques && (
         <div className="text-[11.5px] text-warning mb-2">
-          {lecture.ribs.length} RIB montrés sur {lecture.totalRibs}.
+          {servie.ribs.length} RIB montrés sur {servie.totalRibs}.
         </div>
       )}
-      {lecture?.declarationsTronquees && (
+      {servie?.declarationsTronquees && (
         <div className="text-[11.5px] text-warning mb-2">
-          La liste des conditions ou des autorisations est tronquée.
+          Déclarations tronquées · {servie.totalConditions} versions de
+          conditions et {servie.totalAutorisations} autorisations au dossier ;
+          la version en vigueur n’est pas dite.
         </div>
       )}
-      {lecture?.motifSansHorsBilan && (
-        <div className="text-[11.5px] text-text-dim mb-2">
-          {lecture.motifSansHorsBilan}
-        </div>
-      )}
-      {lecture?.ribs.map((r) => (
+      {servie?.ribs.map((r) => (
         <section
           key={r.id}
           aria-label={`RIB ${r.abrege}`}
@@ -221,58 +264,70 @@ export function ConditionsBancairesPage() {
               {r.compte ? ` · compte ${r.compte}` : ""}
             </span>
           </div>
-          <BlocConditions rib={r} estAdmin={estAdmin} agir={agir} />
-          <BlocAutorisations rib={r} estAdmin={estAdmin} agir={agir} />
+          <BlocConditions rib={r} estAdmin={estAdmin} agir={agir} envoi={envoi} />
+          <BlocAutorisations
+            rib={r}
+            estAdmin={estAdmin}
+            agir={agir}
+            envoi={envoi}
+            avecHorsBilan={servie.referentiel === "SYSCOHADA"}
+          />
         </section>
       ))}
-      {lecture && lecture.ribs.length > 0 && (
-        <BlocUnions lecture={lecture} estAdmin={estAdmin} agir={agir} />
+      {servie && servie.ribs.length > 0 && (
+        <BlocUnions lecture={servie} estAdmin={estAdmin} agir={agir} envoi={envoi} />
       )}
     </div>
   );
 }
 
-type Agir = (fn: () => Promise<unknown>, message: string) => Promise<boolean>;
+type Agir = (
+  fn: () => Promise<unknown>,
+  message: string,
+) => Promise<{ ok: boolean; refus: string | null }>;
+
+/** Le refus d'un geste, dit près du formulaire qui l'a demandé. */
+function Refus({ texte }: { texte: string | null }) {
+  if (!texte) return null;
+  return (
+    <div
+      role="alert"
+      className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5 mt-1.5"
+    >
+      {texte}
+    </div>
+  );
+}
 
 function BlocConditions({
   rib,
   estAdmin,
   agir,
+  envoi,
 }: {
   rib: RibServi;
   estAdmin: boolean;
   agir: Agir;
+  envoi: boolean;
 }) {
   const [f, setF] = useState<Record<string, string>>({});
+  const [refus, setRefus] = useState<string | null>(null);
+  const geste = async (fn: () => Promise<unknown>, message: string) => {
+    setRefus(null);
+    const r = await agir(fn, message);
+    setRefus(r.refus);
+    return r.ok;
+  };
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
-    const paliers: Palier[] = [1, 2, 3]
-      .map((i) => ({
-        plafond: montantSaisi(f[`plafond${i}`] ?? ""),
-        taux: tauxSaisi(f[`taux${i}`] ?? ""),
-      }))
-      .filter((p) => p.plafond !== null || p.taux !== null)
-      .map((p) => ({ plafond: p.plafond ?? NaN, taux: p.taux ?? NaN }));
-    const corps = {
-      dateEffet: f.dateEffet ?? "",
-      referenceConvention: f.referenceConvention ?? "",
-      dateConvention: f.dateConvention ?? "",
-      typePalier: paliers.length > 0 ? (f.typePalier ?? null) || null : null,
-      paliers,
-      tauxInteretsCrediteurs: tauxSaisi(f.tauxInteretsCrediteurs ?? ""),
-      tauxCommissionMouvement: tauxSaisi(f.tauxCommissionMouvement ?? ""),
-      tauxCommissionPlusFortDecouvert: tauxSaisi(
-        f.tauxCommissionPlusFortDecouvert ?? "",
-      ),
-      fraisTenueCompte:
-        (f.fraisTenueCompte ?? "").trim() === ""
-          ? null
-          : montantSaisi(f.fraisTenueCompte ?? ""),
-      periodiciteFrais: f.periodiciteFrais || null,
-      baseCalcul: f.baseCalcul ? Number(f.baseCalcul) : null,
-    };
+    const lu = corpsConditions(f);
+    if ("refus" in lu) {
+      setRefus(lu.refus);
+      return;
+    }
+    const corps = lu.corps;
     if (
-      await agir(
+      await geste(
         () =>
           api.post(`/conditions-bancaires/ribs/${rib.id}/conditions`, corps),
         "Conditions déclarées.",
@@ -295,7 +350,12 @@ function BlocConditions({
           Aucune condition déclarée.
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={`Défilement des conditions du RIB ${rib.abrege}`}
+        >
           <table
             className="w-full text-[11.5px] min-w-[860px]"
             aria-label={`Conditions du RIB ${rib.abrege}`}
@@ -310,7 +370,7 @@ function BlocConditions({
                 <th className="text-right">Plus fort découvert</th>
                 <th className="text-right">Frais de tenue</th>
                 <th className="text-right">Base</th>
-                <th />
+                {thActions}
               </tr>
             </thead>
             <tbody>
@@ -353,13 +413,14 @@ function BlocConditions({
                     {estAdmin && (
                       <button
                         type="button"
+                        disabled={envoi}
                         onClick={() => {
                           if (
                             window.confirm(
                               `Retirer les conditions à effet du ${date(c.dateEffet)} ?`,
                             )
                           )
-                            void agir(
+                            void geste(
                               () =>
                                 api.delete(
                                   `/conditions-bancaires/conditions/${c.id}`,
@@ -504,14 +565,12 @@ function BlocConditions({
               <option value="365">365 jours</option>
             </select>
           </label>
-          <button
-            type="submit"
-            className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold rounded-full"
-          >
+          <button type="submit" disabled={envoi} className={bouton}>
             Déclarer les conditions
           </button>
         </form>
       )}
+      <Refus texte={refus} />
     </div>
   );
 }
@@ -520,11 +579,23 @@ function BlocAutorisations({
   rib,
   estAdmin,
   agir,
+  envoi,
+  avecHorsBilan,
 }: {
   rib: RibServi;
   estAdmin: boolean;
   agir: Agir;
+  envoi: boolean;
+  /** Au SYCEBNL la classe 9 ne porte aucun engagement · la colonne n'y montrerait que « · » (premier tour, m3). */
+  avecHorsBilan: boolean;
 }) {
+  const [refus, setRefus] = useState<string | null>(null);
+  const geste = async (fn: () => Promise<unknown>, message: string) => {
+    setRefus(null);
+    const r = await agir(fn, message);
+    setRefus(r.refus);
+    return r.ok;
+  };
   const [f, setF] = useState<Record<string, string>>({
     nature: "DECOUVERT",
     irrevocable: "non",
@@ -536,17 +607,14 @@ function BlocAutorisations({
   });
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
-    const corps = {
-      nature: f.nature,
-      montant: montantSaisi(f.montant ?? "") ?? NaN,
-      dateDebut: f.dateDebut ?? "",
-      dateFin: f.dateFin || null,
-      irrevocable: f.irrevocable === "oui",
-      referenceConvention: f.referenceConvention ?? "",
-      dateConvention: f.dateConvention ?? "",
-    };
+    const lu = corpsAutorisation(f);
+    if ("refus" in lu) {
+      setRefus(lu.refus);
+      return;
+    }
+    const corps = lu.corps;
     if (
-      await agir(
+      await geste(
         () =>
           api.post(`/conditions-bancaires/ribs/${rib.id}/autorisations`, corps),
         "Autorisation déclarée.",
@@ -565,7 +633,12 @@ function BlocAutorisations({
           Aucune autorisation déclarée.
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={`Défilement des autorisations du RIB ${rib.abrege}`}
+        >
           <table
             className="w-full text-[11.5px] min-w-[860px]"
             aria-label={`Autorisations du RIB ${rib.abrege}`}
@@ -579,8 +652,10 @@ function BlocAutorisations({
                 <th className="text-right">Utilisé</th>
                 <th className="text-right">Non utilisé</th>
                 <th className="text-right">Dépassement</th>
-                <th className="text-left">Hors bilan proposé</th>
-                <th />
+                {avecHorsBilan && (
+                  <th className="text-left">Hors bilan proposé</th>
+                )}
+                {thActions}
               </tr>
             </thead>
             <tbody>
@@ -616,22 +691,25 @@ function BlocAutorisations({
                       Non calculé · {a.motifSituation ?? "solde non lu"}
                     </td>
                   )}
-                  <td title={a.horsBilan?.fondement}>
-                    {a.horsBilan
-                      ? `D ${a.horsBilan.debit} / C ${a.horsBilan.credit}${a.situation?.nonUtilise != null ? ` · ${montant(a.situation.nonUtilise)}` : ""}`
-                      : "·"}
-                  </td>
+                  {avecHorsBilan && (
+                    <td title={a.horsBilan?.fondement}>
+                      {a.horsBilan && a.enCours
+                        ? `D ${a.horsBilan.debit} / C ${a.horsBilan.credit}${a.situation?.nonUtilise != null ? ` · ${montant(a.situation.nonUtilise)}` : ""}`
+                        : "·"}
+                    </td>
+                  )}
                   <td>
                     {estAdmin && (
                       <button
                         type="button"
+                        disabled={envoi}
                         onClick={() => {
                           if (
                             window.confirm(
                               `Retirer l'autorisation ${a.referenceConvention} ?`,
                             )
                           )
-                            void agir(
+                            void geste(
                               () =>
                                 api.delete(
                                   `/conditions-bancaires/autorisations/${a.id}`,
@@ -647,6 +725,40 @@ function BlocAutorisations({
                   </td>
                 </tr>
               ))}
+              {rib.situationTotale && (
+                <tr className="font-semibold">
+                  <td>
+                    Total des {rib.situationTotale.nombre} autorisations en
+                    cours
+                  </td>
+                  <td className="text-right font-mono">
+                    {montant(rib.situationTotale.autorise)}
+                  </td>
+                  <td />
+                  <td />
+                  {rib.situationTotale.utilise !== null ? (
+                    <>
+                      <td className="text-right font-mono">
+                        {montant(rib.situationTotale.utilise)}
+                      </td>
+                      <td className="text-right font-mono">
+                        {montant(rib.situationTotale.nonUtilise)}
+                      </td>
+                      <td
+                        className={`text-right font-mono ${(rib.situationTotale.depassement ?? 0) > 0 ? "text-danger" : ""}`}
+                      >
+                        {montant(rib.situationTotale.depassement)}
+                      </td>
+                    </>
+                  ) : (
+                    <td colSpan={3} className="text-text-dim font-normal">
+                      Non calculé · {rib.situationTotale.motif ?? "solde non lu"}
+                    </td>
+                  )}
+                  {avecHorsBilan && <td />}
+                  <td />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -682,21 +794,11 @@ function BlocAutorisations({
           </label>
           <label className={etiquette}>
             Du
-            <input
-              type="date"
-              aria-label="Autorisation · début"
-              {...s("dateDebut")}
-              className={champ}
-            />
+            <input type="date" {...s("dateDebut")} className={champ} />
           </label>
           <label className={etiquette}>
             Au
-            <input
-              type="date"
-              aria-label="Autorisation · fin"
-              {...s("dateFin")}
-              className={champ}
-            />
+            <input type="date" {...s("dateFin")} className={champ} />
           </label>
           <label className={etiquette}>
             Engagement irrévocable
@@ -727,14 +829,12 @@ function BlocAutorisations({
               className={champ}
             />
           </label>
-          <button
-            type="submit"
-            className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold rounded-full"
-          >
+          <button type="submit" disabled={envoi} className={bouton}>
             Déclarer l’autorisation
           </button>
         </form>
       )}
+      <Refus texte={refus} />
     </div>
   );
 }
@@ -743,11 +843,20 @@ function BlocUnions({
   lecture,
   estAdmin,
   agir,
+  envoi,
 }: {
   lecture: Lecture;
   estAdmin: boolean;
   agir: Agir;
+  envoi: boolean;
 }) {
+  const [refus, setRefus] = useState<string | null>(null);
+  const geste = async (fn: () => Promise<unknown>, message: string) => {
+    setRefus(null);
+    const r = await agir(fn, message);
+    setRefus(r.refus);
+    return r.ok;
+  };
   const [code, setCode] = useState("");
   const [intitule, setIntitule] = useState("");
   const [fusion, setFusion] = useState(false);
@@ -755,7 +864,7 @@ function BlocUnions({
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
     if (
-      await agir(
+      await geste(
         () =>
           api.post("/conditions-bancaires/unions", {
             code,
@@ -799,7 +908,7 @@ function BlocUnions({
                 <th className="text-left">Comptes</th>
                 <th className="text-right">Position au {date(lecture.date)}</th>
                 <th className="text-left">Échelles</th>
-                <th />
+                {thActions}
               </tr>
             </thead>
             <tbody>
@@ -808,26 +917,32 @@ function BlocUnions({
                   <td className="font-mono">{u.code}</td>
                   <td>{u.intitule}</td>
                   <td>
-                    {u.membres
-                      .map(
-                        (m) =>
-                          `${m.abrege} ${m.solde === null ? "(non lu)" : montant(m.solde)}`,
-                      )
-                      .join(" ; ")}
+                    {u.membres.map((m, i) => (
+                      <span key={m.ribId} title={m.motif ?? undefined}>
+                        {i > 0 ? " ; " : ""}
+                        {m.abrege}{" "}
+                        {m.solde === null
+                          ? `(non lu · ${m.motif ?? "solde non lu"})`
+                          : montant(m.solde)}
+                      </span>
+                    ))}
                   </td>
                   <td className="text-right font-mono">
-                    {u.position.total === null
-                      ? `Non calculée · ${u.position.nonLus.join(", ")} non lu(s)`
-                      : montant(u.position.total)}
+                    {u.position.total !== null
+                      ? montant(u.position.total)
+                      : u.position.motif
+                        ? `Non calculée · ${u.position.motif}`
+                        : `Non calculée · ${u.position.nonLus.join(", ")} non lu(s)`}
                   </td>
                   <td>{u.fusionEchelles ? "Fusionnées" : "Séparées"}</td>
                   <td>
                     {estAdmin && (
                       <button
                         type="button"
+                        disabled={envoi}
                         onClick={() => {
                           if (window.confirm(`Supprimer l'union ${u.code} ?`))
-                            void agir(
+                            void geste(
                               () =>
                                 api.delete(
                                   `/conditions-bancaires/unions/${u.id}`,
@@ -901,14 +1016,12 @@ function BlocUnions({
               />
               Échelles fusionnées par la convention
             </label>
-            <button
-              type="submit"
-              className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold rounded-full"
-            >
+            <button type="submit" disabled={envoi} className={bouton}>
               Créer l’union
             </button>
           </form>
         )}
+        <Refus texte={refus} />
       </div>
     </section>
   );

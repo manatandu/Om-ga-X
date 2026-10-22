@@ -1,4 +1,4 @@
-import { Allow, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { Allow, IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 /**
  * Les corps des déclarations de la fonction 46 · la RÈGLE juge chaque champ
@@ -36,7 +36,8 @@ export class UnionComptesBancairesDto {
   @IsString() @MaxLength(10) code!: string;
   @IsString() @MaxLength(240) intitule!: string;
   @Allow() ribIds!: string[];
-  @Allow() fusionEchelles?: boolean;
+  // Un booléen, jamais « true » en chaîne lu comme faux (premier tour, m7) ; absent, la modification le laisse tel quel.
+  @IsOptional() @IsBoolean({ message: 'La fusion des échelles · oui ou non.' }) fusionEchelles?: boolean;
 }
 
 /** La date de lecture de la situation · facultative, aujourd'hui à Kinshasa sans elle. */

@@ -3547,11 +3547,16 @@ L'AUTORISATION EST UN ENGAGEMENT DE LA BANQUE, JAMAIS UNE DETTE (fiche du
 compte 56 des deux plans, exclusions · « comptes d'engagements hors
 bilan ») · par RIB (monnaie et compte du RIB), convention écrite exigée
 (classe 9 de l'AUDCIF) ; découvert et facilité de caisse lus sur le solde
-CRÉDITEUR du compte du RIB à la date (brouillard compris, ni simulation ni
-à-nouveau provisoire, exercices précédents ouverts remontés sans ouverture
-qui porte le compte), dépassement DIT, jamais refusé ; compte en devise,
+CRÉDITEUR du compte du RIB à la date (le jour lu en entier, jusqu'au
+lendemain exclu ; brouillard compris, ni simulation ni à-nouveau
+provisoire, exercices précédents ouverts remontés sans ouverture qui porte
+le compte), dépassement DIT, jamais refusé ; PLUSIEURS en cours sur le même
+compte se lisent sur leur TOTAL, une ligne par RIB (`situationSurLeTotal` ·
+chacune contre le solde entier fabriquait deux dépassements) ; compte en
+devise (RIB, racine du plan, ligne en devise, comme le virement de fonds),
 RIB sans journal ou nature lue ailleurs (crédit au 561, escompte au 565) ·
-« non calculé » avec son motif, jamais zéro. HORS BILAN PROPOSÉ au
+« non calculé » avec son motif, jamais zéro. Un RIB qui porte des
+déclarations garde sa devise et son journal (409 nommé). HORS BILAN PROPOSÉ au
 SYSCOHADA seul · 9011 / 9111 si la banque s'est engagée « d'une façon
 irrévocable » (fiche du compte 9011), sinon 9018 / 9118, jamais passé (« la
 classe 9 est facultative ») ; au SYCEBNL, un numéro, deux sens · sa classe
@@ -3559,7 +3564,8 @@ classe 9 est facultative ») ; au SYCEBNL, un numéro, deux sens · sa classe
 c'est dit (notes annexes). L'UNION réunit au moins deux RIB d'UNE monnaie
 (`UnionComptesBancaires`, code de dix caractères, éléments retirés un à un
 au journal d'audit), fusion des échelles DÉCLARÉE ; sa position est la
-somme des soldes, « non calculée » dès qu'un solde manque, jamais une
+somme des soldes, « non calculée » dès qu'un solde manque ou que deux membres
+lisent le même compte (refusé à la création), jamais une
 compensation au bilan (fiche du compte 52 des deux plans, « sans
 compensation possible »). Un RIB, et sa banque, qui portent ces
 déclarations ne se retirent pas · `motifRibRetenu`, 409 nommé avant la clé

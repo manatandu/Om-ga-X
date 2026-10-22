@@ -1,12 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, StatutExercice } from '@prisma/client';
+import { Prisma, Referentiel, StatutExercice } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
+import { estTresorerieEnDevises } from '../virements-fonds/virement-fonds';
 import {
   MOTIF_SANS_HORS_BILAN_SYCEBNL,
+  MOTIF_SITUATION_SUR_LE_TOTAL,
+  motifFormeUnion,
   autorisationEnCours,
   conditionsEnVigueur,
   inscriptionHorsBilan,
@@ -18,6 +21,7 @@ import {
   positionUnion,
   seLitSurLeCompteBancaire,
   situationAutorisation,
+  situationSurLeTotal,
   type AutorisationSaisie,
   type ConditionsSaisies,
   type NatureAutorisation,
@@ -31,7 +35,13 @@ export const LIMITE_RIBS = 200;
 export const LIMITE_DECLARATIONS = 2000;
 export const LIMITE_UNIONS = 200;
 
+/** Exercices précédents remontés au plus pour lire un solde · au-delà, le solde n'est pas servi (premier tour, m9). */
+const REMONTEE_MAX = 20;
+/** Soldes lus en même temps · chaque lecture tient quelques requêtes, le pool en sert dix (CLAUDE.md § 5). */
+const LECTURES_SIMULTANEES = 4;
+
 const jour = (v: string) => new Date(`${v}T00:00:00.000Z`);
+const lendemain = (d: Date) => new Date(d.getTime() + 86_400_000);
 const jourIso = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Un solde lu, ou la raison pour laquelle il ne l'est pas · jamais un zéro présumé. */
@@ -54,7 +64,7 @@ export class ConditionsBancairesService {
   private async ribDuDossier(tenantId: string, ribId: string) {
     const rib = await this.prisma.ribBanque.findFirst({
       where: { id: ribId, tenantId },
-      select: { id: true, abrege: true, devise: true, journal: { select: { compteTresorerieId: true } } },
+      select: { id: true, abrege: true },
     });
     if (!rib) throw new NotFoundException('RIB introuvable pour ce dossier · relisez la liste des banques.');
     return rib;
@@ -67,21 +77,45 @@ export class ConditionsBancairesService {
    * (A7 ter, B1). Sans ouverture qui porte ce compte, les exercices
    * précédents non clôturés s'ajoutent (même remontée que la caisse
    * provisionnée) · sinon le premier jour de N+1 se lirait sur un compte vide.
-   * Un compte en devise ne se lit pas en francs contre une autorisation en
-   * devise · non lu, et dit.
+   *
+   * LE JOUR SE LIT EN ENTIER (premier tour, constat M1) · `Ecriture.date` est
+   * un instant, et une correction ou une réimputation horodatée l'après-midi
+   * échappait à « au plus tard minuit » · la borne est le LENDEMAIN exclu.
+   * Un exercice précédent se lit sur tout son livre (son `exerciceId` le
+   * borne), jamais jusqu'à minuit de son dernier jour.
+   *
+   * UN COMPTE EN DEVISE NE SE LIT PAS EN FRANCS (premier tour, M3) · par les
+   * trois signes du virement de fonds · la devise du RIB, la racine que le
+   * plan sème « en devises » (`estTresorerieEnDevises`), une ligne en devise
+   * déjà passée au compte. Sa contrevaleur au cours historique, confrontée à
+   * une autorisation étiquetée en francs, rendait une utilisation fausse.
    */
-  async soldeDuRib(tenantId: string, rib: { devise: string | null; journal: { compteTresorerieId: string | null } | null }, date: Date): Promise<SoldeLu> {
+  async soldeDuRib(
+    tenantId: string,
+    referentiel: Referentiel,
+    rib: { devise: string | null; journal: { compteTresorerieId: string | null; compteTresorerie?: { numero: string } | null } | null },
+    date: Date,
+  ): Promise<SoldeLu> {
     const compteId = rib.journal?.compteTresorerieId ?? null;
     if (!compteId) return { solde: null, motif: 'RIB sans journal de banque · aucun compte à lire.' };
     if (monnaieDuRib(rib.devise) !== null) return { solde: null, motif: `Compte en ${monnaieDuRib(rib.devise)} · la situation en devise n'est pas encore lue.` };
+    const numero = rib.journal?.compteTresorerie?.numero ?? null;
+    if (numero && estTresorerieEnDevises(numero, referentiel)) {
+      return { solde: null, motif: `Le compte ${numero} est tenu en devise · la situation en devise n'est pas encore lue.` };
+    }
+    const ligneEnDevise = await this.prisma.ligneEcriture.findFirst({
+      where: { compteId, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } },
+      select: { id: true },
+    });
+    if (ligneEnDevise) return { solde: null, motif: `${numero ? `Le compte ${numero}` : 'Le compte du RIB'} porte des lignes en devise · la situation en devise n'est pas encore lue.` };
     const exercice = await this.prisma.exercice.findFirst({
       where: { tenantId, dateDebut: { lte: date }, dateFin: { gte: date } },
       select: { id: true, dateDebut: true },
     });
     if (!exercice) return { solde: null, motif: `Aucun exercice ne couvre le ${date.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.` };
-    let centimes = await this.centimesDe(tenantId, compteId, exercice.id, date);
+    let centimes = await this.centimesDe(tenantId, compteId, exercice.id, lendemain(date));
     let courant = exercice;
-    for (let rang = 0; rang < 20; rang++) {
+    for (let rang = 0; ; rang++) {
       const ouverture = await this.prisma.ecriture.count({
         where: { AND: [filtreOuverturePasseeAuPremierJour(tenantId, courant), { lignes: { some: { compteId } } }] },
       });
@@ -92,28 +126,34 @@ export class ConditionsBancairesService {
         select: { id: true, dateDebut: true, dateFin: true, statut: true },
       });
       if (!precedent || precedent.statut === StatutExercice.CLOTURE) break;
-      centimes += await this.centimesDe(tenantId, compteId, precedent.id, precedent.dateFin);
+      if (rang >= REMONTEE_MAX) {
+        return { solde: null, motif: `Plus de ${REMONTEE_MAX} exercices ouverts se suivent sans ouverture qui porte ce compte · clôturez-en ou passez un bilan d'ouverture.` };
+      }
+      centimes += await this.centimesDe(tenantId, compteId, precedent.id, null);
       courant = precedent;
     }
     return { solde: centimes / 100, motif: null };
   }
 
-  private async centimesDe(tenantId: string, compteId: string, exerciceId: string, jusquAu: Date): Promise<number> {
+  /** Les centimes du compte sur un exercice, dates strictement avant `avant` (aucune borne · tout le livre de l'exercice). Calcul en décimal exact. */
+  private async centimesDe(tenantId: string, compteId: string, exerciceId: string, avant: Date | null): Promise<number> {
     const s = await this.prisma.ligneEcriture.aggregate({
       // Une ligne n'a pas de tenantId · la borne du dossier passe par son écriture.
       where: {
         compteId,
-        ecriture: { tenantId, exerciceId, date: { lte: jusquAu }, estANouveauProvisoire: false, ...HORS_SITUATION },
+        ecriture: { tenantId, exerciceId, ...(avant ? { date: { lt: avant } } : {}), estANouveauProvisoire: false, ...HORS_SITUATION },
       },
       _sum: { debit: true, credit: true },
     });
-    return Math.round(Number(s._sum?.debit ?? 0) * 100) - Math.round(Number(s._sum?.credit ?? 0) * 100);
+    const debit = new Prisma.Decimal(s._sum?.debit ?? 0);
+    const credit = new Prisma.Decimal(s._sum?.credit ?? 0);
+    return debit.minus(credit).times(100).toDecimalPlaces(0).toNumber();
   }
 
   /** Tout ce que la fonction porte, avec la situation de chaque autorisation et la position de chaque union À LA DATE. */
   async lister(tenantId: string, au?: string) {
     const date = au ? jour(au) : jourDeKinshasa(new Date());
-    const [dossier, ribs, totalRibs, conditions, autorisations, unions, totalUnions] = await Promise.all([
+    const [dossier, ribs, totalRibs, unions, totalUnions] = await Promise.all([
       this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
       this.prisma.ribBanque.findMany({
         where: { tenantId },
@@ -128,47 +168,86 @@ export class ConditionsBancairesService {
         },
       }),
       this.prisma.ribBanque.count({ where: { tenantId } }),
-      this.prisma.conditionBancaire.findMany({ where: { tenantId }, orderBy: [{ ribId: 'asc' }, { dateEffet: 'asc' }], take: LIMITE_DECLARATIONS }),
-      this.prisma.autorisationFinancement.findMany({ where: { tenantId }, orderBy: [{ ribId: 'asc' }, { dateDebut: 'asc' }, { id: 'asc' }], take: LIMITE_DECLARATIONS }),
       this.prisma.unionComptesBancaires.findMany({
         where: { tenantId },
         orderBy: { code: 'asc' },
         take: LIMITE_UNIONS,
-        include: { elements: { where: { tenantId }, orderBy: { rang: 'asc' }, select: { ribId: true, rang: true } } },
+        include: { elements: { where: { tenantId }, orderBy: { rang: 'asc' }, take: LIMITE_RIBS, select: { ribId: true, rang: true } } },
       }),
       this.prisma.unionComptesBancaires.count({ where: { tenantId } }),
     ]);
+    // LES DÉCLARATIONS DES SEULS RIB SERVIS, LES PLUS RÉCENTES D'ABORD
+    // (premier tour, m6 et 11) · triées par date croissante sur tout le
+    // dossier, la borne coupait les versions les plus récentes, donc celles
+    // en vigueur, et une ancienne se disait « en vigueur ». Le total se compte,
+    // et la troncature ne se dit que s'il dépasse ce qui est servi.
+    const ribIds = ribs.map((r) => r.id);
+    const [conditions, totalConditions, autorisations, totalAutorisations] = await Promise.all([
+      this.prisma.conditionBancaire.findMany({
+        where: { tenantId, ribId: { in: ribIds } },
+        orderBy: [{ dateEffet: 'desc' }, { id: 'asc' }],
+        take: LIMITE_DECLARATIONS,
+      }),
+      this.prisma.conditionBancaire.count({ where: { tenantId, ribId: { in: ribIds } } }),
+      this.prisma.autorisationFinancement.findMany({
+        where: { tenantId, ribId: { in: ribIds } },
+        orderBy: [{ dateDebut: 'desc' }, { id: 'asc' }],
+        take: LIMITE_DECLARATIONS,
+      }),
+      this.prisma.autorisationFinancement.count({ where: { tenantId, ribId: { in: ribIds } } }),
+    ]);
+    // Les soldes à lire · ceux des RIB qui portent une autorisation lisible en
+    // cours et ceux des membres d'une union, lus par petits paquets (le pool).
+    const aLire = new Set<string>();
+    for (const a of autorisations) {
+      if (autorisationEnCours(a, date) && seLitSurLeCompteBancaire(a.nature as NatureAutorisation)) aLire.add(a.ribId);
+    }
+    for (const u of unions) for (const e of u.elements) aLire.add(e.ribId);
     const soldes = new Map<string, SoldeLu>();
-    const soldeDe = async (ribId: string) => {
-      if (!soldes.has(ribId)) {
-        const rib = ribs.find((r) => r.id === ribId);
-        soldes.set(ribId, rib ? await this.soldeDuRib(tenantId, rib, date) : { solde: null, motif: 'RIB au-delà de la liste servie.' });
-      }
-      return soldes.get(ribId)!;
-    };
+    const file = [...aLire];
+    for (let i = 0; i < file.length; i += LECTURES_SIMULTANEES) {
+      const paquet = file.slice(i, i + LECTURES_SIMULTANEES);
+      const lus = await Promise.all(
+        paquet.map((ribId) => {
+          const rib = ribs.find((r) => r.id === ribId);
+          return rib ? this.soldeDuRib(tenantId, dossier.referentiel, rib, date) : Promise.resolve({ solde: null, motif: 'RIB au-delà de la liste servie.' });
+        }),
+      );
+      paquet.forEach((ribId, k) => soldes.set(ribId, lus[k]));
+    }
     const servisRibs = [];
     for (const r of ribs) {
-      const versions = conditions.filter((c) => c.ribId === r.id);
+      const versions = conditions.filter((c) => c.ribId === r.id).sort((a, b) => a.dateEffet.getTime() - b.dateEffet.getTime());
       const enVigueur = conditionsEnVigueur(versions, date);
-      const sesAutorisations = [];
-      for (const a of autorisations.filter((x) => x.ribId === r.id)) {
+      const lu = soldes.get(r.id) ?? null;
+      const siennes = autorisations.filter((x) => x.ribId === r.id).sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime());
+      const lisiblesEnCours = siennes.filter((a) => autorisationEnCours(a, date) && seLitSurLeCompteBancaire(a.nature as NatureAutorisation));
+      const surLeTotal = lisiblesEnCours.length > 1;
+      const sesAutorisations = siennes.map((a) => {
         const nature = a.nature as NatureAutorisation;
         const enCours = autorisationEnCours(a, date);
-        const lu = enCours && seLitSurLeCompteBancaire(nature) ? await soldeDe(r.id) : null;
-        const situation = enCours ? situationAutorisation({ nature, montant: Number(a.montant) }, lu?.solde ?? null) : null;
-        sesAutorisations.push({
+        const lisible = seLitSurLeCompteBancaire(nature);
+        const situation = enCours && lisible && !surLeTotal ? situationAutorisation({ nature, montant: Number(a.montant) }, lu?.solde ?? null) : null;
+        return {
           ...a,
           montant: Number(a.montant),
           enCours,
           situation,
           motifSituation: !enCours
             ? 'Autorisation hors de sa période à cette date.'
-            : !seLitSurLeCompteBancaire(nature)
+            : !lisible
               ? 'Utilisation lue sur les opérations de financement (fonction 47), non sur le compte bancaire.'
-              : (lu?.motif ?? null),
-          horsBilan: inscriptionHorsBilan(dossier.referentiel, a.irrevocable),
-        });
-      }
+              : surLeTotal
+                ? MOTIF_SITUATION_SUR_LE_TOTAL
+                : (lu?.motif ?? null),
+          // L'INSCRIPTION HORS BILAN NE VISE QU'UN ENGAGEMENT QUI COURT
+          // (premier tour, m7 et m2) · la fiche du compte 9011 parle de « la
+          // partie non utilisée des crédits » · une autorisation échue n'en a plus.
+          horsBilan: enCours ? inscriptionHorsBilan(dossier.referentiel, a.irrevocable) : null,
+        };
+      });
+      const situationTotale = surLeTotal ? { ...situationSurLeTotal(lisiblesEnCours.map((a) => Number(a.montant)), lu?.solde ?? null), motif: lu?.motif ?? null, nombre: lisiblesEnCours.length } : null;
+      const conditionsTronquees = totalConditions > conditions.length;
       servisRibs.push({
         id: r.id,
         abrege: r.abrege,
@@ -176,27 +255,28 @@ export class ConditionsBancairesService {
         devise: monnaieDuRib(r.devise),
         journal: r.journal?.code ?? null,
         compte: r.journal?.compteTresorerie?.numero ?? null,
-        conditions: versions.map((c) => ({ ...c, ...nombres(c), enVigueur: c.id === enVigueur?.id })),
+        // Une liste tronquée ne dit pas quelle version est en vigueur · elle
+        // pourrait être parmi celles qui manquent.
+        conditions: versions.map((c) => ({ ...c, ...nombres(c), enVigueur: !conditionsTronquees && c.id === enVigueur?.id })),
         autorisations: sesAutorisations,
+        situationTotale,
       });
     }
-    const servisUnions = [];
-    for (const u of unions) {
-      const membres = [];
-      for (const e of u.elements) {
+    const servisUnions = unions.map((u) => {
+      const membres = u.elements.map((e) => {
         const rib = ribs.find((r) => r.id === e.ribId);
-        const lu = await soldeDe(e.ribId);
-        membres.push({ ribId: e.ribId, abrege: rib?.abrege ?? '(RIB au-delà de la liste)', solde: lu.solde, motif: lu.motif });
-      }
-      servisUnions.push({
+        const lu = soldes.get(e.ribId) ?? { solde: null, motif: 'RIB au-delà de la liste servie.' };
+        return { ribId: e.ribId, abrege: rib?.abrege ?? '(RIB au-delà de la liste)', solde: lu.solde, motif: lu.motif, compteId: rib?.journal?.compteTresorerieId ?? null };
+      });
+      return {
         id: u.id,
         code: u.code,
         intitule: u.intitule,
         fusionEchelles: u.fusionEchelles,
-        membres,
-        position: positionUnion(membres.map((m) => ({ abrege: m.abrege, solde: m.solde }))),
-      });
-    }
+        membres: membres.map(({ compteId: _c, ...m }) => m),
+        position: positionUnion(membres),
+      };
+    });
     return {
       date: jourIso(date),
       referentiel: dossier.referentiel,
@@ -204,7 +284,9 @@ export class ConditionsBancairesService {
       ribs: servisRibs,
       ribsTronques: totalRibs > ribs.length,
       totalRibs,
-      declarationsTronquees: conditions.length >= LIMITE_DECLARATIONS || autorisations.length >= LIMITE_DECLARATIONS,
+      declarationsTronquees: totalConditions > conditions.length || totalAutorisations > autorisations.length,
+      totalConditions,
+      totalAutorisations,
       unions: servisUnions,
       unionsTronquees: totalUnions > unions.length,
     };
@@ -243,6 +325,7 @@ export class ConditionsBancairesService {
           `Le RIB ${rib.abrege} porte déjà des conditions à effet du ${jour(dto.dateEffet).toLocaleDateString('fr-FR', { timeZone: 'UTC' })} · une correction est une version nouvelle, à une autre date, ou le retrait de celle-ci.`,
         );
       }
+      ribRetireEntreTemps(e);
       throw e;
     }
   }
@@ -250,7 +333,7 @@ export class ConditionsBancairesService {
   async retirerConditions(tenantId: string, id: string) {
     const c = await this.prisma.conditionBancaire.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!c) throw new NotFoundException('Conditions introuvables pour ce dossier.');
-    await this.prisma.conditionBancaire.delete({ where: { id, tenantId } });
+    await this.prisma.conditionBancaire.delete({ where: { id, tenantId } }).catch(dejaRetire('Ces conditions ont déjà été retirées.'));
     return { retire: true };
   }
 
@@ -260,7 +343,8 @@ export class ConditionsBancairesService {
     const motif = motifRefusAutorisation(dto);
     if (motif) throw new BadRequestException(motif);
     await this.ribDuDossier(tenantId, ribId);
-    return this.prisma.autorisationFinancement.create({
+    return this.prisma.autorisationFinancement
+      .create({
       data: {
         tenantId,
         ribId,
@@ -274,32 +358,66 @@ export class ConditionsBancairesService {
         commentaire: dto.commentaire?.trim() || null,
         createdBy: userId,
       },
-    });
+      })
+      .catch((e: unknown) => {
+        ribRetireEntreTemps(e);
+        throw e;
+      });
   }
 
   async retirerAutorisation(tenantId: string, id: string) {
     const a = await this.prisma.autorisationFinancement.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!a) throw new NotFoundException('Autorisation introuvable pour ce dossier.');
-    await this.prisma.autorisationFinancement.delete({ where: { id, tenantId } });
+    await this.prisma.autorisationFinancement.delete({ where: { id, tenantId } }).catch(dejaRetire('Cette autorisation a déjà été retirée.'));
     return { retire: true };
   }
 
   // ---- Unions ----------------------------------------------------------
 
   private async jugerUnion(tenantId: string, dto: UnionSaisie) {
-    const ribs = await this.prisma.ribBanque.findMany({
-      where: { tenantId, id: { in: [...new Set(dto.ribIds ?? [])] } },
-      select: { id: true, abrege: true, devise: true },
-      take: LIMITE_RIBS,
+    // La forme avant la base (premier tour, M3) · rien d'illisible n'atteint la requête.
+    const forme = motifFormeUnion(dto);
+    if (forme) throw new BadRequestException(forme);
+    const [dossier, ribs] = await Promise.all([
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
+      this.prisma.ribBanque.findMany({
+        where: { tenantId, id: { in: [...new Set(dto.ribIds)] } },
+        select: { id: true, abrege: true, devise: true, journal: { select: { compteTresorerieId: true, compteTresorerie: { select: { numero: true } } } } },
+        take: LIMITE_RIBS,
+      }),
+    ]);
+    const comptes = ribs.map((r) => r.journal?.compteTresorerieId).filter((c): c is string => typeof c === 'string');
+    const enDevise = comptes.length === 0 ? [] : await this.prisma.ligneEcriture.findMany({
+      where: { compteId: { in: comptes }, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } },
+      select: { compteId: true },
+      distinct: ['compteId'],
     });
-    const motif = motifRefusUnion(dto, ribs);
+    const motif = motifRefusUnion(
+      dto,
+      ribs.map((r) => ({
+        id: r.id,
+        abrege: r.abrege,
+        devise: r.devise,
+        compteId: r.journal?.compteTresorerieId ?? null,
+        compteEnDevise:
+          (r.journal?.compteTresorerie?.numero ? estTresorerieEnDevises(r.journal.compteTresorerie.numero, dossier.referentiel) : false) ||
+          enDevise.some((l) => l.compteId === r.journal?.compteTresorerieId),
+      })),
+    );
     if (motif) throw new BadRequestException(motif);
   }
 
+  /** Un conflit d'unicité ne se dit « code déjà pris » que s'il porte sur le code (premier tour, m5) · deux modifications concurrentes tombent sur le rang. */
   private conflitDeCode(e: unknown, code: string): never {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      throw new ConflictException(`Une union de code ${code} existe déjà dans ce dossier.`);
+      const cible = JSON.stringify(e.meta?.target ?? '');
+      if (cible.includes('code')) throw new ConflictException(`Une union de code ${code} existe déjà dans ce dossier.`);
+      throw new ConflictException("L'union vient d'être modifiée par un autre geste · relisez-la, puis recommencez.");
     }
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      throw new NotFoundException("L'union vient d'être supprimée ou modifiée par un autre geste · relisez la liste.");
+    }
+    ribRetireEntreTemps(e);
     throw e;
   }
 
@@ -309,7 +427,7 @@ export class ConditionsBancairesService {
     try {
       return await transactionJournalisee(this.prisma, async (tx) => {
         const union = await tx.unionComptesBancaires.create({
-          data: { tenantId, code, intitule: dto.intitule.trim(), fusionEchelles: dto.fusionEchelles === true },
+          data: { tenantId, code, intitule: dto.intitule.trim(), fusionEchelles: dto.fusionEchelles ?? false },
         });
         for (const [rang, ribId] of dto.ribIds.entries()) {
           await tx.elementUnionComptesBancaires.create({ data: { tenantId, unionId: union.id, ribId, rang: rang + 1 } });
@@ -333,7 +451,8 @@ export class ConditionsBancairesService {
         for (const a of anciens) await tx.elementUnionComptesBancaires.delete({ where: { id: a.id, tenantId } });
         const union = await tx.unionComptesBancaires.update({
           where: { id, tenantId },
-          data: { code, intitule: dto.intitule.trim(), fusionEchelles: dto.fusionEchelles === true },
+          // Absent, le réglage ne change pas (premier tour, m7) · une modification de la composition ne remet plus la fusion à faux.
+          data: { code, intitule: dto.intitule.trim(), ...(dto.fusionEchelles === undefined ? {} : { fusionEchelles: dto.fusionEchelles }) },
         });
         for (const [rang, ribId] of dto.ribIds.entries()) {
           await tx.elementUnionComptesBancaires.create({ data: { tenantId, unionId: id, ribId, rang: rang + 1 } });
@@ -352,9 +471,27 @@ export class ConditionsBancairesService {
       const elements = await tx.elementUnionComptesBancaires.findMany({ where: { tenantId, unionId: id }, select: { id: true }, take: LIMITE_RIBS });
       for (const e of elements) await tx.elementUnionComptesBancaires.delete({ where: { id: e.id, tenantId } });
       await tx.unionComptesBancaires.delete({ where: { id, tenantId } });
+    }).catch((e: unknown) => {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new NotFoundException("L'union a déjà été supprimée.");
+      throw e;
     });
     return { supprime: true };
   }
+}
+
+/** Une clé étrangère refusée à l'écriture · le RIB a été retiré entre le contrôle et l'écriture (premier tour, m5). */
+function ribRetireEntreTemps(e: unknown): void {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+    throw new ConflictException("Le RIB vient d'être retiré par un autre geste · relisez la liste des banques.");
+  }
+}
+
+/** Une ligne déjà retirée entre la lecture et la suppression · un 404 nommé, jamais une erreur anonyme. */
+function dejaRetire(message: string) {
+  return (e: unknown): never => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new NotFoundException(message);
+    throw e;
+  };
 }
 
 /** Les décimaux de la base, rendus en nombres. */
@@ -395,5 +532,5 @@ export async function motifRibRetenu(
     unions > 0 ? `${unions} appartenance(s) à une union de comptes` : null,
   ].filter((x): x is string => x !== null);
   if (usages.length === 0) return null;
-  return `Le RIB porte ${usages.join(', ')} · retirez-les d'abord (Structure › Paramètres de saisie › Banques).`;
+  return `Le RIB porte ${usages.join(', ')} · retirez-les d'abord (Structure › Paramètres de saisie › Conditions bancaires).`;
 }
