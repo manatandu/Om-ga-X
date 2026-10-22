@@ -44,6 +44,8 @@
  * écritures sont contre-passées »).
  */
 
+import { estAuCentime } from '../virements-fonds/virement-fonds';
+
 export const TYPES_OPERATION = ['FINANCEMENT', 'PLACEMENT'] as const;
 export type TypeOperation = (typeof TYPES_OPERATION)[number];
 
@@ -131,7 +133,10 @@ export interface OperationSaisie {
   dateConvention: string;
 }
 
-const auCentime = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && Math.round(x * 100) === x * 100 && Math.abs(x) < 1e15;
+// AU CENTIME par la règle du virement de fonds (`estAuCentime`) · comparer
+// x × 100 à son arrondi refusait 75 000,01, dont le produit par cent n'est pas
+// un flottant exact (vu sur vraie base, premier rejeu de la fonction 47).
+const auCentime = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) < 1e15 && estAuCentime(x);
 
 export function motifRefusOperation(o: OperationSaisie, comptePrincipal: string): string | null {
   if (!TYPES_OPERATION.includes(o.type)) return "Le type de l'opération · financement ou placement.";

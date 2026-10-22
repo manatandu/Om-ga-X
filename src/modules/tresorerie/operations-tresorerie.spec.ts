@@ -171,5 +171,9 @@ describe('operations-tresorerie · la clôture rattache l’intérêt à son exe
     expect(motifRefusRegularisation(300_001, 'PRECOMPTES', 300_000)).toMatch(/ne dépasse pas/);
     expect(motifRefusRegularisation(300_000, 'PRECOMPTES', 300_000)).toBeNull();
     expect(motifRefusRegularisation(0, 'POST_COMPTES', 0)).toMatch(/strictement positif/);
+    // 75 000,01 × 100 n'est pas un flottant exact · le montant reste au centime (vu sur vraie base).
+    expect(motifRefusRegularisation(75_000.01, 'POST_COMPTES', 0)).toBeNull();
+    expect(motifRefusRegularisation(303_333.33, 'POST_COMPTES', 0)).toBeNull();
+    expect(motifRefusRegularisation(75_000.015, 'POST_COMPTES', 0)).toMatch(/au centime/);
   });
 });
