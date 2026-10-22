@@ -253,6 +253,8 @@ export function AppShell() {
           items: [
             // Sage i7, Structure / Banque et Structure / Libellé (point 19).
             { label: 'Banques', chemin: '/banques', onClick: () => navigate('/banques') },
+            // Ligne sage-l3, fonction 46 · conditions, autorisations de financement et unions des comptes bancaires.
+            { label: 'Conditions bancaires', chemin: '/conditions-bancaires', onClick: () => navigate('/conditions-bancaires') },
             { label: 'Libellés', chemin: '/libelles', onClick: () => navigate('/libelles') },
             { label: 'Taux de taxes', chemin: '/taux-tva', onClick: () => navigate('/taux-tva') },
             { label: 'Modèles de saisie', chemin: '/modeles-saisie', onClick: () => navigate('/modeles-saisie') },

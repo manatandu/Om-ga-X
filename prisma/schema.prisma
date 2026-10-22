@@ -950,6 +950,12 @@ model Tenant {
   modesReglement                       ModeReglement[]
   // Ligne export-periode · les extraits de période numérotés et datés.
   extraitsPeriode                      ExtraitPeriode[]
+  // Ligne sage-l3, fonction 46 · conditions bancaires, autorisations de
+  // financement et unions de comptes bancaires.
+  conditionsBancaires                  ConditionBancaire[]
+  autorisationsFinancement             AutorisationFinancement[]
+  unionsComptesBancaires               UnionComptesBancaires[]
+  elementsUnionComptesBancaires        ElementUnionComptesBancaires[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -9126,26 +9132,126 @@ model Banque {
 /// sur le même journal, et le relevé importé ne saurait plus à quel compte il
 /// se rapporte.
 model RibBanque {
-  id           String   @id @default(uuid())
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  banqueId     String
-  banque       Banque   @relation(fields: [banqueId], references: [id], onDelete: Cascade)
-  abrege       String
-  devise       String?
-  codeBic      String?
-  codeBanque   String?
-  codeGuichet  String?
-  numeroCompte String?
-  cle          String?
-  iban         String?
-  commentaire  String?
-  journalId    String?  @unique
-  journal      Journal? @relation(fields: [journalId], references: [id], onDelete: Restrict)
-  createdAt    DateTime @default(now())
+  id            String                         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant                         @relation(fields: [tenantId], references: [id])
+  banqueId      String
+  banque        Banque                         @relation(fields: [banqueId], references: [id], onDelete: Cascade)
+  abrege        String
+  devise        String?
+  codeBic       String?
+  codeBanque    String?
+  codeGuichet   String?
+  numeroCompte  String?
+  cle           String?
+  iban          String?
+  commentaire   String?
+  journalId     String?                        @unique
+  journal       Journal?                       @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  createdAt     DateTime                       @default(now())
+  // Ligne sage-l3, fonction 46 · ce que la convention avec la banque porte
+  // sur ce compte. Un RIB qui les porte ne se retire pas (RESTRICT, refus
+  // nommé par le service avant la base).
+  conditions    ConditionBancaire[]
+  autorisations AutorisationFinancement[]
+  unions        ElementUnionComptesBancaires[]
 
   @@unique([tenantId, abrege])
   @@map("ribs_banque")
+}
+
+/// CONDITIONS BANCAIRES D'UN COMPTE (ligne sage-l3, fonction 46 · Sage,
+/// F_EBANQUECOND ; décision D15). RECOPIÉES de la convention signée avec la
+/// banque, versionnées par date d'effet, jamais présumées ; aucun agio n'est
+/// calculé (`banques/conditions-bancaires.ts`).
+model ConditionBancaire {
+  id                              String    @id @default(uuid())
+  tenantId                        String
+  tenant                          Tenant    @relation(fields: [tenantId], references: [id])
+  ribId                           String
+  rib                             RibBanque @relation(fields: [ribId], references: [id], onDelete: Restrict)
+  dateEffet                       DateTime  @db.Date
+  /// INTERVALLE ou SEUIL, nul sans palier.
+  typePalier                      String?   @db.VarChar(10)
+  /// Trois paliers au plus · [{ plafond, taux }], plafonds croissants.
+  paliers                         Json      @default("[]")
+  tauxInteretsCrediteurs          Decimal?  @db.Decimal(9, 6)
+  tauxCommissionMouvement         Decimal?  @db.Decimal(9, 6)
+  tauxCommissionPlusFortDecouvert Decimal?  @db.Decimal(9, 6)
+  fraisTenueCompte                Decimal?  @db.Decimal(18, 2)
+  periodiciteFrais                String?   @db.VarChar(13)
+  baseCalcul                      Int?
+  referenceConvention             String    @db.VarChar(100)
+  dateConvention                  DateTime  @db.Date
+  commentaire                     String?   @db.VarChar(200)
+  createdAt                       DateTime  @default(now())
+  createdBy                       String?
+
+  @@unique([ribId, dateEffet])
+  @@index([tenantId, ribId])
+  @@map("conditions_bancaires")
+}
+
+/// AUTORISATION DE FINANCEMENT D'UN COMPTE (ligne sage-l3, fonction 46 ·
+/// Sage, F_AUTORISATIONFINBQ, par banque chez Sage, par RIB ici · la monnaie
+/// et le compte sont ceux du RIB). Un ENGAGEMENT de la banque, jamais une
+/// dette (AUDCIF, fiche du compte 56, exclusions) · rien n'est passé au
+/// journal ; la convention écrite est exigée (classe 9).
+model AutorisationFinancement {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  tenant              Tenant    @relation(fields: [tenantId], references: [id])
+  ribId               String
+  rib                 RibBanque @relation(fields: [ribId], references: [id], onDelete: Restrict)
+  /// DECOUVERT, FACILITE_CAISSE, CREDIT_TRESORERIE, ESCOMPTE, AUTRE.
+  nature              String    @db.VarChar(20)
+  montant             Decimal   @db.Decimal(18, 2)
+  dateDebut           DateTime  @db.Date
+  dateFin             DateTime? @db.Date
+  irrevocable         Boolean
+  referenceConvention String    @db.VarChar(100)
+  dateConvention      DateTime  @db.Date
+  commentaire         String?   @db.VarChar(200)
+  createdAt           DateTime  @default(now())
+  createdBy           String?
+
+  @@index([tenantId, ribId])
+  @@map("autorisations_financement")
+}
+
+/// UNION DE COMPTES BANCAIRES (ligne sage-l3, fonction 46 · Sage, F_UNION et
+/// F_EUNION). Une VUE de trésorerie, jamais un poste · aucune compensation au
+/// bilan (fiche du compte 52 des deux plans).
+model UnionComptesBancaires {
+  id             String                         @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                         @relation(fields: [tenantId], references: [id])
+  code           String                         @db.VarChar(10)
+  intitule       String                         @db.VarChar(60)
+  /// La convention fusionne-t-elle les échelles d'intérêts ? Déclaré, rien n'est calculé.
+  fusionEchelles Boolean                        @default(false)
+  createdAt      DateTime                       @default(now())
+  elements       ElementUnionComptesBancaires[]
+
+  @@unique([tenantId, code])
+  @@map("unions_comptes_bancaires")
+}
+
+model ElementUnionComptesBancaires {
+  id       String                @id @default(uuid())
+  tenantId String
+  tenant   Tenant                @relation(fields: [tenantId], references: [id])
+  unionId  String
+  union    UnionComptesBancaires @relation(fields: [unionId], references: [id], onDelete: Cascade)
+  ribId    String
+  rib      RibBanque             @relation(fields: [ribId], references: [id], onDelete: Restrict)
+  rang     Int
+
+  @@unique([unionId, ribId])
+  @@unique([unionId, rang])
+  @@index([tenantId, unionId])
+  @@index([ribId])
+  @@map("elements_unions_comptes_bancaires")
 }
 
 /// Coordonnées bancaires d'un TIERS (Sage, Moyens de Paiement : « RIB/IBAN/BIC,

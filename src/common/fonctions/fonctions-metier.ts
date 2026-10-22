@@ -56,6 +56,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ModesReglementController: FonctionMetier.STRUCTURE,
   ModelesImpressionController: FonctionMetier.STRUCTURE,
   BanquesController: FonctionMetier.STRUCTURE,
+  // Ligne sage-l3, fonction 46 · conditions, autorisations et unions des comptes bancaires.
+  ConditionsBancairesController: FonctionMetier.STRUCTURE,
   EtatsPersonnalisesController: FonctionMetier.REVISION,
   SimulationsController: FonctionMetier.REVISION,
   TenantController: FonctionMetier.STRUCTURE,

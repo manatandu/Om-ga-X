@@ -45,6 +45,7 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'components/DemarrageGuide.tsx': "choix des modules du dossier, route PATCH /dossier/modules réservée à l'administrateur",
   'components/AcceptationConditionsLicence.tsx': "acceptation des conditions de licence au nom du client, route POST /conditions-licence/acceptation réservée à l'administrateur",
   'pages/BanquesPage.tsx': "banques et RIB, structures du dossier réservées à l'administrateur",
+  'pages/ConditionsBancairesPage.tsx': "conditions, autorisations de financement et unions des comptes bancaires, structures réservées à l'administrateur (ligne sage-l3, n° 46)",
   'pages/LibellesPage.tsx': "libellés pré-enregistrés, structure du dossier réservée à l'administrateur",
   'components/SauvegardesSurSite.tsx': "sauvegardes d'une installation sur site, route réservée à l'administrateur",
   'pages/UtilisateursPage.tsx': "gestion des accès du dossier, réservée à l'administrateur",

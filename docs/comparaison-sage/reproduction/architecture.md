@@ -162,6 +162,39 @@ journal `build-log.md`.
   imprimé du rapprochement clos précédent) ; sans lui, aucun solde
   progressif n'est présumé. Un compte choisi sans extrait dans les bornes
   est dit au sommaire, jamais tu ; tout se juge avant le premier octet.
+- **D15 · Conditions bancaires, autorisations, unions · recopiées, jamais
+  calculées (ligne 46).** Aucun texte ne fixe les conditions d'un compte
+  bancaire · elles se RECOPIENT de la convention signée, référence et date
+  exigées, versionnées par date d'effet (`ConditionBancaire`, une par RIB et
+  par date). AUCUN AGIO n'est calculé · le relevé importé ne porte que la
+  date d'opération, la banque compte en dates de valeur, et une échelle
+  d'intérêts sur les dates comptables rendrait un montant différent du sien,
+  pris pour une erreur (CLAUDE.md § 10 bis) ; l'échelle reste au suivi.
+  L'AUTORISATION DE FINANCEMENT est un engagement de la banque, jamais une
+  dette · AUDCIF, fiche du compte 56, exclusions (« les découverts bancaires
+  autorisés, tant qu'ils n'ont qu'un caractère d'engagement de la banque […]
+  → comptes d'engagements hors bilan ») ; même exclusion à la fiche du compte
+  56 du SYCEBNL. Déclarée PAR RIB (Sage la tient par banque · la monnaie et le
+  compte sont ceux du RIB), avec sa convention (classe 9 de l'AUDCIF, « doivent
+  faire obligatoirement l'objet d'une convention écrite »). Son utilisation
+  se lit pour le découvert et la facilité de caisse sur le solde CRÉDITEUR du
+  compte du RIB à la date (brouillard compris, ni simulation ni à-nouveau
+  provisoire, exercices précédents ouverts remontés sans ouverture qui porte
+  le compte) ; le dépassement se DIT, jamais refusé ; un compte en devise ou
+  un RIB sans journal rend « non calculé », jamais zéro. Au SYSCOHADA,
+  l'inscription hors bilan de la part non utilisée est PROPOSÉE · 9011 /
+  9111 pour un crédit que la banque s'est engagée « d'une façon
+  irrévocable » à accorder (fiche du compte 9011), sinon 9018 / 9118 ; jamais
+  passée (« l'usage de la classe 9 est facultatif »). Au SYCEBNL, un numéro,
+  deux sens · sa classe 9 porte les contributions volontaires en nature,
+  aucun compte d'engagement · rien n'est proposé, et c'est dit (notes
+  annexes). L'UNION réunit des comptes d'une même monnaie en une position de
+  trésorerie, jamais un poste · fiche du compte 52 des deux plans, les
+  comptes créditeurs au passif « sans compensation possible » avec les
+  débiteurs ; la fusion d'échelles de la convention se DÉCLARE, rien ne se
+  calcule ; une position dont un solde n'est pas lu est « non calculée ».
+  Un RIB (et sa banque) qui porte ces déclarations ne se retire pas · refus
+  nommé avant la clé RESTRICT.
 
 ## Les fonctions, leur place et leur ligne
 

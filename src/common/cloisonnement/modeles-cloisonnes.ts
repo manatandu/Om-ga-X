@@ -128,6 +128,12 @@ export const MODELES_CLOISONNES = new Set<string>([
   // chacun borné par son tenantId.
   'EffetCommerce',
   'ActeEffet',
+  // Ligne sage-l3, fonction 46 · conditions bancaires, autorisations de
+  // financement, unions de comptes et leurs éléments, chacun borné par son tenantId.
+  'ConditionBancaire',
+  'AutorisationFinancement',
+  'UnionComptesBancaires',
+  'ElementUnionComptesBancaires',
   // Ligne sage-l6, fonction 22 · les pièces jointes aux écritures, aux
   // sections, aux biens et aux salariés, chacune bornée par son tenantId.
   'PieceJointeEcriture',

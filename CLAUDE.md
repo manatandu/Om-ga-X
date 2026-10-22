@@ -3532,6 +3532,39 @@ d'`exercice-requis.spec.ts`. Scénario navigateur à travers une clôture ·
 le premier rapprochement se clôt (départ déclaré, lignes rapprochées)
 avant celui de N+1, un seul rapprochement en cours par compte.
 
+**Conditions bancaires, autorisations, unions (ligne sage-l3, n° 46,
+2026-10-22, décision par la loi D15).** Structure > Paramètres de saisie >
+Conditions bancaires (`banques/conditions-bancaires.ts` pour les règles
+pures, `conditions-bancaires.service.ts`) · des STRUCTURES, lues par tous,
+écrites par l'administrateur, rien au journal. LES CONDITIONS SE RECOPIENT
+de la convention signée (référence et date exigées), versionnées par date
+d'effet (`ConditionBancaire`, une par RIB et par date, 409 sinon) · paliers
+de découvert (trois au plus, plafonds croissants, par intervalle ou par
+seuil), taux, frais avec leur périodicité, base de 360 ou 365 jours ;
+AUCUN AGIO CALCULÉ (le relevé ne porte que la date d'opération, la banque
+compte en dates de valeur · § 10 bis), l'échelle reste au suivi.
+L'AUTORISATION EST UN ENGAGEMENT DE LA BANQUE, JAMAIS UNE DETTE (fiche du
+compte 56 des deux plans, exclusions · « comptes d'engagements hors
+bilan ») · par RIB (monnaie et compte du RIB), convention écrite exigée
+(classe 9 de l'AUDCIF) ; découvert et facilité de caisse lus sur le solde
+CRÉDITEUR du compte du RIB à la date (brouillard compris, ni simulation ni
+à-nouveau provisoire, exercices précédents ouverts remontés sans ouverture
+qui porte le compte), dépassement DIT, jamais refusé ; compte en devise,
+RIB sans journal ou nature lue ailleurs (crédit au 561, escompte au 565) ·
+« non calculé » avec son motif, jamais zéro. HORS BILAN PROPOSÉ au
+SYSCOHADA seul · 9011 / 9111 si la banque s'est engagée « d'une façon
+irrévocable » (fiche du compte 9011), sinon 9018 / 9118, jamais passé (« la
+classe 9 est facultative ») ; au SYCEBNL, un numéro, deux sens · sa classe
+9 porte les contributions volontaires en nature, rien n'est proposé, et
+c'est dit (notes annexes). L'UNION réunit au moins deux RIB d'UNE monnaie
+(`UnionComptesBancaires`, code de dix caractères, éléments retirés un à un
+au journal d'audit), fusion des échelles DÉCLARÉE ; sa position est la
+somme des soldes, « non calculée » dès qu'un solde manque, jamais une
+compensation au bilan (fiche du compte 52 des deux plans, « sans
+compensation possible »). Un RIB, et sa banque, qui portent ces
+déclarations ne se retirent pas · `motifRibRetenu`, 409 nommé avant la clé
+RESTRICT.
+
 **Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
 Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse

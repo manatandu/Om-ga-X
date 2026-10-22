@@ -169,6 +169,13 @@ export const MODELES_AUDITES = new Set<string>([
   // impayé, bon à payer, paiement), avec l'annulation et son motif.
   'EffetCommerce',
   'ActeEffet',
+  // Ligne sage-l3, fonction 46 · ce que la convention avec la banque porte
+  // sur un compte · conditions recopiées, autorisations de financement
+  // (engagements hors bilan), unions de comptes et leur composition.
+  'ConditionBancaire',
+  'AutorisationFinancement',
+  'UnionComptesBancaires',
+  'ElementUnionComptesBancaires',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',

@@ -387,15 +387,31 @@ financements, placements.
   2 410 tests client, scénario navigateur sur vraie base (liste bornée,
   9999 refusé, boutons de ligne).
 
+- #46 · conditions bancaires, autorisations de financement, unions de comptes
+  (`banques/conditions-bancaires.ts`, `conditions-bancaires.service.ts`,
+  contrôleur `conditions-bancaires`, migration
+  `20270190000600_conditions_bancaires`, quatre tables auditées et
+  cloisonnées) · décision D15 (fiches des comptes 52, 56, 9011 et 9018 ;
+  classe 9 des deux plans). Conditions recopiées et versionnées, aucun agio ;
+  autorisation par RIB, utilisation lue sur le solde créditeur du compte à
+  la date (remontée des exercices ouverts sans ouverture), dépassement dit,
+  hors bilan proposé au SYSCOHADA seul ; unions d'une même monnaie, position
+  « non calculée » dès qu'un solde manque ; RIB et banque retenus (409
+  nommé). Fenêtre Structure › Paramètres de saisie › Conditions bancaires
+  (administrateur seul, `ecriture-masquee.spec.ts`). Rejoué · tsc des deux
+  côtés, 21 tests unitaires, gardes du dépôt, scénario navigateur
+  `sage-l3-conditions` sur vraie base à travers une clôture (N+1 ouvert
+  avant et après la clôture de N, même découvert utilisé). Reste · deux
+  tours de relecture.
+
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #46 · conditions bancaires par RIB, autorisations de financement, unions
-  de comptes (`banques/`).
+- #46 · deux tours de relecture.
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les
   OPCVM se tranchent par la loi avant de coder.
-- Docs · `features.csv` (colonne clone des lignes 46, 47),
+- Docs · `features.csv` (colonne clone de la ligne 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.
 - Bloc du § 3 complet des deux côtés, tests navigateur, deux tours de

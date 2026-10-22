@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { ibanValide, motifRefusJournalBanque, normaliserIban } from './banques';
 import { BanqueDto, LibelleDto, ModifierBanqueDto, ModifierLibelleDto, RibDto } from './dto/banques.dto';
+import { motifRibRetenu } from './conditions-bancaires.service';
 
 /** Chaîne vide = effacement (`null`), absent = inchangé. */
 const vide = (v: string | undefined) => (v === undefined ? undefined : v.trim() === '' ? null : v.trim());
@@ -78,9 +79,16 @@ export class BanquesService {
     );
   }
 
-  /** Supprimer la banque emporte ses RIB · aucune écriture ne les référence. */
+  /**
+   * Supprimer la banque emporte ses RIB · aucune écriture ne les référence ;
+   * mais un RIB qui porte conditions, autorisations ou unions (fonction 46)
+   * la retient, refus nommé avant la base.
+   */
   async supprimer(tenantId: string, id: string) {
     await this.banqueDuDossier(tenantId, id);
+    const ribs = await this.prisma.ribBanque.findMany({ where: { tenantId, banqueId: id }, select: { id: true }, take: 1000 });
+    const retenu = await motifRibRetenu(this.prisma, tenantId, ribs.map((r) => r.id));
+    if (retenu) throw new ConflictException(`La banque ne se supprime pas · ${retenu}`);
     await this.prisma.banque.delete({ where: { id } });
     return { supprime: true };
   }
@@ -146,6 +154,8 @@ export class BanquesService {
   async supprimerRib(tenantId: string, ribId: string) {
     const rib = await this.prisma.ribBanque.findFirst({ where: { id: ribId, tenantId } });
     if (!rib) throw new NotFoundException('RIB introuvable');
+    const retenu = await motifRibRetenu(this.prisma, tenantId, [ribId]);
+    if (retenu) throw new ConflictException(retenu);
     await this.prisma.ribBanque.delete({ where: { id: ribId } });
     return { supprime: true };
   }
