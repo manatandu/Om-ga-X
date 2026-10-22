@@ -482,15 +482,21 @@ financements, placements.
   mouvement dans une période revue, revue dans l'ordre (un antérieur ouvert
   qui détenait le titre d'abord) ; annulations à rebours. Le 5021 n'est
   refusé qu'au SYSCOHADA (le SYCEBNL n'en ouvre pas). Listes fermées et
-  doublures complétées ; suite serveur verte (963 suites).
+  doublures complétées ; suite serveur verte (963 suites). Écran · section
+  « Titres de placement » de la fenêtre Financements et placements
+  (`components/TitresPlacementSection.tsx`, cadre de modale partagé
+  `CadreModaleTresorerie.tsx`, saisie `lib/titres-placement-saisie.ts`),
+  garde de fermeture propre à la section. Scénario sur vraie base
+  (`sage-l3-tresorerie.e2e.ts`, second test) · deux acquisitions, cession au
+  P.E.P.S. avec gain de 92 000, revue de N depuis l'écran (dotation 217 000),
+  clôture, cession du reste en N+1 à perte de 67 000, revue de N+1 qui
+  reprend 217 000, annulations à rebours, revue de N clôturée refusée.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #47 · OPCVM · onglet de la fenêtre Financements et placements, scénario
-  sur vraie base à travers une clôture (acquisition, dotation en N, cession
-  en N+1, reprise), deux tours de relecture.
+- #47 · deux tours de relecture (opérations et titres ensemble).
 - Docs · `features.csv` (colonne clone de la ligne 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.

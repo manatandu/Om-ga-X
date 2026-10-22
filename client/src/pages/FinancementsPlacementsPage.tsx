@@ -3,11 +3,11 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { useGardeFermeture } from '../lib/fenetres';
-import { ecouterEchap } from '../lib/echap';
 import { montant as fmt } from '../lib/montants';
 import { corpsOperation, montantExige, type ChampsOperation, type Mode, type Type } from '../lib/operations-tresorerie-saisie';
 import { Aide } from '../components/chrome/Aide';
-import { PortailModale } from '../components/PortailModale';
+import { CadreModale, messageDuRefus, useFermetureParEchap } from '../components/CadreModaleTresorerie';
+import { TitresPlacementSection } from '../components/TitresPlacementSection';
 
 /**
  * FINANCEMENTS ET PLACEMENTS · Traitement > Tiers et trésorerie (ligne
@@ -95,8 +95,6 @@ interface ReponseAnnulation {
 }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
-const messageDuRefus = (err: unknown, defaut: string) =>
-  err instanceof ApiError && err.status < 500 ? err.message : `${defaut} · réponse perdue, le geste a pu passer. Relisez la liste avant de le refaire.`;
 const piece = (p: Piece | null) => (p ? `n° ${p.numeroPiece ?? '·'}${p.statut === 'BROUILLARD' ? ' (brouillard)' : ''}` : '·');
 const ROLES = ['PRINCIPAL', 'INTERETS', 'COURUS', 'FRAIS'] as const;
 type Role = (typeof ROLES)[number];
@@ -161,7 +159,9 @@ export function FinancementsPlacementsPage() {
     [charger],
   );
   const [garde, setGarde] = useState<string | null>(null);
-  useGardeFermeture(garde);
+  // La section des titres tient sa propre garde · une seule partagée, l'un des formulaires effaçait celle de l'autre.
+  const [gardeTitres, setGardeTitres] = useState<string | null>(null);
+  useGardeFermeture(garde ?? gardeTitres);
   const journauxOd = useMemo(() => (journaux ?? []).filter((j) => j.type === 'GENERAL' && j.estActif), [journaux]);
   const banques = useMemo(() => (journaux ?? []).filter((j) => j.type === 'TRESORERIE' && j.estActif), [journaux]);
 
@@ -289,6 +289,9 @@ export function FinancementsPlacementsPage() {
           )}
           {liste.tronque && <div className="text-text-dim">{liste.operations.length} opérations montrées sur {liste.total}.</div>}
         </section>
+      )}
+      {exerciceId && (
+        <TitresPlacementSection exerciceId={exerciceId} exerciceClos={exerciceClos} peutEcrire={peutEcrire} peutValider={peutValider} banques={banques} journauxOd={journauxOd} onGarde={setGardeTitres} />
       )}
       {regul && liste && (
         <ModaleMontant
@@ -603,51 +606,6 @@ function FormMiseEnPlace(p: {
 
 // ----- Modales ----------------------------------------------------------------------
 
-function useFermetureParEchap(onFermer: () => void, envoi: boolean) {
-  const fermerRef = useRef(onFermer);
-  fermerRef.current = onFermer;
-  const envoiRef = useRef(envoi);
-  envoiRef.current = envoi;
-  useEffect(
-    () =>
-      ecouterEchap(() => {
-        if (!envoiRef.current) fermerRef.current();
-        return true;
-      }),
-    [],
-  );
-}
-
-function Cadre(p: { id: string; titre: string; onFermer: () => void; envoi: boolean; onSubmit?: (e: FormEvent) => void; enfants: React.ReactNode; pied: React.ReactNode; focus?: React.RefObject<HTMLDivElement> }) {
-  const Conteneur = p.onSubmit ? 'form' : 'div';
-  return (
-    <PortailModale>
-      <div className="anim-voile ecran-seul fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
-        <Conteneur
-          ref={p.focus as React.RefObject<HTMLDivElement & HTMLFormElement> | undefined}
-          tabIndex={p.focus ? -1 : undefined}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={p.id}
-          onSubmit={p.onSubmit}
-          className="anim-modale w-full max-w-[560px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[11.5px]"
-        >
-          <div className="h-[32px] flex items-center px-2.5 border-b border-border">
-            <span id={p.id}>{p.titre}</span>
-          </div>
-          <div className="p-3 space-y-2">{p.enfants}</div>
-          <div className="flex justify-end gap-2 px-3 pb-3">
-            <button type="button" onClick={p.onFermer} disabled={p.envoi} className="px-3 py-1 border border-border">
-              Fermer
-            </button>
-            {p.pied}
-          </div>
-        </Conteneur>
-      </div>
-    </PortailModale>
-  );
-}
-
 function ModaleMontant(p: {
   titre: string;
   resume: string;
@@ -689,7 +647,7 @@ function ModaleMontant(p: {
     }
   };
   return (
-    <Cadre
+    <CadreModale
       id="titre-modale-montant-tresorerie"
       titre={p.titre}
       onFermer={p.onFermer}
@@ -751,7 +709,7 @@ function ModaleEcheance(p: { op: Operation; onFermer: () => void; onFait: (m: st
     }
   };
   return (
-    <Cadre
+    <CadreModale
       id="titre-modale-echeance-tresorerie"
       titre={`Échéance · ${p.op.libelleType} ${p.op.reference}`}
       onFermer={p.onFermer}
@@ -811,7 +769,7 @@ function ModaleMotif(p: { titre: string; resume: string; chemin: string; onFerme
     }
   };
   return (
-    <Cadre
+    <CadreModale
       id="titre-modale-motif-tresorerie"
       titre={p.titre}
       onFermer={p.onFermer}
@@ -841,7 +799,7 @@ function ModaleActes(p: { op: Operation; onFermer: () => void }) {
   const boite = useRef<HTMLDivElement>(null);
   useEffect(() => boite.current?.focus({ preventScroll: true }), []);
   return (
-    <Cadre
+    <CadreModale
       id="titre-actes-tresorerie"
       titre={`Actes · ${p.op.libelleType} ${p.op.reference}`}
       onFermer={p.onFermer}

@@ -147,7 +147,8 @@ test('SYSCOHADA · crédit de trésorerie et dépôt à terme · taux de référ
   const boite = page.getByRole('dialog', { name: /Régulariser · Crédit de trésorerie CT-01/ });
   await expect(boite.getByLabel("Montant rattaché à l'exercice")).toHaveValue('303333,33');
   await boite.getByRole('button', { name: 'Régulariser' }).click();
-  await expect(page.getByRole('status')).toContainText('CT-01 · régularisée');
+  // Deux bandeaux d'état dans la fenêtre (opérations, titres) · on lit celui qui porte le message.
+  await expect(page.getByRole('status').filter({ hasText: 'CT-01' })).toContainText('CT-01 · régularisée');
   await page.goto('/#/taux-reference');
   await expect(page.getByRole('region', { name: /TBCC/ })).toContainText('Communiqué de la Banque centrale du 1er janvier');
   await appelApi(page, 'POST', `/operations-tresorerie/${dat.id}/regulariser`, { exerciceId: N.id, montant: 50_000 });
@@ -201,5 +202,119 @@ test('SYSCOHADA · crédit de trésorerie et dépôt à terme · taux de référ
 
   // (9) UN TAUX QUI PORTE UNE OPÉRATION NE SE RETIRE PAS, ni le cours qu'elle a retenu.
   expect(await refusDe(appelApi(page, 'DELETE', `/taux-reference/${tr.id}`))).toMatch(/ne se retire pas/);
+  expect(pannes).toEqual([]);
+});
+
+interface MouvementTitre { id: string; nature: string; annuleLe: string | null }
+interface Titre {
+  id: string;
+  code: string;
+  position: { quantite: number | null; cout: number | null; depreciationEnPlace: number };
+  revueProposee: { date: string; nature: string; quantite: number | null; cout: number | null; depreciationEnPlace: number } | null;
+  mouvements: MouvementTitre[];
+  evaluations: { id: string; annuleLe: string | null }[];
+}
+
+/**
+ * TITRES DE PLACEMENT ET PARTS D'OPCVM (même fonction, décision D16 · AUDCIF
+ * Titre VIII ch. 13 § 2.3, § 3.2, § 4 et § 4.2 ; fiche du compte 50) à travers
+ * une clôture · deux acquisitions de coûts différents, une cession au coût
+ * P.E.P.S. avec gain, la revue de N depuis l'écran (dotation au 590 par le
+ * 6795), la clôture, la cession du reste en N+1 à perte et la revue de N+1
+ * qui reprend la dépréciation devenue sans objet, chaque solde contre le
+ * montant calculé à la main ; puis les annulations à rebours.
+ */
+test('SYSCOHADA · titres de placement · P.E.P.S., revue de clôture, dépréciation reprise en N+1, annulation à rebours', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Titres e2e SARL', montant: 50_000_000 });
+  await seConnecter(page, dossier.email);
+  const [N] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
+  const annee = Number(N.dateDebut.slice(0, 4));
+  const balance = async (exerciceId: string) => (await appelApi<{ lignes: LigneBalance[] }>(page, 'GET', `/ecritures/balance?exerciceId=${exerciceId}`)).lignes;
+  const solde = (lignes: LigneBalance[], racine: string) => lignes.filter((l) => l.numero.startsWith(racine)).reduce((s, l) => s + centimes(l.solde), 0) / 100;
+  const valider = (e: Exercice) => appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: e.id, dateLimite: jour(e.dateFin) });
+  const titreDe = async (e: Exercice, id: string) => (await appelApi<{ titres: Titre[] }>(page, 'GET', `/titres-placement?exerciceId=${e.id}`)).titres.find((t) => t.id === id)!;
+
+  const journaux = await appelApi<Journal[]>(page, 'GET', '/journaux');
+  const bq = journaux.find((j) => j.code === 'BQ')!;
+  const od = journaux.find((j) => j.type === 'GENERAL')!;
+  const comptesTitre = (await appelApi<{ comptes: Compte[] }>(page, 'GET', '/titres-placement/comptes?role=TITRE')).comptes;
+  const comptesFrais = (await appelApi<{ comptes: Compte[] }>(page, 'GET', '/titres-placement/comptes?role=FRAIS')).comptes;
+  // Les actions propres (5021) et les intérêts courus (506) ne sont pas proposés comme titres.
+  expect(comptesTitre.some((c) => c.numero.startsWith('5021') || c.numero.startsWith('506'))).toBe(false);
+  const c5022 = comptesTitre.find((c) => c.numero === '50220000')!;
+  const c5026 = comptesFrais.find((c) => c.numero === '50260000')!;
+  const c5036 = comptesFrais.find((c) => c.numero === '50360000')!;
+
+  // (1) LE TITRE · ses frais au sous-compte de SA division, jamais celui des obligations.
+  expect(await refusDe(appelApi(page, 'POST', '/titres-placement', { code: 'ACT', intitule: 'Actions cotées X', cote: true, compteTitreId: c5022.id, compteFraisId: c5036.id }))).toMatch(/division/);
+  const titre = await appelApi<{ id: string }>(page, 'POST', '/titres-placement', { code: 'ACT', intitule: 'Actions cotées X', cote: true, compteTitreId: c5022.id, compteFraisId: c5026.id });
+
+  // (2) DEUX ACQUISITIONS · 10 parts à 1 000 000 + 10 000 de frais, 10 parts à 1 200 000 + 12 000.
+  const acquerir = (date: string, quantite: number, prix: number, frais: number, reference: string) => appelApi(page, 'POST', `/titres-placement/${titre.id}/acquisitions`, { journalBanqueId: bq.id, date, quantite, prix, frais, reference });
+  await acquerir(`${annee}-03-02`, 10, 1_000_000, 10_000, 'AO-1');
+  await acquerir(`${annee}-06-01`, 10, 1_200_000, 12_000, 'AO-2');
+  expect(await refusDe(acquerir(`${annee}-05-01`, 1, 100_000, 0, 'AO-antidate'))).toMatch(/ne se date pas avant/);
+  let b = await balance(N.id);
+  expect([solde(b, '5022'), solde(b, '5026')]).toEqual([2_200_000, 22_000]);
+
+  // (3) LA CESSION AU P.E.P.S. · 5 parts sorties du premier lot (500 000 + 5 000) ;
+  // prix 600 000 moins 3 000 de frais · gain 92 000 au 777.
+  const ceder = (e: Exercice | null, date: string, quantite: number, prix: number, frais: number) => appelApi<{ resultat: number }>(page, 'POST', `/titres-placement/${titre.id}/cessions`, { journalBanqueId: bq.id, date, quantite, prix, frais, reference: `AV-${date}` });
+  expect(await refusDe(ceder(N, `${annee}-09-01`, 21, 2_000_000, 0))).toMatch(/plus qu'il n'en est détenu/);
+  expect((await ceder(N, `${annee}-09-01`, 5, 600_000, 3_000)).resultat).toBe(92_000);
+  b = await balance(N.id);
+  expect([solde(b, '5022'), solde(b, '5026'), solde(b, '777')]).toEqual([1_700_000, 17_000, -92_000]);
+
+  // (4) LA REVUE DE N, DEPUIS L'ÉCRAN · 15 parts pour 1 717 000 au cours moyen de 100 000 · dotation 217 000.
+  const proposee = (await titreDe(N, titre.id)).revueProposee!;
+  expect([proposee.date, proposee.nature, proposee.quantite, proposee.cout, proposee.depreciationEnPlace]).toEqual([jour(N.dateFin), 'COURS_MOYEN_DERNIER_MOIS', 15, 1_717_000, 0]);
+  expect(await refusDe(appelApi(page, 'POST', `/titres-placement/${titre.id}/revues`, { exerciceId: N.id, journalOdId: od.id, valeurUnitaire: 100_000, nature: 'VALEUR_PROBABLE_NEGOCIATION', source: 'x' }))).toMatch(/cours moyen/);
+  await page.goto('/#/financements-placements');
+  const ligne = page.getByRole('row', { name: /ACT · Actions cotées X/ });
+  await expect(ligne).toContainText('Revoir à la clôture');
+  await ligne.getByRole('button', { name: 'Revoir' }).click();
+  const boite = page.getByRole('dialog', { name: /Revoir à la clôture · ACT/ });
+  await boite.getByLabel('Valeur unitaire').fill('100000');
+  await boite.getByLabel("Journal d'opérations diverses").selectOption(od.id);
+  await boite.getByLabel('Source de la valeur').fill('Bulletin de la cote, décembre');
+  await boite.getByRole('button', { name: 'Revoir' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Revue de ACT' })).toContainText('dotation de');
+  b = await balance(N.id);
+  expect([solde(b, '590'), solde(b, '6795')]).toEqual([-217_000, 217_000]);
+  // Un mouvement ne se date plus dans la période revue.
+  expect(await refusDe(acquerir(`${annee}-12-15`, 1, 100_000, 0, 'AO-tard'))).toMatch(/revue de clôture/);
+
+  // (5) LA CLÔTURE DE N, puis la cession du reste en N+1 · 15 parts pour 1 650 000 · perte 67 000 au 6771,
+  // jamais diminuée par la dépréciation en place (§ 4).
+  const N1 = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: lendemain(N.dateFin), dateFin: `${annee + 1}-12-31` });
+  await valider(N);
+  await appelApi(page, 'POST', `/exercices/${N.id}/cloturer`);
+  expect((await ceder(N1, `${annee + 1}-02-01`, 15, 1_650_000, 0)).resultat).toBe(-67_000);
+  b = await balance(N1.id);
+  expect([solde(b, '5022'), solde(b, '5026'), solde(b, '6771'), solde(b, '590')]).toEqual([0, 0, 67_000, -217_000]);
+
+  // (6) LA REVUE DE N+1 · plus aucune part, la dépréciation de 217 000 se reprend au 7795.
+  const p1 = (await titreDe(N1, titre.id)).revueProposee!;
+  expect([p1.quantite, p1.depreciationEnPlace]).toEqual([0, 217_000]);
+  const r = await appelApi<{ ecart: number; evaluationId: string }>(page, 'POST', `/titres-placement/${titre.id}/revues`, { exerciceId: N1.id, journalOdId: od.id, valeurUnitaire: 0, nature: 'COURS_MOYEN_DERNIER_MOIS', source: 'Plus aucune part détenue' });
+  expect(r.ecart).toBe(-217_000);
+  b = await balance(N1.id);
+  expect([solde(b, '590'), solde(b, '7795')]).toEqual([0, -217_000]);
+
+  // (7) LES ANNULATIONS À REBOURS · la cession de N+1 ne s'annule pas sous la revue qui l'a lue ;
+  // la revue de N+1 au brouillard est retirée, puis la cession ; la revue de N, d'un exercice clôturé, reste.
+  const t1 = await titreDe(N1, titre.id);
+  const cessionN1 = [...t1.mouvements].reverse().find((m) => !m.annuleLe)!;
+  expect(await refusDe(appelApi(page, 'POST', `/titres-placement/${titre.id}/mouvements/${cessionN1.id}/annuler`, { motif: 'Essai' }))).toMatch(/annulez-la d'abord/);
+  const a1 = await appelApi<{ traitement: string }>(page, 'POST', `/titres-placement/${titre.id}/revues/${r.evaluationId}/annuler`, { motif: 'Cours erroné' });
+  expect(a1.traitement).toBe('SUPPRIMEE');
+  const a2 = await appelApi<{ traitement: string }>(page, 'POST', `/titres-placement/${titre.id}/mouvements/${cessionN1.id}/annuler`, { motif: 'Avis d’opéré annulé' });
+  expect(a2.traitement).toBe('SUPPRIMEE');
+  b = await balance(N1.id);
+  expect([solde(b, '5022'), solde(b, '6771'), solde(b, '7795')]).toEqual([1_700_000, 0, 0]);
+  const revueN = (await titreDe(N1, titre.id)).evaluations.find((e) => !e.annuleLe)!;
+  expect(await refusDe(appelApi(page, 'POST', `/titres-placement/${titre.id}/revues/${revueN.id}/annuler`, { motif: 'Essai' }))).toMatch(/clôturé/);
+  expect(await refusDe(appelApi(page, 'DELETE', `/titres-placement/${titre.id}`))).toMatch(/ne se retire pas/);
   expect(pannes).toEqual([]);
 });
