@@ -212,13 +212,21 @@ jobs:
           rc=$(sed 's/k6 rc=//' /tmp/k6-rc.txt)
           case "$rc" in
             0) ;;
-            99) echo "::error::k6 a conclu en échec (code 99) · un seuil du script est franchi (5xx, fuite entre dossiers, incohérence comptable, refus inattendu) · voir k6.txt dans les artefacts" ;;
+            99) echo "::error::k6 a conclu en échec (code 99) · un seuil du script est franchi (5xx, fuite entre dossiers, incohérence comptable, refus inattendu, ou latence p95 d'une étape au-delà de sa limite) · les seuils franchis sont en annotation « Seuils franchis » et dans k6.txt" ;;
             107|108) echo "::error::k6 n'a pas pu exécuter le script (code $rc · erreur du script ou abandon) · voir k6.txt" ;;
             127) echo "::error::k6 est absent du coureur (code 127)" ;;
             *) echo "::error::k6 a rendu le code $rc · voir k6.txt" ;;
           esac
           if [ "$rc" != "0" ]; then
             grep -m 15 "5xx\|FUITE\|refus inattendu\|incoh" /tmp/k6.txt || true
+            # LES SEUILS FRANCHIS SE LISENT SANS LES ARTEFACTS · k6 marque
+            # d'une croix (✗) chaque seuil tombé dans son résumé ; recopiés en
+            # annotation, ils se lisent par l'API des vérifications, là où le
+            # journal du job (noyé sous celui du service PostgreSQL) et les
+            # artefacts (servis hors api.github.com) ne s'atteignent pas depuis
+            # une session sans navigateur.
+            franchis=$(grep "✗" /tmp/k6.txt | sed 's/^ *//' | tr '\n' ' ' | cut -c1-1500)
+            echo "::notice title=Seuils franchis (PostgreSQL ${{ matrix.postgres }}, ${PROFIL})::${franchis:-aucune croix dans k6.txt · voir les lignes 5xx, FUITE, refus inattendu ou incoh ci-dessus}"
             echo "--- fin du journal du serveur"; tail -60 /tmp/serveur.log
           fi
           [ -s /tmp/k6-resume.json ] || { echo "::error::Aucun résumé k6 (k6-resume.json absent) · rien n'a été mesuré"; exit 1; }
@@ -236,6 +244,8 @@ jobs:
             };
             console.log(JSON.stringify(r, null, 1));
           ' | tee /tmp/resume.json
+          # LE RÉSUMÉ AUSSI, EN UNE LIGNE D'ANNOTATION · même raison.
+          echo "::notice title=Résumé k6 (PostgreSQL ${{ matrix.postgres }}, ${PROFIL})::$(node -p 'JSON.stringify(require("/tmp/resume.json"))')"
           # UN BANC QUI N'A RIEN MESURÉ N'EST PAS VERT · des seuils sur des
           # métriques sans échantillon sont tenus pour passés par k6.
           requetes=$(node -p 'require("/tmp/resume.json").requetes ?? 0')
