@@ -142,7 +142,9 @@ interface ComptesDuRole {
 }
 interface GroupeEcheance {
   compteId: string;
-  lignes: Array<{ id: string; libelle: string; montantDu: number; dateEcheance: string | null; reference?: string | null }>;
+  // Noms servis par `/reglements/echeances` · `montant` est le reste dû,
+  // `echeance` la date retenue (lus sous d'autres noms, le montant s'affichait « · »).
+  lignes: Array<{ id: string; libelle: string; montant: number; echeance: string; reference?: string | null }>;
 }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
@@ -520,8 +522,8 @@ function OngletValeurs(p: {
                       onChange={(e) => setLignesChoisies((c) => (e.target.checked ? [...c, l.id] : c.filter((x) => x !== l.id)))}
                     />
                     <span>
-                      {l.libelle} · {l.dateEcheance ? `échéance ${date(l.dateEcheance)} · ` : ''}
-                      {fmt(l.montantDu)}
+                      {l.libelle}
+                      {l.reference ? ` · ${l.reference}` : ''} · échéance {date(l.echeance)} · {fmt(l.montant)}
                     </span>
                   </label>
                 ))

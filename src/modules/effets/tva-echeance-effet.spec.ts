@@ -59,3 +59,12 @@ describe('taux-tva.service.ts · chaque lecture de groupe sélectionne la colonn
     }
   });
 });
+
+describe("l'imputation déclarée lit la même date que le moteur (premier tour de relecture, M3)", () => {
+  it('imputations-paiements.service.ts date les paiements par dateDuReglement aux deux endroits, jamais par la pièce', () => {
+    const source = readFileSync(join(__dirname, '..', 'tva', 'imputations-paiements.service.ts'), 'utf8');
+    expect(source).toMatch(/import \{[^}]*dateDuReglement[^}]*\} from '\.\/taux-tva\.service'/);
+    expect(source.match(/date: dateDuReglement\((l|p)\.ecriture\)/g)?.length).toBe(2);
+    expect(source).not.toMatch(/\.map\(\((l|p)\) => \(\{ id: (l|p)\.id, date: (l|p)\.ecriture\.date/);
+  });
+});

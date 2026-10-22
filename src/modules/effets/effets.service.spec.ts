@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { EffetsService } from './effets.service';
 
+// Les lignes figées se lisent sur les clôtures réelles · hors du périmètre de
+// cette doublure, aucune ligne n'est figée ; la garde est appelée (gelé plus bas).
+jest.mock('../exercice/gel-cloture', () => ({ refuserSiLignesFigees: jest.fn(async () => undefined) }));
+import { refuserSiLignesFigees } from '../exercice/gel-cloture';
+
 /**
  * LE SERVICE DES EFFETS SUR DOUBLURES (ligne sage-l3, fonction 39) · ce qui
  * casserait en silence. (1) L'acceptation pose l'ÉCHÉANCE sur sa pièce, dans
@@ -20,17 +25,18 @@ const COMPTES: Record<string, { id: string; numero: string; intitule: string; ty
   c565: { id: 'c565', numero: '56500000', intitule: 'Escompte', typeCompte: 'DETAIL', estActif: true },
   c675: { id: 'c675', numero: '67500000', intitule: 'Escomptes des effets', typeCompte: 'DETAIL', estActif: true },
   c601: { id: 'c601', numero: '60110000', intitule: 'Achats', typeCompte: 'DETAIL', estActif: true },
+  c402: { id: 'c402', numero: '40210000', intitule: 'Fournisseurs, effets à payer', typeCompte: 'DETAIL', estActif: true },
 };
 const BQ = { id: 'jbq', code: 'BQ', type: 'TRESORERIE', estActif: true, compteTresorerie: { id: 'c52', numero: '52110001' } };
 const OD = { id: 'jod', code: 'OD', type: 'GENERAL', estActif: true, compteTresorerie: null };
 
 type Acte = { id: string; nature: string; date: Date; montant: number; detail: unknown; annuleLe: Date | null; compte: { id: string; numero: string; intitule: string } | null; ecriture: { id: string; numeroPiece: number; statut: string } | null; ecritureNegatif: null };
 
-function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statut?: string; actes?: Acte[]; statutPiece?: string } = {}) {
+function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statut?: string; actes?: Acte[]; statutPiece?: string; actesRelus?: Acte[]; dateFacture?: string; sens?: string } = {}) {
   const appels: string[] = [];
   const effet = {
     id: 'ef1',
-    sens: 'A_RECEVOIR',
+    sens: options.sens ?? 'A_RECEVOIR',
     statut: options.statut ?? 'EN_PORTEFEUILLE',
     journalId: 'jod',
     compteTiersId: 'c411',
@@ -44,6 +50,12 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
     actes: options.actes ?? [{ id: 'a1', nature: 'ACCEPTATION', date: new Date('2026-03-01T00:00:00.000Z'), montant: 1160000, detail: null, annuleLe: null, compte: COMPTES.c412, ecriture: { id: 'e1', numeroPiece: 1, statut: 'VALIDEE' }, ecritureNegatif: null }],
   };
   const tx = {
+    // Le verrou de l'effet (`FOR UPDATE`) et la relecture des actes vivants
+    // dans la transaction · par défaut ceux de la lecture, sauf `actesRelus`.
+    $queryRaw: jest.fn(async () => {
+      appels.push('verrou');
+      return [{ id: 'ef1' }];
+    }),
     ecriture: {
       updateMany: jest.fn(async () => ({ count: 1 })),
       findFirst: jest.fn(async () => ({ statut: options.statutPiece ?? 'VALIDEE' })),
@@ -65,6 +77,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
       }),
     },
     acteEffet: {
+      findMany: jest.fn(async () => (options.actesRelus ?? effet.actes.filter((a) => !a.annuleLe)).map((a) => ({ id: a.id }))),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         appels.push(`acte ${String(data.nature)}`);
         return { id: 'a9', ...data };
@@ -88,9 +101,19 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
       findMany: jest.fn(async () => []),
       count: jest.fn(async () => 0),
     },
-    exercice: { findFirst: jest.fn(async () => ({ id: 'ex1', statut: 'OUVERT', dateDebut: new Date('2026-01-01T00:00:00.000Z'), dateFin: new Date('2026-12-31T00:00:00.000Z') })) },
+    // Typé nullable · le test « m6 bis » rend une fois « aucun exercice ».
+    exercice: {
+      findFirst: jest.fn(async (): Promise<{ id: string; statut: string; dateDebut: Date; dateFin: Date } | null> => ({
+        id: 'ex1',
+        statut: 'OUVERT',
+        dateDebut: new Date('2026-01-01T00:00:00.000Z'),
+        dateFin: new Date('2026-12-31T00:00:00.000Z'),
+      })),
+    },
     ligneEcriture: {
-      findMany: jest.fn(async () => [{ id: 'f1', debit: 1160000, credit: 0, lettrageId: null, rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7 } }]),
+      findMany: jest.fn(async () => [
+        { id: 'f1', debit: 1160000, credit: 0, lettrageId: null, rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7, date: new Date(options.dateFacture ?? '2026-01-15T00:00:00.000Z') } },
+      ]),
     },
     ecriture: { findFirst: jest.fn(async () => ({ id: 'e1', numeroPiece: 1, statut: 'VALIDEE', exercice: { statut: 'OUVERT' }, lignes: [] })) },
     effetCommerce: { findFirst: jest.fn(async () => effet), findMany: jest.fn(async () => [effet]), count: jest.fn(async () => 1) },
@@ -166,7 +189,7 @@ describe('EffetsService · les actes', () => {
     const dto = ecritures.creerAvec.mock.calls[0][2] as { journalId: string; lignes: Array<{ compteId: string; debit: number; credit: number }> };
     expect(dto.journalId).toBe('jod');
     expect(dto.lignes.map((l) => [l.compteId, l.debit, l.credit])).toEqual([['c512', 1160000, 0], ['c412', 0, 1160000]]);
-    expect(appels).toEqual(['écriture jod', 'acte REMISE_ENCAISSEMENT']);
+    expect(appels).toEqual(['écriture jod', 'verrou', 'acte REMISE_ENCAISSEMENT']);
   });
 
   it('un acte hors statut, un 512 hors racine ou une date antérieure au précédent sont refusés avant toute pièce', async () => {
@@ -242,7 +265,7 @@ describe('EffetsService · annulation à rebours', () => {
     expect(r).toMatchObject({ statut: 'EN_PORTEFEUILLE', traitement: 'INSCRITE_EN_NEGATIF', ecritureNegatifId: 'neg1' });
     expect(tx.acteEffet.update).toHaveBeenCalledWith({ where: { id: 'a2', tenantId: 't' }, data: { ecritureId: 'e2', ecritureNegatifId: 'neg1' } });
     expect(tx.effetCommerce.updateMany).toHaveBeenCalledWith({ where: { id: 'ef1', tenantId: 't', statut: 'REMIS_A_L_ENCAISSEMENT' }, data: { statut: 'EN_PORTEFEUILLE' } });
-    expect(appels).toEqual(['négatif']);
+    expect(appels).toEqual(['verrou', 'négatif']);
   });
 
   it("au brouillard la pièce est retirée (relue dans la transaction) et le lien part ; l'acceptation seule annulée rend l'effet ANNULÉ", async () => {
@@ -251,7 +274,7 @@ describe('EffetsService · annulation à rebours', () => {
     const r = await service.annulerActe('t', 'u', 'ef1', 'a1', { motif: 'doublon' });
     expect(r).toMatchObject({ statut: 'ANNULE', traitement: 'SUPPRIMEE', ecritureNegatifId: null });
     // L'acte retient sa pièce (clé étrangère RESTRICT) · le lien se dénoue AVANT le retrait, sinon la base refuse (vu sur vraie base).
-    expect(appels).toEqual(['lien dénoué', 'pièce retirée']);
+    expect(appels).toEqual(['verrou', 'lien dénoué', 'pièce retirée']);
     expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'e1', tenantId: 't', statut: 'BROUILLARD' } });
     expect(tx.acteEffet.update).toHaveBeenCalledWith({ where: { id: 'a1', tenantId: 't' }, data: { ecritureId: null, ecritureNegatifId: null } });
   });
@@ -265,5 +288,68 @@ describe('EffetsService · comptes', () => {
     expect(r.motif).toMatch(/Clients-usagers/);
     expect(prisma.compte.findMany).not.toHaveBeenCalled();
     await expect(service.comptes('t', 'AUTRE', 'A_RECEVOIR')).rejects.toThrow(/rôle du compte/);
+  });
+});
+
+describe('EffetsService · premier tour de relecture (2026-10-22)', () => {
+  const acceptation: Acte = { id: 'a1', nature: 'ACCEPTATION', date: new Date('2026-03-01T00:00:00.000Z'), montant: 1160000, detail: null, annuleLe: null, compte: COMPTES.c412, ecriture: { id: 'e1', numeroPiece: 1, statut: 'VALIDEE' }, ecritureNegatif: null };
+  const escompte: Acte = { id: 'a2', nature: 'REMISE_ESCOMPTE', date: new Date('2026-03-10T00:00:00.000Z'), montant: 1160000, detail: null, annuleLe: null, compte: COMPTES.c415, ecriture: { id: 'e2', numeroPiece: 2, statut: 'VALIDEE' }, ecritureNegatif: null };
+  const decompte: Acte = { id: 'a3', nature: 'DECOMPTE_ESCOMPTE', date: new Date('2026-03-12T00:00:00.000Z'), montant: 1160000, detail: { compteBanqueId: 'c52', journalBanqueId: 'jbq' }, annuleLe: null, compte: COMPTES.c565, ecriture: { id: 'e3', numeroPiece: 3, statut: 'VALIDEE' }, ecritureNegatif: null };
+
+  it('M1 · un décompte concurrent, qui garde le statut ESCOMPTE, est vu par la relecture des actes sous le verrou · 409, aucune pièce', async () => {
+    // La lecture qui juge le geste n'a pas vu le décompte ; sous le verrou, la transaction le relit.
+    const { service, tx, appels } = monter({ statut: 'ESCOMPTE', actes: [acceptation, escompte], actesRelus: [acceptation, escompte, decompte] });
+    await expect(
+      service.decompte('t', 'u', 'ef1', { date: '2026-03-12', journalBanqueId: 'jbq', compteCreditEscompteId: 'c565', frais: 20000, compteFraisId: 'c675', referencePiece: 'Bordereau 12' }),
+    ).rejects.toThrow(/ont changé pendant le geste/);
+    expect(appels).toEqual(['écriture jbq', 'verrou']);
+    expect(tx.acteEffet.create).not.toHaveBeenCalled();
+  });
+
+  it("M2 · un journal de caisse est refusé aux actes de la banque · l'effet est domicilié en banque", async () => {
+    const { service, prisma } = monter({ statut: 'REMIS_A_L_ENCAISSEMENT', actes: [acceptation] });
+    prisma.journal.findFirst.mockImplementationOnce(async () => ({ id: 'jca', code: 'CA', type: 'TRESORERIE', estActif: true, compteTresorerie: { id: 'c57', numero: '57110000' } }));
+    await expect(service.encaisser('t', 'u', 'ef1', { date: '2026-05-31', journalBanqueId: 'jca', referencePiece: 'Avis' })).rejects.toThrow(/compte de banque \(52\)/);
+  });
+
+  it("M3 · la liste sert les effets EN COURS sans borne d'exercice, et ceux arrivés à terme de l'exercice choisi", async () => {
+    const { service, prisma } = monter();
+    await service.lister('t', 'ex2', undefined, undefined);
+    expect(prisma.effetCommerce.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't', OR: [{ statut: { in: ['EN_PORTEFEUILLE', 'REMIS_A_L_ENCAISSEMENT', 'ESCOMPTE', 'BON_A_PAYER'] } }, { exerciceId: 'ex2' }] } }),
+    );
+  });
+
+  it("m5 · une facture datée APRÈS l'acceptation n'est pas réglée par l'effet, et les lignes figées sont jugées avant la pièce", async () => {
+    const { service, ecritures } = monter({ dateFacture: '2026-06-15T00:00:00.000Z' });
+    await expect(service.accepter('t', 'u', { ...ACCEPTATION, ligneIds: ['f1'] })).rejects.toThrow(/datée du 2026-06-15, après l'acceptation du 2026-03-01/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+    const ok = monter();
+    await ok.service.accepter('t', 'u', { ...ACCEPTATION, ligneIds: ['f1'] });
+    expect(refuserSiLignesFigees).toHaveBeenCalledWith(expect.anything(), 't', ['f1'], "accepter l'effet");
+  });
+
+  it('M2 bis · un collectif qui porte des comptes individuels est refusé au tiers, et écarté de la liste du rôle TIERS', async () => {
+    const { service, prisma, ecritures } = monter();
+    prisma.compte.count.mockImplementationOnce(async () => 3);
+    await expect(service.accepter('t', 'u', ACCEPTATION)).rejects.toThrow(/collectif qui porte des comptes de tiers/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+    await service.comptes('t', 'TIERS', 'A_RECEVOIR');
+    expect(prisma.compte.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ individuels: { none: { tenantId: 't' } } }) }));
+  });
+
+  it("m6 · au SYCEBNL le rôle TIERS de l'effet à recevoir rend le motif du portefeuille, jamais les adhérents", async () => {
+    const { service } = monter({ referentiel: 'SYCEBNL' });
+    const r = await service.comptes('t', 'TIERS', 'A_RECEVOIR');
+    expect(r.racines).toBeNull();
+    expect(r.motif).toMatch(/Clients-usagers/);
+  });
+
+  it("m6 bis · le bon à payer exige un exercice ouvert à sa date et refuse une référence blanche", async () => {
+    const aPayer: Acte = { ...acceptation, compte: COMPTES.c402 };
+    const { service, prisma } = monter({ sens: 'A_PAYER', statut: 'EN_PORTEFEUILLE', actes: [aPayer] });
+    prisma.exercice.findFirst.mockImplementationOnce(async () => null);
+    await expect(service.bonAPayer('t', 'u', 'ef1', { date: '2036-06-25' })).rejects.toThrow(/Aucun exercice du dossier ne couvre la date/);
+    await expect(service.bonAPayer('t', 'u', 'ef1', { date: '2026-06-25', referencePiece: '   ' })).rejects.toThrow(/référence du bon à payer est vide/);
   });
 });

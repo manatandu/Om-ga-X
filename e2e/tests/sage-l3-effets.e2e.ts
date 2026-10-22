@@ -95,13 +95,15 @@ test('SYSCOHADA · effets à recevoir · acceptation lettrée, TVA à l’éché
   b = await balance(N.id);
   expect([solde(b, '512'), solde(b, '6312'), solde(b, '52') - banqueAvant]).toEqual([0, 5_000, 1_155_000]);
 
-  // (3) F2 · prestation de novembre (500 000 HT), effet accepté le 1er
-  // novembre à échéance du 31 janvier N+1, ESCOMPTÉ le 10, décompte le 12
-  // (frais 20 000 au 675, commission 2 000 au 6312, net 558 000).
+  // (3) F2 · prestation du 2 novembre (500 000 HT), effet accepté le 3
+  // (jamais avant sa facture · premier tour de relecture, m5) à échéance du
+  // 31 janvier N+1, ESCOMPTÉ le 10, décompte le 12 (frais 20 000 au 675,
+  // commission 2 000 au 6312, net 558 000).
   await prestation(N.id, `${annee}-11-02`, 500_000, 'F2 prestation de novembre');
   await valider(N);
   const f2 = (await lignes()).find((l) => l.debit === 580_000 && !l.lettrageId)!;
-  const e2 = await accepter(N.id, `${annee}-11-01`, `${annee + 1}-01-31`, 580_000, 'LCR 13', [f2.id]);
+  expect(await refusDe(accepter(N.id, `${annee}-11-01`, `${annee + 1}-01-31`, 580_000, 'LCR 13', [f2.id]))).toMatch(/après l'acceptation/);
+  const e2 = await accepter(N.id, `${annee}-11-03`, `${annee + 1}-01-31`, 580_000, 'LCR 13', [f2.id]);
   await appelApi(page, 'POST', `/effets/${e2.id}/escompter`, { date: `${annee}-11-10`, compteEscompteNonEchuId: compte('41500000').id });
   expect(await refusDe(appelApi(page, 'POST', `/effets/${e2.id}/denouer`, { date: `${annee}-12-15` }))).toMatch(/passez d'abord le décompte/);
   expect(await refusDe(appelApi(page, 'POST', `/effets/${e2.id}/decompte`, { date: `${annee}-11-12`, journalBanqueId: bq.id, compteCreditEscompteId: compte('56500000').id, frais: 20_000, referencePiece: 'Décompte 11' }))).toMatch(/exigent leur compte/);
@@ -163,6 +165,11 @@ test('SYSCOHADA · effets à recevoir · acceptation lettrée, TVA à l’éché
   expect(solde(await balance(N1.id), '4132')).toBe(0);
   const liste = await appelApi<{ effets: Effet[]; total: number }>(page, 'GET', `/effets?exerciceId=${N.id}&sens=A_RECEVOIR`);
   expect(liste.effets.map((e) => e.statut).sort()).toEqual(['ENCAISSE', 'ESCOMPTE']);
+  // La liste de N+1 porte l'effet encore EN COURS né en N (premier tour de
+  // relecture, M3) · borné à l'exercice de naissance, l'escompté disparaissait
+  // de l'écran une fois N clôturé, et son dénouement n'avait plus de porte.
+  const listeN1 = await appelApi<{ effets: Effet[]; total: number }>(page, 'GET', `/effets?exerciceId=${N1.id}&sens=A_RECEVOIR`);
+  expect(listeN1.effets.map((e) => [e.id, e.statut])).toEqual([[e2.id, 'ESCOMPTE']]);
   expect(pannes).toEqual([]);
 });
 

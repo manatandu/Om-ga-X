@@ -11,7 +11,7 @@ import {
   motifReportDePaiement,
   type LigneDeTiersLue,
 } from './imputation-paiements';
-import { SELECT_LIGNE_D_ORIGINE, TauxTvaService, type LigneDOrigine } from './taux-tva.service';
+import { SELECT_LIGNE_D_ORIGINE, TauxTvaService, dateDuReglement, type LigneDOrigine } from './taux-tva.service';
 
 /** Un groupe de lettrage plus long ne se lit pas ici · dit, jamais coupé en silence (§ 8 bis). */
 export const PLAFOND_LIGNES_GROUPE_IMPUTATION = 500;
@@ -194,7 +194,8 @@ export class ImputationsPaiementsService {
       .map((l) => ({ id: l.id, dateFacture: l.ecriture.date, dateEcheance: l.dateEcheance, montant: Math.abs(sensDe(l)) }));
     const paiements = retenues
       .filter((l) => Math.abs(sensDe(l)) > EPSILON && sensDe(l) > 0 !== sensFacture > 0)
-      .map((l) => ({ id: l.id, date: l.ecriture.date, montant: Math.abs(sensDe(l)), nom: `pièce ${l.ecriture.numeroPiece ?? 'sans numéro'} du ${jjmmaaaa(l.ecriture.date)}` }));
+      // L'échéance d'un effet accepté date son règlement, comme au moteur (`dateDuReglement`, fonction 39).
+      .map((l) => ({ id: l.id, date: dateDuReglement(l.ecriture), montant: Math.abs(sensDe(l)), nom: `pièce ${l.ecriture.numeroPiece ?? 'sans numéro'} du ${jjmmaaaa(l.ecriture.date)}` }));
     // L'ordre du moteur · la date, puis l'identifiant.
     const ordre = [...paiements].sort((a, b) => a.date.getTime() - b.date.getTime() || a.id.localeCompare(b.id));
     const rang = ordre.findIndex((p) => p.id === reglement.id);
@@ -525,7 +526,8 @@ export class ImputationsPaiementsService {
     const declarees = declareesLues.slice(0, plafondDeclarees);
     const resultat = imputerPaiements(
       factures.map((f) => ({ id: f.id, dateFacture: f.ecriture.date, dateEcheance: f.dateEcheance, montant: Math.abs(sensDe(f)) })),
-      paiements.map((p) => ({ id: p.id, date: p.ecriture.date, montant: Math.abs(sensDe(p)) })),
+      // Même date que le moteur · l'échéance d'un effet accepté (fonction 39), la pièce sinon.
+      paiements.map((p) => ({ id: p.id, date: dateDuReglement(p.ecriture), montant: Math.abs(sensDe(p)) })),
       declarees.map((d) => ({ paiementId: d.ligneReglementId, detteId: lecture.reportsVers.get(d.ligneFactureId) ?? d.ligneFactureId, montant: n(d.montant) })),
     );
     /*

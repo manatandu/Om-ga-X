@@ -125,9 +125,12 @@ interface ComptesDuRole {
   total?: number;
   tronque?: boolean;
 }
+/** Lignes ouvertes telles que `/reglements/echeances` les sert · `montant` est
+ * le RESTE dû (lettrage partiel compris), `echeance` la date retenue (premier
+ * tour de relecture · lues sous d'autres noms, le montant s'affichait « · »). */
 interface GroupeEcheance {
   compteId: string;
-  lignes: Array<{ id: string; libelle: string; montantDu: number; dateEcheance: string | null }>;
+  lignes: Array<{ id: string; libelle: string; montant: number; echeance: string; reference?: string | null }>;
 }
 interface ReponseAnnulation {
   statut: Statut;
@@ -139,8 +142,8 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZo
 const messageDuRefus = (err: unknown, defaut: string) =>
   err instanceof ApiError && err.status < 500 ? err.message : `${defaut} · réponse perdue, le geste a pu passer. Relisez la liste avant de le refaire.`;
 const piece = (p: Piece | null) => (p ? `n° ${p.numeroPiece ?? '·'}${p.statut === 'BROUILLARD' ? ' (brouillard)' : ''}` : '·');
-const listeTronquee = (lus: ComptesDuRole | null) =>
-  lus?.tronque ? <span className="text-text-dim">{lus.comptes.length} comptes montrés sur {lus.total} · un compte absent se cherche dans Plan comptable.</span> : null;
+const listeTronquee = (lus: ComptesDuRole | null, fenetre: 'Plan des tiers' | 'Plan comptable' = 'Plan comptable') =>
+  lus?.tronque ? <span className="text-text-dim">{lus.comptes.length} comptes montrés sur {lus.total} · un compte absent se cherche dans {fenetre}.</span> : null;
 
 export function EffetsPage({ sensInitial }: { sensInitial?: Sens } = {}) {
   const { peutEcrire, peutValider, utilisateur } = useAuth();
@@ -343,8 +346,9 @@ function Onglet(p: {
     if (!journalId) return "Choisissez le journal d'opérations diverses.";
     if (!tiersId) return 'Choisissez le compte du tiers.';
     if (!compteEffetId) return 'Choisissez le compte de portefeuille.';
-    if (erreurEcheances) return 'Les lignes ouvertes du tiers sont illisibles · rechoisissez le tiers.';
-    if (echeances === null) return 'Lecture des lignes ouvertes du tiers…';
+    // Les lignes ouvertes illisibles ne ferment pas l'acceptation (premier
+    // tour de relecture) · l'effet s'accepte SANS lettrage, et l'écran le dit.
+    if (!erreurEcheances && echeances === null) return 'Lecture des lignes ouvertes du tiers…';
     if (!creation) return 'La date de création est exigée.';
     if (!echeance) return "L'échéance est exigée.";
     if (valeur === null || valeur <= 0) return 'Le montant doit être un nombre positif.';
@@ -363,7 +367,7 @@ function Onglet(p: {
     if (manque()) return;
     setEnvoi(true);
     try {
-      const r = await api.post<Effet & { lettre: string | null }>('/effets', {
+      const r = await api.post<Effet & { lettre: string | null; lignesAuBrouillard?: number }>('/effets', {
         exerciceId: p.exerciceId,
         sens,
         journalId,
@@ -381,7 +385,11 @@ function Onglet(p: {
       setTire('');
       setLignesChoisies([]);
       setVersion((v) => v + 1);
-      await p.onFait(`Effet ${r.reference} accepté au ${r.compteEffet.numero}, échéance ${date(r.dateEcheance)}${r.lettre ? ` · lettré ${r.lettre} avec les factures choisies` : ''}.`);
+      await p.onFait(
+        `Effet ${r.reference} accepté au ${r.compteEffet.numero}, échéance ${date(r.dateEcheance)}${r.lettre ? ` · lettré ${r.lettre} avec les factures choisies` : ''}${
+          r.lignesAuBrouillard ? ` · ${r.lignesAuBrouillard} facture(s) choisie(s) encore au brouillard` : ''
+        }.`,
+      );
     } catch (err) {
       p.onRefus(err, 'Acceptation impossible');
     } finally {
@@ -397,7 +405,7 @@ function Onglet(p: {
         <form onSubmit={accepter} noValidate className="border border-border bg-surface p-3 space-y-2">
           <div className="font-semibold">{sens === 'A_RECEVOIR' ? 'Accepter un effet à recevoir' : 'Accepter un effet à payer'}</div>
           {portefeuille?.motif && <div className="text-text-dim">{portefeuille.motif}</div>}
-          {p.journauxLus && p.journauxOd.length === 0 && <div className="text-text-dim">Aucun journal d'opérations diverses actif · créez-en un dans Structure › Journaux.</div>}
+          {p.journauxLus && p.journauxOd.length === 0 && <div className="text-text-dim">Aucun journal d'opérations diverses actif · créez-en un dans Structure › Codes journaux.</div>}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Journal des opérations</span>
@@ -420,7 +428,7 @@ function Onglet(p: {
                   </option>
                 ))}
               </select>
-              {listeTronquee(tiers)}
+              {listeTronquee(tiers, 'Plan des tiers')}
             </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Compte de portefeuille{portefeuille?.racines ? ` (${portefeuille.racines.join(', ')})` : ''}</span>
@@ -463,18 +471,18 @@ function Onglet(p: {
                 Factures réglées par cet effet
               </legend>
               {erreurEcheances ? (
-                <div className="text-danger">{erreurEcheances}</div>
+                <div className="text-danger">{erreurEcheances} · l'effet peut être accepté sans lettrage, à lettrer ensuite.</div>
               ) : echeances === null ? (
                 <div className="text-text-dim">…</div>
               ) : lignesOuvertes.length === 0 ? (
-                <div className="text-text-dim">Aucune ligne ouverte sur ce compte · l'effet reste non lettré.</div>
+                <div className="text-text-dim">Aucune ligne ouverte sur ce compte dans cet exercice · l'effet reste non lettré.</div>
               ) : (
                 lignesOuvertes.map((l) => (
                   <label key={l.id} className="flex items-center gap-2">
                     <input type="checkbox" checked={lignesChoisies.includes(l.id)} onChange={(e) => setLignesChoisies((c) => (e.target.checked ? [...c, l.id] : c.filter((x) => x !== l.id)))} />
                     <span>
-                      {l.libelle} · {l.dateEcheance ? `échéance ${date(l.dateEcheance)} · ` : ''}
-                      {fmt(l.montantDu)}
+                      {l.libelle}
+                      {l.reference ? ` · ${l.reference}` : ''} · échéance {date(l.echeance)} · {fmt(l.montant)}
                     </span>
                   </label>
                 ))
@@ -738,7 +746,7 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Journal de banque</span>
               <select value={banqueId} onChange={(e) => setBanqueId(e.target.value)} className="border border-border px-2 py-[2px]">
-                <option value="">{p.banques.length === 0 ? 'Aucun journal de trésorerie actif · créez-en un dans Structure > Journaux' : '·'}</option>
+                <option value="">{p.banques.length === 0 ? 'Aucun journal de trésorerie actif · créez-en un dans Structure › Codes journaux' : '·'}</option>
                 {p.banques.map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.code} · {j.intitule}

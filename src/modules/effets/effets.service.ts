@@ -5,6 +5,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { LettrageService } from '../lettrage/lettrage.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
+import { refuserSiLignesFigees } from '../exercice/gel-cloture';
 import {
   LIBELLES_ACTE,
   LIBELLES_SENS,
@@ -42,6 +43,9 @@ import type {
 } from './effets.dto';
 
 const PLAFOND_LISTE = 500;
+
+/** Les statuts d'un effet qui attend encore un acte · listés quel que soit l'exercice choisi. */
+const STATUTS_EN_COURS: StatutEffet[] = [StatutEffet.EN_PORTEFEUILLE, StatutEffet.REMIS_A_L_ENCAISSEMENT, StatutEffet.ESCOMPTE, StatutEffet.BON_A_PAYER];
 const COMPTE_SELECT = { id: true, numero: true, intitule: true, typeCompte: true, estActif: true } as const;
 const ACTES_INCLUDE = {
   orderBy: [{ date: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -92,14 +96,20 @@ export class EffetsService {
     // Le `tenantId` écrit DANS chaque appel · le balayage du cloisonnement lit
     // la borne sur l'appel, jamais dans une variable (cloisonnement.spec.ts).
     const filtre = { ...(sens ? { sens: sens as SensEffet } : {}), ...(statut ? { statut: statut as StatutEffet } : {}) };
+    // UN EFFET EN COURS SE LISTE SANS BORNE D'EXERCICE (premier tour de
+    // relecture, M1 · même règle que les valeurs à remettre de la fonction 40)
+    // · un escompte de décembre se dénoue en janvier, et sous l'exercice N+1
+    // la fenêtre disait « Aucun effet ». L'exercice choisi ne borne que les
+    // effets arrivés à leur terme (encaissés, payés, impayés, annulés).
+    const where = { ...filtre, OR: [{ statut: { in: STATUTS_EN_COURS } }, { exerciceId }] };
     const [effets, total] = await Promise.all([
       this.prisma.effetCommerce.findMany({
-        where: { tenantId, exerciceId, ...filtre },
+        where: { tenantId, ...where },
         orderBy: [{ dateEcheance: 'asc' }, { createdAt: 'asc' }],
         take: PLAFOND_LISTE,
         include: { compteTiers: { select: COMPTE_SELECT }, compteEffet: { select: COMPTE_SELECT }, actes: ACTES_INCLUDE },
       }),
-      this.prisma.effetCommerce.count({ where: { tenantId, exerciceId, ...filtre } }),
+      this.prisma.effetCommerce.count({ where: { tenantId, ...where } }),
     ]);
     return { effets: effets.map((e) => this.rendre(e)), total, tronque: total > effets.length };
   }
@@ -129,9 +139,21 @@ export class EffetsService {
       throw new BadRequestException(`Le rôle du compte est l'un de TIERS, ${ROLES_COMPTE_EFFET.join(', ')}.`);
     }
     const dossier = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
-    const r = role === 'TIERS' ? { racines: [racineTiers(sens)], motif: null } : racinesDuRole(dossier.referentiel, role as RoleCompteEffet, sens);
+    // Le rôle TIERS suit le refus du portefeuille · au SYCEBNL, l'effet à
+    // recevoir n'existe pas, et servir les 411 (adhérents) à un geste que
+    // l'acceptation refuse ensuite serait un choix pour rien (premier tour, m6).
+    const porte = racinesDuRole(dossier.referentiel, 'PORTEFEUILLE', sens);
+    const r = porte.racines === null ? porte : role === 'TIERS' ? { racines: [racineTiers(sens)], motif: null } : racinesDuRole(dossier.referentiel, role as RoleCompteEffet, sens);
     if (r.racines === null) return { racines: null, comptes: [], motif: r.motif, total: 0, tronque: false };
-    const sousLesRacines = { typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true, OR: r.racines.map((racine) => ({ numero: { startsWith: racine } })) };
+    // Un COLLECTIF qui porte des comptes individuels n'est pas offert au rôle
+    // TIERS (premier tour, M2) · la saisie le refuse, et l'acceptation solde le
+    // compte du tiers qui a facturé, jamais son collectif.
+    const sousLesRacines = {
+      typeCompte: TypeCompteDetailTotal.DETAIL,
+      estActif: true,
+      OR: r.racines.map((racine) => ({ numero: { startsWith: racine } })),
+      ...(role === 'TIERS' ? { individuels: { none: { tenantId } } } : {}),
+    };
     const [comptes, total] = await Promise.all([
       this.prisma.compte.findMany({ where: { tenantId, ...sousLesRacines }, select: { id: true, numero: true, intitule: true, estRetenu: true }, orderBy: [{ estRetenu: 'desc' }, { numero: 'asc' }], take: 200 }),
       this.prisma.compte.count({ where: { tenantId, ...sousLesRacines } }),
@@ -177,6 +199,9 @@ export class EffetsService {
       throw new BadRequestException(`Le compte ${tiers.numero} n'est pas un compte ${dto.sens === SensEffet.A_RECEVOIR ? 'client (411)' : 'fournisseur (401)'} d'imputation · l'acceptation solde le tiers qui a facturé.`);
     }
     if (!tiers.estActif) throw new BadRequestException(`Le compte ${tiers.numero} est en sommeil.`);
+    if (await this.prisma.compte.count({ where: { tenantId, collectifId: tiers.id } })) {
+      throw new BadRequestException(`Le compte ${tiers.numero} est un collectif qui porte des comptes de tiers · choisissez le compte individuel du tiers qui a facturé.`);
+    }
     const exercice = await this.exerciceOuvert(tenantId, dto.exerciceId);
     const dateCreation = dto.dateCreation as string;
     const dateEcheance = dto.dateEcheance as string;
@@ -184,7 +209,7 @@ export class EffetsService {
     const montant = round2(dto.montant as number);
     const reference = (dto.reference as string).trim();
     const ids = [...new Set(dto.ligneIds ?? [])];
-    if (ids.length > 0) await this.verifierLignesReglees(tenantId, tiers, ids, montant, dto.sens);
+    const reglees = ids.length > 0 ? await this.verifierLignesReglees(tenantId, tiers, ids, montant, dto.sens, dateCreation) : null;
     const libelle = `${LIBELLES_SENS[dto.sens]} ${reference} · ${tiers.intitule}`.slice(0, 190);
     const r = await this.ecritures.creerAvec(
       tenantId,
@@ -234,9 +259,11 @@ export class EffetsService {
     );
     let lettre: string | null = null;
     if (ids.length > 0) {
-      const ligneTiers = r.ecriture.lignes.find((l) => l.compteId === tiers.id);
-      if (!ligneTiers) throw new ConflictException("La ligne du tiers est introuvable dans la pièce d'acceptation.");
       try {
+        // La ligne du tiers se cherche DANS le `try` (premier tour, m4) · absente,
+        // la pièce et l'effet sont retirés comme sur un lettrage refusé.
+        const ligneTiers = r.ecriture.lignes.find((l) => l.compteId === tiers.id);
+        if (!ligneTiers) throw new ConflictException("La ligne du tiers est introuvable dans la pièce d'acceptation.");
         // `lettrerManuel` est UNE transaction · refusé, il n'a rien posé.
         const l = await this.lettrage.lettrerManuel(tenantId, tiers.id, [...ids, ligneTiers.id], userId, { autoriserPartiel: true });
         lettre = l.lettre;
@@ -252,11 +279,14 @@ export class EffetsService {
             nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
           );
         }
-        throw e;
+        // Le refus dit que l'effet n'est pas né · la pièce a été retirée, le numéro de pièce consommé.
+        throw e instanceof BadRequestException || e instanceof ConflictException
+          ? new BadRequestException(`L'effet n'a pas été accepté · ${(e.getResponse() as { message?: string }).message ?? e.message}`)
+          : e;
       }
     }
     const effet = await this.effet(tenantId, r.suite.id);
-    return { ...effet, lettre };
+    return { ...effet, lettre, lignesAuBrouillard: reglees?.auBrouillard ?? 0 };
   }
 
   /**
@@ -264,10 +294,10 @@ export class EffetsService {
    * des tiers et la réception d'un chèque) · une ligne déjà lettrée, pointée,
    * de situation ou d'à-nouveau provisoire aussi, nommée.
    */
-  private async verifierLignesReglees(tenantId: string, tiers: { id: string; numero: string }, ids: string[], montant: number, sens: SensEffet) {
+  private async verifierLignesReglees(tenantId: string, tiers: { id: string; numero: string }, ids: string[], montant: number, sens: SensEffet, dateCreation: string) {
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: { id: { in: ids }, compteId: tiers.id, ecriture: { tenantId } },
-      select: { id: true, debit: true, credit: true, lettrageId: true, rapprochementId: true, ecriture: { select: { statut: true, estANouveauProvisoire: true, numeroPiece: true } } },
+      select: { id: true, debit: true, credit: true, lettrageId: true, rapprochementId: true, ecriture: { select: { statut: true, estANouveauProvisoire: true, numeroPiece: true, date: true } } },
     });
     if (lignes.length !== ids.length) throw new BadRequestException(`${ids.length - lignes.length} ligne(s) choisie(s) ne sont pas sur le compte ${tiers.numero} de ce dossier · rechargez la liste.`);
     const tenue = lignes.find((l) => l.lettrageId || l.rapprochementId || l.ecriture.estANouveauProvisoire || l.ecriture.statut === StatutEcriture.SITUATION);
@@ -278,11 +308,21 @@ export class EffetsService {
       if (tenue.ecriture.estANouveauProvisoire) throw new BadRequestException(`${piece} est un à-nouveau provisoire, qui ne se lettre pas · clôturez l'exercice précédent ou passez un bilan d'ouverture.`);
       throw new BadRequestException(`${piece} est une écriture de situation, qui ne se lettre pas.`);
     }
+    // L'effet règle une facture ANTÉRIEURE (premier tour, m5) · datée après
+    // l'acceptation, elle ferait un paiement avant sa dette, que l'imputation
+    // de l'art. 154 lirait de travers.
+    const posterieure = lignes.find((l) => jour(l.ecriture.date) > dateCreation);
+    if (posterieure) {
+      throw new BadRequestException(`La pièce n° ${posterieure.ecriture.numeroPiece ?? '·'} est datée du ${jour(posterieure.ecriture.date)}, après l'acceptation du ${dateCreation} · un effet règle une facture antérieure.`);
+    }
+    // Une ligne figée par une clôture de période ne se lettre pas · jugée AVANT la pièce.
+    await refuserSiLignesFigees(this.prisma, tenantId, ids, "accepter l'effet");
     // Le dû se lit dans le sens du tiers · débiteur chez le client, créditeur chez le fournisseur.
     const du = round2(lignes.reduce((t, l) => t + (sens === SensEffet.A_RECEVOIR ? Number(l.debit) - Number(l.credit) : Number(l.credit) - Number(l.debit)), 0));
     if (montant > du + 0.005) {
       throw new BadRequestException(`Le nominal de l'effet (${montant.toFixed(2)}) dépasse le dû des lignes choisies (${du.toFixed(2)}) · plus que le dû n'est pas un règlement.`);
     }
+    return { auBrouillard: lignes.filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD).length };
   }
 
   // ----- Les actes ----------------------------------------------------------
@@ -426,6 +466,15 @@ export class EffetsService {
         if (!decompte.compte || typeof detail.compteBanqueId !== 'string' || typeof detail.journalBanqueId !== 'string') {
           throw new ConflictException("Le décompte de cet effet ne dit plus sa banque · annulez-le, puis déclarez l'impayé.");
         }
+        // Le journal figé au décompte est RELU (premier tour, m10) · mis en
+        // sommeil depuis, le refus dit l'issue. Le compte crédité reste celui
+        // qui a reçu le net, figé · c'est lui que la banque reprend.
+        try {
+          await this.banque(tenantId, detail.journalBanqueId);
+        } catch (err) {
+          const message = err instanceof BadRequestException || err instanceof NotFoundException ? (err.getResponse() as { message?: string }).message ?? err.message : String(err);
+          throw new BadRequestException(`La banque du décompte ne peut plus reprendre les fonds · ${message} Annulez le décompte, repassez-le sur la banque qui reprend, puis déclarez l'impayé.`);
+        }
         repriseBanque = { compteCreditEscompteId: decompte.compte.id, compteBanqueId: detail.compteBanqueId };
         journalId = detail.journalBanqueId;
       }
@@ -447,12 +496,18 @@ export class EffetsService {
   async bonAPayer(tenantId: string, userId: string, id: string, dto: BonAPayerDto) {
     const e = await this.effetVivant(tenantId, id);
     const date = this.dateJugee(e, NatureActeEffet.BON_A_PAYER, dto.date);
+    // Sans pièce, mais daté dans un exercice OUVERT (premier tour, m6) · un
+    // bon daté d'une année fausse enfermait le paiement derrière lui.
+    await this.exerciceDeLaDate(tenantId, date, "de l'acte « Bon à payer »");
+    const reference = typeof dto.referencePiece === 'string' ? dto.referencePiece.trim() : '';
+    if (dto.referencePiece !== undefined && reference.length === 0) throw new BadRequestException('La référence du bon à payer est vide · omettez-la, ou écrivez-la.');
     const statut = statutApresActes(e.sens, [...this.naturesVivantes(e), NatureActeEffet.BON_A_PAYER]);
     const acte = await transactionJournalisee(this.prisma, async (tx) => {
+      await this.verrouillerEtRelire(tx, tenantId, e);
       const prise = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
       if (prise.count !== 1) throw new ConflictException(`Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`);
       return tx.acteEffet.create({
-        data: { tenantId, effetId: e.id, nature: NatureActeEffet.BON_A_PAYER, date: aMinuit(date), montant: e.montant, detail: dto.referencePiece ? { referencePiece: dto.referencePiece.trim() } : undefined, createdBy: userId },
+        data: { tenantId, effetId: e.id, nature: NatureActeEffet.BON_A_PAYER, date: aMinuit(date), montant: e.montant, detail: reference ? { referencePiece: reference } : undefined, createdBy: userId },
         select: { id: true },
       });
     });
@@ -497,6 +552,7 @@ export class EffetsService {
       userId,
       { exerciceId: exercice.id, journalId: a.journalId, date: a.date, libelle: a.libelle, reference: a.reference.slice(0, 190), lignes: a.lignes },
       async (tx, ecriture) => {
+        await this.verrouillerEtRelire(tx, tenantId, e);
         const prise = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
         if (prise.count !== 1) throw new ConflictException(`Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`);
         return tx.acteEffet.create({
@@ -546,6 +602,7 @@ export class EffetsService {
     const statut = statutApresActes(e.sens, vivants.filter((a) => a.id !== acte.id).map((a) => a.nature));
     const ecritureId = acte.ecriture?.id ?? null;
     return transactionJournalisee(this.prisma, async (tx) => {
+      await this.verrouillerEtRelire(tx, tenantId, e);
       const prise = await tx.acteEffet.updateMany({ where: { id: acte.id, tenantId, effetId: e.id, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif } });
       if (prise.count !== 1) throw new ConflictException("Cet acte n'est plus annulable · relisez l'effet.");
       const negatif = ecritureId ? await this.retirerOuContrePasser(tx, tenantId, userId, acte.id, ecritureId, `de l'acte « ${LIBELLES_ACTE[acte.nature]} »`, `Annulation · ${LIBELLES_ACTE[acte.nature]} de l'effet ${e.reference}`, motif) : null;
@@ -610,8 +667,35 @@ export class EffetsService {
     const j = await this.prisma.journal.findFirst({ where: { id: journalId, tenantId }, select: { id: true, code: true, type: true, estActif: true, compteTresorerie: { select: { id: true, numero: true } } } });
     if (!j) throw new NotFoundException('Journal de banque introuvable pour ce dossier.');
     if (j.type !== TypeJournal.TRESORERIE || !j.compteTresorerie) throw new BadRequestException(`Le journal ${j.code} n'est pas un journal de trésorerie qui porte son compte.`);
+    // LA BANQUE SEULE (premier tour, M2) · un effet de commerce est domicilié en
+    // banque (fiches des comptes 51 et 56 · le banquier encaisse, escompte,
+    // reprend) ; sur une caisse, le paiement échappait à « une caisse ne paie
+    // que ce qu'elle contient ». Payé en espèces, l'effet se saisit au journal.
+    if (!j.compteTresorerie.numero.startsWith('52')) {
+      throw new BadRequestException(`Le journal ${j.code} ne porte pas un compte de banque (52) · les actes d'un effet de commerce passent par la banque qui le domicilie.`);
+    }
     if (!j.estActif) throw new BadRequestException(`Le journal ${j.code} est en sommeil.`);
     return { ...j, compteTresorerie: j.compteTresorerie };
+  }
+
+  /**
+   * LE VERROU DE L'EFFET, ET SES ACTES RELUS (premier tour, M1 · relecture
+   * adverse). Le `updateMany` filtré sur le statut lu ne voyait pas le geste
+   * concurrent qui GARDE le statut · deux décomptes du même escompte passaient
+   * tous deux (52 et 565 doublés, balance bouclée), et une annulation croisée
+   * avec un décompte laissait un décompte vivant sur un effet « en
+   * portefeuille ». La ligne de l'effet est prise `FOR UPDATE` en tête de la
+   * transaction (le second geste attend le premier), puis les actes vivants
+   * sont relus et confrontés à la lecture qui a jugé le geste · changés, 409.
+   */
+  private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, e: EffetLu) {
+    await tx.$queryRaw`SELECT id FROM "effets_de_commerce" WHERE id = ${e.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    const vivants = await tx.acteEffet.findMany({ where: { tenantId, effetId: e.id, annuleLe: null }, select: { id: true } });
+    const lus = e.actes.filter((a) => !a.annuleLe).map((a) => a.id).sort();
+    const relus = vivants.map((a) => a.id).sort();
+    if (lus.length !== relus.length || lus.some((id, i) => id !== relus[i])) {
+      throw new ConflictException("Les actes de cet effet ont changé pendant le geste (un autre geste vient de passer) · relisez l'effet avant de recommencer.");
+    }
   }
 
   private async exerciceDeLaDate(tenantId: string, date: string, objet: string) {

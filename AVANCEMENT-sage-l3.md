@@ -210,13 +210,34 @@ financements, placements.
 - #39 · docs · `features.csv` (39 en yes), `build-log.md`, `architecture.md`
   (D13), tables 05 (M5-24, M5-47), 13 (M13-6, M13-12, M13-67), 14 (M14-19),
   06 (M6-38, M6-128) ; paragraphe « Effets de commerce » au § 6 de CLAUDE.md.
+- #39 · premier tour de relecture (trois relecteurs, aucun BLOQUANT) ·
+  serveur · liste bornée aux effets EN COURS ou nés dans l'exercice (M3, un
+  escompté né en N se lit en N+1 après la clôture, gelé par le scénario
+  navigateur) ; décompte, annulation et bon à payer sous `SELECT … FOR
+  UPDATE` de l'effet, actes relus, 409 nommé si un autre geste est passé
+  (M1) ; la banque du décompte, de l'encaissement et de l'impayé est un
+  journal de trésorerie sur un 52, la caisse refusée (M2) ; une facture datée
+  APRÈS l'acceptation refusée (un effet règle une facture antérieure), lignes
+  figées refusées par `refuserSiLignesFigees`, lignes au brouillard comptées
+  et dites (m5) ; le rôle TIERS n'offre jamais un collectif (M2 bis), et au
+  SYCEBNL son motif est celui du portefeuille (m6) ; bon à payer daté dans un
+  exercice ouvert, référence blanche refusée (m6 bis) ; un lettrage manqué
+  rend un 400 nommé, jamais un effet accepté sans que l'écran le sache ;
+  l'imputation des paiements date aussi par `dateDuReglement` (TVA à
+  l'échéance, gelé par `tva-echeance-effet.spec.ts`). Écran · les lignes
+  ouvertes se lisent sous les noms que `/reglements/echeances` sert
+  (`montant`, `echeance` · lues sous d'autres noms, le montant s'affichait
+  « · », même défaut corrigé sur `RemisesPage`) ; lignes illisibles,
+  l'effet s'accepte SANS lettrage et l'écran le dit ; « Codes journaux »,
+  « Plan des tiers » nommés ; factures au brouillard dites à l'acceptation.
+  `casse-en-silence.spec.ts` · `effetCommerce` retiré des détenteurs (c'est
+  `acteEffet` qui retient). Scénario navigateur rejoué vert (deux tests).
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #39 · `test-plan.md` (lignes F39) une fois le second passage du scénario
-  vert, deux tours de relecture, commit et push.
+- #39 · second tour de relecture, puis relevés en attente à la fiche.
 - #45 · liste et édition chaînée des extraits (`rapprochement/`).
 - #46 · conditions bancaires par RIB, autorisations de financement, unions
   de comptes (`banques/`).
