@@ -916,6 +916,10 @@ model Tenant {
   remisesEnBanque                      RemiseEnBanque[]
   effetsCommerce                       EffetCommerce[]
   actesEffet                           ActeEffet[]
+  tauxReference                        TauxReference[]
+  coursTauxReference                   CoursTauxReference[]
+  operationsTresorerie                 OperationTresorerie[]
+  actesOperationTresorerie             ActeOperationTresorerie[]
   annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
@@ -1464,14 +1468,18 @@ model Compte {
   lignesLotVirement LigneLotVirement[]
 
   /// Compte de passage (585) d'un sens de virement de fonds · virement-fonds/.
-  virementFonds         CompteVirementFonds?
-  typesRemiseReception  TypeRemise[]         @relation("TypeRemiseCompteReception")
-  typesRemiseTransit    TypeRemise[]         @relation("TypeRemiseCompteTransit")
-  typesRemiseCommission TypeRemise[]         @relation("TypeRemiseCompteCommission")
-  valeursRecues         ValeurRecue[]
-  effetsTiers           EffetCommerce[]      @relation("EffetCommerceCompteTiers")
-  effetsPortefeuille    EffetCommerce[]      @relation("EffetCommerceCompteEffet")
-  actesEffet            ActeEffet[]          @relation("ActeEffetCompte")
+  virementFonds                 CompteVirementFonds?
+  typesRemiseReception          TypeRemise[]          @relation("TypeRemiseCompteReception")
+  typesRemiseTransit            TypeRemise[]          @relation("TypeRemiseCompteTransit")
+  typesRemiseCommission         TypeRemise[]          @relation("TypeRemiseCompteCommission")
+  valeursRecues                 ValeurRecue[]
+  effetsTiers                   EffetCommerce[]       @relation("EffetCommerceCompteTiers")
+  effetsPortefeuille            EffetCommerce[]       @relation("EffetCommerceCompteEffet")
+  actesEffet                    ActeEffet[]           @relation("ActeEffetCompte")
+  operationsTresoreriePrincipal OperationTresorerie[] @relation("OperationTresoreriePrincipal")
+  operationsTresorerieInterets  OperationTresorerie[] @relation("OperationTresorerieInterets")
+  operationsTresorerieCourus    OperationTresorerie[] @relation("OperationTresorerieCourus")
+  operationsTresorerieFrais     OperationTresorerie[] @relation("OperationTresorerieFrais")
 
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
@@ -1543,6 +1551,9 @@ model Journal {
   paiementsSalaires         PaiementSalaires[]
   // Ligne sage-l2 · le journal de trésorerie qu'un mode de règlement propose.
   modesReglement            ModeReglement[]
+
+  operationsTresorerieBanque OperationTresorerie[] @relation("OperationTresorerieBanque")
+  operationsTresorerieOd     OperationTresorerie[] @relation("OperationTresorerieOd")
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1870,6 +1881,8 @@ model Exercice {
   paiementsSalaires                    PaiementSalaires[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
 
+  actesOperationTresorerie ActeOperationTresorerie[]
+
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
 }
@@ -2151,6 +2164,8 @@ model Ecriture {
   /// pièce porte, et son inscription en négatif à l'annulation.
   acteEffet                       ActeEffet?                          @relation("ActeEffetEcriture")
   acteEffetNegatif                ActeEffet?                          @relation("ActeEffetNegatif")
+  acteTresorerie                  ActeOperationTresorerie?            @relation("ActeTresorerieEcriture")
+  acteTresorerieNegatif           ActeOperationTresorerie?            @relation("ActeTresorerieNegatif")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
   paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
@@ -11989,4 +12004,155 @@ model ActeEffet {
 
   @@index([tenantId, effetId])
   @@map("actes_effet")
+}
+
+// ---- Ligne sage-l3, fonction 47 · financements et placements (décision D16) ----
+
+enum TypeOperationTresorerie {
+  FINANCEMENT
+  PLACEMENT
+}
+
+enum ModeInteretsTresorerie {
+  POST_COMPTES
+  PRECOMPTES
+}
+
+enum StatutOperationTresorerie {
+  EN_COURS
+  ECHUE
+  ANNULEE
+}
+
+enum NatureActeTresorerie {
+  MISE_EN_PLACE
+  REGULARISATION
+  CONTRE_PASSATION
+  ECHEANCE
+}
+
+/// UN TAUX DE RÉFÉRENCE (Sage, F_TAUXREFERENCE) · ses cours se DÉCLARENT
+/// avec leur source, aucun ne se présume. Il ne se retire pas tant qu'une
+/// opération le porte (RESTRICT).
+model TauxReference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  code      String   @db.VarChar(10)
+  intitule  String   @db.VarChar(60)
+  createdAt DateTime @default(now())
+
+  cours      CoursTauxReference[]
+  operations OperationTresorerie[]
+
+  @@unique([tenantId, code])
+  @@map("taux_reference")
+}
+
+/// UN COURS DU TAUX À UNE DATE (Sage, F_HISTOTAUXREFERENCE) · source exigée
+/// (publication de la Banque centrale, avis de la banque). Un cours retenu
+/// par une mise en place ne se retire pas (RESTRICT).
+model CoursTauxReference {
+  id              String        @id @default(uuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  tauxReferenceId String
+  tauxReference   TauxReference @relation(fields: [tauxReferenceId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  valeur          Decimal       @db.Decimal(9, 6)
+  source          String        @db.VarChar(200)
+  createdBy       String
+  createdAt       DateTime      @default(now())
+
+  operations OperationTresorerie[]
+
+  @@unique([tauxReferenceId, date])
+  @@index([tenantId, tauxReferenceId])
+  @@map("cours_taux_reference")
+}
+
+/// UNE OPÉRATION DE TRÉSORERIE (Sage, F_OPFINANCEMENT, F_OPPLACEMENT) · le
+/// crédit de trésorerie au 561, le dépôt à terme au 525 ou au 2784 (fiches
+/// des comptes 52 et 56) ; le taux appliqué est FIGÉ à la mise en place.
+model OperationTresorerie {
+  id                    String                    @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                    @relation(fields: [tenantId], references: [id])
+  type                  TypeOperationTresorerie
+  reference             String                    @db.VarChar(60)
+  journalBanqueId       String
+  journalBanque         Journal                   @relation("OperationTresorerieBanque", fields: [journalBanqueId], references: [id], onDelete: Restrict)
+  journalOdId           String
+  journalOd             Journal                   @relation("OperationTresorerieOd", fields: [journalOdId], references: [id], onDelete: Restrict)
+  comptePrincipalId     String
+  comptePrincipal       Compte                    @relation("OperationTresoreriePrincipal", fields: [comptePrincipalId], references: [id], onDelete: Restrict)
+  compteInteretsId      String
+  compteInterets        Compte                    @relation("OperationTresorerieInterets", fields: [compteInteretsId], references: [id], onDelete: Restrict)
+  compteCourusId        String?
+  compteCourus          Compte?                   @relation("OperationTresorerieCourus", fields: [compteCourusId], references: [id], onDelete: Restrict)
+  compteFraisId         String?
+  compteFrais           Compte?                   @relation("OperationTresorerieFrais", fields: [compteFraisId], references: [id], onDelete: Restrict)
+  dateMiseEnPlace       DateTime                  @db.Date
+  dateEcheance          DateTime                  @db.Date
+  montant               Decimal                   @db.Decimal(18, 2)
+  tauxFixe              Decimal?                  @db.Decimal(9, 6)
+  tauxReferenceId       String?
+  tauxReference         TauxReference?            @relation(fields: [tauxReferenceId], references: [id], onDelete: Restrict)
+  marge                 Decimal?                  @db.Decimal(9, 6)
+  coursRetenuId         String?
+  coursRetenu           CoursTauxReference?       @relation(fields: [coursRetenuId], references: [id], onDelete: Restrict)
+  /// Le taux annuel appliqué, figé à la mise en place (fixe, ou cours en vigueur plus la marge).
+  tauxApplique          Decimal                   @db.Decimal(9, 6)
+  baseCalcul            Int
+  modeInterets          ModeInteretsTresorerie
+  frais                 Decimal?                  @db.Decimal(18, 2)
+  deblocableAToutMoment Boolean?
+  referenceConvention   String                    @db.VarChar(100)
+  dateConvention        DateTime                  @db.Date
+  statut                StatutOperationTresorerie @default(EN_COURS)
+  createdBy             String
+  createdAt             DateTime                  @default(now())
+
+  actes ActeOperationTresorerie[]
+
+  @@index([tenantId, statut])
+  @@index([tenantId, dateEcheance])
+  @@map("operations_tresorerie")
+}
+
+/// UN ACTE, UNE PIÈCE · mise en place et échéance au journal de banque,
+/// régularisation au dernier jour de l'exercice et contre-passation au
+/// premier jour du suivant, au journal d'opérations diverses. L'annulation va
+/// À REBOURS, au brouillard retirée, validée inscrite en NÉGATIF (AUDCIF
+/// art. 20, al. 2) · la pièce et son négatif restent liés (RESTRICT, détenteurs).
+model ActeOperationTresorerie {
+  id                String                    @id @default(uuid())
+  tenantId          String
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id])
+  operationId       String
+  operation         OperationTresorerie       @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  nature            NatureActeTresorerie
+  date              DateTime                  @db.Date
+  exerciceId        String
+  exercice          Exercice                  @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  /// Les intérêts portés par l'acte · déclarés (décompte de la banque) ou la part rattachée à l'exercice.
+  montantInterets   Decimal                   @db.Decimal(18, 2)
+  /// L'intérêt que les conditions donnent · une PROPOSITION gardée pour dire l'écart.
+  interetsProposes  Decimal?                  @db.Decimal(18, 2)
+  regularisationId  String?
+  regularisation    ActeOperationTresorerie?  @relation("ContrePassationDeLaRegularisation", fields: [regularisationId], references: [id], onDelete: Restrict)
+  contrePassations  ActeOperationTresorerie[] @relation("ContrePassationDeLaRegularisation")
+  ecritureId        String?                   @unique
+  ecriture          Ecriture?                 @relation("ActeTresorerieEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId String?                   @unique
+  ecritureNegatif   Ecriture?                 @relation("ActeTresorerieNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  annuleLe          DateTime?
+  annulePar         String?
+  motifAnnulation   String?                   @db.VarChar(500)
+  createdBy         String
+  createdAt         DateTime                  @default(now())
+
+  @@index([tenantId, operationId])
+  @@index([tenantId, exerciceId])
+  @@map("actes_operation_tresorerie")
 }

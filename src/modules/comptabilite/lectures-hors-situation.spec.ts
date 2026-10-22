@@ -261,6 +261,13 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/effets/effets.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/effets/effets.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/effets/effets.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne sage-l3, fonction 47 · les financements et placements, mêmes
+  // lectures par identifiant (la pièce de la régularisation relue pour sa
+  // contre-passation, la pièce d'un acte relue avant et dans son annulation).
+  { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'contrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   // Second tour (b) · la lecture structurelle ne prend plus le statut du
   // lettrage, de l'exercice ou d'une variable hors de sa position de filtre ·
   // ces lectures, admises jusque-là par un mot, sont rangées à leur motif.

@@ -133,8 +133,10 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // annulés, borné par son tenantId (même fonction, second tour) ; 190 avec
     // les effets de commerce et leurs actes (ligne sage-l3, fonction 39).
     // 194 avec les conditions bancaires, les autorisations de financement, les
-    // unions de comptes et leurs éléments (ligne sage-l3, fonction 46).
-    expect(modeles).toHaveLength(194);
+    // unions de comptes et leurs éléments (ligne sage-l3, fonction 46) ;
+    // 198 avec les taux de référence, leurs cours, les financements et
+    // placements et leurs actes (ligne sage-l3, fonction 47).
+    expect(modeles).toHaveLength(198);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

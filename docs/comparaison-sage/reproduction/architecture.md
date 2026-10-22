@@ -195,6 +195,42 @@ journal `build-log.md`.
   calcule ; une position dont un solde n'est pas lu est « non calculée ».
   Un RIB (et sa banque) qui porte ces déclarations ne se retire pas · refus
   nommé avant la clé RESTRICT.
+- **D16 · Financements, placements, OPCVM · chaque opération à son compte,
+  chaque intérêt à son exercice (n° 47).** Le CRÉDIT DE TRÉSORERIE va au
+  561, « deux ans au plus » (fiche du compte 56 des deux plans), ses
+  intérêts au 6745 (fiche du compte 67), ses frais au 631, jamais au 67
+  (« commissions et courtages bancaires » exclus), ses intérêts courus au
+  566 ; ANOMALIE DU TEXTE écrite · l'exclusion du même 561 renvoie au 16
+  (au 18 du SYCEBNL) « les prêts bancaires à plus d'un an » · OmegaX admet
+  deux ans au plus et AVERTIT au-delà d'un an. Le DÉPÔT À TERME va au 525
+  s'il se débloque « à tout moment », au 2784 si l'entité ne peut le
+  débloquer « sur une durée supérieure à un an » (fiche du compte 52), ses
+  intérêts au 771 ou au 774 (fiche du compte 77), ses courus au 5267 (le
+  texte transcrit écrit 5265 « en devises », le plan semé gouverne,
+  anomalie écrite). L'INTÉRÊT SE DÉCLARE sur le décompte de la banque
+  (AUDCIF art. 17, 3° ; art. 22, 7°) · OmegaX propose montant × taux ×
+  jours / base et dit l'écart, jamais imposé ; le taux de référence et ses
+  cours se DÉCLARENT avec leur source, le taux appliqué est FIGÉ à la mise
+  en place (sa révision au suivi). LA CLÔTURE RATTACHE L'INTÉRÊT À SON
+  EXERCICE (postulat de spécialisation, SYCEBNL cadre conceptuel
+  § 3.3.1.2.3 ; AUDCIF Titre I) · la part courue des intérêts post-comptés
+  (566 ou 5267) ou la part non courue des précomptés (476 ou 477, fiche du
+  compte 47) se passe au dernier jour, PROPOSÉE au prorata des jours
+  (convention d'OmegaX), contre-passée au premier jour de l'exercice
+  suivant (fiches des comptes 40 et 41) ; l'échéance de N+1 est REFUSÉE tant
+  qu'une régularisation de N n'est pas contre-passée, sans quoi l'intérêt
+  pèserait deux fois. Chaque geste une pièce, annulée à rebours (AUDCIF
+  art. 20, al. 2). Rien en devise (refus nommé, le change se passe à la
+  main). LES OPCVM sont des TITRES DE PLACEMENT (AUDCIF Titre VIII ch. 13
+  § 1.1, « les parts d'OPCVM (SICAV et FCP) ») · au compte 50 que le cabinet
+  choisit, au coût d'acquisition, frais dans un sous-compte du 50 (§ 2.3.2) ;
+  la cession sort au coût P.E.P.S. (§ 4, fiche du compte 50 des deux plans ·
+  le C.U.M.P. que le § 4 admet aussi n'est pas servi, au suivi), gain au
+  777, perte au 677 (§ 4.2) ; à l'inventaire, la valeur liquidative
+  déclarée avec sa source (§ 3.2 · cours moyen du dernier mois pour un titre
+  coté, valeur probable de négociation sinon, PROPOSÉE), la moins-value
+  dépréciée au 590 par le 6795, reprise au 7795, sans compensation entre
+  titres ; seul l'écart avec la dépréciation en place se passe.
 
 ## Les fonctions, leur place et leur ligne
 

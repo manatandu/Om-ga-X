@@ -130,6 +130,12 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // le 402 sans sa contrepartie, et l'effet se dirait toujours en portefeuille.
   'ActeEffet.ecritureId',
   'ActeEffet.ecritureNegatifId',
+  // L'acte d'un financement ou d'un placement (ligne sage-l3, fonction 47 ·
+  // tresorerie/) et son négatif · retirée seule, la mise en place laisserait
+  // le 561 ou le 525 sans contrepartie, et la régularisation des intérêts
+  // courus se dirait passée sans la pièce qui porte le 566 ou le 476.
+  'ActeOperationTresorerie.ecritureId',
+  'ActeOperationTresorerie.ecritureNegatifId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)

@@ -176,6 +176,14 @@ export const MODELES_AUDITES = new Set<string>([
   'AutorisationFinancement',
   'UnionComptesBancaires',
   'ElementUnionComptesBancaires',
+  // Ligne sage-l3, fonction 47 · les taux de référence et leurs cours déclarés
+  // avec leur source, les financements et placements, et chacun de leurs actes
+  // (mise en place, régularisation, contre-passation, échéance) avec
+  // l'annulation et son motif.
+  'TauxReference',
+  'CoursTauxReference',
+  'OperationTresorerie',
+  'ActeOperationTresorerie',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',

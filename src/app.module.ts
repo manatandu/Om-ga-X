@@ -43,6 +43,7 @@ import { ReglementsModule } from './modules/reglements/reglements.module';
 import { VirementsFondsModule } from './modules/virements-fonds/virements-fonds.module';
 import { RemisesModule } from './modules/remises/remises.module';
 import { EffetsModule } from './modules/effets/effets.module';
+import { TresorerieModule } from './modules/tresorerie/tresorerie.module';
 import { RetenuesModule } from './modules/retenues/retenues.module';
 import { ExonerationsModule } from './modules/exonerations/exonerations.module';
 import { InventaireModule } from './modules/inventaire/inventaire.module';
@@ -126,6 +127,7 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     VirementsFondsModule,
     RemisesModule,
     EffetsModule,
+    TresorerieModule,
     RetenuesModule,
     ExonerationsModule,
     InventaireModule,

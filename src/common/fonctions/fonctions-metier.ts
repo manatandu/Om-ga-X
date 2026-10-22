@@ -58,6 +58,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   BanquesController: FonctionMetier.STRUCTURE,
   // Ligne sage-l3, fonction 46 · conditions, autorisations et unions des comptes bancaires.
   ConditionsBancairesController: FonctionMetier.STRUCTURE,
+  TauxReferenceController: FonctionMetier.STRUCTURE,
   EtatsPersonnalisesController: FonctionMetier.REVISION,
   SimulationsController: FonctionMetier.REVISION,
   TenantController: FonctionMetier.STRUCTURE,
@@ -86,6 +87,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   RemisesController: FonctionMetier.TRESORERIE,
   // Ligne sage-l3, fonction 39 · effets de commerce.
   EffetsController: FonctionMetier.TRESORERIE,
+  OperationsTresorerieController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et

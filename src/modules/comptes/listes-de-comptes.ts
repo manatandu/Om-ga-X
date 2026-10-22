@@ -87,7 +87,14 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       "Les comptes d'un effet de commerce sont ceux que les fiches des comptes 40, 41, 51, 56, 63 et 67 de l'AUDCIF prescrivent (412 ou 402 en " +
       'portefeuille, 512 à l’encaissement, 415 escompté, 564 ou 565 au crédit d’escompte, 675 pour les frais, 6312 pour la commission, 4132 pour ' +
       'l’impayé), seules racines admises par le serveur, et l’acceptation en est souvent le premier mouvement · la règle viderait la liste.',
+  },  '/operations-tresorerie/comptes': {
+    regime: 'texte',
+    motif:
+      "Les comptes d'un financement ou d'un placement sont ceux que les fiches des comptes 52, 56, 63, 67 et 77 des deux plans prescrivent (561 au " +
+      'crédit de trésorerie, 525 ou 2784 au dépôt à terme, 6745, 771 ou 774 pour les intérêts, 566 ou 5267 pour les intérêts courus, 631 pour les ' +
+      'frais), seules racines admises par le serveur, et la mise en place en est souvent le premier mouvement · la règle viderait la liste.',
   },
+
   '/reglements/comptes-escompte-ecart': {
     regime: 'texte',
     motif:
