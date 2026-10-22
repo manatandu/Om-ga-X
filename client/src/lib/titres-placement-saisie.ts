@@ -29,6 +29,8 @@ export interface CorpsMouvement {
 export function corpsMouvement(c: ChampsMouvement): Corps<CorpsMouvement> {
   if (!c.journalBanqueId) return { refus: 'Choisissez le journal de banque qui a passé l’opération.' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(c.date)) return { refus: 'La date de l’avis d’opéré est exigée.' };
+  // « 1.000 » n'est jamais lu 1 part · au point des milliers, le nombre est ambigu et refusé (la revue multiplierait la valeur par 1 au lieu de 1 000).
+  if (/^\d{1,3}(\.\d{3})+$/.test(c.quantite.replace(/[\s\u00a0\u202f]/g, ''))) return { refus: 'Nombre de parts ambigu · écrivez 1 000 ou 1000 (le point ne sépare pas les milliers), ou 12,5 pour une fraction.' };
   const q = lireNombre(c.quantite, 'taux');
   if (!('valeur' in q) || q.valeur <= 0) return { refus: 'Le nombre de parts · un nombre positif, par exemple 10 ou 12,5.' };
   const prix = lireNombre(c.prix, 'montant');

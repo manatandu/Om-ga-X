@@ -111,7 +111,10 @@ export function FinancementsPlacementsPage() {
   const [liste, setListe] = useState<Liste | null>(null);
   const [journaux, setJournaux] = useState<JournalServi[] | null>(null);
   const [taux, setTaux] = useState<TauxServi[] | null>(null);
+  // Deux erreurs · celle d'un GESTE (refus, réponse perdue) reste jusqu'au geste suivant ; celle de la LECTURE suit la dernière lecture.
+  // Une seule les confondait · le rechargement qui suit une réponse perdue effaçait « le geste a pu passer » aussitôt affiché.
   const [erreur, setErreur] = useState<string | null>(null);
+  const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const bandeauErreur = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -124,25 +127,24 @@ export function FinancementsPlacementsPage() {
   const charger = useCallback(async () => {
     const n = ++jeton.current;
     const garde = () => n === jeton.current && exerciceId === exerciceAffiche.current;
-    try {
-      const [j, t] = await Promise.all([api.get<JournalServi[]>('/journaux'), api.get<{ taux: TauxServi[] }>('/taux-reference')]);
-      if (!garde()) return;
-      setJournaux(j);
-      setTaux(t.taux);
-      if (exerciceId) {
-        const l = await api.get<Liste>(`/operations-tresorerie?exerciceId=${exerciceId}`);
-        if (!garde()) return;
-        setListe(l);
-      }
-      setErreur(null);
-    } catch (err) {
-      if (garde()) setErreur(err instanceof ApiError ? err.message : 'Opérations illisibles');
-    }
+    // Trois lectures indépendantes, parties ensemble ; l'échec de l'une n'efface pas les deux autres.
+    const [j, t, l] = await Promise.allSettled([
+      api.get<JournalServi[]>('/journaux'),
+      api.get<{ taux: TauxServi[] }>('/taux-reference'),
+      exerciceId ? api.get<Liste>(`/operations-tresorerie?exerciceId=${exerciceId}`) : Promise.resolve(null),
+    ]);
+    if (!garde()) return;
+    if (j.status === 'fulfilled') setJournaux(j.value);
+    if (t.status === 'fulfilled') setTaux(t.value.taux);
+    if (l.status === 'fulfilled' && l.value) setListe(l.value);
+    const echec = [j, t, l].find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    setErreurLecture(echec ? (echec.reason instanceof ApiError ? echec.reason.message : 'Opérations illisibles') : null);
   }, [exerciceId]);
   useEffect(() => {
     setListe(null);
     setInfo(null);
     setErreur(null);
+    setErreurLecture(null);
     void charger();
   }, [charger]);
 
@@ -191,6 +193,11 @@ export function FinancementsPlacementsPage() {
           {erreur}
         </div>
       )}
+      {erreurLecture && (
+        <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+          {erreurLecture}
+        </div>
+      )}
       <div role="status" aria-live="polite">
         {info && <div className="text-ok bg-ok-soft border border-ok/30 px-3 py-2">{info}</div>}
       </div>
@@ -205,7 +212,7 @@ export function FinancementsPlacementsPage() {
       {peutEcrire && exerciceId && !exerciceClos && (
         <FormMiseEnPlace banques={banques} journauxOd={journauxOd} taux={taux} journauxLus={journaux !== null} onFait={fait} onRefus={refus} onGarde={setGarde} />
       )}
-      {liste === null && exerciceId && !erreur && <div className="text-text-dim">Lecture des opérations…</div>}
+      {liste === null && exerciceId && !erreurLecture && <div className="text-text-dim">Lecture des opérations…</div>}
       {liste && (
         <section aria-labelledby="titre-operations" className="space-y-1">
           <h2 id="titre-operations" className="font-semibold">
@@ -268,12 +275,13 @@ export function FinancementsPlacementsPage() {
                                 Régulariser
                               </button>
                             )}
-                            {peutEcrire && o.statut === 'EN_COURS' && (
+                            {/* L'échéance attend la contre-passation, et ne se passe pas dans un exercice clôturé · le serveur le refuserait. */}
+                            {peutEcrire && !exerciceClos && o.statut === 'EN_COURS' && !o.contrePassationProposee && (
                               <button type="button" onClick={() => setEcheance(o)} className="px-2 py-[1px] border border-border">
                                 Échéance
                               </button>
                             )}
-                            {peutValider && dernier && o.statut !== 'ANNULEE' && (
+                            {peutValider && !exerciceClos && dernier && o.statut !== 'ANNULEE' && (
                               <button type="button" onClick={() => setAAnnuler({ op: o, acte: dernier })} className="px-2 py-[1px] border border-border text-danger">
                                 Annuler « {dernier.libelle} »
                               </button>

@@ -86,6 +86,9 @@ describe('operations-tresorerie · la déclaration', () => {
     expect(motifRefusOperation(base({ tauxFixe: null }), '56100000')).toMatch(/l'un des deux/);
     expect(motifRefusOperation(base({ tauxReferenceId: 'tr1' }), '56100000')).toMatch(/l'un des deux/);
     expect(motifRefusOperation(base({ tauxFixe: null, tauxReferenceId: 'tr1', marge: 2 }), '56100000')).toBeNull();
+    // Une marge oubliée n'est pas une marge nulle.
+    expect(motifRefusOperation(base({ tauxFixe: null, tauxReferenceId: 'tr1', marge: null }), '56100000')).toMatch(/marge est exigée/);
+    expect(motifRefusOperation(base({ tauxFixe: null, tauxReferenceId: 'tr1', marge: 0 }), '56100000')).toBeNull();
   });
   it('refuse un montant hors centime, une convention postérieure à la mise en place, une base autre que 360 ou 365', () => {
     expect(motifRefusOperation(base({ montant: 10.005 }), '56100000')).toMatch(/centime/);

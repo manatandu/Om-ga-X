@@ -21,3 +21,9 @@ describe('saisie d’un titre de placement', () => {
     expect(valeurUnitaireLue('0')).toEqual({ corps: 0 });
   });
 });
+
+describe('nombre de parts au point des milliers', () => {
+  it('« 1.000 » est refusé, jamais lu 1 part', () => {
+    expect(corpsMouvement({ journalBanqueId: 'j', date: '2026-03-02', quantite: '1.000', prix: '1 000', frais: '', reference: 'AO' })).toEqual({ refus: expect.stringMatching(/ambigu/) });
+  });
+});

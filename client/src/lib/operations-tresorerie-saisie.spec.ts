@@ -38,6 +38,10 @@ describe('operations-tresorerie-saisie', () => {
     expect('corps' in r && 'tauxReferenceId' in r.corps).toBe(false);
     expect('corps' in r && 'compteFraisId' in r.corps).toBe(false);
   });
+  it("une marge vide n'est pas zéro · refusée avec un taux de référence, 0 tapé accepté", () => {
+    expect(corpsOperation(champs({ taux: 'tr1', marge: '' }))).toEqual({ refus: expect.stringMatching(/marge est exigée/) });
+    expect(corpsOperation(champs({ taux: 'tr1', marge: '0' }))).toHaveProperty('corps.marge', 0);
+  });
   it('un taux de référence part avec sa marge, jamais avec un taux fixe', () => {
     const r = corpsOperation(champs({ taux: 'tr1', marge: '3,75', tauxFixe: '99' }));
     expect('corps' in r && r.corps).toMatchObject({ tauxReferenceId: 'tr1', marge: 3.75 });

@@ -40,7 +40,9 @@ const messageDuRefus = (err: unknown, defaut: string) =>
 export function TauxReferencePage() {
   const { estAdmin, peutValider } = useAuth();
   const [liste, setListe] = useState<Liste | null>(null);
+  // L'erreur d'un geste reste jusqu'au geste suivant ; celle de la lecture suit la dernière lecture.
   const [erreur, setErreur] = useState<string | null>(null);
+  const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const jeton = useRef(0);
   const charger = useCallback(async () => {
@@ -49,10 +51,10 @@ export function TauxReferencePage() {
       const l = await api.get<Liste>('/taux-reference');
       if (n === jeton.current) {
         setListe(l);
-        setErreur(null);
+        setErreurLecture(null);
       }
     } catch (err) {
-      if (n === jeton.current) setErreur(err instanceof ApiError ? err.message : 'Taux de référence illisibles');
+      if (n === jeton.current) setErreurLecture(err instanceof ApiError ? err.message : 'Taux de référence illisibles');
     }
   }, []);
   useEffect(() => {
@@ -113,11 +115,11 @@ export function TauxReferencePage() {
 
   return (
     <div className="p-3 space-y-3 text-[11.5px] avec-edition">
-      {erreur && (
-        <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
-          {erreur}
+      {[erreur, erreurLecture].filter(Boolean).map((m) => (
+        <div key={m} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+          {m}
         </div>
-      )}
+      ))}
       <div role="status" aria-live="polite">
         {info && <div className="text-ok bg-ok-soft border border-ok/30 px-3 py-2">{info}</div>}
       </div>
@@ -143,7 +145,7 @@ export function TauxReferencePage() {
           </button>
         </form>
       )}
-      {liste === null && !erreur && <div className="text-text-dim">Lecture des taux…</div>}
+      {liste === null && !erreurLecture && <div className="text-text-dim">Lecture des taux…</div>}
       {liste && liste.taux.length === 0 && <div className="text-text-dim">Aucun taux de référence dans ce dossier.</div>}
       {liste?.taux.map((t) => (
         <section key={t.id} aria-labelledby={`taux-${t.id}`} className="border border-border bg-surface p-3 space-y-2">

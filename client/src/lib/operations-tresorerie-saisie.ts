@@ -54,6 +54,8 @@ export function corpsOperation(c: ChampsOperation): Corps<Record<string, unknown
   const marge = lireNombre(c.marge);
   if (fixe && !('valeur' in tauxFixe)) return { refus: 'Le taux fixe est exigé (en pour cent, par exemple 12 ou 11,5).' };
   if (!fixe && 'illisible' in marge) return { refus: 'Marge illisible (en points de pour cent, par exemple 3,75).' };
+  // Une marge vide n'est pas zéro · le serveur la refuse aussi.
+  if (!fixe && c.taux && 'vide' in marge) return { refus: "La marge est exigée avec un taux de référence · tapez 0 s'il n'y en a pas." };
   if (!c.taux) return { refus: 'Choisissez un taux fixe ou un taux de référence.' };
   const base = lireNombre(c.baseCalcul);
   return {
@@ -67,7 +69,7 @@ export function corpsOperation(c: ChampsOperation): Corps<Record<string, unknown
       compteInteretsId: c.compteInteretsId,
       ...(c.compteCourusId ? { compteCourusId: c.compteCourusId } : {}),
       ...(c.compteFraisId ? { compteFraisId: c.compteFraisId } : {}),
-      ...(fixe ? { tauxFixe: valeur(tauxFixe) } : { tauxReferenceId: c.taux, marge: valeur(marge) ?? 0 }),
+      ...(fixe ? { tauxFixe: valeur(tauxFixe) } : { tauxReferenceId: c.taux, marge: valeur(marge) }),
       baseCalcul: valeur(base),
       montant: valeur(montant),
       frais: valeur(frais),

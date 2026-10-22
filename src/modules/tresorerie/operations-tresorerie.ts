@@ -150,6 +150,8 @@ export function motifRefusOperation(o: OperationSaisie, comptePrincipal: string)
   const reference2 = typeof o.tauxReferenceId === 'string' && o.tauxReferenceId !== '';
   if (fixe === reference2) return "L'opération porte un taux fixe OU un taux de référence plus une marge, l'un des deux.";
   if (fixe && (typeof o.tauxFixe !== 'number' || !Number.isFinite(o.tauxFixe) || o.tauxFixe < 0 || o.tauxFixe > 100)) return 'Le taux fixe · un taux annuel en pour cent, de 0 à 100.';
+  // Une marge oubliée n'est pas une marge nulle · le taux serait figé au taux de référence nu pour toute la vie de l'opération (null n'est pas zéro).
+  if (reference2 && (o.marge === null || o.marge === undefined)) return "La marge est exigée avec un taux de référence · tapez 0 s'il n'y en a pas.";
   if (reference2 && o.marge != null && (typeof o.marge !== 'number' || !Number.isFinite(o.marge) || Math.abs(o.marge) > 100)) return 'La marge · en points de pour cent, de -100 à 100.';
   if (o.baseCalcul !== 360 && o.baseCalcul !== 365) return 'La base de calcul des intérêts est de 360 ou de 365 jours.';
   if (!MODES_INTERETS.includes(o.modeInterets)) return 'Les intérêts sont post-comptés ou précomptés.';

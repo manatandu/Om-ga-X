@@ -107,7 +107,9 @@ export function TitresPlacementSection(p: {
   onGarde: (motif: string | null) => void;
 }) {
   const [liste, setListe] = useState<ListeTitres | null>(null);
+  // L'erreur d'un geste reste jusqu'au geste suivant ; celle de la lecture suit la dernière lecture (un rechargement réussi n'efface pas « le geste a pu passer »).
   const [erreur, setErreur] = useState<string | null>(null);
+  const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const jeton = useRef(0);
   const charger = useCallback(async () => {
@@ -116,14 +118,16 @@ export function TitresPlacementSection(p: {
       const l = await api.get<ListeTitres>(`/titres-placement?exerciceId=${p.exerciceId}`);
       if (n !== jeton.current) return;
       setListe(l);
-      setErreur(null);
+      setErreurLecture(null);
     } catch (err) {
-      if (n === jeton.current) setErreur(err instanceof ApiError ? err.message : 'Titres de placement illisibles');
+      if (n === jeton.current) setErreurLecture(err instanceof ApiError ? err.message : 'Titres de placement illisibles');
     }
   }, [p.exerciceId]);
   useEffect(() => {
     setListe(null);
     setInfo(null);
+    setErreur(null);
+    setErreurLecture(null);
     void charger();
   }, [charger]);
   const fait = async (m: string) => {
@@ -169,16 +173,16 @@ export function TitresPlacementSection(p: {
           source="AUDCIF Titre VIII ch. 13 § 1.1, § 2.3, § 3.2, § 4 et § 4.2 ; fiche du compte 50 des deux plans ; AUDCIF art. 17, 3° et art. 20, al. 2"
         />
       </div>
-      {erreur && (
-        <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
-          {erreur}
+      {[erreur, erreurLecture].filter(Boolean).map((m) => (
+        <div key={m} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+          {m}
         </div>
-      )}
+      ))}
       <div role="status" aria-live="polite">
         {info && <div className="text-ok bg-ok-soft border border-ok/30 px-3 py-2">{info}</div>}
       </div>
       {p.peutEcrire && ouvert && <FormTitre onFait={fait} onRefus={refus} onGarde={p.onGarde} />}
-      {liste === null && !erreur && <div className="text-text-dim">Lecture des titres…</div>}
+      {liste === null && !erreurLecture && <div className="text-text-dim">Lecture des titres…</div>}
       {liste && liste.titres.length === 0 && <div className="text-text-dim">Aucun titre de placement dans ce dossier.</div>}
       {liste && liste.titres.length > 0 && (
         <div className="overflow-x-auto">
@@ -272,7 +276,7 @@ export function TitresPlacementSection(p: {
       {historique && (
         <ModaleHistorique
           titre={historique}
-          peutValider={p.peutValider}
+          peutValider={p.peutValider && ouvert}
           onFermer={() => setHistorique(null)}
           onRelire={refus}
           onFait={async (m) => {
@@ -316,7 +320,8 @@ function FormTitre(p: { onFait: (m: string) => Promise<void>; onRefus: (err: unk
     // p.onGarde est stable (setter d'état du parent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entame]);
-  const pret = code.trim() !== '' && intitule.trim() !== '' && cote !== '' && compteTitreId !== '';
+  // Les comptes lus d'abord · « Au compte du titre » n'est un choix que sur une liste des frais LUE.
+  const pret = comptes !== null && code.trim() !== '' && intitule.trim() !== '' && cote !== '' && compteTitreId !== '';
   const creer = async (e: FormEvent) => {
     e.preventDefault();
     if (envoi || !pret) return;
@@ -372,7 +377,7 @@ function FormTitre(p: { onFait: (m: string) => Promise<void>; onRefus: (err: unk
       <label className="flex flex-col gap-0.5">
         <span className="text-text-dim">Compte des frais</span>
         <select value={compteFraisId} onChange={(e) => setCompteFraisId(e.target.value)} className="border border-border px-2 py-[2px] max-w-[260px]">
-          <option value="">Au compte du titre</option>
+          <option value="">{comptes === null ? (erreurComptes ? 'Comptes illisibles' : 'Lecture…') : 'Au compte du titre'}</option>
           {comptes?.FRAIS.comptes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.numero} · {c.intitule}
@@ -584,6 +589,17 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   useFermetureParEchap(() => (aAnnuler ? setAAnnuler(null) : p.onFermer()), envoi);
+  const cadre = useRef<HTMLDivElement>(null);
+  const champMotif = useRef<HTMLInputElement>(null);
+  useEffect(() => cadre.current?.focus({ preventScroll: true }), []);
+  useEffect(() => {
+    if (aAnnuler) champMotif.current?.focus({ preventScroll: true });
+  }, [aAnnuler]);
+  const choisir = (a: { chemin: string; resume: string }) => {
+    setMotif('');
+    setErreur(null);
+    setAAnnuler(a);
+  };
   const dernierMouvement = [...p.titre.mouvements].reverse().find((m) => !m.annuleLe) ?? null;
   const derniereRevue = [...p.titre.evaluations].reverse().find((e) => !e.annuleLe) ?? null;
   const annuler = async (e: FormEvent) => {
@@ -611,7 +627,8 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
       onFermer={p.onFermer}
       envoi={envoi}
       large
-      onSubmit={aAnnuler ? annuler : undefined}
+      focus={cadre}
+      onSubmit={annuler}
       enfants={
         <>
           {erreur && (
@@ -657,7 +674,7 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
                   </td>
                   <td className="px-2 py-1">
                     {p.peutValider && dernierMouvement?.id === m.id && !aAnnuler && (
-                      <button type="button" onClick={() => setAAnnuler({ chemin: `/titres-placement/${p.titre.id}/mouvements/${m.id}/annuler`, resume: `${m.libelle} du ${date(m.date)}` })} className="px-2 py-[1px] border border-border text-danger">
+                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/mouvements/${m.id}/annuler`, resume: `${m.libelle} du ${date(m.date)}` })} className="px-2 py-[1px] border border-border text-danger">
                         Annuler
                       </button>
                     )}
@@ -700,7 +717,7 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
                   </td>
                   <td className="px-2 py-1">
                     {p.peutValider && derniereRevue?.id === e.id && !aAnnuler && (
-                      <button type="button" onClick={() => setAAnnuler({ chemin: `/titres-placement/${p.titre.id}/revues/${e.id}/annuler`, resume: `La revue du ${date(e.date)}` })} className="px-2 py-[1px] border border-border text-danger">
+                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/revues/${e.id}/annuler`, resume: `La revue du ${date(e.date)}` })} className="px-2 py-[1px] border border-border text-danger">
                         Annuler
                       </button>
                     )}
@@ -714,7 +731,7 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
               <div>Annuler · {aAnnuler.resume}</div>
               <label className="flex flex-col gap-0.5">
                 <span className="text-text-dim">Motif</span>
-                <input autoFocus required minLength={3} maxLength={500} value={motif} onChange={(e) => setMotif(e.target.value)} className="border border-border px-2 py-[2px]" />
+                <input ref={champMotif} required minLength={3} maxLength={500} value={motif} onChange={(e) => setMotif(e.target.value)} className="border border-border px-2 py-[2px]" />
               </label>
             </div>
           )}
