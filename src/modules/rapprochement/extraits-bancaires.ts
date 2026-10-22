@@ -46,6 +46,9 @@ export interface TeteExtrait {
   soldeDepart: number | null;
   /** Total des mouvements du relevé, vu du compte (crédits moins débits de la banque). */
   mouvementsNet: number;
+  /** Sommes des débits et des crédits de la banque, au centime · confrontées aux lignes relues par l'édition. */
+  totalDebit: number;
+  totalCredit: number;
   /** Solde de départ plus mouvements moins solde imprimé · `null` sans solde de départ. */
   ecartReleve: number | null;
   nombreLignes: number;
@@ -146,6 +149,10 @@ export interface SelectionExtraits {
   au: Date | null;
 }
 
+/** Les années admises dans une borne de sélection · convention d'OmegaX, aucun relevé n'est hors de cette plage. */
+export const ANNEE_MIN_SELECTION = 1900;
+export const ANNEE_MAX_SELECTION = 9998;
+
 /**
  * Le refus d'une sélection illisible, nommé · une borne qui n'est pas un jour,
  * un « du » après le « au ». Le service refuse à part un compte qui n'est pas
@@ -158,10 +165,17 @@ export function motifRefusSelection(s: { compteIds?: string; du?: string; au?: s
   const estUnJour = (v: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
     const t = Date.parse(`${v}T00:00:00.000Z`);
-    return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+    if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== v) return false;
+    // Une année hors 1900 à 9998 est refusée nommée (second tour, constat
+    // mineur 2) · le lendemain du 31 décembre 9999 sort du format ISO à
+    // quatre chiffres, et la base le refuserait APRÈS la lecture de la liste.
+    const annee = Number(v.slice(0, 4));
+    return annee >= ANNEE_MIN_SELECTION && annee <= ANNEE_MAX_SELECTION;
   };
-  if (s.du !== undefined && s.du !== '' && !estUnJour(s.du)) return 'La borne « du » doit être un jour (AAAA-MM-JJ).';
-  if (s.au !== undefined && s.au !== '' && !estUnJour(s.au)) return 'La borne « au » doit être un jour (AAAA-MM-JJ).';
+  if (s.du !== undefined && s.du !== '' && !estUnJour(s.du))
+    return `La borne « du » doit être un jour (AAAA-MM-JJ), entre ${ANNEE_MIN_SELECTION} et ${ANNEE_MAX_SELECTION}.`;
+  if (s.au !== undefined && s.au !== '' && !estUnJour(s.au))
+    return `La borne « au » doit être un jour (AAAA-MM-JJ), entre ${ANNEE_MIN_SELECTION} et ${ANNEE_MAX_SELECTION}.`;
   if (s.du && s.au && s.du > s.au) return 'La borne « du » est postérieure à la borne « au ».';
   return null;
 }

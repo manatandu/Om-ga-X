@@ -183,6 +183,10 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
   expect((await telecharger(page, `/rapprochements/extraits/edition?compteIds=00000000-0000-4000-8000-000000000000`)).statut).toBe(404);
   expect((await telecharger(page, `/rapprochements/extraits/edition?au=${Number(annee) - 1}-01-01`)).statut).toBe(400);
   expect(await refusDe(appelApi(page, 'GET', `/rapprochements/extraits?compteId=00000000-0000-4000-8000-000000000000`))).toMatch(/404|introuvable/i);
+  // La liste prend les mêmes bornes que l'édition (second tour) · mars écarté, une borne illisible refusée.
+  const listeBornee = await appelApi<{ extraits: TeteExtrait[] }>(page, 'GET', `/rapprochements/extraits?du=${Number(annee) + 1}-01-01`);
+  expect(listeBornee.extraits.map((e) => e.rapprochementId)).toEqual([r2.id]);
+  expect(await refusDe(appelApi(page, 'GET', `/rapprochements/extraits?du=9999-12-31`))).toMatch(/400|1900/);
 
   // (8) La fenêtre · la liste par compte, les deux extraits, le bouton d'édition actif.
   await page.goto(`/#/extraits-bancaires`);
@@ -194,5 +198,7 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
   await page.getByLabel('Compte de banque').selectOption(banque.id);
   await expect(page.getByRole('table', { name: `Extraits du compte ${banque.numero}` })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Éditer les extraits de 1 compte(s)' })).toBeEnabled();
+  // Chaque ligne s'ouvre par un vrai bouton, dans sa cellule (second tour).
+  await expect(page.getByRole('button', { name: /^Ouvrir le rapprochement du relevé au / })).toHaveCount(2);
   expect(pannes).toEqual([]);
 });

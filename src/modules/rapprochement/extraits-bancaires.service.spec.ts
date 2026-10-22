@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ExtraitsBancairesService, LIMITE_EXTRAITS } from './extraits-bancaires.service';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { ExtraitsBancairesService, LIMITE_EXTRAITS, LOT_LIGNES_EXTRAIT } from './extraits-bancaires.service';
 import { MENTION_EXTRAIT, type SelectionExtraits } from './extraits-bancaires';
 import { LIGNE_ENTETE_FPM } from '../exports/presentation-fpm';
 import { departParmiLesClos } from './rapprochement.service';
@@ -102,16 +102,48 @@ const dansLaSelection = (where: Filtre) =>
     return true;
   });
 
-/** Les lignes d'un relevé, avec un identifiant, dans l'ordre du rang · la clé de la tranche (`apresLaCle`) est honorée. */
-const lignesDe = (where: Filtre) => {
+type LigneDoublure = (typeof LIGNES)[string][number];
+
+/**
+ * Les lignes d'un relevé, avec un identifiant, dans l'ordre (rang, id) · les
+ * DEUX branches de la clé de la tranche (`apresLaCle` · rang plus grand, ou
+ * même rang et identifiant plus grand) sont honorées (second tour, constat
+ * mineur 3).
+ */
+const lignesDe = (where: Filtre, source: Record<string, LigneDoublure[]> = LIGNES) => {
   const id = typeof where.rapprochementId === 'string' ? where.rapprochementId : '';
-  const toutes = (LIGNES[id] ?? []).map((l) => ({ ...l, id: `${id}-l${l.rang}` }));
-  const apres = where.OR?.[0]?.AND?.[0] as { rang?: { gt: number } } | undefined;
-  return apres?.rang ? toutes.filter((l) => l.rang > apres.rang!.gt) : toutes;
+  const toutes = (source[id] ?? [])
+    .map((l, k) => ({ ...l, id: `${id}-l${String(k).padStart(4, '0')}` }))
+    .sort((a, b) => a.rang - b.rang || (a.id < b.id ? -1 : 1));
+  const branches = (where.OR ?? []).map((b) => b.AND ?? []);
+  if (branches.length === 0) return toutes;
+  return toutes.filter((l) =>
+    branches.some((conditions) =>
+      conditions.every((c) => {
+        const [champ, valeur] = Object.entries(c)[0] as [keyof typeof l, unknown];
+        if (valeur !== null && typeof valeur === 'object' && 'gt' in (valeur as object)) return (l[champ] as never) > ((valeur as { gt: never }).gt);
+        return l[champ] === valeur;
+      }),
+    ),
+  );
 };
 
-function monter(options: { total?: number; comptesTrouves?: typeof C1[]; lignesRetirees?: string } = {}): Doublure {
+function monter(
+  options: {
+    total?: number;
+    comptesTrouves?: typeof C1[];
+    lignesRetirees?: string;
+    /** Lignes qui remplacent celles d'un relevé, pour tout le monde (liste comme édition). */
+    lignes?: Record<string, LigneDoublure[]>;
+    /** Ce que l'ÉDITION relit, quand le relevé a changé après la liste. */
+    lignesRelues?: Record<string, LigneDoublure[]>;
+    /** La tête relue par l'édition · un relevé réimporté entre la liste et sa feuille. */
+    reimporte?: string;
+  } = {},
+): Doublure {
   const identites: unknown[] = [];
+  const source = { ...LIGNES, ...(options.lignes ?? {}) };
+  const relues = { ...source, ...(options.lignesRelues ?? {}) };
   const prisma = {
     rapprochementBancaire: {
       // Le décompte honore le filtre de la SÉLECTION · `total` ne vaut que pour
@@ -123,11 +155,16 @@ function monter(options: { total?: number; comptesTrouves?: typeof C1[]; lignesR
         for (const r of RAPPROCHEMENTS) parCompte.set(r.compteId, (parCompte.get(r.compteId) ?? 0) + 1);
         return [...parCompte.entries()].map(([compteId, n]) => ({ compteId, _count: { _all: n } }));
       }),
+      findFirst: jest.fn(async ({ where }: { where: { tenantId: string; id: string } }) => {
+        const r = RAPPROCHEMENTS.find((x) => x.id === where.id && x.tenantId === where.tenantId);
+        if (!r) return null;
+        return options.reimporte === r.id ? { ...r, releveImporteLe: new Date('2026-03-01T08:00:00.000Z') } : r;
+      }),
     },
     ligneReleveBancaire: {
       groupBy: jest.fn(async ({ where }: { where: { rapprochementId: { in: string[] }; OR?: unknown } }) =>
         where.rapprochementId.in.map((id) => {
-          const lignes = (LIGNES[id] ?? []).filter((l) => (where.OR ? l.rapprochee : true));
+          const lignes = (source[id] ?? []).filter((l) => (where.OR ? l.rapprochee : true));
           return {
             rapprochementId: id,
             _sum: { debit: lignes.reduce((s, l) => s + l.debit, 0), credit: lignes.reduce((s, l) => s + l.credit, 0) },
@@ -136,13 +173,13 @@ function monter(options: { total?: number; comptesTrouves?: typeof C1[]; lignesR
         }),
       ),
       findMany: jest.fn(async ({ where, take }: { where: Filtre; take?: number }) =>
-        lignesDe(where)
+        lignesDe(where, relues)
           .filter((l) => options.lignesRetirees !== where.rapprochementId)
           .slice(0, take)
           .map((l) => ({ ...l, _count: { lignesEcriture: l.rapprochee ? 1 : 0, encoursOuverture: 0 } })),
       ),
       aggregate: jest.fn(async ({ where }: { where: Filtre }) => {
-        const dates = lignesDe(where).map((l) => l.date.getTime());
+        const dates = lignesDe(where, relues).map((l) => l.date.getTime());
         return { _min: { date: dates.length ? new Date(Math.min(...dates)) : null }, _max: { date: dates.length ? new Date(Math.max(...dates)) : null } };
       }),
     },
@@ -316,6 +353,9 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
     const l = LIGNE_ENTETE_FPM + 1;
     expect([texte(f, `C${l}`), texte(f, `G${l}`), texte(f, `H${l}`)]).toEqual(['Solde de départ', null, 'inconnu']);
     expect([texte(f, `F${l + 1}`), texte(f, `G${l + 1}`)]).toEqual([50, null]);
+    // L'écart se DIT non calculé, jamais tu (second tour, M2).
+    const libelles = Array.from({ length: 8 }, (_, k) => texte(f, `C${l + 2 + k}`));
+    expect(libelles).toContain('Écart entre le solde reconstitué et le solde imprimé · non calculé (solde de départ inconnu)');
   });
 
   it('les bornes de date écartent un extrait, et un compte choisi sans extrait est dit au sommaire, jamais tu', async () => {
@@ -360,6 +400,45 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
   it('un relevé qui change entre la liste et sa feuille arrête le flux, jamais une feuille qui dit un décompte faux', async () => {
     const d = monter({ lignesRetirees: 'r2' });
     const service = new ExtraitsBancairesService(d.prisma, d.exportService);
-    await expect(lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()))).rejects.toThrow(/a changé pendant l'édition/);
+    const echec = lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()));
+    // Un refus NOMMÉ (409), jamais une erreur simple qui deviendrait un 500
+    // anonyme remonté comme une panne (second tour, M1).
+    await expect(echec).rejects.toBeInstanceOf(ConflictException);
+    await expect(echec).rejects.toThrow(/a changé pendant l'édition \(1 lignes comptées, 0 lues\)/);
+  });
+
+  it('un relevé réimporté avec le même nombre de lignes est refusé, jamais une feuille qui imprime l\'ancien écart (second tour, M2)', async () => {
+    const d = monter({ reimporte: 'r2' });
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    const echec = lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()));
+    await expect(echec).rejects.toBeInstanceOf(ConflictException);
+    await expect(echec).rejects.toThrow(/réimporté/);
+  });
+
+  it('un montant changé sous le même décompte est refusé (second tour, M2)', async () => {
+    const d = monter({ lignesRelues: { r2: [{ ...LIGNES.r2[0], debit: 6_000 }] } });
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    await expect(lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()))).rejects.toThrow(
+      /montants des lignes modifiés/,
+    );
+  });
+
+  it('un relevé de plus d\'un lot, deux lignes de même rang, se lit entier, sans perte ni doublon (second tour, constat mineur 3)', async () => {
+    const n = LOT_LIGNES_EXTRAIT + 1;
+    const lignes = Array.from({ length: n }, (_, k) => ({
+      rang: k === n - 1 ? LOT_LIGNES_EXTRAIT : k + 1,
+      date: jour('2026-02-10'),
+      libelle: `Opération ${k + 1}`,
+      reference: null,
+      debit: 1,
+      credit: 0,
+      rapprochee: false,
+    }));
+    const d = monter({ lignes: { r2: lignes } });
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    const resultat: { lignes?: number } = {};
+    await lire(async (ouvrir) => Object.assign(resultat, await service.editionChainee(T, { compteIds: ['c1'], du: jour('2026-02-01'), au: null }, () => ouvrir())));
+    expect(resultat.lignes).toBe(n);
+    expect((d.prisma.ligneReleveBancaire.findMany as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

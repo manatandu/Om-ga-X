@@ -37,8 +37,19 @@ export class RapprochementController {
   // EXTRAITS BANCAIRES (ligne sage-l3, fonction 45) · déclarés AVANT `:id`,
   // sans quoi « extraits » serait lu comme un identifiant de rapprochement.
   @Get('extraits')
-  async listerExtraits(@CurrentUser() user: AuthenticatedUser, @Query('compteId', COMPTE_FACULTATIF) compteId?: string) {
-    return this.extraits.listerExtraits(user.tenantId, { compteIds: compteId ? [compteId] : [], du: null, au: null });
+  // Les bornes sur la date du relevé filtrent AUSSI la liste (second tour,
+  // constat de l'écran) · sans elles, au-delà de la tranche, les extraits
+  // récents n'étaient jamais atteignables.
+  async listerExtraits(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('compteId', COMPTE_FACULTATIF) compteId?: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
+  ) {
+    const motif = motifRefusSelection({ du, au });
+    if (motif) throw new BadRequestException(motif);
+    const { du: debut, au: fin } = lireSelection({ du, au });
+    return this.extraits.listerExtraits(user.tenantId, { compteIds: compteId ? [compteId] : [], du: debut, au: fin });
   }
 
   /** L'édition chaînée · un classeur, une feuille par extrait, en flux. Lecture seule, tous rôles. */

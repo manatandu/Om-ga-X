@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutRapprochement } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import type { Writable } from 'stream';
@@ -15,6 +15,7 @@ import {
   LIMITE_EXTRAITS,
   MENTION_EXTRAIT,
   bornesDepuisLesDates,
+  jourIso,
   lendemain,
   nomDeFeuilleExtrait,
   ordonnerExtraits,
@@ -187,6 +188,8 @@ export class ExtraitsBancairesService {
         soldeReleve: Number(r.soldeReleve),
         soldeDepart,
         mouvementsNet,
+        totalDebit: arrondi(debit),
+        totalCredit: arrondi(credit),
         ecartReleve: soldeDepart === null ? null : arrondi(soldeDepart + mouvementsNet - Number(r.soldeReleve)),
         nombreLignes: s?._count._all ?? 0,
         nombreRapprochees: rapprocheesDe.get(r.id) ?? 0,
@@ -246,14 +249,13 @@ export class ExtraitsBancairesService {
       .filter((c) => !retenus.some((e) => e.compteId === c.id))
       .map((c) => ({ numero: c.numero, intitule: c.intitule }));
 
-    const jour = (d: Date) => d.toISOString().slice(0, 10);
-    const identite = await this.exportService.identiteEtat(tenantId, {
-      ...(selection.du ? { dateDebut: jour(selection.du) } : {}),
-      ...(selection.au ? { dateFin: jour(selection.au) } : {}),
-    });
+    // L'en-tête dit la MÊME période que le cartouche (second tour, constat
+    // mineur 6) · sans bornes, celle des extraits retenus, jamais « Toutes
+    // périodes » au-dessus d'un cartouche daté.
     const { debut, fin } = periodeDesExtraits(retenus, selection);
+    const identite = await this.exportService.identiteEtat(tenantId, { dateDebut: jourIso(debut), dateFin: jourIso(fin) });
 
-    const sortie = ouvrir(`extraits-bancaires-${jour(debut)}-${jour(fin)}.xlsx`);
+    const sortie = ouvrir(`extraits-bancaires-${jourIso(debut)}-${jourIso(fin)}.xlsx`);
     const classeur = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: sortie, ...OPTIONS_CLASSEUR_EN_FLUX });
     classeur.creator = 'OmegaX';
     classeur.created = new Date();
@@ -289,8 +291,30 @@ export class ExtraitsBancairesService {
     }
     sommaire.fermer();
 
+    // UN RELEVÉ QUI CHANGE PENDANT L'ÉDITION EST REFUSÉ, NOMMÉ (second tour,
+    // M1 et M2) · un 409, que `envoyerXlsxEnFlux` relaie tant que rien n'est
+    // parti, et qui détruit la connexion après (Excel refuse le ZIP tronqué).
+    // Jamais une `Error` simple · elle devenait un 500 anonyme, remonté comme
+    // une panne.
+    const aChange = (e: TeteExtrait, quoi: string) =>
+      new ConflictException(`L'extrait ${e.compteNumero} du ${jourIso(e.dateReleve)} a changé pendant l'édition (${quoi}) · relancez l'édition.`);
+
     let lignesEcrites = 0;
     for (const e of retenus) {
+      // La tête se RELIT avant sa feuille · un relevé réimporté avec le même
+      // nombre de lignes passait le décompte, et la feuille imprimait le
+      // fichier, l'instant et le solde de l'import précédent (M2).
+      const tete = await this.prisma.rapprochementBancaire.findFirst({
+        where: { tenantId, id: e.rapprochementId },
+        select: { releveImporteLe: true, soldeReleve: true },
+      });
+      if (
+        !tete ||
+        (tete.releveImporteLe?.getTime() ?? null) !== (e.releveImporteLe?.getTime() ?? null) ||
+        arrondi(Number(tete.soldeReleve)) !== arrondi(e.soldeReleve)
+      ) {
+        throw aChange(e, 'relevé retiré, réimporté ou solde imprimé modifié');
+      }
       const importe = e.releveImporteLe
         ? `fichier « ${e.releveNomFichier ?? 'sans nom'} » importé le ${horodatage(e.releveImporteLe)}`
         : 'import non daté (relevé importé avant la fonction)';
@@ -305,7 +329,7 @@ export class ExtraitsBancairesService {
       const feuille = poserFeuilleFpm(classeur, sortie, {
         nomFeuille: feuilleDe.get(e.rapprochementId)!,
         titre: `Extrait ${e.compteNumero}`,
-        sousTitre: `${e.compteNom} · relevé au ${e.dateReleve.toLocaleDateString('fr-FR')} · rapprochement ${e.statut === 'CLOTURE' ? 'clos' : 'en cours'}`,
+        sousTitre: `${e.compteNom} · relevé au ${e.dateReleve.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} · rapprochement ${e.statut === 'CLOTURE' ? 'clos' : 'en cours'}`,
         identite,
         debut: bornes.debut,
         fin: bornes.fin,
@@ -364,15 +388,24 @@ export class ExtraitsBancairesService {
         if (lot.length < LOT_LIGNES_EXTRAIT) break;
         apres = { rang: lot[lot.length - 1].rang, id: lot[lot.length - 1].id };
       }
-      if (lues !== e.nombreLignes || rapprocheesLues !== e.nombreRapprochees) {
-        throw new Error(
-          `L'extrait ${e.compteNumero} du ${jour(e.dateReleve)} a changé pendant l'édition (${e.nombreLignes} lignes comptées, ${lues} lues) · relancez l'édition.`,
-        );
+      if (lues !== e.nombreLignes) throw aChange(e, `${e.nombreLignes} lignes comptées, ${lues} lues`);
+      if (rapprocheesLues !== e.nombreRapprochees) {
+        throw aChange(e, `${e.nombreRapprochees} lignes rapprochées comptées, ${rapprocheesLues} lues · un pointage a eu lieu entre-temps`);
+      }
+      if (arrondi(debit) !== e.totalDebit || arrondi(credit) !== e.totalCredit) {
+        throw aChange(e, 'montants des lignes modifiés depuis la liste');
       }
       await feuille.ajouter({ libelle: 'Total des mouvements', debit: montantFpm(debit), credit: montantFpm(credit) }, { gras: true, filetHaut: true });
       await feuille.ajouter({ libelle: 'Solde du relevé (imprimé par la banque)', solde: montantFpm(e.soldeReleve) }, { gras: true });
-      if (e.ecartReleve !== null && Math.abs(e.ecartReleve) >= 0.005) {
-        await feuille.ajouter({ libelle: 'Écart entre le solde reconstitué et le solde imprimé', solde: montantFpm(e.ecartReleve) }, { gras: true });
+      // L'écart se calcule sur les lignes IMPRIMÉES (M2), jamais repris de la
+      // liste · et sans solde de départ il se DIT non calculé, jamais tu.
+      if (solde === null) {
+        await feuille.ajouter({ libelle: 'Écart entre le solde reconstitué et le solde imprimé · non calculé (solde de départ inconnu)' }, { gras: true });
+      } else {
+        const ecart = arrondi(solde - e.soldeReleve);
+        if (Math.abs(ecart) >= 0.005) {
+          await feuille.ajouter({ libelle: 'Écart entre le solde reconstitué et le solde imprimé', solde: montantFpm(ecart) }, { gras: true });
+        }
       }
       await feuille.ajouter({ libelle: `${rapprocheesLues} ligne(s) rapprochée(s) sur ${lues}` });
       feuille.fermer();

@@ -229,9 +229,13 @@ const ROUTES_A_COMPTE_JUGE_PAR_LE_SERVICE: Record<string, string> = {
 const IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE: Record<string, string> = {
   'modules/registre-donateurs/donation.controller.ts lister FiltreRegistreDto exerciceId':
     "@IsUUID('4') refuse l'illisible (400) ; DonationService.lister lit l'exercice borné au dossier et rend 404 « Exercice introuvable pour ce dossier. »",
+  'modules/rapprochement/rapprochement.controller.ts editionExtraits EditionExtraitsDto compteIds':
+    "@MaxLength(8000) borne la chaîne ; motifRefusSelection borne le nombre ; ExtraitsBancairesService.editionChainee relit chaque compte borné au dossier et rend 404 « Un des comptes choisis est introuvable pour ce dossier » avant le premier octet.",
 };
 
-const IDENTIFIANTS_A_PORTEUR = ['exerciceId', 'journalId', 'compteId'];
+// Le PLURIEL aussi (ligne sage-l3, second tour du n° 45, constat mineur 9) ·
+// une liste d'identifiants en requête se juge comme un seul, par son service.
+const IDENTIFIANTS_A_PORTEUR = ['exerciceId', 'journalId', 'compteId', 'exerciceIds', 'journalIds', 'compteIds'];
 
 const DOSSIER = 'dossier-de-la-session';
 const VOISIN = 'dossier-voisin';

@@ -352,12 +352,45 @@ financements, placements.
   (couvert par le scénario navigateur) ; le cas à 201 relevés n'est pas
   rejoué au navigateur (spec unitaire). Rejoué · tsc des deux côtés, 195
   tests des suites touchées, scénario navigateur sur vraie base.
+- #45 · second tour de relecture (mêmes trois agents) · aucun BLOQUANT, deux
+  MAJEURS corrigés. (M1) un relevé qui change pendant l'édition lève un
+  409 NOMMÉ (`ConflictException`), relayé par `envoyerXlsxEnFlux` tant que
+  rien n'est parti, jamais une `Error` simple devenue 500 anonyme ; le
+  message distingue lignes, lignes rapprochées (un pointage entre-temps),
+  montants et relevé réimporté. (M2) la tête du rapprochement se RELIT
+  avant sa feuille (instant de l'import, solde imprimé) et les sommes des
+  débits et crédits relus se confrontent au centime à celles de la liste
+  (`totalDebit`, `totalCredit` servis dans `TeteExtrait`) ; l'écart imprimé
+  se calcule sur les lignes imprimées, et se dit « non calculé (solde de
+  départ inconnu) » sans départ. Écran · « Relire » par un compteur ;
+  comptes gardés d'une lecture à l'autre ; compte retiré (404) vidé du
+  choix ; cases vidées au changement de compte ; la ligne reste un
+  `role="row"`, sa première cellule porte un vrai bouton nommé ; le titre
+  du groupe hors du tableau, avec « n montrés sur m » ; édition refusée à
+  l'écran sur liste tronquée sans compte ; erreur d'édition vidée au départ ;
+  chemin « Traitement › Tiers et trésorerie › Rapprochement bancaire » ;
+  les bornes filtrent AUSSI la liste (`GET /rapprochements/extraits?du&au`,
+  mêmes refus que l'édition). MINEURS corrigés · année bornée de 1900 à
+  9998 (`ANNEE_MIN_SELECTION`, `ANNEE_MAX_SELECTION`) ; `retirerReleve`
+  relit statut et correspondances DANS sa transaction (ne retire que les
+  lignes libres, 409 s'il en reste) ; branche morte `?? clos[0]` retirée et
+  limite du clos sans date écrite ; en-tête daté de la période des extraits
+  (jamais « Toutes périodes ») ; sous-titre en UTC ; `jourIso` réemployé ;
+  `compteIds` (et les pluriels) dans la liste fermée
+  d'`exercice-requis.spec.ts` ; doublures qui honorent les DEUX branches de
+  `apresLaCle`, relevé de 501 lignes dont deux de même rang, tête relue,
+  montant changé. Relevés en attente · (m4) `depart` lit tous les clos du
+  compte sans `take` (un par mois, négligeable) ; (m8) au-delà de 500
+  comptes la tranche servie suit l'ordre des identifiants ; le solde de
+  départ lui-même n'est pas relu pendant l'édition (réouverture concurrente
+  du clos précédent). Rejoué · tsc des deux côtés, suites serveur touchées,
+  2 410 tests client, scénario navigateur sur vraie base (liste bornée,
+  9999 refusé, boutons de ligne).
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #45 · second tour de relecture.
 - #46 · conditions bancaires par RIB, autorisations de financement, unions
   de comptes (`banques/`).
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les

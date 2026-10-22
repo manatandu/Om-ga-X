@@ -109,9 +109,10 @@ export interface RegleOuverture {
  *
  * Le précédent est le clos le plus récent dont la clôture précède celle du
  * rapprochement (ou l'instant, s'il est encore ouvert) ; la tête de la chaîne
- * est le premier clos daté (un clos sans date de clôture, héritage d'avant la
- * règle, ne passe en tête que s'il n'y en a aucun daté · l'ordre croissant de
- * PostgreSQL range les nuls en dernier).
+ * est le premier clos daté. Un clos sans date de clôture, héritage d'avant la
+ * règle, n'est jamais lu · limite écrite (second tour, constat mineur 5) ·
+ * un tel clos ancien prend pour départ le dernier clos daté, comme le faisait
+ * l'ancien `depart`, et son écart imprimé peut alors être faux.
  */
 export function departParmiLesClos(
   r: { clotureAt: Date | null; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
@@ -128,8 +129,8 @@ export function departParmiLesClos(
       premier: true,
     };
   }
-  const tete = dates[0] ?? clos[0];
-  return { soldeDepart: Number(dernier.soldeReleve), regle: { ancre: true, dateDepart: tete?.dateDepart ?? null }, premier: false };
+  // `dernier` existe, donc `dates` n'est pas vide.
+  return { soldeDepart: Number(dernier.soldeReleve), regle: { ancre: true, dateDepart: dates[0].dateDepart ?? null }, premier: false };
 }
 
 /**
@@ -978,8 +979,19 @@ export class RapprochementService {
     // Les lignes et la date de l'import partent ENSEMBLE (fonction 45, premier
     // tour de relecture, m3) · une panne entre les deux laissait un import
     // daté sur un rapprochement sans ligne.
+    // Statut et correspondances se RELISENT dans la transaction (second tour,
+    // constat mineur 1 · règle M1 d'A7) · une correspondance confirmée entre
+    // le contrôle et le retrait était dénouée en silence (`SET NULL`), une
+    // clôture concurrente laissait un rapprochement clos sans son relevé. Le
+    // retrait ne prend que les lignes LIBRES ; s'il en reste, rien ne part.
     return transactionJournalisee(this.prisma, async (tx) => {
-      const r = await tx.ligneReleveBancaire.deleteMany({ where: { tenantId, rapprochementId: id } });
+      const enCours = await tx.rapprochementBancaire.findFirst({ where: { id, tenantId, statut: StatutRapprochement.EN_COURS }, select: { id: true } });
+      if (!enCours) throw new ConflictException("Le rapprochement n'est plus en cours · le relevé ne se retire pas.");
+      const r = await tx.ligneReleveBancaire.deleteMany({
+        where: { tenantId, rapprochementId: id, lignesEcriture: { none: {} }, encoursOuverture: { none: {} } },
+      });
+      const restantes = await tx.ligneReleveBancaire.count({ where: { tenantId, rapprochementId: id } });
+      if (restantes > 0) throw new ConflictException('Des lignes du relevé sont rapprochées · dissociez-les avant de retirer le relevé.');
       await tx.rapprochementBancaire.update({ where: { id, tenantId }, data: { releveImporteLe: null, releveNomFichier: null } });
       return { nombreLignes: r.count };
     });
