@@ -431,3 +431,67 @@ fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
   lit par une liste `in` non bornée (bornée en pratique par le plan qu'on
   supprime) ; la restitution continue de lire la base quand le client coupe
   la connexion, jusqu'à l'erreur d'écriture de la sortie.
+
+## Relevés en attente · banque et trésorerie, ligne sage-l3 (second tour non bloquant)
+
+Intégrée le 2026-10-22. Aucun BLOQUANT ni MAJEUR ouvert ; ces points restent
+mineurs, relevés par les deux tours de relecture de chaque fonction.
+
+- **Remises (n° 40).** Le numéro du bordereau est pris sous verrou après
+  l'instantané sérialisable de `creerAvec` · l'index unique ferme le doublon,
+  mais un conflit sorti en 23505 ferait un 500 au lieu d'un rejeu (à prouver
+  par deux bordereaux simultanés, ou numéroter par une ligne compteur
+  `FOR UPDATE`). Les échéances de tous les clients sont lues pour n'en garder
+  qu'un (`/reglements/echeances` sans filtre par compte, commun aux effets).
+  Flèches gauche et droite des onglets.
+- **Effets de commerce (n° 39).**
+  - Un effet à terme n'est listé que sous l'exercice de sa création.
+  - `banque()` ne lit pas `estActif` du 52.
+  - À trancher par la loi (Code civil, Livre III, art. 151, « lorsqu'il
+    paye ») · `motifRefusDeclaration` juge « jamais postérieure au paiement »
+    sur la date de la pièce d'acceptation, quand le moteur date le règlement
+    à l'échéance ; l'imputation nomme le paiement à la date de sa pièce.
+  - Le numéro de pièce du négatif est pris sans verrou sous une transaction
+    non sérialisable (commun aux devises, remises, créances douteuses,
+    virements).
+  - L'acte dont la pièce est dans un exercice clôturé refuse l'annulation
+    sans dire l'issue.
+  - Le lettrage reste une seconde transaction après le commit de l'effet.
+  - `retirerCompensation` supprime sans relire le statut.
+  - L'issue proposée pour une facture d'un lettrage partiel (« délettrez »)
+    n'est pas la bonne · accepter sans la cocher puis compléter le groupe.
+  - Le négatif d'une acceptation validée ne porte pas
+    `dateEncaissementEffet`.
+  - Écran · changer d'onglet jette une acceptation en cours de saisie sans
+    confirmation ; contrôles laissés au serveur (échéance antérieure à la
+    création, centime, frais qui atteignent le nominal, dates minimales des
+    actes) ; « Lecture… » sous un bandeau d'erreur ; flèches de la liste
+    d'onglets, focus des modales, `aria-label` de la table.
+- **Extraits bancaires (n° 45).** `depart` lit tous les relevés clos du
+  compte sans borne (un par mois) ; au-delà de 500 comptes, la tranche suit
+  l'ordre des identifiants ; le solde de départ n'est pas relu pendant
+  l'édition (réouverture concurrente du relevé clos précédent).
+- **Financements, placements et titres (n° 47).**
+  - Mise en place et échéance datées d'une période close · aucun report
+    demandable (la contre-passation, elle, l'est).
+  - `passerActeSansPiece` ne relit pas le statut de l'exercice sous verrou.
+  - Montant de la contre-passation non relu sur les lignes d'une
+    régularisation retouchée au brouillard.
+  - Valeur d'une part bornée à 10^12 FC quand le calcul exact s'arrête vers
+    9 × 10^9 ; `interetsCalcules` perd sa précision au-delà de 10^13 FC
+    (une proposition seulement).
+  - Un titre au-delà de 5 000 mouvements se lit tronqué ; actes et revues
+    listés sans borne par opération ; contre-passation sans ventilation
+    analytique ; journal d'opérations diverses mis en sommeil après coup non
+    dit ; clôture non refusée sur un titre non revu.
+  - Écran · aucune garde de fermeture sur les modales de saisie ni sur les
+    formulaires des taux ; journaux de la section des titres affichés vides
+    pendant leur lecture ou leur échec ; échec de lecture des comptes de la
+    mise en place sans bandeau d'alerte ; modales non remises à zéro au
+    changement d'exercice ; ancienne liste gardée après une relecture en
+    échec ; boutons de ligne sans libellé accessible ; focus des modales ;
+    le gestionnaire de paie voit les boutons de saisie ; annulation choisie
+    dans l'historique défaite par Échap seulement.
+- **Commun aux effets, remises et opérations.** Le retrait d'une pièce au
+  brouillard passe par `deleteMany`, hors `EcritureService.supprimer` · une
+  pièce jointe se détache sans que sa description soit refaite ni comptée.

@@ -3592,7 +3592,10 @@ banque, la proposition n'est qu'une aide. LA CLÔTURE RATTACHE L'INTÉRÊT À
 SON EXERCICE (postulat de spécialisation) · part courue des post-comptés
 (566, 5267) ou part non courue des précomptés (476, 477) au dernier jour,
 proposée au prorata des jours, une par exercice ; contre-passée au premier
-jour suivant ; l'échéance est REFUSÉE tant qu'une régularisation n'est pas
+jour du premier exercice ouvert qui suit, et SUR DEMANDE au premier jour non
+clôturé quand ce jour est dans une période close (art. 22, 4°, date de valeur
+gardée) ; datée d'un dernier jour clos, elle est refusée en nommant la seule
+issue, clôturer l'exercice (art. 34), comme la revue des titres ; l'échéance est REFUSÉE tant qu'une régularisation n'est pas
 contre-passée, ou qu'un exercice ouvert traversé n'a pas la sienne (sans
 quoi l'intérêt pesait deux fois, ou jamais). Montants jugés au centime sans
 seuil flottant (`estAuCentime` · 75 000,01 refusé à tort, vu sur vraie
