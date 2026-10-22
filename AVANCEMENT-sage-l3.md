@@ -178,19 +178,51 @@ financements, placements.
   de transit introuvable » quand un type de chèques est créé par l'API sans
   `compteTransitId` (l'écran l'exige) ; le relevé du premier tour inchangé.
 
+- #39 · serveur (4bc3000) · module `src/modules/effets/` · `effet-commerce.ts`
+  (rôles de compte par référentiel et sens, actes admis par statut,
+  `statutApresActes`, lignes des neuf actes, refus du décompte), `effets.service.ts`
+  (acceptation lettrée par `creerAvec` avec l'échéance posée sur la pièce,
+  remise, escompte, décompte, encaissement, dénouement, impayé avec reprise de
+  banque, bon à payer sans pièce, paiement, annulation à rebours qui retire ou
+  inscrit en négatif), contrôleur `/effets`, tables `EffetCommerce` et `ActeEffet`
+  (migration `20270190000400_effets_de_commerce`, `Ecriture.dateEncaissementEffet`),
+  `dateDuReglement` dans `taux-tva.service.ts` sur chaque lecture du groupe,
+  registres (cloisonnement, audit, détenteurs, fonctions métier, listes de
+  comptes, lectures hors situation), 29 tests (`effet-commerce.spec`,
+  `effets.service.spec`, `tva-echeance-effet.spec`).
+- #39 · écran `client/src/pages/EffetsPage.tsx` (Traitement > Tiers et
+  trésorerie > Effets de commerce · deux onglets, le SYCEBNL n'offrant que
+  « À payer » ; acceptation avec lignes ouvertes à lettrer ; un bouton par acte
+  admis ; annulation du dernier acte sous `peutValider` ; détail des actes),
+  registre des fenêtres, menu, `chrome-etroit.spec` (24).
+- #39 · test navigateur `e2e/tests/sage-l3-effets.e2e.ts` sur vraie base
+  (Postgres jetable 55803) · SYSCOHADA · prestation lettrée par une traite,
+  déclaration de TVA vide au mois de l'acceptation et pleine au mois de
+  l'échéance, remise et encaissement avec commission, escompte de novembre,
+  décompte, clôture de N, dénouement en janvier de N+1 (415 et 565 reportés
+  puis soldés), annulation hors ordre refusée, dénouement validé inscrit en
+  négatif, impayé au 4132 avec reprise de la banque, impayé au brouillard
+  retiré ; SYCEBNL · effet à recevoir refusé avec son motif, effet à payer
+  lettré, bon à payer, paiement, annulations à rebours. Premier passage · 500
+  sur l'annulation au brouillard (clé étrangère `actes_effet_ecritureId_fkey`,
+  l'acte retenait la pièce retirée) · lien dénoué avant le retrait, gelé par
+  le spec du service (ordre des appels).
+- #39 · docs · `features.csv` (39 en yes), `build-log.md`, `architecture.md`
+  (D13), tables 05 (M5-24, M5-47), 13 (M13-6, M13-12, M13-67), 14 (M14-19),
+  06 (M6-38, M6-128) ; paragraphe « Effets de commerce » au § 6 de CLAUDE.md.
+
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #39 · module `effets/` (portefeuille, remise à l'encaissement ou à
-  l'escompte, échéance, impayé, bon à payer) · lire la fiche du 67 (675) et
-  le décret n° 011/42, art. 57 al. 2, avant de coder.
+- #39 · `test-plan.md` (lignes F39) une fois le second passage du scénario
+  vert, deux tours de relecture, commit et push.
 - #45 · liste et édition chaînée des extraits (`rapprochement/`).
 - #46 · conditions bancaires par RIB, autorisations de financement, unions
   de comptes (`banques/`).
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les
   OPCVM se tranchent par la loi avant de coder.
-- Docs · `features.csv` (colonne clone des lignes 37, 39, 40, 45, 46, 47),
+- Docs · `features.csv` (colonne clone des lignes 45, 46, 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.
 - Bloc du § 3 complet des deux côtés, tests navigateur, deux tours de
@@ -225,8 +257,8 @@ financements, placements.
   et nature (4131 adhérents chèques, 4132 clients-usagers chèques, 4133
   adhérents autres valeurs, 4138 clients-usagers autres valeurs), racine
   déduite du compte du tiers (`racineImpaye`), tout autre compte refusé.
-- **D13 (à écrire dans architecture.md avec le n° 39) · effets de commerce,
-  lu le 2026-10-22 avant de coder.** AUDCIF Titre VII · fiche du 41 · 412
+- **D13 (écrite dans architecture.md le 2026-10-22, avec le n° 39) · effets de
+  commerce, lu le 2026-10-22 avant de coder.** AUDCIF Titre VII · fiche du 41 · 412
   « Clients, effets à recevoir en portefeuille » (4121), 415 « Clients,
   effets escomptés non échus », 413 « 4132 effets impayés » ; fiche du 40 ·
   402 « Fournisseurs, effets à payer » (4021, 4023) ; fiche du 51 · 511
@@ -266,5 +298,5 @@ financements, placements.
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 # test navigateur sur vraie base · script du bac à sable l3-e2e.sh (Postgres 55803, serveur 8303, client 4303)
-cd e2e && npx tsc --noEmit -p . && npx playwright test tests/sage-l3-virement-devise.e2e.ts tests/sage-l3-remises.e2e.ts
+cd e2e && npx tsc --noEmit -p . && npx playwright test tests/sage-l3-virement-devise.e2e.ts tests/sage-l3-remises.e2e.ts tests/sage-l3-effets.e2e.ts
 ```

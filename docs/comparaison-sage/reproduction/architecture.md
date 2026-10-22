@@ -118,6 +118,30 @@ journal `build-log.md`.
   cartes), débiteur et nature au SYCEBNL (4131 et 4133 adhérents, 4132 et
   4138 clients-usagers), racine déduite du compte du tiers, tout autre
   compte refusé.
+- **D13 · Effets de commerce par les fiches 40, 41, 51, 56, 63 et 67, échéance
+  lue par la TVA (ligne 39).** AUDCIF Titre VII · fiche du 41 · 412 « Clients,
+  effets à recevoir en portefeuille », 415 « Clients, effets escomptés non
+  échus », 4132 « effets impayés » ; fiche du 40 · 402 « Fournisseurs, effets
+  à payer » ; fiche du 51 · 512 « effets à l'encaissement », « débité lors de
+  la réception de l'effet, par le crédit des comptes de tiers concernés »,
+  « crédité du montant des effets, pour solde, par le débit des comptes de
+  trésorerie », effets remis à l'escompte → 56 ; fiche du 56 · 564 et 565,
+  « la créance ne disparaît pas du bilan » · trois temps, D 415 / C 412,
+  D 52 net + D 675 / C 565, puis après l'échéance D 565 / C 415 ; fiche du 67
+  · 675 « escomptes des effets de commerce », frais et intérêts du décompte,
+  les commissions de service → 631 (6312). UN NUMÉRO, DEUX PLANS · le SYCEBNL
+  n'ouvre ni 412 effets (son 412 est « Clients-usagers »), ni 415, ni 512, ni
+  564, ni 675 ; il ouvre 402 (4021, 4023) et 565, et sa fiche du 56 ne décrit
+  aucun escompte · au SYCEBNL seuls les effets à payer sont servis, l'effet à
+  recevoir et l'escompte sont refusés avec leur motif. TVA · décret
+  n° 011/42, art. 57, al. 2 · l'encaissement intervient « à la date de
+  l'échéance de la traite, même si elle a été remise à l'escompte » ; art. 96
+  · le droit à déduction naît quand la taxe devient exigible chez le
+  fournisseur · l'acceptation lettrée avec la facture porte l'échéance sur sa
+  pièce (`Ecriture.dateEncaissementEffet`), et le moteur de la déclaration
+  date tout règlement par elle (`dateDuReglement`), aux deux sens ; sans
+  elle, la taxe d'une prestation payée par traite devenait exigible au jour
+  de l'acceptation.
 
 ## Les fonctions, leur place et leur ligne
 

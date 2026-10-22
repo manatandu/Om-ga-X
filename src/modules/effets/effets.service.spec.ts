@@ -44,7 +44,14 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
     actes: options.actes ?? [{ id: 'a1', nature: 'ACCEPTATION', date: new Date('2026-03-01T00:00:00.000Z'), montant: 1160000, detail: null, annuleLe: null, compte: COMPTES.c412, ecriture: { id: 'e1', numeroPiece: 1, statut: 'VALIDEE' }, ecritureNegatif: null }],
   };
   const tx = {
-    ecriture: { updateMany: jest.fn(async () => ({ count: 1 })), findFirst: jest.fn(async () => ({ statut: options.statutPiece ?? 'VALIDEE' })), deleteMany: jest.fn(async () => ({ count: 1 })) },
+    ecriture: {
+      updateMany: jest.fn(async () => ({ count: 1 })),
+      findFirst: jest.fn(async () => ({ statut: options.statutPiece ?? 'VALIDEE' })),
+      deleteMany: jest.fn(async () => {
+        appels.push('pièce retirée');
+        return { count: 1 };
+      }),
+    },
     ligneEcriture: { findMany: jest.fn(async () => []), deleteMany: jest.fn(async () => ({ count: 2 })) },
     effetCommerce: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -63,7 +70,10 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
         return { id: 'a9', ...data };
       }),
       updateMany: jest.fn(async () => ({ count: 1 })),
-      update: jest.fn(async () => ({})),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        if (data.ecritureId === null && !('ecritureNegatifId' in data)) appels.push('lien dénoué');
+        return {};
+      }),
       deleteMany: jest.fn(async () => {
         appels.push('actes retirés');
         return { count: 1 };
@@ -237,9 +247,11 @@ describe('EffetsService · annulation à rebours', () => {
 
   it("au brouillard la pièce est retirée (relue dans la transaction) et le lien part ; l'acceptation seule annulée rend l'effet ANNULÉ", async () => {
     const seule: Acte[] = [actes[0]];
-    const { service, tx } = monter({ statut: 'EN_PORTEFEUILLE', actes: seule, statutPiece: 'BROUILLARD' });
+    const { service, tx, appels } = monter({ statut: 'EN_PORTEFEUILLE', actes: seule, statutPiece: 'BROUILLARD' });
     const r = await service.annulerActe('t', 'u', 'ef1', 'a1', { motif: 'doublon' });
     expect(r).toMatchObject({ statut: 'ANNULE', traitement: 'SUPPRIMEE', ecritureNegatifId: null });
+    // L'acte retient sa pièce (clé étrangère RESTRICT) · le lien se dénoue AVANT le retrait, sinon la base refuse (vu sur vraie base).
+    expect(appels).toEqual(['lien dénoué', 'pièce retirée']);
     expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'e1', tenantId: 't', statut: 'BROUILLARD' } });
     expect(tx.acteEffet.update).toHaveBeenCalledWith({ where: { id: 'a1', tenantId: 't' }, data: { ecritureId: null, ecritureNegatifId: null } });
   });

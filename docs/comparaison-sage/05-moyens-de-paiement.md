@@ -62,7 +62,7 @@ tableaux. Les statuts ont été lus dans le code le même jour, sur la branche
 | 21 | Modèle de bordereau de remise choisi à l'impression | 72, 83, 84, 94, 98 | PARTIEL | Depuis la ligne sage-l3 (n° 40), chaque type de remise porte son modèle de bordereau (texte à jetons, `{lignes}` exigé une fois), servi à l'impression du bordereau et imprimé compté. L'ordre de virement garde sa seule présentation ; les bordereaux d'effets et de prélèvements ne sont pas reproduits (décision D11). |
 | 22 | Fichier de remise enregistré sous le nom LCR, VIR ou PRE suivi de l'abrégé de la banque | 73, 84, 99 | ABSENT | Aucun fichier n'est produit. |
 | 23 | Virement SEPA : banque paramétrée en SEPA, numéro de facture obligatoire, contrôle du BIC et de l'IBAN des deux banques | 74, 75 | PARTIEL | Pas de format SEPA. L'ordre exige le RIB principal de chaque bénéficiaire, contrôle l'IBAN et imprime les factures réglées avec leur part (`LigneOrdreVirement.imputationDeclaree`). |
-| 24 | Saisie et remise des LCR à l'encaissement : mise en portefeuille, acceptation | 68, 69, 73, 123 | ABSENT | OmegaX ne gère pas les effets de commerce. |
+| 24 | Saisie et remise des LCR à l'encaissement : mise en portefeuille, acceptation | 68, 69, 73, 123 | FIDÈLE | Depuis la ligne sage-l3 (n° 39) · Traitement > Tiers et trésorerie > Effets de commerce · l'effet accepté entre au 412 par le crédit du client (lettré avec les factures choisies, son échéance datant le règlement pour la TVA, décret n° 011/42, art. 57 al. 2), la remise à l'encaissement le porte au 512, l'avis de crédit le solde par le 52 et porte la commission au 6312, l'escompte passe par le 415 et le 565 avec ses frais au 675, l'impayé va au 4132 (fiches des comptes 41, 51, 56, 63 et 67). Un acte par effet, aucun bordereau groupé ; SYSCOHADA seul pour l'effet à recevoir (le SYCEBNL n'ouvre que le 402). |
 
 ## Lots de virements et de prélèvements (p. 77 à 84)
 
@@ -108,7 +108,7 @@ référence.
 | 44 | Prélèvements émis | 123 | ABSENT | Pas de prélèvement. |
 | 45 | Versements d'espèces | 123 | FIDÈLE | Virement de fonds de la caisse vers la banque : deux pièces passées par le 585, porteur des espèces exigé (`src/modules/virements-fonds/`). Ce code est sur la branche `travail/virement-fonds`, pas encore sur `main`. |
 | 46 | Remises de cartes bancaires | 123 | FIDÈLE | Depuis la ligne sage-l3 (n° 40) · la transaction par carte entre au 515 « jusqu'à l'avis de crédit » (fiche du compte 51), le bordereau la regroupe sans écriture (aucun transit sur les cartes, un type à compte de transit est refusé), l'avis de crédit solde le 515 par le 52 et la commission au 6315 ; impayé au 413. |
-| 47 | LCR à décaisser, relevés de LCR à payer et bons à payer | 9, 123 | ABSENT | OmegaX ne gère pas les effets de commerce. |
+| 47 | LCR à décaisser, relevés de LCR à payer et bons à payer | 9, 123 | FIDÈLE | Depuis la ligne sage-l3 (n° 39) · l'effet à payer entre au 402 par le débit du fournisseur (fiche du compte 40, lettré avec les factures), reçoit un bon à payer daté sans écriture, puis se paie D 402 / C 52 depuis la banque ; chaque acte s'annule à rebours. Aux deux référentiels (le SYCEBNL ouvre 4021 et 4023). Aucun relevé de LCR ni fichier bancaire (D11). |
 
 ## Vu sur les captures seulement
 

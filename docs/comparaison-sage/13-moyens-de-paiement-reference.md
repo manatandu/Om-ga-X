@@ -38,13 +38,13 @@ vérifiée.
 | 3 | Protocole EBICS de transmission des fichiers bancaires | 23 | ABSENT | Voir M5-13. |
 | 4 | Assistant d'enrichissement des données bancaires des tiers | 23 | ABSENT | Les RIB des tiers se saisissent un à un par l'administrateur, IBAN contrôlé (`tiers/ribs-tiers.ts`). |
 | 5 | Intégration des relevés de LCR à payer et des extraits reçus de la banque | 23 | PARTIEL | Le relevé de banque s'importe en CSV ou XLSX dans un rapprochement (M5-28). Pas de LCR. |
-| 6 | Journal d'escompte et journal d'encaissement par banque | 24, 475 | ABSENT | Un seul journal par RIB (voir M5-10). |
+| 6 | Journal d'escompte et journal d'encaissement par banque | 24, 475 | PARTIEL | Depuis la ligne sage-l3 (n° 39), remise, encaissement, escompte et décompte sont des actes de l'effet passés dans le journal de la banque choisie ; un seul journal par RIB (voir M5-10), pas de journal d'escompte distinct. |
 | 7 | Alertes sur les échéances brûlantes, avec un délai de pré-alerte | 24, 61 | ABSENT | Aucune alerte sur les échéances des tiers. Le tableau de bord n'annonce que les échéances fiscales et sociales, à trente jours (`lib/echeances-a-venir.ts`). |
 | 8 | Création ou modification du compte bancaire d'un tiers pendant la saisie d'une échéance | 24 | DIFFÉRENT, VOULU | Le RIB d'un tiers est une structure : créé par l'administrateur seul, depuis la fiche du tiers, et inscrit au journal d'audit, parce qu'un RIB changé en silence détourne un paiement (`tiers/ribs-tiers.ts`). |
 | 9 | Virements de trésorerie, et lien avec Sage Trésorerie | 17, 24 | FIDÈLE | Virement de fonds d'une trésorerie à une autre, par le 585 (voir M5-45). Ce code est sur la branche `travail/virement-fonds`, pas encore sur `main`. |
 | 10 | Édition chaînée des extraits de compte | 25 | ABSENT | Il n'existe pas de liste des extraits (M5-30). |
 | 11 | Génération des écarts de change | 25, 473 | FIDÈLE | Écart de change réalisé, proposé au lettrage et passé au seul clic, sur le compte que prescrit le plan (ligne A6, `reglements/ecart-change-realise.ts`). |
-| 12 | Effets à vue inclus dans les remises | 25 | ABSENT | OmegaX ne gère pas les effets de commerce. |
+| 12 | Effets à vue inclus dans les remises | 25 | PARTIEL | Depuis la ligne sage-l3 (n° 39), un effet se remet à l'encaissement un par un (acte de l'effet, compte 512) ; aucun bordereau groupé ni distinction d'un effet à vue. |
 | 13 | Traitement multi-sociétés des fichiers bancaires et des extraits | 45, 493 | ABSENT | Un relevé s'importe dans le rapprochement d'un compte du dossier ouvert. |
 
 ## Menu Fichier (p. 30 à 161)
@@ -114,7 +114,7 @@ vérifiée.
 | 64 | Encaissements : saisie d'un règlement ou d'un effet, recherche des écritures non lettrées, association après coup | 271 à 299 | PARTIEL | Règlement des tiers côté clients, lettré aussitôt (M5-18). Pas d'effet (M5-24). |
 | 65 | Gestion des règlements et des écarts : partiels, écarts, devises, modification après pointage | 299 à 303 | PARTIEL | Partiels admis, écart de change réalisé passé (ligne A6). Pas d'écart de règlement (M5-40). |
 | 66 | Prélèvements émis, réguliers, et leur transmission | 311, 348 à 355 | ABSENT | Voir M5-44. |
-| 67 | LCR-BOR à l'encaissement et au décaissement ; relevés de LCR à payer ; bons à payer | 329, 385, 429 à 436 | ABSENT | Voir M5-24 et M5-47. |
+| 67 | LCR-BOR à l'encaissement et au décaissement ; relevés de LCR à payer ; bons à payer | 329, 385, 429 à 436 | FIDÈLE | Depuis la ligne sage-l3 (n° 39) · circuit comptable de l'effet à recevoir et de l'effet à payer, bon à payer compris (voir M5-24 et M5-47) ; aucun fichier LCR-BOR ni relevé (D11). |
 | 68 | Transformation et suivi des échéances par étapes ; remise en banque ; différer | 330 à 347 | DIFFÉRENT, À TRIER | Voir M5-19. |
 | 69 | Autres encaissements : cartes bancaires, chèques, espèces | 326, 344 à 347, 385 | PARTIEL | Le versement d'espèces passe par le virement de fonds (M5-45). Ni remise de chèques ni de cartes (M5-43, M5-46). |
 | 70 | Décaissements : virements émis et réguliers, sélection des écritures non lettrées | 356 à 367 | FIDÈLE | Règlement des tiers côté fournisseurs, ordre de virement, lots (M5-25, M5-27). |

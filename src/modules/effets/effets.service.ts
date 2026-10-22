@@ -548,7 +548,7 @@ export class EffetsService {
     return transactionJournalisee(this.prisma, async (tx) => {
       const prise = await tx.acteEffet.updateMany({ where: { id: acte.id, tenantId, effetId: e.id, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif } });
       if (prise.count !== 1) throw new ConflictException("Cet acte n'est plus annulable · relisez l'effet.");
-      const negatif = ecritureId ? await this.retirerOuContrePasser(tx, tenantId, userId, ecritureId, `de l'acte « ${LIBELLES_ACTE[acte.nature]} »`, `Annulation · ${LIBELLES_ACTE[acte.nature]} de l'effet ${e.reference}`, motif) : null;
+      const negatif = ecritureId ? await this.retirerOuContrePasser(tx, tenantId, userId, acte.id, ecritureId, `de l'acte « ${LIBELLES_ACTE[acte.nature]} »`, `Annulation · ${LIBELLES_ACTE[acte.nature]} de l'effet ${e.reference}`, motif) : null;
       // Validée, la pièce reste au journal avec son négatif, tous deux tenus (détenteurs) ; retirée, le lien part avec elle.
       await tx.acteEffet.update({ where: { id: acte.id, tenantId }, data: { ecritureId: negatif ? ecritureId : null, ecritureNegatifId: negatif } });
       const effet = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
@@ -643,13 +643,16 @@ export class EffetsService {
   }
 
   /** Au brouillard, retirée (relue dans la transaction, une ligne et une seule) ; validée, inscrite en négatif. Rend l'identifiant du négatif, ou null. */
-  private async retirerOuContrePasser(tx: Prisma.TransactionClient, tenantId: string, userId: string, ecritureId: string, objet: string, geste: string, motif: string) {
+  private async retirerOuContrePasser(tx: Prisma.TransactionClient, tenantId: string, userId: string, acteId: string, ecritureId: string, objet: string, geste: string, motif: string) {
     const e = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { statut: true } });
     if (!e) throw new ConflictException(`La pièce ${objet} n'existe plus · relisez avant d'annuler.`);
     if (e.statut === StatutEcriture.BROUILLARD) {
       const relues = await tx.ligneEcriture.findMany({ where: { ecritureId, ecriture: { tenantId } }, select: { lettre: true, lettrageId: true, rapprochementId: true } });
       const tenue = motifLignesTenues(relues, `la pièce ${objet}`, geste);
       if (tenue) throw new BadRequestException(tenue);
+      // L'acte RETIENT sa pièce (clé étrangère RESTRICT, `detenteurs-ecriture.ts`) · le lien se dénoue AVANT le retrait,
+      // sinon la base refuse la suppression (vu sur vraie base, la doublure n'ayant aucune clé étrangère).
+      await tx.acteEffet.update({ where: { id: acteId, tenantId }, data: { ecritureId: null } });
       await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
       const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
       if (r.count !== 1) throw new ConflictException(`La pièce ${objet} a été validée pendant l'annulation · rien n'est retiré. Relancez · validée, elle s'inscrira en négatif.`);

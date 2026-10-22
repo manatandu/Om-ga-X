@@ -336,6 +336,8 @@ export function AppShell() {
             { label: 'Virement de fonds', chemin: '/virements-fonds', onClick: () => navigate('/virements-fonds') },
             // Ligne sage-l3, fonction 40 · chèques et cartes reçus, bordereau, avis de crédit (remises/).
             { label: 'Remises en banque', chemin: '/remises', onClick: () => navigate('/remises') },
+            // Ligne sage-l3, fonction 39 · effets à recevoir et à payer, escompte, impayé (effets/).
+            { label: 'Effets de commerce', chemin: '/effets', onClick: () => navigate('/effets') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
             { label: 'Rappel et relevé', chemin: '/relances', onClick: () => navigate('/relances') },
           ],

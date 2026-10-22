@@ -63,7 +63,7 @@ aucune ligne n'est restée non vérifiée.
 | 16 | Codes journaux : liste et assistant (type, code, intitulé, ventilation analytique par journal) | · | FIDÈLE | Voir M10-10. La ventilation analytique se règle par plan et par classe, non par journal (M3-81). |
 | 17 | Journal de trésorerie : compte, contrepartie à chaque règlement ou centralisation en fin de mois, rapprochement sur le compte de contrepartie ou de trésorerie | · | PARTIEL | Voir M10-13. Le rapprochement porte sur le compte de banque. |
 | 18 | Numérotation des pièces : manuelle, continue par journal, continue pour le fichier, mensuelle | · | FIDÈLE | Voir M10-11. |
-| 19 | Journaux de remise à l'encaissement et à l'escompte, de prélèvements remis en banque | · | ABSENT | Voir M13-6 et M5-44. |
+| 19 | Journaux de remise à l'encaissement et à l'escompte, de prélèvements remis en banque | · | PARTIEL | Depuis la ligne sage-l3 (n° 39), la remise à l'encaissement et à l'escompte d'un effet se passe dans le journal de la banque de remise (voir M13-6) ; les prélèvements restent à M5-44. |
 | 20 | Banques : liste, identification, contacts, complément | · | PARTIEL | Voir M3-8. |
 | 21 | RIB de la banque : devise, pays, BIC, codes, clé, calcul automatique de l'IBAN, compte intra-groupe, journal de banque | · | PARTIEL | Voir M5-10. |
 

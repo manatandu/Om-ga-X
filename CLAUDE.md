@@ -3458,6 +3458,46 @@ première pièce). Les champs `unknown` d'un DTO jugés par une règle portent
 base). Relevés · non masqué sous le Système minimal ; l'impayé d'une carte
 n'est admis qu'après sa remise.
 
+**Effets de commerce (ligne sage-l3, n° 39, 2026-10-22, décision par la
+loi D13).** Traitement > Tiers et trésorerie > Effets de commerce
+(`src/modules/effets/`, `effet-commerce.ts` pour les règles pures) ·
+circuit comptable seul, ni LCR, ni BOR, ni CFONB (D11). FICHES DES COMPTES
+40, 41, 51, 56, 63 ET 67 (AUDCIF Titre VII) · à recevoir · acceptation
+D 412 / C 411, lettrée avec les factures choisies ; remise à
+l'encaissement D 512 / C 412 ; encaissement D 52 net + D 6312 commission /
+C 512 ; escompte D 415 / C 412, décompte D 52 net + D 675 frais / C 565
+(« la créance ne disparaît pas du bilan »), dénouement D 565 / C 415 au
+plus tôt à l'échéance, une fois le décompte passé ; impayé D 4132 / C 412,
+512 ou 415 selon l'état, avec la reprise de la banque (D 565 / C 52) après
+un décompte. À payer · D 401 / C 402 lettré, BON À PAYER daté sans pièce,
+paiement D 402 / C 52. UN NUMÉRO, DEUX PLANS · le SYCEBNL n'ouvre ni 412
+effets (son 412 est « Clients-usagers »), ni 415, ni 512, ni 564, ni 675,
+et sa fiche du 56 ne décrit aucun escompte · l'effet à recevoir y est
+REFUSÉ avec son motif (`racinesDuRole`, racines nulles), seul l'effet à
+payer est servi (4021, 4023) ; à l'écran, l'onglet n'y est pas offert.
+L'ÉCHÉANCE DATE LE RÈGLEMENT POUR LA TVA (décret n° 011/42, art. 57, al. 2
+· « à la date de l'échéance de la traite, même si elle a été remise à
+l'escompte » ; art. 96) · l'acceptation porte l'échéance sur sa pièce
+(`Ecriture.dateEncaissementEffet`), et chaque lecture du groupe par le
+moteur de la déclaration date le règlement par `dateDuReglement`
+(`taux-tva.service.ts`, gelé par `tva-echeance-effet.spec.ts` sur la
+structure de chaque `select`), aux deux sens ; sans elle, la taxe d'une
+prestation payée par traite devenait exigible au jour de l'acceptation.
+L'impayé ne retire pas l'exigibilité constatée à l'échéance · la créance
+impayée relève des créances douteuses (art. 52). CHAQUE ACTE RETIENT SA
+PIÈCE (`ActeEffet.ecritureId`, `ecritureNegatifId`, RESTRICT,
+`detenteurs-ecriture.ts`) et s'annule À REBOURS (le dernier acte vivant
+seul, l'acceptation après délettrage), motif exigé (AUDCIF art. 20,
+al. 2) · au brouillard la pièce est retirée, le lien DÉNOUÉ AVANT le
+retrait (vu sur vraie base, la doublure n'ayant aucune clé étrangère),
+validée elle s'inscrit en négatif et reste liée ; le statut est recalculé
+sur les actes qui restent (`statutApresActes`). Un acte se passe dans
+l'exercice de SA date (le dénouement de janvier d'un escompte de décembre
+passe la clôture), jamais avant l'acte précédent ; le décompte une fois,
+le dénouement après lui et jamais avant l'échéance ; frais ou commission
+sans leur compte refusés. Les comptes se choisissent sous les racines du
+rôle (`GET /effets/comptes?role&sens`), tout autre refusé.
+
 **Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
 Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse
