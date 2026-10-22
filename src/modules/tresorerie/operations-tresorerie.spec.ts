@@ -162,9 +162,13 @@ describe('operations-tresorerie · la clôture rattache l’intérêt à son exe
     const r = regularisationALaCloture({ ...o, modeInterets: 'PRECOMPTES' }, 540_000, new Date('2026-12-31'));
     expect(r).toEqual({ montant: 267_000, lignes: [{ role: 'AVANCE', debit: 267_000, credit: 0 }, { role: 'INTERETS', debit: 0, credit: 267_000 }] });
   });
-  it('rien à rattacher hors du chevauchement', () => {
-    expect(regularisationALaCloture(o, 540_000, new Date('2027-03-30'))).toBeNull();
+  it('rien à rattacher avant la mise en place', () => {
     expect(regularisationALaCloture(o, 540_000, new Date('2026-09-30'))).toBeNull();
+  });
+  it('encore en cours passé son terme · tout l’intérêt post-compté a couru, rien n’est plus d’avance', () => {
+    expect(regularisationALaCloture(o, 540_000, new Date('2027-03-30'))?.montant).toBe(540_000);
+    expect(regularisationALaCloture(o, 540_000, new Date('2027-12-31'))?.lignes).toEqual([{ role: 'INTERETS', debit: 540_000, credit: 0 }, { role: 'COURUS', debit: 0, credit: 540_000 }]);
+    expect(regularisationALaCloture({ ...o, modeInterets: 'PRECOMPTES' }, 540_000, new Date('2027-12-31'))).toBeNull();
   });
   it('la contre-passation est l’inverse exact, ligne à ligne', () => {
     const r = regularisationALaCloture(o, 540_000, new Date('2026-12-31'))!;
@@ -173,7 +177,9 @@ describe('operations-tresorerie · la clôture rattache l’intérêt à son exe
   it('la part constatée d’avance ne dépasse pas les précomptés', () => {
     expect(motifRefusRegularisation(300_001, 'PRECOMPTES', 300_000)).toMatch(/ne dépasse pas/);
     expect(motifRefusRegularisation(300_000, 'PRECOMPTES', 300_000)).toBeNull();
-    expect(motifRefusRegularisation(0, 'POST_COMPTES', 0)).toMatch(/strictement positif/);
+    // Zéro est une réponse (intérêts réellement nuls) ; un négatif ne l'est pas.
+    expect(motifRefusRegularisation(0, 'POST_COMPTES', 0)).toBeNull();
+    expect(motifRefusRegularisation(-1, 'POST_COMPTES', 0)).toMatch(/positif ou nul/);
     // 75 000,01 × 100 n'est pas un flottant exact · le montant reste au centime (vu sur vraie base).
     expect(motifRefusRegularisation(75_000.01, 'POST_COMPTES', 0)).toBeNull();
     expect(motifRefusRegularisation(303_333.33, 'POST_COMPTES', 0)).toBeNull();

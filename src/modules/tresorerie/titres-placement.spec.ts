@@ -144,6 +144,8 @@ describe('titres de placement · les pièces', () => {
   it('la dépréciation nécessaire · la moins-value seule, jamais compensée (§ 3.2)', () => {
     expect(depreciationNecessaire(1_010_000, 10, 95_000)).toBe(60_000);
     expect(depreciationNecessaire(1_010_000, 10, 120_000)).toBe(0);
+    // En entiers exacts · 3 × 1,005 = 3,015, la valeur arrondie à 3,02 (le flottant rendait 3,01).
+    expect(depreciationNecessaire(10, 3, 1.005)).toBe(6.98);
   });
 
   it("seul l'ÉCART avec la dépréciation en place se passe · dotation, reprise, ou rien", () => {

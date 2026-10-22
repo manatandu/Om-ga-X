@@ -228,7 +228,7 @@ export function TitresPlacementSection(p: {
                           Céder
                         </button>
                       )}
-                      {p.peutEcrire && ouvert && t.revueProposee && (
+                      {p.peutValider && ouvert && t.revueProposee && (
                         <button type="button" onClick={() => setRevue(t)} className="px-2 py-[1px] border border-border">
                           Revoir
                         </button>

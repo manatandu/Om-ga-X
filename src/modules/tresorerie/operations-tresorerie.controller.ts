@@ -17,9 +17,11 @@ const identifiant = (id: string, objet: string) => {
 
 /**
  * FINANCEMENTS ET PLACEMENTS · Traitement > Tiers et trésorerie (ligne
- * sage-l3, fonction 47). Chaque acte est une SAISIE (admin et comptable) ;
- * l'annulation contre-passe une pièce, geste du comptable
- * (`@ReserveAuComptable`, comme la correction). Consultation ouverte.
+ * sage-l3, fonction 47). Mise en place et échéance sont des SAISIES
+ * (admin et comptable) ; la régularisation de clôture et sa contre-passation
+ * (écritures d'inventaire, comme la revue d'une créance douteuse) et
+ * l'annulation sont des gestes du comptable (`@ReserveAuComptable`).
+ * Consultation ouverte.
  */
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('operations-tresorerie')
@@ -49,12 +51,14 @@ export class OperationsTresorerieController {
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
   @Post(':id/regulariser')
   regulariser(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RegulariserDto) {
     return this.service.regulariser(user.tenantId, user.userId, identifiant(id, "de l'opération"), dto);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
   @Post(':id/contre-passer')
   contrePasser(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ContrePasserDto) {
     return this.service.contrePasser(user.tenantId, user.userId, identifiant(id, "de l'opération"), dto);

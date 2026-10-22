@@ -491,12 +491,40 @@ financements, placements.
   P.E.P.S. avec gain de 92 000, revue de N depuis l'écran (dotation 217 000),
   clôture, cession du reste en N+1 à perte de 67 000, revue de N+1 qui
   reprend 217 000, annulations à rebours, revue de N clôturée refusée.
+- **#47 · premier tour de relecture (silent-failure-hunter, typescript,
+  react).** (B1) la régularisation d'un exercice dont N+1 était ouvert
+  enfermait l'opération · la contre-passation va au premier exercice ouvert
+  qui suit sa date (`cibleDeLaContrePassation`), proposée sur celui-là
+  seulement. (B2) une opération passée à son terme ne se régularisait plus ·
+  à la clôture postérieure au terme, le post-compté porte l'intérêt entier,
+  le précompté rien. (M1) une régularisation nulle se garde sans pièce, et
+  sa contre-passation de même. (B1 TS) annulations des opérations et des
+  titres, et revue sans pièce, en isolation SÉRIALISABLE
+  (`avecRetrySerialisable`), comme les actes que `creerAvec` passe ; la
+  ligne verrouillée relue (409 si elle a disparu) ; un taux retiré entre le
+  contrôle et l'écriture rend un 409 nommé (P2003). (M1 TS) régularisation,
+  contre-passation et revue de clôture sous `@ReserveAuComptable()`, leurs
+  boutons sous `peutValider`. Listes de comptes des titres · racines refusées
+  écartées EN BASE, total et « tronqué » exacts. Écran · quantité au point
+  des milliers refusée, marge exigée avec un taux de référence (serveur et
+  écran), erreur de lecture distincte du refus d'un geste, intérêts de
+  l'échéance proposés jusqu'à la date CHOISIE (`interetsProposesAu`, formule
+  du serveur en miroir), plus le terme entier sur un remboursement anticipé ;
+  le champ tapé ne bouge plus. Spec client sans import de « vitest » (jest
+  relit aussi les specs du client). Suites · serveur 964, client 304, e2e
+  `sage-l3-tresorerie` vert (deux tests).
+  Relevés en attente · (M2 SF) aucune garde de fermeture sur les modales de
+  saisie ; (m4) un titre au-delà de 5 000 mouvements se lit tronqué ;
+  (m5) actes et revues listés sans borne par opération ; (m6) contre-passation
+  sans ventilation analytique ; journal OD en sommeil après coup non dit ;
+  le gestionnaire de paie voit les boutons de saisie (peutEcrire) ; piège du
+  focus des modales ; clôture non refusée sur un titre non revu.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #47 · deux tours de relecture (opérations et titres ensemble).
+- #47 · second tour de relecture (opérations et titres ensemble).
 - Docs · `features.csv` (colonne clone de la ligne 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.

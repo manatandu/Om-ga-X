@@ -98,7 +98,7 @@ export function motifRefusCours(c: { date: string; valeur: number; source: strin
   if (!estUnJour(c.date)) return 'La date du cours doit être un jour (AAAA-MM-JJ).';
   if (typeof c.valeur !== 'number' || !Number.isFinite(c.valeur) || c.valeur < -100 || c.valeur > 100) return 'Le cours est un taux annuel en pour cent, de -100 à 100.';
   if (Math.round(c.valeur * 1e6) / 1e6 !== c.valeur) return 'Le cours · six décimales au plus.';
-  const s = (c.source ?? '').trim();
+  const s = typeof c.source === 'string' ? c.source.trim() : '';
   if (s.length === 0 || [...s].length > 200) return 'La source du cours est exigée (publication de la Banque centrale, avis de la banque) · deux cents caractères au plus.';
   return null;
 }
@@ -151,6 +151,10 @@ export function motifRefusOperation(o: OperationSaisie, comptePrincipal: string)
   if (fixe === reference2) return "L'opération porte un taux fixe OU un taux de référence plus une marge, l'un des deux.";
   if (fixe && (typeof o.tauxFixe !== 'number' || !Number.isFinite(o.tauxFixe) || o.tauxFixe < 0 || o.tauxFixe > 100)) return 'Le taux fixe · un taux annuel en pour cent, de 0 à 100.';
   // Une marge oubliée n'est pas une marge nulle · le taux serait figé au taux de référence nu pour toute la vie de l'opération (null n'est pas zéro).
+  // Six décimales au plus, comme les cours · la base arrondit en silence au-delà (DECIMAL(9,6)), et le taux
+  // stocké différait de celui des intérêts proposés figés dans la même transaction.
+  if (fixe && typeof o.tauxFixe === 'number' && Math.round(o.tauxFixe * 1e6) / 1e6 !== o.tauxFixe) return 'Le taux fixe · six décimales au plus.';
+  if (reference2 && typeof o.marge === 'number' && Math.round(o.marge * 1e6) / 1e6 !== o.marge) return 'La marge · six décimales au plus.';
   if (reference2 && (o.marge === null || o.marge === undefined)) return "La marge est exigée avec un taux de référence · tapez 0 s'il n'y en a pas.";
   if (reference2 && o.marge != null && (typeof o.marge !== 'number' || !Number.isFinite(o.marge) || Math.abs(o.marge) > 100)) return 'La marge · en points de pour cent, de -100 à 100.';
   if (o.baseCalcul !== 360 && o.baseCalcul !== 365) return 'La base de calcul des intérêts est de 360 ou de 365 jours.';
@@ -210,7 +214,9 @@ export function motifRefusMiseEnPlace(o: { type: TypeOperation; montant: number;
  * constate pas d'avance plus que ce qui a été payé ou reçu).
  */
 export function motifRefusRegularisation(montant: unknown, modeInterets: ModeInterets, interetsPrecomptes: number): string | null {
-  if (!auCentime(montant) || montant <= 0) return 'La régularisation · un montant strictement positif, au centime.';
+  // ZÉRO EST UNE RÉPONSE · des intérêts réellement nuls se déclarent à 0 (l'acte est gardé sans pièce), sans quoi
+  // l'échéance restait refusée ou la seule issue falsifiait un montant (relecture du 2026-10-22, M1).
+  if (!auCentime(montant) || montant < 0) return 'La régularisation · un montant positif ou nul, au centime.';
   if (modeInterets === 'PRECOMPTES' && centimes(montant) > centimes(interetsPrecomptes)) {
     return `La part constatée d'avance ne dépasse pas les intérêts précomptés passés à la mise en place (${interetsPrecomptes.toFixed(2)}).`;
   }
@@ -278,7 +284,16 @@ export function regularisationALaCloture(
   interets: number,
   cloture: Date,
 ): { montant: number; lignes: LignePropose[] } | null {
-  if (!(o.dateMiseEnPlace.getTime() <= cloture.getTime() && cloture.getTime() < o.dateEcheance.getTime())) return null;
+  if (cloture.getTime() < o.dateMiseEnPlace.getTime()) return null;
+  // UNE OPÉRATION ENCORE EN COURS PASSÉ SON TERME (remboursement réel après la date du contrat, à travers une
+  // clôture) · tout l'intérêt du contrat a couru à la clôture, et rien n'est plus d'avance. Sans cette branche,
+  // l'intérêt de N tombait en N+1 sans un mot (relecture du 2026-10-22, B2).
+  if (cloture.getTime() >= o.dateEcheance.getTime()) {
+    if (o.modeInterets !== 'POST_COMPTES') return null;
+    const tout = Math.round(interets * 100) / 100;
+    if (centimes(tout) === 0) return null;
+    return { montant: tout, lignes: o.type === 'FINANCEMENT' ? [ligne('INTERETS', tout, 0), ligne('COURUS', 0, tout)] : [ligne('COURUS', tout, 0), ligne('INTERETS', 0, tout)] };
+  }
   const total = joursEntre(o.dateMiseEnPlace, o.dateEcheance);
   // La clôture est le dernier jour couru · un dépôt du 1er au 31 décembre court 30 jours au 31 (la date de mise en place n'est pas un jour d'intérêt couru en plus).
   const ecoules = joursEntre(o.dateMiseEnPlace, cloture);

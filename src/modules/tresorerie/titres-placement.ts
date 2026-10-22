@@ -73,7 +73,8 @@ export function motifRefusCompteFrais(numero: string): string | null {
 
 const estUnJour = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00.000Z`).toISOString().slice(0, 10) === v;
 const auCentime = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) < 1e15 && Math.round(x * 100) / 100 === x;
-const quantiteLisible = (q: unknown): q is number => typeof q === 'number' && Number.isFinite(q) && q > 0 && q < 1e12 && Math.round(q * MICRO) / MICRO === q;
+// Moins d'un milliard de parts · au-delà, les micro-parts dépasseraient les entiers exacts d'un nombre JavaScript (2^53).
+const quantiteLisible = (q: unknown): q is number => typeof q === 'number' && Number.isFinite(q) && q > 0 && q < 1e9 && Math.round(q * MICRO) / MICRO === q;
 
 export function motifRefusTitre(t: { code: unknown; intitule: unknown }): string | null {
   const code = typeof t.code === 'string' ? t.code.trim() : '';
@@ -217,8 +218,11 @@ export function pieceCession(prixCession: number, fraisCession: number, cout: { 
 
 /** La dépréciation nécessaire d'un titre · la moins-value seule, jamais compensée par une plus-value (§ 3.2). */
 export function depreciationNecessaire(cout: number, quantite: number, valeurUnitaire: number): number {
-  const valeur = Math.round(quantite * valeurUnitaire * 100);
-  return Math.max(0, enCentimes(cout) - valeur) / 100;
+  // EN ENTIERS EXACTS · parts et valeur en millionièmes, le produit en 10^-12, arrondi au centime le plus proche
+  // (demi vers le haut). En flottant, 3 × 1,005 rendait 301,4999… centimes, soit 301 au lieu de 302.
+  const produit = BigInt(enMicro(quantite)) * BigInt(Math.round(valeurUnitaire * MICRO));
+  const valeurCentimes = Number((produit + 5_000_000_000n) / 10_000_000_000n);
+  return Math.max(0, enCentimes(cout) - valeurCentimes) / 100;
 }
 
 /** L'écart avec la dépréciation en place · dotation D 6795 / C 590, reprise D 590 / C 7795, rien s'il est nul. */

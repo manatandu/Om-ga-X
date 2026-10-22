@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+// Aucun import de « vitest » · convention du dépôt (jest relit aussi les specs du client).
 import { corpsMouvement, valeurUnitaireLue } from './titres-placement-saisie';
 
 const bon = { journalBanqueId: 'j', date: '2026-03-02', quantite: '12,5', prix: '1 050 000', frais: '', reference: ' AO-12 ' };

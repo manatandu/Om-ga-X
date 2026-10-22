@@ -18,9 +18,9 @@ const identifiant = (id: string, objet: string) => {
 /**
  * TITRES DE PLACEMENT ET PARTS D'OPCVM · Traitement > Tiers et trésorerie,
  * fenêtre Financements et placements (ligne sage-l3, fonction 47, décision
- * D16). Ouvrir un titre, l'acquérir, le céder, le revoir à la clôture sont
- * des SAISIES (admin et comptable) ; l'annulation contre-passe une pièce,
- * geste du comptable (`@ReserveAuComptable`). Consultation ouverte.
+ * D16). Ouvrir un titre, l'acquérir, le céder sont des SAISIES (admin et
+ * comptable) ; la revue de clôture (écriture d'inventaire) et l'annulation
+ * sont des gestes du comptable (`@ReserveAuComptable`). Consultation ouverte.
  */
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('titres-placement')
@@ -63,6 +63,7 @@ export class TitresPlacementController {
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
   @Post(':id/revues')
   evaluer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: EvaluationTitreDto) {
     return this.service.evaluer(user.tenantId, user.userId, identifiant(id, 'du titre'), dto);

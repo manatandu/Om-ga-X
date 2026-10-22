@@ -1,5 +1,5 @@
 // Aucun import de « vitest » · convention du dépôt.
-import { corpsOperation, montantExige, type ChampsOperation } from './operations-tresorerie-saisie';
+import { corpsOperation, interetsProposesAu, montantExige, type ChampsOperation } from './operations-tresorerie-saisie';
 
 /**
  * Ce qui casserait en silence · un champ illisible qui partirait en `null`
@@ -59,5 +59,18 @@ describe('operations-tresorerie-saisie', () => {
   it('un montant seul · vide ou illisible est un refus, jamais un zéro', () => {
     expect(montantExige('', 'Le montant')).toEqual({ refus: 'Le montant est exigé.' });
     expect(montantExige('303 333,33', 'Le montant')).toEqual({ corps: 303_333.33 });
+  });
+});
+
+describe('interetsProposesAu · la proposition suit la date de l’échéance', () => {
+  const op = { montant: 10_000_000, tauxApplique: 12, baseCalcul: 360, dateMiseEnPlace: '2026-01-01T00:00:00.000Z' };
+  it('compte les jours de la mise en place à la date choisie, comme le serveur', () => {
+    expect(interetsProposesAu(op, '2026-04-01')).toBe(300_000);
+    expect(interetsProposesAu(op, '2026-02-01')).toBe(103_333.33);
+  });
+  it('ne propose rien sur une date illisible ou qui ne suit pas la mise en place', () => {
+    expect(interetsProposesAu(op, '')).toBeNull();
+    expect(interetsProposesAu(op, '2026-01-01')).toBeNull();
+    expect(interetsProposesAu(op, '2025-12-31')).toBeNull();
   });
 });

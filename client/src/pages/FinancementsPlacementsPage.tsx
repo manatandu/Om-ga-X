@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { useGardeFermeture } from '../lib/fenetres';
 import { montant as fmt } from '../lib/montants';
-import { corpsOperation, montantExige, type ChampsOperation, type Mode, type Type } from '../lib/operations-tresorerie-saisie';
+import { corpsOperation, interetsProposesAu, montantExige, type ChampsOperation, type Mode, type Type } from '../lib/operations-tresorerie-saisie';
 import { Aide } from '../components/chrome/Aide';
 import { CadreModale, messageDuRefus, useFermetureParEchap } from '../components/CadreModaleTresorerie';
 import { TitresPlacementSection } from '../components/TitresPlacementSection';
@@ -265,12 +265,12 @@ export function FinancementsPlacementsPage() {
                             <button type="button" onClick={() => setDetail(o)} className="px-2 py-[1px] border border-border">
                               Actes
                             </button>
-                            {peutEcrire && !exerciceClos && o.statut === 'EN_COURS' && o.contrePassationProposee && (
+                            {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.contrePassationProposee && (
                               <button type="button" disabled={envoiContre !== null} onClick={() => void contrePasser(o)} className="px-2 py-[1px] border border-border disabled:opacity-40">
                                 {envoiContre === o.id ? '…' : 'Contre-passer'}
                               </button>
                             )}
-                            {peutEcrire && !exerciceClos && o.statut === 'EN_COURS' && o.regularisationProposee && (
+                            {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.regularisationProposee && (
                               <button type="button" onClick={() => setRegul(o)} className="px-2 py-[1px] border border-border">
                                 Régulariser
                               </button>
@@ -682,7 +682,11 @@ function ModaleMontant(p: {
 
 function ModaleEcheance(p: { op: Operation; onFermer: () => void; onFait: (m: string) => Promise<void>; onRelire: (err: unknown, defaut: string) => void }) {
   const [jour, setJour] = useState(p.op.dateEcheance.slice(0, 10));
-  const [interets, setInterets] = useState(p.op.modeInterets === 'POST_COMPTES' ? String(p.op.interetsProposes).replace('.', ',') : '');
+  const enChamp = (x: number | null) => (x === null ? '' : String(x).replace('.', ','));
+  const [interets, setInterets] = useState(p.op.modeInterets === 'POST_COMPTES' ? enChamp(interetsProposesAu(p.op, p.op.dateEcheance.slice(0, 10))) : '');
+  // Tant que le champ n'a pas été retouché, il suit la date choisie · tapé, il est le décompte de la banque et ne bouge plus.
+  const [interetsTapes, setInteretsTapes] = useState(false);
+  const proposes = interetsProposesAu(p.op, jour);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const champ = useRef<HTMLInputElement>(null);
@@ -727,17 +731,34 @@ function ModaleEcheance(p: { op: Operation; onFermer: () => void; onFait: (m: st
         <>
           <div>
             {fmt(p.op.montant)} {p.op.type === 'FINANCEMENT' ? 'remboursés à la banque' : 'rendus par la banque'}
-            {post ? ` · intérêts proposés ${fmt(p.op.interetsProposes)} sur la durée entière, à corriger selon le décompte.` : ' · intérêts passés à la mise en place.'}
+            {post ? (proposes === null ? ' · aucun intérêt proposé à cette date.' : ` · intérêts proposés ${fmt(proposes)} jusqu'au ${date(jour)}, à corriger selon le décompte.`) : ' · intérêts passés à la mise en place.'}
           </div>
           {erreur && <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-2 py-1.5">{erreur}</div>}
           <label className="flex flex-col gap-0.5">
             <span className="text-text-dim">Date</span>
-            <input ref={champ} type="date" value={jour} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
+            <input
+              ref={champ}
+              type="date"
+              value={jour}
+              onChange={(e) => {
+                setJour(e.target.value);
+                if (post && !interetsTapes) setInterets(enChamp(interetsProposesAu(p.op, e.target.value)));
+              }}
+              className="border border-border px-2 py-[2px]"
+            />
           </label>
           {post && (
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Intérêts du décompte de la banque</span>
-              <input inputMode="decimal" value={interets} onChange={(e) => setInterets(e.target.value)} className="border border-border px-2 py-[2px] text-right" />
+              <input
+                inputMode="decimal"
+                value={interets}
+                onChange={(e) => {
+                  setInterets(e.target.value);
+                  setInteretsTapes(true);
+                }}
+                className="border border-border px-2 py-[2px] text-right"
+              />
             </label>
           )}
         </>

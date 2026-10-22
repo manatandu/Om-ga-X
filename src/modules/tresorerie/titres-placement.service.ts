@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureMouvementTitre, NatureValeurTitre, Prisma, StatutEcriture, StatutExercice, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { journalDeBanqueEnFrancs } from './banque-en-francs';
@@ -11,6 +11,7 @@ import {
   COMPTE_GAIN,
   COMPTE_PERTE,
   COMPTE_REPRISE,
+  RACINES_EXCLUES,
   RACINES_FRAIS,
   RACINE_TITRES,
   coutDeLaCession,
@@ -121,16 +122,22 @@ export class TitresPlacementService {
     if (numero !== undefined && numero !== '' && !/^\d{1,13}$/.test(numero)) throw new BadRequestException('Le début de numéro se tape en chiffres (treize au plus).');
     const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
     const racines = role === 'TITRE' ? [RACINE_TITRES] : [...RACINES_FRAIS];
+    // LES RACINES REFUSÉES SORTENT EN BASE · filtrées après coup, le total comptait les 506, 5021 et comptes de
+    // frais que la liste ne montrait jamais, et « tronqué » se disait d'une liste complète (relecture du 2026-10-22).
+    const exclues = role === 'TITRE' ? [...RACINES_EXCLUES[referentiel], ...RACINES_FRAIS] : [];
     const where: Prisma.CompteWhereInput = {
       typeCompte: TypeCompteDetailTotal.DETAIL,
       estActif: true,
       OR: racines.map((r) => ({ numero: { startsWith: r } })),
-      ...(numero ? { AND: [{ numero: { startsWith: numero } }] } : {}),
+      AND: [...(numero ? [{ numero: { startsWith: numero } }] : []), ...exclues.map((r) => ({ NOT: { numero: { startsWith: r } } }))],
     };
-    const lus = await this.prisma.compte.findMany({ where: { tenantId, ...where }, select: { id: true, numero: true, intitule: true, estRetenu: true }, orderBy: [{ estRetenu: 'desc' }, { numero: 'asc' }], take: 400 });
-    const comptes = lus.filter((c) => (role === 'TITRE' ? motifRefusCompteTitre(c.numero, referentiel) : motifRefusCompteFrais(c.numero)) === null).slice(0, 200);
-    const total = await this.prisma.compte.count({ where: { tenantId, ...where } });
-    return { racines, comptes, motif: null, total, tronque: total > lus.length || comptes.length === 200 };
+    const [lus, total] = await Promise.all([
+      this.prisma.compte.findMany({ where: { tenantId, ...where }, select: { id: true, numero: true, intitule: true, estRetenu: true }, orderBy: [{ estRetenu: 'desc' }, { numero: 'asc' }], take: 200 }),
+      this.prisma.compte.count({ where: { tenantId, ...where } }),
+    ]);
+    // La règle pure reste le juge · un écart entre elle et le filtre en base serait un défaut du module, jamais un compte offert à tort.
+    const comptes = lus.filter((c) => (role === 'TITRE' ? motifRefusCompteTitre(c.numero, referentiel) : motifRefusCompteFrais(c.numero)) === null);
+    return { racines, comptes, motif: null, total, tronque: total > lus.length };
   }
 
   // ----- Titres (structure) ---------------------------------------------------
@@ -397,10 +404,11 @@ export class TitresPlacementService {
     };
     if (lignes.length === 0) {
       try {
-        const e = await transactionJournalisee(this.prisma, async (tx) => {
+        // EN ISOLATION SÉRIALISABLE, comme la revue à pièce que `creerAvec` passe (relecture du 2026-10-22, B1).
+        const e = await avecRetrySerialisable(this.prisma, async (tx) => {
           await this.verrouillerEtRelire(tx, tenantId, t);
           return tx.evaluationTitre.create({ data: donnees, select: { id: true } });
-        });
+        }, 'Un autre geste est passé sur ce titre pendant la revue · relisez-le avant de recommencer.');
         return { titreId: t.id, evaluationId: e.id, ecritureId: null, depreciationNecessaire: necessaire, depreciationEnPlace: enPlace, ecart: 0 };
       } catch (e) {
         throw conflit(e);
@@ -451,7 +459,9 @@ export class TitresPlacementService {
     if (revue) throw new BadRequestException(`La revue de clôture du ${jour(revue.date)} a lu ce mouvement · annulez-la d'abord.`);
     if (m.ecriture) await this.pieceAnnulable(tenantId, m.ecriture.id, `du mouvement du ${jour(m.date)}`);
     const ecritureId = m.ecriture?.id ?? null;
-    return transactionJournalisee(this.prisma, async (tx) => {
+    // EN ISOLATION SÉRIALISABLE, comme les gestes que `creerAvec` passe · en lecture validée, un geste passé en même
+    // temps sur un instantané antérieur ne voyait pas cette annulation (relecture du 2026-10-22, B1).
+    return avecRetrySerialisable(this.prisma, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, t);
       await this.prendre(
         () => tx.mouvementTitre.update({ where: { id: m.id, tenantId, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif }, select: { id: true } }),
@@ -462,7 +472,7 @@ export class TitresPlacementService {
         : null;
       await tx.mouvementTitre.update({ where: { id: m.id, tenantId }, data: { ecritureId: negatif ? ecritureId : null, ecritureNegatifId: negatif } });
       return { titreId: t.id, mouvementId: m.id, traitement: negatif ? 'INSCRITE_EN_NEGATIF' : ecritureId ? 'SUPPRIMEE' : 'SANS_PIECE', ecritureNegatifId: negatif };
-    });
+    }, "Un autre geste est passé sur ce titre pendant l'annulation · relisez-le avant de recommencer.");
   }
 
   /** UNE REVUE S'ANNULE À REBOURS · la plus récente vivante du titre seule (la suivante a lu sa dépréciation comme en place). */
@@ -478,7 +488,9 @@ export class TitresPlacementService {
     if (!exercice || exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException("L'exercice de cette revue est clôturé · elle ne s'annule plus (AUDCIF art. 20, al. 3).");
     if (e.ecriture) await this.pieceAnnulable(tenantId, e.ecriture.id, `de la revue du ${jour(e.date)}`);
     const ecritureId = e.ecriture?.id ?? null;
-    return transactionJournalisee(this.prisma, async (tx) => {
+    // EN ISOLATION SÉRIALISABLE, comme les gestes que `creerAvec` passe · en lecture validée, un geste passé en même
+    // temps sur un instantané antérieur ne voyait pas cette annulation (relecture du 2026-10-22, B1).
+    return avecRetrySerialisable(this.prisma, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, t);
       await this.prendre(
         () => tx.evaluationTitre.update({ where: { id: e.id, tenantId, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif }, select: { id: true } }),
@@ -489,7 +501,7 @@ export class TitresPlacementService {
         : null;
       await tx.evaluationTitre.update({ where: { id: e.id, tenantId }, data: { ecritureId: negatif ? ecritureId : null, ecritureNegatifId: negatif } });
       return { titreId: t.id, evaluationId: e.id, traitement: negatif ? 'INSCRITE_EN_NEGATIF' : ecritureId ? 'SUPPRIMEE' : 'SANS_PIECE', ecritureNegatifId: negatif };
-    });
+    }, "Un autre geste est passé sur ce titre pendant l'annulation · relisez-le avant de recommencer.");
   }
 
   // ----- Aides ------------------------------------------------------------------
@@ -584,7 +596,8 @@ export class TitresPlacementService {
 
   /** La ligne du titre prise `FOR UPDATE`, puis ses mouvements et revues vivants relus · changés depuis la lecture qui a jugé le geste, 409. */
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, t: TitreLu) {
-    await tx.$queryRaw`SELECT id FROM "titres_placement" WHERE id = ${t.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    const pris = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "titres_placement" WHERE id = ${t.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    if (pris.length !== 1) throw new ConflictException(`Le titre ${t.code} n'existe plus · relisez la liste avant de recommencer.`);
     const [mouvements, evaluations] = await Promise.all([
       tx.mouvementTitre.findMany({ where: { tenantId, titreId: t.id, annuleLe: null }, select: { id: true } }),
       tx.evaluationTitre.findMany({ where: { tenantId, titreId: t.id, annuleLe: null }, select: { id: true } }),

@@ -90,3 +90,20 @@ export function montantExige(texte: string, objet: string): Corps<number> {
   if ('vide' in lu) return { refus: `${objet} est exigé.` };
   return { corps: lu.valeur };
 }
+
+/**
+ * Les intérêts PROPOSÉS d'un post-compté à la date d'échéance choisie · la
+ * formule du serveur (`interetsCalcules`, tenue en miroir), jours de la mise
+ * en place à cette date. Une échéance avancée (remboursement anticipé) ne
+ * propose plus les intérêts du terme entier (relecture du 2026-10-22). Une
+ * aide seulement · le décompte de la banque fait foi, et c'est lui qui se tape.
+ * Date illisible ou non postérieure à la mise en place · `null`, rien proposé.
+ */
+export function interetsProposesAu(op: { montant: number; tauxApplique: number; baseCalcul: number; dateMiseEnPlace: string }, jour: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return null;
+  const debut = Date.parse(`${op.dateMiseEnPlace.slice(0, 10)}T00:00:00.000Z`);
+  const fin = Date.parse(`${jour}T00:00:00.000Z`);
+  if (Number.isNaN(debut) || Number.isNaN(fin) || fin <= debut) return null;
+  const jours = Math.round((fin - debut) / 86_400_000);
+  return Math.round((op.montant * op.tauxApplique * jours) / op.baseCalcul) / 100;
+}
