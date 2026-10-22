@@ -255,6 +255,8 @@ export function AppShell() {
             { label: 'Banques', chemin: '/banques', onClick: () => navigate('/banques') },
             // Ligne sage-l3, fonction 46 · conditions, autorisations de financement et unions des comptes bancaires.
             { label: 'Conditions bancaires', chemin: '/conditions-bancaires', onClick: () => navigate('/conditions-bancaires') },
+            // Ligne sage-l3, fonction 47 · taux de référence et leurs cours déclarés avec leur source (tresorerie/).
+            { label: 'Taux de référence', chemin: '/taux-reference', onClick: () => navigate('/taux-reference') },
             { label: 'Libellés', chemin: '/libelles', onClick: () => navigate('/libelles') },
             { label: 'Taux de taxes', chemin: '/taux-tva', onClick: () => navigate('/taux-tva') },
             { label: 'Modèles de saisie', chemin: '/modeles-saisie', onClick: () => navigate('/modeles-saisie') },
@@ -340,6 +342,8 @@ export function AppShell() {
             { label: 'Remises en banque', chemin: '/remises', onClick: () => navigate('/remises') },
             // Ligne sage-l3, fonction 39 · effets à recevoir et à payer, escompte, impayé (effets/).
             { label: 'Effets de commerce', chemin: '/effets', onClick: () => navigate('/effets') },
+            // Ligne sage-l3, fonction 47 · crédits de trésorerie et dépôts à terme (tresorerie/).
+            { label: 'Financements et placements', chemin: '/financements-placements', onClick: () => navigate('/financements-placements') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
             // Ligne sage-l3, fonction 45 · relevés importés par compte, édition chaînée (rapprochement/).
             { label: 'Extraits bancaires', chemin: '/extraits-bancaires', onClick: () => navigate('/extraits-bancaires') },

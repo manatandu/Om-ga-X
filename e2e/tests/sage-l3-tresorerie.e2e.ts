@@ -139,7 +139,17 @@ test('SYSCOHADA · crédit de trésorerie et dépôt à terme · taux de référ
   expect(lc.regularisationProposee).toEqual({ date: jour(N.dateFin), montant: 303_333.33, compte: '56600000' });
   expect(ld.regularisationProposee).toEqual({ date: jour(N.dateFin), montant: 50_000, compte: '47700000' });
   expect(await refusDe(appelApi(page, 'POST', `/operations-tresorerie/${dat.id}/regulariser`, { exerciceId: N.id, montant: 75_000.01 }))).toMatch(/ne dépasse pas/);
-  await appelApi(page, 'POST', `/operations-tresorerie/${credit.id}/regulariser`, { exerciceId: N.id, montant: 303_333.33 });
+  // À L'ÉCRAN · la régularisation du crédit se passe depuis la fenêtre, le montant proposé par le serveur prérempli.
+  await page.goto('/#/financements-placements');
+  const ligneCredit = page.getByRole('row', { name: /Crédit de trésorerie CT-01/ });
+  await expect(ligneCredit).toContainText('Régulariser à la clôture');
+  await ligneCredit.getByRole('button', { name: 'Régulariser' }).click();
+  const boite = page.getByRole('dialog', { name: /Régulariser · Crédit de trésorerie CT-01/ });
+  await expect(boite.getByLabel("Montant rattaché à l'exercice")).toHaveValue('303333,33');
+  await boite.getByRole('button', { name: 'Régulariser' }).click();
+  await expect(page.getByRole('status')).toContainText('CT-01 · régularisée');
+  await page.goto('/#/taux-reference');
+  await expect(page.getByRole('region', { name: /TBCC/ })).toContainText('Communiqué de la Banque centrale du 1er janvier');
   await appelApi(page, 'POST', `/operations-tresorerie/${dat.id}/regulariser`, { exerciceId: N.id, montant: 50_000 });
   expect(await refusDe(appelApi(page, 'POST', `/operations-tresorerie/${dat.id}/regulariser`, { exerciceId: N.id, montant: 50_000 }))).toMatch(/déjà régularisée/);
   b = await balance(N.id);

@@ -18,6 +18,8 @@ const PlanComptesPage = lazy(() => import('../pages/PlanComptesPage').then((m) =
 const JournauxPage = lazy(() => import('../pages/JournauxPage').then((m) => ({ default: m.JournauxPage })));
 const BanquesPage = lazy(() => import('../pages/BanquesPage').then((m) => ({ default: m.BanquesPage })));
 const ConditionsBancairesPage = lazy(() => import('../pages/ConditionsBancairesPage').then((m) => ({ default: m.ConditionsBancairesPage })));
+const TauxReferencePage = lazy(() => import('../pages/TauxReferencePage').then((m) => ({ default: m.TauxReferencePage })));
+const FinancementsPlacementsPage = lazy(() => import('../pages/FinancementsPlacementsPage').then((m) => ({ default: m.FinancementsPlacementsPage })));
 const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ default: m.LibellesPage })));
 // Ligne sage-l1, fonction 19 · les séquences de saisie.
 const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
@@ -224,6 +226,8 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/journaux$/, titre: 'Codes journaux', titreCourt: 'Codes journaux', rendre: () => <JournauxPage /> },
   { motif: /^\/banques$/, titre: 'Banques', titreCourt: 'Banques', rendre: () => <BanquesPage /> },
   { motif: /^\/conditions-bancaires$/, titre: 'Conditions bancaires', titreCourt: 'Conditions', rendre: () => <ConditionsBancairesPage /> },
+  { motif: /^\/taux-reference$/, titre: 'Taux de référence', titreCourt: 'Taux', rendre: () => <TauxReferencePage /> },
+  { motif: /^\/financements-placements$/, titre: 'Financements et placements', titreCourt: 'Financements', rendre: () => <FinancementsPlacementsPage /> },
   { motif: /^\/libelles$/, titre: 'Libellés', titreCourt: 'Libellés', rendre: () => <LibellesPage /> },
   { motif: /^\/etats-personnalises$/, titre: 'États personnalisés', titreCourt: 'États perso.', rendre: () => <EtatsPersonnalisesPage /> },
   { motif: /^\/simulations-budgetaires$/, titre: 'Simulateur budgétaire', titreCourt: 'Simulateur', rendre: () => <SimulationsBudgetairesPage /> },

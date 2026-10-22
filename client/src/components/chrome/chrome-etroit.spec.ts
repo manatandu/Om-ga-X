@@ -390,8 +390,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // d'impression » au même groupe (fonction 27) · repos inchangé.
     // 2026-10-22 · « Types de remise » au même groupe (ligne sage-l3,
     // fonction 40) · repos inchangé. « Conditions bancaires » au même groupe
-    // (ligne sage-l3, fonction 46) · repos inchangé.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 21],
+    // (ligne sage-l3, fonction 46) · repos inchangé. « Taux de référence »
+    // au même groupe (fonction 47) · repos inchangé.
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 22],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.
@@ -401,8 +402,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // « Virement de fonds » sous « Tiers et trésorerie » (2026-10-09). Puis
     // « Remises en banque » au même groupe (ligne sage-l3, fonction 40,
     // 2026-10-22), puis « Effets de commerce » (fonction 39, même jour) et
-    // « Extraits bancaires » (fonction 45, même jour).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 25],
+    // « Extraits bancaires » (fonction 45, même jour), puis « Financements et
+    // placements » (fonction 47, même jour).
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 26],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);
