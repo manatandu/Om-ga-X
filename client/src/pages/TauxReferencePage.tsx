@@ -115,8 +115,8 @@ export function TauxReferencePage() {
 
   return (
     <div className="p-3 space-y-3 text-[11.5px] avec-edition">
-      {[erreur, erreurLecture].filter(Boolean).map((m) => (
-        <div key={m} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+      {([['geste', erreur], ['lecture', erreurLecture]] as const).filter(([, m]) => m).map(([cle, m]) => (
+        <div key={cle} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
           {m}
         </div>
       ))}

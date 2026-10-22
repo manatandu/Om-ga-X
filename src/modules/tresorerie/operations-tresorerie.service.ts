@@ -16,6 +16,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { journalDeBanqueEnFrancs } from './banque-en-francs';
+import { refuserSiDernierJourClos } from './cloture-du-dernier-jour';
 import {
   RACINES,
   avertissementOperation,
@@ -243,10 +244,10 @@ export class OperationsTresorerieService {
       this.prisma.operationTresorerie.findMany({ where: { tenantId, ...where }, orderBy: [{ dateEcheance: 'asc' }, { createdAt: 'asc' }], take: PLAFOND_LISTE, include: INCLURE }),
       this.prisma.operationTresorerie.count({ where: { tenantId, ...where } }),
     ]);
-    const exercices = await this.exercicesDuDossier(tenantId);
+    const [exercices, posterieurs] = await Promise.all([this.exercicesDuDossier(tenantId), this.coursDeclaresApres(tenantId, operations)]);
     return {
       exercice: { id: exercice.id, dateDebut: jour(exercice.dateDebut), dateFin: jour(exercice.dateFin), statut: exercice.statut },
-      operations: operations.map((o) => this.rendre(o, exercice, exercices)),
+      operations: operations.map((o) => this.rendre(o, exercice, exercices, posterieurs)),
       total,
       tronque: total > operations.length,
     };
@@ -255,10 +256,37 @@ export class OperationsTresorerieService {
   async operation(tenantId: string, id: string) {
     const o = await this.prisma.operationTresorerie.findFirst({ where: { id, tenantId }, include: INCLURE });
     if (!o) throw new NotFoundException('Opération introuvable pour ce dossier.');
-    return this.rendre(o, null, []);
+    return this.rendre(o, null, [], await this.coursDeclaresApres(tenantId, [o]));
   }
 
-  private rendre(o: OperationLue, exercice: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice } | null, exercices: ExerciceLu[]) {
+  /**
+   * UN COURS DÉCLARÉ APRÈS COUP, EN VIGUEUR À LA MISE EN PLACE (relecture du
+   * 2026-10-22, second tour, M2) · une publication saisie en retard, datée
+   * entre le cours retenu et la mise en place, ne change pas le taux FIGÉ de
+   * l'opération (jamais retouché en silence), mais la régularisation et les
+   * intérêts proposés en découlent · c'est DIT sur l'opération, avec l'issue.
+   * Une lecture par liste, bornée · les cours sont peu nombreux.
+   */
+  private async coursDeclaresApres(tenantId: string, operations: readonly OperationLue[]) {
+    const suivies = operations.filter((o) => o.tauxReference && o.coursRetenu);
+    const parOperation = new Map<string, { date: string; valeur: number }>();
+    if (suivies.length === 0) return parOperation;
+    const depuis = new Date(Math.min(...suivies.map((o) => o.coursRetenu!.date.getTime())));
+    const jusqua = new Date(Math.max(...suivies.map((o) => o.dateMiseEnPlace.getTime())));
+    const cours = await this.prisma.coursTauxReference.findMany({
+      where: { tenantId, tauxReferenceId: { in: [...new Set(suivies.map((o) => o.tauxReference!.id))] }, date: { gt: depuis, lte: jusqua } },
+      orderBy: { date: 'desc' },
+      take: 2000,
+      select: { tauxReferenceId: true, date: true, valeur: true },
+    });
+    for (const o of suivies) {
+      const enVigueur = cours.find((c) => c.tauxReferenceId === o.tauxReference!.id && c.date.getTime() > o.coursRetenu!.date.getTime() && c.date.getTime() <= o.dateMiseEnPlace.getTime());
+      if (enVigueur) parOperation.set(o.id, { date: jour(enVigueur.date), valeur: Number(enVigueur.valeur) });
+    }
+    return parOperation;
+  }
+
+  private rendre(o: OperationLue, exercice: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice } | null, exercices: ExerciceLu[], posterieurs: Map<string, { date: string; valeur: number }>) {
     const vivants = o.actes.filter((a) => !a.annuleLe);
     const interets = this.interetsDeReference(o, vivants);
     let regularisationProposee: { date: string; montant: number; compte: string } | null = null;
@@ -307,7 +335,14 @@ export class OperationsTresorerieService {
       referenceConvention: o.referenceConvention,
       dateConvention: jour(o.dateConvention),
       interetsProposes: interetsCalcules(Number(o.montant), Number(o.tauxApplique), joursEntre(o.dateMiseEnPlace, o.dateEcheance), o.baseCalcul),
-      avertissement: avertissementOperation({ type: o.type, dateMiseEnPlace: jour(o.dateMiseEnPlace), dateEcheance: jour(o.dateEcheance) }),
+      avertissement: (() => {
+        const duree = avertissementOperation({ type: o.type, dateMiseEnPlace: jour(o.dateMiseEnPlace), dateEcheance: jour(o.dateEcheance) });
+        const p = posterieurs.get(o.id);
+        const cours = p
+          ? `Un cours du ${p.date} (${p.valeur} %) a été déclaré après la mise en place et était en vigueur à sa date · le taux figé (${Number(o.tauxApplique)} %) n'en tient pas compte. Si l'opération doit le suivre, annulez sa mise en place et refaites-la.`
+          : null;
+        return [duree, cours].filter((x): x is string => x !== null).join(' ') || null;
+      })(),
       regularisationProposee,
       contrePassationProposee,
       actes: o.actes.map((a) => ({ ...a, date: jour(a.date), montantInterets: Number(a.montantInterets), interetsProposes: n(a.interetsProposes), libelle: LIBELLES_ACTE[a.nature] })),
@@ -496,6 +531,7 @@ export class OperationsTresorerieService {
     const proposeeNulle = Math.round(montant * 100) === 0;
     const proposee = regularisationALaCloture({ type: o.type, modeInterets: o.modeInterets, dateMiseEnPlace: o.dateMiseEnPlace, dateEcheance: o.dateEcheance }, this.interetsDeReference(o, vivants), exercice.dateFin);
     // ZÉRO DÉCLARÉ · l'acte est gardé, sans pièce (rien à inscrire), et l'échéance le lit comme régularisé.
+    await refuserSiDernierJourClos(this.prisma, tenantId, o.journalOd.id, exercice.dateFin, 'la régularisation');
     if (proposeeNulle) return this.passerActeSansPiece(tenantId, userId, o, { nature: NatureActeTresorerie.REGULARISATION, date: exercice.dateFin, exerciceId: exercice.id, proposes: proposee?.montant ?? null });
     const avance = o.modeInterets === ModeInteretsTresorerie.PRECOMPTES ? await this.compteDAvance(tenantId, o.type) : null;
     if (o.modeInterets === ModeInteretsTresorerie.POST_COMPTES && !o.compteCourus) {
@@ -551,6 +587,10 @@ export class OperationsTresorerieService {
     const origine = await this.prisma.ligneEcriture.findMany({ where: { ecritureId: reg.ecriture.id, ecriture: { tenantId } }, select: { compteId: true, debit: true, credit: true, libelle: true } });
     const libelle = `${LIBELLES_TYPE[o.type]} ${o.reference} · contre-passation`.slice(0, 190);
     const lignes = origine.map((l) => ({ compteId: l.compteId, libelle, debit: Number(l.credit), credit: Number(l.debit) }));
+    // UNE OUVERTURE DANS UNE PÉRIODE CLOSE (relecture du 2026-10-22, second tour, B1) · janvier clos par une
+    // clôture de période, N clôturé, la contre-passation au 1er janvier était refusée, la régularisation ne
+    // s'annulait plus et l'échéance restait refusée pour toujours. Sur DEMANDE, l'écriture s'inscrit au premier
+    // jour non clôturé de l'exercice, sa date de valeur gardée (AUDCIF art. 22, 4°, `reporterAuPremierJourOuvert`).
     return this.passerActe(tenantId, userId, o, {
       nature: NatureActeTresorerie.CONTRE_PASSATION,
       date: jour(suivant.dateDebut),
@@ -561,6 +601,7 @@ export class OperationsTresorerieService {
       regularisationId: reg.id,
       libelle,
       lignes,
+      reporterAuPremierJourOuvert: dto.reporterAuPremierJourOuvert === true,
     });
   }
 
@@ -604,7 +645,11 @@ export class OperationsTresorerieService {
       const part = regularisationALaCloture({ type: o.type, modeInterets: o.modeInterets, dateMiseEnPlace: o.dateMiseEnPlace, dateEcheance: o.dateEcheance }, this.interetsDeReference(o, vivants), ex.dateFin);
       if (part && !vivants.some((a) => a.nature === NatureActeTresorerie.REGULARISATION && a.exerciceId === ex.id)) {
         throw new BadRequestException(
-          `La clôture du ${jour(ex.dateFin)} n'a pas rattaché ses intérêts (${part.montant.toFixed(2)} proposés) · régularisez-la, contre-passez à l'ouverture suivante, puis passez l'échéance.`,
+          // DEUX ISSUES, NOMMÉES (relecture du 2026-10-22, second tour, M1) · si le dernier jour de cet exercice est
+          // dans une période close, la régularisation y est refusée et ne se reporte pas au-delà de l'exercice ; il
+          // reste à clôturer l'exercice, l'intérêt omis transitant alors par l'exercice en cours (AUDCIF art. 34 ;
+          // SYCEBNL cadre conceptuel § 3.3.1.2.4).
+          `La clôture du ${jour(ex.dateFin)} n'a pas rattaché ses intérêts (${part.montant.toFixed(2)} proposés) · régularisez-la, contre-passez à l'ouverture suivante, puis passez l'échéance ; si sa dernière période est close, clôturez cet exercice, l'intérêt omis passant alors par l'exercice en cours.`,
         );
       }
     }
@@ -661,6 +706,12 @@ export class OperationsTresorerieService {
       throw new BadRequestException(`L'annulation va à rebours · annulez d'abord « ${LIBELLES_ACTE[dernier.nature]} » du ${jour(dernier.date)}, puis « ${LIBELLES_ACTE[acte.nature]} ».`);
     }
     if (acte.ecriture) await this.pieceAnnulable(tenantId, acte.ecriture.id, `de l'acte « ${LIBELLES_ACTE[acte.nature]} »`);
+    else {
+      // UN ACTE SANS PIÈCE (régularisation ou contre-passation nulle) se juge sur SON exercice · sans pièce, rien ne
+      // relisait son statut, et l'acte d'un exercice clôturé s'annulait (AUDCIF art. 20, al. 3 ; second tour, m1).
+      const ex = await this.prisma.exercice.findFirst({ where: { id: acte.exerciceId, tenantId }, select: { statut: true } });
+      if (!ex || ex.statut === StatutExercice.CLOTURE) throw new BadRequestException(`L'exercice de l'acte « ${LIBELLES_ACTE[acte.nature]} » est clôturé · il ne s'annule plus (AUDCIF art. 20, al. 3).`);
+    }
     const restants = vivants.filter((a) => a.id !== acte.id);
     const statut = !restants.some((a) => a.nature === NatureActeTresorerie.MISE_EN_PLACE)
       ? StatutOperationTresorerie.ANNULEE
@@ -721,14 +772,26 @@ export class OperationsTresorerieService {
       libelle: string;
       lignes: { compteId: string; libelle: string; debit: number; credit: number }[];
       statut?: StatutOperationTresorerie;
+      reporterAuPremierJourOuvert?: boolean;
     },
   ) {
     const res = await this.ecritures.creerAvec(
       tenantId,
       userId,
-      { exerciceId: a.exerciceId, journalId: a.journalId, date: a.date, libelle: a.libelle, reference: `${o.reference} · ${LIBELLES_ACTE[a.nature]}`.slice(0, 190), lignes: a.lignes },
+      {
+        exerciceId: a.exerciceId,
+        journalId: a.journalId,
+        date: a.date,
+        libelle: a.libelle,
+        reference: `${o.reference} · ${LIBELLES_ACTE[a.nature]}`.slice(0, 190),
+        lignes: a.lignes,
+        ...(a.reporterAuPremierJourOuvert ? { reporterAuPremierJourOuvert: true } : {}),
+      },
       async (tx, ecriture) => {
         await this.verrouillerEtRelire(tx, tenantId, o);
+        // L'ACTE PREND LA DATE INSCRITE · reportée au premier jour ouvert, la pièce n'est plus au jour demandé, et
+        // l'acte daté autrement que sa pièce ferait lire à l'échéance un ordre d'actes faux.
+        const inscrite = a.reporterAuPremierJourOuvert ? (await tx.ecriture.findFirst({ where: { id: ecriture.id, tenantId }, select: { date: true } }))?.date : undefined;
         if (a.statut && a.statut !== o.statut) {
           await this.prendre(
             () => tx.operationTresorerie.update({ where: { id: o.id, tenantId, statut: o.statut }, data: { statut: a.statut }, select: { id: true } }),
@@ -740,7 +803,7 @@ export class OperationsTresorerieService {
             tenantId,
             operationId: o.id,
             nature: a.nature,
-            date: aMinuit(a.date),
+            date: inscrite ?? aMinuit(a.date),
             exerciceId: a.exerciceId,
             montantInterets: new Prisma.Decimal(a.montant),
             interetsProposes: a.proposes === null ? null : new Prisma.Decimal(a.proposes),
@@ -831,7 +894,15 @@ export class OperationsTresorerieService {
     try {
       return await geste();
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') throw new ConflictException('Le cours ou le taux de référence retenu vient d’être retiré · relisez les taux, puis recommencez.');
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+        // Le taux n'est nommé que si c'est lui · un journal ou un compte retiré pendant le geste recevait ce message faux (second tour, m3).
+        const champ = String((e.meta as { field_name?: unknown } | undefined)?.field_name ?? '');
+        throw new ConflictException(
+          /cours|taux/i.test(champ)
+            ? 'Le cours ou le taux de référence retenu vient d’être retiré · relisez les taux, puis recommencez.'
+            : 'Un journal ou un compte de cette opération vient d’être retiré · relisez-la, puis recommencez.',
+        );
+      }
       throw e;
     }
   }

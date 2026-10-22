@@ -5,6 +5,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { journalDeBanqueEnFrancs } from './banque-en-francs';
+import { refuserSiDernierJourClos } from './cloture-du-dernier-jour';
 import {
   COMPTE_DEPRECIATION,
   COMPTE_DOTATION,
@@ -402,6 +403,7 @@ export class TitresPlacementService {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return new ConflictException(`Le titre ${t.code} est déjà revu pour cet exercice · relisez la liste.`);
       return e;
     };
+    await refuserSiDernierJourClos(this.prisma, tenantId, od.id, exercice.dateFin, 'la revue');
     if (lignes.length === 0) {
       try {
         // EN ISOLATION SÉRIALISABLE, comme la revue à pièce que `creerAvec` passe (relecture du 2026-10-22, B1).

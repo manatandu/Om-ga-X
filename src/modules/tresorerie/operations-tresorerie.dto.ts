@@ -1,5 +1,5 @@
 import { ModeInteretsTresorerie, TypeOperationTresorerie } from '@prisma/client';
-import { Allow, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { Allow, IsBoolean, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 /**
  * Les corps de la fonction 47 · la RÈGLE juge montants, dates, taux et
@@ -49,6 +49,12 @@ export class RegulariserDto {
 
 export class ContrePasserDto {
   @IsUUID('4') regularisationId!: string;
+  /**
+   * AUDCIF art. 22, 4° · le premier jour est dans une période close (clôture
+   * de période, ou du journal) · la contre-passation s'inscrit au premier jour
+   * non clôturé, sa date de valeur gardée. DEMANDÉ, jamais d'office.
+   */
+  @IsOptional() @IsBoolean() reporterAuPremierJourOuvert?: boolean;
 }
 
 export class AnnulerActeTresorerieDto {

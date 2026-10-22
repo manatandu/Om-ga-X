@@ -155,6 +155,7 @@ export function FinancementsPlacementsPage() {
   };
   const refus = useCallback(
     (err: unknown, defaut: string) => {
+      setInfo(null);
       setErreur(messageDuRefus(err, defaut));
       if (!(err instanceof ApiError && err.status < 500 && err.status !== 409)) void charger();
     },
@@ -172,13 +173,19 @@ export function FinancementsPlacementsPage() {
   const [aAnnuler, setAAnnuler] = useState<{ op: Operation; acte: Acte } | null>(null);
   const [detail, setDetail] = useState<Operation | null>(null);
   const [envoiContre, setEnvoiContre] = useState<string | null>(null);
+  // Le premier jour est dans une période close (refus 403 de la saisie) · le report au premier jour ouvert se
+  // DEMANDE (AUDCIF art. 22, 4°), jamais d'office · le bouton le propose alors pour CETTE opération.
+  const [reportContre, setReportContre] = useState<string | null>(null);
   const contrePasser = async (op: Operation) => {
     if (!op.contrePassationProposee || envoiContre) return;
+    const reporter = reportContre === op.id;
     setEnvoiContre(op.id);
     try {
-      await api.post(`/operations-tresorerie/${op.id}/contre-passer`, { regularisationId: op.contrePassationProposee.regularisationId });
-      await fait(`${op.libelleType} ${op.reference} · régularisation contre-passée au ${date(op.contrePassationProposee.date)}.`);
+      await api.post(`/operations-tresorerie/${op.id}/contre-passer`, { regularisationId: op.contrePassationProposee.regularisationId, ...(reporter ? { reporterAuPremierJourOuvert: true } : {}) });
+      setReportContre(null);
+      await fait(`${op.libelleType} ${op.reference} · régularisation contre-passée ${reporter ? 'au premier jour ouvert, valeur au' : 'au'} ${date(op.contrePassationProposee.date)}.`);
     } catch (err) {
+      if (!reporter && err instanceof ApiError && err.status === 403) setReportContre(op.id);
       refus(err, 'Contre-passation impossible');
     } finally {
       setEnvoiContre(null);
@@ -267,7 +274,7 @@ export function FinancementsPlacementsPage() {
                             </button>
                             {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.contrePassationProposee && (
                               <button type="button" disabled={envoiContre !== null} onClick={() => void contrePasser(o)} className="px-2 py-[1px] border border-border disabled:opacity-40">
-                                {envoiContre === o.id ? '…' : 'Contre-passer'}
+                                {envoiContre === o.id ? '…' : reportContre === o.id ? 'Contre-passer au premier jour ouvert' : 'Contre-passer'}
                               </button>
                             )}
                             {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.regularisationProposee && (
@@ -384,6 +391,15 @@ function FormMiseEnPlace(p: {
   const maj = (champ: keyof ChampsOperation, v: string) => setC((x) => ({ ...x, [champ]: v }));
 
   // Les comptes de chaque rôle, sous les racines que le serveur prescrit pour ce type · un choix unique se présélectionne.
+  const comptesUniques = (parRole: Partial<Record<Role, ComptesDuRole>>): Partial<ChampsOperation> => {
+    const champ: Record<Role, 'comptePrincipalId' | 'compteInteretsId' | 'compteCourusId' | 'compteFraisId'> = { PRINCIPAL: 'comptePrincipalId', INTERETS: 'compteInteretsId', COURUS: 'compteCourusId', FRAIS: 'compteFraisId' };
+    const y: Partial<ChampsOperation> = {};
+    for (const r of ROLES) {
+      const lus = parRole[r]?.comptes;
+      if (lus && lus.length === 1) y[champ[r]] = lus[0].id;
+    }
+    return y;
+  };
   useEffect(() => {
     let vivant = true;
     setComptes({});
@@ -394,12 +410,7 @@ function FormMiseEnPlace(p: {
         if (!vivant) return;
         const parRole = Object.fromEntries(ROLES.map((r, i) => [r, lus[i]])) as Record<Role, ComptesDuRole>;
         setComptes(parRole);
-        const champ: Record<Role, keyof ChampsOperation> = { PRINCIPAL: 'comptePrincipalId', INTERETS: 'compteInteretsId', COURUS: 'compteCourusId', FRAIS: 'compteFraisId' };
-        setC((x) => {
-          const y = { ...x };
-          for (const r of ROLES) if (parRole[r].comptes.length === 1) (y[champ[r]] as string) = parRole[r].comptes[0].id;
-          return y;
-        });
+        setC((x) => ({ ...x, ...comptesUniques(parRole) }));
       })
       .catch((e) => vivant && setErreurComptes(e instanceof ApiError ? e.message : 'Comptes illisibles · rechargez la fenêtre.'));
     return () => {
@@ -444,7 +455,8 @@ function FormMiseEnPlace(p: {
     setEnvoi(true);
     try {
       const op = await api.post<Operation>('/operations-tresorerie', r.corps);
-      setC({ ...VIDE, type: c.type, journalBanqueId: c.journalBanqueId, journalOdId: c.journalOdId });
+      // Les comptes à choix unique se représélectionnent · remis à vide, ils bloquaient la mise en place suivante (second tour, mineur 1).
+      setC({ ...VIDE, type: c.type, journalBanqueId: c.journalBanqueId, journalOdId: c.journalOdId, ...comptesUniques(comptes) });
       await p.onFait(`${op.libelleType} ${op.reference} mis en place au ${op.comptePrincipal.numero}, taux appliqué ${op.tauxApplique.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} %.`);
     } catch (err) {
       p.onRefus(err, 'Mise en place impossible');

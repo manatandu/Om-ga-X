@@ -67,7 +67,8 @@ export function corpsOperation(c: ChampsOperation): Corps<Record<string, unknown
       journalOdId: c.journalOdId,
       comptePrincipalId: c.comptePrincipalId,
       compteInteretsId: c.compteInteretsId,
-      ...(c.compteCourusId ? { compteCourusId: c.compteCourusId } : {}),
+      // Le compte des courus ne sert qu'aux post-comptés · masqué à l'écran sous les précomptés, il ne part pas.
+      ...(c.modeInterets === 'POST_COMPTES' && c.compteCourusId ? { compteCourusId: c.compteCourusId } : {}),
       ...(c.compteFraisId ? { compteFraisId: c.compteFraisId } : {}),
       ...(fixe ? { tauxFixe: valeur(tauxFixe) } : { tauxReferenceId: c.taux, marge: valeur(marge) }),
       baseCalcul: valeur(base),

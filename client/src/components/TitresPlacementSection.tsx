@@ -137,6 +137,7 @@ export function TitresPlacementSection(p: {
   };
   const refus = useCallback(
     (err: unknown, defaut: string) => {
+      setInfo(null);
       setErreur(messageDuRefus(err, defaut));
       if (!(err instanceof ApiError && err.status < 500 && err.status !== 409)) void charger();
     },
@@ -173,8 +174,8 @@ export function TitresPlacementSection(p: {
           source="AUDCIF Titre VIII ch. 13 § 1.1, § 2.3, § 3.2, § 4 et § 4.2 ; fiche du compte 50 des deux plans ; AUDCIF art. 17, 3° et art. 20, al. 2"
         />
       </div>
-      {[erreur, erreurLecture].filter(Boolean).map((m) => (
-        <div key={m} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+      {([['geste', erreur], ['lecture', erreurLecture]] as const).filter(([, m]) => m).map(([cle, m]) => (
+        <div key={cle} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
           {m}
         </div>
       ))}
@@ -436,7 +437,7 @@ function ModaleMouvement(p: { titre: Titre; nature: Nature; banques: JournalTitr
       onSubmit={envoyer}
       enfants={
         <>
-          {cession && <div>Parts détenues à la clôture de l'exercice · {parts(p.titre.position.quantite)}. Le coût sorti est calculé par le serveur, premier entré, premier sorti.</div>}
+          {cession && <div>Parts détenues à la clôture de l'exercice · {parts(p.titre.position.quantite)}</div>}
           {erreur && (
             <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-2 py-1.5">
               {erreur}
@@ -600,7 +601,8 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
     setErreur(null);
     setAAnnuler(a);
   };
-  const dernierMouvement = [...p.titre.mouvements].reverse().find((m) => !m.annuleLe) ?? null;
+  // Tronquée, la liste perd les mouvements les plus récents · son dernier n'est pas celui que le serveur annule.
+  const dernierMouvement = p.titre.mouvementsTronques ? null : ([...p.titre.mouvements].reverse().find((m) => !m.annuleLe) ?? null);
   const derniereRevue = [...p.titre.evaluations].reverse().find((e) => !e.annuleLe) ?? null;
   const annuler = async (e: FormEvent) => {
     e.preventDefault();

@@ -519,12 +519,46 @@ financements, placements.
   sans ventilation analytique ; journal OD en sommeil après coup non dit ;
   le gestionnaire de paie voit les boutons de saisie (peutEcrire) ; piège du
   focus des modales ; clôture non refusée sur un titre non revu.
+- **#47 · second tour de relecture (silent-failure-hunter, typescript,
+  react).** (B1, deux relecteurs) la contre-passation datée du 1er janvier
+  d'une période close (clôture de période, ou du journal d'OD) était refusée,
+  la régularisation ne s'annulait plus, l'échéance restait refusée · elle
+  s'inscrit, SUR DEMANDE, au premier jour non clôturé, sa date de valeur
+  gardée (AUDCIF art. 22, 4°, `ContrePasserDto.reporterAuPremierJourOuvert`),
+  l'acte daté de sa pièce ; à l'écran, après le refus 403, le bouton devient
+  « Contre-passer au premier jour ouvert ». (M1) régularisation et revue
+  datées du dernier jour d'une période close · refus nommé AVANT toute
+  écriture, pièce nulle comprise (`cloture-du-dernier-jour.ts`, spec) · seule
+  issue, clôturer l'exercice, l'omis passant par l'exercice en cours (AUDCIF
+  art. 34) ; le refus de l'échéance la nomme aussi. (M2) un cours déclaré
+  après coup, en vigueur à la mise en place, est DIT sur l'opération
+  (`coursDeclaresApres`), le taux figé jamais retouché. Mineurs pris en
+  passant · acte sans pièce d'un exercice clôturé non annulable, P2003 nommé
+  par son champ, compte des courus envoyé aux seuls post-comptés, ancien
+  succès effacé au refus, comptes uniques représélectionnés après une mise en
+  place, paragraphe de la cession dans la bulle, « Annuler » masqué sur une
+  liste de mouvements tronquée, clés fixes des alertes. Suites · serveur 965,
+  client 304, e2e `sage-l3-tresorerie` vert (deux tests).
+  Relevés en attente (second tour, ni BLOQUANT ni MAJEUR) · mise en place et
+  échéance datées d'une période close sans report demandable (SF m2) ;
+  `passerActeSansPiece` ne relit pas le statut de l'exercice sous verrou
+  (SF m1) ; retrait d'une pièce au brouillard sans refaire la description des
+  pièces jointes, commun aux effets, remises et opérations (TS m2) ; borne de
+  la valeur d'une part à 9 × 10^9 FC et précision d'`interetsCalcules`
+  au-delà de 10^13 (TS m4) ; montant de la contre-passation non relu sur les
+  lignes d'une régularisation retouchée au brouillard (TS m5) ; journaux de
+  la section des titres affichés vides pendant leur lecture ou leur échec ;
+  échec de lecture des comptes de la mise en place sans bandeau d'alerte ;
+  modales non remises à zéro au changement d'exercice ; ancienne liste gardée
+  après une relecture en échec ; boutons de ligne sans libellé accessible ;
+  aucune garde de fermeture sur les formulaires des taux ; annulation choisie
+  dans l'historique défaite par Échap seulement.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #47 · second tour de relecture (opérations et titres ensemble).
+- Arrêt demandé par Manasse le 2026-10-22 après le second tour (« on s'arrête là pour l'instant ») · L3 n'est PAS intégrée sur `main`.
 - Docs · `features.csv` (colonne clone de la ligne 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.
