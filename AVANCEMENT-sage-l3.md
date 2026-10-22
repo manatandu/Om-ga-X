@@ -136,12 +136,52 @@ financements, placements.
   ou numéroter par une ligne compteur `FOR UPDATE` ; (11 React) les
   échéances de TOUS les clients sont lues pour n'en garder qu'un (la route
   n'a pas de filtre par compte) ; flèches gauche et droite des onglets.
+- #40 · second tour de relecture (mêmes trois agents) · UN BLOQUANT (même
+  racine à deux endroits), tous les MINEURS corrigés · (B1) un avis de
+  crédit ou un impayé VALIDÉ puis annulé gardait son lien d'origine sur la
+  remise ou la valeur (une seule paire de colonnes), et le geste suivant,
+  qui exige le lien vide, était refusé pour toujours (409 « a changé
+  d'état ») · le 514 reporté restait ouvert, le chèque réellement impayé ne
+  revenait jamais au 413, et l'issue nommée par B1 du premier tour
+  (« annulez l'impayé, passez l'avis, redéclarez ») était fermée dès que la
+  pièce était validée · table d'historique `AnnulationActeRemise` (nature,
+  remise ou valeur, traitement, origine et négatif RETENUS, motif, auteur ·
+  migration `20270190000300_annulations_actes_remise`, dérive nulle contre
+  `l3_ombre`, les deux colonnes de négatif retirées et leurs paires
+  recopiées), l'annulation y range sa paire et libère le lien, le geste se
+  repasse, une seconde annulation fait une seconde ligne ; l'écran dit
+  « avis annulé le … · négatif n° … » et « impayé annulé … ». MINEURS ·
+  une ligne cochée déjà lettrée, pointée, de situation ou d'à-nouveau
+  provisoire est refusée AVANT la pièce de réception (elle ne l'était que
+  par le lettrage, après) ; identifiants dédoublonnés passés au lettrage ;
+  l'impression du bordereau se compte sous le statut (annulé entre la
+  lecture et l'écriture · 409) ; l'exercice d'un bordereau de CARTES est
+  relu dans la transaction ; « annulez d'abord l'impayé, puis le
+  bordereau » dans l'ordre que `annulerRemise` impose ; listes de comptes
+  tronquées dites à l'écran (m3) ; une seule `useGardeFermeture` par
+  fenêtre, chaque onglet remonte son motif (M1 React · deux appels se
+  remplaçaient) ; cases du bordereau vidées au seul changement de type ;
+  « Lecture… » tu sans exercice ; `onRefus` par référence ; `banques` et
+  `operations` mémorisés ; `scope="col"` et `aria-label` nommant le type ;
+  un type disparu quitte le choix. Specs · validée-annulée-redéclarée
+  (impayé et avis), ligne tenue refusée avant la pièce, doublon averti,
+  tiers hors classe 4 refusé, impression d'une remise annulée, branche
+  `dateCredit` de `motifRefusImpaye` ; doublure `delettrer` retirée.
+  Test navigateur ÉTENDU et PASSÉ sur vraie base · avis VALIDÉ (validation
+  par période) annulé en négatif puis repassé (514 à 420 000 puis 120 000),
+  historique servi sur le bordereau de N ; impayé VALIDÉ annulé en négatif,
+  REDÉCLARÉ (4131 de nouveau à 300 000), annulé au brouillard · trois
+  annulations gardées, aucun impayé en cours. Rejoué · tsc des deux côtés,
+  Jest entier (13 892, deux chutes corrigées · inventaire de la restitution
+  à 188 modèles, doublure), vitest (2 409), construction, test navigateur.
+  Non repris (hors périmètre du second tour, au relevé) · le message « compte
+  de transit introuvable » quand un type de chèques est créé par l'API sans
+  `compteTransitId` (l'écran l'exige) ; le relevé du premier tour inchangé.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #40 · second tour de relecture (les docs et CLAUDE.md § 6 sont écrits).
 - #39 · module `effets/` (portefeuille, remise à l'encaissement ou à
   l'escompte, échéance, impayé, bon à payer) · lire la fiche du 67 (675) et
   le décret n° 011/42, art. 57 al. 2, avant de coder.

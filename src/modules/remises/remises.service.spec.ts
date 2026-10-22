@@ -37,6 +37,7 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
     }),
     remiseEnBanque: {
       updateMany: jest.fn(async () => ({ count: 1 })),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'r9', numero: 9, total: 300, ...data })),
       findFirstOrThrow: jest.fn(async () => ({ id: 'r9', numero: 9, statut: 'CREDITEE', dateCredit: new Date('2026-03-15'), commission: 0 })),
       aggregate: jest.fn(async () => ({ _max: { numero: 4 } })),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -44,9 +45,14 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
         return { id: 'r1', ...data };
       }),
     },
-    ecriture: { update: jest.fn(async () => ({})) },
+    ecriture: { update: jest.fn(async () => ({})), findFirst: jest.fn(async () => ({ statut: 'VALIDEE' })) },
+    exercice: { findFirst: jest.fn(async () => ({ statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') })) },
+    // L'historique des avis et des impayés annulés (second tour, BLOQUANT B1).
+    annulationActeRemise: { create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'an1', ...data })) },
     valeurRecue: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'v1', ...data })),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'v3', montant: 300000, ...data })),
+      findFirstOrThrow: jest.fn(async () => ({ id: 'v3', statut: 'IMPAYEE', dateImpaye: new Date('2026-03-20') })),
       updateMany: jest.fn(async () => ({ count: options.prisesRemise ?? 2 })),
       deleteMany: jest.fn(async () => {
         appels.push('valeur retirée');
@@ -56,11 +62,15 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
   };
   const prisma = {
     typeRemise: { findFirst: jest.fn(async () => TYPE) },
-    compte: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => (where.id === 'c411' ? { id: 'c411', numero: '41110001', intitule: 'Client', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4133' ? { id: 'c4133', numero: '41330000', intitule: 'Cartes impayées', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4131' ? { id: 'c4131', numero: '41310000', intitule: 'Chèques impayés', typeCompte: 'DETAIL', estActif: true } : null)) },
+    compte: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => (where.id === 'c601' ? { id: 'c601', numero: '60110000', intitule: 'Achats', typeCompte: 'DETAIL', estActif: true } : where.id === 'c411' ? { id: 'c411', numero: '41110001', intitule: 'Client', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4133' ? { id: 'c4133', numero: '41330000', intitule: 'Cartes impayées', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4131' ? { id: 'c4131', numero: '41310000', intitule: 'Chèques impayés', typeCompte: 'DETAIL', estActif: true } : null)) },
     exercice: { findFirst: jest.fn(async () => ({ id: 'ex1', statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') })) },
     tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
     // La facture choisie à la réception · 1 500 dus (relecture, m5 · plus que le dû refusé).
-    ligneEcriture: { findMany: jest.fn(async () => [{ id: 'f1', debit: 1500, credit: 0 }]) },
+    ligneEcriture: {
+      findMany: jest.fn(async () => [{ id: 'f1', debit: 1500, credit: 0, lettrageId: null, rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7 } }]),
+    },
+    // La pièce de l'impayé ou de l'avis à annuler · validée, lignes libres.
+    ecriture: { findFirst: jest.fn(async () => ({ id: 'e9', numeroPiece: 9, statut: 'VALIDEE', exercice: { statut: 'OUVERT' }, lignes: [] })) },
     valeurRecue: {
       count: jest.fn(async () => 0),
       findMany: jest.fn(async () => [
@@ -69,8 +79,10 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
       ]),
       findFirst: jest.fn(async () => ({ id: 'v3', statut: 'REMISE', date: new Date('2026-03-01'), montant: 300000, reference: 'C', typeRemise: TYPE, compteTiers: { numero: '41110001', intitule: 'Client' }, remise: { numero: 2, statut: 'REMISE', date: new Date('2026-03-05'), dateCredit: null } })),
     },
-    remiseEnBanque: { findFirst: jest.fn(async () => ({ id: 'r9', numero: 9, statut: 'CREDITEE', date: new Date('2026-03-12'), total: 1000, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [], ecritureRemiseId: 'e1', exercice: { statut: 'OUVERT' } })) },
-    ecriture: { update: jest.fn(async () => ({})) },
+    remiseEnBanque: {
+      findFirst: jest.fn(async () => ({ id: 'r9', numero: 9, statut: 'CREDITEE', date: new Date('2026-03-12'), total: 1000, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [], ecritureRemiseId: 'e1', exercice: { statut: 'OUVERT' } })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+    },
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const ecritures = {
@@ -83,13 +95,16 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
       if (liberer) await liberer(tx);
       appels.push('pièce retirée');
     }),
+    inscrireEnNegatifPourAnnulation: jest.fn(async () => {
+      appels.push('négatif');
+      return { id: 'neg1' };
+    }),
   };
   const lettrage = {
     lettrerManuel: jest.fn(async () => {
       if (options.lettrageEchoue) throw new BadRequestException('Les lignes ne se lettrent pas · solde non nul.');
       return { lettre: 'AA' };
     }),
-    delettrer: jest.fn(async () => undefined),
   };
   return { service: new RemisesService(prisma as never, ecritures as never, lettrage as never), appels, tx, prisma, ecritures, lettrage };
 }
@@ -112,11 +127,29 @@ describe('RemisesService · réception', () => {
     expect(appels).toEqual(['écriture', 'valeur retirée', 'pièce retirée']);
   });
 
-  it('un tiers hors classe 4 ou un montant illisible sont refusés avant toute pièce', async () => {
+  it('un montant illisible ou un tiers hors classe 4 sont refusés avant toute pièce · un 413 est un tiers', async () => {
     const { service, ecritures } = monter();
     await expect(service.recevoir('t', 'u', { ...RECEPTION, montant: 0 })).rejects.toThrow(/montant/);
+    await expect(service.recevoir('t', 'u', { ...RECEPTION, compteTiersId: 'c601' })).rejects.toThrow(/60110000.*classe 4/);
     await expect(service.recevoir('t', 'u', { ...RECEPTION, compteTiersId: 'c4133' })).resolves.toBeDefined();
     expect(ecritures.creerAvec).toHaveBeenCalledTimes(1);
+  });
+
+  it("une ligne choisie déjà lettrée, pointée ou d'à-nouveau provisoire est refusée AVANT la pièce (second tour)", async () => {
+    const { service, ecritures, prisma } = monter();
+    prisma.ligneEcriture.findMany.mockResolvedValueOnce([{ id: 'f1', debit: 1500, credit: 0, lettrageId: 'g1', rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7 } }] as never);
+    await expect(service.recevoir('t', 'u', { ...RECEPTION, ligneIds: ['f1', 'f1'] })).rejects.toThrow(/pièce n° 7 appartient déjà à un lettrage/);
+    prisma.ligneEcriture.findMany.mockResolvedValueOnce([{ id: 'f1', debit: 1500, credit: 0, lettrageId: null, rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: true, numeroPiece: 1 } }] as never);
+    await expect(service.recevoir('t', 'u', { ...RECEPTION, ligneIds: ['f1'] })).rejects.toThrow(/à-nouveau provisoire/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+  });
+
+  it('un même identifiant coché deux fois est lettré une fois (m1), et un doublon de référence est averti sans refus (m10)', async () => {
+    const { service, lettrage, prisma } = monter();
+    prisma.valeurRecue.count.mockResolvedValueOnce(1);
+    const r = await service.recevoir('t', 'u', { ...RECEPTION, ligneIds: ['f1', 'f1'] });
+    expect(lettrage.lettrerManuel).toHaveBeenCalledWith('t', 'c411', ['f1', 'l1'], 'u', { autoriserPartiel: true });
+    expect(r.avertissement).toMatch(/1 autre\(s\) valeur\(s\) de référence « CHQ 1 »/);
   });
 });
 
@@ -187,5 +220,41 @@ describe("RemisesService · avis de crédit, annulation, impayé", () => {
     const { service, ecritures } = monter();
     await expect(service.impaye('t', 'u', 'v3', { date: '2026-03-20', compteImpayeId: 'c4133' })).rejects.toThrow(/41330000.*4131/);
     expect(ecritures.creerAvec).not.toHaveBeenCalled();
+  });
+
+  it("un impayé VALIDÉ puis annulé range sa paire dans l'historique et libère la valeur, qui se redéclare (BLOQUANT B1 du second tour)", async () => {
+    const { service, prisma, tx, appels } = monter();
+    prisma.valeurRecue.findFirst.mockResolvedValueOnce({ id: 'v3', statut: 'IMPAYEE', ecritureImpayeId: 'e9', remise: { statut: 'CREDITEE' } } as never);
+    // Une valeur prise à l'annulation, une à la redéclaration (la doublure rend deux par défaut, pour les bordereaux).
+    tx.valeurRecue.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
+    const annule = await service.annulerImpaye('t', 'u', 'v3', { motif: 'impayé déclaré avant le crédit' });
+    expect(appels).toEqual(['négatif']);
+    expect(tx.annulationActeRemise.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ nature: 'IMPAYE', valeurId: 'v3', traitement: 'INSCRITE_EN_NEGATIF', ecritureOrigineId: 'e9', ecritureNegatifId: 'neg1', numeroPieceOrigine: 9, motif: 'impayé déclaré avant le crédit' }),
+    }));
+    // Le lien d'origine est VIDÉ (prise), et la mise à jour finale ne le repose pas.
+    expect(tx.valeurRecue.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { ecritureImpayeId: null } }));
+    expect((tx.valeurRecue.update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toEqual({ statut: 'CREDITEE', dateImpaye: null });
+    expect([annule.statut, annule.annulation.traitement]).toEqual(['CREDITEE', 'INSCRITE_EN_NEGATIF']);
+    // Redéclaré · la prise exige le lien vide, ce qu'il est désormais.
+    await expect(service.impaye('t', 'u', 'v3', { date: '2026-03-20', compteImpayeId: 'c4131' })).resolves.toMatchObject({ compteImpaye: '41310000' });
+    expect(tx.valeurRecue.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ ecritureImpayeId: null }) }));
+  });
+
+  it("un avis VALIDÉ puis annulé va de même à l'historique, et la remise reste libre d'être recréditée", async () => {
+    const { service, prisma, tx } = monter();
+    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'CREDITEE', ecritureCreditId: 'e9', total: 300, exerciceId: 'ex1', exercice: { statut: 'OUVERT' }, valeurs: [{ statut: 'CREDITEE', reference: 'A' }] } as never);
+    tx.valeurRecue.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
+    const annule = await service.annulerAvisCredit('t', 'u', 'r9', { motif: 'mauvais relevé' });
+    expect(tx.annulationActeRemise.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ nature: 'AVIS_CREDIT', remiseId: 'r9', ecritureOrigineId: 'e9', ecritureNegatifId: 'neg1' }) }));
+    expect((tx.remiseEnBanque.update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toEqual({ statut: 'REMISE', dateCredit: null, commission: null, referenceAvis: null });
+    expect(annule.annulation.traitement).toBe('INSCRITE_EN_NEGATIF');
+  });
+
+  it("l'impression refuse (409) une remise annulée entre la lecture et le décompte (m-b)", async () => {
+    const { service, prisma } = monter();
+    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'REMISE', date: new Date('2026-03-12'), total: 1000, typeRemise: TYPE, journalBanque: { code: 'BQ', intitule: 'Banque' }, valeurs: [] } as never);
+    prisma.remiseEnBanque.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.impression('t', 'u', 'r9')).rejects.toThrow(/annulé pendant l'impression/);
   });
 });

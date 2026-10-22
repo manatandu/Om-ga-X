@@ -38,6 +38,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   TypeRemise: 'Type de remise en banque',
   ValeurRecue: 'Valeur reçue (chèque ou carte)',
   RemiseEnBanque: 'Bordereau de remise en banque',
+  AnnulationActeRemise: "Annulation d'un avis de crédit ou d'un impayé",
   PieceJointeEcriture: "Pièce jointe d'une écriture",
   PieceJointeSection: "Document d'une section analytique",
   PieceJointeImmobilisation: "Document d'une immobilisation",

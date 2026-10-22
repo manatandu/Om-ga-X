@@ -91,6 +91,10 @@ NOUVELLES (`chrome-etroit.spec.ts` ne tient que les menus).
 | F40-H5 | | clôture traversée · avis annulé | avis de janvier d'un bordereau de décembre, N clôturé | annulation admise (exercice de l'avis), 514 rendu, avis repassé | e2e `sage-l3-remises` | passé |
 | F40-N5 | | refus · plus que le dû | chèque supérieur au dû des lignes cochées | refus nommé avant toute pièce | unit `remises.service.spec` | passé |
 | F40-N6 | | refus · impayé antidaté | impayé daté avant le bordereau | refus nommé | unit `remises.service.spec` | passé |
+| F40-H6 | | clôture traversée · avis validé puis annulé | avis de janvier validé par période, annulé (négatif), repassé | annulation à l'historique, remise libre, 514 rendu puis soldé | e2e `sage-l3-remises`, unit `remises.service.spec` | passé |
+| F40-H7 | | impayé validé, annulé, redéclaré | impayé validé, annulé en négatif, redéclaré, annulé au brouillard | trois annulations gardées, 4131 à 300 000 puis 0, aucun impayé en cours | e2e `sage-l3-remises`, unit `remises.service.spec` | passé |
+| F40-N7 | | refus · ligne tenue à la réception | ligne cochée déjà lettrée, pointée ou d'à-nouveau provisoire | refus nommé avant toute pièce | unit `remises.service.spec` | passé |
+| F40-N8 | | refus · impression d'une remise annulée | remise annulée entre la lecture et le décompte | 409 nommé, rien compté | unit `remises.service.spec` | passé |
 | TOUS-N1 | toutes routes d'écriture | refus · rôle | POST, PUT, PATCH, DELETE sans `@Roles` | aucune | structure `ecritures-reservees.spec`, `roles-cantonnes.spec` | passé |
 | TOUS-N2 | toutes tables nouvelles | refus · dossier | lecture sans borne de dossier | refusée par la garde | structure `lecture-bornee.spec`, `index-du-dossier.spec` | passé |
 | TOUS-E1 | toutes fenêtres | bord · rechargement | recharger une fenêtre qui lit | aucune exception (WebKit) | e2e, `rechargerAuRepos` | passé |

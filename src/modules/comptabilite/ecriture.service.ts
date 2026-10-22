@@ -1955,15 +1955,19 @@ export class EcritureService {
       ['un virement de fonds annulé (négatif de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
       // Les remises en banque (ligne sage-l3, fonction 40) · comme les
       // virements de fonds, l'origine et son négatif restent tenus après une
-      // annulation (les deux sont au livre-journal, art. 20, al. 2).
+      // annulation (les deux sont au livre-journal, art. 20, al. 2) ; l'avis
+      // de crédit et l'impayé annulés le sont par l'historique des
+      // annulations, qui garde leur paire (second tour, BLOQUANT B1).
       ['une valeur reçue (réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureReceptionId: ecritureId } })],
       ['une valeur reçue annulée (négatif de la réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureNegatifReceptionId: ecritureId } })],
       ['une valeur reçue revenue impayée', this.prisma.valeurRecue.count({ where: { tenantId, ecritureImpayeId: ecritureId } })],
-      ['une valeur reçue dont l’impayé est annulé (négatif)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureNegatifImpayeId: ecritureId } })],
       ['une remise en banque (bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureRemiseId: ecritureId } })],
       ['une remise en banque annulée (négatif du bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureNegatifRemiseId: ecritureId } })],
       ['une remise en banque (avis de crédit)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureCreditId: ecritureId } })],
-      ['une remise en banque annulée (négatif de l’avis de crédit)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureNegatifCreditId: ecritureId } })],
+      [
+        "un avis de crédit ou un impayé annulé (fenêtre Remises en banque · l'origine ou son négatif)",
+        this.prisma.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
       // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
       // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
       // dit, et le salaire repartirait dans le paiement suivant ; son négatif

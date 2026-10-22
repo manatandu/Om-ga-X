@@ -3442,7 +3442,18 @@ Modèle de bordereau par type (jetons, `{lignes}` exigé une fois, tout jeton
 inconnu refusé), impression comptée. Annulations (AUDCIF art. 20, al. 2) ·
 brouillard supprimé (`deleteMany` filtré sur le statut), validée en négatif,
 à rebours (l'avis avant le bordereau) ; type figé sur nature, journaux et
-comptes du 51. Les champs `unknown` d'un DTO jugés par une règle portent
+comptes du 51. L'AVIS ET L'IMPAYÉ ANNULÉS VONT À L'HISTORIQUE (second tour,
+BLOQUANT B1 · `AnnulationActeRemise`) · une seule paire de colonnes
+(origine, négatif) sur la remise ou la valeur ne tenait qu'UNE annulation, et
+l'avis ou l'impayé VALIDÉ puis annulé gardait son lien d'origine, que le
+geste suivant exige vide · le bon avis était refusé pour toujours (514
+reporté ouvert à vie), le chèque réellement impayé ne revenait jamais au 413.
+Chaque annulation range sa paire, toutes deux RETENUES
+(`detenteurs-ecriture.ts`), et libère la remise ou la valeur, qui se repasse ;
+une seconde annulation fait une seconde ligne, jamais un lien écrasé. Une
+ligne cochée à la réception déjà lettrée, pointée, de situation ou
+d'à-nouveau provisoire est refusée AVANT la pièce (tout se vérifie avant la
+première pièce). Les champs `unknown` d'un DTO jugés par une règle portent
 `@Allow()`, sans quoi le pipe global refuse la pièce entière (vu sur vraie
 base). Relevés · non masqué sous le Système minimal ; l'impayé d'une carte
 n'est admis qu'après sa remise.

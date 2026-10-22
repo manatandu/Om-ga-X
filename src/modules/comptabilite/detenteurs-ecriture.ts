@@ -116,11 +116,15 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'ValeurRecue.ecritureReceptionId',
   'ValeurRecue.ecritureNegatifReceptionId',
   'ValeurRecue.ecritureImpayeId',
-  'ValeurRecue.ecritureNegatifImpayeId',
   'RemiseEnBanque.ecritureRemiseId',
   'RemiseEnBanque.ecritureNegatifRemiseId',
   'RemiseEnBanque.ecritureCreditId',
-  'RemiseEnBanque.ecritureNegatifCreditId',
+  // L'avis de crédit ou l'impayé validé puis annulé, et son négatif (second
+  // tour, BLOQUANT B1) · rangés dans l'historique, et non plus sur la remise
+  // ou la valeur, pour que le geste se repasse ; retirés seuls, le négatif
+  // reprendrait sur le 52 ou le 413 un montant que plus rien ne nomme.
+  'AnnulationActeRemise.ecritureOrigineId',
+  'AnnulationActeRemise.ecritureNegatifId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)

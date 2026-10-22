@@ -914,6 +914,7 @@ model Tenant {
   typesRemise                          TypeRemise[]
   valeursRecues                        ValeurRecue[]
   remisesEnBanque                      RemiseEnBanque[]
+  annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
@@ -2118,11 +2119,13 @@ model Ecriture {
   valeurRecueReception            ValeurRecue?                        @relation("ValeurRecueEcritureReception")
   valeurRecueNegatifReception     ValeurRecue?                        @relation("ValeurRecueNegatifReception")
   valeurRecueImpaye               ValeurRecue?                        @relation("ValeurRecueEcritureImpaye")
-  valeurRecueNegatifImpaye        ValeurRecue?                        @relation("ValeurRecueNegatifImpaye")
   remiseEcritureRemise            RemiseEnBanque?                     @relation("RemiseEcritureRemise")
   remiseNegatifRemise             RemiseEnBanque?                     @relation("RemiseNegatifRemise")
   remiseEcritureCredit            RemiseEnBanque?                     @relation("RemiseEcritureCredit")
-  remiseNegatifCredit             RemiseEnBanque?                     @relation("RemiseNegatifCredit")
+  /// Ligne sage-l3 · l'avis de crédit ou l'impayé annulé, et son négatif,
+  /// rangés dans l'historique des annulations (second tour, BLOQUANT B1).
+  annulationActeRemiseOrigine     AnnulationActeRemise?               @relation("AnnulationActeRemiseOrigine")
+  annulationActeRemiseNegatif     AnnulationActeRemise?               @relation("AnnulationActeRemiseNegatif")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
   paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
@@ -11628,10 +11631,10 @@ model ValeurRecue {
   remise                     RemiseEnBanque?   @relation(fields: [remiseId], references: [id], onDelete: Restrict)
   /// Chèque revenu impayé · D compte du client / C 514, la créance rouverte.
   dateImpaye                 DateTime?         @db.Date
+  /// L'impayé EN COURS · vide tant qu'aucun ne tient, ou dès qu'il est
+  /// annulé (sa paire part dans `annulations`) · ainsi la valeur se redéclare.
   ecritureImpayeId           String?           @unique
   ecritureImpaye             Ecriture?         @relation("ValeurRecueEcritureImpaye", fields: [ecritureImpayeId], references: [id], onDelete: Restrict)
-  ecritureNegatifImpayeId    String?           @unique
-  ecritureNegatifImpaye      Ecriture?         @relation("ValeurRecueNegatifImpaye", fields: [ecritureNegatifImpayeId], references: [id], onDelete: Restrict)
   annuleLe                   DateTime?
   annulePar                  String?
   motifAnnulation            String?           @db.VarChar(500)
@@ -11639,6 +11642,8 @@ model ValeurRecue {
   ecritureNegatifReception   Ecriture?         @relation("ValeurRecueNegatifReception", fields: [ecritureNegatifReceptionId], references: [id], onDelete: Restrict)
   createdBy                  String
   createdAt                  DateTime          @default(now())
+
+  annulations AnnulationActeRemise[]
 
   @@index([tenantId, exerciceId, statut])
   @@index([tenantId, remiseId])
@@ -11672,10 +11677,10 @@ model RemiseEnBanque {
   /// Commission prélevée par la banque à l'avis de crédit (cartes).
   commission              Decimal?             @db.Decimal(18, 2)
   referenceAvis           String?              @db.VarChar(100)
+  /// L'avis de crédit EN COURS · vide tant qu'aucun ne tient, ou dès qu'il
+  /// est annulé (sa paire part dans `annulations`) · ainsi l'avis se repasse.
   ecritureCreditId        String?              @unique
   ecritureCredit          Ecriture?            @relation("RemiseEcritureCredit", fields: [ecritureCreditId], references: [id], onDelete: Restrict)
-  ecritureNegatifCreditId String?              @unique
-  ecritureNegatifCredit   Ecriture?            @relation("RemiseNegatifCredit", fields: [ecritureNegatifCreditId], references: [id], onDelete: Restrict)
   premiereImpressionLe    DateTime?
   premiereImpressionPar   String?
   nombreImpressions       Int                  @default(0)
@@ -11685,9 +11690,56 @@ model RemiseEnBanque {
   createdBy               String
   createdAt               DateTime             @default(now())
 
-  valeurs ValeurRecue[]
+  valeurs     ValeurRecue[]
+  annulations AnnulationActeRemise[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, exerciceId, date])
   @@map("remises_en_banque")
+}
+
+enum NatureActeRemise {
+  AVIS_CREDIT
+  IMPAYE
+}
+
+/// L'HISTORIQUE DES AVIS DE CRÉDIT ET DES IMPAYÉS ANNULÉS (ligne sage-l3,
+/// fonction 40, second tour · BLOQUANT B1). Une seule paire de colonnes
+/// (origine, négatif) sur la remise et sur la valeur ne tenait qu'UNE
+/// annulation · l'avis validé puis annulé gardait son lien d'origine, et le
+/// bon avis, qui exige le lien vide, était refusé pour toujours (le 514
+/// reporté ouvert à vie) ; même enfermement pour le chèque réellement revenu
+/// impayé après un impayé déclaré trop tôt et annulé. Chaque annulation range
+/// ici sa paire, toutes deux RETENUES (`detenteurs-ecriture.ts`), et libère
+/// la remise ou la valeur, qui se repasse ; un second geste annulé fait une
+/// seconde ligne, jamais un lien écrasé (AUDCIF art. 20, al. 2 ; art. 22, 2°).
+model AnnulationActeRemise {
+  id       String           @id @default(uuid())
+  tenantId String
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  nature   NatureActeRemise
+  /// L'avis annulé vise sa remise, l'impayé annulé sa valeur.
+  remiseId String?
+  remise   RemiseEnBanque?  @relation(fields: [remiseId], references: [id], onDelete: Restrict)
+  valeurId String?
+  valeur   ValeurRecue?     @relation(fields: [valeurId], references: [id], onDelete: Restrict)
+
+  /// SUPPRIMEE (pièce au brouillard, retirée) ou INSCRITE_EN_NEGATIF (validée).
+  traitement         String
+  numeroPieceOrigine Int?
+  /// RESTRICT déclaré · la pièce validée annulée et son négatif restent liés
+  /// au geste qui les explique · retirés seuls, le négatif reprendrait sur le
+  /// 52 ou le 413 un montant que plus rien ne nomme.
+  ecritureOrigineId  String?   @unique
+  ecritureOrigine    Ecriture? @relation("AnnulationActeRemiseOrigine", fields: [ecritureOrigineId], references: [id], onDelete: Restrict)
+  ecritureNegatifId  String?   @unique
+  ecritureNegatif    Ecriture? @relation("AnnulationActeRemiseNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+
+  motif      String   @db.VarChar(500)
+  annuleeLe  DateTime @default(now())
+  annuleePar String
+
+  @@index([tenantId, remiseId])
+  @@index([tenantId, valeurId])
+  @@map("annulations_actes_remise")
 }

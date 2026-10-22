@@ -69,6 +69,22 @@ interface Piece {
   numeroPiece: string | null;
   statut: string;
 }
+/** Un avis de crédit ou un impayé annulé · sa paire est à l'historique, la remise ou la valeur reste libre (second tour, BLOQUANT B1). */
+interface Annulation {
+  id: string;
+  nature: 'AVIS_CREDIT' | 'IMPAYE';
+  traitement: 'SUPPRIMEE' | 'INSCRITE_EN_NEGATIF';
+  numeroPieceOrigine: number | null;
+  motif: string;
+  annuleeLe: string;
+  ecritureNegatif: Piece | null;
+}
+/** Ce qu'une annulation rend · la trace de la pièce retirée ou inscrite en négatif. */
+interface ReponseAnnulation {
+  ecritureNegatifReceptionId?: string | null;
+  ecritureNegatifRemiseId?: string | null;
+  annulation?: { traitement: 'SUPPRIMEE' | 'INSCRITE_EN_NEGATIF' };
+}
 interface Valeur {
   id: string;
   date: string;
@@ -84,6 +100,7 @@ interface Valeur {
   ecritureReception: Piece | null;
   ecritureImpaye: Piece | null;
   remise: { id: string; numero: number; statut: StatutRemise } | null;
+  annulations: Annulation[];
 }
 interface Remise {
   id: string;
@@ -100,6 +117,7 @@ interface Remise {
   journalBanque: { code: string };
   ecritureRemise: Piece | null;
   ecritureCredit: Piece | null;
+  annulations: Annulation[];
   _count: { valeurs: number };
 }
 interface Liste {
@@ -119,6 +137,8 @@ interface ComptesDuRole {
   racine: string | null;
   comptes: Array<CompteServi & { estRetenu: boolean }>;
   motif: string | null;
+  total?: number;
+  tronque?: boolean;
 }
 interface GroupeEcheance {
   compteId: string;
@@ -135,6 +155,11 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZo
 const messageDuRefus = (err: unknown, defaut: string) =>
   err instanceof ApiError && err.status < 500 ? err.message : `${defaut} · réponse perdue, le geste a pu passer. Relisez la liste avant de le refaire.`;
 const piece = (p: Piece | null) => (p ? `n° ${p.numeroPiece ?? '·'}${p.statut === 'BROUILLARD' ? ' (brouillard)' : ''}` : '·');
+/** Une liste de comptes bornée à deux cents le dit (second tour, m3) · un dossier à plus de sous-comptes ne lisait pas le sien. */
+const listeTronquee = (lus: ComptesDuRole | null) =>
+  lus?.tronque ? <span className="text-text-dim">{lus.comptes.length} comptes montrés sur {lus.total} · un compte absent se cherche dans Plan comptable.</span> : null;
+const annulationDite = (a: Annulation | undefined, objet: string) =>
+  a ? `${objet} annulé le ${date(a.annuleeLe)}${a.traitement === 'INSCRITE_EN_NEGATIF' ? ` · négatif ${piece(a.ecritureNegatif)}` : ' · pièce du brouillard retirée'}` : null;
 
 export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Onglet }) {
   const { peutEcrire, peutValider, estAdmin } = useAuth();
@@ -205,6 +230,15 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
   const [document, setDocument] = useState<{ numero: number; texte: string; duplicata: boolean } | null>(null);
 
   const typesActifs = useMemo(() => (types?.types ?? []).filter((t) => t.estActif), [types]);
+  // UNE SEULE GARDE DE FERMETURE PAR FENÊTRE (second tour React, M1) ·
+  // `useGardeFermeture` tient UNE garde par fenêtre ; appelée par deux
+  // onglets, la seconde remplaçait la première, et la réception à moitié
+  // tapée dans l'onglet caché ne retenait plus la fermeture. Chaque onglet
+  // remonte son motif, la page compose.
+  const [gardes, setGardes] = useState<{ valeurs: string | null; remises: string | null }>({ valeurs: null, remises: null });
+  const garderValeurs = useCallback((m: string | null) => setGardes((g) => (g.valeurs === m ? g : { ...g, valeurs: m })), []);
+  const garderRemises = useCallback((m: string | null) => setGardes((g) => (g.remises === m ? g : { ...g, remises: m })), []);
+  useGardeFermeture(gardes.valeurs ?? gardes.remises);
 
   return (
     <div className="p-3 space-y-3 text-[11.5px] avec-edition">
@@ -258,6 +292,7 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
           peutValider={peutValider}
           onFait={fait}
           onRefus={refus}
+          onGarde={garderValeurs}
         />
       </div>
       <div role="tabpanel" id="panneau-remises-remises" aria-labelledby="onglet-remises-remises" hidden={onglet !== 'remises'}>
@@ -272,6 +307,7 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
           onFait={fait}
           onRefus={refus}
           onDocument={setDocument}
+          onGarde={garderRemises}
         />
       </div>
       <div role="tabpanel" id="panneau-remises-types" aria-labelledby="onglet-remises-types" hidden={onglet !== 'types'}>
@@ -297,6 +333,7 @@ function OngletValeurs(p: {
   peutValider: boolean;
   onFait: (m: string) => Promise<void>;
   onRefus: (e: unknown, d: string) => void;
+  onGarde: (motif: string | null) => void;
 }) {
   const [typeId, setTypeId] = useState('');
   const [tiers, setTiers] = useState<CompteServi[] | null>(null);
@@ -320,25 +357,31 @@ function OngletValeurs(p: {
   const [aDeclarerImpayee, setADeclarerImpayee] = useState<Valeur | null>(null);
   const [impayeAAnnuler, setImpayeAAnnuler] = useState<Valeur | null>(null);
 
-  // Un choix unique se présélectionne (§ 9 ter).
+  // Un choix unique se présélectionne (§ 9 ter) ; un type mis en sommeil
+  // entre-temps quitte le choix (second tour React, m6).
   useEffect(() => {
     if (!typeId && p.types.length === 1) setTypeId(p.types[0].id);
+    if (typeId && !p.types.some((t) => t.id === typeId)) setTypeId('');
   }, [typeId, p.types]);
   // Les comptes de tiers · la liste du plan sous sa règle (retenus ou
   // utilisés), bornée à la classe 4 à l'écran, jugée au serveur. Lue pour
-  // qui peut recevoir seulement.
-  const { onRefus, peutEcrire } = p;
+  // qui peut recevoir seulement. `onRefus` lu par une référence (second
+  // tour React, m4) · dans les dépendances, chaque relecture de la page la
+  // faisait relire les comptes.
+  const { peutEcrire } = p;
+  const onRefus = useRef(p.onRefus);
+  onRefus.current = p.onRefus;
   useEffect(() => {
     if (!peutEcrire) return;
     let vivant = true;
     api
       .get<CompteServi[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true')
       .then((c) => vivant && setTiers(c.filter((x) => x.numero.startsWith('4'))))
-      .catch((e) => vivant && onRefus(e, 'Comptes de tiers illisibles'));
+      .catch((e) => vivant && onRefus.current(e, 'Comptes de tiers illisibles'));
     return () => {
       vivant = false;
     };
-  }, [peutEcrire, onRefus]);
+  }, [peutEcrire]);
   // Les lignes ouvertes du tiers choisi · ce que le chèque règle.
   useEffect(() => {
     setLignesChoisies([]);
@@ -370,9 +413,12 @@ function OngletValeurs(p: {
     return null;
   };
   const formulaireEntame = !!(somme || reference || banqueTiree || titulaire || lignesChoisies.length > 0);
-  useGardeFermeture(
-    envoi ? 'La réception est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : formulaireEntame ? 'Une valeur est en cours de saisie et n’est pas reçue.' : null,
-  );
+  const motifGarde = envoi ? 'La réception est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : formulaireEntame ? 'Une valeur est en cours de saisie et n’est pas reçue.' : null;
+  const { onGarde } = p;
+  useEffect(() => {
+    onGarde(motifGarde);
+    return () => onGarde(null);
+  }, [motifGarde, onGarde]);
   const recevoir = async (e: FormEvent) => {
     e.preventDefault();
     if (manque()) return;
@@ -491,7 +537,7 @@ function OngletValeurs(p: {
         </form>
       )}
       <div className="overflow-auto">
-        {p.valeurs === null ? (
+        {!p.exerciceId ? null : p.valeurs === null ? (
           <div className="text-text-dim">Lecture…</div>
         ) : p.valeurs.valeurs.length === 0 ? (
           <div className="text-text-dim">Aucune valeur reçue sur cet exercice.</div>
@@ -529,6 +575,12 @@ function OngletValeurs(p: {
                   <td className="px-2 py-1">
                     {piece(v.ecritureReception)}
                     {v.ecritureImpaye && <div>impayé {piece(v.ecritureImpaye)}</div>}
+                    {v.annulations.length > 0 && (
+                      <div className="text-text-dim">
+                        {annulationDite(v.annulations[0], 'impayé')}
+                        {v.annulations.length > 1 ? ` (${v.annulations.length} annulations)` : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="px-2 py-1">{v.remise ? `n° ${v.remise.numero}` : '·'}</td>
                   <td className="px-2 py-1 space-x-2">
@@ -578,7 +630,7 @@ function OngletValeurs(p: {
           onFermer={() => setImpayeAAnnuler(null)}
           onFait={async (r) => {
             setImpayeAAnnuler(null);
-            await p.onFait(r.ecritureNegatifImpayeId ? 'Impayé annulé · la pièce validée est inscrite en négatif.' : 'Impayé annulé · la pièce du brouillard est retirée.');
+            await p.onFait(r.annulation?.traitement === 'INSCRITE_EN_NEGATIF' ? 'Impayé annulé · la pièce validée est inscrite en négatif, la valeur peut être redéclarée impayée.' : 'Impayé annulé · la pièce du brouillard est retirée.');
           }}
         />
       )}
@@ -611,6 +663,7 @@ function OngletRemises(p: {
   onFait: (m: string) => Promise<void>;
   onRefus: (e: unknown, d: string) => void;
   onDocument: (d: { numero: number; texte: string; duplicata: boolean }) => void;
+  onGarde: (motif: string | null) => void;
 }) {
   const [typeId, setTypeId] = useState('');
   const [jour, setJour] = useState('');
@@ -628,9 +681,14 @@ function OngletRemises(p: {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     if (!typeId && p.types.length === 1) setTypeId(p.types[0].id);
+    if (typeId && !p.types.some((t) => t.id === typeId)) setTypeId('');
   }, [typeId, p.types]);
+  // Les cases cochées ne se vident qu'au changement de type (second tour
+  // React, m2) · vidées à chaque relecture des candidates, un geste sur un
+  // autre onglet effaçait la sélection en cours ; une valeur partie de la
+  // liste sort d'elle-même des cochées (`choisiesValides`).
+  useEffect(() => setChoisies([]), [typeId]);
   useEffect(() => {
-    setChoisies([]);
     setCandidates(null);
     setErreurCandidates(null);
     if (!typeId || !p.peutEcrire) return;
@@ -657,7 +715,12 @@ function OngletRemises(p: {
     if (choisiesValides.length === 0) return 'Cochez au moins une valeur reçue.';
     return null;
   };
-  useGardeFermeture(envoi ? 'Le bordereau est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : choisiesValides.length > 0 || jour ? 'Un bordereau est en cours de saisie et n’est pas établi.' : null);
+  const motifGarde = envoi ? 'Le bordereau est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : choisiesValides.length > 0 || jour ? 'Un bordereau est en cours de saisie et n’est pas établi.' : null;
+  const { onGarde } = p;
+  useEffect(() => {
+    onGarde(motifGarde);
+    return () => onGarde(null);
+  }, [motifGarde, onGarde]);
   const remettre = async (e: FormEvent) => {
     e.preventDefault();
     if (manque()) return;
@@ -739,7 +802,7 @@ function OngletRemises(p: {
         </form>
       )}
       <div className="overflow-auto">
-        {p.remises === null ? (
+        {!p.exerciceId ? null : p.remises === null ? (
           <div className="text-text-dim">Lecture…</div>
         ) : p.remises.remises.length === 0 ? (
           <div className="text-text-dim">Aucun bordereau sur cet exercice.</div>
@@ -783,6 +846,12 @@ function OngletRemises(p: {
                       </>
                     ) : (
                       '·'
+                    )}
+                    {r.annulations.length > 0 && (
+                      <div className="text-text-dim">
+                        {annulationDite(r.annulations[0], 'avis')}
+                        {r.annulations.length > 1 ? ` (${r.annulations.length} annulations)` : ''}
+                      </div>
                     )}
                   </td>
                   <td className="px-2 py-1 space-x-2">
@@ -837,7 +906,7 @@ function OngletRemises(p: {
           onFermer={() => setAvisAAnnuler(null)}
           onFait={async (r) => {
             setAvisAAnnuler(null);
-            await p.onFait(r.ecritureNegatifCreditId ? 'Avis annulé · la pièce validée est inscrite en négatif, la remise attend de nouveau son crédit.' : 'Avis annulé · la pièce du brouillard est retirée.');
+            await p.onFait(r.annulation?.traitement === 'INSCRITE_EN_NEGATIF' ? 'Avis annulé · la pièce validée est inscrite en négatif, la remise attend de nouveau son crédit.' : 'Avis annulé · la pièce du brouillard est retirée, la remise attend de nouveau son crédit.');
           }}
         />
       )}
@@ -863,10 +932,14 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
 
   // Les comptes de chaque rôle, sous la racine que le serveur prescrit
   // (`/remises/comptes`, régime « texte » de listes-de-comptes.ts).
-  const { onRefus, estAdmin } = p;
+  const { estAdmin } = p;
+  const onRefus = useRef(p.onRefus);
+  onRefus.current = p.onRefus;
   useEffect(() => {
     // Lu pour l'administrateur seul · trois lectures par visite, et un échec
     // dans le bandeau d'un lecteur sans formulaire (relecture React, 8).
+    // `onRefus` par référence (second tour, m4) · en dépendance, chaque
+    // relecture de la page faisait relire les trois listes.
     if (!estAdmin) return;
     let vivant = true;
     setReceptionId('');
@@ -882,14 +955,16 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
         if (lus.RECEPTION.comptes.length === 1) setReceptionId(lus.RECEPTION.comptes[0].id);
         if (lus.TRANSIT.comptes.length === 1) setTransitId(lus.TRANSIT.comptes[0].id);
       })
-      .catch((e) => vivant && onRefus(e, 'Comptes de remise illisibles'));
+      .catch((e) => vivant && onRefus.current(e, 'Comptes de remise illisibles'));
     return () => {
       vivant = false;
     };
-  }, [nature, estAdmin, onRefus]);
+  }, [nature, estAdmin]);
 
-  const banques = (p.journaux ?? []).filter((j) => j.type === 'TRESORERIE' && j.estActif);
-  const operations = (p.journaux ?? []).filter((j) => j.type === 'GENERAL' && j.estActif);
+  // Mémorisés (second tour, m5) · recalculés à chaque rendu, ils relançaient
+  // l'effet de présélection sans fin.
+  const banques = useMemo(() => (p.journaux ?? []).filter((j) => j.type === 'TRESORERIE' && j.estActif), [p.journaux]);
+  const operations = useMemo(() => (p.journaux ?? []).filter((j) => j.type === 'GENERAL' && j.estActif), [p.journaux]);
   // Un choix unique se présélectionne (§ 9 ter).
   useEffect(() => {
     if (!journalBanqueId && banques.length === 1) setJournalBanqueId(banques[0].id);
@@ -953,6 +1028,7 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
             </option>
           ))}
         </select>
+        {listeTronquee(lus)}
       </label>
     );
   };
@@ -1027,16 +1103,16 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
           <table className="w-full min-w-[900px]">
             <thead>
               <tr>
-                <th className="text-left px-2 py-1">Code</th>
-                <th className="text-left px-2 py-1">Intitulé</th>
-                <th className="text-left px-2 py-1">Nature</th>
-                <th className="text-left px-2 py-1">Banque</th>
-                <th className="text-left px-2 py-1">Opérations</th>
-                <th className="text-left px-2 py-1">Réception</th>
-                <th className="text-left px-2 py-1">Transit</th>
-                <th className="text-left px-2 py-1">Commission</th>
-                <th className="text-left px-2 py-1">Modèle</th>
-                <th className="text-left px-2 py-1">Actif</th>
+                <th scope="col" className="text-left px-2 py-1">Code</th>
+                <th scope="col" className="text-left px-2 py-1">Intitulé</th>
+                <th scope="col" className="text-left px-2 py-1">Nature</th>
+                <th scope="col" className="text-left px-2 py-1">Banque</th>
+                <th scope="col" className="text-left px-2 py-1">Opérations</th>
+                <th scope="col" className="text-left px-2 py-1">Réception</th>
+                <th scope="col" className="text-left px-2 py-1">Transit</th>
+                <th scope="col" className="text-left px-2 py-1">Commission</th>
+                <th scope="col" className="text-left px-2 py-1">Modèle</th>
+                <th scope="col" className="text-left px-2 py-1">Actif</th>
               </tr>
             </thead>
             <tbody>
@@ -1055,10 +1131,10 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
                       <span className="flex flex-col gap-1">
                         <textarea value={modeleEdite.texte} onChange={(e) => setModeleEdite({ id: t.id, texte: e.target.value })} rows={3} maxLength={4000} className="border border-border px-2 py-[2px] font-mono text-[11px] min-w-[260px]" />
                         <span className="space-x-2">
-                          <button type="button" onClick={() => retoucher(t, { modeleBordereau: modeleEdite.texte.trim() || null }, 'Modèle du bordereau enregistré.')} className="text-sel hover:underline">
+                          <button type="button" aria-label={`Enregistrer le modèle du type ${t.code}`} onClick={() => retoucher(t, { modeleBordereau: modeleEdite.texte.trim() || null }, 'Modèle du bordereau enregistré.')} className="text-sel hover:underline">
                             Enregistrer
                           </button>
-                          <button type="button" onClick={() => setModeleEdite(null)} className="hover:underline">
+                          <button type="button" aria-label={`Fermer le modèle du type ${t.code}`} onClick={() => setModeleEdite(null)} className="hover:underline">
                             Fermer
                           </button>
                         </span>
@@ -1067,7 +1143,7 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
                       <>
                         {t.modeleBordereau ? 'du type' : 'par défaut'}
                         {p.estAdmin && (
-                          <button type="button" onClick={() => setModeleEdite({ id: t.id, texte: t.modeleBordereau ?? '' })} className="text-sel hover:underline ml-2">
+                          <button type="button" aria-label={`Modifier le modèle du type ${t.code}`} onClick={() => setModeleEdite({ id: t.id, texte: t.modeleBordereau ?? '' })} className="text-sel hover:underline ml-2">
                             Modifier
                           </button>
                         )}
@@ -1076,7 +1152,7 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
                   </td>
                   <td className="px-2 py-1">
                     {p.estAdmin ? (
-                      <button type="button" onClick={() => retoucher(t, { estActif: !t.estActif }, t.estActif ? `Type ${t.code} mis en sommeil.` : `Type ${t.code} réveillé.`)} className="text-sel hover:underline">
+                      <button type="button" aria-label={`${t.estActif ? 'Mettre en sommeil' : 'Réveiller'} le type ${t.code}`} onClick={() => retoucher(t, { estActif: !t.estActif }, t.estActif ? `Type ${t.code} mis en sommeil.` : `Type ${t.code} réveillé.`)} className="text-sel hover:underline">
                         {t.estActif ? 'Mettre en sommeil' : 'Réveiller'}
                       </button>
                     ) : t.estActif ? (
@@ -1152,7 +1228,7 @@ function Cadre(p: {
   );
 }
 
-function ModaleMotif(p: { titre: string; resume: string; action: string; chemin: string; onFermer: () => void; onFait: (r: Record<string, string | null>) => Promise<void> }) {
+function ModaleMotif(p: { titre: string; resume: string; action: string; chemin: string; onFermer: () => void; onFait: (r: ReponseAnnulation) => Promise<void> }) {
   const [motif, setMotif] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -1165,7 +1241,7 @@ function ModaleMotif(p: { titre: string; resume: string; action: string; chemin:
     setErreur(null);
     setEnvoi(true);
     try {
-      const r = await api.post<Record<string, string | null>>(p.chemin, { motif: motif.trim() });
+      const r = await api.post<ReponseAnnulation>(p.chemin, { motif: motif.trim() });
       await p.onFait(r);
     } catch (err) {
       setErreur(messageDuRefus(err, 'Annulation impossible'));
@@ -1329,6 +1405,7 @@ function ModaleImpaye(p: { valeur: Valeur; onFermer: () => void; onFait: (m: str
                 </option>
               ))}
             </select>
+            {listeTronquee(comptes)}
           </label>
         </>
       }

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { NatureRemise, Prisma, StatutEcriture, StatutExercice, StatutRemiseEnBanque, StatutValeurRecue, TypeCompteDetailTotal } from '@prisma/client';
+import { NatureActeRemise, NatureRemise, Prisma, StatutEcriture, StatutExercice, StatutRemiseEnBanque, StatutValeurRecue, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -26,6 +26,16 @@ import {
 import type { AnnulerRemiseDto, AvisCreditDto, CreerTypeRemiseDto, ImpayeDto, ModifierTypeRemiseDto, RecevoirValeurDto, RemettreDto } from './remises.dto';
 
 /** Une liste bornée qui dit son total · jamais une collection sans borne (CLAUDE.md § 8 bis). */
+/**
+ * L'HISTORIQUE DES AVIS ET DES IMPAYÉS ANNULÉS, servi avec la remise et la
+ * valeur (second tour, BLOQUANT B1) · l'écran dit ce qui a été annulé, par
+ * quelle pièce, et la remise ou la valeur reste libre de se repasser.
+ */
+const ANNULATIONS_INCLUDE = {
+  orderBy: { annuleeLe: 'desc' as const },
+  select: { id: true, nature: true, traitement: true, numeroPieceOrigine: true, motif: true, annuleeLe: true, ecritureNegatif: { select: { numeroPiece: true, statut: true } } },
+};
+
 const PLAFOND_LISTE = 500;
 const ROLES: readonly RoleCompteRemise[] = ['RECEPTION', 'TRANSIT', 'COMMISSION', 'IMPAYE'];
 
@@ -192,6 +202,7 @@ export class RemisesService {
           ecritureReception: { select: { numeroPiece: true, statut: true } },
           ecritureImpaye: { select: { numeroPiece: true, statut: true } },
           remise: { select: { id: true, numero: true, statut: true } },
+          annulations: ANNULATIONS_INCLUDE,
         },
       }),
       this.prisma.valeurRecue.count({ where: { tenantId, exerciceId, ...(filtre ? { statut: filtre } : {}) } }),
@@ -271,19 +282,35 @@ export class RemisesService {
     await this.exerciceOuvert(tenantId, dto.exerciceId);
     const montant = round2(dto.montant as number);
     const reference = (dto.reference as string).trim();
-    if (dto.ligneIds && dto.ligneIds.length > 0) {
+    // Dédoublonnés une fois pour la borne du dû ET pour le lettrage (second
+    // tour, m1) · passés bruts au lettrage, deux fois le même identifiant se
+    // disaient « introuvables » après que la pièce était née.
+    const ids = [...new Set(dto.ligneIds ?? [])];
+    if (ids.length > 0) {
       // PLUS QUE LE DÛ EST REFUSÉ AVANT LA PIÈCE (relecture, m5 · même règle
       // que le Règlement des tiers, § 6) · un chèque de 500 000 coché contre
       // une facture de 100 000 faisait un groupe partiel à solde négatif. La
       // borne est le montant BRUT des lignes choisies, sur le compte du tiers
       // seul ; une ligne déjà réglée en partie a un reste plus petit, que le
       // lettrage juge ensuite (reste négatif nommé à la balance âgée).
-      const ids = [...new Set(dto.ligneIds)];
       const lignes = await this.prisma.ligneEcriture.findMany({
         where: { id: { in: ids }, compteId: tiers.id, ecriture: { tenantId } },
-        select: { id: true, debit: true, credit: true },
+        select: { id: true, debit: true, credit: true, lettrageId: true, rapprochementId: true, ecriture: { select: { statut: true, estANouveauProvisoire: true, numeroPiece: true } } },
       });
       if (lignes.length !== ids.length) throw new BadRequestException(`${ids.length - lignes.length} ligne(s) choisie(s) ne sont pas sur le compte ${tiers.numero} de ce dossier · rechargez la liste.`);
+      // TOUT SE VÉRIFIE AVANT LA PREMIÈRE PIÈCE (second tour, serveur) · une
+      // ligne déjà lettrée, pointée, de situation ou d'à-nouveau provisoire
+      // n'était refusée que par le lettrage, APRÈS la pièce de réception, qui
+      // se retirait alors par compensation. Mêmes refus que `verifierLignes`
+      // du lettrage, nommés avant que rien ne s'écrive.
+      const tenue = lignes.find((l) => l.lettrageId || l.rapprochementId || l.ecriture.estANouveauProvisoire || l.ecriture.statut === StatutEcriture.SITUATION);
+      if (tenue) {
+        const piece = `La ligne de la pièce n° ${tenue.ecriture.numeroPiece ?? '·'}`;
+        if (tenue.lettrageId) throw new BadRequestException(`${piece} appartient déjà à un lettrage · délettrez-le ou complétez-le, puis recevez la valeur.`);
+        if (tenue.rapprochementId) throw new BadRequestException(`${piece} est pointée au rapprochement bancaire · dépointez-la d'abord.`);
+        if (tenue.ecriture.estANouveauProvisoire) throw new BadRequestException(`${piece} est un à-nouveau provisoire, qui ne se lettre pas · clôturez l'exercice précédent ou passez un bilan d'ouverture.`);
+        throw new BadRequestException(`${piece} est une écriture de situation, qui ne se lettre pas.`);
+      }
       const du = round2(lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0));
       if (montant > du + 0.005) {
         throw new BadRequestException(`Le montant reçu (${montant.toFixed(2)}) dépasse le dû des lignes choisies (${du.toFixed(2)}) · plus que le dû n'est pas un règlement, recevez le dû et passez le reste en avance (419).`);
@@ -320,14 +347,14 @@ export class RemisesService {
         }),
     );
     let lettre: string | null = null;
-    if (dto.ligneIds && dto.ligneIds.length > 0) {
+    if (ids.length > 0) {
       const ligneTiers = r.ecriture.lignes.find((l) => l.compteId === tiers.id);
       if (!ligneTiers) throw new ConflictException('La ligne du tiers est introuvable dans la pièce de réception.');
       try {
         // `lettrerManuel` est UNE transaction · refusé, il n'a rien posé, et
         // il n'y a rien à délettrer (relecture, m1) ; seule la pièce et la
         // valeur se retirent.
-        const l = await this.lettrage.lettrerManuel(tenantId, tiers.id, [...dto.ligneIds, ligneTiers.id], userId, { autoriserPartiel: true });
+        const l = await this.lettrage.lettrerManuel(tenantId, tiers.id, [...ids, ligneTiers.id], userId, { autoriserPartiel: true });
         lettre = l.lettre;
       } catch (e) {
         try {
@@ -397,7 +424,9 @@ export class RemisesService {
     if (!v) throw new NotFoundException('Valeur introuvable pour ce dossier.');
     if (v.statut === StatutValeurRecue.ANNULEE) throw new ConflictException('Cette valeur est déjà annulée.');
     if (v.statut !== StatutValeurRecue.RECUE) {
-      throw new BadRequestException(`Cette valeur est ${v.remise ? `remise (bordereau n° ${v.remise.numero})` : 'sortie du 51'} · annulez d'abord le bordereau${v.statut === StatutValeurRecue.IMPAYEE ? " et l'impayé" : ''}.`);
+      // L'ordre dit est celui que `annulerRemise` impose · l'impayé, PUIS le
+      // bordereau (second tour, m5) ; « le bordereau et l'impayé » égarait.
+      throw new BadRequestException(`Cette valeur est ${v.remise ? `remise (bordereau n° ${v.remise.numero})` : 'sortie du 51'} · ${v.statut === StatutValeurRecue.IMPAYEE ? "annulez d'abord l'impayé, puis le bordereau" : "annulez d'abord le bordereau"}.`);
     }
     const motif = this.motifJuge(dto);
     if (v.ecritureReceptionId) {
@@ -435,6 +464,7 @@ export class RemisesService {
           journalBanque: { select: { code: true } },
           ecritureRemise: { select: { numeroPiece: true, statut: true } },
           ecritureCredit: { select: { numeroPiece: true, statut: true } },
+          annulations: ANNULATIONS_INCLUDE,
           _count: { select: { valeurs: true } },
         },
       }),
@@ -455,9 +485,10 @@ export class RemisesService {
         journalBanque: { select: { code: true, intitule: true } },
         ecritureRemise: { select: { numeroPiece: true, statut: true } },
         ecritureCredit: { select: { numeroPiece: true, statut: true } },
+        annulations: ANNULATIONS_INCLUDE,
         valeurs: {
           orderBy: { date: 'asc' },
-          include: { compteTiers: { select: { numero: true, intitule: true } }, ecritureImpaye: { select: { numeroPiece: true, statut: true } } },
+          include: { compteTiers: { select: { numero: true, intitule: true } }, ecritureImpaye: { select: { numeroPiece: true, statut: true } }, annulations: ANNULATIONS_INCLUDE },
         },
       },
     });
@@ -500,6 +531,16 @@ export class RemisesService {
     const total = round2(valeurs.reduce((s, v) => s + round2(Number(v.montant)), 0));
     const naissance = async (tx: Prisma.TransactionClient, ecritureRemiseId: string | null) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`remises:${tenantId}`}))`;
+      // L'EXERCICE EST RELU DANS LA TRANSACTION (second tour, m4) · pour les
+      // chèques `creerAvec` le fait avec la pièce ; pour les cartes, sans
+      // pièce, une clôture concurrente entre `exerciceOuvert` et l'écriture
+      // laissait naître un bordereau daté dans un exercice clôturé.
+      if (!ecritureRemiseId) {
+        const relu = await tx.exercice.findFirst({ where: { id: dto.exerciceId, tenantId }, select: { statut: true, dateDebut: true, dateFin: true } });
+        if (!relu || relu.statut === StatutExercice.CLOTURE || dto.date < jour(relu.dateDebut) || dto.date > jour(relu.dateFin)) {
+          throw new ConflictException("L'exercice de la remise a été clôturé ou modifié pendant la remise · rien n'est remis, relisez les exercices.");
+        }
+      }
       const dernier = await tx.remiseEnBanque.aggregate({ where: { tenantId }, _max: { numero: true } });
       const numero = (dernier._max.numero ?? 0) + 1;
       const remise = await tx.remiseEnBanque.create({
@@ -574,11 +615,16 @@ export class RemisesService {
     // impressions simultanées se disaient toutes deux « première » ; la
     // première est celle dont le `updateMany` filtré sur « jamais imprimée »
     // passe, l'autre est un duplicata.
+    // Et sous le statut (second tour, m-b) · annulée entre la lecture et
+    // l'écriture, la remise se comptait imprimée et le bordereau partait.
     const premiere = await this.prisma.remiseEnBanque.updateMany({
-      where: { id: r.id, tenantId, premiereImpressionLe: null },
+      where: { id: r.id, tenantId, premiereImpressionLe: null, statut: { not: StatutRemiseEnBanque.ANNULEE } },
       data: { nombreImpressions: { increment: 1 }, premiereImpressionLe: new Date(), premiereImpressionPar: userId },
     });
-    if (premiere.count === 0) await this.prisma.remiseEnBanque.update({ where: { id: r.id, tenantId }, data: { nombreImpressions: { increment: 1 } } });
+    if (premiere.count === 0) {
+      const suivante = await this.prisma.remiseEnBanque.updateMany({ where: { id: r.id, tenantId, statut: { not: StatutRemiseEnBanque.ANNULEE } }, data: { nombreImpressions: { increment: 1 } } });
+      if (suivante.count !== 1) throw new ConflictException(`Le bordereau n° ${r.numero} a été annulé pendant l'impression · il ne s'imprime pas.`);
+    }
     const impression = await this.prisma.remiseEnBanque.findFirstOrThrow({ where: { id: r.id, tenantId }, select: { numero: true, nombreImpressions: true, premiereImpressionLe: true } });
     return { ...impression, document, duplicata: premiere.count === 0 };
   }
@@ -699,20 +745,49 @@ export class RemisesService {
     // retenue, le journal refusait aussi de la corriger). `pieceAnnulable`
     // lit l'exercice de la pièce de l'avis, la seule borne (art. 20, al. 3).
     const motif = this.motifJuge(dto);
-    await this.pieceAnnulable(tenantId, r.ecritureCreditId, "de l'avis de crédit", "annuler l'avis de crédit", 'Dépointez la ligne au rapprochement, puis annulez.');
+    const piece = await this.pieceAnnulable(tenantId, r.ecritureCreditId, "de l'avis de crédit", "annuler l'avis de crédit", 'Dépointez la ligne au rapprochement, puis annulez.');
     const ecritureCreditId = r.ecritureCreditId;
     return transactionJournalisee(this.prisma, async (tx) => {
       const prise = await tx.remiseEnBanque.updateMany({ where: { id: r.id, tenantId, statut: StatutRemiseEnBanque.CREDITEE, ecritureCreditId }, data: { ecritureCreditId: null } });
       if (prise.count !== 1) throw new ConflictException("Cette remise n'est plus créditée · relisez-la avant d'annuler l'avis.");
       const negatif = await this.retirerOuContrePasser(tx, tenantId, userId, ecritureCreditId, "de l'avis de crédit", "Annulation de l'avis de crédit", motif);
+      // LA PAIRE VA À L'HISTORIQUE, LA REMISE RESTE LIBRE (second tour,
+      // BLOQUANT B1) · gardée sur la remise, l'origine de l'avis validé puis
+      // annulé fermait pour toujours le bon avis, qui exige le lien vide.
+      const annulation = await this.rangerAnnulation(tx, tenantId, userId, { nature: NatureActeRemise.AVIS_CREDIT, remiseId: r.id, origineId: ecritureCreditId, negatifId: negatif, numeroPieceOrigine: piece.numeroPiece, motif });
       const rendues = await tx.valeurRecue.updateMany({ where: { tenantId, remiseId: r.id, statut: StatutValeurRecue.CREDITEE }, data: { statut: StatutValeurRecue.REMISE } });
       // Le compte des valeurs rendues est celui lu avant la transaction
       // (relecture, m7) · un impayé déclaré entre-temps en sortirait une.
       if (rendues.count !== r.valeurs.filter((v) => v.statut === StatutValeurRecue.CREDITEE).length) throw new ConflictException("Une valeur de la remise a changé d'état pendant l'annulation de l'avis · rien n'est annulé.");
-      return tx.remiseEnBanque.update({
+      const remise = await tx.remiseEnBanque.update({
         where: { id: r.id, tenantId },
-        data: { statut: StatutRemiseEnBanque.REMISE, dateCredit: null, commission: null, referenceAvis: null, ecritureCreditId: negatif ? ecritureCreditId : null, ecritureNegatifCreditId: negatif },
+        data: { statut: StatutRemiseEnBanque.REMISE, dateCredit: null, commission: null, referenceAvis: null },
       });
+      return { ...remise, total: Number(remise.total), annulation };
+    });
+  }
+
+  /** Une ligne de l'historique par geste annulé · l'origine validée et son négatif y sont retenus, le brouillard retiré n'y laisse que le motif. */
+  private rangerAnnulation(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    a: { nature: NatureActeRemise; remiseId?: string; valeurId?: string; origineId: string; negatifId: string | null; numeroPieceOrigine: number | null; motif: string },
+  ) {
+    return tx.annulationActeRemise.create({
+      data: {
+        tenantId,
+        nature: a.nature,
+        remiseId: a.remiseId ?? null,
+        valeurId: a.valeurId ?? null,
+        traitement: a.negatifId ? 'INSCRITE_EN_NEGATIF' : 'SUPPRIMEE',
+        numeroPieceOrigine: a.numeroPieceOrigine,
+        ecritureOrigineId: a.negatifId ? a.origineId : null,
+        ecritureNegatifId: a.negatifId,
+        motif: a.motif,
+        annuleePar: userId,
+      },
+      select: { id: true, nature: true, traitement: true, numeroPieceOrigine: true, ecritureOrigineId: true, ecritureNegatifId: true, motif: true, annuleeLe: true },
     });
   }
 
@@ -783,17 +858,19 @@ export class RemisesService {
     if (!v) throw new NotFoundException('Valeur introuvable pour ce dossier.');
     if (v.statut !== StatutValeurRecue.IMPAYEE || !v.ecritureImpayeId) throw new BadRequestException("Cette valeur n'est pas revenue impayée · rien à annuler.");
     const motif = this.motifJuge(dto);
-    await this.pieceAnnulable(tenantId, v.ecritureImpayeId, "de l'impayé", "annuler l'impayé", "Délettrez ou dépointez la ligne, puis annulez.");
+    const piece = await this.pieceAnnulable(tenantId, v.ecritureImpayeId, "de l'impayé", "annuler l'impayé", "Délettrez ou dépointez la ligne, puis annulez.");
     const ecritureImpayeId = v.ecritureImpayeId;
     const retour = v.remise?.statut === StatutRemiseEnBanque.CREDITEE ? StatutValeurRecue.CREDITEE : StatutValeurRecue.REMISE;
     return transactionJournalisee(this.prisma, async (tx) => {
       const prise = await tx.valeurRecue.updateMany({ where: { id: v.id, tenantId, statut: StatutValeurRecue.IMPAYEE, ecritureImpayeId }, data: { ecritureImpayeId: null } });
       if (prise.count !== 1) throw new ConflictException("Cette valeur n'est plus impayée · relisez-la.");
       const negatif = await this.retirerOuContrePasser(tx, tenantId, userId, ecritureImpayeId, "de l'impayé", "Annulation de l'impayé", motif);
-      return tx.valeurRecue.update({
-        where: { id: v.id, tenantId },
-        data: { statut: retour, dateImpaye: null, ecritureImpayeId: negatif ? ecritureImpayeId : null, ecritureNegatifImpayeId: negatif },
-      });
+      // Même historique que l'avis (BLOQUANT B1) · l'impayé déclaré trop tôt,
+      // validé puis annulé, laissait la valeur sans redéclaration possible,
+      // et l'issue que l'avis nomme (« redéclarez l'impayé ») était fermée.
+      const annulation = await this.rangerAnnulation(tx, tenantId, userId, { nature: NatureActeRemise.IMPAYE, valeurId: v.id, origineId: ecritureImpayeId, negatifId: negatif, numeroPieceOrigine: piece.numeroPiece, motif });
+      const valeur = await tx.valeurRecue.update({ where: { id: v.id, tenantId }, data: { statut: retour, dateImpaye: null } });
+      return { ...valeur, montant: Number(valeur.montant), annulation };
     });
   }
 }

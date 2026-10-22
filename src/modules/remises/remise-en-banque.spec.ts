@@ -102,7 +102,11 @@ describe("l'impayé · le 413 de la fiche du compte 41, un numéro deux sens", (
     expect(motifRefusImpaye(base)).toBeNull();
     expect(motifRefusImpaye({ ...base, statut: StatutValeurRecue.RECUE })).toMatch(/non encore remise/);
     expect(motifRefusImpaye({ ...base, statut: StatutValeurRecue.IMPAYEE })).toMatch(/déjà/);
-    expect(motifRefusImpaye({ ...base, date: '2026-03-01' })).toMatch(/ne précède pas/);
+    expect(motifRefusImpaye({ ...base, date: '2026-03-01' })).toMatch(/ne précède pas la réception/);
+    // Ni la remise, ni l'avis de crédit (premier tour, m8 · gelé au second).
+    expect(motifRefusImpaye({ ...base, dateRemise: '2026-03-22' })).toMatch(/ne précède pas la remise/);
+    expect(motifRefusImpaye({ ...base, dateRemise: '2026-03-12', dateCredit: '2026-03-25' })).toMatch(/ne précède pas l'avis de crédit/);
+    expect(motifRefusImpaye({ ...base, dateRemise: '2026-03-12', dateCredit: '2026-03-18' })).toBeNull();
     expect(motifRefusImpaye({ ...base, numeroImpaye: '41330000' })).toMatch(/41330000.*4131/);
     expect(motifRefusImpaye({ ...base, numeroImpaye: null })).toMatch(/introuvable/);
   });

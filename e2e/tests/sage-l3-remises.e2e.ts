@@ -168,13 +168,22 @@ test('remises de chèques · réception lettrée, bordereau imprimé, avis avec 
   expect([solde(b, '513'), solde(b, '514')]).toEqual([0, 120_000]);
   // L'AVIS DE JANVIER D'UN BORDEREAU DE DÉCEMBRE S'ANNULE DANS N+1 (BLOQUANT
   // B2) · jugé sur l'exercice du bordereau, clôturé, l'avis faux était enfermé.
-  const avisAnnule = await appelApi<{ statut: string; ecritureNegatifCreditId: string | null }>(page, 'POST', `/remises/${remise2.id}/avis-credit/annuler`, { motif: 'avis saisi sur le mauvais relevé' });
-  expect([avisAnnule.statut, avisAnnule.ecritureNegatifCreditId]).toEqual(['REMISE', null]);
+  // Et l'avis VALIDÉ puis annulé s'inscrit en négatif, puis SE REPASSE (second
+  // tour, BLOQUANT B1) · son origine gardée sur la remise fermait le bon avis.
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: N1.id, dateLimite: `${anneeSuivante}-01-31` });
+  const avisAnnule = await appelApi<{ statut: string; annulation: { traitement: string; ecritureNegatifId: string | null } }>(page, 'POST', `/remises/${remise2.id}/avis-credit/annuler`, { motif: 'avis saisi sur le mauvais relevé' });
+  expect([avisAnnule.statut, avisAnnule.annulation.traitement, typeof avisAnnule.annulation.ecritureNegatifId]).toEqual(['REMISE', 'INSCRITE_EN_NEGATIF', 'string']);
   expect(solde(await balance(N1.id), '514')).toBe(420_000);
   await appelApi(page, 'POST', `/remises/${remise2.id}/avis-credit`, { date: `${anneeSuivante}-01-08`, referenceAvis: 'Relevé 01' });
   expect(solde(await balance(N1.id), '514')).toBe(120_000);
+  const remisesN1 = await appelApi<{ remises: Array<{ id: string; statut: string; annulations: Array<{ nature: string; traitement: string }> }> }>(page, 'GET', `/remises?exerciceId=${N1.id}`);
+  expect(remisesN1.remises.find((r) => r.id === remise2.id)).toBeUndefined();
+  const remisesN = await appelApi<{ remises: Array<{ id: string; statut: string; annulations: Array<{ nature: string; traitement: string }> }> }>(page, 'GET', `/remises?exerciceId=${N.id}`);
+  expect(remisesN.remises.find((r) => r.id === remise2.id)).toMatchObject({ statut: 'CREDITEE', annulations: [{ nature: 'AVIS_CREDIT', traitement: 'INSCRITE_EN_NEGATIF' }] });
 
-  // L'IMPAYÉ d'un chèque crédité · D 4131 / C 52, puis son annulation.
+  // L'IMPAYÉ d'un chèque crédité · D 4131 / C 52, VALIDÉ, annulé en négatif,
+  // puis REDÉCLARÉ (BLOQUANT B1 · le lien gardé sur la valeur refusait la
+  // redéclaration que l'avis nomme pour issue), puis annulé au brouillard.
   const impaye = await appelApi<{ compteImpaye: string; statut: string }>(page, 'POST', `/remises/valeurs/${v3.id}/impaye`, {
     date: `${anneeSuivante}-01-15`,
     compteImpayeId: comptesImpaye.comptes[0].id,
@@ -182,9 +191,19 @@ test('remises de chèques · réception lettrée, bordereau imprimé, avis avec 
   expect([impaye.compteImpaye, impaye.statut]).toEqual(['41310000', 'IMPAYEE']);
   b = await balance(N1.id);
   expect(solde(b, '4131')).toBe(300_000);
-  const annule = await appelApi<{ statut: string; ecritureNegatifImpayeId: string | null }>(page, 'POST', `/remises/valeurs/${v3.id}/impaye/annuler`, { motif: 'erreur de lecture du relevé' });
-  expect([annule.statut, annule.ecritureNegatifImpayeId]).toEqual(['CREDITEE', null]);
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: N1.id, dateLimite: `${anneeSuivante}-01-31` });
+  const annule = await appelApi<{ statut: string; annulation: { traitement: string } }>(page, 'POST', `/remises/valeurs/${v3.id}/impaye/annuler`, { motif: 'erreur de lecture du relevé' });
+  expect([annule.statut, annule.annulation.traitement]).toEqual(['CREDITEE', 'INSCRITE_EN_NEGATIF']);
   expect(solde(await balance(N1.id), '4131')).toBe(0);
+  await appelApi(page, 'POST', `/remises/valeurs/${v3.id}/impaye`, { date: `${anneeSuivante}-01-20`, compteImpayeId: comptesImpaye.comptes[0].id });
+  expect(solde(await balance(N1.id), '4131')).toBe(300_000);
+  const annule2 = await appelApi<{ statut: string; annulation: { traitement: string } }>(page, 'POST', `/remises/valeurs/${v3.id}/impaye/annuler`, { motif: 'second impayé déclaré par erreur' });
+  expect([annule2.statut, annule2.annulation.traitement]).toEqual(['CREDITEE', 'SUPPRIMEE']);
+  expect(solde(await balance(N1.id), '4131')).toBe(0);
+  const valeursN = await appelApi<{ valeurs: Array<{ id: string; ecritureImpaye: unknown; annulations: Array<{ traitement: string }> }> }>(page, 'GET', `/remises/valeurs?exerciceId=${N.id}`);
+  const v3Lue = valeursN.valeurs.find((v) => v.id === v3.id)!;
+  // Deux annulations gardées (la plus récente d'abord), aucun impayé en cours.
+  expect([v3Lue.ecritureImpaye, v3Lue.annulations.map((a) => a.traitement)]).toEqual([null, ['SUPPRIMEE', 'INSCRITE_EN_NEGATIF', 'SUPPRIMEE']]);
 
   // L'ÉCRAN · les bordereaux et les types se lisent.
   await page.goto('/#/remises');

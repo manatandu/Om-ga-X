@@ -162,6 +162,8 @@ export const MODELES_AUDITES = new Set<string>([
   'TypeRemise',
   'ValeurRecue',
   'RemiseEnBanque',
+  // L'avis ou l'impayé annulé, avec son motif et le sort de ses pièces.
+  'AnnulationActeRemise',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',
