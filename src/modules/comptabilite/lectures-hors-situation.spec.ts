@@ -268,6 +268,9 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/tresorerie/operations-tresorerie.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/titres-placement.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/titres-placement.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/tresorerie/titres-placement.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   // Second tour (b) · la lecture structurelle ne prend plus le statut du
   // lettrage, de l'exercice ou d'une variable hors de sa position de filtre ·
   // ces lectures, admises jusque-là par un mot, sont rangées à leur motif.

@@ -1971,6 +1971,8 @@ export class EcritureService {
       // Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce, ou son négatif.
       ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", this.prisma.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
       ["un financement ou un placement (fenêtre Financements et placements · l'acte ou son négatif)", this.prisma.acteOperationTresorerie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un mouvement de titre de placement (fenêtre Financements et placements · le mouvement ou son négatif)", this.prisma.mouvementTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["une revue de titre de placement (fenêtre Financements et placements · la revue ou son négatif)", this.prisma.evaluationTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
       // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
       // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
       // dit, et le salaire repartirait dans le paiement suivant ; son négatif

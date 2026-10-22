@@ -920,6 +920,9 @@ model Tenant {
   coursTauxReference                   CoursTauxReference[]
   operationsTresorerie                 OperationTresorerie[]
   actesOperationTresorerie             ActeOperationTresorerie[]
+  titresPlacement                      TitrePlacement[]
+  mouvementsTitre                      MouvementTitre[]
+  evaluationsTitre                     EvaluationTitre[]
   annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
@@ -1480,6 +1483,8 @@ model Compte {
   operationsTresorerieInterets  OperationTresorerie[] @relation("OperationTresorerieInterets")
   operationsTresorerieCourus    OperationTresorerie[] @relation("OperationTresorerieCourus")
   operationsTresorerieFrais     OperationTresorerie[] @relation("OperationTresorerieFrais")
+  titresPlacement               TitrePlacement[]      @relation("TitrePlacementCompte")
+  titresPlacementFrais          TitrePlacement[]      @relation("TitrePlacementFrais")
 
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
@@ -1554,6 +1559,8 @@ model Journal {
 
   operationsTresorerieBanque OperationTresorerie[] @relation("OperationTresorerieBanque")
   operationsTresorerieOd     OperationTresorerie[] @relation("OperationTresorerieOd")
+  mouvementsTitre            MouvementTitre[]
+  evaluationsTitre           EvaluationTitre[]     @relation("EvaluationTitreJournal")
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1882,6 +1889,8 @@ model Exercice {
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
 
   actesOperationTresorerie ActeOperationTresorerie[]
+  mouvementsTitre          MouvementTitre[]
+  evaluationsTitre         EvaluationTitre[]
 
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
@@ -2166,6 +2175,10 @@ model Ecriture {
   acteEffetNegatif                ActeEffet?                          @relation("ActeEffetNegatif")
   acteTresorerie                  ActeOperationTresorerie?            @relation("ActeTresorerieEcriture")
   acteTresorerieNegatif           ActeOperationTresorerie?            @relation("ActeTresorerieNegatif")
+  mouvementTitre                  MouvementTitre?                     @relation("MouvementTitreEcriture")
+  mouvementTitreNegatif           MouvementTitre?                     @relation("MouvementTitreNegatif")
+  evaluationTitre                 EvaluationTitre?                    @relation("EvaluationTitreEcriture")
+  evaluationTitreNegatif          EvaluationTitre?                    @relation("EvaluationTitreNegatif")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
   paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
@@ -12155,4 +12168,118 @@ model ActeOperationTresorerie {
   @@index([tenantId, operationId])
   @@index([tenantId, exerciceId])
   @@map("actes_operation_tresorerie")
+}
+
+// ---- Ligne sage-l3, fonction 47 · titres de placement et parts d'OPCVM (décision D16) ----
+
+enum NatureMouvementTitre {
+  ACQUISITION
+  CESSION
+}
+
+enum NatureValeurTitre {
+  COURS_MOYEN_DERNIER_MOIS
+  VALEUR_PROBABLE_NEGOCIATION
+}
+
+/// UN TITRE DE PLACEMENT OU UNE PART D'OPCVM (AUDCIF Titre VIII ch. 13
+/// § 1.1, § 2.3) · son compte sous le 50, et le sous-compte de ses frais
+/// d'acquisition s'il en a un. Il ne se retire pas tant qu'il porte un mouvement.
+model TitrePlacement {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  code          String   @db.VarChar(20)
+  intitule      String   @db.VarChar(100)
+  compteTitreId String
+  compteTitre   Compte   @relation("TitrePlacementCompte", fields: [compteTitreId], references: [id], onDelete: Restrict)
+  compteFraisId String?
+  compteFrais   Compte?  @relation("TitrePlacementFrais", fields: [compteFraisId], references: [id], onDelete: Restrict)
+  /// Coté, il s'évalue au cours moyen du dernier mois ; non coté, à sa valeur probable de négociation (§ 3.2).
+  cote          Boolean
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  mouvements  MouvementTitre[]
+  evaluations EvaluationTitre[]
+
+  @@unique([tenantId, code])
+  @@map("titres_placement")
+}
+
+/// UNE ACQUISITION OU UNE CESSION, UNE PIÈCE au journal de banque · la
+/// cession sort au P.E.P.S., son coût sorti et son résultat FIGÉS. L'annulation
+/// va à rebours, au brouillard retirée, validée inscrite en négatif.
+model MouvementTitre {
+  id                String               @id @default(uuid())
+  tenantId          String
+  tenant            Tenant               @relation(fields: [tenantId], references: [id])
+  titreId           String
+  titre             TitrePlacement       @relation(fields: [titreId], references: [id], onDelete: Restrict)
+  nature            NatureMouvementTitre
+  date              DateTime             @db.Date
+  exerciceId        String
+  exercice          Exercice             @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  journalId         String
+  journal           Journal              @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  quantite          Decimal              @db.Decimal(18, 6)
+  /// Prix d'achat ou de cession de l'avis d'opéré.
+  prix              Decimal              @db.Decimal(18, 2)
+  /// Frais d'acquisition, ou de cession.
+  frais             Decimal              @db.Decimal(18, 2)
+  reference         String               @db.VarChar(100)
+  /// Cession seule · coût sorti au P.E.P.S. (prix et frais des lots) et résultat (gain positif, perte négative).
+  coutPrixSorti     Decimal?             @db.Decimal(18, 2)
+  coutFraisSorti    Decimal?             @db.Decimal(18, 2)
+  resultat          Decimal?             @db.Decimal(18, 2)
+  ecritureId        String?              @unique
+  ecriture          Ecriture?            @relation("MouvementTitreEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId String?              @unique
+  ecritureNegatif   Ecriture?            @relation("MouvementTitreNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  annuleLe          DateTime?
+  annulePar         String?
+  motifAnnulation   String?              @db.VarChar(500)
+  createdBy         String
+  createdAt         DateTime             @default(now())
+
+  @@index([tenantId, titreId])
+  @@map("mouvements_titre")
+}
+
+/// L'ÉVALUATION D'INVENTAIRE D'UN TITRE à la clôture d'un exercice (§ 3.2) ·
+/// valeur déclarée avec sa source, dépréciation nécessaire et en place
+/// FIGÉES, l'écart passé au 590 par le 6795 ou repris au 7795. Une par titre
+/// et par exercice, les annulées à part (index unique écrit à la main, NULLS
+/// NOT DISTINCT).
+model EvaluationTitre {
+  id                     String            @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id])
+  titreId                String
+  titre                  TitrePlacement    @relation(fields: [titreId], references: [id], onDelete: Restrict)
+  exerciceId             String
+  exercice               Exercice          @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  date                   DateTime          @db.Date
+  valeurUnitaire         Decimal           @db.Decimal(18, 6)
+  nature                 NatureValeurTitre
+  source                 String            @db.VarChar(200)
+  quantite               Decimal           @db.Decimal(18, 6)
+  cout                   Decimal           @db.Decimal(18, 2)
+  depreciationNecessaire Decimal           @db.Decimal(18, 2)
+  depreciationEnPlace    Decimal           @db.Decimal(18, 2)
+  journalId              String
+  journal                Journal           @relation("EvaluationTitreJournal", fields: [journalId], references: [id], onDelete: Restrict)
+  ecritureId             String?           @unique
+  ecriture               Ecriture?         @relation("EvaluationTitreEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId      String?           @unique
+  ecritureNegatif        Ecriture?         @relation("EvaluationTitreNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  annuleLe               DateTime?
+  annulePar              String?
+  motifAnnulation        String?           @db.VarChar(500)
+  createdBy              String
+  createdAt              DateTime          @default(now())
+
+  @@unique([titreId, exerciceId, annuleLe])
+  @@index([tenantId, titreId])
+  @@map("evaluations_titre")
 }

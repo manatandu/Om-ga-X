@@ -184,6 +184,10 @@ export const MODELES_AUDITES = new Set<string>([
   'CoursTauxReference',
   'OperationTresorerie',
   'ActeOperationTresorerie',
+  // Les titres de placement (même fonction 47) · leurs mouvements et leurs revues de clôture, avec l'annulation et son motif.
+  'TitrePlacement',
+  'MouvementTitre',
+  'EvaluationTitre',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',

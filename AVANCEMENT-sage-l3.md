@@ -455,12 +455,42 @@ financements, placements.
   banques et des journaux (103), Vitest, scénario `sage-l3-conditions`
   (journal repointé refusé, « 500.000 » refusé à l'écran).
 
+- **#47 · financements, placements et taux de référence (D16).** Serveur
+  (208b1de) · `tresorerie/operations-tresorerie.ts` (règles pures),
+  `operations-tresorerie.service.ts`, `taux-reference.controller.ts` · taux
+  de référence et cours datés avec leur source ; crédit de trésorerie au 561,
+  dépôt à terme au 525 ou au 2784 ; taux fixe ou cours en vigueur à la mise
+  en place plus la marge, FIGÉ ; régularisation des intérêts à la clôture
+  (566 ou 5267 post-comptés, 476 ou 477 précomptés), une par exercice, au
+  prorata des jours écoulés, montant déclaré ; contre-passation à
+  l'ouverture ; échéance refusée tant qu'un exercice ouvert traversé n'est
+  pas régularisé ; annulation à rebours, brouillard retiré, validée en
+  négatif. Scénario sur vraie base (`sage-l3-tresorerie.e2e.ts`) à travers
+  une clôture, dont le cas de 75 000,01 refusé à tort hors centime (corrigé
+  par `estAuCentime`, gelé). Écrans · `FinancementsPlacementsPage.tsx`,
+  `TauxReferencePage.tsx`.
+- **#47 · titres de placement et OPCVM (D16, suite).** Migration
+  `20270190000800_titres_placement` (une revue vivante par titre et par
+  exercice, NULLS NOT DISTINCT, dérive nulle) ; `titres-placement.ts` (règles
+  pures, P.E.P.S. en micro-parts et centimes entiers, la dernière part prend
+  le reste), `titres-placement.service.ts`, contrôleur `titres-placement`,
+  aide commune `banque-en-francs.ts` (sortie du service des opérations).
+  Acquisition D 50 / D 50x6 / C 52 ; cession au coût P.E.P.S., gain au 777,
+  perte au 6771 ; revue de clôture à la date de clôture seule, valeur
+  déclarée avec sa source et sa nature (cotée ou non), seul l'écart avec la
+  dépréciation en place au 590 (6795 / 7795) ; aucun antidatage, aucun
+  mouvement dans une période revue, revue dans l'ordre (un antérieur ouvert
+  qui détenait le titre d'abord) ; annulations à rebours. Le 5021 n'est
+  refusé qu'au SYSCOHADA (le SYCEBNL n'en ouvre pas). Listes fermées et
+  doublures complétées ; suite serveur verte (963 suites).
+
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #47 · taux de référence, financements, placements (`tresorerie/`) ; les
-  OPCVM se tranchent par la loi avant de coder.
+- #47 · OPCVM · onglet de la fenêtre Financements et placements, scénario
+  sur vraie base à travers une clôture (acquisition, dotation en N, cession
+  en N+1, reprise), deux tours de relecture.
 - Docs · `features.csv` (colonne clone de la ligne 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.

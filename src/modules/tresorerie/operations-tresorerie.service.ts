@@ -12,11 +12,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
-import { estTresorerieEnDevises } from '../virements-fonds/virement-fonds';
+import { journalDeBanqueEnFrancs } from './banque-en-francs';
 import {
   RACINES,
   avertissementOperation,
@@ -755,28 +753,9 @@ export class OperationsTresorerieService {
     return c;
   }
 
-  /**
-   * UN JOURNAL DE BANQUE EN FRANCS · le compte de la banque sous le 52, actif,
-   * jamais tenu en devise (RIB, racine du plan « en devises », ligne en
-   * devise · même règle que le virement de fonds) · l'opération en devise se
-   * passe à la main, avec son montant en devise et son cours (F49).
-   */
-  private async banque(tenantId: string, journalId: string) {
-    const j = await this.prisma.journal.findFirst({ where: { id: journalId, tenantId }, select: { id: true, code: true, type: true, estActif: true, compteTresorerie: { select: { id: true, numero: true } } } });
-    if (!j) throw new NotFoundException('Journal de banque introuvable pour ce dossier.');
-    if (j.type !== TypeJournal.TRESORERIE || !j.compteTresorerie) throw new BadRequestException(`Le journal ${j.code} n'est pas un journal de trésorerie qui porte son compte.`);
-    if (!j.compteTresorerie.numero.startsWith('52')) throw new BadRequestException(`Le journal ${j.code} ne porte pas un compte de banque (52) · un crédit de trésorerie ou un dépôt à terme passe par la banque qui le tient.`);
-    if (!j.estActif) throw new BadRequestException(`Le journal ${j.code} est en sommeil.`);
-    const [dossier, rib, ligneEnDevise] = await Promise.all([
-      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
-      this.prisma.ribBanque.findFirst({ where: { tenantId, journalId: j.id }, select: { devise: true } }),
-      this.prisma.ligneEcriture.findFirst({ where: { compteId: j.compteTresorerie.id, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } }, select: { id: true } }),
-    ]);
-    const deviseRib = (rib?.devise ?? '').toUpperCase();
-    if ((deviseRib !== '' && deviseRib !== MONNAIE_DE_TENUE) || estTresorerieEnDevises(j.compteTresorerie.numero, dossier.referentiel) || ligneEnDevise) {
-      throw new BadRequestException(`Le compte ${j.compteTresorerie.numero} du journal ${j.code} est tenu en devise · ce module passe les opérations en francs. Passez celle-ci à la main, avec le montant en devise et le cours de chaque ligne.`);
-    }
-    return { ...j, compteTresorerie: j.compteTresorerie };
+  /** Un journal de banque en francs (`banque-en-francs.ts`, règle commune aux titres de placement). */
+  private banque(tenantId: string, journalId: string) {
+    return journalDeBanqueEnFrancs(this.prisma, tenantId, journalId, 'un crédit de trésorerie ou un dépôt à terme');
   }
 
   private async journalOd(tenantId: string, journalId: string) {

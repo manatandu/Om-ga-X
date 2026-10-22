@@ -114,6 +114,8 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     // Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce retient sa pièce et son négatif.
     acteEffet: { count: compteur('acteEffet') },
     acteOperationTresorerie: { count: compteur('acteOperationTresorerie') },
+    mouvementTitre: { count: compteur('mouvementTitre') },
+    evaluationTitre: { count: compteur('evaluationTitre') },
     remiseEnBanque: { count: compteur('remiseEnBanque') },
     paiementSalaires: { count: compteur('paiementSalaires') },
     declarationDeviseANouveau: { count: compteur('declarationDeviseANouveau') },
@@ -463,7 +465,7 @@ describe('3 bis · une écriture qu’un module tient ne se retouche pas non plu
     'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation', 'regularisation',
     'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
     'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
-    'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'acteEffet', 'acteOperationTresorerie', 'paiementSalaires',
+    'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires',
     'annulationTraitementImmobilisation',
   ];
   const gestes: Array<[string, string, (s: EcritureService) => Promise<unknown>]> = [

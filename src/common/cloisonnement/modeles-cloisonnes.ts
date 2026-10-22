@@ -138,6 +138,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   'CoursTauxReference',
   'OperationTresorerie',
   'ActeOperationTresorerie',
+  'TitrePlacement',
+  'MouvementTitre',
+  'EvaluationTitre',
   // Ligne sage-l6, fonction 22 · les pièces jointes aux écritures, aux
   // sections, aux biens et aux salariés, chacune bornée par son tenantId.
   'PieceJointeEcriture',

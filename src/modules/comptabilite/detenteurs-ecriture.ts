@@ -136,6 +136,15 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // courus se dirait passée sans la pièce qui porte le 566 ou le 476.
   'ActeOperationTresorerie.ecritureId',
   'ActeOperationTresorerie.ecritureNegatifId',
+  // Le mouvement d'un titre de placement et la revue de clôture (même ligne,
+  // fonction 47) et leurs négatifs · retirée seule, l'acquisition laisserait
+  // le titre détenu sans le 50 qui le porte, la cession sortirait son coût au
+  // P.E.P.S. sans pièce, et la revue se dirait passée sans le 590 qu'elle a
+  // ajusté.
+  'MouvementTitre.ecritureId',
+  'MouvementTitre.ecritureNegatifId',
+  'EvaluationTitre.ecritureId',
+  'EvaluationTitre.ecritureNegatifId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)
