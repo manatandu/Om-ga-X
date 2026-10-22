@@ -298,11 +298,16 @@ export class OrdresVirementService {
     for (const l of lignes) {
       if ((l.devise ?? null) !== devise || (devise !== null && !(typeof l.montantDevise === 'number' && Number.isFinite(l.montantDevise)))) {
         throw new BadRequestException(
-          `La ligne ${l.compteId ?? l.salarieId ?? ''} n'est pas réglée dans la monnaie du donneur (${devise ?? MONNAIE_DE_TENUE}) · l'ordre n'est pas créé.`,
+          `La ligne de ${preparation.beneficiaires.get(l.compteId ?? l.salarieId ?? '')?.beneficiaire ?? l.compteId ?? l.salarieId ?? ''} ` +
+            `n'est pas réglée dans la monnaie du donneur (${devise ?? MONNAIE_DE_TENUE}) · l'ordre n'est pas créé.`,
         );
       }
     }
-    const totalDevise = devise === null ? null : round2(lignes.reduce((s, l) => s + (l.montantDevise ?? 0), 0));
+    // Total = somme des lignes ARRONDIES (règle P9 du règlement, « total de
+    // bloc = somme des lignes arrondies ») · deux lignes à 0,005 écrites 0,01
+    // chacune faisaient un total de 0,01, et l'ordre imprimé ne sommait plus
+    // ses lignes (relecture TypeScript, mineur 1).
+    const totalDevise = devise === null ? null : round2(lignes.reduce((s, l) => s + round2(l.montantDevise ?? 0), 0));
     const dernier = await tx.ordreVirement.aggregate({ where: { tenantId }, _max: { numero: true } });
     return tx.ordreVirement.create({
       data: {
@@ -457,7 +462,7 @@ export class OrdresVirementService {
       CADRE_AVIS_PAR_DEFAUT,
     );
     return {
-      ordre: { id: ordre.id, numero: ordre.numero, date: ordre.date, statut: ordre.statut },
+      ordre: { id: ordre.id, numero: ordre.numero, date: ordre.date, statut: ordre.statut, devise: ordre.devise },
       avis: lignesTiers.map((l) => {
         const cadre = cadres.get(l.tiersId) ?? null;
         const document = documentAvisReglement(
@@ -471,7 +476,14 @@ export class OrdresVirementService {
           { numero: ordre.numero, date: ordre.date, devise: ordre.devise },
           entite,
         );
-        return { ligneId: l.id, beneficiaire: l.beneficiaire, montant: Number(l.montant), modele: cadre?.modele ?? null, texte: habiller(cadre, document) };
+        return {
+          ligneId: l.id,
+          beneficiaire: l.beneficiaire,
+          montant: Number(l.montant),
+          montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+          modele: cadre?.modele ?? null,
+          texte: habiller(cadre, document),
+        };
       }),
       lignesDeSalaires: ordre.lignes.length - lignesTiers.length,
     };

@@ -2540,8 +2540,9 @@ export interface CadreImpression {
 
 /** Les avis de règlement d'un ordre de virement (GET /ordres-virement/:id/avis-reglement). */
 export interface AvisReglementOrdre {
-  ordre: { id: string; numero: number; date: string; statut: string };
-  avis: { ligneId: string; beneficiaire: string; montant: number; modele: string | null; texte: string }[];
+  ordre: { id: string; numero: number; date: string; statut: string; devise: string | null };
+  /** `montant` est la contrevaleur en francs ; `montantDevise` le montant viré quand l'ordre est en devise. */
+  avis: { ligneId: string; beneficiaire: string; montant: number; montantDevise: number | null; modele: string | null; texte: string }[];
   /** Les lignes qui paient un salaire · aucun avis, le bulletin en tient lieu. */
   lignesDeSalaires: number;
 }

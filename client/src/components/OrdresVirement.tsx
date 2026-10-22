@@ -240,7 +240,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                         </td>
                         <td className="px-2 py-1 text-right">{o._count.lignes}</td>
                         <td className="px-2 py-1 text-right">
-                          {o.devise && o.totalDevise !== null ? `${fmt(o.totalDevise)} ${o.devise}` : fmt(o.total)}
+                          {o.devise ? `${fmt(o.totalDevise)} ${o.devise}` : fmt(o.total)}
                         </td>
                         <td className={`px-2 py-1 ${o.statut === 'A_IMPRIMER' ? 'text-warning font-semibold' : o.statut === 'ANNULE' ? 'text-text-dim' : ''}`}>
                           {LIBELLE_STATUT_ORDRE[o.statut]}
@@ -346,7 +346,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                         {a.beneficiaire}
                         <span className="ml-2 font-normal text-text-dim">{a.modele ? `modèle « ${a.modele} »` : 'en-tête par défaut'}</span>
                       </span>
-                      <span>{fmt(a.montant)}</span>
+                      <span>{avisDeLOrdre.ordre.devise ? `${fmt(a.montantDevise)} ${avisDeLOrdre.ordre.devise}` : fmt(a.montant)}</span>
                     </div>
                     <pre className="px-3 py-2 whitespace-pre-wrap font-sans leading-[1.6]">{a.texte}</pre>
                   </article>

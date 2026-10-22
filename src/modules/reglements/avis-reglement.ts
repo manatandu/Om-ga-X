@@ -53,9 +53,16 @@ export function documentAvisReglement(
   // livre (AUDCIF art. 17, 1°) · la seule contrevaleur ferait croire à un
   // virement en francs.
   const devise = ordre.devise ?? null;
+  // Une ligne d'un ordre en devise SANS montant en devise est un état que
+  // `creerDans` refuse d'écrire · s'il se présentait (reprise de données),
+  // imprimer la contrevaleur en francs ferait croire à un virement en francs.
+  // On refuse plutôt que d'imprimer faux (relecture « échecs silencieux »).
+  if (devise !== null && !(typeof ligne.montantDevise === 'number' && Number.isFinite(ligne.montantDevise))) {
+    throw new Error(`L'ordre n° ${ordre.numero} est en ${devise} et sa ligne ne porte pas de montant en devise · avis non établi.`);
+  }
   const somme =
-    devise !== null && typeof ligne.montantDevise === 'number'
-      ? `${montantImprime(ligne.montantDevise)} ${devise} (contrevaleur comptable ${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE})`
+    devise !== null
+      ? `${montantImprime(ligne.montantDevise as number)} ${devise} (contrevaleur comptable ${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE})`
       : `${montantImprime(ligne.montant)} ${MONNAIE_DE_TENUE}`;
   return [
     'Madame, Monsieur,',

@@ -123,12 +123,15 @@ export function motifRefusLignesHorsDeviseDonneur(p: {
   lignes: readonly LigneReglee[];
 }): string | null {
   const donneur = p.deviseDonneur ?? p.monnaieDeTenue;
-  const horsDevise = p.lignes.filter((l) => (l.devise ?? p.monnaieDeTenue) !== donneur);
+  // La devise d'une ligne se lit comme celle du RIB (`deviseDuDonneur`) · en
+  // majuscules, le franc écrit en toutes lettres valant « aucune ».
+  const deviseDeLaLigne = (l: LigneReglee) => deviseDuDonneur(l.devise) ?? p.monnaieDeTenue;
+  const horsDevise = p.lignes.filter((l) => deviseDeLaLigne(l) !== donneur);
   if (horsDevise.length === 0) return null;
-  const nommees = horsDevise.map((l) => `${l.compte} (réglé en ${l.devise ?? p.monnaieDeTenue})`).join(', ');
+  const nommees = horsDevise.map((l) => `${l.compte} (réglé en ${deviseDeLaLigne(l)})`).join(', ');
   if (p.deviseDonneur === null) {
     return (
-      `Le RIB du journal ${p.journalCode} est lu en ${p.monnaieDeTenue} (aucune devise renseignée) et ${horsDevise.length > 1 ? 'des lignes sont réglées' : 'une ligne est réglée'} ` +
+      `Le RIB du journal ${p.journalCode} est lu en ${p.monnaieDeTenue} (aucune devise renseignée, ou le franc) et ${horsDevise.length > 1 ? 'des lignes sont réglées' : 'une ligne est réglée'} ` +
       `dans une autre monnaie · ${nommees}. Renseignez la devise du RIB (Structure > Banques) si le compte est tenu dans cette monnaie, ` +
       "ou réglez ces factures depuis le journal d'un compte tenu dans leur monnaie."
     );

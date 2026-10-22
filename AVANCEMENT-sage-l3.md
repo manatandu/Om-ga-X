@@ -33,6 +33,19 @@ financements, placements.
   des ordres de virement réécrite.
 - Bloc § 3 du 2026-10-22 · serveur tsc, Jest 950 suites et 13 829 tests, build ;
   client tsc, 2 408 tests, build.
+- #37 · premier tour de relecture (silent-failure-hunter, typescript-reviewer,
+  react-reviewer) · aucun BLOQUANT ni MAJEUR, sept MINEURS corrigés · l'avis
+  d'un ordre en devise refuse une ligne sans montant en devise au lieu
+  d'imprimer la contrevaleur ; l'avis servi porte `montantDevise` et la devise
+  de l'ordre, la carte de l'écran les affiche avec l'unité ; le libellé du
+  refus sans devise au RIB couvre « CDF » écrit en toutes lettres ; la devise
+  d'une ligne se lit comme celle du RIB (majuscules, franc = aucune) ; le
+  refus de garde de `creerDans` nomme le bénéficiaire ; `totalDevise` somme
+  les lignes ARRONDIES (deux demi-centimes, cas gelé) ; la liste montre
+  « · USD » quand le total en devise manque, jamais la contrevaleur sans
+  unité. Non repris · la ligne de la liste ouverte à la souris seule
+  (préexistant, relevé en attente), le RIB lu deux fois (refus nommé dans les
+  deux sens, pas une faute).
 
 ## Reste
 
