@@ -82,6 +82,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   VirementsFondsController: FonctionMetier.TRESORERIE,
   // Ligne sage-l3, fonction 40 · remises de chèques et de cartes.
   RemisesController: FonctionMetier.TRESORERIE,
+  // Ligne sage-l3, fonction 39 · effets de commerce.
+  EffetsController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et

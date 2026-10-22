@@ -914,6 +914,8 @@ model Tenant {
   typesRemise                          TypeRemise[]
   valeursRecues                        ValeurRecue[]
   remisesEnBanque                      RemiseEnBanque[]
+  effetsCommerce                       EffetCommerce[]
+  actesEffet                           ActeEffet[]
   annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
@@ -1461,6 +1463,9 @@ model Compte {
   typesRemiseTransit    TypeRemise[]         @relation("TypeRemiseCompteTransit")
   typesRemiseCommission TypeRemise[]         @relation("TypeRemiseCompteCommission")
   valeursRecues         ValeurRecue[]
+  effetsTiers           EffetCommerce[]      @relation("EffetCommerceCompteTiers")
+  effetsPortefeuille    EffetCommerce[]      @relation("EffetCommerceCompteEffet")
+  actesEffet            ActeEffet[]          @relation("ActeEffetCompte")
 
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
@@ -1526,6 +1531,7 @@ model Journal {
   typesRemiseBanque         TypeRemise[]        @relation("TypeRemiseJournalBanque")
   typesRemiseOperations     TypeRemise[]        @relation("TypeRemiseJournalOperations")
   remisesEnBanque           RemiseEnBanque[]
+  effetsCommerce            EffetCommerce[]
   impressions               ImpressionJournal[]
   // Ligne sage-l5 · le journal de trésorerie d'où les salaires sont payés.
   paiementsSalaires         PaiementSalaires[]
@@ -1852,6 +1858,7 @@ model Exercice {
   virementsFonds                       VirementFonds[]
   valeursRecues                        ValeurRecue[]
   remisesEnBanque                      RemiseEnBanque[]
+  effetsCommerce                       EffetCommerce[]
   impressionsJournaux                  ImpressionJournal[]
   // Ligne sage-l5 · les paiements de salaires passés dans l'exercice.
   paiementsSalaires                    PaiementSalaires[]
@@ -1934,6 +1941,14 @@ model Ecriture {
   // la date réelle de l'opération, « mentionnée distinctement ». Null partout
   // ailleurs · une date de valeur égale à la date ne dirait rien.
   dateValeur                    DateTime?
+  /// LIGNE SAGE-L3, FONCTION 39 · l'ÉCHÉANCE DE L'EFFET DE COMMERCE que
+  /// cette pièce accepte (D 412 / C 411, ou D 401 / C 402). Décret n° 011/42,
+  /// art. 57 · l'encaissement intervient « à la date de l'échéance de la
+  /// traite, même si elle a été remise à l'escompte » ; art. 96 · le droit à
+  /// déduction naît quand la taxe devient exigible chez le fournisseur. Le
+  /// moteur de la TVA date le règlement par elle quand elle est posée
+  /// (`dateDuReglement`), par la date de la pièce sinon.
+  dateEncaissementEffet         DateTime?                          @db.Date
   libelle                       String
   reference                     String? // pièce justificative (numéro de facture, référence externe...)
   createdAt                     DateTime                           @default(now())
@@ -2126,6 +2141,10 @@ model Ecriture {
   /// rangés dans l'historique des annulations (second tour, BLOQUANT B1).
   annulationActeRemiseOrigine     AnnulationActeRemise?               @relation("AnnulationActeRemiseOrigine")
   annulationActeRemiseNegatif     AnnulationActeRemise?               @relation("AnnulationActeRemiseNegatif")
+  /// Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce que cette
+  /// pièce porte, et son inscription en négatif à l'annulation.
+  acteEffet                       ActeEffet?                          @relation("ActeEffetEcriture")
+  acteEffetNegatif                ActeEffet?                          @relation("ActeEffetNegatif")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
   paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
@@ -11742,4 +11761,118 @@ model AnnulationActeRemise {
   @@index([tenantId, remiseId])
   @@index([tenantId, valeurId])
   @@map("annulations_actes_remise")
+}
+
+enum SensEffet {
+  A_RECEVOIR
+  A_PAYER
+}
+
+enum StatutEffet {
+  EN_PORTEFEUILLE
+  REMIS_A_L_ENCAISSEMENT
+  ESCOMPTE
+  ENCAISSE
+  IMPAYE
+  BON_A_PAYER
+  PAYE
+  ANNULE
+}
+
+enum NatureActeEffet {
+  ACCEPTATION
+  REMISE_ENCAISSEMENT
+  REMISE_ESCOMPTE
+  DECOMPTE_ESCOMPTE
+  ENCAISSEMENT
+  DENOUEMENT_ESCOMPTE
+  IMPAYE
+  BON_A_PAYER
+  PAIEMENT
+}
+
+/// L'EFFET DE COMMERCE (ligne sage-l3, fonction 39 · chez Sage, « LCR à
+/// l'encaissement » et « LCR à décaisser, bons à payer »). AUDCIF Titre VII ·
+/// fiche du 41 · 412 « Clients, effets à recevoir en portefeuille », 415
+/// « Clients, effets escomptés non échus », 4132 « effets impayés » ; fiche
+/// du 40 · 402 « Fournisseurs, effets à payer » ; fiche du 51 · 512 « effets
+/// à l'encaissement » (transmis à la banque) ; fiche du 56 · 564 et 565, « la
+/// créance ne disparaît pas du bilan » ; fiche du 67 · 675 « escomptes des
+/// effets de commerce ». UN NUMÉRO, DEUX PLANS · le SYCEBNL n'ouvre que le
+/// 402 (ses 412, 413 et 51 disent autre chose, son 56 ne décrit aucun
+/// escompte) · les effets À RECEVOIR et l'escompte sont SYSCOHADA seuls.
+/// Chaque temps est un ACTE qui porte sa pièce (`ActeEffet`) ; le statut
+/// résume les actes non annulés.
+model EffetCommerce {
+  id            String      @id @default(uuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  exerciceId    String
+  exercice      Exercice    @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  sens          SensEffet
+  /// Le journal d'opérations diverses des actes sans trésorerie (acceptation,
+  /// remise, escompte, dénouement, impayé) · la banque a le sien à chaque acte.
+  journalId     String
+  journal       Journal     @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  compteTiersId String
+  compteTiers   Compte      @relation("EffetCommerceCompteTiers", fields: [compteTiersId], references: [id], onDelete: Restrict)
+  /// Le 412 (à recevoir) ou le 402 (à payer) où l'effet est en portefeuille.
+  compteEffetId String
+  compteEffet   Compte      @relation("EffetCommerceCompteEffet", fields: [compteEffetId], references: [id], onDelete: Restrict)
+  montant       Decimal     @db.Decimal(18, 2)
+  /// Numéro de la traite ou du billet, tel qu'il se lit sur l'effet.
+  reference     String      @db.VarChar(60)
+  /// Le tiré (effet à recevoir) ou le tireur (effet à payer), tel qu'il se lit.
+  tire          String?     @db.VarChar(120)
+  dateCreation  DateTime    @db.Date
+  /// L'échéance de la traite · la date du règlement pour la TVA (décret
+  /// n° 011/42, art. 57 et 96), posée sur la pièce d'acceptation.
+  dateEcheance  DateTime    @db.Date
+  statut        StatutEffet @default(EN_PORTEFEUILLE)
+  createdBy     String
+  createdAt     DateTime    @default(now())
+
+  actes ActeEffet[]
+
+  @@index([tenantId, exerciceId, sens, statut])
+  @@index([tenantId, compteTiersId])
+  @@map("effets_de_commerce")
+}
+
+/// UN ACTE DE L'EFFET, UNE PIÈCE · acceptation (D 412 / C 411, D 401 / C 402),
+/// remise à l'encaissement (D 512 / C 412), remise à l'escompte (D 415 / C
+/// 412), décompte (D 52 net, D 675 frais, D 6312 commission / C 565 nominal),
+/// encaissement (D 52 net, D 6312 / C 512), dénouement après l'échéance (D 565
+/// / C 415), impayé (D 4132 / C 412, 512 ou 415, et D 565 / C 52 si la banque
+/// reprend un décompte), paiement (D 402 / C 52) ; le bon à payer ne passe
+/// rien. L'annulation va À REBOURS (le dernier acte non annulé d'abord), au
+/// brouillard retirée, validée inscrite en NÉGATIF (AUDCIF art. 20, al. 2) ·
+/// la pièce et son négatif restent liés au geste (RESTRICT, détenteurs).
+model ActeEffet {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  effetId           String
+  effet             EffetCommerce   @relation(fields: [effetId], references: [id], onDelete: Restrict)
+  nature            NatureActeEffet
+  date              DateTime        @db.Date
+  /// Le compte propre à l'acte · 512, 415, 565, 4132, ou la banque.
+  compteId          String?
+  compte            Compte?         @relation("ActeEffetCompte", fields: [compteId], references: [id], onDelete: Restrict)
+  montant           Decimal         @db.Decimal(18, 2)
+  /// Frais et commission du décompte ou de l'encaissement, net crédité,
+  /// référence de la pièce de la banque ou du bon à payer.
+  detail            Json?
+  ecritureId        String?         @unique
+  ecriture          Ecriture?       @relation("ActeEffetEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId String?         @unique
+  ecritureNegatif   Ecriture?       @relation("ActeEffetNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  annuleLe          DateTime?
+  annulePar         String?
+  motifAnnulation   String?         @db.VarChar(500)
+  createdBy         String
+  createdAt         DateTime        @default(now())
+
+  @@index([tenantId, effetId])
+  @@map("actes_effet")
 }

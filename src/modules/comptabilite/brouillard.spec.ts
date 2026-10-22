@@ -39,7 +39,7 @@ const MODELES_DETENTEURS = [
   'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation', 'regularisation',
   'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
   'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
-  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'paiementSalaires', 'annulationTraitementImmobilisation',
+  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'paiementSalaires', 'annulationTraitementImmobilisation',
 ];
 function detenteurs(tenus: Record<string, number> = {}): Faux {
   return {

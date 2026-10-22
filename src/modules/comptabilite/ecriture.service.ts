@@ -1968,6 +1968,8 @@ export class EcritureService {
         "un avis de crédit ou un impayé annulé (fenêtre Remises en banque · l'origine ou son négatif)",
         this.prisma.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
+      // Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce, ou son négatif.
+      ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", this.prisma.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
       // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
       // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
       // dit, et le salaire repartirait dans le paiement suivant ; son négatif

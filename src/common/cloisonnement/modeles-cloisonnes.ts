@@ -124,6 +124,10 @@ export const MODELES_CLOISONNES = new Set<string>([
   'ValeurRecue',
   'RemiseEnBanque',
   'AnnulationActeRemise',
+  // Ligne sage-l3, fonction 39 · les effets de commerce et leurs actes,
+  // chacun borné par son tenantId.
+  'EffetCommerce',
+  'ActeEffet',
   // Ligne sage-l6, fonction 22 · les pièces jointes aux écritures, aux
   // sections, aux biens et aux salariés, chacune bornée par son tenantId.
   'PieceJointeEcriture',

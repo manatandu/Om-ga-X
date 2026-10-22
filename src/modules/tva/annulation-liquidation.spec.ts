@@ -75,6 +75,7 @@ function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: 
     mouvementDemantelement: zero(),
     annulationTraitementImmobilisation: zero(),
     annulationActeRemise: zero(),
+    acteEffet: zero(),
     creanceDouteuse: zero(),
     ajustementCreanceDouteuse: zero(),
     mouvementCreanceDouteuse: zero(),

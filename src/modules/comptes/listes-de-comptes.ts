@@ -81,6 +81,13 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       'transit des chèques, 631 pour la commission), et l’impayé va au 413 de la fiche du compte 41 · seules racines admises par le ' +
       'serveur, et la réception en est souvent le premier mouvement, la règle viderait la liste.',
   },
+  '/effets/comptes': {
+    regime: 'texte',
+    motif:
+      "Les comptes d'un effet de commerce sont ceux que les fiches des comptes 40, 41, 51, 56, 63 et 67 de l'AUDCIF prescrivent (412 ou 402 en " +
+      'portefeuille, 512 à l’encaissement, 415 escompté, 564 ou 565 au crédit d’escompte, 675 pour les frais, 6312 pour la commission, 4132 pour ' +
+      'l’impayé), seules racines admises par le serveur, et l’acceptation en est souvent le premier mouvement · la règle viderait la liste.',
+  },
   '/reglements/comptes-escompte-ecart': {
     regime: 'texte',
     motif:

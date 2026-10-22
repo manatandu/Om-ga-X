@@ -29,6 +29,21 @@ import { imputerPaiements, type DetteImputable, type ImputationDeclaree, type Pa
 const EPSILON = 0.005;
 
 /**
+ * LA DATE DU RÈGLEMENT (ligne sage-l3, fonction 39 · décret n° 011/42,
+ * art. 57 et 96). L'acceptation d'un effet de commerce (D 412 / C 411, D 401
+ * / C 402, lettrée avec la facture) porte l'ÉCHÉANCE de la traite
+ * (`Ecriture.dateEncaissementEffet`) · l'encaissement intervient « à la
+ * date de l'échéance de la traite, même si elle a été remise à l'escompte »,
+ * et le droit à déduction naît quand la taxe devient exigible chez le
+ * fournisseur. Lue à la date de la pièce, la taxe d'une prestation payée par
+ * traite devenait exigible au jour de l'acceptation ; non lettrée, elle
+ * restait en attente pour toujours. Toute autre pièce de règlement se lit à
+ * sa date. Une sélection qui ne porte pas la colonne retombe sur la date de
+ * la pièce · chaque lecture de groupe la sélectionne (relu par le spec).
+ */
+export const dateDuReglement = (e: { date: Date; dateEncaissementEffet?: Date | null }): Date => e.dateEncaissementEffet ?? e.date;
+
+/**
  * LA DÉCLARATION SE LIT SUR LA FAMILLE DU COMPTE, PAS SUR CELUI DU TAUX.
  *
  * Chaque `TauxTva` porte un compte de collecte et un compte de déduction ·
@@ -94,6 +109,8 @@ export const SELECT_LIGNE_D_ORIGINE = {
       id: true,
       libelle: true,
       date: true,
+      // L'échéance de l'effet accepté · la date du règlement (`dateDuReglement`).
+      dateEncaissementEffet: true,
       createdAt: true,
       // La pièce et son statut · la fenêtre nomme chaque ligne, la porte ne
       // déclare que sur une écriture validée.
@@ -1996,7 +2013,7 @@ export class TauxTvaService {
         debit: unknown;
         credit: unknown;
         dateEcheance?: Date | null;
-        ecriture?: { id?: string; date: Date; libelle?: string } | null;
+        ecriture?: { id?: string; date: Date; dateEncaissementEffet?: Date | null; libelle?: string } | null;
       }>;
       /** Report d'à-nouveau → facture qu'il reporte (`traduireLesReports`, prolongation). */
       reportsVers?: ReadonlyMap<string, string>;
@@ -2028,7 +2045,7 @@ export class TauxTvaService {
         ecritureDeLaDette.set(id, g.ecriture.id);
         if (g.ecriture.libelle && !libelles.includes(g.ecriture.libelle)) libelles.push(g.ecriture.libelle);
       } else {
-        paiements.push({ id, date: g.ecriture.date, montant: Math.abs(sens) });
+        paiements.push({ id, date: dateDuReglement(g.ecriture), montant: Math.abs(sens) });
       }
     });
     // UNE DÉCLARATION SUR UN REPORT VISE LA FACTURE QU'IL REPORTE (relecture
@@ -2123,7 +2140,7 @@ export class TauxTvaService {
       debit: unknown;
       credit: unknown;
       compte: { numero: string };
-      ecriture: { date: Date; exerciceId: string };
+      ecriture: { date: Date; dateEncaissementEffet?: Date | null; exerciceId: string };
     }>,
   ): Promise<
     Map<
@@ -2200,7 +2217,7 @@ export class TauxTvaService {
       );
       const imputation = imputerPaiements(
         dettes,
-        lesPaiements.map((p) => ({ id: p.id, date: p.ecriture.date, montant: TauxTvaService.c(Math.abs(Number(p.debit) - Number(p.credit))) })),
+        lesPaiements.map((p) => ({ id: p.id, date: dateDuReglement(p.ecriture), montant: TauxTvaService.c(Math.abs(Number(p.debit) - Number(p.credit))) })),
       );
       const parPaiement = new Map<string, Array<{ facture: string; date: string; montant: number }>>();
       for (const [detteId, parts] of imputation.parDette) {
@@ -2339,11 +2356,12 @@ export class TauxTvaService {
   }
 
   /**
-   * Les règlements d'un groupe de lettrage, avec leur date d'ÉCRITURE (décret
-   * n° 011/42, art. 57) · les lignes de sens OPPOSÉ à la facture.
+   * Les règlements d'un groupe de lettrage, avec leur date de RÈGLEMENT (décret
+   * n° 011/42, art. 57 · la date de la pièce, ou l'échéance de l'effet accepté,
+   * `dateDuReglement`) · les lignes de sens OPPOSÉ à la facture.
    */
   private static reglementsDuGroupe(
-    lignes: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }> | undefined,
+    lignes: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date; dateEncaissementEffet?: Date | null } | null }> | undefined,
     sensFacture: number,
   ): Array<{ date: Date; montant: number }> {
     if (!lignes || lignes.length === 0 || Math.abs(sensFacture) <= EPSILON) return [];
@@ -2352,7 +2370,7 @@ export class TauxTvaService {
       const sens = Number(l.debit) - Number(l.credit);
       if (Math.abs(sens) <= EPSILON) continue;
       if (sens > 0 === sensFacture > 0) continue;
-      const date = l.ecriture?.date;
+      const date = l.ecriture ? dateDuReglement(l.ecriture) : undefined;
       if (!date) continue;
       reglements.push({ date, montant: Math.abs(sens) });
     }
@@ -2791,7 +2809,7 @@ export class TauxTvaService {
           where: { compteId: { in: [...comptes] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
           select: {
             ...selectLigne,
-            ecriture: { select: { id: true, date: true, exerciceId: true } },
+            ecriture: { select: { id: true, date: true, dateEncaissementEffet: true, exerciceId: true } },
             lettrage: {
               select: {
                 id: true,
@@ -2805,6 +2823,8 @@ export class TauxTvaService {
                         id: true,
                         libelle: true,
                         date: true,
+                        // L'échéance de l'effet accepté · la date du règlement (`dateDuReglement`).
+                        dateEncaissementEffet: true,
                         createdAt: true,
                         estANouveauProvisoire: true,
                         estGenereeParCloture: true,
@@ -3409,7 +3429,7 @@ export class TauxTvaService {
             montantDevise: true,
             dateEcheance: true,
             libelle: true,
-            ecriture: { select: { date: true, exerciceId: true } },
+            ecriture: { select: { date: true, dateEncaissementEffet: true, exerciceId: true } },
             lettrage: {
               select: {
                 // L'IDENTITÉ DU GROUPE ET DE SES LIGNES (relecture du
@@ -3441,6 +3461,8 @@ export class TauxTvaService {
                         id: true,
                         libelle: true,
                         date: true,
+                        // L'échéance de l'effet accepté · la date du règlement (`dateDuReglement`).
+                        dateEncaissementEffet: true,
                         createdAt: true,
                         estANouveauProvisoire: true,
                         estGenereeParCloture: true,
@@ -3592,7 +3614,7 @@ export class TauxTvaService {
    * date de l'écriture, et le dit.
    */
   private static dateDernierReglement(
-    lignes: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }> | undefined,
+    lignes: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date; dateEncaissementEffet?: Date | null } | null }> | undefined,
     sensFacture: number,
   ): Date | null {
     if (!lignes || lignes.length === 0 || Math.abs(sensFacture) <= EPSILON) return null;
@@ -3601,7 +3623,7 @@ export class TauxTvaService {
       const sens = Number(l.debit) - Number(l.credit);
       if (Math.abs(sens) <= EPSILON) continue;
       if (sens > 0 === sensFacture > 0) continue;
-      const date = l.ecriture?.date;
+      const date = l.ecriture ? dateDuReglement(l.ecriture) : undefined;
       if (!date) continue;
       if (!plusRecent || date > plusRecent) plusRecent = date;
     }
@@ -3653,7 +3675,7 @@ export class TauxTvaService {
       debit: unknown;
       credit: unknown;
       lettrage: {
-        lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }>;
+        lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date; dateEncaissementEffet?: Date | null } | null }>;
       } | null;
     }>,
     dateDebit: Date,
@@ -3675,7 +3697,7 @@ export class TauxTvaService {
         memeSens += Math.abs(sens);
         continue;
       }
-      const date = g.ecriture?.date;
+      const date = g.ecriture ? dateDuReglement(g.ecriture) : undefined;
       if (date && date.getTime() < dateDebit.getTime()) anterieurs.push({ date, montant: Math.abs(sens) });
     }
     // D'autres factures dans le groupe · l'imputation est inconnue.
@@ -4902,6 +4924,8 @@ export class TauxTvaService {
                               // `neutraliserLesNegatifs`).
                               corrigeEcritureId: true,
                               date: true,
+                              // L'échéance de l'effet accepté · la date du règlement (`dateDuReglement`).
+                              dateEncaissementEffet: true,
                               createdAt: true,
                               // Un AVOIR (TVA facturée reprise, ou déduite
                               // reprise) · jamais une perception.
@@ -6137,8 +6161,8 @@ export class TauxTvaService {
                   (g) =>
                     g.id &&
                     g.ecriture &&
-                    g.ecriture.date >= dateDebut &&
-                    g.ecriture.date <= dateFin &&
+                    dateDuReglement(g.ecriture) >= dateDebut &&
+                    dateDuReglement(g.ecriture) <= dateFin &&
                     Number(g.debit) - Number(g.credit) > 0 !== premier.sensFacture > 0,
                 )
                 .reduce((t, g) => t + (declareesParPaiement.get(g.id!) ?? []).reduce((s, d) => s + d.montant, 0), 0),
@@ -6410,7 +6434,7 @@ export class TauxTvaService {
           debit: true,
           credit: true,
           compte: { select: { numero: true } },
-          ecriture: { select: { date: true, exerciceId: true } },
+          ecriture: { select: { date: true, dateEncaissementEffet: true, exerciceId: true } },
         },
         orderBy: { id: 'asc' },
         take: PLAFOND_SANS_FACTURE + 1,

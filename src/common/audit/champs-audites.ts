@@ -164,6 +164,11 @@ export const MODELES_AUDITES = new Set<string>([
   'RemiseEnBanque',
   // L'avis ou l'impayé annulé, avec son motif et le sort de ses pièces.
   'AnnulationActeRemise',
+  // Ligne sage-l3, fonction 39 · l'effet de commerce et chacun de ses actes
+  // (acceptation, remise, escompte, décompte, encaissement, dénouement,
+  // impayé, bon à payer, paiement), avec l'annulation et son motif.
+  'EffetCommerce',
+  'ActeEffet',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',

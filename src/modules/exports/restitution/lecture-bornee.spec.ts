@@ -130,8 +130,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // 187 avec les types de remise, les valeurs reçues et les bordereaux de
     // remise en banque, chacun borné par son tenantId (ligne sage-l3,
     // fonction 40) ; 188 avec l'historique des avis de crédit et des impayés
-    // annulés, borné par son tenantId (même fonction, second tour).
-    expect(modeles).toHaveLength(188);
+    // annulés, borné par son tenantId (même fonction, second tour) ; 190 avec
+    // les effets de commerce et leurs actes (ligne sage-l3, fonction 39).
+    expect(modeles).toHaveLength(190);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

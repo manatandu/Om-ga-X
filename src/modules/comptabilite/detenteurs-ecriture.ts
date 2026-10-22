@@ -125,6 +125,11 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // reprendrait sur le 52 ou le 413 un montant que plus rien ne nomme.
   'AnnulationActeRemise.ecritureOrigineId',
   'AnnulationActeRemise.ecritureNegatifId',
+  // L'acte d'un effet de commerce (ligne sage-l3, fonction 39 · effets/) et
+  // son négatif · retirée seule, la pièce d'acceptation laisserait le 412 ou
+  // le 402 sans sa contrepartie, et l'effet se dirait toujours en portefeuille.
+  'ActeEffet.ecritureId',
+  'ActeEffet.ecritureNegatifId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)
