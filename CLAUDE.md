@@ -3575,6 +3575,49 @@ compensation possible »). Un RIB, et sa banque, qui portent ces
 déclarations ne se retirent pas · `motifRibRetenu`, 409 nommé avant la clé
 RESTRICT.
 
+**Financements, placements et titres (ligne sage-l3, n° 47, 2026-10-22,
+décision par la loi D16).** Traitement > Tiers et trésorerie > Financements
+et placements, Structure > Paramètres de saisie > Taux de référence
+(`src/modules/tresorerie/`, `operations-tresorerie.ts` et
+`titres-placement.ts` pour les règles pures). LE TAUX DE RÉFÉRENCE SE
+DÉCLARE · cours datés avec leur source, jamais réécrits ; une opération
+retient le cours EN VIGUEUR à sa mise en place plus sa marge, FIGÉ, jamais
+un cours postérieur. FICHES DES COMPTES 47, 52, 56, 63, 67 ET 77 DES DEUX
+PLANS · crédit de trésorerie au 561 (deux ans au plus, averti au-delà d'un
+an · l'exclusion du 561 renvoie au 16 les prêts à plus d'un an, anomalie
+écrite), intérêts au 6745, frais au 631, courus au 566 ; dépôt à terme au
+525, au 2784 s'il ne se débloque pas avant plus d'un an, intérêts au 771
+ou au 774, courus au 5267. L'INTÉRÊT SE DÉCLARE sur le décompte de la
+banque, la proposition n'est qu'une aide. LA CLÔTURE RATTACHE L'INTÉRÊT À
+SON EXERCICE (postulat de spécialisation) · part courue des post-comptés
+(566, 5267) ou part non courue des précomptés (476, 477) au dernier jour,
+proposée au prorata des jours, une par exercice ; contre-passée au premier
+jour suivant ; l'échéance est REFUSÉE tant qu'une régularisation n'est pas
+contre-passée, ou qu'un exercice ouvert traversé n'a pas la sienne (sans
+quoi l'intérêt pesait deux fois, ou jamais). Montants jugés au centime sans
+seuil flottant (`estAuCentime` · 75 000,01 refusé à tort, vu sur vraie
+base). LES OPCVM SONT DES TITRES DE PLACEMENT (AUDCIF Titre VIII ch. 13
+§ 1.1) · au 50, jamais au 506 ni, au SYSCOHADA seul, au 5021 (un numéro,
+deux plans · le SYCEBNL n'en ouvre aucun) ; frais au 5016, 5026 ou 5036 de
+SA division (§ 2.3.2) ; cession au coût P.E.P.S. frais compris, en
+micro-parts et centimes entiers, la dernière part prenant le reste ; gain
+au 777, perte au 6771, prix diminué des frais de cession, jamais du coût
+déprécié (§ 4). REVUE À LA CLÔTURE SEULE · valeur déclarée avec sa source,
+cours moyen du dernier mois si coté, valeur probable de négociation sinon
+(§ 3.2), la moins-value du titre au 590 par le 6795, reprise au 7795, sans
+compensation entre titres ; seul l'ÉCART avec la dépréciation en place se
+passe, celle-ci lue sur la dernière revue vivante, jamais sur le solde du
+590 ; écart nul, la revue est gardée sans pièce ; dans l'ordre (un
+exercice antérieur ouvert qui détenait le titre d'abord). AUCUN MOUVEMENT
+NE S'ANTIDATE ni ne se date dans une période revue · le coût P.E.P.S. d'une
+cession passée changerait en silence. Chaque geste retient sa pièce
+(`detenteurs-ecriture.ts`), s'annule À REBOURS avec son motif (AUDCIF
+art. 20, al. 2), au brouillard retiré (lien dénoué avant), validé en
+négatif ; jamais dans un exercice clôturé. Journal de banque EN FRANCS
+(`banque-en-francs.ts`, commun) · une opération en devise se passe à la
+main. Non servis · C.U.M.P. des titres, révision du taux en cours
+d'opération, clôture refusée sur un titre non revu.
+
 **Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
 Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse

@@ -187,7 +187,7 @@ inventaire permanent et les consignations.
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 128 | P_TDOSSIER : référence d'incorporation, date des effets, exécution, escompte, type d'effet, remises brûlantes, émetteur, écarts | 495 à 497 | PARTIEL | Depuis la ligne sage-l3 (n° 39 et 40), effets et remises existent (`EffetCommerce`, `ActeEffet`, `RemiseEnBanque`), sans paramètre de dossier de Sage · pas de référence d'incorporation, de remise brûlante ni d'écart toléré. Voir M5. |
-| 129 | P_DOSSIERFTRS : délais, TVA des frais bancaires, affectation du RIB, comptes OPCVM, financements, placements | 498, 499 | ABSENT | |
+| 129 | P_DOSSIERFTRS : délais, TVA des frais bancaires, affectation du RIB, comptes OPCVM, financements, placements | 498, 499 | PARTIEL | Depuis la ligne sage-l3 (n° 47) · les comptes des financements, placements et titres se choisissent opération par opération ou titre par titre, sous les racines des fiches ; ni délais ni TVA des frais bancaires au dossier. |
 | 130 | P_TSCHEMAS : schémas comptables par étape de remise | 499 à 502 | DIFFÉRENT, À TRIER | Les pièces naissent avec le règlement ou l'ordre de virement, sans étapes. Même point que M5, ligne 19. |
 | 131 | F_TREMISES, F_MONTANTS, F_ENTETES, F_ECHEANCES, F_LECRITURES : remises et échéances par mode (chèques, espèces, cartes, prélèvements, LCR-BOR, virements), étapes, périodicité | 504 à 517 | PARTIEL | Ordres de virement fournisseurs nés avec leurs pièces (`OrdreVirement`). Ni chèques remis, ni prélèvements, ni effets. |
 | 132 | F_HISTOTRANS, F_LHISTOTRANS, F_RELEVELCR, F_LRELEVELCR, F_MOTIFECO, F_REJETSEPA : transmissions bancaires, relevés de LCR, motifs économiques, rejets SEPA | 517, 518, 521 à 526, 533 | ABSENT | Aucune communication bancaire. Voir M5. |
@@ -195,9 +195,9 @@ inventaire permanent et les consignations.
 | 134 | F_LOTS, F_ELOTS : lots de remise | 527 à 530 | PARTIEL | Lots de virements récurrents qui présélectionnent, sans payer (`reglements/lots-virement.ts`). |
 | 135 | F_ECARTREGLEMENT, F_ESCOMPTES : écarts de règlement et escompte | 530 à 533 | ABSENT | |
 | 136 | F_UNION, F_EUNION : unions de comptes bancaires | 534, 535 | FIDÈLE | Depuis la ligne sage-l3 (n° 46) · une union réunit des RIB d'une même monnaie, déclare la fusion des échelles, et rend la position du groupe sans compensation au bilan (décision D15). |
-| 137 | F_TAUXREFERENCE, F_HISTOTAUXREFERENCE, F_NATFINANCEMENT, F_NATPLACEMENT, F_OPFINANCEMENT, F_OPPLACEMENT : taux de référence, financements et placements | 536 à 539, 551 à 555 | ABSENT | Les intérêts courus d'un emprunt se déclarent en charge à payer, sans taux (`interets-courus.ts`). |
+| 137 | F_TAUXREFERENCE, F_HISTOTAUXREFERENCE, F_NATFINANCEMENT, F_NATPLACEMENT, F_OPFINANCEMENT, F_OPPLACEMENT : taux de référence, financements et placements | 536 à 539, 551 à 555 | FIDÈLE | Depuis la ligne sage-l3 (n° 47) · taux de référence et cours datés avec leur source, crédit de trésorerie au 561, dépôt à terme au 525 ou au 2784, taux figé, régularisation des intérêts à la clôture et contre-passation à l'ouverture (décision D16). |
 | 138 | F_REGROUPEMENT, F_EREGROUPEMENT, F_PREVTRESO, F_MODELEAT, F_EMODELEAT : regroupements, prévisions de trésorerie, abonnements de trésorerie | 540 à 543, 549 à 551 | PARTIEL | Échéancier des tiers seulement ; pas de prévision de trésorerie. |
-| 139 | F_OPCVM, F_HISTOOPCVM, F_OPCVMEBANQUE, F_TRANSACTIONOPCVM, F_HISTOVENTEOPCVM : OPCVM, valeurs liquidatives, transactions | 544 à 548 | ABSENT | |
+| 139 | F_OPCVM, F_HISTOOPCVM, F_OPCVMEBANQUE, F_TRANSACTIONOPCVM, F_HISTOVENTEOPCVM : OPCVM, valeurs liquidatives, transactions | 544 à 548 | ADAPTÉ | Depuis la ligne sage-l3 (n° 47) · un titre au 50, acquisitions et cessions au coût P.E.P.S., valeur d'inventaire déclarée à la clôture seule avec sa source, et non un historique de valeurs liquidatives (décision D16). |
 | 140 | F_EXTRAITMCF, F_EEXTRAITMCF : extraits reçus au format MCF | 555 à 557 | PARTIEL | Relevé importé en CSV ou XLSX (ligne 67) ; pas de format bancaire. |
 
 ## Paie Maestria (p. 558 à 600)

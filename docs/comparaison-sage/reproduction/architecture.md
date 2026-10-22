@@ -226,7 +226,12 @@ journal `build-log.md`.
   choisit, au coût d'acquisition, frais dans un sous-compte du 50 (§ 2.3.2) ;
   la cession sort au coût P.E.P.S. (§ 4, fiche du compte 50 des deux plans ·
   le C.U.M.P. que le § 4 admet aussi n'est pas servi, au suivi), gain au
-  777, perte au 677 (§ 4.2) ; à l'inventaire, la valeur liquidative
+  777, perte au 6771 (§ 4.2, fiche du compte 50 du SYCEBNL) ; le compte
+  du titre n'est ni le 506 (intérêts courus) ni, au SYSCOHADA seul, le 5021
+  (actions propres, ch. 19 · un numéro, deux plans, le SYCEBNL n'en ouvre
+  aucun), ses frais au 5016, 5026 ou 5036 de SA division ; aucun mouvement
+  ne s'antidate ni ne se date dans une période déjà revue (le coût P.E.P.S.
+  d'une cession passée changerait) ; à l'inventaire, la valeur liquidative
   déclarée avec sa source (§ 3.2 · cours moyen du dernier mois pour un titre
   coté, valeur probable de négociation sinon, PROPOSÉE), la moins-value
   dépréciée au 590 par le 6795, reprise au 7795, sans compensation entre
