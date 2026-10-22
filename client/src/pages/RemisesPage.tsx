@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
+import { useGardeFermeture } from '../lib/fenetres';
 import { ecouterEchap } from '../lib/echap';
 import { montant as fmt } from '../lib/montants';
 import { montantSaisi } from '../lib/montant-saisi';
@@ -125,6 +126,14 @@ interface GroupeEcheance {
 }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+/**
+ * UN 5xx OU UNE RÉPONSE PERDUE N'EST PAS UN REFUS (relecture React, 4) · le
+ * serveur a pu passer la réception avant que la réponse ne se perde ; dit
+ * « impossible », le comptable recliquait et le 513 était débité deux fois.
+ * Un refus nommé (4xx) s'affiche tel quel.
+ */
+const messageDuRefus = (err: unknown, defaut: string) =>
+  err instanceof ApiError && err.status < 500 ? err.message : `${defaut} · réponse perdue, le geste a pu passer. Relisez la liste avant de le refaire.`;
 const piece = (p: Piece | null) => (p ? `n° ${p.numeroPiece ?? '·'}${p.statut === 'BROUILLARD' ? ' (brouillard)' : ''}` : '·');
 
 export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Onglet }) {
@@ -172,6 +181,7 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
     setValeurs(null);
     setRemises(null);
     setInfo(null);
+    setErreur(null);
     void charger();
   }, [charger]);
 
@@ -180,12 +190,29 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
     setErreur(null);
     await charger();
   };
-  const refus = (err: unknown, defaut: string) => setErreur(err instanceof ApiError ? err.message : defaut);
+  const refus = useCallback(
+    (err: unknown, defaut: string) => {
+      setErreur(messageDuRefus(err, defaut));
+      // Réponse perdue · la liste est relue, l'issue réelle s'y lit.
+      if (!(err instanceof ApiError && err.status < 500)) void charger();
+    },
+    [charger],
+  );
+  // Le bordereau à imprimer · rendu DANS la page, sous `impression-seul`,
+  // le reste de la fenêtre caché à l'impression (`avec-edition`), comme les
+  // bulletins de paie · imprimé depuis la modale, le voile grisait la page et
+  // la fenêtre entière sortait sur le papier (relecture React, 3).
+  const [document, setDocument] = useState<{ numero: number; texte: string; duplicata: boolean } | null>(null);
 
   const typesActifs = useMemo(() => (types?.types ?? []).filter((t) => t.estActif), [types]);
 
   return (
-    <div className="p-3 space-y-3 text-[11.5px]">
+    <div className="p-3 space-y-3 text-[11.5px] avec-edition">
+      {document && (
+        <pre className="impression-seul hidden whitespace-pre-wrap font-mono text-[11px]" aria-hidden="true">
+          {document.texte}
+        </pre>
+      )}
       {erreur && (
         <div ref={bandeauErreur} tabIndex={-1} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
           {erreur}
@@ -197,7 +224,16 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
       <div className="flex items-center justify-between">
         <div role="tablist" className="flex gap-1 border-b border-border flex-1">
           {ONGLETS.map((o) => (
-            <button key={o.cle} type="button" role="tab" aria-selected={onglet === o.cle} onClick={() => setOnglet(o.cle)} className={`onglet ${onglet === o.cle ? 'onglet-actif' : ''}`}>
+            <button
+              key={o.cle}
+              type="button"
+              role="tab"
+              id={`onglet-remises-${o.cle}`}
+              aria-selected={onglet === o.cle}
+              aria-controls={`panneau-remises-${o.cle}`}
+              onClick={() => setOnglet(o.cle)}
+              className={`onglet ${onglet === o.cle ? 'onglet-actif' : ''}`}
+            >
               {o.libelle}
             </button>
           ))}
@@ -208,10 +244,13 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
           source="AUDCIF Titre VII, comptes 41 (413), 51 et 63 (6315) ; SYCEBNL Partie 2 ch. 3, comptes 41, 51 et 63 ; AUDCIF art. 17, art. 20, al. 2"
         />
       </div>
-      {onglet === 'valeurs' && (
+      {!exerciceId && <div className="text-text-dim">Aucun exercice · ouvrez-en un dans Exercices.</div>}
+      {/* Les trois onglets restent MONTÉS (relecture React, 5) · démontés, un clic sur « Bordereaux » perdait la réception à moitié tapée. */}
+      <div role="tabpanel" id="panneau-remises-valeurs" aria-labelledby="onglet-remises-valeurs" hidden={onglet !== 'valeurs'}>
         <OngletValeurs
           exerciceId={exerciceId}
           exerciceClos={exerciceClos}
+          bornes={exerciceCourant ? { debut: exerciceCourant.dateDebut.slice(0, 10), fin: exerciceCourant.dateFin.slice(0, 10) } : null}
           types={typesActifs}
           typesLus={types !== null}
           valeurs={valeurs}
@@ -220,11 +259,27 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
           onFait={fait}
           onRefus={refus}
         />
+      </div>
+      <div role="tabpanel" id="panneau-remises-remises" aria-labelledby="onglet-remises-remises" hidden={onglet !== 'remises'}>
+        <OngletRemises
+          exerciceId={exerciceId}
+          exerciceClos={exerciceClos}
+          bornes={exerciceCourant ? { debut: exerciceCourant.dateDebut.slice(0, 10), fin: exerciceCourant.dateFin.slice(0, 10) } : null}
+          types={typesActifs}
+          remises={remises}
+          peutEcrire={peutEcrire}
+          peutValider={peutValider}
+          onFait={fait}
+          onRefus={refus}
+          onDocument={setDocument}
+        />
+      </div>
+      <div role="tabpanel" id="panneau-remises-types" aria-labelledby="onglet-remises-types" hidden={onglet !== 'types'}>
+        <OngletTypes types={types} journaux={journaux} estAdmin={estAdmin} onFait={fait} onRefus={refus} />
+      </div>
+      {document && (
+        <ModaleDocument titre={`Bordereau de remise n° ${document.numero}${document.duplicata ? ' · duplicata' : ''}`} texte={document.texte} onFermer={() => setDocument(null)} />
       )}
-      {onglet === 'remises' && (
-        <OngletRemises exerciceId={exerciceId} exerciceClos={exerciceClos} types={typesActifs} valeurs={valeurs} remises={remises} peutEcrire={peutEcrire} peutValider={peutValider} onFait={fait} onRefus={refus} />
-      )}
-      {onglet === 'types' && <OngletTypes types={types} journaux={journaux} estAdmin={estAdmin} onFait={fait} onRefus={refus} />}
     </div>
   );
 }
@@ -234,6 +289,7 @@ export function RemisesPage({ ongletInitial = 'valeurs' }: { ongletInitial?: Ong
 function OngletValeurs(p: {
   exerciceId: string | null;
   exerciceClos: boolean;
+  bornes: { debut: string; fin: string } | null;
   types: TypeRemise[];
   typesLus: boolean;
   valeurs: ListeValeurs | null;
@@ -251,39 +307,53 @@ function OngletValeurs(p: {
   const [banqueTiree, setBanqueTiree] = useState('');
   const [titulaire, setTitulaire] = useState('');
   const [echeances, setEcheances] = useState<GroupeEcheance[] | null>(null);
+  // Un échec de lecture n'est pas « aucune ligne ouverte » (§ 9 ter) · lu
+  // ainsi, le comptable recevait le chèque sans lettrage en croyant la
+  // créance déjà réglée (relecture, M2).
+  const [erreurEcheances, setErreurEcheances] = useState<string | null>(null);
+  // Relues après chaque réception · les lignes qui viennent d'être lettrées
+  // restaient cochables pour le chèque suivant (relecture React, 10).
+  const [version, setVersion] = useState(0);
   const [lignesChoisies, setLignesChoisies] = useState<string[]>([]);
   const [envoi, setEnvoi] = useState(false);
   const [aAnnuler, setAAnnuler] = useState<Valeur | null>(null);
   const [aDeclarerImpayee, setADeclarerImpayee] = useState<Valeur | null>(null);
   const [impayeAAnnuler, setImpayeAAnnuler] = useState<Valeur | null>(null);
 
-  // Les comptes de tiers · la liste du plan sous sa règle (retenus ou
-  // utilisés), bornée à la classe 4 à l'écran, jugée au serveur.
+  // Un choix unique se présélectionne (§ 9 ter).
   useEffect(() => {
+    if (!typeId && p.types.length === 1) setTypeId(p.types[0].id);
+  }, [typeId, p.types]);
+  // Les comptes de tiers · la liste du plan sous sa règle (retenus ou
+  // utilisés), bornée à la classe 4 à l'écran, jugée au serveur. Lue pour
+  // qui peut recevoir seulement.
+  const { onRefus, peutEcrire } = p;
+  useEffect(() => {
+    if (!peutEcrire) return;
     let vivant = true;
     api
       .get<CompteServi[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true')
       .then((c) => vivant && setTiers(c.filter((x) => x.numero.startsWith('4'))))
-      .catch((e) => vivant && p.onRefus(e, 'Comptes de tiers illisibles'));
+      .catch((e) => vivant && onRefus(e, 'Comptes de tiers illisibles'));
     return () => {
       vivant = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [peutEcrire, onRefus]);
   // Les lignes ouvertes du tiers choisi · ce que le chèque règle.
   useEffect(() => {
     setLignesChoisies([]);
     setEcheances(null);
+    setErreurEcheances(null);
     if (!tiersId || !p.exerciceId) return;
     let vivant = true;
     api
       .get<GroupeEcheance[]>(`/reglements/echeances?exerciceId=${p.exerciceId}&sens=CLIENT`)
       .then((g) => vivant && setEcheances(g.filter((x) => x.compteId === tiersId)))
-      .catch(() => vivant && setEcheances([]));
+      .catch((e) => vivant && setErreurEcheances(e instanceof ApiError ? e.message : 'Lignes ouvertes du tiers illisibles · relancez la lecture en rechoisissant le tiers.'));
     return () => {
       vivant = false;
     };
-  }, [tiersId, p.exerciceId]);
+  }, [tiersId, p.exerciceId, version]);
 
   const type = p.types.find((t) => t.id === typeId) ?? null;
   const valeur = montantSaisi(somme);
@@ -292,17 +362,23 @@ function OngletValeurs(p: {
     if (p.exerciceClos) return 'Cet exercice est clôturé.';
     if (!type) return 'Choisissez le type de remise.';
     if (!tiersId) return 'Choisissez le compte du tiers.';
+    if (erreurEcheances) return 'Les lignes ouvertes du tiers sont illisibles · rechoisissez le tiers.';
+    if (echeances === null) return 'Lecture des lignes ouvertes du tiers…';
     if (!jour) return 'La date de réception est exigée.';
     if (valeur === null || valeur <= 0) return 'Le montant doit être un nombre positif.';
     if (!reference.trim()) return 'La référence (numéro du chèque, transaction) est exigée.';
     return null;
   };
+  const formulaireEntame = !!(somme || reference || banqueTiree || titulaire || lignesChoisies.length > 0);
+  useGardeFermeture(
+    envoi ? 'La réception est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : formulaireEntame ? 'Une valeur est en cours de saisie et n’est pas reçue.' : null,
+  );
   const recevoir = async (e: FormEvent) => {
     e.preventDefault();
     if (manque()) return;
     setEnvoi(true);
     try {
-      const r = await api.post<{ lettre: string | null }>('/remises/valeurs', {
+      const r = await api.post<{ lettre: string | null; avertissement: string | null }>('/remises/valeurs', {
         exerciceId: p.exerciceId,
         typeRemiseId: typeId,
         compteTiersId: tiersId,
@@ -318,7 +394,8 @@ function OngletValeurs(p: {
       setBanqueTiree('');
       setTitulaire('');
       setLignesChoisies([]);
-      await p.onFait(`Valeur reçue au ${type!.compteReception.numero}${r.lettre ? ` · lettrée ${r.lettre} avec les factures choisies` : ''}.`);
+      setVersion((v) => v + 1);
+      await p.onFait(`Valeur reçue au ${type!.compteReception.numero}${r.lettre ? ` · lettrée ${r.lettre} avec les factures choisies` : ''}.${r.avertissement ? ` ${r.avertissement}` : ''}`);
     } catch (err) {
       p.onRefus(err, 'Réception impossible');
     } finally {
@@ -358,7 +435,7 @@ function OngletValeurs(p: {
             </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Date de réception</span>
-              <input type="date" value={jour} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
+              <input type="date" value={jour} min={p.bornes?.debut} max={p.bornes?.fin} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
             </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Montant</span>
@@ -379,8 +456,12 @@ function OngletValeurs(p: {
           </div>
           {tiersId && (
             <fieldset className="border border-border p-2">
-              <legend className="px-1 text-text-dim">Factures réglées par cette valeur (lettrage, partiel admis)</legend>
-              {echeances === null ? (
+              <legend className="px-1 text-text-dim" title="Lettrage manuel, partiel admis · jamais plus que le dû">
+                Factures réglées par cette valeur
+              </legend>
+              {erreurEcheances ? (
+                <div className="text-danger">{erreurEcheances}</div>
+              ) : echeances === null ? (
                 <div className="text-text-dim">…</div>
               ) : lignesOuvertes.length === 0 ? (
                 <div className="text-text-dim">Aucune ligne ouverte sur ce compte · la valeur reste non lettrée.</div>
@@ -418,16 +499,16 @@ function OngletValeurs(p: {
           <table className="w-full min-w-[980px]">
             <thead>
               <tr>
-                <th className="text-left px-2 py-1">Date</th>
-                <th className="text-left px-2 py-1">Type</th>
-                <th className="text-left px-2 py-1">Tiers</th>
-                <th className="text-left px-2 py-1">Référence</th>
-                <th className="text-left px-2 py-1">Banque tirée</th>
-                <th className="text-right px-2 py-1 w-[120px]">Montant</th>
-                <th className="text-left px-2 py-1">Statut</th>
-                <th className="text-left px-2 py-1">Pièce</th>
-                <th className="text-left px-2 py-1">Remise</th>
-                <th className="text-left px-2 py-1">Actions</th>
+                <th scope="col" className="text-left px-2 py-1">Date</th>
+                <th scope="col" className="text-left px-2 py-1">Type</th>
+                <th scope="col" className="text-left px-2 py-1">Tiers</th>
+                <th scope="col" className="text-left px-2 py-1">Référence</th>
+                <th scope="col" className="text-left px-2 py-1">Banque tirée</th>
+                <th scope="col" className="text-right px-2 py-1 w-[120px]">Montant</th>
+                <th scope="col" className="text-left px-2 py-1">Statut</th>
+                <th scope="col" className="text-left px-2 py-1">Pièce</th>
+                <th scope="col" className="text-left px-2 py-1">Remise</th>
+                <th scope="col" className="text-left px-2 py-1">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -452,17 +533,17 @@ function OngletValeurs(p: {
                   <td className="px-2 py-1">{v.remise ? `n° ${v.remise.numero}` : '·'}</td>
                   <td className="px-2 py-1 space-x-2">
                     {p.peutValider && v.statut === 'RECUE' && (
-                      <button type="button" onClick={() => setAAnnuler(v)} className="text-danger hover:underline">
+                      <button type="button" aria-label={`Annuler la réception de ${v.reference}`} onClick={() => setAAnnuler(v)} className="text-danger hover:underline">
                         Annuler la réception
                       </button>
                     )}
                     {p.peutEcrire && (v.statut === 'REMISE' || v.statut === 'CREDITEE') && (
-                      <button type="button" onClick={() => setADeclarerImpayee(v)} className="text-sel hover:underline">
+                      <button type="button" aria-label={`Impayé de ${v.reference}`} onClick={() => setADeclarerImpayee(v)} className="text-sel hover:underline">
                         Impayé
                       </button>
                     )}
                     {p.peutValider && v.statut === 'IMPAYEE' && (
-                      <button type="button" onClick={() => setImpayeAAnnuler(v)} className="text-danger hover:underline">
+                      <button type="button" aria-label={`Annuler l'impayé de ${v.reference}`} onClick={() => setImpayeAAnnuler(v)} className="text-danger hover:underline">
                         Annuler l'impayé
                       </button>
                     )}
@@ -507,45 +588,85 @@ function OngletValeurs(p: {
 
 // ----- Bordereaux -------------------------------------------------------------
 
+interface Candidate {
+  id: string;
+  date: string;
+  montant: number;
+  reference: string;
+  compteTiers: { numero: string; intitule: string };
+  exercice: { id: string; libelle: string };
+}
+interface ListeCandidates extends Liste {
+  valeurs: Candidate[];
+}
+
 function OngletRemises(p: {
   exerciceId: string | null;
   exerciceClos: boolean;
+  bornes: { debut: string; fin: string } | null;
   types: TypeRemise[];
-  valeurs: ListeValeurs | null;
   remises: ListeRemises | null;
   peutEcrire: boolean;
   peutValider: boolean;
   onFait: (m: string) => Promise<void>;
   onRefus: (e: unknown, d: string) => void;
+  onDocument: (d: { numero: number; texte: string; duplicata: boolean }) => void;
 }) {
   const [typeId, setTypeId] = useState('');
   const [jour, setJour] = useState('');
   const [choisies, setChoisies] = useState<string[]>([]);
   const [envoi, setEnvoi] = useState(false);
-  const [document, setDocument] = useState<{ numero: number; texte: string; duplicata: boolean } | null>(null);
   const [aCrediter, setACrediter] = useState<Remise | null>(null);
   const [aAnnuler, setAAnnuler] = useState<Remise | null>(null);
   const [avisAAnnuler, setAvisAAnnuler] = useState<Remise | null>(null);
-  useEffect(() => setChoisies([]), [typeId]);
+  // LES CANDIDATES AU BORDEREAU, SANS BORNE D'EXERCICE (relecture, M1) · un
+  // chèque reçu en décembre se remet en janvier ; tirées de la liste de
+  // l'exercice courant, les valeurs de N n'apparaissaient plus en N+1 et le
+  // 513 les gardait pour toujours. Lues à part, relues après chaque geste.
+  const [candidates, setCandidates] = useState<ListeCandidates | null>(null);
+  const [erreurCandidates, setErreurCandidates] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    if (!typeId && p.types.length === 1) setTypeId(p.types[0].id);
+  }, [typeId, p.types]);
+  useEffect(() => {
+    setChoisies([]);
+    setCandidates(null);
+    setErreurCandidates(null);
+    if (!typeId || !p.peutEcrire) return;
+    let vivant = true;
+    api
+      .get<ListeCandidates>(`/remises/valeurs/a-remettre?typeRemiseId=${encodeURIComponent(typeId)}`)
+      .then((c) => vivant && setCandidates(c))
+      .catch((e) => vivant && setErreurCandidates(e instanceof ApiError ? e.message : 'Valeurs à remettre illisibles · rechoisissez le type.'));
+    return () => {
+      vivant = false;
+    };
+  }, [typeId, p.peutEcrire, version, p.remises]);
   const type = p.types.find((t) => t.id === typeId) ?? null;
-  const candidates = (p.valeurs?.valeurs ?? []).filter((v) => v.statut === 'RECUE' && v.typeRemise.id === typeId);
-  const total = candidates.filter((v) => choisies.includes(v.id)).reduce((s, v) => s + v.montant, 0);
+  const lignes = candidates?.valeurs ?? [];
+  // Une valeur sortie de la liste (remise par un autre poste) ne compte plus.
+  const choisiesValides = choisies.filter((id) => lignes.some((v) => v.id === id));
+  const total = lignes.filter((v) => choisiesValides.includes(v.id)).reduce((s, v) => s + v.montant, 0);
   const manque = (): string | null => {
     if (!p.exerciceId) return 'Choisissez un exercice.';
     if (p.exerciceClos) return 'Cet exercice est clôturé.';
     if (!type) return 'Choisissez le type de remise.';
+    if (erreurCandidates) return 'Les valeurs à remettre sont illisibles · rechoisissez le type.';
     if (!jour) return 'La date de la remise est exigée.';
-    if (choisies.length === 0) return 'Cochez au moins une valeur reçue.';
+    if (choisiesValides.length === 0) return 'Cochez au moins une valeur reçue.';
     return null;
   };
+  useGardeFermeture(envoi ? 'Le bordereau est en cours d’envoi · fermer maintenant laisserait son issue inconnue.' : choisiesValides.length > 0 || jour ? 'Un bordereau est en cours de saisie et n’est pas établi.' : null);
   const remettre = async (e: FormEvent) => {
     e.preventDefault();
     if (manque()) return;
     setEnvoi(true);
     try {
-      const r = await api.post<{ numero: number; total: number }>('/remises', { exerciceId: p.exerciceId, typeRemiseId: typeId, date: jour, valeurIds: choisies });
+      const r = await api.post<{ numero: number; total: number }>('/remises', { exerciceId: p.exerciceId, typeRemiseId: typeId, date: jour, valeurIds: choisiesValides });
       setChoisies([]);
-      await p.onFait(`Bordereau n° ${r.numero} établi · ${fmt(r.total)}${type!.nature === 'CHEQUES' ? ` passés du ${type!.compteReception.numero} au ${type!.compteTransit?.numero ?? '514'}` : ' (les cartes restent au 515 jusqu’à l’avis de crédit)'}.`);
+      setVersion((v) => v + 1);
+      await p.onFait(`Bordereau n° ${r.numero} établi · ${fmt(r.total)}${type!.nature === 'CHEQUES' && type!.compteTransit ? ` passés du ${type!.compteReception.numero} au ${type!.compteTransit.numero}` : ''}.`);
     } catch (err) {
       p.onRefus(err, 'Remise impossible');
     } finally {
@@ -555,7 +676,7 @@ function OngletRemises(p: {
   const imprimer = async (r: Remise) => {
     try {
       const i = await api.post<{ numero: number; document: string; duplicata: boolean }>(`/remises/${r.id}/impression`, {});
-      setDocument({ numero: i.numero, texte: i.document, duplicata: i.duplicata });
+      p.onDocument({ numero: i.numero, texte: i.document, duplicata: i.duplicata });
     } catch (err) {
       p.onRefus(err, 'Impression impossible');
     }
@@ -580,25 +701,31 @@ function OngletRemises(p: {
             </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Date de la remise</span>
-              <input type="date" value={jour} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
+              <input type="date" value={jour} min={p.bornes?.debut} max={p.bornes?.fin} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
             </label>
           </div>
           {type && (
             <fieldset className="border border-border p-2">
               <legend className="px-1 text-text-dim">Valeurs reçues, non remises</legend>
-              {p.valeurs === null ? (
+              {erreurCandidates ? (
+                <div className="text-danger">{erreurCandidates}</div>
+              ) : candidates === null ? (
                 <div className="text-text-dim">…</div>
-              ) : candidates.length === 0 ? (
+              ) : lignes.length === 0 ? (
                 <div className="text-text-dim">Aucune valeur de ce type en attente de remise · recevez-la d'abord sous « Valeurs reçues ».</div>
               ) : (
-                candidates.map((v) => (
-                  <label key={v.id} className="flex items-center gap-2">
-                    <input type="checkbox" checked={choisies.includes(v.id)} onChange={(e) => setChoisies((c) => (e.target.checked ? [...c, v.id] : c.filter((x) => x !== v.id)))} />
-                    <span>
-                      {date(v.date)} · {v.reference} · {v.compteTiers.intitule} · {fmt(v.montant)}
-                    </span>
-                  </label>
-                ))
+                <>
+                  {lignes.map((v) => (
+                    <label key={v.id} className="flex items-center gap-2">
+                      <input type="checkbox" checked={choisiesValides.includes(v.id)} onChange={(e) => setChoisies((c) => (e.target.checked ? [...c, v.id] : c.filter((x) => x !== v.id)))} />
+                      <span>
+                        {date(v.date)} · {v.reference} · {v.compteTiers.intitule} · {fmt(v.montant)}
+                        {v.exercice.id !== p.exerciceId && <span className="text-text-dim"> · exercice {v.exercice.libelle}</span>}
+                      </span>
+                    </label>
+                  ))}
+                  {candidates.tronque && <div className="text-text-dim">{lignes.length} valeurs montrées sur {candidates.total} · remettez les plus anciennes d'abord.</div>}
+                </>
               )}
             </fieldset>
           )}
@@ -606,7 +733,7 @@ function OngletRemises(p: {
             <button type="submit" disabled={envoi || manque() !== null} className="bg-sel text-white font-semibold px-3 py-1 rounded-full disabled:opacity-40">
               {envoi ? '…' : 'Établir le bordereau'}
             </button>
-            {choisies.length > 0 && <span>{choisies.length} valeur(s) · {fmt(total)}</span>}
+            {choisiesValides.length > 0 && <span>{choisiesValides.length} valeur(s) · {fmt(total)}</span>}
             {manque() && <span className="text-text-dim">{manque()}</span>}
           </div>
         </form>
@@ -620,16 +747,16 @@ function OngletRemises(p: {
           <table className="w-full min-w-[980px]">
             <thead>
               <tr>
-                <th className="text-left px-2 py-1">N°</th>
-                <th className="text-left px-2 py-1">Date</th>
-                <th className="text-left px-2 py-1">Type</th>
-                <th className="text-left px-2 py-1">Banque</th>
-                <th className="text-right px-2 py-1">Valeurs</th>
-                <th className="text-right px-2 py-1 w-[120px]">Total</th>
-                <th className="text-left px-2 py-1">Statut</th>
-                <th className="text-left px-2 py-1">Bordereau</th>
-                <th className="text-left px-2 py-1">Avis de crédit</th>
-                <th className="text-left px-2 py-1">Actions</th>
+                <th scope="col" className="text-left px-2 py-1">N°</th>
+                <th scope="col" className="text-left px-2 py-1">Date</th>
+                <th scope="col" className="text-left px-2 py-1">Type</th>
+                <th scope="col" className="text-left px-2 py-1">Banque</th>
+                <th scope="col" className="text-right px-2 py-1">Valeurs</th>
+                <th scope="col" className="text-right px-2 py-1 w-[120px]">Total</th>
+                <th scope="col" className="text-left px-2 py-1">Statut</th>
+                <th scope="col" className="text-left px-2 py-1">Bordereau</th>
+                <th scope="col" className="text-left px-2 py-1">Avis de crédit</th>
+                <th scope="col" className="text-left px-2 py-1">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -660,22 +787,22 @@ function OngletRemises(p: {
                   </td>
                   <td className="px-2 py-1 space-x-2">
                     {p.peutEcrire && r.statut !== 'ANNULEE' && (
-                      <button type="button" onClick={() => imprimer(r)} className="text-sel hover:underline">
+                      <button type="button" aria-label={`Imprimer le bordereau n° ${r.numero}`} onClick={() => imprimer(r)} className="text-sel hover:underline">
                         Imprimer
                       </button>
                     )}
                     {p.peutEcrire && r.statut === 'REMISE' && (
-                      <button type="button" onClick={() => setACrediter(r)} className="text-sel hover:underline">
+                      <button type="button" aria-label={`Avis de crédit de la remise n° ${r.numero}`} onClick={() => setACrediter(r)} className="text-sel hover:underline">
                         Avis de crédit
                       </button>
                     )}
                     {p.peutValider && r.statut === 'REMISE' && (
-                      <button type="button" onClick={() => setAAnnuler(r)} className="text-danger hover:underline">
+                      <button type="button" aria-label={`Annuler la remise n° ${r.numero}`} onClick={() => setAAnnuler(r)} className="text-danger hover:underline">
                         Annuler la remise
                       </button>
                     )}
                     {p.peutValider && r.statut === 'CREDITEE' && (
-                      <button type="button" onClick={() => setAvisAAnnuler(r)} className="text-danger hover:underline">
+                      <button type="button" aria-label={`Annuler l'avis de crédit de la remise n° ${r.numero}`} onClick={() => setAvisAAnnuler(r)} className="text-danger hover:underline">
                         Annuler l'avis
                       </button>
                     )}
@@ -687,9 +814,6 @@ function OngletRemises(p: {
         )}
         {p.remises?.tronque && <div className="text-text-dim mt-1">{p.remises.remises.length} bordereaux montrés sur {p.remises.total}.</div>}
       </div>
-      {document && (
-        <ModaleDocument titre={`Bordereau de remise n° ${document.numero}${document.duplicata ? ' · duplicata' : ''}`} texte={document.texte} onFermer={() => setDocument(null)} />
-      )}
       {aCrediter && <ModaleAvisCredit remise={aCrediter} onFermer={() => setACrediter(null)} onFait={p.onFait} />}
       {aAnnuler && (
         <ModaleMotif
@@ -739,7 +863,11 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
 
   // Les comptes de chaque rôle, sous la racine que le serveur prescrit
   // (`/remises/comptes`, régime « texte » de listes-de-comptes.ts).
+  const { onRefus, estAdmin } = p;
   useEffect(() => {
+    // Lu pour l'administrateur seul · trois lectures par visite, et un échec
+    // dans le bandeau d'un lecteur sans formulaire (relecture React, 8).
+    if (!estAdmin) return;
     let vivant = true;
     setReceptionId('');
     setTransitId('');
@@ -754,15 +882,19 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
         if (lus.RECEPTION.comptes.length === 1) setReceptionId(lus.RECEPTION.comptes[0].id);
         if (lus.TRANSIT.comptes.length === 1) setTransitId(lus.TRANSIT.comptes[0].id);
       })
-      .catch((e) => vivant && p.onRefus(e, 'Comptes de remise illisibles'));
+      .catch((e) => vivant && onRefus(e, 'Comptes de remise illisibles'));
     return () => {
       vivant = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nature]);
+  }, [nature, estAdmin, onRefus]);
 
   const banques = (p.journaux ?? []).filter((j) => j.type === 'TRESORERIE' && j.estActif);
   const operations = (p.journaux ?? []).filter((j) => j.type === 'GENERAL' && j.estActif);
+  // Un choix unique se présélectionne (§ 9 ter).
+  useEffect(() => {
+    if (!journalBanqueId && banques.length === 1) setJournalBanqueId(banques[0].id);
+    if (!journalOperationsId && operations.length === 1) setJournalOperationsId(operations[0].id);
+  }, [journalBanqueId, journalOperationsId, banques, operations]);
   const manque = (): string | null => {
     if (!/^[A-Za-z0-9]{1,10}$/.test(code.trim())) return 'Le code est de un à dix lettres ou chiffres.';
     if (intitule.trim().length < 3) return "L'intitulé est exigé · trois caractères au moins.";
@@ -873,7 +1005,9 @@ function OngletTypes(p: { types: ListeTypes | null; journaux: JournalServi[] | n
             {selectComptes('COMMISSION', commissionId, setCommissionId, 'Compte de commission (631, facultatif)')}
           </div>
           <label className="flex flex-col gap-0.5">
-            <span className="text-text-dim">Modèle du bordereau (facultatif · jetons {'{dossier} {banque} {type} {numero} {date} {nature} {nombre} {total} {lignes}'})</span>
+            <span className="text-text-dim" title={`Jetons admis · ${'{dossier} {banque} {type} {numero} {date} {nature} {nombre} {total} {lignes}'} · {lignes} exigé une fois`}>
+              Modèle du bordereau (facultatif)
+            </span>
             <textarea value={modele} onChange={(e) => setModele(e.target.value)} rows={3} maxLength={4000} className="border border-border px-2 py-[2px] font-mono text-[11px]" />
           </label>
           <div className="flex items-center gap-3">
@@ -978,12 +1112,24 @@ function useFermetureParEchap(onFermer: () => void, envoi: boolean) {
   );
 }
 
-function Cadre(p: { id: string; titre: string; onFermer: () => void; envoi: boolean; onSubmit?: (e: FormEvent) => void; enfants: React.ReactNode; pied: React.ReactNode }) {
+function Cadre(p: {
+  id: string;
+  titre: string;
+  onFermer: () => void;
+  envoi: boolean;
+  onSubmit?: (e: FormEvent) => void;
+  enfants: React.ReactNode;
+  pied: React.ReactNode;
+  /** Une boîte sans champ reçoit le focus sur son conteneur (relecture React, 14). */
+  focus?: React.RefObject<HTMLDivElement>;
+}) {
   const Conteneur = p.onSubmit ? 'form' : 'div';
   return (
     <PortailModale>
-      <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
+      <div className="anim-voile ecran-seul fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
         <Conteneur
+          ref={p.focus as React.RefObject<HTMLDivElement & HTMLFormElement> | undefined}
+          tabIndex={p.focus ? -1 : undefined}
           role="dialog"
           aria-modal="true"
           aria-labelledby={p.id}
@@ -1022,7 +1168,7 @@ function ModaleMotif(p: { titre: string; resume: string; action: string; chemin:
       const r = await api.post<Record<string, string | null>>(p.chemin, { motif: motif.trim() });
       await p.onFait(r);
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Annulation impossible');
+      setErreur(messageDuRefus(err, 'Annulation impossible'));
     } finally {
       setEnvoi(false);
     }
@@ -1074,7 +1220,7 @@ function ModaleAvisCredit(p: { remise: Remise; onFermer: () => void; onFait: (m:
       p.onFermer();
       await p.onFait(`Remise n° ${p.remise.numero} créditée au ${p.remise.journalBanque.code}${montantCommission ? ` · commission ${fmt(montantCommission)}` : ''}.`);
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Avis impossible');
+      setErreur(messageDuRefus(err, 'Avis impossible'));
     } finally {
       setEnvoi(false);
     }
@@ -1107,9 +1253,12 @@ function ModaleAvisCredit(p: { remise: Remise; onFermer: () => void; onFait: (m:
         </>
       }
       pied={
-        <button type="submit" disabled={envoi || !pret} className="bg-sel text-white font-semibold px-3 py-1 disabled:opacity-40">
-          {envoi ? '…' : 'Créditer'}
-        </button>
+        <>
+          {commission.trim() !== '' && montantCommission === null && <span className="text-danger self-center">La commission doit être un nombre.</span>}
+          <button type="submit" disabled={envoi || !pret} className="bg-sel text-white font-semibold px-3 py-1 disabled:opacity-40">
+            {envoi ? '…' : 'Créditer'}
+          </button>
+        </>
       }
     />
   );
@@ -1148,7 +1297,7 @@ function ModaleImpaye(p: { valeur: Valeur; onFermer: () => void; onFait: (m: str
       p.onFermer();
       await p.onFait(`Impayé de ${p.valeur.reference} passé au ${r.compteImpaye}.`);
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Impayé impossible');
+      setErreur(messageDuRefus(err, 'Impayé impossible'));
     } finally {
       setEnvoi(false);
     }
@@ -1194,12 +1343,15 @@ function ModaleImpaye(p: { valeur: Valeur; onFermer: () => void; onFait: (m: str
 
 function ModaleDocument(p: { titre: string; texte: string; onFermer: () => void }) {
   useFermetureParEchap(p.onFermer, false);
+  const boite = useRef<HTMLDivElement>(null);
+  useEffect(() => boite.current?.focus({ preventScroll: true }), []);
   return (
     <Cadre
       id="titre-bordereau"
       titre={p.titre}
       onFermer={p.onFermer}
       envoi={false}
+      focus={boite}
       enfants={<pre className="whitespace-pre-wrap font-mono text-[11px]">{p.texte}</pre>}
       pied={
         <button type="button" onClick={() => window.print()} className="bg-sel text-white font-semibold px-3 py-1">

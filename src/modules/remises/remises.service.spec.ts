@@ -36,12 +36,15 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
       return 1;
     }),
     remiseEnBanque: {
+      updateMany: jest.fn(async () => ({ count: 1 })),
+      findFirstOrThrow: jest.fn(async () => ({ id: 'r9', numero: 9, statut: 'CREDITEE', dateCredit: new Date('2026-03-15'), commission: 0 })),
       aggregate: jest.fn(async () => ({ _max: { numero: 4 } })),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         appels.push('remise');
         return { id: 'r1', ...data };
       }),
     },
+    ecriture: { update: jest.fn(async () => ({})) },
     valeurRecue: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'v1', ...data })),
       updateMany: jest.fn(async () => ({ count: options.prisesRemise ?? 2 })),
@@ -53,15 +56,18 @@ function monter(options: { lettrageEchoue?: boolean; prisesRemise?: number } = {
   };
   const prisma = {
     typeRemise: { findFirst: jest.fn(async () => TYPE) },
-    compte: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => (where.id === 'c411' ? { id: 'c411', numero: '41110001', intitule: 'Client', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4133' ? { id: 'c4133', numero: '41330000', intitule: 'Cartes impayées', typeCompte: 'DETAIL', estActif: true } : null)) },
+    compte: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => (where.id === 'c411' ? { id: 'c411', numero: '41110001', intitule: 'Client', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4133' ? { id: 'c4133', numero: '41330000', intitule: 'Cartes impayées', typeCompte: 'DETAIL', estActif: true } : where.id === 'c4131' ? { id: 'c4131', numero: '41310000', intitule: 'Chèques impayés', typeCompte: 'DETAIL', estActif: true } : null)) },
     exercice: { findFirst: jest.fn(async () => ({ id: 'ex1', statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') })) },
     tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
+    // La facture choisie à la réception · 1 500 dus (relecture, m5 · plus que le dû refusé).
+    ligneEcriture: { findMany: jest.fn(async () => [{ id: 'f1', debit: 1500, credit: 0 }]) },
     valeurRecue: {
+      count: jest.fn(async () => 0),
       findMany: jest.fn(async () => [
         { id: 'v1', montant: 10.005, reference: 'A', date: new Date('2026-03-01'), compteTiers: { intitule: 'Client' } },
         { id: 'v2', montant: 10.005, reference: 'B', date: new Date('2026-03-02'), compteTiers: { intitule: 'Client' } },
       ]),
-      findFirst: jest.fn(async () => ({ id: 'v3', statut: 'REMISE', date: new Date('2026-03-01'), montant: 300000, reference: 'C', typeRemise: TYPE, compteTiers: { numero: '41110001', intitule: 'Client' }, remise: { numero: 2, statut: 'REMISE' } })),
+      findFirst: jest.fn(async () => ({ id: 'v3', statut: 'REMISE', date: new Date('2026-03-01'), montant: 300000, reference: 'C', typeRemise: TYPE, compteTiers: { numero: '41110001', intitule: 'Client' }, remise: { numero: 2, statut: 'REMISE', date: new Date('2026-03-05'), dateCredit: null } })),
     },
     remiseEnBanque: { findFirst: jest.fn(async () => ({ id: 'r9', numero: 9, statut: 'CREDITEE', date: new Date('2026-03-12'), total: 1000, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [], ecritureRemiseId: 'e1', exercice: { statut: 'OUVERT' } })) },
     ecriture: { update: jest.fn(async () => ({})) },
@@ -141,7 +147,7 @@ describe('RemisesService · bordereau', () => {
 describe("RemisesService · avis de crédit, annulation, impayé", () => {
   it('une commission sans compte de commission est refusée avant toute pièce', async () => {
     const { service, ecritures, prisma } = monter();
-    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'REMISE', date: new Date('2026-03-12'), total: 1000, exerciceId: 'ex1', typeRemise: TYPE } as never);
+    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'REMISE', date: new Date('2026-03-12'), total: 1000, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [{ id: 'v1', statut: 'REMISE', reference: 'A' }] } as never);
     await expect(service.avisCredit('t', 'u', 'r9', { date: '2026-03-15', referenceAvis: 'Relevé', commission: 15 })).rejects.toThrow(/compte de commission/);
     expect(ecritures.creerAvec).not.toHaveBeenCalled();
   });
@@ -149,6 +155,32 @@ describe("RemisesService · avis de crédit, annulation, impayé", () => {
   it("une remise créditée ne s'annule pas · l'avis d'abord", async () => {
     const { service } = monter();
     await expect(service.annulerRemise('t', 'u', 'r9', { motif: 'essai' })).rejects.toThrow(/annulez d'abord l'avis de crédit/);
+  });
+
+  it("l'avis de crédit refuse une remise dont une valeur est revenue impayée avant le crédit, en nommant l'issue (BLOQUANT B1)", async () => {
+    const { service, ecritures, prisma } = monter();
+    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'REMISE', date: new Date('2026-03-12'), total: 300, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [{ id: 'v1', statut: 'REMISE', reference: 'A' }, { id: 'v2', statut: 'IMPAYEE', reference: 'B' }] } as never);
+    await expect(service.avisCredit('t', 'u', 'r9', { date: '2026-03-15', referenceAvis: 'Relevé' })).rejects.toThrow(/B.*impayée avant le crédit.*annulez l'impayé/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+  });
+
+  it("l'avis de crédit refuse (409) quand le nombre de valeurs créditées n'est pas celui lu · rien n'est crédité", async () => {
+    const { service, prisma, tx } = monter();
+    prisma.remiseEnBanque.findFirst.mockResolvedValueOnce({ id: 'r9', numero: 9, statut: 'REMISE', date: new Date('2026-03-12'), total: 300, exerciceId: 'ex1', typeRemise: TYPE, valeurs: [{ id: 'v1', statut: 'REMISE', reference: 'A' }, { id: 'v2', statut: 'REMISE', reference: 'B' }] } as never);
+    tx.valeurRecue.updateMany.mockResolvedValueOnce({ count: 1 });
+    await expect(service.avisCredit('t', 'u', 'r9', { date: '2026-03-15', referenceAvis: 'Relevé' })).rejects.toThrow(ConflictException);
+  });
+
+  it("l'impayé ne précède ni la remise ni l'avis de crédit (m8)", async () => {
+    const { service, ecritures } = monter();
+    await expect(service.impaye('t', 'u', 'v3', { date: '2026-03-02', compteImpayeId: 'c4131' })).rejects.toThrow(/ne précède pas la remise/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+  });
+
+  it('la réception refuse plus que le dû des lignes choisies, avant toute pièce (m5)', async () => {
+    const { service, ecritures } = monter();
+    await expect(service.recevoir('t', 'u', { ...RECEPTION, montant: 1500.01, ligneIds: ['f1'] })).rejects.toThrow(/dépasse le dû/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
   });
 
   it("l'impayé refuse un 413 hors de la racine du plan (4133 pour un chèque au SYSCOHADA)", async () => {

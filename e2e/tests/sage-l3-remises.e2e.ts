@@ -125,14 +125,32 @@ test('remises de chèques · réception lettrée, bordereau imprimé, avis avec 
 
   // UN CHÈQUE REMIS EN DÉCEMBRE, NON CRÉDITÉ · le 514 traverse la clôture.
   const v3 = await recevoir(N.id, `${annee}-12-20`, 300_000, 'CHQ 0044');
+  // Et UN CHÈQUE REÇU EN DÉCEMBRE, NON REMIS avant la clôture (relecture, M1) ·
+  // le 513 le reporte, le bordereau de janvier le propose encore.
+  const v4 = await recevoir(N.id, `${annee}-12-28`, 120_000, 'CHQ 0045');
   const remise2 = await appelApi<{ id: string; numero: number }>(page, 'POST', '/remises', { exerciceId: N.id, typeRemiseId: type.id, date: `${annee}-12-22`, valeurIds: [v3.id] });
   expect(remise2.numero).toBe(2);
+  // UN IMPAYÉ DÉCLARÉ AVANT LE CRÉDIT FERME L'AVIS (BLOQUANT B1 de la
+  // relecture) · l'avis créditait le total figé, 514 créditeur et 52 majoré.
+  const comptesImpaye = await appelApi<{ racine: string; comptes: Array<{ id: string; numero: string }> }>(
+    page,
+    'GET',
+    `/remises/comptes?role=IMPAYE&nature=CHEQUES&compteTiersId=${compteClient.id}`,
+  );
+  expect(comptesImpaye.racine).toBe('4131');
+  await appelApi(page, 'POST', `/remises/valeurs/${v3.id}/impaye`, { date: `${annee}-12-27`, compteImpayeId: comptesImpaye.comptes[0].id });
+  expect(await refusDe(appelApi(page, 'POST', `/remises/${remise2.id}/avis-credit`, { date: `${annee}-12-29`, referenceAvis: 'Relevé 12' }))).toMatch(
+    /CHQ 0044.*impayée avant le crédit.*annulez l'impayé/,
+  );
+  await appelApi(page, 'POST', `/remises/valeurs/${v3.id}/impaye/annuler`, { motif: 'impayé déclaré par erreur avant le crédit' });
+  expect(solde(await balance(N.id), '4131')).toBe(0);
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: N.id, dateLimite: jour(N.dateFin) });
   const debutSuivant = lendemain(N.dateFin);
   const N1 = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: debutSuivant, dateFin: `${debutSuivant.slice(0, 4)}-12-31` });
   await appelApi(page, 'POST', `/exercices/${N.id}/cloturer`);
   const anneeSuivante = debutSuivant.slice(0, 4);
   expect(solde(await balance(N.id), '514')).toBe(300_000);
+  expect(solde(await balance(N.id), '513')).toBe(120_000);
 
   // L'AVIS DE JANVIER solde le 514 reporté · l'écriture est dans N+1.
   await appelApi(page, 'POST', `/remises/${remise2.id}/avis-credit`, { date: `${anneeSuivante}-01-08`, referenceAvis: 'Relevé 01' });
@@ -140,13 +158,23 @@ test('remises de chèques · réception lettrée, bordereau imprimé, avis avec 
   const c514 = b.find((l) => l.numero === '51400000')!;
   expect([c514.reportDebit, c514.mouvementCredit, c514.solde]).toEqual([300_000, 300_000, 0]);
 
+  // LE CHÈQUE DE DÉCEMBRE NON REMIS se remet en janvier (M1) · la liste des
+  // valeurs à remettre n'a pas de borne d'exercice, et le 513 reporté se solde.
+  const aRemettre = await appelApi<{ valeurs: Array<{ id: string; exercice: { id: string } }>; total: number }>(page, 'GET', `/remises/valeurs/a-remettre?typeRemiseId=${type.id}`);
+  expect(aRemettre.valeurs.map((v) => [v.id, v.exercice.id])).toEqual([[v4.id, N.id]]);
+  const remise3 = await appelApi<{ id: string; numero: number }>(page, 'POST', '/remises', { exerciceId: N1.id, typeRemiseId: type.id, date: `${anneeSuivante}-01-10`, valeurIds: [v4.id] });
+  expect(remise3.numero).toBe(3);
+  b = await balance(N1.id);
+  expect([solde(b, '513'), solde(b, '514')]).toEqual([0, 120_000]);
+  // L'AVIS DE JANVIER D'UN BORDEREAU DE DÉCEMBRE S'ANNULE DANS N+1 (BLOQUANT
+  // B2) · jugé sur l'exercice du bordereau, clôturé, l'avis faux était enfermé.
+  const avisAnnule = await appelApi<{ statut: string; ecritureNegatifCreditId: string | null }>(page, 'POST', `/remises/${remise2.id}/avis-credit/annuler`, { motif: 'avis saisi sur le mauvais relevé' });
+  expect([avisAnnule.statut, avisAnnule.ecritureNegatifCreditId]).toEqual(['REMISE', null]);
+  expect(solde(await balance(N1.id), '514')).toBe(420_000);
+  await appelApi(page, 'POST', `/remises/${remise2.id}/avis-credit`, { date: `${anneeSuivante}-01-08`, referenceAvis: 'Relevé 01' });
+  expect(solde(await balance(N1.id), '514')).toBe(120_000);
+
   // L'IMPAYÉ d'un chèque crédité · D 4131 / C 52, puis son annulation.
-  const comptesImpaye = await appelApi<{ racine: string; comptes: Array<{ id: string; numero: string }> }>(
-    page,
-    'GET',
-    `/remises/comptes?role=IMPAYE&nature=CHEQUES&compteTiersId=${compteClient.id}`,
-  );
-  expect(comptesImpaye.racine).toBe('4131');
   const impaye = await appelApi<{ compteImpaye: string; statut: string }>(page, 'POST', `/remises/valeurs/${v3.id}/impaye`, {
     date: `${anneeSuivante}-01-15`,
     compteImpayeId: comptesImpaye.comptes[0].id,

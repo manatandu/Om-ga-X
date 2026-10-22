@@ -247,6 +247,10 @@ const EXCEPTIONS: Exception[] = [
   // Ligne sage-l3, fonction 40 · les remises en banque relisent par
   // identifiant la pièce que la valeur ou le bordereau retient, dans la
   // transaction de l'annulation, comme les virements de fonds.
+  // Les lignes ouvertes cochées à la réception, lues par leur identifiant
+  // pour juger le dû · elles viennent de l'échéancier, qui ne sert jamais une
+  // écriture de situation.
+  { fichier: 'src/modules/remises/remises.service.ts', fonction: 'recevoir', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/remises/remises.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/remises/remises.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/remises/remises.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },

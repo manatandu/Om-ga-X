@@ -3422,7 +3422,16 @@ type de cartes à compte de transit est refusé) ; avis de crédit D 52 net /
 D 6315 commission (fiche du 63, « commissions sur cartes de crédit »,
 63150000 semé aux deux) / C 514 ou 515, dans l'exercice de SA DATE (un
 bordereau de décembre crédité en janvier passait la clôture sans issue) ;
-impayé D 413 / C 514, 515 ou 52 selon l'état. L'IMPAYÉ VA AU 413 DE LA FICHE
+impayé D 413 / C 514, 515 ou 52 selon l'état, jamais daté avant la remise
+ni l'avis. L'AVIS NE SE PASSE PAS TANT QU'UN IMPAYÉ TIENT (premier tour,
+B1) · il créditait le TOTAL figé du bordereau quand une valeur en était déjà
+sortie (52 majoré, 514 créditeur, balance bouclée) · refus nommé (annuler
+l'impayé, passer l'avis, redéclarer), compte des valeurs créditées vérifié ;
+son annulation se juge sur l'exercice de L'AVIS, jamais du bordereau (B2 ·
+un avis de janvier était enfermé une fois N clôturé). LES VALEURS À
+REMETTRE SE LISTENT SANS BORNE D'EXERCICE (`GET /remises/valeurs/a-remettre`,
+M1) · un chèque reçu en décembre se remet en janvier, et le 513 reporté se
+solde. L'IMPAYÉ VA AU 413 DE LA FICHE
 DU 41 (« les chèques, effets à payer et autres valeurs revenus impayés
 doivent être enregistrés au compte 413 ») · UN NUMÉRO, DEUX SENS
 (`racineImpaye`) · NATURE au SYSCOHADA (4131 chèques, 4133 cartes),

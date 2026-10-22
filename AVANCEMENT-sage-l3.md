@@ -91,12 +91,57 @@ financements, placements.
   Trouvé sur vraie base · les champs `unknown` des DTO tombaient sous le
   pipe global (« property montant should not exist ») · `@Allow()`.
 
+- #40 · premier tour de relecture (silent-failure-hunter, typescript-reviewer,
+  react-reviewer) · DEUX BLOQUANTS, CINQ MAJEURS, une vingtaine de MINEURS,
+  tous corrigés sauf ceux relevés ci-dessous · (B1) l'avis de crédit
+  créditait le TOTAL figé du bordereau quand une valeur en était déjà sortie
+  par un impayé (52 majoré, 514 créditeur, balance bouclée) · refus nommé
+  tant qu'un impayé tient, compte des valeurs créditées vérifié (409) ;
+  (B2) l'annulation de l'avis était jugée sur l'exercice du BORDEREAU · un
+  avis de janvier sur un bordereau de décembre était enfermé une fois N
+  clôturé, et la pièce retenue ne se corrigeait pas non plus au journal ·
+  seule la pièce de l'avis borne (`pieceAnnulable`) ; (M1) les candidates au
+  bordereau venaient de la liste de l'exercice courant · un chèque reçu en
+  décembre, non remis, n'apparaissait plus en N+1 et le 513 le gardait ·
+  route `GET /remises/valeurs/a-remettre?typeRemiseId=` sans borne
+  d'exercice, exercice d'origine dit ; (M2) un échec de lecture des lignes
+  ouvertes du tiers s'affichait « aucune ligne ouverte » · état d'erreur
+  propre, réception fermée tant que la lecture n'a pas abouti ; (M3) la date
+  d'un bordereau de CARTES n'était pas jugée dans son exercice (aucune
+  écriture) · refus nommé, `estUnJour` ; (M4) un 5xx ou une réponse perdue
+  sur une écriture était annoncé « impossible » (doublon au reclic) ·
+  `messageDuRefus`, liste relue ; (M5) impression du bordereau depuis la
+  modale (voile et fenêtre sur le papier) · bordereau rendu dans la page
+  sous `impression-seul`, voile en `ecran-seul` ; aucune garde de
+  fermeture et onglets démontés (saisie perdue) · `useGardeFermeture`,
+  onglets gardés montés. MINEURS · plus que le dû refusé avant la pièce ;
+  `delettrer` mort retiré ; référence du bordereau posée dans la
+  transaction ; filtre de statut par `Object.keys` ; compte de trésorerie
+  absent refusé nommé ; première impression posée par `updateMany` ;
+  bordereau annulé non imprimé ; compte des valeurs rendues vérifié à
+  l'annulation de l'avis ; impayé jamais daté avant la remise ni l'avis ;
+  lectures par identifiant bornées ; liste des comptes dit son total ;
+  chèque de même référence averti ; présélection des choix uniques ;
+  lectures réservées à qui écrit ; `aria-label` et `scope` ; dates bornées
+  à l'exercice ; valeurs sorties de la liste élaguées ; textes de
+  l'écran en `title` ; focus de la boîte du bordereau ; commission
+  illisible dite. Test navigateur ÉTENDU et PASSÉ sur vraie base · impayé
+  avant l'avis refusé (B1), chèque de décembre non remis remis en janvier
+  par la liste sans borne (M1), avis de janvier annulé puis repassé après la
+  clôture de N (B2). Rejoué · tsc, specs du module (30), client (2 409).
+  Relevés en attente · (m5 TS) le numéro du bordereau de chèques est pris
+  sous verrou APRÈS l'instantané sérialisable de `creerAvec` · l'index
+  unique ferme le doublon, mais un conflit sorti en 23505 ferait un 500 au
+  lieu d'un rejeu · à prouver par deux bordereaux simultanés sur vraie base,
+  ou numéroter par une ligne compteur `FOR UPDATE` ; (11 React) les
+  échéances de TOUS les clients sont lues pour n'en garder qu'un (la route
+  n'a pas de filtre par compte) ; flèches gauche et droite des onglets.
+
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #40 · deux tours de relecture, docs (`features.csv` 40, tables 05 et 13,
-  `build-log.md`, `test-plan.md`, `architecture.md` D12), CLAUDE.md § 6.
+- #40 · second tour de relecture (les docs et CLAUDE.md § 6 sont écrits).
 - #39 · module `effets/` (portefeuille, remise à l'encaissement ou à
   l'escompte, échéance, impayé, bon à payer) · lire la fiche du 67 (675) et
   le décret n° 011/42, art. 57 al. 2, avant de coder.
@@ -140,6 +185,39 @@ financements, placements.
   et nature (4131 adhérents chèques, 4132 clients-usagers chèques, 4133
   adhérents autres valeurs, 4138 clients-usagers autres valeurs), racine
   déduite du compte du tiers (`racineImpaye`), tout autre compte refusé.
+- **D13 (à écrire dans architecture.md avec le n° 39) · effets de commerce,
+  lu le 2026-10-22 avant de coder.** AUDCIF Titre VII · fiche du 41 · 412
+  « Clients, effets à recevoir en portefeuille » (4121), 415 « Clients,
+  effets escomptés non échus », 413 « 4132 effets impayés » ; fiche du 40 ·
+  402 « Fournisseurs, effets à payer » (4021, 4023) ; fiche du 51 · 511
+  « effets à encaisser » (AUTRES que ceux des clients, qui restent au 412),
+  512 « effets à l'encaissement » (transmis à la banque), « débité lors de
+  la réception de l'effet, par le crédit des comptes de tiers concernés »,
+  « crédité du montant des effets, pour solde, par le débit des comptes de
+  trésorerie », exclusions · effets à payer à plus d'un an → 16, effets
+  remis à l'escompte → 56 ; fiche du 56 · 565 « escompte de crédits
+  ordinaires », 564 « crédits de campagne », « la créance ne disparaît pas
+  du bilan » ; trois temps · (1) remise à l'escompte D 415 / C 412, (2)
+  décompte D 52 net + D 675 frais et intérêts / C 565 nominal, (3) après
+  l'échéance dénouée D 565 / C 415 ; fiche du 67 · 675 « escomptes des
+  effets de commerce », « après la remise au banquier de l'effet à
+  l'escompte, lors de la réception du bordereau d'escompte, le montant
+  indiqué sur le décompte bancaire au titre des frais prélevés », les
+  commissions de service → 631. UN NUMÉRO, DEUX PLANS · le SYCEBNL n'ouvre
+  NI 412 effets (son 412 est « Clients-usagers »), NI 415, NI 511, NI 512,
+  NI 564, NI 675 ; il ouvre 402 (4021, 4023) et 565, et sa fiche du 56 ne
+  décrit AUCUN escompte · au SYCEBNL seuls les EFFETS À PAYER sont servis
+  (402), les effets à recevoir et l'escompte sont SYSCOHADA seuls, refus
+  nommé. TVA · décret n° 011/42, art. 57 · l'encaissement intervient « à la
+  date d'échéance de la traite, même escomptée, en paiement par effet de
+  commerce » ; art. 96 · le droit à déduction naît quand la taxe devient
+  exigible chez le fournisseur · le moteur date aujourd'hui tout règlement
+  lettré par la DATE DE SON ÉCRITURE (`reglementsDuGroupe`,
+  `dateDernierReglement`) · l'acceptation D 412 / C 411 lettrée avec la
+  facture ferait exigible la taxe au jour de l'effet, et non lettrée la
+  laisserait en attente pour toujours · le n° 39 doit faire lire par le
+  moteur l'ÉCHÉANCE de l'effet (ligne du 412 ou du 402 datée de la traite)
+  comme date du règlement, aux deux sens.
 - **D11 (architecture.md)** · LCR, BOR, CFONB, ETEBAC, SEPA non reproduits.
 
 ## Vérification

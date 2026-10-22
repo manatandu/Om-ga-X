@@ -86,6 +86,11 @@ NOUVELLES (`chrome-etroit.spec.ts` ne tient que les menus).
 | F40-N2 | | refus · annulation après avis | annuler un bordereau crédité | refus nommé (annuler d'abord l'avis) | e2e `sage-l3-remises` | passé |
 | F40-N3 | | refus · impayé hors 413 | compte d'impayé hors de la racine prescrite | refus nommé par référentiel | unit `remise-en-banque.spec` | passé |
 | F40-E1 | | bord · arrondis | deux valeurs à demi-centime sur un bordereau | total = somme des lignes arrondies = écriture | unit `remises.service.spec` | passé |
+| F40-N4 | | refus · impayé avant l'avis | valeur revenue impayée, puis avis de crédit du bordereau | refus nommé (annuler l'impayé, passer l'avis, redéclarer) | e2e `sage-l3-remises`, unit `remises.service.spec` | passé |
+| F40-H4 | | clôture traversée · non remis | chèque reçu en décembre, non remis, N clôturé | proposé au bordereau de janvier avec son exercice d'origine, 513 reporté soldé | e2e `sage-l3-remises` | passé |
+| F40-H5 | | clôture traversée · avis annulé | avis de janvier d'un bordereau de décembre, N clôturé | annulation admise (exercice de l'avis), 514 rendu, avis repassé | e2e `sage-l3-remises` | passé |
+| F40-N5 | | refus · plus que le dû | chèque supérieur au dû des lignes cochées | refus nommé avant toute pièce | unit `remises.service.spec` | passé |
+| F40-N6 | | refus · impayé antidaté | impayé daté avant le bordereau | refus nommé | unit `remises.service.spec` | passé |
 | TOUS-N1 | toutes routes d'écriture | refus · rôle | POST, PUT, PATCH, DELETE sans `@Roles` | aucune | structure `ecritures-reservees.spec`, `roles-cantonnes.spec` | passé |
 | TOUS-N2 | toutes tables nouvelles | refus · dossier | lecture sans borne de dossier | refusée par la garde | structure `lecture-bornee.spec`, `index-du-dossier.spec` | passé |
 | TOUS-E1 | toutes fenêtres | bord · rechargement | recharger une fenêtre qui lit | aucune exception (WebKit) | e2e, `rechargerAuRepos` | passé |

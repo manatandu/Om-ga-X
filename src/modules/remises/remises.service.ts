@@ -5,6 +5,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { LettrageService } from '../lettrage/lettrage.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
+import { estUnJour } from '../virements-fonds/virement-fonds';
 import {
   LIBELLES_NATURE,
   documentBordereau,
@@ -166,13 +167,17 @@ export class RemisesService {
       orderBy: [{ estRetenu: 'desc' }, { numero: 'asc' }],
       take: 200,
     });
-    return { racine, comptes, motif: null };
+    // Une liste bornée dit son total (§ 8 bis, relecture m7).
+    const total = await this.prisma.compte.count({ where: { tenantId, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true, numero: { startsWith: racine } } });
+    return { racine, comptes, motif: null, total, tronque: total > comptes.length };
   }
 
   // ----- Valeurs reçues ----------------------------------------------------
 
   async valeurs(tenantId: string, exerciceId: string, statut: string | undefined) {
-    const filtre = statut && statut in StatutValeurRecue ? (statut as StatutValeurRecue) : undefined;
+    // `Object.keys` et non `in` · « constructor » ou « toString » passaient la
+    // chaîne de prototype et finissaient en 500 chez Prisma (relecture, m3).
+    const filtre = statut && Object.keys(StatutValeurRecue).includes(statut) ? (statut as StatutValeurRecue) : undefined;
     if (statut && !filtre) throw new BadRequestException(`Le statut est l'un de ${Object.keys(StatutValeurRecue).join(', ')}.`);
     // Le `tenantId` écrit DANS chaque appel · le balayage du cloisonnement lit
     // la borne sur l'appel, jamais dans une variable (cloisonnement.spec.ts).
@@ -192,6 +197,34 @@ export class RemisesService {
       this.prisma.valeurRecue.count({ where: { tenantId, exerciceId, ...(filtre ? { statut: filtre } : {}) } }),
     ]);
     return { valeurs: valeurs.map((v) => ({ ...v, montant: Number(v.montant) })), total, tronque: total > valeurs.length };
+  }
+
+  /**
+   * LES VALEURS À REMETTRE D'UN TYPE, SANS BORNE D'EXERCICE (relecture, M1) ·
+   * un chèque reçu en décembre se remet en janvier, dans l'exercice suivant ;
+   * listées par l'exercice courant, les valeurs de N n'apparaissaient plus en
+   * N+1 et le 513 les gardait pour toujours. Chaque candidate dit son
+   * exercice d'origine. Bornée, et la troncature dite.
+   */
+  async aRemettre(tenantId: string, typeRemiseId: string) {
+    const type = await this.typeActif(tenantId, typeRemiseId);
+    const [valeurs, total] = await Promise.all([
+      this.prisma.valeurRecue.findMany({
+        where: { tenantId, typeRemiseId: type.id, statut: StatutValeurRecue.RECUE, annuleLe: null, remiseId: null },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+        take: PLAFOND_LISTE,
+        include: {
+          compteTiers: { select: { numero: true, intitule: true } },
+          exercice: { select: { id: true, dateDebut: true, dateFin: true, statut: true } },
+        },
+      }),
+      this.prisma.valeurRecue.count({ where: { tenantId, typeRemiseId: type.id, statut: StatutValeurRecue.RECUE, annuleLe: null, remiseId: null } }),
+    ]);
+    return {
+      valeurs: valeurs.map((v) => ({ ...v, montant: Number(v.montant), exercice: { ...v.exercice, libelle: `${jour(v.exercice.dateDebut)} au ${jour(v.exercice.dateFin)}` } })),
+      total,
+      tronque: total > valeurs.length,
+    };
   }
 
   private async typeActif(tenantId: string, id: string) {
@@ -238,6 +271,24 @@ export class RemisesService {
     await this.exerciceOuvert(tenantId, dto.exerciceId);
     const montant = round2(dto.montant as number);
     const reference = (dto.reference as string).trim();
+    if (dto.ligneIds && dto.ligneIds.length > 0) {
+      // PLUS QUE LE DÛ EST REFUSÉ AVANT LA PIÈCE (relecture, m5 · même règle
+      // que le Règlement des tiers, § 6) · un chèque de 500 000 coché contre
+      // une facture de 100 000 faisait un groupe partiel à solde négatif. La
+      // borne est le montant BRUT des lignes choisies, sur le compte du tiers
+      // seul ; une ligne déjà réglée en partie a un reste plus petit, que le
+      // lettrage juge ensuite (reste négatif nommé à la balance âgée).
+      const ids = [...new Set(dto.ligneIds)];
+      const lignes = await this.prisma.ligneEcriture.findMany({
+        where: { id: { in: ids }, compteId: tiers.id, ecriture: { tenantId } },
+        select: { id: true, debit: true, credit: true },
+      });
+      if (lignes.length !== ids.length) throw new BadRequestException(`${ids.length - lignes.length} ligne(s) choisie(s) ne sont pas sur le compte ${tiers.numero} de ce dossier · rechargez la liste.`);
+      const du = round2(lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0));
+      if (montant > du + 0.005) {
+        throw new BadRequestException(`Le montant reçu (${montant.toFixed(2)}) dépasse le dû des lignes choisies (${du.toFixed(2)}) · plus que le dû n'est pas un règlement, recevez le dû et passez le reste en avance (419).`);
+      }
+    }
     const date = dto.date as string;
     const libelle = `${type.nature === NatureRemise.CHEQUES ? 'Chèque' : 'Carte'} ${reference} · ${tiers.intitule}`.slice(0, 190);
     const r = await this.ecritures.creerAvec(
@@ -273,11 +324,13 @@ export class RemisesService {
       const ligneTiers = r.ecriture.lignes.find((l) => l.compteId === tiers.id);
       if (!ligneTiers) throw new ConflictException('La ligne du tiers est introuvable dans la pièce de réception.');
       try {
+        // `lettrerManuel` est UNE transaction · refusé, il n'a rien posé, et
+        // il n'y a rien à délettrer (relecture, m1) ; seule la pièce et la
+        // valeur se retirent.
         const l = await this.lettrage.lettrerManuel(tenantId, tiers.id, [...dto.ligneIds, ligneTiers.id], userId, { autoriserPartiel: true });
         lettre = l.lettre;
       } catch (e) {
         try {
-          if (lettre) await this.lettrage.delettrer(tenantId, tiers.id, lettre);
           await this.ecritures.retirerCompensation(tenantId, r.ecriture.id, (tx) => tx.valeurRecue.deleteMany({ where: { id: r.suite.id, tenantId } }));
         } catch (nettoyage) {
           this.journalServeur.error(
@@ -288,7 +341,13 @@ export class RemisesService {
         throw e;
       }
     }
-    return { ...r.suite, montant: Number(r.suite.montant), lettre };
+    // UN CHÈQUE SAISI DEUX FOIS EST DIT (relecture, m10) · deux réceptions du
+    // même numéro sous le même type faisaient deux D 513 ; une référence
+    // peut se répéter d'une banque tirée à l'autre, aussi l'écran est averti,
+    // jamais refusé.
+    const doublons = await this.prisma.valeurRecue.count({ where: { tenantId, typeRemiseId: type.id, reference, annuleLe: null, id: { not: r.suite.id } } });
+    const avertissement = doublons > 0 ? `${doublons} autre(s) valeur(s) de référence « ${reference} » existent déjà sous ce type de remise · vérifiez qu'il ne s'agit pas d'une double saisie.` : null;
+    return { ...r.suite, montant: Number(r.suite.montant), lettre, avertissement };
   }
 
   private async pieceAnnulable(tenantId: string, ecritureId: string, objet: string, geste: string, issue = '') {
@@ -414,9 +473,17 @@ export class RemisesService {
    * d'état · deux bordereaux en même temps prenaient le même numéro.
    */
   async remettre(tenantId: string, userId: string, dto: RemettreDto) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dto.date) || Number.isNaN(Date.parse(`${dto.date}T00:00:00Z`))) throw new BadRequestException('La date de la remise est un jour (AAAA-MM-JJ).');
+    // `estUnJour` fait l'aller-retour ISO · « 2026-02-30 » passait la regex
+    // et `Date.parse`, et se rangeait au 2 mars (relecture, m4).
+    if (!estUnJour(dto.date)) throw new BadRequestException('La date de la remise est un jour (AAAA-MM-JJ).');
     const type = await this.typeActif(tenantId, dto.typeRemiseId);
-    await this.exerciceOuvert(tenantId, dto.exerciceId);
+    const exercice = await this.exerciceOuvert(tenantId, dto.exerciceId);
+    // LA DATE TOMBE DANS SON EXERCICE (§ 10 bis, relecture M3) · pour les
+    // chèques, `creerAvec` le juge ; pour les cartes, sans écriture, rien ne le
+    // jugeait, et une remise du 5 janvier se rattachait à N.
+    if (dto.date < jour(exercice.dateDebut) || dto.date > jour(exercice.dateFin)) {
+      throw new BadRequestException(`La date de la remise (${dto.date.split('-').reverse().join('/')}) est hors de l'exercice choisi (${jour(exercice.dateDebut).split('-').reverse().join('/')} au ${jour(exercice.dateFin).split('-').reverse().join('/')}).`);
+    }
     const ids = [...new Set(dto.valeurIds)];
     const valeurs = await this.prisma.valeurRecue.findMany({
       where: { tenantId, id: { in: ids }, typeRemiseId: type.id, statut: StatutValeurRecue.RECUE, annuleLe: null, remiseId: null },
@@ -454,6 +521,11 @@ export class RemisesService {
         data: { statut: StatutValeurRecue.REMISE, remiseId: remise.id },
       });
       if (prises.count !== ids.length) throw new ConflictException("Une valeur a changé d'état pendant la remise · rien n'est remis, rechargez la liste.");
+      // La référence de la pièce porte le numéro du bordereau, connu ici
+      // seulement · posée DANS la transaction (relecture, m2) · hors d'elle,
+      // un échec laissait une remise née sans sa référence, et la reprise
+      // tombait sur « ne sont pas reçues, non remises ».
+      if (ecritureRemiseId) await tx.ecriture.update({ where: { id: ecritureRemiseId, tenantId }, data: { reference: `Bordereau de remise n° ${numero}` } });
       return remise;
     };
     const libelle = `Remise de ${LIBELLES_NATURE[type.nature].toLowerCase()} · ${type.journalBanque.code}`.slice(0, 190);
@@ -476,9 +548,6 @@ export class RemisesService {
         },
         (tx, ecriture) => naissance(tx, ecriture.id),
       );
-      // La référence de la pièce porte le numéro du bordereau, connu après la
-      // création · une mise à jour unitaire, au journal d'audit.
-      await this.prisma.ecriture.update({ where: { id: r.ecriture.id, tenantId }, data: { reference: `Bordereau de remise n° ${r.suite.numero}` } });
       return { ...r.suite, total: Number(r.suite.total) };
     }
     const remise = await transactionJournalisee(this.prisma, (tx) => naissance(tx, null));
@@ -488,6 +557,7 @@ export class RemisesService {
   /** L'IMPRESSION DU BORDEREAU · enregistrée au serveur avant la boîte (date, auteur, nombre), le document rendu en texte. */
   async impression(tenantId: string, userId: string, id: string) {
     const r = await this.remise(tenantId, id);
+    if (r.statut === StatutRemiseEnBanque.ANNULEE) throw new BadRequestException(`Le bordereau n° ${r.numero} est annulé · il ne s'imprime pas.`);
     const dossier = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { nom: true } });
     const document = documentBordereau({
       dossier: dossier.nom,
@@ -500,12 +570,17 @@ export class RemisesService {
       total: r.total,
       modele: r.typeRemise.modeleBordereau,
     });
-    const impression = await this.prisma.remiseEnBanque.update({
-      where: { id: r.id, tenantId },
-      data: { nombreImpressions: { increment: 1 }, ...(r.premiereImpressionLe ? {} : { premiereImpressionLe: new Date(), premiereImpressionPar: userId }) },
-      select: { numero: true, nombreImpressions: true, premiereImpressionLe: true },
+    // LA PREMIÈRE IMPRESSION SE POSE UNE FOIS (relecture, m6) · deux
+    // impressions simultanées se disaient toutes deux « première » ; la
+    // première est celle dont le `updateMany` filtré sur « jamais imprimée »
+    // passe, l'autre est un duplicata.
+    const premiere = await this.prisma.remiseEnBanque.updateMany({
+      where: { id: r.id, tenantId, premiereImpressionLe: null },
+      data: { nombreImpressions: { increment: 1 }, premiereImpressionLe: new Date(), premiereImpressionPar: userId },
     });
-    return { ...impression, document, duplicata: impression.nombreImpressions > 1 };
+    if (premiere.count === 0) await this.prisma.remiseEnBanque.update({ where: { id: r.id, tenantId }, data: { nombreImpressions: { increment: 1 } } });
+    const impression = await this.prisma.remiseEnBanque.findFirstOrThrow({ where: { id: r.id, tenantId }, select: { numero: true, nombreImpressions: true, premiereImpressionLe: true } });
+    return { ...impression, document, duplicata: premiere.count === 0 };
   }
 
   /**
@@ -514,9 +589,25 @@ export class RemisesService {
    * pièce (AUDCIF art. 17).
    */
   async avisCredit(tenantId: string, userId: string, id: string, dto: AvisCreditDto) {
-    const r = await this.prisma.remiseEnBanque.findFirst({ where: { id, tenantId }, include: { typeRemise: { include: TYPE_INCLUDE } } });
+    const r = await this.prisma.remiseEnBanque.findFirst({
+      where: { id, tenantId },
+      include: { typeRemise: { include: TYPE_INCLUDE }, valeurs: { select: { id: true, statut: true, reference: true } } },
+    });
     if (!r) throw new NotFoundException('Remise introuvable pour ce dossier.');
     const type = r.typeRemise;
+    // UN IMPAYÉ DÉCLARÉ AVANT LE CRÉDIT (relecture, BLOQUANT B1) · l'avis
+    // créditait le TOTAL figé du bordereau quand une valeur en était déjà
+    // sortie par D 413 / C 514 · le 52 surévalué de la valeur, le 514
+    // créditeur d'autant, la balance bouclée. L'issue est nommée · annuler
+    // l'impayé, passer l'avis, redéclarer l'impayé (la valeur créditée reprend
+    // alors les fonds sur le 52, chemin ordinaire).
+    const impayee = r.valeurs.find((v) => v.statut === StatutValeurRecue.IMPAYEE);
+    if (impayee) {
+      throw new BadRequestException(`La valeur ${impayee.reference} de cette remise est revenue impayée avant le crédit · annulez l'impayé, passez l'avis de crédit, puis redéclarez l'impayé (la banque reprend alors les fonds sur le 52).`);
+    }
+    const compteBanque = type.journalBanque.compteTresorerie;
+    if (!compteBanque) throw new BadRequestException(`Le journal ${type.journalBanque.code} de la banque de remise ne porte plus de compte de trésorerie · rattachez-le dans Structure > Journaux.`);
+    const aCrediter = r.valeurs.filter((v) => v.statut === StatutValeurRecue.REMISE).length;
     const motif = motifRefusAvisCredit({
       statut: r.statut,
       dateRemise: jour(r.date),
@@ -546,7 +637,7 @@ export class RemisesService {
         libelle,
         reference: referenceAvis,
         lignes: lignesAvisCredit({
-          compteBanqueId: type.journalBanque.compteTresorerie!.id,
+          compteBanqueId: compteBanque.id,
           compteCommissionId: type.compteCommissionId,
           compteSoldeId,
           total: Number(r.total),
@@ -560,8 +651,9 @@ export class RemisesService {
           data: { statut: StatutRemiseEnBanque.CREDITEE, dateCredit: aMinuit(date), commission: new Prisma.Decimal(commission), referenceAvis, ecritureCreditId: ecriture.id },
         });
         if (prise.count !== 1) throw new ConflictException("Cette remise n'est plus en attente de crédit · relisez-la.");
-        await tx.valeurRecue.updateMany({ where: { tenantId, remiseId: r.id, statut: StatutValeurRecue.REMISE }, data: { statut: StatutValeurRecue.CREDITEE } });
-        return tx.remiseEnBanque.findUniqueOrThrow({ where: { id: r.id }, select: { id: true, numero: true, statut: true, dateCredit: true, commission: true } });
+        const creditees = await tx.valeurRecue.updateMany({ where: { tenantId, remiseId: r.id, statut: StatutValeurRecue.REMISE }, data: { statut: StatutValeurRecue.CREDITEE } });
+        if (creditees.count !== aCrediter) throw new ConflictException("Une valeur de la remise a changé d'état pendant l'avis de crédit · rien n'est crédité, relisez la remise.");
+        return tx.remiseEnBanque.findFirstOrThrow({ where: { id: r.id, tenantId }, select: { id: true, numero: true, statut: true, dateCredit: true, commission: true } });
       },
     );
     return { ...res.suite, commission: Number(res.suite.commission ?? 0), ecritureId: res.ecriture.id };
@@ -601,7 +693,11 @@ export class RemisesService {
     if (r.statut !== StatutRemiseEnBanque.CREDITEE || !r.ecritureCreditId) throw new BadRequestException("Cette remise n'est pas créditée · rien à annuler.");
     const impayee = r.valeurs.find((v) => v.statut === StatutValeurRecue.IMPAYEE);
     if (impayee) throw new BadRequestException(`La valeur ${impayee.reference} de cette remise est revenue impayée après le crédit · annulez d'abord l'impayé.`);
-    if (r.exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException("Cet avis appartient à un exercice clôturé · son erreur se corrige par le report à nouveau (AUDCIF art. 20, al. 3).");
+    // L'EXERCICE QUI COMPTE EST CELUI DE L'AVIS, PAS DU BORDEREAU (relecture,
+    // BLOQUANT B2) · un bordereau de décembre crédité en janvier a son avis
+    // dans N+1 ; jugé sur N clôturé, l'avis faux était enfermé (la pièce
+    // retenue, le journal refusait aussi de la corriger). `pieceAnnulable`
+    // lit l'exercice de la pièce de l'avis, la seule borne (art. 20, al. 3).
     const motif = this.motifJuge(dto);
     await this.pieceAnnulable(tenantId, r.ecritureCreditId, "de l'avis de crédit", "annuler l'avis de crédit", 'Dépointez la ligne au rapprochement, puis annulez.');
     const ecritureCreditId = r.ecritureCreditId;
@@ -609,7 +705,10 @@ export class RemisesService {
       const prise = await tx.remiseEnBanque.updateMany({ where: { id: r.id, tenantId, statut: StatutRemiseEnBanque.CREDITEE, ecritureCreditId }, data: { ecritureCreditId: null } });
       if (prise.count !== 1) throw new ConflictException("Cette remise n'est plus créditée · relisez-la avant d'annuler l'avis.");
       const negatif = await this.retirerOuContrePasser(tx, tenantId, userId, ecritureCreditId, "de l'avis de crédit", "Annulation de l'avis de crédit", motif);
-      await tx.valeurRecue.updateMany({ where: { tenantId, remiseId: r.id, statut: StatutValeurRecue.CREDITEE }, data: { statut: StatutValeurRecue.REMISE } });
+      const rendues = await tx.valeurRecue.updateMany({ where: { tenantId, remiseId: r.id, statut: StatutValeurRecue.CREDITEE }, data: { statut: StatutValeurRecue.REMISE } });
+      // Le compte des valeurs rendues est celui lu avant la transaction
+      // (relecture, m7) · un impayé déclaré entre-temps en sortirait une.
+      if (rendues.count !== r.valeurs.filter((v) => v.statut === StatutValeurRecue.CREDITEE).length) throw new ConflictException("Une valeur de la remise a changé d'état pendant l'annulation de l'avis · rien n'est annulé.");
       return tx.remiseEnBanque.update({
         where: { id: r.id, tenantId },
         data: { statut: StatutRemiseEnBanque.REMISE, dateCredit: null, commission: null, referenceAvis: null, ecritureCreditId: negatif ? ecritureCreditId : null, ecritureNegatifCreditId: negatif },
@@ -629,7 +728,7 @@ export class RemisesService {
   async impaye(tenantId: string, userId: string, valeurId: string, dto: ImpayeDto) {
     const v = await this.prisma.valeurRecue.findFirst({
       where: { id: valeurId, tenantId },
-      include: { typeRemise: { include: TYPE_INCLUDE }, compteTiers: { select: { numero: true, intitule: true } }, remise: { select: { numero: true, statut: true } } },
+      include: { typeRemise: { include: TYPE_INCLUDE }, compteTiers: { select: { numero: true, intitule: true } }, remise: { select: { numero: true, statut: true, date: true, dateCredit: true } } },
     });
     if (!v) throw new NotFoundException('Valeur introuvable pour ce dossier.');
     const [dossier, compteImpaye] = await Promise.all([
@@ -637,12 +736,22 @@ export class RemisesService {
       this.prisma.compte.findFirst({ where: { id: dto.compteImpayeId, tenantId }, select: COMPTE_SELECT }),
     ]);
     const racine = racineImpaye(dossier.referentiel, v.typeRemise.nature, v.compteTiers.numero);
-    const motif = motifRefusImpaye({ statut: v.statut, dateValeur: jour(v.date), date: dto.date, numeroImpaye: compteImpaye?.numero ?? null, racine });
+    const motif = motifRefusImpaye({
+      statut: v.statut,
+      dateValeur: jour(v.date),
+      dateRemise: v.remise ? jour(v.remise.date) : null,
+      dateCredit: v.remise?.dateCredit ? jour(v.remise.dateCredit) : null,
+      date: dto.date,
+      numeroImpaye: compteImpaye?.numero ?? null,
+      racine,
+    });
     if (motif) throw new BadRequestException(motif);
+    const compteBanque = v.typeRemise.journalBanque.compteTresorerie;
+    if (!compteBanque) throw new BadRequestException(`Le journal ${v.typeRemise.journalBanque.code} de la banque de remise ne porte plus de compte de trésorerie · rattachez-le dans Structure > Journaux.`);
     if (compteImpaye!.typeCompte !== TypeCompteDetailTotal.DETAIL || !compteImpaye!.estActif) throw new BadRequestException(`Le compte ${compteImpaye!.numero} n'est pas un compte d'imputation actif.`);
     const type = v.typeRemise;
     const credite = v.statut === StatutValeurRecue.CREDITEE;
-    const compteCrediteId = credite ? type.journalBanque.compteTresorerie!.id : type.nature === NatureRemise.CHEQUES ? type.compteTransitId! : type.compteReceptionId;
+    const compteCrediteId = credite ? compteBanque.id : type.nature === NatureRemise.CHEQUES ? type.compteTransitId! : type.compteReceptionId;
     const exercice = await this.exerciceDeLaDate(tenantId, dto.date as string, "de l'impayé");
     const libelle = `Impayé · ${type.nature === NatureRemise.CHEQUES ? 'chèque' : 'carte'} ${v.reference} · ${v.compteTiers.intitule}`.slice(0, 190);
     const res = await this.ecritures.creerAvec(
@@ -662,7 +771,7 @@ export class RemisesService {
           data: { statut: StatutValeurRecue.IMPAYEE, dateImpaye: aMinuit(dto.date as string), ecritureImpayeId: ecriture.id },
         });
         if (prise.count !== 1) throw new ConflictException("Cette valeur a changé d'état · relisez-la avant de déclarer l'impayé.");
-        return tx.valeurRecue.findUniqueOrThrow({ where: { id: v.id }, select: { id: true, statut: true, dateImpaye: true } });
+        return tx.valeurRecue.findFirstOrThrow({ where: { id: v.id, tenantId }, select: { id: true, statut: true, dateImpaye: true } });
       },
     );
     return { ...res.suite, ecritureId: res.ecriture.id, compteImpaye: compteImpaye!.numero };

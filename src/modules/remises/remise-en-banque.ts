@@ -361,12 +361,26 @@ export function motifRefusAvisCredit(e: {
   return null;
 }
 
-export function motifRefusImpaye(e: { statut: StatutValeurRecue; dateValeur: string; date: unknown; numeroImpaye: string | null; racine: string }): string | null {
+export function motifRefusImpaye(e: {
+  statut: StatutValeurRecue;
+  dateValeur: string;
+  /** Date du bordereau qui porte la valeur, et de son crédit (relecture, m8) · l'impayé ne les précède pas. */
+  dateRemise?: string | null;
+  dateCredit?: string | null;
+  date: unknown;
+  numeroImpaye: string | null;
+  racine: string;
+}): string | null {
   if (e.statut === StatutValeurRecue.RECUE) return "Une valeur non encore remise ne revient pas impayée · retirez-la plutôt (annulation de la réception).";
   if (e.statut === StatutValeurRecue.IMPAYEE) return 'Cette valeur est déjà revenue impayée.';
   if (e.statut === StatutValeurRecue.ANNULEE) return 'Cette valeur est annulée.';
   if (typeof e.date !== 'string' || !estUnJour(e.date)) return "La date de l'impayé est un jour (AAAA-MM-JJ).";
   if (e.date < e.dateValeur) return `L'impayé (${dateTexte(e.date)}) ne précède pas la réception (${dateTexte(e.dateValeur)}).`;
+  // Un impayé daté AVANT le bordereau créditait le 514 avant qu'il ne soit
+  // débité (514 créditeur à cette date) ; avant l'avis de crédit, il
+  // reprendrait sur le 52 des fonds qui n'y sont pas encore.
+  if (e.dateRemise && e.date < e.dateRemise) return `L'impayé (${dateTexte(e.date)}) ne précède pas la remise (${dateTexte(e.dateRemise)}).`;
+  if (e.dateCredit && e.date < e.dateCredit) return `L'impayé (${dateTexte(e.date)}) ne précède pas l'avis de crédit (${dateTexte(e.dateCredit)}).`;
   if (!e.numeroImpaye) return `Le compte d'impayé est introuvable dans ce dossier · il se choisit sous le ${e.racine} (fiche du compte 41).`;
   if (!e.numeroImpaye.startsWith(e.racine)) {
     return `Le compte d'impayé (${e.numeroImpaye}) n'est pas sous le ${e.racine} que la fiche du compte 41 prescrit pour cette valeur et ce tiers.`;

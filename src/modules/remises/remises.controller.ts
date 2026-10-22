@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { RoleUtilisateur } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -49,6 +49,13 @@ export class RemisesController {
     @Query('compteTiersId') compteTiersId: string | undefined,
   ) {
     return this.remises.comptes(user.tenantId, role, nature, compteTiersId);
+  }
+
+  /** Les valeurs reçues d'un type, à remettre · sans borne d'exercice (un chèque de décembre se remet en janvier). */
+  @Get('valeurs/a-remettre')
+  aRemettre(@CurrentUser() user: AuthenticatedUser, @Query('typeRemiseId') typeRemiseId: string | undefined) {
+    if (typeof typeRemiseId !== 'string' || !/^[0-9a-f-]{36}$/i.test(typeRemiseId)) throw new BadRequestException('Le type de remise est exigé (identifiant).');
+    return this.remises.aRemettre(user.tenantId, typeRemiseId);
   }
 
   @Get('valeurs')
