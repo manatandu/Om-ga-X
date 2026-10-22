@@ -75,6 +75,10 @@ NOUVELLES (`chrome-etroit.spec.ts` ne tient que les menus).
 | F79-H1 | Congés acquis | nominal | acquis par bulletin, posés, portés, libérés | compteur juste | e2e `sage-l5-conges` | passé |
 | F85-H1 | Questionnaire | nominal | réponses écrites, valeur gardée | rien de deviné, rien d'effacé | e2e `sage-l5-questionnaire` | passé |
 | F88-H1 | Ventilation analytique | nominal | répartition par salarié, à travers la clôture | parts au centime | e2e `sage-l5-ventilation` | passé |
+| F37-H1 | Ordre de virement en devise | nominal | RIB du journal en USD, facture en USD réglée en USD, clôture, second ordre en N+1 | ordre en USD, contrevaleur en francs, numéro suivi, avis en USD | e2e `sage-l3-virement-devise` | passé |
+| F37-N1 | | refus · RIB sans devise | ligne en USD sur un RIB sans devise | refus avant toute pièce, issue nommée (devise du RIB) | e2e `sage-l3-virement-devise`, unit `ribs-tiers.spec` | passé |
+| F37-N2 | | refus · francs sur RIB en devise | facture en francs réglée depuis un RIB en USD | refus nommé, règle d'avant la ligne | e2e `sage-l3-virement-devise` | passé |
+| F37-N3 | | refus · salaires | ordre de paiement des salaires depuis un RIB en USD | refus nommé (`motifRefusDeviseDonneur`) | unit `ribs-tiers.spec`, `ordres-virement.spec` | passé |
 | TOUS-N1 | toutes routes d'écriture | refus · rôle | POST, PUT, PATCH, DELETE sans `@Roles` | aucune | structure `ecritures-reservees.spec`, `roles-cantonnes.spec` | passé |
 | TOUS-N2 | toutes tables nouvelles | refus · dossier | lecture sans borne de dossier | refusée par la garde | structure `lecture-bornee.spec`, `index-du-dossier.spec` | passé |
 | TOUS-E1 | toutes fenêtres | bord · rechargement | recharger une fenêtre qui lit | aucune exception (WebKit) | e2e, `rechargerAuRepos` | passé |

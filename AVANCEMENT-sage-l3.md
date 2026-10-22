@@ -14,20 +14,30 @@ financements, placements.
 
 ## Fait
 
-(rien encore)
+- #37 · serveur (15ff6c1) · `deviseDuDonneur`, `motifRefusLignesHorsDeviseDonneur`
+  (`tiers/ribs-tiers.ts`), `donneurDuJournal` rend la devise du RIB,
+  `refuserLignesHorsDevise` avant la première pièce, `OrdreVirement.devise`,
+  `totalDevise`, `LigneOrdreVirement.montantDevise` (migration
+  `20270190000100_ordre_de_virement_en_devise`), la devise de chaque ligne posée
+  aux trois points de `reglements.service.ts`, avis de règlement en devise avec
+  sa contrevaleur ; les salaires restent en francs.
+- #37 · écran de l'ordre (liste en devise, colonnes « Montant USD » et
+  « Contrevaleur CDF », mention imprimée), test navigateur
+  `e2e/tests/sage-l3-virement-devise.e2e.ts` PASSÉ sur vraie base le
+  2026-10-22 (Postgres jetable 55803, serveur 8303, client 4303) · refus sans
+  devise au RIB, ordre de 1 000 USD pour 1 680 000 CDF, refus d'une facture en
+  francs sur un RIB en USD, clôture de N, second ordre de N+1 numéroté à la
+  suite, avis « 500,00 USD (contrevaleur comptable 840 000,00 CDF) ».
+- #37 · docs · `features.csv` (37 en yes), tables 05 (M5-42) et 13 (M13-72),
+  `build-log.md`, `test-plan.md` (F37-H1, N1, N2, N3), CLAUDE.md § 6 règle (3)
+  des ordres de virement réécrite.
+- Bloc § 3 du 2026-10-22 · serveur tsc, Jest 950 suites et 13 829 tests, build ;
+  client tsc, 2 408 tests, build.
 
 ## Reste
 
-- #37 · `donneurDuJournal` rend la devise du RIB au lieu de refuser ;
-  `preparerSalaries` garde le refus (la paie est en francs, L5) ; règle
-  pure dans `tiers/ribs-tiers.ts` · chaque ligne réglée dans la devise du
-  RIB, sinon refus nommé avant la première pièce ; `OrdreVirement.devise`,
-  `totalDevise`, `LigneOrdreVirement.montantDevise` (migration) ;
-  `LigneAOrdonner.montantDevise` et `devise` posés aux trois points de
-  construction de `reglements.service.ts` ; écran de l'ordre (montant en
-  devise et contre-valeur en francs), spec l. 100 réécrit, test navigateur,
-  scénario sur vraie base à travers une clôture ; CLAUDE.md § 6, règle (3)
-  des ordres de virement réécrite.
+- #37 · deux tours de relecture (silent-failure-hunter, typescript-reviewer,
+  react-reviewer), puis parité recomptée à l'intégration.
 - #40 · module `remises/` (bordereau de remise de chèques ou de cartes,
   types de remise, modèle de bordereau imprimé, écriture par le 51x).
 - #39 · module `effets/` (portefeuille, remise à l'encaissement ou à
@@ -62,4 +72,6 @@ financements, placements.
 ```bash
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
+# test navigateur sur vraie base · script du bac à sable l3-e2e.sh (Postgres 55803, serveur 8303, client 4303)
+cd e2e && npx tsc --noEmit -p . && npx playwright test tests/sage-l3-virement-devise.e2e.ts
 ```

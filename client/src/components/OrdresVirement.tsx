@@ -19,6 +19,9 @@ interface OrdreResume {
   numero: number;
   date: string;
   total: string | number;
+  /** La monnaie du RIB du donneur (n° 37) · null, l'ordre est en francs. */
+  devise: string | null;
+  totalDevise: string | number | null;
   statut: StatutOrdre;
   nombreImpressions: number;
   journal: { code: string; intitule: string };
@@ -32,6 +35,8 @@ interface LigneOrdre {
   coordonnees: string;
   codeBic: string | null;
   montant: string | number;
+  /** Le montant que la banque exécute, dans la monnaie de l'ordre ; null en francs. */
+  montantDevise: string | number | null;
   reference: string | null;
   pieceReglement: string;
   /** Les factures et la part de chacune, quand le dossier les désigne (Code civil, Livre III, art. 151) · imprimées. */
@@ -234,7 +239,9 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                           {o.journal.code} · {o.journal.intitule}
                         </td>
                         <td className="px-2 py-1 text-right">{o._count.lignes}</td>
-                        <td className="px-2 py-1 text-right">{fmt(o.total)}</td>
+                        <td className="px-2 py-1 text-right">
+                          {o.devise && o.totalDevise !== null ? `${fmt(o.totalDevise)} ${o.devise}` : fmt(o.total)}
+                        </td>
                         <td className={`px-2 py-1 ${o.statut === 'A_IMPRIMER' ? 'text-warning font-semibold' : o.statut === 'ANNULE' ? 'text-text-dim' : ''}`}>
                           {LIBELLE_STATUT_ORDRE[o.statut]}
                         </td>
@@ -264,7 +271,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
               )}
               <Aide
                 titre="Ordre de virement"
-                texte="L'ordre reprend le RIB du journal de banque (donneur d'ordre) et le RIB principal de chaque fournisseur, recopiés à sa date. Il naît « en attente d'impression » ; la première impression est enregistrée avec sa date et son auteur, les suivantes sortent en duplicata. L'annuler exige un motif et libère les pièces de règlement, qui restent au journal. Montants en CDF, monnaie de tenue."
+                texte="L'ordre reprend le RIB du journal de banque (donneur d'ordre) et le RIB principal de chaque fournisseur, recopiés à sa date. Il naît « en attente d'impression » ; la première impression est enregistrée avec sa date et son auteur, les suivantes sortent en duplicata. L'annuler exige un motif et libère les pièces de règlement, qui restent au journal. Un ordre part dans la monnaie du RIB du journal · en francs, monnaie de tenue, ou dans la devise du compte bancaire (la comptabilité reste tenue en francs, loi n° 23/053, art. 141, 1°) ; chaque règlement de l'ordre doit alors être déclaré dans cette devise, et l'ordre porte le montant en devise que la banque exécute à côté de sa contrevaleur comptable."
                 source="Sage, Moyens de paiement · édition des ordres de paiement · maquette d'OmegaX"
               />
             </div>
@@ -279,7 +286,8 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                   <th className="text-left px-2 py-1">Bénéficiaire</th>
                   <th className="text-left px-2 py-1">Banque et coordonnées</th>
                   <th className="text-left px-2 py-1 w-[110px]">Pièce</th>
-                  <th className="text-right px-2 py-1 w-[130px]">Montant</th>
+                  {ordre.devise && <th className="text-right px-2 py-1 w-[130px]">Montant {ordre.devise}</th>}
+                  <th className="text-right px-2 py-1 w-[130px]">{ordre.devise ? 'Contrevaleur CDF' : 'Montant'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,6 +301,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                       {l.pieceReglement}
                       {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
                     </td>
+                    {ordre.devise && <td className="px-2 py-1 text-right">{fmt(l.montantDevise)}</td>}
                     <td className="px-2 py-1 text-right">{fmt(l.montant)}</td>
                   </tr>
                 ))}
@@ -300,6 +309,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                   <td colSpan={3} className="px-2 py-1">
                     Total
                   </td>
+                  {ordre.devise && <td className="px-2 py-1 text-right">{fmt(ordre.totalDevise)}</td>}
                   <td className="px-2 py-1 text-right">{fmt(ordre.total)}</td>
                 </tr>
               </tbody>
@@ -398,7 +408,8 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                     <th className="border border-black text-left px-1.5 py-1">Banque</th>
                     <th className="border border-black text-left px-1.5 py-1">Coordonnées bancaires</th>
                     <th className="border border-black text-left px-1.5 py-1">Référence</th>
-                    <th className="border border-black text-right px-1.5 py-1">Montant</th>
+                    <th className="border border-black text-right px-1.5 py-1">{ordre.devise ? `Montant ${ordre.devise}` : 'Montant'}</th>
+                    {ordre.devise && <th className="border border-black text-right px-1.5 py-1">Contrevaleur CDF</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -415,18 +426,25 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                         {/* L'imputation que le dossier déclare en payant (art. 151) voyage avec le virement. */}
                         {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
                       </td>
-                      <td className="border border-black px-1.5 py-1 text-right">{fmt(l.montant)}</td>
+                      {/* La banque exécute le montant en devise · la contrevaleur en francs est celle du livre (AUDCIF art. 17, 1°). */}
+                      <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.devise ? l.montantDevise : l.montant)}</td>
+                      {ordre.devise && <td className="border border-black px-1.5 py-1 text-right">{fmt(l.montant)}</td>}
                     </tr>
                   ))}
                   <tr className="font-bold">
                     <td colSpan={4} className="border border-black px-1.5 py-1">
                       Total ({ordre.lignes.length} virement{ordre.lignes.length > 1 ? 's' : ''})
                     </td>
-                    <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.total)}</td>
+                    <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.devise ? ordre.totalDevise : ordre.total)}</td>
+                    {ordre.devise && <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.total)}</td>}
                   </tr>
                 </tbody>
               </table>
-              <div className="mb-10">Montants exprimés en francs congolais (CDF).</div>
+              <div className="mb-10">
+                {ordre.devise
+                  ? `Montants exprimés en ${ordre.devise}, monnaie du compte débité · contrevaleur comptable en francs congolais (CDF).`
+                  : 'Montants exprimés en francs congolais (CDF).'}
+              </div>
               <div className="flex justify-end">
                 <div className="text-center w-[260px]">
                   <div>Fait le ...................................</div>

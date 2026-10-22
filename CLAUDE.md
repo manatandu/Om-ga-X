@@ -3981,8 +3981,17 @@ courante) ; IBAN seul contrôlé, sans IBAN ni numéro refusé ; un PRINCIPAL pa
 le premier d'office, la fusion garde celui de la fiche conservée. (2) L'ordre naît
 AVEC ses pièces (Règlement des tiers, fournisseurs) ; tout vérifié AVANT la première
 pièce (`OrdresVirementService.preparer` · RIB et devise du journal, RIB principal de
-chaque tiers), manques en un refus. (3) Donneur en MONNAIE DE TENUE · RIB en USD
-refusé (loi n° 23/053 art. 141, 1°), sans devise = franc. (4) Tout RECOPIÉ à la date
+chaque tiers), manques en un refus. (3) LE DONNEUR PORTE SA MONNAIE (ligne sage-l3,
+n° 37, décision D1 du 2026-10-22 · la loi n° 23/053, art. 141, 1° vise la TENUE
+des comptes, pas la monnaie du compte bancaire ; jusque-là tout RIB en devise
+était refusé) · la devise du RIB du journal est celle de l'ordre
+(`deviseDuDonneur`, sans devise ou « CDF » = franc), chaque ligne réglée l'est
+dans cette monnaie (`motifRefusLignesHorsDeviseDonneur`, avant la première
+pièce, ligne et issue nommées · renseigner la devise du RIB, régler en devise,
+ou changer de journal), l'ordre garde `devise`, `totalDevise` et le
+`montantDevise` de chaque ligne, les pièces restent en francs (F49) et l'avis
+de règlement dit la somme virée en devise avec sa contrevaleur ; l'ordre de
+paiement des SALAIRES reste en francs (`motifRefusDeviseDonneur`, L5). (4) Tout RECOPIÉ à la date
 de l'ordre ; numérotation continue, jamais réutilisée ; impression ENREGISTRÉE au
 serveur avant la boîte (« imprimé », date, auteur ; puis duplicata). (5) Annulation
 avec MOTIF, pièces libérées non défaites ; pièce tenue non supprimable

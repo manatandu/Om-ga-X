@@ -13,7 +13,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 31,Lieux de livraison des clients,M6-52,L2,should,yes,"lieux de livraison d'un client, un principal, sur la fiche du tiers"
 32,Duplication d'un tiers,M13-49,L2,should,yes,"duplication d'un tiers vers le formulaire de création, ce qui n'est pas repris nommé"
 36,Écart de règlement passé en charge ou en produit sous un seuil ; escompte financier,M10-84 M13-18 M6-135 M13-21 M13-77,L2,must,yes,"escompte obtenu ou accordé au règlement, écart de règlement soldé en charge sous le seuil du dossier (jamais en produit)"
-37,"Virements internationaux, ordre de virement depuis un compte en devise",M5-42 M13-72,L3,must,no,
+37,"Virements internationaux, ordre de virement depuis un compte en devise",M5-42 M13-72,L3,must,yes,"ordre en devise du RIB du journal, contrevaleur en francs ; les salaires restent en francs"
 39,"Effets de commerce : LCR, effets à vue, bons à payer et leur circuit ; journaux d'escompte et d'encaissement",M5-24 M5-47 M13-6 M13-12 M13-67 M14-19 M6-38 M6-128,L3,should,no,
 40,"Remises de chèques et de cartes bancaires, types de remise, modèles de bordereaux",M5-43 M5-46 M13-62 M5-21,L3,should,no,
 45,Édition chaînée des extraits,M13-10,L3,should,no,

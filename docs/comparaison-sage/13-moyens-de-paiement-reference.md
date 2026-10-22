@@ -119,7 +119,7 @@ vérifiée.
 | 69 | Autres encaissements : cartes bancaires, chèques, espèces | 326, 344 à 347, 385 | PARTIEL | Le versement d'espèces passe par le virement de fonds (M5-45). Ni remise de chèques ni de cartes (M5-43, M5-46). |
 | 70 | Décaissements : virements émis et réguliers, sélection des écritures non lettrées | 356 à 367 | FIDÈLE | Règlement des tiers côté fournisseurs, ordre de virement, lots (M5-25, M5-27). |
 | 71 | Virement de trésorerie, domestique ou international | 368 à 375 | PARTIEL | Virement de fonds domestique par le 585 (M5-45). Pas de virement international. |
-| 72 | Virements internationaux | 376 à 384 | ABSENT | Voir M5-42. |
+| 72 | Virements internationaux | 376 à 384 | FIDÈLE | Voir M5-42 · ordre en devise du RIB du journal depuis la ligne sage-l3 (n° 37). |
 | 73 | Assistant de gestion des échéances : incorporer depuis la comptabilité, importer d'une application externe, constituer et transmettre une remise | 386 à 412 | PARTIEL | Les échéances ouvertes se lisent dans le dossier (`GET /reglements/echeances`). Aucune échéance ne s'importe d'ailleurs, et aucune remise ne se transmet. |
 | 74 | Remise Dailly | 404 | ABSENT | Voir M5-49. |
 | 75 | Exportation des échéances et des écritures au format texte | 405, 406 | ABSENT | Aucun fichier de remise n'est produit (M5-22). |
