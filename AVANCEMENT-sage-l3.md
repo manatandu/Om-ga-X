@@ -430,13 +430,35 @@ financements, placements.
   Rejoué · tsc des deux côtés, specs du module, Vitest, scénario
   `sage-l3-conditions` étendu (facilité de caisse en janvier lue sur le
   total, échue en avril sans hors bilan, devise du RIB retenu refusée, taux
-  illisible refusé à l'écran). Reste · second tour.
+  illisible refusé à l'écran).
+  Second tour (aucun BLOQUANT), corrigé · (M1 des deux relectures serveur) le
+  jumeau · `JournalService.modifier` refuse de repointer le compte d'un
+  journal dont le RIB porte des déclarations (409 nommé, `motifRibRetenu`
+  rangé dans `banques/rib-retenu.ts`, sans import circulaire) ; (M2) les
+  lignes en devise des comptes d'une union se lisent par un `groupBy`, le
+  `distinct` de Prisma 5 rapatriait tout ; (MAJEUR 2 écran) un montant au
+  point des milliers (« 500.000 ») est AMBIGU et refusé, jamais lu 500 ;
+  (MAJEUR 1 écran) la date se lit dès qu'elle est une date (sélecteur
+  compris), la situation porte sa date en tête, une relecture manquée
+  n'affiche plus l'ancienne. Mineurs faits · borne des montants à 1e16
+  exclu et centime en décimal (un montant juste au-delà de 1e14 passait mal),
+  total par COMPTE et non par RIB (deux RIB d'un dossier hérité sur le même
+  52), liste d'autorisations tronquée sans situation, `fusionEchelles` nul
+  refusé par son nom, RIB « CDF » sur un compte en devise nommé à part, garde
+  synchrone du geste, montant hors bilan sur la ligne du total. Relevés en
+  attente (pas de troisième tour) · corriger la devise d'un RIB qui porte des
+  déclarations exige de les retirer (aucun historique n'est perdu au journal
+  d'audit, mais le geste est lourd) ; contrôle et mise à jour de
+  `modifierRib` hors d'une même transaction (fenêtre étroite) ; montants et
+  taux en chasse fixe à l'écran (existant, § 9 ter) ; modification d'une
+  union sans écran (la route existe). Rejoué · tsc des deux côtés, specs des
+  banques et des journaux (103), Vitest, scénario `sage-l3-conditions`
+  (journal repointé refusé, « 500.000 » refusé à l'écran).
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #46 · second tour de relecture.
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les
   OPCVM se tranchent par la loi avant de coder.
 - Docs · `features.csv` (colonne clone de la ligne 47),

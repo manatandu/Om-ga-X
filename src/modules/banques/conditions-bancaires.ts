@@ -83,14 +83,27 @@ function motifTaux(v: number | null | undefined, nom: string): string | null {
  * avant la virgule). Au-delà, la base refusait l'écriture d'une erreur
  * anonyme · le refus se nomme ici (premier tour, constat m3).
  */
-export const MONTANT_MAX = 9_999_999_999_999_999.99;
+export const MONTANT_MAX = 1e16;
+
+/**
+ * Au centime, en décimal exact (second tour, m2) · `Math.round(v * 100) / 100`
+ * refusait des montants justes au-delà de cent mille milliards, comme le
+ * virement de fonds avant son `estAuCentime`.
+ */
+const auCentime = (v: number) => {
+  const t = String(v);
+  if (/e/i.test(t)) return Number.isInteger(v);
+  const d = t.split('.')[1];
+  return d === undefined || d.length <= 2;
+};
 
 /** Un montant · positif ou nul, au centime, sous la borne de la colonne. */
 function motifMontant(v: number | null | undefined, nom: string): string | null {
   if (v === null || v === undefined) return null;
   if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `${nom} · un montant positif ou nul.`;
-  if (v > MONTANT_MAX) return `${nom} · au-delà du plus grand montant qu'OmegaX tient.`;
-  if (Math.round(v * 100) / 100 !== v) return `${nom} · au centime.`;
+  // `Decimal(18,2)` tient seize chiffres avant la virgule · 1e16 en a dix-sept, refusé.
+  if (v >= MONTANT_MAX) return `${nom} · au-delà du plus grand montant qu'OmegaX tient.`;
+  if (!auCentime(v)) return `${nom} · au centime.`;
   return null;
 }
 
@@ -201,8 +214,8 @@ export function motifRefusAutorisation(a: AutorisationSaisie): string | null {
   if (!NATURES_AUTORISATION.includes(a.nature)) return "Nature de l'autorisation · découvert, facilité de caisse, crédit de trésorerie, escompte ou autre.";
   if (typeof a.montant !== 'number' || !Number.isFinite(a.montant)) return 'Le montant autorisé est exigé, en chiffres.';
   if (a.montant <= 0) return 'Le montant autorisé est strictement positif.';
-  if (a.montant > MONTANT_MAX) return "Le montant autorisé · au-delà du plus grand montant qu'OmegaX tient.";
-  if (Math.round(a.montant * 100) / 100 !== a.montant) return 'Le montant autorisé · au centime.';
+  if (a.montant >= MONTANT_MAX) return "Le montant autorisé · au-delà du plus grand montant qu'OmegaX tient.";
+  if (!auCentime(a.montant)) return 'Le montant autorisé · au centime.';
   if (!estUnJour(a.dateDebut)) return "La date de début de l'autorisation doit être un jour (AAAA-MM-JJ).";
   if (a.dateFin != null && a.dateFin !== '') {
     if (!estUnJour(a.dateFin)) return "La date de fin de l'autorisation doit être un jour (AAAA-MM-JJ).";
@@ -354,7 +367,12 @@ export function motifRefusUnion(u: UnionSaisie, ribs: readonly RibDUnion[]): str
   // UN COMPTE EN DEVISE SE DIT AU RIB (premier tour, M3) · sans quoi sa
   // contrevaleur en francs s'additionnait à un vrai compte en francs.
   const muet = membres.find((r) => r.compteEnDevise && monnaieDuRib(r.devise) === null);
-  if (muet) return `Le compte du RIB ${muet.abrege} est tenu en devise, et le RIB ne dit pas laquelle · renseignez sa devise (Structure › Paramètres de saisie › Banques).`;
+  if (muet) {
+    // Le RIB qui DIT « CDF » contredit son compte, celui qui ne dit rien le tait (second tour, m5).
+    return (muet.devise ?? '').trim() === ''
+      ? `Le compte du RIB ${muet.abrege} est tenu en devise, et le RIB ne dit pas laquelle · renseignez sa devise (Structure › Paramètres de saisie › Banques).`
+      : `Le RIB ${muet.abrege} se dit en francs, et son compte est tenu en devise · corrigez la devise du RIB ou son journal.`;
+  }
   // UN COMPTE, UNE FOIS (premier tour, M4) · deux journaux d'un dossier hérité
   // peuvent tenir le même compte, et la position l'aurait compté deux fois.
   const vus = new Map<string, string>();

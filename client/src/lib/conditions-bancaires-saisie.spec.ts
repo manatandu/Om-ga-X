@@ -17,15 +17,24 @@ describe('Saisie des conditions bancaires · illisible n’est jamais absent', (
     expect(lireNombre('12%%')).toEqual({ illisible: true });
   });
 
+  it('un montant au point des milliers est ambigu, jamais lu mille fois trop petit (second tour, MAJEUR 2)', () => {
+    expect(lireNombre('500.000', 'montant')).toEqual({ illisible: true });
+    expect(lireNombre('1.000', 'montant')).toEqual({ illisible: true });
+    expect(lireNombre('500.5', 'montant')).toEqual({ valeur: 500.5 });
+    expect(lireNombre('3.125', 'taux')).toEqual({ valeur: 3.125 });
+    expect(corpsAutorisation({ montant: '500.000' })).toEqual({ refus: 'Montant autorisé · illisible (écrivez 500 000 ou 500 000,00).' });
+    expect(corpsConditions({ plafond1: '500.000', taux1: '12' })).toEqual({ refus: 'Palier 1, plafond · illisible (écrivez 500 000 ou 500,00).' });
+  });
+
   it('un taux illisible refuse l’envoi en le nommant, jamais une convention sans lui', () => {
     expect(corpsConditions({ tauxInteretsCrediteurs: 'deux' })).toEqual({ refus: 'Intérêts créditeurs · illisible.' });
-    expect(corpsConditions({ fraisTenueCompte: '15 000 FC' })).toEqual({ refus: 'Frais de tenue de compte · illisible.' });
+    expect(corpsConditions({ fraisTenueCompte: '15 000 FC' })).toEqual({ refus: 'Frais de tenue de compte · illisible (écrivez 15 000 ou 15 000,00).' });
     const ok = corpsConditions({ tauxInteretsCrediteurs: '2,5 %', dateEffet: '2026-01-01' });
     expect('corps' in ok && ok.corps.tauxInteretsCrediteurs).toBe(2.5);
   });
 
   it('un palier illisible ou incomplet ne disparaît pas · il se nomme', () => {
-    expect(corpsConditions({ plafond1: '1 000 000 FC', taux1: '14 %' })).toEqual({ refus: 'Palier 1, plafond · illisible.' });
+    expect(corpsConditions({ plafond1: '1 000 000 FC', taux1: '14 %' })).toEqual({ refus: 'Palier 1, plafond · illisible (écrivez 500 000 ou 500,00).' });
     expect(corpsConditions({ plafond2: '500 000' })).toEqual({ refus: 'Palier 2 · le taux est exigé.' });
     expect(corpsConditions({ taux3: '12' })).toEqual({ refus: 'Palier 3 · le plafond est exigé.' });
     const ok = corpsConditions({ plafond1: '1 000 000', taux1: '12', typePalier: 'SEUIL' });
@@ -35,7 +44,7 @@ describe('Saisie des conditions bancaires · illisible n’est jamais absent', (
 
   it('le montant d’une autorisation est exigé et lisible', () => {
     expect(corpsAutorisation({})).toEqual({ refus: 'Le montant autorisé est exigé.' });
-    expect(corpsAutorisation({ montant: '1.000.000' })).toEqual({ refus: 'Montant autorisé · illisible.' });
+    expect(corpsAutorisation({ montant: '1.000.000' })).toEqual({ refus: 'Montant autorisé · illisible (écrivez 500 000 ou 500 000,00).' });
     const ok = corpsAutorisation({ montant: '500 000', irrevocable: 'oui' });
     expect('corps' in ok && ok.corps).toMatchObject({ montant: 500_000, irrevocable: true, nature: 'DECOUVERT' });
   });

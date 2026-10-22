@@ -71,7 +71,11 @@ describe('Conditions bancaires · la convention est recopiée, jamais présumée
     expect(c({ typePalier: 'SEUIL', paliers: [{ plafond: null, taux: 12 }] })).toBe('Palier 1 · le plafond est exigé.');
     expect(c({ typePalier: 'SEUIL', paliers: [{ plafond: 1_000, taux: null }] })).toBe('Palier 1 · le taux est exigé.');
     expect(c({ fraisTenueCompte: 1e17, periodiciteFrais: 'MENSUELLE' })).toMatch(/plus grand montant/);
-    expect(c({ fraisTenueCompte: MONTANT_MAX, periodiciteFrais: 'MENSUELLE' })).toBeNull();
+    // 1e16 a dix-sept chiffres · `Decimal(18,2)` n'en tient que seize (second tour, m2).
+    expect(c({ fraisTenueCompte: MONTANT_MAX, periodiciteFrais: 'MENSUELLE' })).toMatch(/plus grand montant/);
+    // Au centime en décimal exact · un montant juste au-delà de cent mille milliards passe.
+    expect(c({ fraisTenueCompte: 123_456_789_012_345.67, periodiciteFrais: 'MENSUELLE' })).toBeNull();
+    expect(c({ fraisTenueCompte: 0.125, periodiciteFrais: 'MENSUELLE' })).toMatch(/au centime/);
   });
 
   it('la version en vigueur est la plus tardive sans dépasser la date, et aucune avant la première', () => {
@@ -167,6 +171,8 @@ describe("Union de comptes · une vue, sans compensation au bilan (fiche du comp
       { id: 'r4', abrege: 'RAW-BIS', devise: null, compteId: 'c1' },
     ];
     expect(motifRefusUnion({ code: 'U1', intitule: 'R', ribIds: ['r1', 'r2'] }, avec)).toMatch(/RAW-5215 est tenu en devise/);
+    // Un RIB qui DIT « CDF » contredit son compte (second tour, m5).
+    expect(motifRefusUnion({ code: 'U1', intitule: 'R', ribIds: ['r1', 'r5'] }, [...avec, { id: 'r5', abrege: 'RAW-DIT', devise: 'CDF', compteId: 'c5', compteEnDevise: true }])).toMatch(/RAW-DIT se dit en francs, et son compte est tenu en devise/);
     expect(motifRefusUnion({ code: 'U1', intitule: 'R', ribIds: ['r1', 'r4'] }, avec)).toMatch(/RAW-CDF et RAW-BIS lisent le même compte/);
   });
 
@@ -275,5 +281,45 @@ describe('Le solde du compte d’un RIB · lu, ou dit non lu', () => {
     const lu = await new ConditionsBancairesService(prisma).soldeDuRib('t1', Referentiel.SYSCOHADA, { devise: null, journal: { compteTresorerieId: 'c1' } }, new Date('2027-01-10T00:00:00Z'));
     expect(lu.solde).toBeNull();
     expect(lu.motif).toMatch(/exercices ouverts se suivent/);
+  });
+});
+
+describe('Les jumeaux et le câblage (second tour)', () => {
+  const compteur = (n: number) => ({ count: jest.fn(async () => n) });
+
+  it("JournalService.modifier refuse de repointer le compte d'un journal dont le RIB porte des déclarations (M1)", async () => {
+    const { JournalService } = await import('../journaux/journal.service');
+    const maj = jest.fn();
+    const prisma = {
+      journal: { findFirst: jest.fn(async () => ({ id: 'j1', tenantId: 't1', code: 'BQ1', type: 'TRESORERIE', compteTresorerieId: 'c1' })), update: maj },
+      ribBanque: { findFirst: jest.fn(async ({ where }: { where: { journalId: string } }) => (where.journalId === 'j1' ? { id: 'r1', abrege: 'RAW' } : null)) },
+      conditionBancaire: compteur(0),
+      autorisationFinancement: compteur(1),
+      elementUnionComptesBancaires: compteur(0),
+    } as unknown as PrismaService;
+    const service = new JournalService(prisma);
+    (service as unknown as { verifierCompteTresorerie: () => Promise<void> }).verifierCompteTresorerie = jest.fn(async () => undefined);
+    (service as unknown as { trouver: () => Promise<unknown> }).trouver = jest.fn(async () => ({ id: 'j1', tenantId: 't1', code: 'BQ1', type: 'TRESORERIE', compteTresorerieId: 'c1' }));
+    await expect(service.modifier('t1', 'j1', { compteTresorerieId: 'c2' } as never)).rejects.toThrow(/Le compte du journal BQ1 ne change pas tant que son RIB RAW porte des déclarations · il porte 1 autorisation/);
+    expect(maj).not.toHaveBeenCalled();
+  });
+
+  it("la création d'une union lit les lignes en devise par un groupBy filtré sur les comptes (M2, câblage de M3)", async () => {
+    const groupBy = jest.fn(async ({ where }: { where: { compteId: { in: string[] }; deviseId: { not: null } } }) =>
+      // La doublure honore la requête · seul c2 porte une ligne en devise.
+      where.deviseId.not === null ? where.compteId.in.filter((c) => c === 'c2').map((compteId) => ({ compteId })) : [],
+    );
+    const prisma = {
+      tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
+      ribBanque: {
+        findMany: jest.fn(async () => [
+          { id: 'r1', abrege: 'RAW-CDF', devise: null, journal: { compteTresorerieId: 'c1', compteTresorerie: { numero: '52110000' } } },
+          { id: 'r2', abrege: 'RAW-X', devise: null, journal: { compteTresorerieId: 'c2', compteTresorerie: { numero: '52120000' } } },
+        ]),
+      },
+      ligneEcriture: { groupBy },
+    } as unknown as PrismaService;
+    await expect(new ConditionsBancairesService(prisma).creerUnion('t1', { code: 'U1', intitule: 'R', ribIds: ['r1', 'r2'] })).rejects.toThrow(/RAW-X est tenu en devise/);
+    expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({ by: ['compteId'] }));
   });
 });

@@ -10,6 +10,7 @@ import { comptesDImputationSemes, racineDuCompteSeme } from '../comptes/subdivis
 import { prochainNumeroIndividuel } from '../tiers/collectifs-tiers';
 import { motifRefusCompteDeTresorerie, motifRefusNumeroDuJournal } from './compte-propre-du-journal';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { motifRibRetenu } from '../banques/rib-retenu';
 import { motifSituationHorsSequenceDuFichier } from '../comptabilite/ecritures-de-situation';
 
 /** Le compte propre d'un journal ouvert sous ce numéro vient d'être pris · refus nommé. */
@@ -340,6 +341,17 @@ export class JournalService {
     }
     if (dto.compteTresorerieId && dto.compteTresorerieId !== journal.compteTresorerieId) {
       await this.verifierCompteTresorerie(tenantId, dto.compteTresorerieId, journal.id);
+      // LE JUMEAU DU REFUS DE `modifierRib` (fonction 46, second tour, M1) · le
+      // RIB du journal porte des conditions, des autorisations ou une union,
+      // lues sur le compte de ce journal · repointé, le découvert se lisait en
+      // silence contre le solde d'un autre compte.
+      const rib = await this.prisma.ribBanque.findFirst({ where: { tenantId, journalId: journal.id }, select: { id: true, abrege: true } });
+      const retenu = rib ? await motifRibRetenu(this.prisma, tenantId, [rib.id]) : null;
+      if (retenu) {
+        throw new ConflictException(
+          `Le compte du journal ${journal.code} ne change pas tant que son RIB ${rib!.abrege} porte des déclarations · ${retenu.replace(/^Le RIB porte /, 'il porte ')}`,
+        );
+      }
     }
 
     // Une contrepartie de trésorerie n'a de sens que sur un journal de

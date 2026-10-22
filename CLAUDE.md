@@ -3551,12 +3551,16 @@ CRÉDITEUR du compte du RIB à la date (le jour lu en entier, jusqu'au
 lendemain exclu ; brouillard compris, ni simulation ni à-nouveau
 provisoire, exercices précédents ouverts remontés sans ouverture qui porte
 le compte), dépassement DIT, jamais refusé ; PLUSIEURS en cours sur le même
-compte se lisent sur leur TOTAL, une ligne par RIB (`situationSurLeTotal` ·
+COMPTE (fût-ce sous deux RIB d'un dossier hérité) se lisent sur leur TOTAL
+(`situationSurLeTotal` ·
 chacune contre le solde entier fabriquait deux dépassements) ; compte en
 devise (RIB, racine du plan, ligne en devise, comme le virement de fonds),
 RIB sans journal ou nature lue ailleurs (crédit au 561, escompte au 565) ·
-« non calculé » avec son motif, jamais zéro. Un RIB qui porte des
-déclarations garde sa devise et son journal (409 nommé). HORS BILAN PROPOSÉ au
+« non calculé » avec son motif, jamais zéro, comme sur une liste
+tronquée. Un RIB qui porte des déclarations garde sa devise et son journal,
+et ce journal son compte (409 nommé, `banques/rib-retenu.ts`, jumeau tenu
+par `JournalService.modifier`) ; un montant écrit au point des milliers
+(« 500.000 ») est refusé à l'écran comme ambigu. HORS BILAN PROPOSÉ au
 SYSCOHADA seul · 9011 / 9111 si la banque s'est engagée « d'une façon
 irrévocable » (fiche du compte 9011), sinon 9018 / 9118, jamais passé (« la
 classe 9 est facultative ») ; au SYCEBNL, un numéro, deux sens · sa classe

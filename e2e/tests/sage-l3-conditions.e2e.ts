@@ -23,7 +23,7 @@ interface Lecture {
     abrege: string;
     conditions: Array<{ id: string; dateEffet: string; enVigueur: boolean }>;
     autorisations: Array<{ id: string; situation: Situation | null; motifSituation: string | null; horsBilan: { debit: string; credit: string } | null }>;
-    situationTotale: (Situation & { autorise: number; nombre: number }) | null;
+    situationTotale: (Situation & { autorise: number; nombre: number; autresRib: string[] }) | null;
   }>;
   unions: Array<{ code: string; position: { total: number | null; nonLus: string[]; motif: string | null } }>;
 }
@@ -139,6 +139,7 @@ test('conditions bancaires · découvert utilisé lu sur le solde, à travers un
     depassement: Math.max(0, utilise - 900_000),
     motif: null,
     nombre: 2,
+    autresRib: [],
   });
   // En avril, la facilité est échue · le découvert seul se lit, et l'échue ne propose plus de hors-bilan.
   const avril = await situation(`${suivante}-04-10`);
@@ -148,6 +149,11 @@ test('conditions bancaires · découvert utilisé lu sur le solde, à travers un
 
   // (6 ter) Le RIB qui porte des déclarations garde sa monnaie (premier tour, M2).
   expect(await refusDe(appelApi(page, 'PATCH', `/ribs-banque/${rib.id}`, { devise: 'USD' }))).toMatch(/409|ne change pas/);
+  // Le jumeau · le compte du journal ne se repointe pas sous un RIB qui porte des déclarations (second tour, M1).
+  // Un compte de banque personnalisé, qu'aucun journal ne tient · seul le refus de la fonction 46 s'oppose.
+  const propose = await appelApi<{ numero: string }>(page, 'GET', `/comptes/${compteBanque.id}/sous-compte-propose`);
+  const autreBanque = await appelApi<Compte>(page, 'POST', '/comptes', { numero: propose.numero, intitule: 'Banque bis e2e' });
+  expect(await refusDe(appelApi(page, 'PATCH', `/journaux/${journalBanque.id}`, { compteTresorerieId: autreBanque.id }))).toMatch(/409|ne change pas tant que son RIB/);
 
   // (7) Unions · une même monnaie se crée, sa position dit le compte non lu ; deux monnaies refusées.
   expect(await refusDe(appelApi(page, 'POST', '/conditions-bancaires/unions', { code: 'MIX', intitule: 'Mélange', ribIds: [rib.id, ribUsd.id] }))).toMatch(/400|même monnaie/);
@@ -169,5 +175,10 @@ test('conditions bancaires · découvert utilisé lu sur le solde, à travers un
   await formulaire.getByLabel('Conditions · intérêts créditeurs').fill('deux pour cent');
   await formulaire.getByRole('button', { name: 'Déclarer les conditions' }).click();
   await expect(page.getByRole('region', { name: 'RIB RAW-CDF', exact: true }).getByRole('alert')).toContainText('Intérêts créditeurs · illisible.');
+  // « 500.000 » est ambigu (point des milliers), jamais 500 (second tour, MAJEUR 2).
+  const autorisation = page.getByRole('form', { name: 'Déclarer une autorisation sur RAW-CDF', exact: true });
+  await autorisation.getByLabel('Autorisation · montant').fill('500.000');
+  await autorisation.getByRole('button', { name: 'Déclarer l’autorisation' }).click();
+  await expect(page.getByRole('region', { name: 'RIB RAW-CDF', exact: true }).getByRole('alert').last()).toContainText('Montant autorisé · illisible');
   expect(pannes).toEqual([]);
 });

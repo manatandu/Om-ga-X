@@ -26,6 +26,8 @@ function monde() {
   const create = jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'j-neuf', ...data }));
   const update = jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'j1', ...data }));
   const prisma = {
+    // Aucun RIB sur ces journaux · le refus de repointer le compte d'un journal dont le RIB porte des déclarations (fonction 46) ne joue pas ici.
+    ribBanque: { findFirst: jest.fn(async () => null) },
     tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
     journal: {
       findUnique: jest.fn().mockResolvedValue(null),

@@ -41,6 +41,7 @@ const REMONTEE_MAX = 20;
 const LECTURES_SIMULTANEES = 4;
 
 const jour = (v: string) => new Date(`${v}T00:00:00.000Z`);
+const MOTIF_AUTORISATIONS_TRONQUEES = 'Liste des autorisations tronquée · une autorisation qui manque au total fausserait la situation, non calculée.';
 const lendemain = (d: Date) => new Date(d.getTime() + 86_400_000);
 const jourIso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -215,19 +216,34 @@ export class ConditionsBancairesService {
       );
       paquet.forEach((ribId, k) => soldes.set(ribId, lus[k]));
     }
+    // LE TOTAL SE FAIT PAR COMPTE, PAS PAR RIB (second tour, m1 et m2) · un
+    // dossier hérité peut tenir le même 52 sous deux journaux, donc deux RIB ;
+    // leurs autorisations se lisent sur le même solde, et confrontées chacune
+    // au solde entier elles fabriquaient deux dépassements.
+    const compteDuRib = new Map(ribs.map((r) => [r.id, r.journal?.compteTresorerieId ?? `rib:${r.id}`]));
+    const lisiblesDuCompte = new Map<string, typeof autorisations>();
+    for (const a of autorisations) {
+      if (!autorisationEnCours(a, date) || !seLitSurLeCompteBancaire(a.nature as NatureAutorisation)) continue;
+      const cle = compteDuRib.get(a.ribId) ?? `rib:${a.ribId}`;
+      lisiblesDuCompte.set(cle, [...(lisiblesDuCompte.get(cle) ?? []), a]);
+    }
+    // UNE LISTE TRONQUÉE NE SERT AUCUNE SITUATION (second tour, m3 et m4) · une
+    // autorisation coupée par la borne manquerait au total, et l'autre se
+    // dirait seule, juste, quand elle ne l'est pas.
+    const autorisationsTronquees = totalAutorisations > autorisations.length;
     const servisRibs = [];
     for (const r of ribs) {
       const versions = conditions.filter((c) => c.ribId === r.id).sort((a, b) => a.dateEffet.getTime() - b.dateEffet.getTime());
       const enVigueur = conditionsEnVigueur(versions, date);
       const lu = soldes.get(r.id) ?? null;
       const siennes = autorisations.filter((x) => x.ribId === r.id).sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime());
-      const lisiblesEnCours = siennes.filter((a) => autorisationEnCours(a, date) && seLitSurLeCompteBancaire(a.nature as NatureAutorisation));
+      const lisiblesEnCours = lisiblesDuCompte.get(compteDuRib.get(r.id) ?? `rib:${r.id}`) ?? [];
       const surLeTotal = lisiblesEnCours.length > 1;
       const sesAutorisations = siennes.map((a) => {
         const nature = a.nature as NatureAutorisation;
         const enCours = autorisationEnCours(a, date);
         const lisible = seLitSurLeCompteBancaire(nature);
-        const situation = enCours && lisible && !surLeTotal ? situationAutorisation({ nature, montant: Number(a.montant) }, lu?.solde ?? null) : null;
+        const situation = enCours && lisible && !surLeTotal && !autorisationsTronquees ? situationAutorisation({ nature, montant: Number(a.montant) }, lu?.solde ?? null) : null;
         return {
           ...a,
           montant: Number(a.montant),
@@ -235,7 +251,9 @@ export class ConditionsBancairesService {
           situation,
           motifSituation: !enCours
             ? 'Autorisation hors de sa période à cette date.'
-            : !lisible
+            : autorisationsTronquees
+              ? MOTIF_AUTORISATIONS_TRONQUEES
+              : !lisible
               ? 'Utilisation lue sur les opérations de financement (fonction 47), non sur le compte bancaire.'
               : surLeTotal
                 ? MOTIF_SITUATION_SUR_LE_TOTAL
@@ -246,7 +264,15 @@ export class ConditionsBancairesService {
           horsBilan: enCours ? inscriptionHorsBilan(dossier.referentiel, a.irrevocable) : null,
         };
       });
-      const situationTotale = surLeTotal ? { ...situationSurLeTotal(lisiblesEnCours.map((a) => Number(a.montant)), lu?.solde ?? null), motif: lu?.motif ?? null, nombre: lisiblesEnCours.length } : null;
+      const situationTotale = surLeTotal
+        ? {
+            ...situationSurLeTotal(lisiblesEnCours.map((a) => Number(a.montant)), autorisationsTronquees ? null : (lu?.solde ?? null)),
+            motif: autorisationsTronquees ? MOTIF_AUTORISATIONS_TRONQUEES : (lu?.motif ?? null),
+            nombre: lisiblesEnCours.length,
+            // Des autorisations d'autres RIB sur le même compte entrent au total · il le dit.
+            autresRib: [...new Set(lisiblesEnCours.filter((a) => a.ribId !== r.id).map((a) => ribs.find((x) => x.id === a.ribId)?.abrege ?? '·'))],
+          }
+        : null;
       const conditionsTronquees = totalConditions > conditions.length;
       servisRibs.push({
         id: r.id,
@@ -387,10 +413,11 @@ export class ConditionsBancairesService {
       }),
     ]);
     const comptes = ribs.map((r) => r.journal?.compteTresorerieId).filter((c): c is string => typeof c === 'string');
-    const enDevise = comptes.length === 0 ? [] : await this.prisma.ligneEcriture.findMany({
+    // Agrégé par la base (second tour, M2) · `distinct` se fait en JavaScript
+    // sous Prisma 5 et rapatriait chaque ligne en devise de ces comptes.
+    const enDevise = comptes.length === 0 ? [] : await this.prisma.ligneEcriture.groupBy({
+      by: ['compteId'],
       where: { compteId: { in: comptes }, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } },
-      select: { compteId: true },
-      distinct: ['compteId'],
     });
     const motif = motifRefusUnion(
       dto,
@@ -510,27 +537,5 @@ function nombres(c: {
   };
 }
 
-/**
- * Ce qui RETIENT un RIB · conditions, autorisations et unions. Le RIB (et la
- * banque qui les porte) ne se retire pas tant qu'elles tiennent · refus nommé
- * AVANT la base, dont la clé RESTRICT ne rendrait qu'une erreur anonyme.
- */
-export async function motifRibRetenu(
-  prisma: Pick<PrismaService, 'conditionBancaire' | 'autorisationFinancement' | 'elementUnionComptesBancaires'>,
-  tenantId: string,
-  ribIds: string[],
-): Promise<string | null> {
-  if (ribIds.length === 0) return null;
-  const [conditions, autorisations, unions] = await Promise.all([
-    prisma.conditionBancaire.count({ where: { tenantId, ribId: { in: ribIds } } }),
-    prisma.autorisationFinancement.count({ where: { tenantId, ribId: { in: ribIds } } }),
-    prisma.elementUnionComptesBancaires.count({ where: { tenantId, ribId: { in: ribIds } } }),
-  ]);
-  const usages = [
-    conditions > 0 ? `${conditions} version(s) de conditions bancaires` : null,
-    autorisations > 0 ? `${autorisations} autorisation(s) de financement` : null,
-    unions > 0 ? `${unions} appartenance(s) à une union de comptes` : null,
-  ].filter((x): x is string => x !== null);
-  if (usages.length === 0) return null;
-  return `Le RIB porte ${usages.join(', ')} · retirez-les d'abord (Structure › Paramètres de saisie › Conditions bancaires).`;
-}
+// `motifRibRetenu` vit dans `rib-retenu.ts` (lu aussi par les journaux, sans import circulaire).
+export { motifRibRetenu } from './rib-retenu';

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Aide } from "../components/chrome/Aide";
@@ -69,7 +69,13 @@ interface RibServi {
   autorisations: Autorisation[];
   /** Plusieurs autorisations en cours sur le même solde · leur situation sur le total (premier tour, M4). */
   situationTotale:
-    | (Situation & { autorise: number; motif: string | null; nombre: number })
+    | (Situation & {
+        autorise: number;
+        motif: string | null;
+        nombre: number;
+        /** Les RIB d'un même compte dont les autorisations entrent au total. */
+        autresRib: string[];
+      })
     | null;
 }
 interface UnionServie {
@@ -141,6 +147,9 @@ export function ConditionsBancairesPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [jeton, setJeton] = useState(0);
   const [envoi, setEnvoi] = useState(false);
+  // La garde SYNCHRONE (second tour, m4) · deux soumissions du même rendu
+  // lisaient toutes deux l'état à faux ; l'état ne sert plus qu'à l'affichage.
+  const enCours = useRef(false);
 
   useEffect(() => {
     let vivant = true;
@@ -160,7 +169,14 @@ export function ConditionsBancairesPage() {
     };
   }, [au, jeton]);
 
-  const servie = lecture && lecture.lueePour === au ? lecture.l : null;
+  // Une lecture manquée ne laisse pas l'ancienne sous l'erreur (second tour,
+  // MAJEUR 1) · après un geste réussi, elle ne porterait pas ce qu'il annonce.
+  const servie =
+    !erreurLecture && lecture && lecture.lueePour === au ? lecture.l : null;
+  // Le champ part de la date lue, puis suit la saisie (second tour, m3).
+  useEffect(() => {
+    if (servie && auTape === "") setAuTape(servie.date);
+  }, [servie, auTape]);
 
   /**
    * UN GESTE À LA FOIS (premier tour, M3) · un double clic créait deux
@@ -169,23 +185,39 @@ export function ConditionsBancairesPage() {
    * demandé, près de son formulaire, jamais en haut de page.
    */
   const agir: Agir = async (fn, message) => {
-    if (envoi) return { ok: false, refus: null };
+    if (enCours.current) return { ok: false, refus: null, ignore: true };
+    enCours.current = true;
     setEnvoi(true);
     setInfo(null);
     try {
       await fn();
       setInfo(message);
       setJeton((j) => j + 1);
-      return { ok: true, refus: null };
+      return { ok: true, refus: null, ignore: false };
     } catch (e) {
-      return { ok: false, refus: messageOuDefaut(e, "Action refusée.") };
+      return {
+        ok: false,
+        refus: messageOuDefaut(e, "Action refusée."),
+        ignore: false,
+      };
     } finally {
+      enCours.current = false;
       setEnvoi(false);
     }
   };
 
-  const valider = () => {
-    if (auTape !== au) setAu(auTape);
+  /**
+   * LA DATE SE LIT DÈS QU'ELLE EST UNE DATE (second tour, MAJEUR 1) · le
+   * sélecteur du calendrier garde le focus, et la lecture attendait une sortie
+   * du champ · le champ portait une date, les montants une autre. Un jour
+   * d'avant 1900 est un segment en cours de frappe (0002, 0020, 0202), pas
+   * une date demandée (premier tour, m7).
+   */
+  const demander = (v: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 1900 && v !== au) {
+      setInfo(null);
+      setAu(v);
+    }
   };
 
   return (
@@ -195,11 +227,10 @@ export function ConditionsBancairesPage() {
           Situation au
           <input
             type="date"
-            value={auTape || servie?.date || ""}
-            onChange={(e) => setAuTape(e.target.value)}
-            onBlur={valider}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") valider();
+            value={auTape}
+            onChange={(e) => {
+              setAuTape(e.target.value);
+              demander(e.target.value);
             }}
             className="mt-1 block border border-border-dark px-2.5 py-1.5 text-[12px] font-normal font-mono"
           />
@@ -249,6 +280,11 @@ export function ConditionsBancairesPage() {
           la version en vigueur n’est pas dite.
         </div>
       )}
+      {servie && servie.ribs.length > 0 && (
+        <div className="text-[11.5px] font-semibold mb-2">
+          Situation au {date(servie.date)}
+        </div>
+      )}
       {servie?.ribs.map((r) => (
         <section
           key={r.id}
@@ -284,7 +320,7 @@ export function ConditionsBancairesPage() {
 type Agir = (
   fn: () => Promise<unknown>,
   message: string,
-) => Promise<{ ok: boolean; refus: string | null }>;
+) => Promise<{ ok: boolean; refus: string | null; ignore: boolean }>;
 
 /** Le refus d'un geste, dit près du formulaire qui l'a demandé. */
 function Refus({ texte }: { texte: string | null }) {
@@ -313,9 +349,9 @@ function BlocConditions({
   const [f, setF] = useState<Record<string, string>>({});
   const [refus, setRefus] = useState<string | null>(null);
   const geste = async (fn: () => Promise<unknown>, message: string) => {
-    setRefus(null);
     const r = await agir(fn, message);
-    setRefus(r.refus);
+    // Un geste écarté par la garde ne touche pas au refus affiché (second tour, m4).
+    if (!r.ignore) setRefus(r.refus);
     return r.ok;
   };
   const envoyer = async (e: FormEvent) => {
@@ -591,9 +627,9 @@ function BlocAutorisations({
 }) {
   const [refus, setRefus] = useState<string | null>(null);
   const geste = async (fn: () => Promise<unknown>, message: string) => {
-    setRefus(null);
     const r = await agir(fn, message);
-    setRefus(r.refus);
+    // Un geste écarté par la garde ne touche pas au refus affiché (second tour, m4).
+    if (!r.ignore) setRefus(r.refus);
     return r.ok;
   };
   const [f, setF] = useState<Record<string, string>>({
@@ -727,10 +763,12 @@ function BlocAutorisations({
               ))}
               {rib.situationTotale && (
                 <tr className="font-semibold">
-                  <td>
-                    Total des {rib.situationTotale.nombre} autorisations en
-                    cours
-                  </td>
+                  <th scope="row" className="text-left">
+                    Total des {rib.situationTotale.nombre} autorisations lues
+                    sur le compte
+                    {rib.situationTotale.autresRib.length > 0 &&
+                      `, dont ${rib.situationTotale.autresRib.join(", ")}`}
+                  </th>
                   <td className="text-right font-mono">
                     {montant(rib.situationTotale.autorise)}
                   </td>
@@ -755,7 +793,13 @@ function BlocAutorisations({
                       Non calculé · {rib.situationTotale.motif ?? "solde non lu"}
                     </td>
                   )}
-                  {avecHorsBilan && <td />}
+                  {avecHorsBilan && (
+                    <td>
+                      {rib.situationTotale.nonUtilise !== null
+                        ? montant(rib.situationTotale.nonUtilise)
+                        : "·"}
+                    </td>
+                  )}
                   <td />
                 </tr>
               )}
@@ -852,9 +896,9 @@ function BlocUnions({
 }) {
   const [refus, setRefus] = useState<string | null>(null);
   const geste = async (fn: () => Promise<unknown>, message: string) => {
-    setRefus(null);
     const r = await agir(fn, message);
-    setRefus(r.refus);
+    // Un geste écarté par la garde ne touche pas au refus affiché (second tour, m4).
+    if (!r.ignore) setRefus(r.refus);
     return r.ok;
   };
   const [code, setCode] = useState("");
