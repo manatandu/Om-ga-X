@@ -399,8 +399,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // « Créances douteuses ou litigieuses » sous « Clôture » (ligne A7). Puis
     // « Virement de fonds » sous « Tiers et trésorerie » (2026-10-09). Puis
     // « Remises en banque » au même groupe (ligne sage-l3, fonction 40,
-    // 2026-10-22), puis « Effets de commerce » (fonction 39, même jour).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 24],
+    // 2026-10-22), puis « Effets de commerce » (fonction 39, même jour) et
+    // « Extraits bancaires » (fonction 45, même jour).
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 25],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);

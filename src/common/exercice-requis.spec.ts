@@ -203,6 +203,8 @@ const ROUTES_A_COMPTE_EN_FILTRE = [
   // Ligne export-periode · le grand livre d'UN compte, extrait ou exercice.
   'modules/exports/export.controller.ts grandLivreComplet',
   'modules/rapprochement/rapprochement.controller.ts lister',
+  // Ligne sage-l3, n° 45 · les extraits bancaires d'UN compte, ou de tous.
+  'modules/rapprochement/rapprochement.controller.ts listerExtraits',
   'modules/relances/relances.controller.ts historique',
 ];
 

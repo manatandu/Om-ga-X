@@ -269,7 +269,8 @@ export class RapprochementService {
    * rapprochement clos · c'est elle qui fond les lignes antérieures, pour
    * tous les rapprochements qui la suivent.
    */
-  private async depart(
+  /** Public depuis la fonction 45 · la liste des extraits lit le solde de départ par la même règle. */
+  async depart(
     tenantId: string,
     r: { compteId: string; clotureAt: Date | null; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
   ): Promise<{ soldeDepart: number | null; regle: RegleOuverture; premier: boolean }> {
@@ -927,6 +928,13 @@ export class RapprochementService {
     }
     await transactionJournalisee(this.prisma, async (tx) => {
       await tx.ligneReleveBancaire.deleteMany({ where: { tenantId, rapprochementId: id } });
+      // L'instant de l'import et le nom du fichier reçu (fonction 45) · l'édition
+      // chaînée des extraits les imprime, la pièce probante restant le relevé
+      // reçu (AUDCIF art. 22, 7°). Posés AVANT les lignes, dans la transaction.
+      await tx.rapprochementBancaire.update({
+        where: { id, tenantId },
+        data: { releveImporteLe: new Date(), releveNomFichier: dto.nomFichier.slice(0, 200) },
+      });
       await tx.ligneReleveBancaire.createMany({
         data: lignes.map((l) => ({
           tenantId,
@@ -950,6 +958,8 @@ export class RapprochementService {
       throw new ConflictException('Des lignes du relevé sont rapprochées · dissociez-les avant de retirer le relevé.');
     }
     const r = await this.prisma.ligneReleveBancaire.deleteMany({ where: { tenantId, rapprochementId: id } });
+    // Plus de relevé, plus d'import à dater (fonction 45).
+    await this.prisma.rapprochementBancaire.update({ where: { id, tenantId }, data: { releveImporteLe: null, releveNomFichier: null } });
     return { nombreLignes: r.count };
   }
 

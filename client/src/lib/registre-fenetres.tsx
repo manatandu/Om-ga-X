@@ -53,6 +53,7 @@ const ReglementsPage = lazy(() => import('../pages/ReglementsPage').then((m) => 
 const VirementsFondsPage = lazy(() => import('../pages/VirementsFondsPage').then((m) => ({ default: m.VirementsFondsPage })));
 const RemisesPage = lazy(() => import('../pages/RemisesPage').then((m) => ({ default: m.RemisesPage })));
 const EffetsPage = lazy(() => import('../pages/EffetsPage').then((m) => ({ default: m.EffetsPage })));
+const ExtraitsBancairesPage = lazy(() => import('../pages/ExtraitsBancairesPage').then((m) => ({ default: m.ExtraitsBancairesPage })));
 const RapprochementDetailPage = lazy(() => import('../pages/RapprochementDetailPage').then((m) => ({ default: m.RapprochementDetailPage })));
 const ImmobilisationsPage = lazy(() => import('../pages/ImmobilisationsPage').then((m) => ({ default: m.ImmobilisationsPage })));
 const ExercicePage = lazy(() => import('../pages/ExercicePage').then((m) => ({ default: m.ExercicePage })));
@@ -206,6 +207,7 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/remises$/, titre: 'Remises en banque', titreCourt: 'Remises', rendre: () => <RemisesPage /> },
   { motif: /^\/remises\/types$/, titre: 'Types de remise', titreCourt: 'Types de remise', rendre: () => <RemisesPage ongletInitial="types" /> },
   { motif: /^\/effets$/, titre: 'Effets de commerce', titreCourt: 'Effets', rendre: () => <EffetsPage /> },
+  { motif: /^\/extraits-bancaires$/, titre: 'Extraits bancaires', titreCourt: 'Extraits', rendre: () => <ExtraitsBancairesPage /> },
   {
     motif: /^\/rapprochement$/,
     titre: 'Rapprochement bancaire',

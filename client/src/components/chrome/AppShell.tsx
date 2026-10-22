@@ -339,6 +339,8 @@ export function AppShell() {
             // Ligne sage-l3, fonction 39 · effets à recevoir et à payer, escompte, impayé (effets/).
             { label: 'Effets de commerce', chemin: '/effets', onClick: () => navigate('/effets') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
+            // Ligne sage-l3, fonction 45 · relevés importés par compte, édition chaînée (rapprochement/).
+            { label: 'Extraits bancaires', chemin: '/extraits-bancaires', onClick: () => navigate('/extraits-bancaires') },
             { label: 'Rappel et relevé', chemin: '/relances', onClick: () => navigate('/relances') },
           ],
         },

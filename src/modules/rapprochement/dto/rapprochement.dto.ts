@@ -153,3 +153,23 @@ export class RouvrirRapprochementDto {
   @MaxLength(500)
   motif!: string;
 }
+
+/**
+ * L'édition chaînée des extraits (fonction 45) · comptes choisis (identifiants
+ * séparés par des virgules, vide = tous) et bornes sur la date du relevé. Les
+ * bornes sont jugées par `motifRefusSelection`, les comptes par le service
+ * (404 nommé pour un compte d'un autre dossier).
+ */
+export class EditionExtraitsDto {
+  @IsOptional()
+  @IsString()
+  compteIds?: string;
+
+  @IsOptional()
+  @IsString()
+  du?: string;
+
+  @IsOptional()
+  @IsString()
+  au?: string;
+}

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -6,9 +7,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { COMPTE_FACULTATIF } from '../../common/compte-du-dossier';
 import { RapprochementService } from './rapprochement.service';
+import { ExtraitsBancairesService } from './extraits-bancaires.service';
+import { lireSelection, motifRefusSelection } from './extraits-bancaires';
+import { envoyerXlsxEnFlux } from '../exports/envoi-en-flux';
 import {
   ConfirmerCorrespondancesDto,
   DeclarerDepartDto,
+  EditionExtraitsDto,
   DeclarerEncoursDto,
   ImporterReleveDto,
   OuvrirRapprochementDto,
@@ -24,7 +29,25 @@ import { RoleUtilisateur } from '@prisma/client';
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('rapprochements')
 export class RapprochementController {
-  constructor(private readonly rapprochementService: RapprochementService) {}
+  constructor(
+    private readonly rapprochementService: RapprochementService,
+    private readonly extraits: ExtraitsBancairesService,
+  ) {}
+
+  // EXTRAITS BANCAIRES (ligne sage-l3, fonction 45) · déclarés AVANT `:id`,
+  // sans quoi « extraits » serait lu comme un identifiant de rapprochement.
+  @Get('extraits')
+  async listerExtraits(@CurrentUser() user: AuthenticatedUser, @Query('compteId', COMPTE_FACULTATIF) compteId?: string) {
+    return this.extraits.lister(user.tenantId, compteId);
+  }
+
+  /** L'édition chaînée · un classeur, une feuille par extrait, en flux. Lecture seule, tous rôles. */
+  @Get('extraits/edition')
+  async editionExtraits(@CurrentUser() user: AuthenticatedUser, @Query() q: EditionExtraitsDto, @Res() res: Response) {
+    const motif = motifRefusSelection(q);
+    if (motif) throw new BadRequestException(motif);
+    await envoyerXlsxEnFlux(res, (ouvrir) => this.extraits.editionChainee(user.tenantId, lireSelection(q), ouvrir));
+  }
 
   // Le compte en filtre est du dossier ou introuvable (premier tour de
   // relecture du paquet 1, constat 4) · jamais une liste vide en 200.

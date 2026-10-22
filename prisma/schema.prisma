@@ -2519,6 +2519,14 @@ model RapprochementBancaire {
   rouvertBy        String?
   motifReouverture String?
 
+  // EXTRAIT IMPORTÉ (ligne sage-l3, fonction 45) · l'instant de l'import et
+  // le nom du fichier reçu de la banque. L'édition chaînée des extraits les
+  // imprime en tête · la pièce probante reste le relevé reçu (AUDCIF art. 22,
+  // 7°), l'édition d'OmegaX n'en est qu'une reconstitution, datée et dite.
+  // Nuls sur un relevé importé avant la fonction · « import non daté ».
+  releveImporteLe  DateTime?
+  releveNomFichier String?   @db.VarChar(200)
+
   lignes          LigneEcriture[]
   releve          LigneReleveBancaire[]
   encoursDeclares EncoursOuvertureRapprochement[] @relation("EnCoursDeclares")
