@@ -3498,6 +3498,40 @@ le dénouement après lui et jamais avant l'échéance ; frais ou commission
 sans leur compte refusés. Les comptes se choisissent sous les racines du
 rôle (`GET /effets/comptes?role&sens`), tout autre refusé.
 
+**Extraits bancaires (ligne sage-l3, n° 45, 2026-10-22, décision par la
+loi D14).** Traitement > Tiers et trésorerie > Extraits bancaires
+(`rapprochement/extraits-bancaires.ts` pour les règles pures,
+`extraits-bancaires.service.ts`). Un extrait EST le relevé importé dans un
+rapprochement (`LigneReleveBancaire`). LE RELEVÉ REÇU EST LA PIÈCE, L'ÉDITION
+UNE RECONSTITUTION (AUDCIF art. 22, 7° · « chaque donnée entrée par
+transmission d'un autre système doit être appuyée d'une pièce justificative
+probante » ; art. 24) · le fichier reçu de la banque, conservé, fait foi ;
+l'édition d'OmegaX est datée (tirage), dit le fichier et l'instant de
+l'import (`RapprochementBancaire.releveImporteLe`, `releveNomFichier`, posés
+par `importerReleve`, effacés par `retirerReleve`) et porte la mention qui
+l'écarte de la pièce ; elle n'est PAS numérotée (une copie d'un document
+reçu, pas un état périodique de l'entité). LISTE PAR COMPTE
+(`GET /rapprochements/extraits`, `compteId` facultatif, bornée à 200 et
+dite, agrégats seuls) · nombres, solde de départ tel que le module du
+rapprochement le rend (`depart` · déclaré sur le premier, ancré sur le solde
+imprimé du rapprochement clos précédent), mouvements au sens de la banque,
+écart avec le solde imprimé. ÉDITION CHAÎNÉE (`GET
+/rapprochements/extraits/edition?compteIds&du&au`, bornes sur la DATE DU
+RELEVÉ) · classeur FPM en flux, feuille « Sommaire » puis une feuille par
+extrait, compte par compte et du plus ancien au plus récent (nom `<numéro>
+<date>`, borné à 31 caractères, suffixé s'il est pris) · solde de départ
+(« inconnu » et colonne vide sans lui, jamais zéro présumé), lignes avec
+leur solde progressif (crédits moins débits de la banque), totaux, solde
+imprimé, écart, lignes rapprochées ; un compte choisi sans extrait dans
+les bornes est dit au sommaire, jamais tu ; tout se juge AVANT le premier
+octet (compte d'un autre dossier 404, bornes illisibles 400, sélection
+vide, liste tronquée, volume au-delà de `MAX_LIGNES_EXPORT`). La borne du
+dossier s'écrit DANS chaque appel Prisma (`cloisonnement.spec.ts` la lit
+par sa structure) ; la route à `compteId` figure dans la liste fermée
+d'`exercice-requis.spec.ts`. Scénario navigateur à travers une clôture ·
+le premier rapprochement se clôt (départ déclaré, lignes rapprochées)
+avant celui de N+1, un seul rapprochement en cours par compte.
+
 **Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
 Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse

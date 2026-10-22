@@ -142,6 +142,26 @@ journal `build-log.md`.
   date tout règlement par elle (`dateDuReglement`), aux deux sens ; sans
   elle, la taxe d'une prestation payée par traite devenait exigible au jour
   de l'acceptation.
+- **D14 · Extraits bancaires · le relevé reçu est la pièce, l'édition une
+  reconstitution datée (ligne 45).** AUDCIF art. 17 (pièces justificatives,
+  3° et 5°) ; art. 22, 7° · « les états périodiques fournis soient numérotés
+  et datés ; chaque enregistrement s'appuie sur une pièce justificative fiable
+  et conservée. Chaque donnée entrée par transmission d'un autre système doit
+  être appuyée d'une pièce justificative probante » ; art. 24 (dix ans).
+  Sage (Moyens de paiement, manuel de référence v16, p. 25 ; Prise en main,
+  ch. 8) consulte les extraits par compte puis par extrait et les imprime à
+  la chaîne. Dans OmegaX, un extrait EST le relevé importé dans un
+  rapprochement (`LigneReleveBancaire`) · le fichier reçu de la banque est
+  la pièce probante, conservée ; l'édition d'OmegaX est une RECONSTITUTION
+  depuis les lignes importées, datée (tirage), qui dit le fichier et
+  l'instant de l'import (`RapprochementBancaire.releveImporteLe`,
+  `releveNomFichier`) et porte la mention qui l'écarte de la pièce. Elle
+  n'est PAS numérotée · ce n'est pas un état périodique de l'entité, c'est
+  la copie d'un document reçu. Le solde de départ est celui que le module du
+  rapprochement rend (`depart` · déclaré sur le premier, ancré sur le solde
+  imprimé du rapprochement clos précédent) ; sans lui, aucun solde
+  progressif n'est présumé. Un compte choisi sans extrait dans les bornes
+  est dit au sommaire, jamais tu ; tout se juge avant le premier octet.
 
 ## Les fonctions, leur place et leur ligne
 
@@ -169,7 +189,7 @@ même famille, qui touchent les mêmes fichiers et aucun autre.
 | 37 | Virement depuis un compte en devise | L3 | Traitement > Règlement des tiers ; ordres de virement | `reglements/ordres-virement` |
 | 40 | Remises de chèques et de cartes | L3 | Traitement > Tiers et trésorerie > Remises en banque | nouveau `remises/` |
 | 39 | Effets de commerce | L3 | Traitement > Tiers et trésorerie > Effets de commerce | nouveau `effets/` |
-| 45 | Édition chaînée des extraits bancaires | L3 | Traitement > Rapprochement bancaire | `rapprochement/` |
+| 45 | Édition chaînée des extraits bancaires | L3 | Traitement > Tiers et trésorerie > Extraits bancaires | `rapprochement/` (`extraits-bancaires.ts`, `extraits-bancaires.service.ts`) |
 | 46 | Conditions bancaires, autorisations, unions | L3 | Structure > Paramètres de saisie > Banques | `banques/` |
 | 47 | Taux de référence, financements, placements | L3 | Traitement > Tiers et trésorerie > Financements et placements | nouveau `tresorerie/` |
 | 66 | Modifier, supprimer, dupliquer une fiche | L4 | Structure > Immobilisations | `immobilisations/` |

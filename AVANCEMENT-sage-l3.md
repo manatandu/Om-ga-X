@@ -232,18 +232,89 @@ financements, placements.
   « Plan des tiers » nommés ; factures au brouillard dites à l'acceptation.
   `casse-en-silence.spec.ts` · `effetCommerce` retiré des détenteurs (c'est
   `acteEffet` qui retient). Scénario navigateur rejoué vert (deux tests).
+- #39 · second tour de relecture (mêmes trois agents) · UN BLOQUANT à
+  l'écran (la liste des tiers servie par tranche de 200 laissait le 201e
+  client sans issue) · `GET /effets/comptes?numero=` (début du numéro, chiffres
+  seuls) et champ « Numéro commence par » sous le sélecteur du tiers ;
+  MAJEURS · le nettoyage manqué après un lettrage refusé rend un 409 qui
+  NOMME l'effet et sa pièce restés en base (« n'a pas été accepté » faisait
+  réaccepter la même traite) ; `updateMany` sur les modèles AUDITÉS
+  (`EffetCommerce`, `ActeEffet`) remplacés par des mises à jour UNITAIRES
+  (motif d'annulation dans la chaîne d'audit), P2025 rendu en 409 nommé
+  (`prendre`) ; une ligne EN DEVISE cochée est refusée avant la pièce (une
+  facture en devise se règle dans sa devise, A6) et la case est fermée à
+  l'écran avec le motif ; les lignes d'à-nouveau provisoire écartées et la
+  créance reclassée sont DITES sous les lignes ouvertes (« null n'est pas
+  vide ») ; une lecture de comptes qui échoue dans la modale d'acte le dit
+  dans le sélecteur et ferme le bouton avec l'issue ; réponse perdue ou 409
+  · la liste se relit et la modale se ferme ; « accepté sans lettrage » dit
+  avec son issue ; liste vide dite « en cours, ni arrivé à terme ».
+  Relevés en attente (ni BLOQUANT ni MAJEUR, pas de troisième tour) · (TS 3)
+  un effet à TERME n'est listé que sous l'exercice de sa création (encaissé
+  en janvier, absent sous N+1 avec le filtre « Encaissé ») ; (TS 4) `banque()`
+  ne lit pas `estActif` du 52 ; (TS 5) `motifRefusDeclaration` de
+  l'imputation des paiements juge « jamais postérieure au paiement » sur la
+  date de la pièce d'acceptation quand le moteur date à l'échéance · à
+  trancher par la loi (art. 151, « lorsqu'il paye ») ; (TS 6) le retrait au
+  brouillard passe par `deleteMany` hors `EcritureService.supprimer` (pièces
+  jointes détachées sans description refaite) ; (TS 7, commun à devises,
+  remises, créances douteuses, virements) le numéro de pièce du négatif est
+  pris sans verrou sous une transaction non sérialisable ; (TS 8) l'acte dont
+  la pièce est dans un exercice clôturé refuse l'annulation sans dire
+  l'issue ; (TS 9) le lettrage reste une seconde transaction après le
+  commit de l'effet (à poser dans la `suite` de `creerAvec`) ; (silent 2)
+  `retirerCompensation` supprime sans relire le statut ; (silent 7) l'issue
+  proposée pour une facture d'un lettrage partiel (« délettrez ») est la
+  mauvaise · accepter sans la cocher puis compléter le groupe ; (silent 8)
+  le négatif d'une acceptation validée ne porte pas `dateEncaissementEffet`
+  · un lettrage facture + acceptation annulée sans le négatif ferait lire un
+  règlement à l'échéance ; (silent 9) l'imputation nomme le paiement à la
+  date de sa pièce quand elle le range à l'échéance ; (React 6) changer
+  d'onglet jette une acceptation en cours de saisie sans confirmation ;
+  (React 7, 8) `manque()` laisse au serveur l'échéance antérieure à la
+  création, le centime, les frais qui atteignent le nominal, les `min` de
+  date des actes ; (React 9) « Lecture… » sous un bandeau d'erreur ;
+  (React 10) flèches de la tablist, piège et retour du focus des modales,
+  `aria-label` de la table ; (React 11) `/reglements/echeances` lu pour tous
+  les tiers puis filtré (pas de filtre par compte sur la route, commun aux
+  remises).
+- #45 · décision par la loi D14 (architecture.md) · le relevé reçu est la
+  pièce (AUDCIF art. 22, 7° ; art. 24), l'édition une reconstitution datée,
+  non numérotée. Serveur (2407f47) · `rapprochement/extraits-bancaires.ts`
+  (règles pures · soldes progressifs au sens de la banque, noms de feuille
+  bornés à 31, sélection, ordre compte puis date, totaux, bornes),
+  `extraits-bancaires.service.ts` (liste par compte bornée à 200, agrégats,
+  solde de départ par `depart` ; édition chaînée FPM en flux, sommaire puis
+  une feuille par extrait, refus avant le premier octet), `GET
+  /rapprochements/extraits` (`COMPTE_FACULTATIF`) et `/extraits/edition`
+  déclarées avant `:id` ; `RapprochementBancaire.releveImporteLe`,
+  `releveNomFichier` (migration `20270190000500_extraits_bancaires`, `prisma
+  migrate diff` sans écart sur `l3_ombre`) ; specs purs (21) et de service
+  (6, classeur relu par ExcelJS) ; `cloisonnement.spec` (borne écrite dans
+  chaque appel) et `exercice-requis.spec` (`listerExtraits` dans la liste
+  fermée) tenus. Écran · `ExtraitsBancairesPage.tsx`, Traitement > Tiers et
+  trésorerie > Extraits bancaires (registre, menu, `chrome-etroit` à 25),
+  liste par compte avec cases, bornes du/au, bouton d'édition par
+  `telechargerOuSignaler`, chaque extrait ouvre son rapprochement. Scénario
+  navigateur `e2e/tests/sage-l3-extraits.e2e.ts` PASSÉ sur vraie base ·
+  rapprochement de N clos (départ déclaré, deux lignes rapprochées), N
+  clôturé, second relevé en N+1 ancré sur le solde imprimé du premier, liste,
+  classeur à trois feuilles relu (ZIP), bornes, refus 400 et 404.
+- #45 · docs · `features.csv` (45 en yes), `build-log.md`, `test-plan.md`
+  (F45-H1 à N1), `architecture.md` (D14, place de la fonction), tables 05
+  (M5-30) et 13 (M13-10) ; paragraphe « Extraits bancaires » au § 6 de
+  CLAUDE.md.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #39 · second tour de relecture, puis relevés en attente à la fiche.
-- #45 · liste et édition chaînée des extraits (`rapprochement/`).
+- #45 · deux tours de relecture.
 - #46 · conditions bancaires par RIB, autorisations de financement, unions
   de comptes (`banques/`).
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les
   OPCVM se tranchent par la loi avant de coder.
-- Docs · `features.csv` (colonne clone des lignes 45, 46, 47),
+- Docs · `features.csv` (colonne clone des lignes 46, 47),
   `build-log.md`, `test-plan.md`, `parity.md`, tables 05, 13, 14, 06 de la
   comparaison ; paragraphe de la ligne au § 6 de CLAUDE.md.
 - Bloc du § 3 complet des deux côtés, tests navigateur, deux tours de
