@@ -103,6 +103,21 @@ journal `build-log.md`.
   reproduit le circuit comptable des effets (portefeuille, remise à
   l'encaissement ou à l'escompte, échéance, impayé), pas les fichiers
   bancaires français.
+- **D12 · Remises de chèques et de cartes par le 51, impayé au 413
+  (ligne 40).** Fiche du compte 51 des deux plans (AUDCIF Titre VII ;
+  SYCEBNL Partie 2 ch. 3) · 513 chèques reçus non remis, 514 remis non
+  crédités, 515 cartes « jusqu'à l'avis de crédit », « débité lors de la
+  réception, par le crédit des comptes de tiers concernés », « crédité pour
+  solde, par le débit des comptes de trésorerie concernés » ; « en cours
+  d'exercice, les entités ne sont pas tenues d'utiliser le compte 51 »,
+  obligatoire à la clôture · le module le tient toujours. Les cartes n'ont
+  aucun transit. Commission « en services bancaires », 6315 (fiche du 63).
+  Impayé · fiche du compte 41 des deux plans, « les chèques, effets à payer
+  et autres valeurs revenus impayés doivent être enregistrés au compte
+  413 » · un numéro, deux sens · nature au SYSCOHADA (4131 chèques, 4133
+  cartes), débiteur et nature au SYCEBNL (4131 et 4133 adhérents, 4132 et
+  4138 clients-usagers), racine déduite du compte du tiers, tout autre
+  compte refusé.
 
 ## Les fonctions, leur place et leur ligne
 

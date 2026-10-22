@@ -154,6 +154,14 @@ export const MODELES_AUDITES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // Ligne sage-l3, fonction 40 · les remises en banque · le type de remise
+  // dit quels comptes et journaux une remise mouvemente (513, 514, 515,
+  // 6315, la banque de remise) ; la valeur reçue et le bordereau portent la
+  // pièce (fiche du compte 51 · « chèques, bordereaux de remise, relevés de
+  // banque »), l'avis de crédit, l'impayé et l'annulation avec son motif.
+  'TypeRemise',
+  'ValeurRecue',
+  'RemiseEnBanque',
   // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
   // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
   'PieceJointeEcriture',

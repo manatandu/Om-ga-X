@@ -388,15 +388,19 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // 2026-10-15 · « Modes de règlement » sous « Paramètres de saisie »
     // (ligne sage-l2, fonction 1) · repos inchangé. Même jour, « Modèles
     // d'impression » au même groupe (fonction 27) · repos inchangé.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 19],
+    // 2026-10-22 · « Types de remise » au même groupe (ligne sage-l3,
+    // fonction 40) · repos inchangé.
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 20],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.
     // Puis « Paie du mois » sous « Clôture » · la passation mensuelle de la
     // paie, qu'on n'atteignait que par la Structure (audit I10). Puis
     // « Créances douteuses ou litigieuses » sous « Clôture » (ligne A7). Puis
-    // « Virement de fonds » sous « Tiers et trésorerie » (2026-10-09).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 22],
+    // « Virement de fonds » sous « Tiers et trésorerie » (2026-10-09). Puis
+    // « Remises en banque » au même groupe (ligne sage-l3, fonction 40,
+    // 2026-10-22).
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 23],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);

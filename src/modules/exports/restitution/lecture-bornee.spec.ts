@@ -126,8 +126,11 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // sage-l6, fonction 22) ; 182 avec les extraits de période numérotés,
     // bornés par leur tenantId (ligne export-periode) ; 184 avec le suivi du rappel
     // de suppression et la trace d'un dossier d'essai supprimé, deux tables de
-    // l'éditeur HORS DOSSIER (ligne suppression-essais, jamais restituées).
-    expect(modeles).toHaveLength(184);
+    // l'éditeur HORS DOSSIER (ligne suppression-essais, jamais restituées) ;
+    // 187 avec les types de remise, les valeurs reçues et les bordereaux de
+    // remise en banque, chacun borné par son tenantId (ligne sage-l3,
+    // fonction 40).
+    expect(modeles).toHaveLength(187);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

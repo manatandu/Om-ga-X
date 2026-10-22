@@ -74,6 +74,13 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       "débit du compte 416 »), seule racine admise par le serveur, et le reclassement en est souvent le premier mouvement · les " +
       'créances proposées sont celles que la balance montre débitrices, chacune déjà utilisée.',
   },
+  '/remises/comptes': {
+    regime: 'texte',
+    motif:
+      'Les comptes d’un type de remise sont ceux que la fiche du compte 51 des deux plans prescrit (513 ou 515 à la réception, 514 au ' +
+      'transit des chèques, 631 pour la commission), et l’impayé va au 413 de la fiche du compte 41 · seules racines admises par le ' +
+      'serveur, et la réception en est souvent le premier mouvement, la règle viderait la liste.',
+  },
   '/reglements/comptes-escompte-ecart': {
     regime: 'texte',
     motif:

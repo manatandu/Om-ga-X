@@ -41,6 +41,7 @@ import { AffectationModule } from './modules/affectation/affectation.module';
 import { RelancesModule } from './modules/relances/relances.module';
 import { ReglementsModule } from './modules/reglements/reglements.module';
 import { VirementsFondsModule } from './modules/virements-fonds/virements-fonds.module';
+import { RemisesModule } from './modules/remises/remises.module';
 import { RetenuesModule } from './modules/retenues/retenues.module';
 import { ExonerationsModule } from './modules/exonerations/exonerations.module';
 import { InventaireModule } from './modules/inventaire/inventaire.module';
@@ -122,6 +123,7 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     RelancesModule,
     ReglementsModule,
     VirementsFondsModule,
+    RemisesModule,
     RetenuesModule,
     ExonerationsModule,
     InventaireModule,

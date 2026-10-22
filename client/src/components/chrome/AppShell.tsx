@@ -262,6 +262,8 @@ export function AppShell() {
             { label: 'Modes de règlement', chemin: '/modes-reglement', onClick: () => navigate('/modes-reglement') },
             // Ligne sage-l2, fonction 27 · Sage, modèles d'impression du tiers (F_COMPTETMODELE).
             { label: "Modèles d'impression", chemin: '/modeles-impression', onClick: () => navigate('/modeles-impression') },
+            // Ligne sage-l3, fonction 40 · types de remise (banque de remise, comptes du 51, modèle du bordereau).
+            { label: 'Types de remise', chemin: '/remises/types', onClick: () => navigate('/remises/types') },
           ],
         },
         {
@@ -332,6 +334,8 @@ export function AppShell() {
             { label: 'Règlement des tiers', chemin: '/reglements', onClick: () => navigate('/reglements') },
             // Banque ou caisse vers une autre, par le 585 (virements-fonds/).
             { label: 'Virement de fonds', chemin: '/virements-fonds', onClick: () => navigate('/virements-fonds') },
+            // Ligne sage-l3, fonction 40 · chèques et cartes reçus, bordereau, avis de crédit (remises/).
+            { label: 'Remises en banque', chemin: '/remises', onClick: () => navigate('/remises') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
             { label: 'Rappel et relevé', chemin: '/relances', onClick: () => navigate('/relances') },
           ],

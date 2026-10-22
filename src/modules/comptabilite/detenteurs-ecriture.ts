@@ -106,6 +106,21 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'VirementFonds.ecritureDestinationId',
   'VirementFonds.ecritureNegatifOrigineId',
   'VirementFonds.ecritureNegatifDestinationId',
+  // Les remises en banque (ligne sage-l3, fonction 40) · la réception d'une
+  // valeur (D 513 ou 515 / C tiers), le bordereau (D 514 / C 513), l'avis de
+  // crédit (D 52 / C 514 ou 515) et l'impayé (D tiers / C 514) · retirée
+  // seule, la pièce laisserait une valeur dite reçue, remise, créditée ou
+  // impayée que le journal ne porte plus, et le 51 s'en trouverait faux à la
+  // clôture, où la fiche du compte 51 le rend obligatoire ; leurs négatifs
+  // de même (remises/).
+  'ValeurRecue.ecritureReceptionId',
+  'ValeurRecue.ecritureNegatifReceptionId',
+  'ValeurRecue.ecritureImpayeId',
+  'ValeurRecue.ecritureNegatifImpayeId',
+  'RemiseEnBanque.ecritureRemiseId',
+  'RemiseEnBanque.ecritureNegatifRemiseId',
+  'RemiseEnBanque.ecritureCreditId',
+  'RemiseEnBanque.ecritureNegatifCreditId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)

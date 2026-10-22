@@ -244,6 +244,12 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne sage-l3, fonction 40 · les remises en banque relisent par
+  // identifiant la pièce que la valeur ou le bordereau retient, dans la
+  // transaction de l'annulation, comme les virements de fonds.
+  { fichier: 'src/modules/remises/remises.service.ts', fonction: 'pieceAnnulable', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/remises/remises.service.ts', fonction: 'retirerOuContrePasser', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/remises/remises.service.ts', fonction: 'retirerOuContrePasser', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   // Second tour (b) · la lecture structurelle ne prend plus le statut du
   // lettrage, de l'exercice ou d'une variable hors de sa position de filtre ·
   // ces lectures, admises jusque-là par un mot, sont rangées à leur motif.

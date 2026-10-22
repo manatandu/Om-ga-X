@@ -118,6 +118,11 @@ export const MODELES_CLOISONNES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // Ligne sage-l3, fonction 40 · types de remise, valeurs reçues et
+  // bordereaux de remise en banque, chacun borné par son tenantId.
+  'TypeRemise',
+  'ValeurRecue',
+  'RemiseEnBanque',
   // Ligne sage-l6, fonction 22 · les pièces jointes aux écritures, aux
   // sections, aux biens et aux salariés, chacune bornée par son tenantId.
   'PieceJointeEcriture',

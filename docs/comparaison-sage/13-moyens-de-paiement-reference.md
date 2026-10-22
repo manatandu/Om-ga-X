@@ -104,7 +104,7 @@ vérifiée.
 | 59 | Codes journaux : assistant, journaux de trésorerie, numérotation | 249 à 255 | FIDÈLE | Voir M1-77 à M1-84. |
 | 60 | Modèles de grille | 256 à 258 | ABSENT | Voir M1-19. |
 | 61 | Modèles de règlement | 259 à 262 | PARTIEL | Voir M6-51. |
-| 62 | Types de remise | 263, 264 | ABSENT | La seule remise est l'ordre de virement imprimé (M5-20). |
+| 62 | Types de remise | 263, 264 | FIDÈLE | Depuis la ligne sage-l3 (n° 40) · Structure > Paramètres de saisie > Types de remise · nature (chèques ou cartes), banque de remise et son journal, journal des opérations diverses, comptes du 51 (réception, transit pour les chèques seuls), compte de commission, modèle de bordereau ; nature, journaux et comptes du 51 figés après création. |
 | 63 | Libellés | 266 | FIDÈLE | Libellés proposés en liste, sans imputation (point 19). |
 
 ## Menu Traitement (p. 268 à 519)

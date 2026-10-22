@@ -3403,6 +3403,41 @@ quatre sous-comptes fermaient le 58500000 aux transferts du groupe SYCEBNL
 `virements585DuGroupe`, `solde585`) · ils se soldent dans le dossier, ils ne
 lient pas le groupe.
 
+**Remises de chèques et de cartes (ligne sage-l3, n° 40, 2026-10-22,
+décision par la loi D12).** Traitement > Tiers et trésorerie > Remises en
+banque, Structure > Paramètres de saisie > Types de remise
+(`src/modules/remises/`, `remise-en-banque.ts` pour les règles pures). LA
+FICHE DU COMPTE 51 DES DEUX PLANS (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3)
+· 513 chèques reçus non remis, 514 chèques remis non crédités, 515 cartes
+« jusqu'à l'avis de crédit » ; « débité lors de la réception, par le crédit
+des comptes de tiers concernés », « crédité pour solde, par le débit des
+comptes de trésorerie concernés » · le module le tient TOUJOURS, bien que
+« en cours d'exercice, les entités ne sont pas tenues d'utiliser le compte
+51 » (obligatoire à la clôture). QUATRE PIÈCES, chacune RETENUE
+(`detenteurs-ecriture.ts`, huit colonnes) · réception D 513 ou 515 / C tiers
+(lettrée avec les lignes ouvertes choisies, partiel admis, délettrée si la
+valeur ne s'enregistre pas) ; bordereau D 514 / C 513 par chèque, numéroté
+par dossier sous verrou, CHÈQUES SEULS (les cartes n'ont aucun transit, un
+type de cartes à compte de transit est refusé) ; avis de crédit D 52 net /
+D 6315 commission (fiche du 63, « commissions sur cartes de crédit »,
+63150000 semé aux deux) / C 514 ou 515, dans l'exercice de SA DATE (un
+bordereau de décembre crédité en janvier passait la clôture sans issue) ;
+impayé D 413 / C 514, 515 ou 52 selon l'état. L'IMPAYÉ VA AU 413 DE LA FICHE
+DU 41 (« les chèques, effets à payer et autres valeurs revenus impayés
+doivent être enregistrés au compte 413 ») · UN NUMÉRO, DEUX SENS
+(`racineImpaye`) · NATURE au SYSCOHADA (4131 chèques, 4133 cartes),
+DÉBITEUR ET NATURE au SYCEBNL (4131 et 4133 adhérents, 4132 et 4138
+clients-usagers, déduit du compte du tiers), tout autre compte refusé. Le
+total du bordereau est la somme des lignes ARRONDIES, comme l'écriture.
+Modèle de bordereau par type (jetons, `{lignes}` exigé une fois, tout jeton
+inconnu refusé), impression comptée. Annulations (AUDCIF art. 20, al. 2) ·
+brouillard supprimé (`deleteMany` filtré sur le statut), validée en négatif,
+à rebours (l'avis avant le bordereau) ; type figé sur nature, journaux et
+comptes du 51. Les champs `unknown` d'un DTO jugés par une règle portent
+`@Allow()`, sans quoi le pipe global refuse la pièce entière (vu sur vraie
+base). Relevés · non masqué sous le Système minimal ; l'impayé d'une carte
+n'est admis qu'après sa remise.
+
 **Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
 Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
 ne doit être que débiteur ou nul […] un solde créditeur du compte caisse

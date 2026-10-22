@@ -60,12 +60,43 @@ financements, placements.
   specs des règlements, des RIB et des devises (507 tests), test navigateur
   sur vraie base.
 
+- #40 · serveur · module `src/modules/remises/` · `remise-en-banque.ts`
+  (règles pures · comptes du 51 par nature, 513 chèques, 514 transit,
+  515 cartes jusqu'à l'avis de crédit, commission 6315, impayé au 413 de la
+  fiche du 41 par référentiel, modèle de bordereau à jetons, lignes des
+  quatre écritures, refus nommés), `remises.service.ts` (types, réception
+  lettrée avec les lignes ouvertes du tiers, bordereau numéroté sous verrou,
+  impression comptée, avis de crédit D 52 / D 6315 / C 514 ou 515 dans
+  l'exercice de SA date, impayé D 413 / C 514, 515 ou 52, annulations au
+  brouillard supprimées et validées en négatif, écritures retenues),
+  contrôleur, DTO, module ; schéma `TypeRemise`, `ValeurRecue`,
+  `RemiseEnBanque` (migration `20270190000200_remises_en_banque`, dérive
+  nulle contre `l3_ombre`) ; listes de structure (modèles audités et
+  cloisonnés, huit colonnes qui retiennent, libellés d'audit, bornes de la
+  restitution, lectures hors situation, fonctions métier, listes de
+  comptes). Specs `remise-en-banque.spec.ts`, `remises.service.spec.ts`
+  (le total du bordereau est la somme des lignes ARRONDIES, comme
+  l'écriture · 20,01 contre 20,02 trouvé par le spec).
+- #40 · écran `client/src/pages/RemisesPage.tsx` (Traitement > Tiers et
+  trésorerie > Remises en banque · valeurs reçues, bordereaux, et
+  Structure > Paramètres de saisie > Types de remise), `AppShell.tsx`,
+  `registre-fenetres.tsx`, décomptes de `chrome-etroit.spec.ts` (20 et 23).
+- #40 · test navigateur `e2e/tests/sage-l3-remises.e2e.ts` PASSÉ sur vraie
+  base le 2026-10-22 · type CHQ, refus d'un transit sur les cartes, deux
+  chèques reçus (l'un lettré avec sa facture), 513 à 1 660 000, bordereau
+  n° 1 imprimé, avis avec commission de 5 000 (514 soldé, 6315 à 5 000, 52
+  à 1 655 000), annulation du bordereau refusée après l'avis, chèque de
+  décembre remis en N et crédité en JANVIER de N+1 à travers la clôture
+  (514 reporté 300 000 puis soldé), impayé au 41310000 et son annulation.
+  Trouvé sur vraie base · les champs `unknown` des DTO tombaient sous le
+  pipe global (« property montant should not exist ») · `@Allow()`.
+
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #40 · module `remises/` (bordereau de remise de chèques ou de cartes,
-  types de remise, modèle de bordereau imprimé, écriture par le 51x).
+- #40 · deux tours de relecture, docs (`features.csv` 40, tables 05 et 13,
+  `build-log.md`, `test-plan.md`, `architecture.md` D12), CLAUDE.md § 6.
 - #39 · module `effets/` (portefeuille, remise à l'encaissement ou à
   l'escompte, échéance, impayé, bon à payer) · lire la fiche du 67 (675) et
   le décret n° 011/42, art. 57 al. 2, avant de coder.
@@ -91,6 +122,24 @@ financements, placements.
   ou dans une autre devise que celle du RIB est refusée avant la première
   pièce, en nommant la ligne et l'issue (régler dans la devise du RIB, ou
   choisir un journal dont le RIB est tenu dans la monnaie du règlement).
+- **D12 (architecture.md) · remises de chèques et de cartes par le 51,
+  impayé au 413.** Fiche du compte 51 des deux plans (AUDCIF Titre VII ;
+  SYCEBNL Partie 2 ch. 3) · 513 « chèques à encaisser » reçus non remis,
+  514 « chèques à l'encaissement » remis non crédités, 515 cartes
+  « jusqu'à l'avis de crédit », « débité lors de la réception, par le crédit
+  des comptes de tiers concernés », « crédité pour solde, par le débit des
+  comptes de trésorerie concernés » ; « en cours d'exercice, les entités ne
+  sont pas tenues d'utiliser le compte 51 », obligatoire à la clôture · le
+  module le tient toujours, jamais un repli. Les cartes n'ont aucun transit
+  (515 jusqu'à l'avis), un type de carte à compte de transit est refusé.
+  Commission « en services bancaires » · fiche du 63, 6315 « commissions sur
+  cartes de crédit », 63150000 semé aux deux. Impayé · fiche du 41 des deux
+  plans, « les chèques, effets à payer et autres valeurs revenus impayés
+  doivent être enregistrés au compte 413 » · un numéro, deux sens · au
+  SYSCOHADA par NATURE (4131 chèques, 4133 cartes), au SYCEBNL par DÉBITEUR
+  et nature (4131 adhérents chèques, 4132 clients-usagers chèques, 4133
+  adhérents autres valeurs, 4138 clients-usagers autres valeurs), racine
+  déduite du compte du tiers (`racineImpaye`), tout autre compte refusé.
 - **D11 (architecture.md)** · LCR, BOR, CFONB, ETEBAC, SEPA non reproduits.
 
 ## Vérification
@@ -99,5 +148,5 @@ financements, placements.
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 # test navigateur sur vraie base · script du bac à sable l3-e2e.sh (Postgres 55803, serveur 8303, client 4303)
-cd e2e && npx tsc --noEmit -p . && npx playwright test tests/sage-l3-virement-devise.e2e.ts
+cd e2e && npx tsc --noEmit -p . && npx playwright test tests/sage-l3-virement-devise.e2e.ts tests/sage-l3-remises.e2e.ts
 ```

@@ -79,6 +79,13 @@ NOUVELLES (`chrome-etroit.spec.ts` ne tient que les menus).
 | F37-N1 | | refus · RIB sans devise | ligne en USD sur un RIB sans devise | refus avant toute pièce, issue nommée (devise du RIB) | e2e `sage-l3-virement-devise`, unit `ribs-tiers.spec` | passé |
 | F37-N2 | | refus · francs sur RIB en devise | facture en francs réglée depuis un RIB en USD | refus nommé, règle d'avant la ligne | e2e `sage-l3-virement-devise` | passé |
 | F37-N3 | | refus · salaires | ordre de paiement des salaires depuis un RIB en USD | refus nommé (`motifRefusDeviseDonneur`) | unit `ribs-tiers.spec`, `ordres-virement.spec` | passé |
+| F40-H1 | Remises de chèques | nominal | type CHQ, deux chèques reçus (l'un lettré), bordereau imprimé, avis avec commission | 513 puis 514 soldés, 6315 à la commission, 52 au net, bordereau n° 1 | e2e `sage-l3-remises` | passé |
+| F40-H2 | | clôture traversée | chèque de décembre remis en N, avis de crédit en janvier de N+1 | 514 reporté puis soldé dans N+1, aucun refus | e2e `sage-l3-remises` | passé |
+| F40-H3 | | impayé | valeur créditée revenue impayée, puis annulation | 4131 débité puis rendu, statut rendu | e2e `sage-l3-remises`, unit `remises.service.spec` | passé |
+| F40-N1 | | refus · cartes avec transit | type de cartes à compte de transit | refus nommé (515 jusqu'à l'avis) | e2e `sage-l3-remises`, unit `remise-en-banque.spec` | passé |
+| F40-N2 | | refus · annulation après avis | annuler un bordereau crédité | refus nommé (annuler d'abord l'avis) | e2e `sage-l3-remises` | passé |
+| F40-N3 | | refus · impayé hors 413 | compte d'impayé hors de la racine prescrite | refus nommé par référentiel | unit `remise-en-banque.spec` | passé |
+| F40-E1 | | bord · arrondis | deux valeurs à demi-centime sur un bordereau | total = somme des lignes arrondies = écriture | unit `remises.service.spec` | passé |
 | TOUS-N1 | toutes routes d'écriture | refus · rôle | POST, PUT, PATCH, DELETE sans `@Roles` | aucune | structure `ecritures-reservees.spec`, `roles-cantonnes.spec` | passé |
 | TOUS-N2 | toutes tables nouvelles | refus · dossier | lecture sans borne de dossier | refusée par la garde | structure `lecture-bornee.spec`, `index-du-dossier.spec` | passé |
 | TOUS-E1 | toutes fenêtres | bord · rechargement | recharger une fenêtre qui lit | aucune exception (WebKit) | e2e, `rechargerAuRepos` | passé |

@@ -911,6 +911,9 @@ model Tenant {
   comptesVirementFonds                 CompteVirementFonds[]
   virementsFonds                       VirementFonds[]
   piecesVirementFonds                  PieceVirementFonds[]
+  typesRemise                          TypeRemise[]
+  valeursRecues                        ValeurRecue[]
+  remisesEnBanque                      RemiseEnBanque[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
@@ -1452,7 +1455,11 @@ model Compte {
   lignesLotVirement LigneLotVirement[]
 
   /// Compte de passage (585) d'un sens de virement de fonds · virement-fonds/.
-  virementFonds CompteVirementFonds?
+  virementFonds         CompteVirementFonds?
+  typesRemiseReception  TypeRemise[]         @relation("TypeRemiseCompteReception")
+  typesRemiseTransit    TypeRemise[]         @relation("TypeRemiseCompteTransit")
+  typesRemiseCommission TypeRemise[]         @relation("TypeRemiseCompteCommission")
+  valeursRecues         ValeurRecue[]
 
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
@@ -1515,6 +1522,9 @@ model Journal {
   ribsBanque                RibBanque[]
   virementsFondsOrigine     VirementFonds[]     @relation("VirementFondsJournalOrigine")
   virementsFondsDestination VirementFonds[]     @relation("VirementFondsJournalDestination")
+  typesRemiseBanque         TypeRemise[]        @relation("TypeRemiseJournalBanque")
+  typesRemiseOperations     TypeRemise[]        @relation("TypeRemiseJournalOperations")
+  remisesEnBanque           RemiseEnBanque[]
   impressions               ImpressionJournal[]
   // Ligne sage-l5 · le journal de trésorerie d'où les salaires sont payés.
   paiementsSalaires         PaiementSalaires[]
@@ -1839,6 +1849,8 @@ model Exercice {
   simulationsReference                 SimulationBudgetaire[]               @relation("SimulationReference")
   simulationsCible                     SimulationBudgetaire[]               @relation("SimulationCible")
   virementsFonds                       VirementFonds[]
+  valeursRecues                        ValeurRecue[]
+  remisesEnBanque                      RemiseEnBanque[]
   impressionsJournaux                  ImpressionJournal[]
   // Ligne sage-l5 · les paiements de salaires passés dans l'exercice.
   paiementsSalaires                    PaiementSalaires[]
@@ -2103,6 +2115,14 @@ model Ecriture {
   virementFondsDestination        VirementFonds?                      @relation("VirementFondsEcritureDestination")
   virementFondsNegatifOrigine     VirementFonds?                      @relation("VirementFondsNegatifOrigine")
   virementFondsNegatifDestination VirementFonds?                      @relation("VirementFondsNegatifDestination")
+  valeurRecueReception            ValeurRecue?                        @relation("ValeurRecueEcritureReception")
+  valeurRecueNegatifReception     ValeurRecue?                        @relation("ValeurRecueNegatifReception")
+  valeurRecueImpaye               ValeurRecue?                        @relation("ValeurRecueEcritureImpaye")
+  valeurRecueNegatifImpaye        ValeurRecue?                        @relation("ValeurRecueNegatifImpaye")
+  remiseEcritureRemise            RemiseEnBanque?                     @relation("RemiseEcritureRemise")
+  remiseNegatifRemise             RemiseEnBanque?                     @relation("RemiseNegatifRemise")
+  remiseEcritureCredit            RemiseEnBanque?                     @relation("RemiseEcritureCredit")
+  remiseNegatifCredit             RemiseEnBanque?                     @relation("RemiseNegatifCredit")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
   paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
@@ -9128,10 +9148,10 @@ model RibTiers {
   /// coordonnées en dernier, et quand · null sur un RIB d'avant la règle,
   /// dont l'auteur n'est pas connu. Le visa tombe à chaque changement des
   /// coordonnées, jamais sur le commentaire ni sur la marque de principal.
-  saisiPar     String?
-  saisiLe      DateTime?
-  visePar      String?
-  viseLe       DateTime?
+  saisiPar String?
+  saisiLe  DateTime?
+  visePar  String?
+  viseLe   DateTime?
 
   @@index([tenantId, tiersId])
   @@map("ribs_tiers")
@@ -10829,10 +10849,10 @@ model RibSalarie {
   /// coordonnées en dernier, et quand · null sur un RIB d'avant la règle,
   /// dont l'auteur n'est pas connu. Le visa tombe à chaque changement des
   /// coordonnées, jamais sur le commentaire ni sur la marque de principal.
-  saisiPar     String?
-  saisiLe      DateTime?
-  visePar      String?
-  viseLe       DateTime?
+  saisiPar String?
+  saisiLe  DateTime?
+  visePar  String?
+  viseLe   DateTime?
 
   @@index([tenantId, salarieId])
   @@map("ribs_salaries")
@@ -11508,4 +11528,166 @@ model ExtraitPeriode {
 
   @@unique([tenantId, numero])
   @@map("extraits_periode")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l3, fonction n° 40 · REMISES EN BANQUE de chèques et de cartes
+// (Sage, « remises de chèques », « remises de cartes bancaires », « types de
+// remise », « modèle de bordereau »). Fiche du compte 51 des deux plans
+// (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · 513 chèques reçus non
+// transmis, 514 chèques transmis non crédités, 515 cartes jusqu'à l'avis de
+// crédit, commissions sur cartes en services bancaires (6315).
+// ---------------------------------------------------------------------------
+
+/// La nature d'une remise · chèques ou cartes bancaires. Les effets de
+/// commerce ont leur module (fonction 39).
+enum NatureRemise {
+  CHEQUES
+  CARTES
+}
+
+/// Le sort d'une valeur reçue · reçue (513 ou 515), remise en banque (514 pour
+/// un chèque, le 515 d'une carte ne bouge pas), créditée (trésorerie), ou
+/// revenue impayée (chèque seul).
+enum StatutValeurRecue {
+  RECUE
+  REMISE
+  CREDITEE
+  IMPAYEE
+  ANNULEE
+}
+
+enum StatutRemiseEnBanque {
+  REMISE
+  CREDITEE
+  ANNULEE
+}
+
+/// TYPE DE REMISE (Sage, Structure) · nature, banque de remise (journal de
+/// banque), journal des opérations (réception, remise), comptes de la fiche
+/// du 51 et modèle de bordereau. Paramétrage du dossier, par l'administrateur.
+model TypeRemise {
+  id                  String       @id @default(uuid())
+  tenantId            String
+  tenant              Tenant       @relation(fields: [tenantId], references: [id])
+  code                String       @db.VarChar(10)
+  intitule            String       @db.VarChar(60)
+  nature              NatureRemise
+  /// Journal de la banque de remise · c'est son compte 52 qui reçoit l'avis de crédit.
+  journalBanqueId     String
+  journalBanque       Journal      @relation("TypeRemiseJournalBanque", fields: [journalBanqueId], references: [id], onDelete: Restrict)
+  /// Journal d'opérations diverses où passent la réception et la remise.
+  journalOperationsId String
+  journalOperations   Journal      @relation("TypeRemiseJournalOperations", fields: [journalOperationsId], references: [id], onDelete: Restrict)
+  /// 513 (chèques) ou 515 (cartes) · débité à la réception par le crédit du tiers.
+  compteReceptionId   String
+  compteReception     Compte       @relation("TypeRemiseCompteReception", fields: [compteReceptionId], references: [id], onDelete: Restrict)
+  /// 514 · chèques transmis à la banque ; nul pour les cartes.
+  compteTransitId     String?
+  compteTransit       Compte?      @relation("TypeRemiseCompteTransit", fields: [compteTransitId], references: [id], onDelete: Restrict)
+  /// 6315 · commissions prélevées sur les cartes, « services bancaires » (fiche du 51) ; nul pour les chèques.
+  compteCommissionId  String?
+  compteCommission    Compte?      @relation("TypeRemiseCompteCommission", fields: [compteCommissionId], references: [id], onDelete: Restrict)
+  /// Modèle du bordereau imprimé · texte à jetons ; nul, la présentation par défaut.
+  modeleBordereau     String?      @db.VarChar(4000)
+  estActif            Boolean      @default(true)
+  createdBy           String
+  createdAt           DateTime     @default(now())
+
+  valeursRecues ValeurRecue[]
+  remises       RemiseEnBanque[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, nature])
+  @@map("types_remise")
+}
+
+/// UNE VALEUR REÇUE · le chèque ou le paiement par carte d'un client, reçu
+/// contre ses factures · D 513 ou 515 / C compte du client, lettré avec elles.
+model ValeurRecue {
+  id                         String            @id @default(uuid())
+  tenantId                   String
+  tenant                     Tenant            @relation(fields: [tenantId], references: [id])
+  exerciceId                 String
+  exercice                   Exercice          @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  typeRemiseId               String
+  typeRemise                 TypeRemise        @relation(fields: [typeRemiseId], references: [id], onDelete: Restrict)
+  compteTiersId              String
+  compteTiers                Compte            @relation(fields: [compteTiersId], references: [id], onDelete: Restrict)
+  date                       DateTime          @db.Date
+  montant                    Decimal           @db.Decimal(18, 2)
+  /// Numéro du chèque ou référence de la transaction par carte.
+  reference                  String            @db.VarChar(60)
+  /// Banque tirée (chèque) ou réseau (carte), tel qu'il se lit sur la valeur.
+  banqueTiree                String?           @db.VarChar(120)
+  titulaire                  String?           @db.VarChar(120)
+  statut                     StatutValeurRecue @default(RECUE)
+  ecritureReceptionId        String?           @unique
+  ecritureReception          Ecriture?         @relation("ValeurRecueEcritureReception", fields: [ecritureReceptionId], references: [id], onDelete: Restrict)
+  remiseId                   String?
+  remise                     RemiseEnBanque?   @relation(fields: [remiseId], references: [id], onDelete: Restrict)
+  /// Chèque revenu impayé · D compte du client / C 514, la créance rouverte.
+  dateImpaye                 DateTime?         @db.Date
+  ecritureImpayeId           String?           @unique
+  ecritureImpaye             Ecriture?         @relation("ValeurRecueEcritureImpaye", fields: [ecritureImpayeId], references: [id], onDelete: Restrict)
+  ecritureNegatifImpayeId    String?           @unique
+  ecritureNegatifImpaye      Ecriture?         @relation("ValeurRecueNegatifImpaye", fields: [ecritureNegatifImpayeId], references: [id], onDelete: Restrict)
+  annuleLe                   DateTime?
+  annulePar                  String?
+  motifAnnulation            String?           @db.VarChar(500)
+  ecritureNegatifReceptionId String?           @unique
+  ecritureNegatifReception   Ecriture?         @relation("ValeurRecueNegatifReception", fields: [ecritureNegatifReceptionId], references: [id], onDelete: Restrict)
+  createdBy                  String
+  createdAt                  DateTime          @default(now())
+
+  @@index([tenantId, exerciceId, statut])
+  @@index([tenantId, remiseId])
+  @@map("valeurs_recues")
+}
+
+/// LE BORDEREAU DE REMISE · numéroté et daté par dossier (AUDCIF art. 22, 7°),
+/// d'un type, sur une banque ; chèques · D 514 / C 513 ; cartes · aucune
+/// écriture, la télécollecte vaut remise. L'avis de crédit solde le 514 ou le
+/// 515 par le 52 du journal de banque, commissions au 6315.
+model RemiseEnBanque {
+  id                      String               @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant               @relation(fields: [tenantId], references: [id])
+  exerciceId              String
+  exercice                Exercice             @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  typeRemiseId            String
+  typeRemise              TypeRemise           @relation(fields: [typeRemiseId], references: [id], onDelete: Restrict)
+  journalBanqueId         String
+  journalBanque           Journal              @relation(fields: [journalBanqueId], references: [id], onDelete: Restrict)
+  numero                  Int
+  date                    DateTime             @db.Date
+  total                   Decimal              @db.Decimal(18, 2)
+  nombre                  Int
+  statut                  StatutRemiseEnBanque @default(REMISE)
+  ecritureRemiseId        String?              @unique
+  ecritureRemise          Ecriture?            @relation("RemiseEcritureRemise", fields: [ecritureRemiseId], references: [id], onDelete: Restrict)
+  ecritureNegatifRemiseId String?              @unique
+  ecritureNegatifRemise   Ecriture?            @relation("RemiseNegatifRemise", fields: [ecritureNegatifRemiseId], references: [id], onDelete: Restrict)
+  dateCredit              DateTime?            @db.Date
+  /// Commission prélevée par la banque à l'avis de crédit (cartes).
+  commission              Decimal?             @db.Decimal(18, 2)
+  referenceAvis           String?              @db.VarChar(100)
+  ecritureCreditId        String?              @unique
+  ecritureCredit          Ecriture?            @relation("RemiseEcritureCredit", fields: [ecritureCreditId], references: [id], onDelete: Restrict)
+  ecritureNegatifCreditId String?              @unique
+  ecritureNegatifCredit   Ecriture?            @relation("RemiseNegatifCredit", fields: [ecritureNegatifCreditId], references: [id], onDelete: Restrict)
+  premiereImpressionLe    DateTime?
+  premiereImpressionPar   String?
+  nombreImpressions       Int                  @default(0)
+  annuleLe                DateTime?
+  annulePar               String?
+  motifAnnulation         String?              @db.VarChar(500)
+  createdBy               String
+  createdAt               DateTime             @default(now())
+
+  valeurs ValeurRecue[]
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, exerciceId, date])
+  @@map("remises_en_banque")
 }
