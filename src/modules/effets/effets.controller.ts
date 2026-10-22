@@ -34,8 +34,8 @@ export class EffetsController {
 
   /** Les comptes d'un rôle sous les racines prescrites · liste `texte` (listes-de-comptes.ts). */
   @Get('comptes')
-  comptes(@CurrentUser() user: AuthenticatedUser, @Query('role') role: string | undefined, @Query('sens') sens: string | undefined) {
-    return this.effets.comptes(user.tenantId, role, sens);
+  comptes(@CurrentUser() user: AuthenticatedUser, @Query('role') role: string | undefined, @Query('sens') sens: string | undefined, @Query('numero') numero?: string) {
+    return this.effets.comptes(user.tenantId, role, sens, numero);
   }
 
   @Get()

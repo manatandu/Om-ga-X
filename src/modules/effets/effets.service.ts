@@ -133,7 +133,7 @@ export class EffetsService {
   }
 
   /** Les comptes d'un rôle sous les racines que les fiches prescrivent · un numéro, deux plans. */
-  async comptes(tenantId: string, role: string | undefined, sens: string | undefined) {
+  async comptes(tenantId: string, role: string | undefined, sens: string | undefined, numero?: string) {
     if (sens !== SensEffet.A_RECEVOIR && sens !== SensEffet.A_PAYER) throw new BadRequestException('Le sens est A_RECEVOIR ou A_PAYER.');
     if (role !== 'TIERS' && !ROLES_COMPTE_EFFET.includes(role as RoleCompteEffet)) {
       throw new BadRequestException(`Le rôle du compte est l'un de TIERS, ${ROLES_COMPTE_EFFET.join(', ')}.`);
@@ -148,10 +148,18 @@ export class EffetsService {
     // Un COLLECTIF qui porte des comptes individuels n'est pas offert au rôle
     // TIERS (premier tour, M2) · la saisie le refuse, et l'acceptation solde le
     // compte du tiers qui a facturé, jamais son collectif.
+    // LE DÉBUT DU NUMÉRO RESTREINT LA LISTE (second tour, BLOQUANT 1) · servie
+    // par tranche de 200, elle laissait le 201e client sans aucune issue pour
+    // accepter son effet ; le cabinet tape le début du numéro, comme pour la
+    // liste des clients d'une créance douteuse (M4 d'A7).
+    if (numero !== undefined && numero !== '' && !/^\d{1,13}$/.test(numero)) {
+      throw new BadRequestException('Le début de numéro se tape en chiffres (treize au plus).');
+    }
     const sousLesRacines = {
       typeCompte: TypeCompteDetailTotal.DETAIL,
       estActif: true,
       OR: r.racines.map((racine) => ({ numero: { startsWith: racine } })),
+      ...(numero ? { numero: { startsWith: numero } } : {}),
       ...(role === 'TIERS' ? { individuels: { none: { tenantId } } } : {}),
     };
     const [comptes, total] = await Promise.all([
@@ -268,6 +276,7 @@ export class EffetsService {
         const l = await this.lettrage.lettrerManuel(tenantId, tiers.id, [...ids, ligneTiers.id], userId, { autoriserPartiel: true });
         lettre = l.lettre;
       } catch (e) {
+        const motifLettrage = e instanceof BadRequestException || e instanceof ConflictException ? ((e.getResponse() as { message?: string }).message ?? e.message) : null;
         try {
           await this.ecritures.retirerCompensation(tenantId, r.ecriture.id, async (tx) => {
             await tx.acteEffet.deleteMany({ where: { effetId: r.suite.id, tenantId } });
@@ -278,11 +287,16 @@ export class EffetsService {
             `Acceptation ${r.ecriture.id} du dossier ${tenantId} restée au brouillard · son retrait après l'échec du lettrage a échoué`,
             nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
           );
+          // LE NETTOYAGE MANQUÉ SE DIT (second tour, MAJEUR) · « n'a pas été
+          // accepté » quand l'effet, son acte et sa pièce D 412 / C 411 sont en
+          // base ferait réaccepter la même traite, deux pièces pour une.
+          throw new ConflictException(
+            `L'effet ${reference} est enregistré SANS lettrage (pièce n° ${r.ecriture.numeroPiece ?? '·'} au brouillard) · le lettrage a été refusé` +
+              `${motifLettrage ? ` (${motifLettrage})` : ''} et son retrait a échoué. Relisez la liste · lettrez-le avec sa facture, ou annulez-le.`,
+          );
         }
         // Le refus dit que l'effet n'est pas né · la pièce a été retirée, le numéro de pièce consommé.
-        throw e instanceof BadRequestException || e instanceof ConflictException
-          ? new BadRequestException(`L'effet n'a pas été accepté · ${(e.getResponse() as { message?: string }).message ?? e.message}`)
-          : e;
+        throw motifLettrage !== null ? new BadRequestException(`L'effet n'a pas été accepté · ${motifLettrage}`) : e;
       }
     }
     const effet = await this.effet(tenantId, r.suite.id);
@@ -297,9 +311,19 @@ export class EffetsService {
   private async verifierLignesReglees(tenantId: string, tiers: { id: string; numero: string }, ids: string[], montant: number, sens: SensEffet, dateCreation: string) {
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: { id: { in: ids }, compteId: tiers.id, ecriture: { tenantId } },
-      select: { id: true, debit: true, credit: true, lettrageId: true, rapprochementId: true, ecriture: { select: { statut: true, estANouveauProvisoire: true, numeroPiece: true, date: true } } },
+      select: { id: true, debit: true, credit: true, lettrageId: true, rapprochementId: true, devise: { select: { code: true } }, ecriture: { select: { statut: true, estANouveauProvisoire: true, numeroPiece: true, date: true } } },
     });
     if (lignes.length !== ids.length) throw new BadRequestException(`${ids.length - lignes.length} ligne(s) choisie(s) ne sont pas sur le compte ${tiers.numero} de ce dossier · rechargez la liste.`);
+    // UNE FACTURE EN DEVISE SE RÈGLE DANS SA DEVISE (ligne A6, AUDCIF art. 55 ;
+    // second tour, MAJEUR 2) · un effet en francs lettré dessus ferait lire le
+    // réalisé de change sur un règlement en francs. Le module ne sert pas
+    // l'effet en devise · la facture se règle par le Règlement des tiers.
+    const enDevise = lignes.find((l) => l.devise !== null);
+    if (enDevise) {
+      throw new BadRequestException(
+        `La ligne de la pièce n° ${enDevise.ecriture.numeroPiece ?? '·'} est en devise (${enDevise.devise?.code ?? '·'}) · un effet en francs ne la règle pas. Réglez-la dans sa devise par le Règlement des tiers, ou acceptez l'effet sans la cocher.`,
+      );
+    }
     const tenue = lignes.find((l) => l.lettrageId || l.rapprochementId || l.ecriture.estANouveauProvisoire || l.ecriture.statut === StatutEcriture.SITUATION);
     if (tenue) {
       const piece = `La ligne de la pièce n° ${tenue.ecriture.numeroPiece ?? '·'}`;
@@ -504,8 +528,10 @@ export class EffetsService {
     const statut = statutApresActes(e.sens, [...this.naturesVivantes(e), NatureActeEffet.BON_A_PAYER]);
     const acte = await transactionJournalisee(this.prisma, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, e);
-      const prise = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
-      if (prise.count !== 1) throw new ConflictException(`Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`);
+      await this.prendre(
+        () => tx.effetCommerce.update({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut }, select: { id: true } }),
+        `Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`,
+      );
       return tx.acteEffet.create({
         data: { tenantId, effetId: e.id, nature: NatureActeEffet.BON_A_PAYER, date: aMinuit(date), montant: e.montant, detail: reference ? { referencePiece: reference } : undefined, createdBy: userId },
         select: { id: true },
@@ -553,8 +579,10 @@ export class EffetsService {
       { exerciceId: exercice.id, journalId: a.journalId, date: a.date, libelle: a.libelle, reference: a.reference.slice(0, 190), lignes: a.lignes },
       async (tx, ecriture) => {
         await this.verrouillerEtRelire(tx, tenantId, e);
-        const prise = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
-        if (prise.count !== 1) throw new ConflictException(`Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`);
+        await this.prendre(
+          () => tx.effetCommerce.update({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut }, select: { id: true } }),
+          `Cet effet n'est plus « ${e.statut} » · relisez-le avant d'y porter un acte.`,
+        );
         return tx.acteEffet.create({
           data: { tenantId, effetId: e.id, nature: a.nature, date: aMinuit(a.date), compteId: a.compteId, montant: e.montant, detail: a.detail, ecritureId: ecriture.id, createdBy: userId },
           select: { id: true },
@@ -603,13 +631,22 @@ export class EffetsService {
     const ecritureId = acte.ecriture?.id ?? null;
     return transactionJournalisee(this.prisma, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, e);
-      const prise = await tx.acteEffet.updateMany({ where: { id: acte.id, tenantId, effetId: e.id, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif } });
-      if (prise.count !== 1) throw new ConflictException("Cet acte n'est plus annulable · relisez l'effet.");
+      // MARQUÉ PAR UNE MISE À JOUR UNITAIRE (second tour, MAJEUR 2) · l'extension
+      // d'audit n'écrit ni pré-image ni données pour un `updateMany` ; l'acte
+      // et l'effet sont audités, et le motif de l'annulation doit entrer dans
+      // la chaîne (AUDCIF art. 22, 5° et 6°). Le filtre sur l'état tient la
+      // concurrence, relue sous le verrou ; absent, P2025 devient un 409 nommé.
+      await this.prendre(
+        () => tx.acteEffet.update({ where: { id: acte.id, tenantId, effetId: e.id, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif }, select: { id: true } }),
+        "Cet acte n'est plus annulable · relisez l'effet.",
+      );
       const negatif = ecritureId ? await this.retirerOuContrePasser(tx, tenantId, userId, acte.id, ecritureId, `de l'acte « ${LIBELLES_ACTE[acte.nature]} »`, `Annulation · ${LIBELLES_ACTE[acte.nature]} de l'effet ${e.reference}`, motif) : null;
       // Validée, la pièce reste au journal avec son négatif, tous deux tenus (détenteurs) ; retirée, le lien part avec elle.
       await tx.acteEffet.update({ where: { id: acte.id, tenantId }, data: { ecritureId: negatif ? ecritureId : null, ecritureNegatifId: negatif } });
-      const effet = await tx.effetCommerce.updateMany({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut } });
-      if (effet.count !== 1) throw new ConflictException("Cet effet a changé d'état pendant l'annulation · rien n'est annulé, relisez-le.");
+      await this.prendre(
+        () => tx.effetCommerce.update({ where: { id: e.id, tenantId, statut: e.statut }, data: { statut }, select: { id: true } }),
+        "Cet effet a changé d'état pendant l'annulation · rien n'est annulé, relisez-le.",
+      );
       return { effetId: e.id, acteId: acte.id, statut, traitement: negatif ? 'INSCRITE_EN_NEGATIF' : ecritureId ? 'SUPPRIMEE' : 'SANS_PIECE', ecritureNegatifId: negatif };
     });
   }
@@ -688,6 +725,16 @@ export class EffetsService {
    * transaction (le second geste attend le premier), puis les actes vivants
    * sont relus et confrontés à la lecture qui a jugé le geste · changés, 409.
    */
+  /** Une mise à jour unitaire dont la ligne a changé d'état (P2025) rend un 409 nommé, jamais un 500. */
+  private async prendre<T>(geste: () => Promise<T>, conflit: string): Promise<T> {
+    try {
+      return await geste();
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new ConflictException(conflit);
+      throw e;
+    }
+  }
+
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, e: EffetLu) {
     await tx.$queryRaw`SELECT id FROM "effets_de_commerce" WHERE id = ${e.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
     const vivants = await tx.acteEffet.findMany({ where: { tenantId, effetId: e.id, annuleLe: null }, select: { id: true } });

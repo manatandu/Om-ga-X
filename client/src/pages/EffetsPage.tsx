@@ -130,7 +130,10 @@ interface ComptesDuRole {
  * tour de relecture · lues sous d'autres noms, le montant s'affichait « · »). */
 interface GroupeEcheance {
   compteId: string;
-  lignes: Array<{ id: string; libelle: string; montant: number; echeance: string; reference?: string | null }>;
+  lignes: Array<{ id: string; libelle: string; montant: number; echeance: string; reference?: string | null; deviseCode?: string | null; montantDevise?: number | null }>;
+  /** Lignes d'à-nouveau PROVISOIRE écartées · la facture attend la clôture de l'exercice précédent (second tour). */
+  aNouveauProvisoireEcartees?: number;
+  creanceReclassee?: { compte416: string; date: string } | null;
 }
 interface ReponseAnnulation {
   statut: Statut;
@@ -199,7 +202,8 @@ export function EffetsPage({ sensInitial }: { sensInitial?: Sens } = {}) {
   const refus = useCallback(
     (err: unknown, defaut: string) => {
       setErreur(messageDuRefus(err, defaut));
-      if (!(err instanceof ApiError && err.status < 500)) void charger();
+      // Réponse perdue ou conflit (409 · l'effet a changé) · la liste se relit.
+      if (!(err instanceof ApiError && err.status < 500 && err.status !== 409)) void charger();
     },
     [charger],
   );
@@ -284,6 +288,9 @@ function Onglet(p: {
   const [journalId, setJournalId] = useState('');
   const [tiers, setTiers] = useState<ComptesDuRole | null>(null);
   const [tiersId, setTiersId] = useState('');
+  // LE DÉBUT DU NUMÉRO RESTREINT LA LISTE DES TIERS (second tour, BLOQUANT 1) ·
+  // servie par tranche de 200, elle laissait le 201e client sans issue.
+  const [numeroTiers, setNumeroTiers] = useState('');
   const [portefeuille, setPortefeuille] = useState<ComptesDuRole | null>(null);
   const [compteEffetId, setCompteEffetId] = useState('');
   const [creation, setCreation] = useState('');
@@ -308,10 +315,14 @@ function Onglet(p: {
   const { peutEcrire, sens } = p;
   const onRefus = useRef(p.onRefus);
   onRefus.current = p.onRefus;
+  const numeroTape = numeroTiers.replace(/\D/g, '').slice(0, 13);
   useEffect(() => {
     if (!peutEcrire) return;
     let vivant = true;
-    Promise.all([api.get<ComptesDuRole>(`/effets/comptes?role=TIERS&sens=${sens}`), api.get<ComptesDuRole>(`/effets/comptes?role=PORTEFEUILLE&sens=${sens}`)])
+    Promise.all([
+      api.get<ComptesDuRole>(`/effets/comptes?role=TIERS&sens=${sens}${numeroTape ? `&numero=${numeroTape}` : ''}`),
+      api.get<ComptesDuRole>(`/effets/comptes?role=PORTEFEUILLE&sens=${sens}`),
+    ])
       .then(([t, pf]) => {
         if (!vivant) return;
         setTiers(t);
@@ -322,7 +333,11 @@ function Onglet(p: {
     return () => {
       vivant = false;
     };
-  }, [peutEcrire, sens]);
+  }, [peutEcrire, sens, numeroTape]);
+  // Un tiers qui sort de la liste restreinte n'est plus choisi.
+  useEffect(() => {
+    if (tiersId && tiers && !tiers.comptes.some((c) => c.id === tiersId)) setTiersId('');
+  }, [tiers, tiersId]);
   useEffect(() => {
     setLignesChoisies([]);
     setEcheances(null);
@@ -386,7 +401,9 @@ function Onglet(p: {
       setLignesChoisies([]);
       setVersion((v) => v + 1);
       await p.onFait(
-        `Effet ${r.reference} accepté au ${r.compteEffet.numero}, échéance ${date(r.dateEcheance)}${r.lettre ? ` · lettré ${r.lettre} avec les factures choisies` : ''}${
+        `Effet ${r.reference} accepté au ${r.compteEffet.numero}, échéance ${date(r.dateEcheance)}${
+          r.lettre ? ` · lettré ${r.lettre} avec les factures choisies` : ' · sans lettrage · lettrez-le avec sa facture pour que la TVA se lise à l\'échéance'
+        }${
           r.lignesAuBrouillard ? ` · ${r.lignesAuBrouillard} facture(s) choisie(s) encore au brouillard` : ''
         }.`,
       );
@@ -397,6 +414,8 @@ function Onglet(p: {
     }
   };
   const lignesOuvertes = echeances?.flatMap((g) => g.lignes) ?? [];
+  const ecartees = echeances?.reduce((n, g) => n + (g.aNouveauProvisoireEcartees ?? 0), 0) ?? 0;
+  const reclassee = echeances?.find((g) => g.creanceReclassee)?.creanceReclassee ?? null;
   const dernierActe = (e: Effet) => [...e.actes].reverse().find((a) => !a.annuleLe) ?? null;
 
   return (
@@ -428,7 +447,20 @@ function Onglet(p: {
                   </option>
                 ))}
               </select>
-              {listeTronquee(tiers, 'Plan des tiers')}
+              <input
+                value={numeroTiers}
+                onChange={(e) => setNumeroTiers(e.target.value)}
+                inputMode="numeric"
+                maxLength={13}
+                placeholder="Numéro commence par…"
+                aria-label="Début du numéro du compte du tiers"
+                className="border border-border px-2 py-[2px] mt-0.5"
+              />
+              {tiers?.tronque ? (
+                <span className="text-text-dim">
+                  {tiers.comptes.length} comptes montrés sur {tiers.total} · tapez le début du numéro pour trouver le tiers.
+                </span>
+              ) : null}
             </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Compte de portefeuille{portefeuille?.racines ? ` (${portefeuille.racines.join(', ')})` : ''}</span>
@@ -478,14 +510,30 @@ function Onglet(p: {
                 <div className="text-text-dim">Aucune ligne ouverte sur ce compte dans cet exercice · l'effet reste non lettré.</div>
               ) : (
                 lignesOuvertes.map((l) => (
-                  <label key={l.id} className="flex items-center gap-2">
-                    <input type="checkbox" checked={lignesChoisies.includes(l.id)} onChange={(e) => setLignesChoisies((c) => (e.target.checked ? [...c, l.id] : c.filter((x) => x !== l.id)))} />
+                  <label key={l.id} className={`flex items-center gap-2 ${l.deviseCode ? 'text-text-dim' : ''}`} title={l.deviseCode ? 'Une facture en devise se règle dans sa devise (Règlement des tiers) · un effet en francs ne la lettre pas.' : undefined}>
+                    <input
+                      type="checkbox"
+                      disabled={!!l.deviseCode}
+                      checked={lignesChoisies.includes(l.id)}
+                      onChange={(e) => setLignesChoisies((c) => (e.target.checked ? [...c, l.id] : c.filter((x) => x !== l.id)))}
+                    />
                     <span>
                       {l.libelle}
                       {l.reference ? ` · ${l.reference}` : ''} · échéance {date(l.echeance)} · {fmt(l.montant)}
+                      {l.deviseCode ? ` · ${l.montantDevise ?? '·'} ${l.deviseCode}, se règle dans sa devise` : ''}
                     </span>
                   </label>
                 ))
+              )}
+              {ecartees > 0 && (
+                <div className="text-warning">
+                  {ecartees} ligne(s) d'à-nouveau provisoire écartée(s) · clôturez l'exercice précédent ou passez un bilan d'ouverture, puis lettrez l'effet avec sa facture.
+                </div>
+              )}
+              {reclassee && (
+                <div className="text-warning">
+                  Créance reclassée au {reclassee.compte416} le {date(reclassee.date)} · son encaissement se passe par « Recouvrement » dans « Créances douteuses ou litigieuses ».
+                </div>
               )}
             </fieldset>
           )}
@@ -501,7 +549,7 @@ function Onglet(p: {
         {!p.exerciceId ? null : p.effets === null ? (
           <div className="text-text-dim">Lecture…</div>
         ) : p.effets.effets.length === 0 ? (
-          <div className="text-text-dim">Aucun effet {sens === 'A_RECEVOIR' ? 'à recevoir' : 'à payer'} sur cet exercice.</div>
+          <div className="text-text-dim">Aucun effet {sens === 'A_RECEVOIR' ? 'à recevoir' : 'à payer'} en cours, ni arrivé à terme sur cet exercice.</div>
         ) : (
           <>
             {p.effets.tronque && <div className="text-text-dim">{p.effets.effets.length} effets montrés sur {p.effets.total}.</div>}
@@ -559,7 +607,7 @@ function Onglet(p: {
           </>
         )}
       </div>
-      {acte && <ModaleActe effet={acte.effet} nature={acte.nature} banques={p.banques} onFermer={() => setActe(null)} onFait={p.onFait} />}
+      {acte && <ModaleActe effet={acte.effet} nature={acte.nature} banques={p.banques} onFermer={() => setActe(null)} onFait={p.onFait} onRelire={p.onRefus} />}
       {aAnnuler && (
         <ModaleMotif
           titre={`Annuler · ${aAnnuler.acte.libelle} · effet ${aAnnuler.effet.reference}`}
@@ -567,6 +615,7 @@ function Onglet(p: {
           action="Annuler l'acte"
           chemin={`/effets/${aAnnuler.effet.id}/actes/${aAnnuler.acte.id}/annuler`}
           onFermer={() => setAAnnuler(null)}
+          onRelire={p.onRefus}
           onFait={async (r) => {
             setAAnnuler(null);
             await p.onFait(`${aAnnuler.acte.libelle} de l'effet ${aAnnuler.effet.reference} annulé · ${r.traitement === 'INSCRITE_EN_NEGATIF' ? 'pièce inscrite en négatif' : r.traitement === 'SUPPRIMEE' ? 'pièce du brouillard retirée' : 'aucune pièce'} · l'effet est « ${LIBELLES_STATUT[r.statut]} ».`);
@@ -625,7 +674,7 @@ function Cadre(p: { id: string; titre: string; onFermer: () => void; envoi: bool
   );
 }
 
-function SelecteurCompte(p: { libelle: string; comptes: ComptesDuRole | null; valeur: string; onChange: (id: string) => void }) {
+function SelecteurCompte(p: { libelle: string; comptes: ComptesDuRole | null; valeur: string; onChange: (id: string) => void; erreur?: string | null }) {
   return (
     <label className="flex flex-col gap-0.5">
       <span className="text-text-dim">
@@ -633,7 +682,7 @@ function SelecteurCompte(p: { libelle: string; comptes: ComptesDuRole | null; va
         {p.comptes?.racines ? ` (${p.comptes.racines.join(' ou ')})` : ''}
       </span>
       <select value={p.valeur} onChange={(e) => p.onChange(e.target.value)} className="border border-border px-2 py-[2px]">
-        <option value="">{p.comptes === null ? '…' : p.comptes.motif ? p.comptes.motif : p.comptes.comptes.length === 0 ? `Aucun compte sous le ${p.comptes.racines?.join(' ou ') ?? '·'} · ouvrez-le dans Plan comptable` : '·'}</option>
+        <option value="">{p.erreur ? p.erreur : p.comptes === null ? '…' : p.comptes.motif ? p.comptes.motif : p.comptes.comptes.length === 0 ? `Aucun compte sous le ${p.comptes.racines?.join(' ou ') ?? '·'} · ouvrez-le dans Plan comptable` : '·'}</option>
         {(p.comptes?.comptes ?? []).map((c) => (
           <option key={c.id} value={c.id}>
             {c.numero} · {c.intitule}
@@ -646,11 +695,21 @@ function SelecteurCompte(p: { libelle: string; comptes: ComptesDuRole | null; va
 }
 
 /** Un acte de l'effet · ses champs suivent sa nature (CHEMINS), le serveur juge. */
-function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'>; banques: JournalServi[]; onFermer: () => void; onFait: (m: string) => Promise<void> }) {
+function ModaleActe(p: {
+  effet: Effet;
+  nature: Exclude<NatureActe, 'ACCEPTATION'>;
+  banques: JournalServi[];
+  onFermer: () => void;
+  onFait: (m: string) => Promise<void>;
+  /** Réponse perdue ou conflit · la liste derrière se relit (second tour, 5). */
+  onRelire: (err: unknown, defaut: string) => void;
+}) {
   const regle = CHEMINS[p.nature];
   const [jour, setJour] = useState('');
   const [compteId, setCompteId] = useState('');
   const [comptes, setComptes] = useState<ComptesDuRole | null>(null);
+  // Une lecture de comptes qui échoue se dit DANS le sélecteur (second tour, MAJEUR 4) · sinon « … » pour toujours.
+  const [erreurComptes, setErreurComptes] = useState<string | null>(null);
   const [banqueId, setBanqueId] = useState(p.banques.length === 1 ? p.banques[0].id : '');
   const [frais, setFrais] = useState('');
   const [compteFraisId, setCompteFraisId] = useState('');
@@ -675,7 +734,12 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
           poser(c);
           if (c.comptes.length === 1) choisir(c.comptes[0].id);
         })
-        .catch((e) => vivant && setErreur(e instanceof ApiError ? e.message : 'Comptes illisibles'));
+        .catch((e) => {
+          if (!vivant) return;
+          const message = `Comptes illisibles (${e instanceof ApiError ? e.message : 'serveur injoignable'}) · fermez et rouvrez.`;
+          setErreur(message);
+          setErreurComptes(message);
+        });
     if (regle.role) void lire(regle.role, setComptes, setCompteId);
     if (regle.frais) void lire('FRAIS_ESCOMPTE', setComptesFrais, setCompteFraisId);
     if (regle.commission) void lire('COMMISSION', setComptesCommission, setCompteCommissionId);
@@ -687,6 +751,7 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
   const commissionM = commission.trim() ? montantSaisi(commission) : 0;
   const manque = (): string | null => {
     if (!jour) return "La date de l'acte est exigée.";
+    if (erreurComptes) return erreurComptes;
     if (regle.role && !compteId) return 'Choisissez le compte.';
     if (regle.banque && !banqueId) return 'Choisissez le journal de banque.';
     if (regle.frais && (fraisM === null || fraisM < 0)) return 'Les frais sont un nombre positif ou nul.';
@@ -719,6 +784,11 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
       await p.onFait(`${LIBELLES_ACTE[p.nature]} de l'effet ${p.effet.reference} passé · l'effet est « ${LIBELLES_STATUT[r.statut]} ».`);
     } catch (err) {
       setErreur(messageDuRefus(err, `${LIBELLES_ACTE[p.nature]} impossible`));
+      // Réponse perdue (le geste a pu passer) ou conflit (l'effet a changé) · la liste se relit, la modale se ferme.
+      if (!(err instanceof ApiError && err.status < 500 && err.status !== 409)) {
+        p.onRelire(err, `${LIBELLES_ACTE[p.nature]} impossible`);
+        p.onFermer();
+      }
     } finally {
       setEnvoi(false);
     }
@@ -741,7 +811,7 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
             <span className="text-text-dim">Date</span>
             <input ref={champ} type="date" value={jour} onChange={(e) => setJour(e.target.value)} className="border border-border px-2 py-[2px]" />
           </label>
-          {regle.role && <SelecteurCompte libelle="Compte" comptes={comptes} valeur={compteId} onChange={setCompteId} />}
+          {regle.role && <SelecteurCompte libelle="Compte" comptes={comptes} valeur={compteId} onChange={setCompteId} erreur={erreurComptes} />}
           {regle.banque && (
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Journal de banque</span>
@@ -794,7 +864,7 @@ function ModaleActe(p: { effet: Effet; nature: Exclude<NatureActe, 'ACCEPTATION'
   );
 }
 
-function ModaleMotif(p: { titre: string; resume: string; action: string; chemin: string; onFermer: () => void; onFait: (r: ReponseAnnulation) => Promise<void> }) {
+function ModaleMotif(p: { titre: string; resume: string; action: string; chemin: string; onFermer: () => void; onFait: (r: ReponseAnnulation) => Promise<void>; onRelire: (err: unknown, defaut: string) => void }) {
   const [motif, setMotif] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -811,6 +881,10 @@ function ModaleMotif(p: { titre: string; resume: string; action: string; chemin:
       await p.onFait(r);
     } catch (err) {
       setErreur(messageDuRefus(err, 'Annulation impossible'));
+      if (!(err instanceof ApiError && err.status < 500 && err.status !== 409)) {
+        p.onRelire(err, 'Annulation impossible');
+        p.onFermer();
+      }
     } finally {
       setEnvoi(false);
     }

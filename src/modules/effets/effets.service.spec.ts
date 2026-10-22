@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { EffetsService } from './effets.service';
 
 // Les lignes figées se lisent sur les clôtures réelles · hors du périmètre de
@@ -32,7 +33,7 @@ const OD = { id: 'jod', code: 'OD', type: 'GENERAL', estActif: true, compteTreso
 
 type Acte = { id: string; nature: string; date: Date; montant: number; detail: unknown; annuleLe: Date | null; compte: { id: string; numero: string; intitule: string } | null; ecriture: { id: string; numeroPiece: number; statut: string } | null; ecritureNegatif: null };
 
-function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statut?: string; actes?: Acte[]; statutPiece?: string; actesRelus?: Acte[]; dateFacture?: string; sens?: string } = {}) {
+function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statut?: string; actes?: Acte[]; statutPiece?: string; actesRelus?: Acte[]; dateFacture?: string; sens?: string; nettoyageEchoue?: boolean; ligneEnDevise?: boolean } = {}) {
   const appels: string[] = [];
   const effet = {
     id: 'ef1',
@@ -70,7 +71,8 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
         appels.push('effet');
         return { id: 'ef1', ...data };
       }),
-      updateMany: jest.fn(async () => ({ count: 1 })),
+      // Mise à jour UNITAIRE (second tour, MAJEUR 2 · l'audit n'écrit rien pour un `updateMany`).
+      update: jest.fn(async () => ({ id: 'ef1' })),
       deleteMany: jest.fn(async () => {
         appels.push('effet retiré');
         return { count: 1 };
@@ -112,7 +114,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
     },
     ligneEcriture: {
       findMany: jest.fn(async () => [
-        { id: 'f1', debit: 1160000, credit: 0, lettrageId: null, rapprochementId: null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7, date: new Date(options.dateFacture ?? '2026-01-15T00:00:00.000Z') } },
+        { id: 'f1', debit: 1160000, credit: 0, lettrageId: null, rapprochementId: null, devise: options.ligneEnDevise ? { code: 'USD' } : null, ecriture: { statut: 'VALIDEE', estANouveauProvisoire: false, numeroPiece: 7, date: new Date(options.dateFacture ?? '2026-01-15T00:00:00.000Z') } },
       ]),
     },
     ecriture: { findFirst: jest.fn(async () => ({ id: 'e1', numeroPiece: 1, statut: 'VALIDEE', exercice: { statut: 'OUVERT' }, lignes: [] })) },
@@ -126,6 +128,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
       return { ecriture, suite: await suite(tx, ecriture) };
     }),
     retirerCompensation: jest.fn(async (_t: string, _e: string, liberer?: (t: typeof tx) => Promise<unknown>) => {
+      if (options.nettoyageEchoue) throw new Error('connexion perdue');
       if (liberer) await liberer(tx);
       appels.push('pièce retirée');
     }),
@@ -185,7 +188,7 @@ describe('EffetsService · les actes', () => {
     const { service, tx, ecritures, appels } = monter();
     const r = await service.remettre('t', 'u', 'ef1', { date: '2026-03-10', compteEncaissementId: 'c512' });
     expect(r.acteId).toBe('a9');
-    expect(tx.effetCommerce.updateMany).toHaveBeenCalledWith({ where: { id: 'ef1', tenantId: 't', statut: 'EN_PORTEFEUILLE' }, data: { statut: 'REMIS_A_L_ENCAISSEMENT' } });
+    expect(tx.effetCommerce.update).toHaveBeenCalledWith({ where: { id: 'ef1', tenantId: 't', statut: 'EN_PORTEFEUILLE' }, data: { statut: 'REMIS_A_L_ENCAISSEMENT' }, select: { id: true } });
     const dto = ecritures.creerAvec.mock.calls[0][2] as { journalId: string; lignes: Array<{ compteId: string; debit: number; credit: number }> };
     expect(dto.journalId).toBe('jod');
     expect(dto.lignes.map((l) => [l.compteId, l.debit, l.credit])).toEqual([['c512', 1160000, 0], ['c412', 0, 1160000]]);
@@ -264,7 +267,8 @@ describe('EffetsService · annulation à rebours', () => {
     const r = await service.annulerActe('t', 'u', 'ef1', 'a2', { motif: 'remise à la mauvaise banque' });
     expect(r).toMatchObject({ statut: 'EN_PORTEFEUILLE', traitement: 'INSCRITE_EN_NEGATIF', ecritureNegatifId: 'neg1' });
     expect(tx.acteEffet.update).toHaveBeenCalledWith({ where: { id: 'a2', tenantId: 't' }, data: { ecritureId: 'e2', ecritureNegatifId: 'neg1' } });
-    expect(tx.effetCommerce.updateMany).toHaveBeenCalledWith({ where: { id: 'ef1', tenantId: 't', statut: 'REMIS_A_L_ENCAISSEMENT' }, data: { statut: 'EN_PORTEFEUILLE' } });
+    expect(tx.effetCommerce.update).toHaveBeenCalledWith({ where: { id: 'ef1', tenantId: 't', statut: 'REMIS_A_L_ENCAISSEMENT' }, data: { statut: 'EN_PORTEFEUILLE' }, select: { id: true } });
+    expect(tx.acteEffet.update).toHaveBeenCalledWith({ where: { id: 'a2', tenantId: 't', effetId: 'ef1', annuleLe: null }, data: expect.objectContaining({ annulePar: 'u', motifAnnulation: 'remise à la mauvaise banque' }), select: { id: true } });
     expect(appels).toEqual(['verrou', 'négatif']);
   });
 
@@ -351,5 +355,39 @@ describe('EffetsService · premier tour de relecture (2026-10-22)', () => {
     prisma.exercice.findFirst.mockImplementationOnce(async () => null);
     await expect(service.bonAPayer('t', 'u', 'ef1', { date: '2036-06-25' })).rejects.toThrow(/Aucun exercice du dossier ne couvre la date/);
     await expect(service.bonAPayer('t', 'u', 'ef1', { date: '2026-06-25', referencePiece: '   ' })).rejects.toThrow(/référence du bon à payer est vide/);
+  });
+});
+
+describe('EffetsService · second tour de relecture (2026-10-22)', () => {
+  it('B1 · le début du numéro restreint la liste des comptes du rôle, et une lettre est refusée', async () => {
+    const { service, prisma } = monter();
+    await service.comptes('t', 'TIERS', 'A_RECEVOIR', '4111');
+    const where = (prisma.compte.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(where.numero).toEqual({ startsWith: '4111' });
+    expect(where.OR).toEqual([{ numero: { startsWith: '411' } }]);
+    await expect(service.comptes('t', 'TIERS', 'A_RECEVOIR', '41a')).rejects.toThrow(/en chiffres/);
+  });
+
+  it('M1 · le nettoyage manqué après un lettrage refusé rend un 409 qui nomme l\'effet resté en base, jamais « n\'a pas été accepté »', async () => {
+    const { service } = monter({ lettrageEchoue: true, nettoyageEchoue: true });
+    const erreur = await service.accepter('t', 'u', { ...ACCEPTATION, ligneIds: ['f1'] }).then(() => null, (e: Error) => e);
+    expect(erreur).toBeInstanceOf(ConflictException);
+    expect(erreur?.message).toMatch(/enregistré SANS lettrage/);
+    expect(erreur?.message).toMatch(/solde non nul/);
+    expect(erreur?.message).not.toMatch(/n'a pas été accepté/);
+  });
+
+  it('M2 · une ligne en devise cochée est refusée avant la pièce · elle se règle dans sa devise', async () => {
+    const { service, ecritures } = monter({ ligneEnDevise: true });
+    await expect(service.accepter('t', 'u', { ...ACCEPTATION, ligneIds: ['f1'] })).rejects.toThrow(/en devise \(USD\)/);
+    expect(ecritures.creerAvec).not.toHaveBeenCalled();
+  });
+
+  it('M2 bis · une mise à jour unitaire dont la ligne a changé rend un 409 nommé (P2025), pas un 500', async () => {
+    const { service, tx } = monter();
+    (tx.effetCommerce.update as jest.Mock).mockImplementationOnce(async () => {
+      throw new Prisma.PrismaClientKnownRequestError('introuvable', { code: 'P2025', clientVersion: 'x' });
+    });
+    await expect(service.remettre('t', 'u', 'ef1', { date: '2026-03-10', compteEncaissementId: 'c512' })).rejects.toThrow(/n'est plus « EN_PORTEFEUILLE »/);
   });
 });
