@@ -128,7 +128,11 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
   await appelApi(page, 'POST', `/rapprochements/${r1.id}/cloturer`);
 
   // (3) La liste de N · un extrait clos, deux lignes rapprochées, l'import daté et nommé.
-  let liste = await appelApi<{ extraits: TeteExtrait[]; total: number; tronque: boolean }>(page, 'GET', `/rapprochements/extraits?compteId=${banque.id}`);
+  let liste = await appelApi<{ extraits: TeteExtrait[]; total: number; tronque: boolean; comptes: Array<{ id: string; extraits: number }> }>(
+    page,
+    'GET',
+    `/rapprochements/extraits?compteId=${banque.id}`,
+  );
   expect([liste.total, liste.tronque]).toEqual([1, false]);
   expect(liste.extraits.map((e) => [e.rapprochementId, e.nombreLignes, e.nombreRapprochees, e.soldeDepart, e.mouvementsNet, e.ecartReleve, e.statut, e.releveNomFichier])).toEqual([
     [r1.id, 2, 2, 0, 150_000, 0, 'CLOTURE', 'releve-mars.csv'],
@@ -148,6 +152,8 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
     [r1.id, `${annee}-03-31`, 2, 0, 150_000, 0],
     [r2.id, `${Number(annee) + 1}-01-31`, 1, 150_000, 50_000, 0],
   ]);
+  // Les comptes à extrait, servis à part pour le choix de l'écran (premier tour, M1).
+  expect(liste.comptes.map((c) => [c.id, c.extraits])).toEqual([[banque.id, 2]]);
   expect(N1.id).toBeTruthy();
 
   // (5) L'édition chaînée · un classeur, le sommaire puis une feuille par extrait, du plus ancien au plus récent.
@@ -161,6 +167,11 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
   expect(feuilleMars).toContain('Solde du relevé (imprimé par la banque)');
   expect(feuilleMars).toContain('releve-mars.csv');
   expect(feuilleMars).toContain('2 ligne(s) rapprochée(s) sur 2');
+  // Les montants, au sens de la banque · débit 150 000 (solde progressif
+  // -150 000), crédit 300 000 (solde 150 000 = solde imprimé).
+  expect(feuilleMars).toContain('<v>-150000</v>');
+  expect(feuilleMars).toContain('<v>300000</v>');
+  expect(feuilleMars).toContain('<v>150000</v>');
 
   // (6) Les bornes sur la date du relevé écartent mars · une seule feuille d'extrait.
   const borne = await telecharger(page, `/rapprochements/extraits/edition?du=${Number(annee) + 1}-01-01`);
@@ -177,7 +188,11 @@ test('extraits bancaires · relevé importé en N et rapproché, clôture traver
   await page.goto(`/#/extraits-bancaires`);
   const fenetre = page.getByRole('button', { name: 'Éditer tous les extraits' });
   await expect(fenetre).toBeEnabled();
-  await expect(page.getByText(`${banque.numero} ·`)).toBeVisible();
+  await expect(page.getByRole('table', { name: `Extraits du compte ${banque.numero}` })).toBeVisible();
   await expect(page.getByText('releve-janvier.csv', { exact: false })).toBeVisible();
+  // Le choix d'un compte relit la liste restreinte à lui (premier tour, M1).
+  await page.getByLabel('Compte de banque').selectOption(banque.id);
+  await expect(page.getByRole('table', { name: `Extraits du compte ${banque.numero}` })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Éditer les extraits de 1 compte(s)' })).toBeEnabled();
   expect(pannes).toEqual([]);
 });

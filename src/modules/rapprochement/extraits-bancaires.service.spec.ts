@@ -3,9 +3,9 @@ import { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ExtraitsBancairesService, LIMITE_EXTRAITS } from './extraits-bancaires.service';
-import { MENTION_EXTRAIT } from './extraits-bancaires';
+import { MENTION_EXTRAIT, type SelectionExtraits } from './extraits-bancaires';
 import { LIGNE_ENTETE_FPM } from '../exports/presentation-fpm';
-import type { RapprochementService } from './rapprochement.service';
+import { departParmiLesClos } from './rapprochement.service';
 import type { ExportService } from '../exports/export.service';
 import type { PrismaService } from '../../common/prisma.service';
 
@@ -80,14 +80,49 @@ const LIGNES: Record<string, Array<{ rang: number; date: Date; libelle: string; 
   r3: [{ rang: 1, date: jour('2026-01-15'), libelle: 'Dépôt', reference: null, debit: 0, credit: 50, rapprochee: false }],
 };
 
-type Doublure = { prisma: PrismaService; rapprochements: RapprochementService; exportService: ExportService; identites: unknown[] };
+type Doublure = { prisma: PrismaService; exportService: ExportService; identites: unknown[] };
 
-function monter(options: { total?: number; comptesTrouves?: typeof C1[] } = {}): Doublure {
+type Filtre = {
+  compteId?: { in: string[] } | string;
+  dateReleve?: { gte?: Date; lt?: Date };
+  statut?: string;
+  id?: { in: string[] };
+  rapprochementId?: string | { in: string[] };
+  OR?: Array<{ AND?: Array<Record<string, unknown>> }>;
+};
+
+/** Les rapprochements qui passent le filtre de la tranche (comptes, dates sur le jour du relevé). */
+const dansLaSelection = (where: Filtre) =>
+  RAPPROCHEMENTS.filter((r) => {
+    const comptes = typeof where.compteId === 'string' ? [where.compteId] : where.compteId?.in;
+    if (comptes && !comptes.includes(r.compteId)) return false;
+    if (where.dateReleve?.gte && r.dateReleve.getTime() < where.dateReleve.gte.getTime()) return false;
+    if (where.dateReleve?.lt && r.dateReleve.getTime() >= where.dateReleve.lt.getTime()) return false;
+    if (where.statut && r.statut !== where.statut) return false;
+    return true;
+  });
+
+/** Les lignes d'un relevé, avec un identifiant, dans l'ordre du rang · la clé de la tranche (`apresLaCle`) est honorée. */
+const lignesDe = (where: Filtre) => {
+  const id = typeof where.rapprochementId === 'string' ? where.rapprochementId : '';
+  const toutes = (LIGNES[id] ?? []).map((l) => ({ ...l, id: `${id}-l${l.rang}` }));
+  const apres = where.OR?.[0]?.AND?.[0] as { rang?: { gt: number } } | undefined;
+  return apres?.rang ? toutes.filter((l) => l.rang > apres.rang!.gt) : toutes;
+};
+
+function monter(options: { total?: number; comptesTrouves?: typeof C1[]; lignesRetirees?: string } = {}): Doublure {
   const identites: unknown[] = [];
   const prisma = {
     rapprochementBancaire: {
-      count: jest.fn(async () => options.total ?? RAPPROCHEMENTS.length),
-      findMany: jest.fn(async ({ where }: { where: { compteId?: string } }) => RAPPROCHEMENTS.filter((r) => !where.compteId || r.compteId === where.compteId)),
+      // Le décompte honore le filtre de la SÉLECTION · `total` ne vaut que pour
+      // un dossier lu en entier (le cas B1 du premier tour).
+      count: jest.fn(async ({ where }: { where: Filtre }) => (where.compteId || where.dateReleve ? dansLaSelection(where).length : (options.total ?? RAPPROCHEMENTS.length))),
+      findMany: jest.fn(async ({ where, take }: { where: Filtre; take?: number }) => dansLaSelection(where).slice(0, take)),
+      groupBy: jest.fn(async () => {
+        const parCompte = new Map<string, number>();
+        for (const r of RAPPROCHEMENTS) parCompte.set(r.compteId, (parCompte.get(r.compteId) ?? 0) + 1);
+        return [...parCompte.entries()].map(([compteId, n]) => ({ compteId, _count: { _all: n } }));
+      }),
     },
     ligneReleveBancaire: {
       groupBy: jest.fn(async ({ where }: { where: { rapprochementId: { in: string[] }; OR?: unknown } }) =>
@@ -100,9 +135,16 @@ function monter(options: { total?: number; comptesTrouves?: typeof C1[] } = {}):
           };
         }),
       ),
-      findMany: jest.fn(async ({ where }: { where: { rapprochementId: string } }) =>
-        (LIGNES[where.rapprochementId] ?? []).map((l) => ({ ...l, _count: { lignesEcriture: l.rapprochee ? 1 : 0, encoursOuverture: 0 } })),
+      findMany: jest.fn(async ({ where, take }: { where: Filtre; take?: number }) =>
+        lignesDe(where)
+          .filter((l) => options.lignesRetirees !== where.rapprochementId)
+          .slice(0, take)
+          .map((l) => ({ ...l, _count: { lignesEcriture: l.rapprochee ? 1 : 0, encoursOuverture: 0 } })),
       ),
+      aggregate: jest.fn(async ({ where }: { where: Filtre }) => {
+        const dates = lignesDe(where).map((l) => l.date.getTime());
+        return { _min: { date: dates.length ? new Date(Math.min(...dates)) : null }, _max: { date: dates.length ? new Date(Math.max(...dates)) : null } };
+      }),
     },
     compte: {
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
@@ -110,22 +152,16 @@ function monter(options: { total?: number; comptesTrouves?: typeof C1[] } = {}):
       ),
     },
   } as unknown as PrismaService;
-  const rapprochements = {
-    // Le solde de départ tel que le module du rapprochement le rend · janvier
-    // déclaré, février ancré sur janvier clos, Equity sans rien.
-    depart: jest.fn(async (_t: string, r: { id?: string; compteId: string; soldeDepartDeclare?: number | null }) => {
-      if (r.compteId === 'c1' && r.soldeDepartDeclare == null) return { soldeDepart: 1_100, regle: { ancre: true, dateDepart: null }, premier: false };
-      return { soldeDepart: r.soldeDepartDeclare ?? null, regle: { ancre: false, dateDepart: null }, premier: true };
-    }),
-  } as unknown as RapprochementService;
   const exportService = {
     identiteEtat: jest.fn(async (_t: string, periode: unknown) => {
       identites.push(periode);
       return { entite: 'Association Essai', nif: 'A1', periode: 'du 01/01/2026 au 28/02/2026', devise: 'CDF' };
     }),
   } as unknown as ExportService;
-  return { prisma, rapprochements, exportService, identites };
+  return { prisma, exportService, identites };
 }
+
+const TOUT: SelectionExtraits = { compteIds: [], du: null, au: null };
 
 async function lire(ecrire: (ouvrir: () => Writable) => Promise<unknown>): Promise<ExcelJS.Workbook> {
   const morceaux: Buffer[] = [];
@@ -146,11 +182,37 @@ const texte = (f: ExcelJS.Worksheet, ref: string) => {
   return v === null || v === undefined ? null : typeof v === 'object' && 'richText' in (v as object) ? (v as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join('') : v;
 };
 
-describe('ExtraitsBancairesService.lister', () => {
-  it('rend chaque relevé importé avec ses nombres, son solde de départ et son écart, par agrégats', async () => {
+describe('departParmiLesClos · la règle du solde de départ, une pour le module et pour la liste', () => {
+  const clos = [
+    { clotureAt: jour('2026-02-05'), soldeReleve: 1_100, dateDepart: jour('2025-12-31') },
+    { clotureAt: jour('2026-03-05'), soldeReleve: 900, dateDepart: null },
+  ];
+  it('un rapprochement ouvert prend le clos le plus récent, ancré, la tête de chaîne datant le départ', () => {
+    expect(departParmiLesClos({ clotureAt: null, soldeDepartDeclare: 5 }, [...clos].reverse())).toEqual({
+      soldeDepart: 900,
+      regle: { ancre: true, dateDepart: jour('2025-12-31') },
+      premier: false,
+    });
+  });
+  it('un rapprochement clos ne lit que les clos qui le précèdent, jamais lui-même', () => {
+    expect(departParmiLesClos({ clotureAt: jour('2026-03-05') }, clos).soldeDepart).toBe(1_100);
+    expect(departParmiLesClos({ clotureAt: jour('2026-02-05'), soldeDepartDeclare: 100, dateDepart: jour('2025-12-31') }, clos)).toEqual({
+      soldeDepart: 100,
+      regle: { ancre: false, dateDepart: jour('2025-12-31') },
+      premier: true,
+    });
+  });
+  it('sans clos avant lui, le solde déclaré ou rien · jamais zéro présumé', () => {
+    expect(departParmiLesClos({ clotureAt: null }, []).soldeDepart).toBeNull();
+    expect(departParmiLesClos({ clotureAt: null, soldeDepartDeclare: 0 }, []).soldeDepart).toBe(0);
+  });
+});
+
+describe('ExtraitsBancairesService.listerExtraits', () => {
+  it('rend chaque relevé importé avec ses nombres, son solde de départ et son écart, par agrégats, et les comptes à extrait', async () => {
     const d = monter();
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
-    const r = await service.lister(T);
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    const r = await service.listerExtraits(T);
     expect(r.total).toBe(3);
     expect(r.tronque).toBe(false);
     expect(r.extraits.map((e) => [e.rapprochementId, e.soldeDepart, e.mouvementsNet, e.ecartReleve, e.nombreLignes, e.nombreRapprochees, e.statut])).toEqual([
@@ -158,29 +220,45 @@ describe('ExtraitsBancairesService.lister', () => {
       ['r2', 1100, -200, 0, 1, 1, 'EN_COURS'],
       ['r3', null, 50, null, 1, 0, 'EN_COURS'],
     ]);
+    expect(r.comptes).toEqual([
+      { ...C1, extraits: 2 },
+      { ...C2, extraits: 1 },
+    ]);
+    expect(r.comptesTronques).toBe(false);
     // La borne du dossier est écrite dans chaque appel, et la liste ne lit
-    // que les rapprochements qui portent un relevé.
-    const appel = (d.prisma.rapprochementBancaire.findMany as jest.Mock).mock.calls[0][0];
-    expect(appel.where.tenantId).toBe(T);
-    expect(appel.where.releve).toEqual({ some: { tenantId: T } });
-    expect(appel.take).toBe(LIMITE_EXTRAITS);
+    // que les rapprochements qui portent un relevé ; les clos des comptes de
+    // la tranche sont lus en UNE fois (jamais deux requêtes par extrait).
+    const appels = (d.prisma.rapprochementBancaire.findMany as jest.Mock).mock.calls.map((c) => c[0]);
+    expect(appels).toHaveLength(2);
+    expect(appels[0].where.tenantId).toBe(T);
+    expect(appels[0].where.releve).toEqual({ some: { tenantId: T } });
+    expect(appels[0].take).toBe(LIMITE_EXTRAITS);
+    expect(appels[1].where).toEqual({ tenantId: T, compteId: { in: ['c1', 'c2'] }, statut: 'CLOTURE' });
   });
 
-  it('se restreint au compte demandé et dit la troncature au-delà de la limite', async () => {
+  it('se restreint aux comptes et aux dates DANS la requête (comptage et tranche sur le même filtre), et juge la troncature sur la sélection', async () => {
     const d = monter({ total: LIMITE_EXTRAITS + 1 });
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
-    const r = await service.lister(T, 'c2');
-    expect(r.extraits.map((e) => e.rapprochementId)).toEqual(['r3']);
-    expect(r.tronque).toBe(true);
-    expect((d.prisma.rapprochementBancaire.findMany as jest.Mock).mock.calls[0][0].where.compteId).toBe('c2');
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    const r = await service.listerExtraits(T, { compteIds: ['c1'], du: jour('2026-02-01'), au: jour('2026-02-28') });
+    expect(r.extraits.map((e) => e.rapprochementId)).toEqual(['r2']);
+    expect([r.total, r.tronque]).toEqual([1, false]);
+    const compte = (d.prisma.rapprochementBancaire.count as jest.Mock).mock.calls[0][0].where;
+    const tranche = (d.prisma.rapprochementBancaire.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(tranche).toEqual(compte);
+    expect(tranche.compteId).toEqual({ in: ['c1'] });
+    // Le jour « au » entre entier · borne haute au lendemain, exclue.
+    expect(tranche.dateReleve).toEqual({ gte: jour('2026-02-01'), lt: jour('2026-03-01') });
+    // Le dossier entier, lui, est tronqué, et le dit.
+    const entier = await service.listerExtraits(T);
+    expect(entier.tronque).toBe(true);
   });
 });
 
 describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', () => {
   it('une feuille de sommaire puis une feuille par extrait, compte par compte, du plus ancien au plus récent', async () => {
     const d = monter();
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
-    let resultat: { feuilles: number; lignes: number; comptesSansExtrait: string[] } | null = null;
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    let resultat: { feuilles: number; lignes: number; comptesSansExtrait: { numero: string; intitule: string }[] } | null = null;
     let nomFichier = '';
     const classeur = await lire(async (ouvrir) => {
       resultat = await service.editionChainee(T, { compteIds: [], du: null, au: null }, (nom) => {
@@ -189,8 +267,9 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
       });
     });
     expect(resultat).toEqual({ feuilles: 4, lignes: 4, comptesSansExtrait: [] });
-    // Du premier extrait retenu au dernier (Equity, 31 janvier) · les bornes de la sélection sont nulles.
-    expect(nomFichier).toBe('extraits-bancaires-2026-01-31-2026-01-31.xlsx');
+    // Du plus ancien au plus récent des relevés RETENUS (min et max, jamais le
+    // premier et le dernier de l'ordre compte-puis-date · premier tour, M3).
+    expect(nomFichier).toBe('extraits-bancaires-2026-01-31-2026-02-28.xlsx');
     expect(classeur.worksheets.map((f) => f.name)).toEqual(['Sommaire', '52110001 2026-01-31', '52110001 2026-02-28', '52110002 2026-01-31']);
 
     // Le sommaire · une ligne par extrait, dans l'ordre des feuilles, le solde imprimé.
@@ -206,7 +285,7 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
 
   it('chaque extrait · solde de départ, lignes avec leur solde progressif au sens de la banque, totaux, solde imprimé, rapprochées', async () => {
     const d = monter();
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
     const classeur = await lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()));
     expect(classeur.worksheets.map((f) => f.name)).toEqual(['Sommaire', '52110001 2026-01-31', '52110001 2026-02-28']);
 
@@ -231,7 +310,7 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
 
   it('sans solde de départ, la colonne de solde reste vide et la feuille le dit', async () => {
     const d = monter();
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
     const classeur = await lire((ouvrir) => service.editionChainee(T, { compteIds: ['c2'], du: null, au: null }, () => ouvrir()));
     const f = classeur.getWorksheet('52110002 2026-01-31')!;
     const l = LIGNE_ENTETE_FPM + 1;
@@ -241,12 +320,12 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
 
   it('les bornes de date écartent un extrait, et un compte choisi sans extrait est dit au sommaire, jamais tu', async () => {
     const d = monter();
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
-    let resultat: { comptesSansExtrait: string[] } | null = null;
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    let resultat: { comptesSansExtrait: { numero: string; intitule: string }[] } | null = null;
     const classeur = await lire(async (ouvrir) => {
       resultat = await service.editionChainee(T, { compteIds: ['c1', 'c2'], du: jour('2026-02-01'), au: jour('2026-02-28') }, () => ouvrir());
     });
-    expect(resultat!.comptesSansExtrait).toEqual(['52110002 Banque Equity']);
+    expect(resultat!.comptesSansExtrait).toEqual([{ numero: '52110002', intitule: 'Banque Equity' }]);
     expect(classeur.worksheets.map((f) => f.name)).toEqual(['Sommaire', '52110001 2026-02-28']);
     const sommaire = classeur.getWorksheet('Sommaire')!;
     const l = LIGNE_ENTETE_FPM + 1;
@@ -262,12 +341,25 @@ describe('ExtraitsBancairesService.editionChainee · relue dans le classeur', ()
       return new Writable({ write: (_m, _e, cb) => cb() });
     };
     const d = monter({ comptesTrouves: [C1] });
-    const service = new ExtraitsBancairesService(d.prisma, d.rapprochements, d.exportService);
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
     await expect(service.editionChainee(T, { compteIds: ['c1', 'c2'], du: null, au: null }, ouvrir)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.editionChainee(T, { compteIds: ['c1'], du: jour('2027-01-01'), au: null }, ouvrir)).rejects.toThrow(/Aucun extrait dans la sélection/);
     const tronquee = monter({ total: LIMITE_EXTRAITS + 1 });
-    const serviceTronque = new ExtraitsBancairesService(tronquee.prisma, tronquee.rapprochements, tronquee.exportService);
-    await expect(serviceTronque.editionChainee(T, { compteIds: [], du: null, au: null }, ouvrir)).rejects.toBeInstanceOf(BadRequestException);
+    const serviceTronque = new ExtraitsBancairesService(tronquee.prisma, tronquee.exportService);
+    await expect(serviceTronque.editionChainee(T, TOUT, ouvrir)).rejects.toThrow(/au-delà des 200/);
     expect(ouvertures).toEqual([]);
+  });
+
+  it('un dossier au-delà de la tranche édite encore UN compte sur UN mois · la troncature se juge sur la sélection (premier tour, B1)', async () => {
+    const d = monter({ total: LIMITE_EXTRAITS + 1 });
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    const classeur = await lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: jour('2026-02-01'), au: jour('2026-02-28') }, () => ouvrir()));
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['Sommaire', '52110001 2026-02-28']);
+  });
+
+  it('un relevé qui change entre la liste et sa feuille arrête le flux, jamais une feuille qui dit un décompte faux', async () => {
+    const d = monter({ lignesRetirees: 'r2' });
+    const service = new ExtraitsBancairesService(d.prisma, d.exportService);
+    await expect(lire((ouvrir) => service.editionChainee(T, { compteIds: ['c1'], du: null, au: null }, () => ouvrir()))).rejects.toThrow(/a changé pendant l'édition/);
   });
 });

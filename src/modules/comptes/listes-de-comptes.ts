@@ -131,6 +131,10 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
     "numéro proposé pour le compte principal d'un tiers à créer, lu sous son collectif, un seul numéro et jamais une liste",
   '/comptes/:compteId/lettrage/:lettrageId/ecart-change':
     "écart de change proposé d'un lettrage (ligne A6), le compte que le texte donne ou aucun, jamais une liste",
+  '/rapprochements/extraits':
+    "les comptes de banque qui portent DÉJÀ un relevé importé (ligne sage-l3, fonction 45), filtre de la fenêtre des extraits, jamais un compte à choisir pour une écriture",
+  '/rapprochements/extraits/edition':
+    "l'édition chaînée des extraits (fonction 45) · les comptes ne sont lus que pour juger qu'ils sont du dossier (404 nommé), aucune liste servie",
   '/natures-compte': 'les sept natures de compte, paramètres du dossier',
   '/pieces-jointes-ecritures/decompte':
     "nombre de pièces jointes par écriture de l'exercice (ligne sage-l6, fonction n° 22) · un « décompte », aucun compte servi",

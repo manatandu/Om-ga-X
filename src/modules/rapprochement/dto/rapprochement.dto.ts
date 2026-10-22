@@ -68,7 +68,10 @@ const TAILLE_MAX_BASE64 = 11_000_000;
  * en base64 dans le corps JSON, CSV ou XLSX).
  */
 export class ImporterReleveDto {
+  // Le nom du fichier reçu, gardé sur le rapprochement (fonction 45) · borné
+  // comme la colonne, en points de code.
   @IsString()
+  @MaxLength(400)
   nomFichier!: string;
 
   @IsString()
@@ -161,15 +164,21 @@ export class RouvrirRapprochementDto {
  * (404 nommé pour un compte d'un autre dossier).
  */
 export class EditionExtraitsDto {
+  // Deux cents identifiants au plus (`LIMITE_EXTRAITS`, jugé par
+  // `motifRefusSelection`), et jamais un `in` sans borne · un identifiant fait
+  // trente-six caractères, le séparateur un.
   @IsOptional()
   @IsString()
+  @MaxLength(8000)
   compteIds?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(10)
   du?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(10)
   au?: string;
 }

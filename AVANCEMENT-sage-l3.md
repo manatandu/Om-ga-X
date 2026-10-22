@@ -304,12 +304,60 @@ financements, placements.
   (F45-H1 à N1), `architecture.md` (D14, place de la fonction), tables 05
   (M5-30) et 13 (M13-10) ; paragraphe « Extraits bancaires » au § 6 de
   CLAUDE.md.
+- #45 · premier tour de relecture (silent-failure-hunter, typescript-reviewer,
+  react-reviewer, 2026-10-22) · UN BLOQUANT, partagé par les trois, corrigé ·
+  l'édition chaînée jugeait la troncature sur le DOSSIER ENTIER avant
+  d'appliquer la sélection (au-delà de 200 relevés, plus aucune édition, pas
+  même un compte sur un mois, et le refus nommait une issue qui ne levait
+  rien) · comptes choisis et bornes de dates écrites DANS la requête
+  (`listerExtraits(tenantId, selection)`, `compteId in`, `dateReleve gte / lt
+  lendemain`), troncature jugée sur la sélection, spec B1 (dossier à 201,
+  édition d'un compte sur un mois PASSE). MAJEURS corrigés · (M1) l'écran ne
+  servait jamais `compteId` et les comptes au-delà de la tranche étaient
+  invisibles sans issue · le serveur sert à part les comptes à extrait
+  (`comptes`, `groupBy`, 500 au plus, dit), l'écran les offre en sélecteur
+  et relit par compte, le message de troncature nomme l'issue ; (M2 / M3) la
+  période du cartouche et le nom du fichier prenaient le premier et le
+  dernier de l'ordre compte-puis-date (« du 31/01 au 31/01 » pour un classeur
+  qui contenait février, gelé par le spec) · `periodeDesExtraits`, min et
+  max ; (M4) `depart` appelé deux fois par extrait en boucle (400
+  allers-retours) · UNE règle `departParmiLesClos` (rapprochement.service),
+  `depart` lit les clos du compte en une lecture, la liste ceux des comptes
+  de la tranche, spec de la règle (ouvert, clos, jamais lui-même, zéro
+  déclaré) ; (M, comptes-proposes.spec) la route `/rapprochements/extraits`
+  lit des comptes · rangée dans `ROUTES_QUI_NE_SONT_PAS_DES_LISTES` avec son
+  motif, et `lister` renommée `listerExtraits` (le détecteur résout une
+  méthode par son NOM dans le dossier du module, `/rapprochements` passait
+  pour une liste de comptes). MINEURS corrigés · lignes relues par lots de
+  500 (`apresLaCle` rang puis id) avec le solde progressif incrémental
+  (`soldeApres`) et la période de la feuille par agrégat (min, max) ; un
+  relevé qui change entre la liste et sa feuille ARRÊTE le flux (décompte
+  confronté, spec) ; un zéro est une cellule vide partout sauf le solde de
+  départ déclaré (`montantFpm`) ; `retirerReleve` dans une transaction ;
+  nom du fichier importé borné en points de code, `@MaxLength` ; `du`, `au`
+  et `compteIds` bornés, plus de 200 comptes refusé ; bornes jugées sur le
+  JOUR (`jourIso`, un relevé daté à dix heures entrait dans « au ») ; un
+  « 2026-02-31 » refusé ; nom de feuille nettoyé des caractères qu'Excel
+  refuse ; `Math.min(...)` remplacé par des boucles ; `comptesSansExtrait`
+  servis en objets ; `'ANNULE'` retiré du type ; écran · refus 4xx avec son
+  motif, panne ou téléchargement interrompu dits « aucun classeur produit »,
+  relecture de la liste sur 404, `finally`, `min` / `max` croisés des dates,
+  `aria-label`, `title` du fichier tronqué, rôles de tableau ; scénario
+  navigateur étendu (comptes servis, montants de la feuille, sélecteur).
+  Non repris (relevés en attente) · `IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE`
+  ne détecte que `compteId` au singulier (la preuve du 404 est au service
+  et au scénario, élargir la détection est un changement du spec) ;
+  l'horodatage de l'import garde `toLocaleString` (l'heure compte, et
+  `common/echeance.ts` ne rend que le jour) ; aucun spec unitaire d'`importerReleve`
+  (couvert par le scénario navigateur) ; le cas à 201 relevés n'est pas
+  rejoué au navigateur (spec unitaire). Rejoué · tsc des deux côtés, 195
+  tests des suites touchées, scénario navigateur sur vraie base.
 
 ## Reste
 
 - #37 · parité recomptée à l'intégration (les deux tours de relecture sont
   faits).
-- #45 · deux tours de relecture.
+- #45 · second tour de relecture.
 - #46 · conditions bancaires par RIB, autorisations de financement, unions
   de comptes (`banques/`).
 - #47 · taux de référence, financements, placements (`tresorerie/`) ; les

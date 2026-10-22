@@ -38,7 +38,7 @@ export class RapprochementController {
   // sans quoi « extraits » serait lu comme un identifiant de rapprochement.
   @Get('extraits')
   async listerExtraits(@CurrentUser() user: AuthenticatedUser, @Query('compteId', COMPTE_FACULTATIF) compteId?: string) {
-    return this.extraits.lister(user.tenantId, compteId);
+    return this.extraits.listerExtraits(user.tenantId, { compteIds: compteId ? [compteId] : [], du: null, au: null });
   }
 
   /** L'édition chaînée · un classeur, une feuille par extrait, en flux. Lecture seule, tous rôles. */

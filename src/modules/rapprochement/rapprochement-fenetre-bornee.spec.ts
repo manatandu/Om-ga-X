@@ -24,6 +24,8 @@ function monter(options: { total?: number; releve?: Array<{ id: string; date: Da
     // ici, le solde de départ vaut donc zéro.
     rapprochementBancaire: {
       findFirst: jest.fn(async ({ where }: { where: { statut?: string } }) => (where.statut === 'CLOTURE' ? null : rapprochement)),
+      // Aucun rapprochement clos avant celui-ci (`depart` les lit en une fois).
+      findMany: jest.fn(async () => []),
     },
     // L'exercice qui porte le livre de la veille de la date de départ.
     exercice: { findFirst: jest.fn(async () => ({ id: 'ex1' })) },

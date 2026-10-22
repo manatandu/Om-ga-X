@@ -26,6 +26,8 @@ function monter() {
     // Honore la recherche du rapprochement CLOS précédent · aucun ici.
     rapprochementBancaire: {
       findFirst: jest.fn(async ({ where }: { where: { statut?: string } }) => (where.statut === 'CLOTURE' ? null : rapprochement)),
+      // Aucun rapprochement clos avant celui-ci (`depart` les lit en une fois).
+      findMany: jest.fn(async () => []),
     },
     exercice: { findFirst: jest.fn(async () => ({ id: 'ex' })) },
     ligneReleveBancaire: {

@@ -100,6 +100,39 @@ export interface RegleOuverture {
 }
 
 /**
+ * LE SOLDE DE DÉPART D'UN RAPPROCHEMENT, lu parmi les rapprochements CLOS de
+ * son compte · UNE règle pour `depart` (un rapprochement, une lecture) et pour
+ * la liste des extraits (une tranche, les clos de ses comptes lus en une
+ * fois · premier tour de relecture du n° 45, M4 · deux requêtes par
+ * rapprochement faisaient quatre cents allers-retours en série). `clos` se
+ * reçoit dans n'importe quel ordre.
+ *
+ * Le précédent est le clos le plus récent dont la clôture précède celle du
+ * rapprochement (ou l'instant, s'il est encore ouvert) ; la tête de la chaîne
+ * est le premier clos daté (un clos sans date de clôture, héritage d'avant la
+ * règle, ne passe en tête que s'il n'y en a aucun daté · l'ordre croissant de
+ * PostgreSQL range les nuls en dernier).
+ */
+export function departParmiLesClos(
+  r: { clotureAt: Date | null; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
+  clos: readonly { clotureAt: Date | null; soldeReleve: Prisma.Decimal | number; dateDepart: Date | null }[],
+): { soldeDepart: number | null; regle: RegleOuverture; premier: boolean } {
+  const borne = (r.clotureAt ?? new Date()).getTime();
+  const dates = clos.filter((c): c is typeof c & { clotureAt: Date } => c.clotureAt !== null).sort((a, b) => a.clotureAt.getTime() - b.clotureAt.getTime());
+  let dernier: (typeof dates)[number] | null = null;
+  for (const c of dates) if (c.clotureAt.getTime() < borne) dernier = c;
+  if (!dernier) {
+    return {
+      soldeDepart: r.soldeDepartDeclare == null ? null : Number(r.soldeDepartDeclare),
+      regle: { ancre: false, dateDepart: r.dateDepart ?? null },
+      premier: true,
+    };
+  }
+  const tete = dates[0] ?? clos[0];
+  return { soldeDepart: Number(dernier.soldeReleve), regle: { ancre: true, dateDepart: tete?.dateDepart ?? null }, premier: false };
+}
+
+/**
  * L'écriture est-elle un à-nouveau ? L'à-nouveau est l'écriture de la colonne
  * « report » de la balance (`filtresDesTroisColonnes`) · jamais l'écriture qui
  * solde les comptes de gestion, qui n'ouvre rien.
@@ -274,27 +307,12 @@ export class RapprochementService {
     tenantId: string,
     r: { compteId: string; clotureAt: Date | null; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
   ): Promise<{ soldeDepart: number | null; regle: RegleOuverture; premier: boolean }> {
-    const dernier = await this.prisma.rapprochementBancaire.findFirst({
-      where: { tenantId, compteId: r.compteId, statut: StatutRapprochement.CLOTURE, clotureAt: { lt: r.clotureAt ?? new Date() } },
-      orderBy: { clotureAt: 'desc' },
-    });
-    if (!dernier) {
-      return {
-        soldeDepart: r.soldeDepartDeclare == null ? null : Number(r.soldeDepartDeclare),
-        regle: { ancre: false, dateDepart: r.dateDepart ?? null },
-        premier: true,
-      };
-    }
-    const tete = await this.prisma.rapprochementBancaire.findFirst({
+    const clos = await this.prisma.rapprochementBancaire.findMany({
       where: { tenantId, compteId: r.compteId, statut: StatutRapprochement.CLOTURE },
+      select: { clotureAt: true, soldeReleve: true, dateDepart: true },
       orderBy: { clotureAt: 'asc' },
-      select: { dateDepart: true },
     });
-    return {
-      soldeDepart: Number(dernier.soldeReleve),
-      regle: { ancre: true, dateDepart: tete?.dateDepart ?? null },
-      premier: false,
-    };
+    return departParmiLesClos(r, clos);
   }
 
   /**
@@ -933,7 +951,7 @@ export class RapprochementService {
       // reçu (AUDCIF art. 22, 7°). Posés AVANT les lignes, dans la transaction.
       await tx.rapprochementBancaire.update({
         where: { id, tenantId },
-        data: { releveImporteLe: new Date(), releveNomFichier: dto.nomFichier.slice(0, 200) },
+        data: { releveImporteLe: new Date(), releveNomFichier: [...dto.nomFichier].slice(0, 200).join('') },
       });
       await tx.ligneReleveBancaire.createMany({
         data: lignes.map((l) => ({
@@ -957,10 +975,14 @@ export class RapprochementService {
     if ((await this.correspondancesDuReleve(tenantId, id)) > 0) {
       throw new ConflictException('Des lignes du relevé sont rapprochées · dissociez-les avant de retirer le relevé.');
     }
-    const r = await this.prisma.ligneReleveBancaire.deleteMany({ where: { tenantId, rapprochementId: id } });
-    // Plus de relevé, plus d'import à dater (fonction 45).
-    await this.prisma.rapprochementBancaire.update({ where: { id, tenantId }, data: { releveImporteLe: null, releveNomFichier: null } });
-    return { nombreLignes: r.count };
+    // Les lignes et la date de l'import partent ENSEMBLE (fonction 45, premier
+    // tour de relecture, m3) · une panne entre les deux laissait un import
+    // daté sur un rapprochement sans ligne.
+    return transactionJournalisee(this.prisma, async (tx) => {
+      const r = await tx.ligneReleveBancaire.deleteMany({ where: { tenantId, rapprochementId: id } });
+      await tx.rapprochementBancaire.update({ where: { id, tenantId }, data: { releveImporteLe: null, releveNomFichier: null } });
+      return { nombreLignes: r.count };
+    });
   }
 
   /**

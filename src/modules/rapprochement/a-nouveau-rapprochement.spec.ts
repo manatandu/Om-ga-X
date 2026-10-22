@@ -197,6 +197,10 @@ function monter(options: { rapprochements: Rap[]; encours?: Encours[]; lignes?: 
       findFirst: jest.fn(async ({ where, orderBy }: { where: Filtre; orderBy?: Record<string, 'asc' | 'desc'> }) => {
         return trier(rapprochements.filter((r) => correspond(r, where)) as unknown as Record<string, unknown>[], orderBy)[0] ?? null;
       }),
+      // `depart` lit les clos du compte en une fois (`departParmiLesClos`).
+      findMany: jest.fn(async ({ where, orderBy }: { where: Filtre; orderBy?: Record<string, 'asc' | 'desc'> }) => {
+        return trier(rapprochements.filter((r) => correspond(r, where)) as unknown as Record<string, unknown>[], orderBy);
+      }),
       update: majRapprochement,
       delete: jest.fn(async () => ({})),
     },
