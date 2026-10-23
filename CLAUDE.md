@@ -230,7 +230,9 @@ quatre-vingts jours après leur terme (« Construit maintenant ») ; puis, le
 2026-10-21, la DÉCONNEXION D'UN UTILISATEUR PAR L'ADMINISTRATEUR, vue chez
 Microfina++ (« la 2e possibilité. Fais le proprement »), et le même jour
 le VISA D'UN RIB par un second utilisateur (« Lève le gel pour le visa d'un
-RIB »), les autres idées de ce logiciel restant au suivi.
+RIB »), les autres idées de ce logiciel restant au suivi ; puis, le
+2026-10-23, la page publique et l'écran de connexion remis au registre de
+l'application (« Le tout en cascade », charte § 9 bis), sans toucher au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -5613,6 +5615,11 @@ OmegaX, JAMAIS le vert de Sage.
   texte blanc, les lignes séparées par un filet, sans quadrillage vertical ni
   zébrure, total sur `--a-50` (`index.css`, bloc TABLEAUX). Le bouton
   principal (`bg-sel`) est une pilule, comme le « + Créer » de Sage Active.
+- **La page publique et la connexion ont le registre de l'application**
+  (charte § 9 bis, 2026-10-23) · fiche et grilles à filet, démonstration dans
+  une fenêtre du logiciel, aucun effet de défilement, aucun compteur, aucun
+  ornement de fond (cercles, halos), aucun aplat plein-largeur d'appel. Tenu
+  par `vitrine-publique.spec.ts`.
 - **Aucun titre de page.** La barre de titre de la fenêtre porte le titre ; un
   fil d'Ariane ou un `<h1>` qui le répète est retiré. Les titres de CADRE
   (bloc, onglet, tableau) restent.

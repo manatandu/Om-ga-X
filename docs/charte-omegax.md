@@ -385,6 +385,52 @@ Il n'est jamais employé comme cadre, ni doublé, ni incliné.
 
 ---
 
+## 9 bis. Le registre · un logiciel de gestion, pas un gabarit
+
+Décidé le 2026-10-23, après la question de Manasse « pourquoi le design du
+logiciel fait trop IA ? ». La réponse, lue sur les captures, tenait en une
+phrase · l'APPLICATION a le registre d'un logiciel de gestion (barre de titre
+à l'encre, grilles à en-tête plein, lignes à filet, barre d'état), mais la
+PAGE PUBLIQUE et l'écran de connexion avaient celui d'une page de lancement
+engendrée, et c'est par eux qu'on entre. La page publique empruntait d'ailleurs
+ses effets, nommément, à une bibliothèque de composants de pages de lancement.
+
+**Le registre est celui de l'application, sur toute surface OmegaX**, la
+page publique comprise :
+
+- **Densité.** Corps de 15 px sur la page publique, 12 px dans l'application ;
+  titre principal à 2,25 rem au plus, titres de section en titres de CADRE
+  (1,35 rem), jamais un titre d'affiche de plusieurs lignes à 4 rem et plus.
+- **Grilles, pas cartes.** Ce qui s'énumère se range en lignes à filet,
+  intitulé à gauche, contenu à droite (une fiche, un registre, un extrait de
+  plan). Un extrait chiffré est une GRILLE de l'application, en-tête plein à
+  l'encre, chiffres en chasse fixe alignés à droite.
+- **La démonstration est une fenêtre du logiciel.** Barre de titre à l'encre,
+  grille, barre d'état en pied · jamais une « carte de démonstration »
+  arrondie posée dans du vide.
+- **Mise en page alignée à gauche**, colonne de 1 180 px, sections séparées par
+  le filet de clôture (§ 9). Aucun titre centré sur une bande.
+- **Aucun aplat plein-largeur à l'encre** pour un appel à l'action · l'appel
+  est un cadre du même registre (lavis, filet, liseré à l'encre).
+- **Aucun ornement de fond** · ni cercles, ni halos en dégradé radial, ni
+  grain, ni forme décorative derrière une fenêtre. Le fond est le bureau du
+  logiciel, en aplat.
+- **Aucun effet de défilement** · ni révélation au défilement, ni compteur qui
+  monte vers sa valeur, ni mots qui s'encrent au fil de la lecture, ni barre
+  de progression de lecture, ni faisceaux animés. Un nombre s'écrit en clair,
+  égal à sa source. Le seul mouvement admis sur la page publique est le
+  cachet « Validée » posé sur la pièce, en moins de 300 ms, coupé sous
+  `prefers-reduced-motion`.
+- **Aucune numérotation décorative.** Un numéro ne s'écrit que sur une suite
+  réelle (les quatre étapes du cycle comptable), jamais en « 01 / 02 / 03 »
+  au-dessus de rubriques sans ordre.
+
+Ces règles sont tenues pour la page publique par `vitrine-publique.spec.ts`
+(aucun effet de défilement, nombre écrit en clair, une seule animation de
+300 ms au plus, les deux plans côte à côte).
+
+---
+
 ## 10. Cosignature avec VMG Consulting
 
 OmegaX est un produit du cabinet VMG Consulting. Trois postures, et il faut

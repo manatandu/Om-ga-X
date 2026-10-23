@@ -35,6 +35,7 @@ async function monter(reponse: unknown | 'echec') {
   const lienEssai = element();
   lienEssai.hidden = true;
   lienEssai.classList.add('bouton-plein');
+  lienEssai.classList.add('essai-duree');
   const document = {
     documentElement: element(),
     getElementById: (id: string) => ids[id] ?? null,

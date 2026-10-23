@@ -12,10 +12,10 @@
 <meta property="og:title" content="OmegaX · comptabilité SYCEBNL et SYSCOHADA">
 <meta property="og:description" content="Des comptes qui bouclent, dans le bon référentiel. Logiciel de comptabilité pour les associations, ONG, projets et entreprises de RDC.">
 <link rel="icon" href="/icone.svg" type="image/svg+xml">
-<link rel="preload" href="/polices/ibm-plex-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/polices/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="vitrine.css?v=20261021">
-<script src="vitrine.js?v=20261021" defer></script>
+<link rel="preload" href="/polices/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="vitrine.css?v=20261023">
+<script src="vitrine.js?v=20261023" defer></script>
 </head>
 <body>
 <a class="evitement" href="#principal">Aller au contenu</a>
@@ -24,31 +24,39 @@
   <a class="marque" href="/vitrine/" aria-label="OmegaX, accueil"><img src="/logo-omegax-mot.svg" alt="OmegaX" width="110" height="22"></a>
   <nav aria-label="Principal">
     <a href="#cycle">Le cycle</a>
+    <a href="#domaines">Modules</a>
     <a href="#referentiels">Référentiels</a>
     <a href="#installation">Installation</a>
     <a href="#questions">Questions</a>
   </nav>
   <a class="bouton" href="/#/connexion">Se connecter</a>
-  <div class="progres" aria-hidden="true"><span></span></div>
 </header>
 
 <main id="principal">
 
 <section class="tete" aria-labelledby="titre">
-  <h1 id="titre">Des comptes qui bouclent, dans le bon référentiel.</h1>
-  <div class="tete-cote">
-    <p class="chapeau">OmegaX est le logiciel de comptabilité SYCEBNL et SYSCOHADA des associations, ONG, projets de développement et entreprises de RDC. Il refuse ce qui ne boucle pas et produit les états financiers avec leurs notes annexes. Édité par VMG Consulting.</p>
+  <div class="tete-texte">
+    <p class="surtitre">Logiciel de comptabilité · édité par VMG Consulting</p>
+    <h1 id="titre">Comptabilité SYCEBNL et SYSCOHADA pour les entités de RDC</h1>
+    <p class="chapeau">OmegaX tient la comptabilité des associations, ONG, projets de développement et entreprises. Il refuse ce qui ne boucle pas et produit les états financiers avec leurs notes annexes.</p>
     <p class="actions">
-      <a class="bouton bouton-plein" href="/#/essai" data-essai hidden>Essayer gratuitement</a>
+      <a class="bouton bouton-plein essai-duree" href="/#/essai" data-essai hidden>Essayer gratuitement</a>
       <a class="bouton bouton-plein" href="/#/connexion" data-connexion>Se connecter</a>
     </p>
-    <p class="pour">Pour les associations, ONG, ordres professionnels, projets de développement, sociétés et entreprises.</p>
   </div>
+
+  <dl class="fiche" aria-label="Fiche du logiciel">
+    <div><dt>Référentiels</dt><dd>SYCEBNL, entités à but non lucratif<br>SYSCOHADA, sociétés et entreprises</dd></div>
+    <div><dt>États produits</dt><dd>Bilan, compte de résultat, flux de trésorerie, notes annexes, liasse en Excel</dd></div>
+    <div><dt>Monnaie de tenue</dt><dd>Franc congolais ; une ligne peut porter un montant en devise et son cours</dd></div>
+    <div><dt>Installation</dt><dd>En ligne, ou sur un poste Windows serveur</dd></div>
+    <div><dt>Pour</dt><dd>Associations, ONG, ordres professionnels, projets de développement, sociétés et entreprises</dd></div>
+  </dl>
 
   <figure class="feuille" aria-labelledby="feuille-titre">
     <figcaption class="feuille-haut">
-      <span id="feuille-titre">Journal des opérations diverses · exemple à essayer</span>
-      <span>Montants en francs congolais</span>
+      <span id="feuille-titre">Saisie des écritures · Journal des opérations diverses · exemple à essayer</span>
+      <span>Dossier fictif · montants en francs congolais</span>
     </figcaption>
     <form class="feuille-corps" id="piece" action="#" novalidate>
       <div class="piece">
@@ -87,69 +95,80 @@
           <button type="submit" class="bouton bouton-plein" id="valider" hidden>Valider la pièce</button>
           <button type="button" class="bouton" id="remettre" hidden>Remettre l'exemple</button>
         </p>
-        <p class="controle-note">Dossier fictif, rien n'est enregistré. Une écriture validée n'est plus modifiée ni supprimée : une erreur s'annule par une écriture en négatif, avec son motif.</p>
       </div>
     </form>
+    <p class="feuille-pied">Rien n'est enregistré. Une écriture validée n'est plus modifiée ni supprimée : une erreur s'annule par une écriture en négatif, avec son motif.</p>
   </figure>
 </section>
 
-<section class="affirmation" aria-label="Ce qu'OmegaX refuse">
-  <p class="mots" id="mots">OmegaX refuse ce qui ne boucle pas. Une écriture déséquilibrée n'est pas enregistrée. Une écriture validée ne se modifie plus. Qui a saisi, qui a validé et quand : le journal le restitue.</p>
+<section class="regles" aria-labelledby="t-regles">
+  <h2 id="t-regles" class="sr-only">Ce qu'OmegaX refuse</h2>
+  <ul>
+    <li><b>Équilibre</b><span>Une écriture déséquilibrée n'est pas enregistrée.</span></li>
+    <li><b>Irréversibilité</b><span>Une écriture validée ne se modifie plus.</span></li>
+    <li><b>Piste</b><span>Qui a saisi, qui a validé et quand : le journal le restitue.</span></li>
+  </ul>
 </section>
 
 <div class="filet" aria-hidden="true"></div>
 
 <section id="cycle" class="bloc" aria-labelledby="t-cycle">
   <h2 id="t-cycle">De la pièce à la liasse</h2>
-  <ol class="cycle" id="cycle-liste">
+  <ol class="cycle">
     <li>
       <div class="cycle-texte">
         <h3>Saisie au brouillard</h3>
         <p>Saisie par écriture ou par pièce, modèles de saisie, import d'écritures. Les écritures restent au brouillard jusqu'à leur validation, qui les inscrit au livre-journal. Un double regard peut être exigé : celui qui saisit ne valide pas.</p>
       </div>
-      <div class="fig fig-statuts" role="img" aria-label="Exemple : trois écritures, deux validées et une au brouillard">
-        <ul>
-          <li><span>Achat · Facture fournisseur</span><b>230&#8239;000,00</b><i class="puce">Validée</i></li>
-          <li><span>Banque · Règlement fournisseur</span><b>230&#8239;000,00</b><i class="puce">Validée</i></li>
-          <li><span>Opérations diverses · Salaires du mois</span><b>1&#8239;250&#8239;000,00</b><i class="puce brouillard">Brouillard</i></li>
-        </ul>
-      </div>
+      <table class="fig" aria-label="Exemple : trois écritures, deux validées et une au brouillard">
+        <thead><tr><th scope="col">Journal · écriture</th><th scope="col" class="num">Montant</th><th scope="col">Statut</th></tr></thead>
+        <tbody>
+          <tr><td>Achat · Facture fournisseur</td><td class="num">230&#8239;000,00</td><td><i class="puce">Validée</i></td></tr>
+          <tr><td>Banque · Règlement fournisseur</td><td class="num">230&#8239;000,00</td><td><i class="puce">Validée</i></td></tr>
+          <tr><td>Opérations diverses · Salaires du mois</td><td class="num">1&#8239;250&#8239;000,00</td><td><i class="puce brouillard">Brouillard</i></td></tr>
+        </tbody>
+      </table>
     </li>
     <li>
       <div class="cycle-texte">
         <h3>Lettrage et rapprochement bancaire</h3>
         <p>Chaque tiers a ses comptes, sa fiche et ses échéances ; le lettrage est manuel ou proposé. Importez le relevé de la banque : OmegaX propose les correspondances avec vos écritures, et vous confirmez celles qui sont justes. Une ligne sans écriture est signalée « à comptabiliser ». Aucun écart n'est absorbé en silence.</p>
       </div>
-      <div class="fig fig-rap" role="img" aria-label="Exemple : trois lignes de relevé bancaire rapprochées de trois écritures, une quatrième sans écriture, à comptabiliser">
-        <div class="rap-tete"><span>Relevé de la banque</span><span>Écritures du dossier</span></div>
-        <div class="rap-paire"><span class="g">Versement reçu<b>500&#8239;000,00</b></span><i class="faisceau"></i><span class="d">Don en numéraire</span></div>
-        <div class="rap-paire"><span class="g">Chèque n° 0042<b>-230&#8239;000,00</b></span><i class="faisceau"></i><span class="d">Règlement fournisseur</span></div>
-        <div class="rap-paire"><span class="g">Frais de tenue de compte<b>-12&#8239;500,00</b></span><i class="faisceau"></i><span class="d">Frais bancaires</span></div>
-        <div class="rap-paire sans"><span class="g">Virement reçu<b>75&#8239;000,00</b></span><i class="faisceau"></i><span class="d">Aucune écriture · à comptabiliser</span></div>
-      </div>
+      <table class="fig" aria-label="Exemple : trois lignes de relevé bancaire rapprochées de trois écritures, une quatrième sans écriture, à comptabiliser">
+        <thead><tr><th scope="col">Relevé de la banque</th><th scope="col" class="num">Montant</th><th scope="col">Écriture du dossier</th></tr></thead>
+        <tbody>
+          <tr><td>Versement reçu</td><td class="num">500&#8239;000,00</td><td>Don en numéraire</td></tr>
+          <tr><td>Chèque n° 0042</td><td class="num">-230&#8239;000,00</td><td>Règlement fournisseur</td></tr>
+          <tr><td>Frais de tenue de compte</td><td class="num">-12&#8239;500,00</td><td>Frais bancaires</td></tr>
+          <tr class="sans"><td>Virement reçu</td><td class="num">75&#8239;000,00</td><td>Aucune écriture · à comptabiliser</td></tr>
+        </tbody>
+      </table>
     </li>
     <li>
       <div class="cycle-texte">
         <h3>Clôture dans l'ordre</h3>
         <p>La clôture solde les comptes de gestion et reporte les soldes sur l'exercice suivant, en à-nouveau. Elle se fait dans l'ordre : un exercice antérieur resté ouvert la refuse.</p>
       </div>
-      <div class="fig fig-cloture" role="img" aria-label="Exemple : le solde de clôture de l'exercice N devient l'à-nouveau de l'exercice N+1">
-        <div class="cl-col"><span>Exercice N · clôture</span><b>3&#8239;450&#8239;000,00</b><span>Banque</span></div>
-        <div class="cl-lien"><i></i></div>
-        <div class="cl-col"><span>Exercice N+1 · à-nouveau</span><b>3&#8239;450&#8239;000,00</b><span>Banque</span></div>
-      </div>
+      <table class="fig" aria-label="Exemple : le solde de clôture de l'exercice N devient l'à-nouveau de l'exercice N+1">
+        <thead><tr><th scope="col">Compte</th><th scope="col" class="num">Clôture N</th><th scope="col" class="num">À-nouveau N+1</th></tr></thead>
+        <tbody>
+          <tr><td>Banque</td><td class="num">3&#8239;450&#8239;000,00</td><td class="num">3&#8239;450&#8239;000,00</td></tr>
+        </tbody>
+      </table>
     </li>
     <li>
       <div class="cycle-texte">
         <h3>États financiers et notes annexes</h3>
         <p>Bilan, compte de résultat, tableau des flux de trésorerie ou journal de trésorerie selon le jeu d'états, et notes annexes, avec la colonne de l'exercice précédent. Export de la liasse en Excel, montants liés à la balance.</p>
       </div>
-      <div class="fig fig-etats" role="img" aria-label="Exemple : bilan dont le total de l'actif égale le total du passif">
-        <div class="et-ligne"><span>Total de l'actif</span><b>8&#8239;640&#8239;000,00</b></div>
-        <div class="et-egal" aria-hidden="true"><i></i><span>égal</span><i></i></div>
-        <div class="et-ligne"><span>Total du passif</span><b>8&#8239;640&#8239;000,00</b></div>
-        <p class="et-liste">Bilan · Compte de résultat · Flux de trésorerie · Notes annexes</p>
-      </div>
+      <table class="fig" aria-label="Exemple : bilan dont le total de l'actif égale le total du passif">
+        <thead><tr><th scope="col">Bilan</th><th scope="col" class="num">Exercice N</th></tr></thead>
+        <tbody>
+          <tr><td>Total de l'actif</td><td class="num">8&#8239;640&#8239;000,00</td></tr>
+          <tr><td>Total du passif</td><td class="num">8&#8239;640&#8239;000,00</td></tr>
+        </tbody>
+        <tfoot><tr><td>Écart</td><td class="num">0,00</td></tr></tfoot>
+      </table>
     </li>
   </ol>
 </section>
@@ -197,13 +216,6 @@
   <h2 id="t-ref">Deux référentiels, deux plans de comptes</h2>
   <p class="intro">Le référentiel se choisit à la création du dossier. Le plan de comptes, les états financiers et le vocabulaire sont ceux de ce référentiel, sans mélange. Un même numéro peut y avoir deux sens.</p>
 
-  <div class="bascule" id="bascule" role="radiogroup" aria-label="Référentiel à afficher" hidden>
-    <input type="radio" name="ref" id="ref-sycebnl" value="SYCEBNL" checked>
-    <label for="ref-sycebnl">SYCEBNL</label>
-    <input type="radio" name="ref" id="ref-syscohada" value="SYSCOHADA">
-    <label for="ref-syscohada">SYSCOHADA</label>
-  </div>
-
   <div class="plans">
     <article class="plan" data-ref="SYCEBNL" aria-labelledby="p-sycebnl">
       <h3 id="p-sycebnl">SYCEBNL <small>Entités à but non lucratif</small></h3>
@@ -217,9 +229,9 @@
         </tbody>
       </table>
       <dl>
-        <div><dt>Associations et ordres professionnels</dt><dd><span class="nb" data-vers="45"><span class="sr-only">45</span><span aria-hidden="true">45</span></span> notes annexes</dd></div>
-        <div><dt>Projets de développement</dt><dd><span class="nb" data-vers="26"><span class="sr-only">26</span><span aria-hidden="true">26</span></span> notes annexes</dd></div>
-        <div><dt>Système minimal de trésorerie</dt><dd><span class="nb" data-vers="5"><span class="sr-only">5</span><span aria-hidden="true">5</span></span> notes annexes</dd></div>
+        <div><dt>Associations et ordres professionnels</dt><dd><b class="nb" data-vers="45">45</b> notes annexes</dd></div>
+        <div><dt>Projets de développement</dt><dd><b class="nb" data-vers="26">26</b> notes annexes</dd></div>
+        <div><dt>Système minimal de trésorerie</dt><dd><b class="nb" data-vers="5">5</b> notes annexes</dd></div>
       </dl>
       <p class="propre">Propres à ce référentiel : donateurs, bailleurs, fonds affectés, contributions volontaires en nature.</p>
     </article>
@@ -236,7 +248,7 @@
         </tbody>
       </table>
       <dl>
-        <div><dt>Système normal</dt><dd>Bilan, résultat, flux, <span class="nb" data-vers="36"><span class="sr-only">36</span><span aria-hidden="true">36</span></span> notes annexes</dd></div>
+        <div><dt>Système normal</dt><dd>Bilan, résultat, flux, <b class="nb" data-vers="36">36</b> notes annexes</dd></div>
         <div><dt>Système minimal de trésorerie</dt><dd>Bilan, résultat, notes 1 à 3 et journal de trésorerie</dd></div>
         <div><dt>Groupes</dt><dd>Consolidation, IFRS</dd></div>
       </dl>
@@ -294,21 +306,19 @@
 </section>
 
 <section class="appel" aria-labelledby="t-appel">
-  <div class="appel-corps">
-    <div data-sans-essai>
-      <h2 id="t-appel">Ouvrir un dossier OmegaX</h2>
-      <p>Pour ouvrir un dossier ou poser une question, écrivez à <a href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>. Si vous avez déjà un dossier, connectez-vous.</p>
-    </div>
-    <div data-avec-essai hidden>
-      <h2 id="t-appel-essai">Essayez OmegaX pendant <span data-jours></span> jours</h2>
-      <p>Créez un dossier d'essai avec votre adresse e-mail. Le mot de passe provisoire vous y est envoyé.</p>
-    </div>
-    <p class="actions">
-      <a class="bouton bouton-clair" href="/#/essai" data-essai hidden>Ouvrir un dossier d'essai</a>
-      <a class="bouton bouton-contour" href="/#/connexion">Se connecter</a>
-      <a class="bouton bouton-contour" href="/#/questions-frequentes">Toutes les questions</a>
-    </p>
+  <div data-sans-essai>
+    <h2 id="t-appel">Ouvrir un dossier OmegaX</h2>
+    <p>Pour ouvrir un dossier ou poser une question, écrivez à <a href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>. Si vous avez déjà un dossier, connectez-vous.</p>
   </div>
+  <div data-avec-essai hidden>
+    <h2 id="t-appel-essai">Essayez OmegaX pendant <span data-jours></span> jours</h2>
+    <p>Créez un dossier d'essai avec votre adresse e-mail. Le mot de passe provisoire vous y est envoyé.</p>
+  </div>
+  <p class="actions">
+    <a class="bouton bouton-plein" href="/#/essai" data-essai hidden>Ouvrir un dossier d'essai</a>
+    <a class="bouton" href="/#/connexion">Se connecter</a>
+    <a class="bouton" href="/#/questions-frequentes">Toutes les questions</a>
+  </p>
 </section>
 
 </main>

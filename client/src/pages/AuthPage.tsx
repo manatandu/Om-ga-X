@@ -66,24 +66,6 @@ function IconOeil({ ouvert }: { ouvert: boolean }) {
   );
 }
 
-/** Cercles décoratifs, en pur CSS. */
-function CerclesDecoratifs() {
-  const cercle = (style: React.CSSProperties) => (
-    <div className="absolute rounded-full border border-sel/25 pointer-events-none" style={style} />
-  );
-  return (
-    <>
-      {cercle({ width: 340, height: 340, top: -140, right: -120 })}
-      {cercle({ width: 220, height: 220, top: -40, right: -20 })}
-      {cercle({ width: 260, height: 260, bottom: -120, left: -100 })}
-      <div
-        className="absolute rounded-full bg-sel/[0.06] pointer-events-none"
-        style={{ width: 380, height: 380, bottom: -180, left: -160 }}
-      />
-    </>
-  );
-}
-
 export function AuthPage() {
   // L'ADRESSE DU DERNIER DOSSIER OUVERT SUR CET APPAREIL est préremplie ·
   // rien d'autre ne s'affiche (décision de Manasse du 2026-10-09, « Tu as
@@ -161,13 +143,10 @@ export function AuthPage() {
     // grille dense, sans colonne à chasse fixe · rien n'y déborde si la
     // chasse change d'un pour cent. L'établi, lui, garde la police du système
     // (voir « Typographie » dans docs/charte-omegax.md).
-    // `porte-fond` (index.css) · le bureau du logiciel avec deux halos très
-    // larges à la couleur de la marque, pour que la première seconde d'une
-    // démonstration ne soit pas un aplat gris.
+    // `porte-fond` (index.css) · le bureau du logiciel, en aplat. Ni cercles
+    // ni halos décoratifs (charte § 9 bis, 2026-10-23) · ils signaient un
+    // gabarit, pas un logiciel installé.
     <div className="porte-fond relative min-h-screen overflow-x-clip flex flex-col items-center justify-center px-4 py-8 font-marque">
-      <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-        <CerclesDecoratifs />
-      </div>
 
       {/* ------------------------------------------------------------------
           FENÊTRE DE DIALOGUE, et non page web · chez Sage cet écran est une

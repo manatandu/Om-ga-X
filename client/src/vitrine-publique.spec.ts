@@ -167,8 +167,8 @@ describe('les nombres et les phrases de la page ont leur source dans le dépôt'
     expect(nb('SYCEBNL')).toEqual([sycebnl![1], sycebnl![2], sycebnl![3]]);
     const normal = reglement.match(/(\d+) notes du ch\. 6/);
     expect(nb('SYSCOHADA')).toEqual([normal![1]]);
-    // Chaque compteur finit sur la valeur exacte, jamais une approximation.
-    expect(js).toMatch(/affiche\.textContent = String\(cible\)/);
+    // Le nombre est écrit en clair, égal à sa source, jamais animé vers elle (charte § 9 bis).
+    for (const m of html.matchAll(/data-vers="(\d+)">([^<]*)</g)) expect(m[2]).toBe(m[1]);
   });
 
   it('« une écriture déséquilibrée n’est pas enregistrée » : le serveur la refuse', () => {
@@ -222,8 +222,7 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
     '#f6f5fa', // lavis
     '#b52e26', // signal d'erreur, seul rouge de la page
     '#9a95b4', // curseur de défilement
-    '#000', // masque de la bordure tracée (ne se voit pas)
-  ]);
+      ]);
 
   it('toute couleur de la feuille de style est de la charte, la liste est fermée', () => {
     for (const h of new Set(hexa)) expect(ADMISES.has(h)).toBe(true);
@@ -270,29 +269,32 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
 });
 
 describe('le mouvement sert la lecture et se coupe', () => {
-  it('prefers-reduced-motion coupe animations et transitions, le script le lit', () => {
+  it('prefers-reduced-motion coupe animations et transitions', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{[\s\S]*animation:none!important;transition:none!important/);
-    expect(js).toContain('(prefers-reduced-motion: reduce)');
   });
 
-  it('rien n’est caché sans script : les révélations sont posées par le script, sous la ligne de flottaison', () => {
-    expect(html).not.toMatch(/data-reveal/);
-    expect(js).toContain("b.setAttribute('data-reveal', '')");
-    expect(js).toMatch(/getBoundingClientRect\(\)\.top > bas/);
-    // Les contrôles interactifs ne se montrent qu'avec le script (sinon des boutons sans effet).
+  it('aucun effet de défilement : ni révélation, ni compteur, ni mots lus, ni barre de progression (charte § 9 bis)', () => {
+    // Ces effets faisaient de la page un gabarit de page de lancement ; le registre est celui de l'application.
+    for (const t of [html, js]) expect(t).not.toMatch(/data-reveal|IntersectionObserver|requestAnimationFrame/);
+    expect(js).not.toMatch(/addEventListener\('scroll'/);
+    expect(css).not.toMatch(/\.progres|\.mots|\.faisceau|@property/);
+    // Rien n'est caché sans script, sauf les contrôles interactifs (sinon des boutons sans effet).
     expect(html).toMatch(/id="valider" hidden/);
     expect(html).toMatch(/id="remettre" hidden/);
-    expect(html).toMatch(/id="bascule" role="radiogroup"[^>]*hidden/);
     expect(html.match(/ readonly>/g)!.length).toBe(2);
+    // Les deux plans se montrent côte à côte, sans bascule qui en cacherait un.
+    expect(html).not.toMatch(/id="bascule"/);
+    expect(html.match(/<article class="plan" data-ref="(SYCEBNL|SYSCOHADA)"/g)!.length).toBe(2);
   });
 
   it('les champs de montant restent à 16 px au moins sur téléphone (pas de zoom à la saisie)', () => {
     expect(css).toMatch(/\.piece input\{font-size:16px/);
   });
 
-  it('la durée des mouvements reste sobre : aucune animation de plus de trois secondes sauf la bordure tracée une fois', () => {
+  it('la durée des mouvements reste sobre : rien au-delà de 300 ms, le cachet seul est animé', () => {
     for (const m of css.matchAll(/animation:[^;}]*?(\d*\.?\d+)s/g)) {
-      expect(Number(m[1])).toBeLessThanOrEqual(2.6);
+      expect(Number(m[1])).toBeLessThanOrEqual(0.3);
     }
+    expect([...css.matchAll(/@keyframes (\w+)/g)].map((m) => m[1])).toEqual(['poser']);
   });
 });

@@ -1050,11 +1050,11 @@ tbody tr {
  * aucun dégradé ne touche la MARQUE elle-même (charte § 7.2 et § 11, 2°),
  * qui est posée à plat, en blanc sur l'encre (§ 7.3 · 14,49:1).
  */
+/* Le bureau du logiciel, en aplat · les deux halos à la couleur de la marque
+   (retirés le 2026-10-23, charte § 9 bis) faisaient de l'écran de connexion
+   un gabarit de page de lancement ; chez Sage, la fenêtre se pose sur le bureau. */
 .porte-fond {
-  background:
-    radial-gradient(900px 520px at 85% -10%, rgba(79, 59, 168, 0.1), transparent 64%),
-    radial-gradient(700px 460px at 0% 110%, rgba(42, 31, 92, 0.08), transparent 62%),
-    var(--bg);
+  background: var(--bg);
 }
 .porte-marque {
   background: var(--bandeau);
