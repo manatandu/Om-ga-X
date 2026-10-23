@@ -2,7 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { JwtStrategy, extraireJetonDuCookie } from './jwt.strategy';
 import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
+import { AuthController, MOTIF_LICENCE_A_L_INSCRIPTION } from './auth.controller';
 import { COOKIE_SESSION } from './session.constants';
 
 /**
@@ -172,6 +172,26 @@ describe('AuthController · auto-inscription fermée (option A)', () => {
     );
     await expect(controleur.register({} as never, res)).resolves.toEqual({ csrfToken: 'y' });
   });
+
+  // Relevé de sécurité du 2026-10-23 · la porte rouverte laissait l'inscrit se
+  // donner une licence perpétuelle (sondé sur une instance jetable, 201).
+  it.each(['PERPETUEL_SAAS', 'PERPETUEL_ONPREMISE', 'ABONNEMENT'])(
+    'la porte publique refuse une licence choisie (%s) · avant toute création',
+    async (typeLicence) => {
+      let registerAppele = false;
+      const controleur = new AuthController(
+        {
+          register: async () => {
+            registerAppele = true;
+            return { accessToken: 'x', csrfToken: 'y' };
+          },
+        } as never,
+        { get: (cle: string) => (cle === 'INSCRIPTION_PUBLIQUE' ? 'true' : undefined) } as never,
+      );
+      await expect(controleur.register({ typeLicence } as never, res)).rejects.toThrow(MOTIF_LICENCE_A_L_INSCRIPTION);
+      expect(registerAppele).toBe(false);
+    },
+  );
 });
 
 describe('la double authentification voyage avec l’utilisateur relu', () => {

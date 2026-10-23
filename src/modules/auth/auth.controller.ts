@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -18,6 +18,10 @@ import { effacerCookiesSession, poserCookieSession } from './session.constants';
 import { sessionDeLaRequete } from './session-longue';
 import { estSurSite } from '../../common/mode-installation';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
+
+/** Le refus d'une licence choisie à la porte publique d'inscription (relevé de sécurité du 2026-10-23). */
+export const MOTIF_LICENCE_A_L_INSCRIPTION =
+  "La licence d'un dossier ne se choisit pas à l'inscription · elle est posée par VMG Consulting depuis la console.";
 
 @Controller('auth')
 export class AuthController {
@@ -73,6 +77,18 @@ export class AuthController {
       throw new ForbiddenException(
         "L'ouverture d'un dossier OmegaX se fait avec VMG Consulting · écrivez à admin@vmgconsulting.net pour démarrer.",
       );
+    }
+    // LA PORTE PUBLIQUE NE CHOISIT PAS LA LICENCE (relevé de sécurité du
+    // 2026-10-23) · `typeLicence` sert la console et le siège, qui appellent
+    // `AuthService.register` sans passer par ici. Lu à cette porte, il
+    // laissait l'inscrit se donner « Perpétuelle (hébergée) », le produit
+    // gratuit à vie que la fermeture de la porte voulait justement empêcher,
+    // le jour où `INSCRIPTION_PUBLIQUE` se rouvre (tests navigateur, banc k6).
+    // Refusé plutôt qu'ignoré · un champ envoyé et jeté en silence laisse
+    // croire qu'il a pris. Sur site, le service impose la licence de
+    // l'installation quoi qu'il arrive.
+    if (dto.typeLicence !== undefined) {
+      throw new BadRequestException(MOTIF_LICENCE_A_L_INSCRIPTION);
     }
     return this.poserSession(res, await this.authService.register(dto));
   }
