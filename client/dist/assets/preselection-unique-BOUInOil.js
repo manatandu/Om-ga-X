@@ -1,1 +1,0 @@
-import{r as c}from"./index-DrHRWwF_.js";import{b as f}from"./comptes-proposes-D6VCYRBH.js";function p(o,n,e){const i=o?o.map(r=>r.id).join("|"):null;c.useEffect(()=>{if(!o||n&&o.some(t=>t.id===n))return;const r=f(o);r!==n&&e(r)},[i,n])}export{p as u};
