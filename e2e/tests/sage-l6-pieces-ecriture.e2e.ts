@@ -85,7 +85,13 @@ test('SYCEBNL · la pièce se joint au journal, se garde validée, survit à la 
 
   // Le téléchargement rend la pièce telle quelle, en pièce jointe.
   const [telechargement] = await Promise.all([page.waitForEvent('download'), boite.getByRole('button', { name: 'Facture SNEL.pdf' }).click()]);
-  expect(telechargement.suggestedFilename()).toBe('Facture SNEL.pdf');
+  // Le nom que le NAVIGATEUR retient n'est pas celui d'OmegaX · le WebKit des
+  // machines Ubuntu 26 de GitHub (depuis le 2026-10-19) remplace l'espace par
+  // « _ », sur le code d'avant comme sur le suivant (contrôle rejoué sur
+  // d9af8aa, même échec). Ce qui est gelé · le nom proposé est celui de la
+  // pièce, au seul blanc près que le navigateur peut réécrire, et le nom
+  // gardé par le serveur reste exact (lu plus bas, `nomFichier`).
+  expect(telechargement.suggestedFilename().replace(/_/g, ' ')).toBe('Facture SNEL.pdf');
   await boite.getByRole('button', { name: 'Fermer' }).click();
   await expect(boite).toBeHidden();
   await expect(page.getByRole('button', { name: '1 pièce jointe' })).toBeVisible();
