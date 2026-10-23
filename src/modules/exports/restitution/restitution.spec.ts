@@ -336,6 +336,16 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(manifeste).not.toMatch(/conserver cette archive pendant/i);
   });
 
+  it('prévient contre l’injection de formule au double-clic, sans altérer la donnée', () => {
+    const deplie = manifeste.replace(/\s+/g, ' ');
+    // Relevé de sécurité du 2026-10-23 · une cellule qui commence par = + - @
+    // s'exécuterait à l'ouverture d'un double-clic ; OmegaX ne préfixe rien
+    // (la donnée resterait fausse et irréversible), il dit d'ouvrir par l'import.
+    expect(deplie).toContain("Ouvrez ces CSV par l'import d'un tableur, jamais par un double-clic");
+    expect(deplie).toContain("À partir d'un fichier texte / CSV");
+    expect(deplie).toContain('TELLES QUE VOUS LES AVEZ SAISIES');
+  });
+
   it('nomme la colonne binaire sortie à côté des CSV', () => {
     const deplie = manifeste.replace(/\s+/g, ' ');
     expect(deplie).toContain(

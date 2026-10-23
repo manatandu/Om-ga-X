@@ -43,6 +43,14 @@ retour à la ligne est protégé, et un guillemet interne est doublé. Le dossie
 lui-même (paramètres, identifiants légaux, forme juridique, options) est une
 table d'une ligne, \`${fichierDeLaTable('Tenant')}\`.
 
+**Ouvrez ces CSV par l'import d'un tableur, jamais par un double-clic.** Un
+libellé saisi peut commencer par \`=\`, \`+\`, \`-\` ou \`@\` (le nom d'un tiers,
+le motif d'une écriture) · un tableur qui ouvre le fichier d'un double-clic
+lirait une telle cellule comme une FORMULE et pourrait l'exécuter. L'archive
+rend vos données TELLES QUE VOUS LES AVEZ SAISIES, sans les altérer d'un
+caractère ajouté en tête · c'est à l'ouverture qu'on choisit « Données > À
+partir d'un fichier texte / CSV », qui traite chaque cellule comme du texte.
+
 Les colonnes sont celles du schéma, moins cinq, retirées à dessein :
 \`User.motDePasse\` (l'empreinte du mot de passe),
 \`User.estOperateurPlateforme\` (le drapeau qui désigne le compte de
