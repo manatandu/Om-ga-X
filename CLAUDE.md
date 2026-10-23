@@ -5260,6 +5260,16 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   révocation lui échappait (audit final F270). Un jeton plus ancien retombe
   sur son `iat`. Elle tronque à la SECONDE · sans quoi le titulaire est
   éjecté par son propre geste.
+  **« SE DÉCONNECTER » FERME LA SESSION SUR LE SERVEUR** (relevé de
+  sécurité du 2026-10-23, `auth/sessions-fermees.ts`) · la déconnexion
+  n'effaçait que le cookie, et une copie prise avant ouvrait encore le
+  dossier jusqu'à l'échéance. L'empreinte du jeton CSRF de la session
+  (recopié par toute prolongation) entre dans `User.sessionsFermees`, lue
+  par `JwtStrategy` sur le compte déjà chargé, gardée trente jours depuis
+  l'origine ; les AUTRES appareils restent ouverts. Liste relue sous verrou
+  de la ligne, plafonnée à cent, au-delà le compte entier se ferme. Une base
+  en panne n'empêche pas d'effacer le cookie, et la réponse le dit
+  (`sessionFermee: false`).
 - **« Rester connecté sur cet appareil »** (`src/modules/auth/session-longue.ts`,
   audit final F270, décision de Manasse). La case est DÉCOCHÉE par défaut.
   Décochée · cookie DE SESSION, sans `maxAge` ni `expires`, fermé avec le

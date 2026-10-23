@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -12,6 +12,7 @@ import { ChangerAdresseDto } from './dto/changer-adresse.dto';
 import { ActiverDoubleAuthDto, DesactiverDoubleAuthDto, RegenererCodesSecoursDto } from './dto/double-authentification.dto';
 import { DeconnecterAutresAppareilsDto } from './dto/deconnecter-autres-appareils.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { extraireJetonDuCookie } from './jwt.strategy';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { SortieMotDePasseProvisoire } from '../../common/decorators/sortie-mot-de-passe.decorator';
 import { effacerCookiesSession, poserCookieSession } from './session.constants';
@@ -25,6 +26,8 @@ export const MOTIF_LICENCE_A_L_INSCRIPTION =
 
 @Controller('auth')
 export class AuthController {
+  private readonly journal = new Logger('Authentification');
+
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService,
@@ -144,9 +147,20 @@ export class AuthController {
   // Sans garde : effacer un cookie est inoffensif et doit marcher même avec
   // une session déjà expirée (sinon impossible de « fermer » proprement).
   @Post('logout')
-  async logout(@Res({ passthrough: true }) res: Response) {
+  async logout(@Res({ passthrough: true }) res: Response, @Req() req?: Request) {
+    // LA SESSION SE FERME AUSSI SUR LE SERVEUR (relevé de sécurité du
+    // 2026-10-23) · effacer le cookie ne retirait rien à une copie prise
+    // avant. Un échec de la base n'empêche pas d'effacer le cookie, mais il se
+    // DIT · consigné, et rendu au corps, jamais un « déconnecté » qui laisse
+    // croire la session close.
+    let sessionFermee = false;
+    try {
+      sessionFermee = (await this.authService.fermerLaSession(req ? extraireJetonDuCookie(req) : null)).fermee;
+    } catch (e) {
+      this.journal.error(`Déconnexion · la session n'a pas pu être fermée sur le serveur (${(e as Error)?.name ?? 'erreur'}).`);
+    }
     effacerCookiesSession(res);
-    return { deconnecte: true };
+    return { deconnecte: true, sessionFermee };
   }
 
   /**

@@ -1198,6 +1198,13 @@ model User {
   /// porte déjà.
   sessionsInvalidesAvant DateTime?
 
+  /// SESSIONS FERMÉES PAR « SE DÉCONNECTER » (relevé de sécurité du
+  /// 2026-10-23, auth/sessions-fermees.ts) · empreinte du jeton CSRF de chaque
+  /// session fermée et fin de sa vie possible, en secondes. La déconnexion
+  /// n'effaçait que le cookie, le jeton restait valable sur le serveur.
+  /// `sessionsInvalidesAvant` ferme TOUT le compte, celle-ci une session.
+  sessionsFermees Json @default("[]")
+
   // PROFIL DE FONCTIONS (point 15 de la comparaison Sage i7, 2026-09-25) ·
   // restreint, fonction par fonction, ce que le RÔLE permet déjà d'écrire ;
   // il n'élargit jamais rien (common/fonctions/fonctions-metier.ts). Faux par

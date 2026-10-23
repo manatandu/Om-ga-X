@@ -541,8 +541,11 @@ export const MARQUEUR_MASQUE = '[masqué]';
 export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly string[]>> = {
   // Le secret de la double authentification, le pas consommé et les
   // empreintes des codes de secours · un second facteur recopié dans un
-  // journal lisible par tout le dossier n'en serait plus un.
-  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth'],
+  // journal lisible par tout le dossier n'en serait plus un. Les empreintes
+  // des sessions fermées par « Se déconnecter » (sessions-fermees.ts) · chaque
+  // déconnexion réécrirait la liste entière dans le journal, et l'empreinte
+  // d'une session n'apprend rien au lecteur que la date ne dise déjà.
+  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth', 'sessionsFermees'],
 
   // LE FICHIER LUI-MÊME · jusqu'à 5 Mo recopiés dans chaque événement, et un
   // scan de pièce d'identité lisible par tout le dossier dans un journal

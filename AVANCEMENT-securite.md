@@ -17,6 +17,11 @@ base PostgreSQL jetable), jamais la production.
   (`MOTIF_LICENCE_A_L_INSCRIPTION`) · rouverte, elle laissait l'inscrit se
   donner une licence perpétuelle (201 sondé).
 
+- « Se déconnecter » ferme la session sur le serveur · `User.sessionsFermees`
+  (migration `20270190000900_sessions_fermees`, dérive vérifiée nulle sur base
+  d'ombre jetable), lue par `JwtStrategy`. Sondé avant · 200 avec le cookie
+  d'avant la déconnexion ; après · 401, l'autre appareil reste à 200.
+
 ## Sondes passées (instance jetable)
 
 En-têtes (CSP, HSTS, nosniff, frame, referrer, x-powered-by masqué), CORS
@@ -33,8 +38,6 @@ nosniff, 6 Mo refusés en 413), corps de 5 Mo.
 
 ## Reste
 
-- Déconnexion · le cookie reste valable côté serveur après « Se déconnecter »
-  (sondé · 200 après logout). En cours.
 - Limitation de débit contournable par `X-Forwarded-For` sur un appel DIRECT à
   `*.run.app` (sondé · 25 essais sans 429) · se ferme dans l'infrastructure
   (`sauts-de-confiance.ts` le dit), à remonter à Manasse.

@@ -32,11 +32,13 @@ import { modulesServis } from '../tenant/modules-optionnels';
 import { DECOMPTE_REMIS_A_ZERO, decompteApresEchec, MOTIF_IDENTIFIANTS_INVALIDES } from './verrouillage';
 import { genererCodesSecours, genererSecret, secondFacteurAccepte, uriOtpauth, verifierCodeTotp } from './double-authentification';
 import {
+  ChargeJeton,
   demandeDeReemission,
   emettreSession,
   SessionEmise,
   SessionEnCours,
 } from './session-longue';
+import { ajouterSessionFermee, empreinteSession, finDeVie } from './sessions-fermees';
 
 export const SALT_ROUNDS = 12;
 
@@ -785,6 +787,54 @@ export class AuthService {
     }
     await this.prisma.user.update({ where: { id: userId }, data: { sessionsInvalidesAvant: maintenant } });
     return { autresAppareilsDeconnectes: true, ...this.reemettre(user, session, maintenant.getTime()) };
+  }
+
+  /**
+   * « SE DÉCONNECTER » FERME CETTE SESSION SUR LE SERVEUR (relevé de sécurité
+   * du 2026-10-23, `sessions-fermees.ts`) · le jeton du cookie est relu, et
+   * l'empreinte de son jeton CSRF entre dans la liste des sessions fermées du
+   * compte, que `JwtStrategy` confronte à chaque requête. Les AUTRES sessions
+   * du compte restent ouvertes · c'est la différence avec
+   * `deconnecterPartout`.
+   *
+   * Un jeton échu, forgé ou sans jeton CSRF ne ferme rien · il n'ouvre déjà
+   * plus rien. La liste se relit SOUS VERROU de la ligne (`FOR UPDATE`) · deux
+   * appareils qui se déconnectent ensemble ne s'effacent pas l'un l'autre.
+   * Au-delà du plafond, tout le compte se ferme (`sessionsInvalidesAvant`).
+   *
+   * Hors cloisonnement · la route n'a pas de garde (une session échue doit
+   * pouvoir effacer son cookie), donc aucun dossier de session ; seule la
+   * ligne du compte que le jeton SIGNÉ désigne est touchée.
+   */
+  async fermerLaSession(jeton: string | null, maintenantMs = Date.now()): Promise<{ fermee: boolean }> {
+    if (!jeton) return { fermee: false };
+    let charge: ChargeJeton;
+    try {
+      charge = this.jwt.verify<ChargeJeton>(jeton);
+    } catch {
+      return { fermee: false };
+    }
+    if (!charge.sub || !charge.csrf) return { fermee: false };
+    const maintenantS = Math.floor(maintenantMs / 1000);
+    const nouvelle = {
+      e: empreinteSession(charge.csrf),
+      f: finDeVie(charge.origine ?? charge.iat ?? maintenantS, charge.exp),
+    };
+    return horsCloisonnement('déconnexion · la session désignée par un jeton signé, hors session', () =>
+      transactionJournalisee(this.prisma, async (tx) => {
+        const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
+          SELECT "sessionsFermees" FROM "users" WHERE "id" = ${charge.sub} FOR UPDATE`;
+        if (lignes.length === 0) return { fermee: false };
+        const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, nouvelle, maintenantS);
+        await tx.user.update({
+          where: { id: charge.sub },
+          data: debordement
+            ? { sessionsFermees: [], sessionsInvalidesAvant: new Date(maintenantMs) }
+            : { sessionsFermees: liste as unknown as Prisma.InputJsonValue },
+        });
+        return { fermee: true };
+      }),
+    );
   }
 
   /**

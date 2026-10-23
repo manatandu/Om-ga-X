@@ -15,6 +15,7 @@ import {
   SessionDeRequete,
   sessionDuJeton,
 } from './session-longue';
+import { estSessionFermee } from './sessions-fermees';
 
 type JwtPayload = ChargeJeton;
 
@@ -134,6 +135,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException(
         "Session close · reconnectez-vous. Elle a été fermée par un changement de vos accès, par vous-même ou par l'administrateur du dossier.",
       );
+    }
+    // « SE DÉCONNECTER » FERME CETTE SESSION, ET ELLE SEULE (relevé de sécurité
+    // du 2026-10-23, sessions-fermees.ts) · la liste voyage avec le compte déjà
+    // lu, aucune requête de plus. Une copie du cookie prise avant la
+    // déconnexion ne rouvre plus rien, prolongation comprise · elle recopie le
+    // même jeton CSRF.
+    if (estSessionFermee(user.sessionsFermees, payload.csrf, Math.floor(maintenant / 1000))) {
+      throw new UnauthorizedException('Session close · vous vous êtes déconnecté de cet appareil. Reconnectez-vous.');
     }
     // L'opérateur garde sa session longue (décision de Manasse du
     // 2026-10-09) · la console, elle, exige une authentification de moins de
