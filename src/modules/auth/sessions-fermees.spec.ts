@@ -35,10 +35,14 @@ describe('sessions fermées · le module pur', () => {
     // Jeton présenté à la déconnexion · échéance dans sept jours. La copie
     // volée se prolonge à l'usage, jusqu'aux trente jours de l'origine.
     const origine = T;
-    const f = finDeVie(origine, T + 7 * 86_400);
+    const f = finDeVie(origine, T + 7 * 86_400, true);
     expect(f).toBe(origine + DUREE_MAXIMALE_SESSION_LONGUE_S);
     const { liste } = ajouterSessionFermee([], { e: empreinteSession('c'), f }, T);
     expect(estSessionFermee(liste, 'c', T + 20 * 86_400)).toBe(true);
+  });
+
+  it('une session courte ne se prolonge pas · sa trace tombe à son échéance', () => {
+    expect(finDeVie(T, T + 8 * 3600, false)).toBe(T + 8 * 3600);
   });
 
   it('une trace échue tombe à la prochaine écriture, un doublon ne se réécrit pas', () => {
@@ -52,7 +56,7 @@ describe('sessions fermées · le module pur', () => {
   it('au-delà du plafond, déborde · l’appelant ferme tout le compte', () => {
     const pleine = Array.from({ length: PLAFOND_SESSIONS_FERMEES }, (_, i) => ({ e: `e${i}`, f: T + 1000 }));
     const r = ajouterSessionFermee(pleine, { e: 'neuve', f: T + 1000 }, T);
-    expect(r).toEqual({ liste: [], debordement: true });
+    expect(r).toEqual({ liste: [{ e: 'neuve', f: T + 1000 }], debordement: true });
   });
 
   it('une colonne illisible ne ferme rien et ne casse rien', () => {

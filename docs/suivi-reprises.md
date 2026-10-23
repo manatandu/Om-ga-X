@@ -495,3 +495,34 @@ mineurs, relevés par les deux tours de relecture de chaque fonction.
 - **Commun aux effets, remises et opérations.** Le retrait d'une pièce au
   brouillard passe par `deleteMany`, hors `EcritureService.supprimer` · une
   pièce jointe se détache sans que sa description soit refaite ni comptée.
+
+## Questions à Manasse · sécurité, ligne securite (2026-10-23)
+
+- **Appel direct à `*.run.app`** · la limitation de débit se contourne en
+  forgeant `X-Forwarded-For` (sondé sur instance jetable · 25 essais de
+  connexion sans un 429). Par Firebase, l'adresse lue est la bonne ; en
+  direct, l'entrée lue est celle que le client écrit
+  (`common/sauts-de-confiance.ts` le dit déjà). Le verrouillage par compte
+  tient toujours. Se ferme dans l'infrastructure (n'admettre à Cloud Run que
+  le trafic du site), décision et réglage de la console Google.
+- **Formules dans l'archive de restitution** · les CSV recopient les libellés
+  tels quels ; un libellé qui commence par « = » s'évalue à l'ouverture dans
+  Excel. Le neutraliser (apostrophe en tête) changerait la donnée restituée.
+- **Fichiers engendrés versionnés** · le commit `69e7e01` (2026-10-17) a fait
+  entrer `node_modules/`, `client/node_modules/`, `dist/`, `client/dist/` et
+  `client/tsconfig.tsbuildinfo` (50 679 fichiers), que `.gitignore` exclut.
+  Chaque construction les fait apparaître modifiés. À retirer de l'index
+  (`git rm -r --cached`) sur accord.
+
+## Relevés en attente · sécurité, ligne securite
+
+- Une déconnexion dont la fermeture serveur échoue rend `sessionFermee: false`,
+  que l'écran ne lit pas encore · l'utilisateur se voit déconnecté sans être
+  averti que la copie éventuelle du cookie reste valable (MINEUR, second tour).
+- Une colonne `sessionsFermees` illisible (écriture manuelle, restauration) se
+  lit comme vide, sans trace au journal (MINEUR, second tour ; la colonne est
+  `NOT NULL DEFAULT '[]'`).
+- Restent connus sans correctif hors version majeure · @nestjs 10 (avis
+  modérés, corrigés en 11), react-router 6 (redirection ouverte par barre
+  oblique inverse, corrigée en 7, sans portée en HashRouter), glob, ajv,
+  webpack (outillage de construction).

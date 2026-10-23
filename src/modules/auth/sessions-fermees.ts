@@ -22,10 +22,10 @@ import { DUREE_MAXIMALE_SESSION_LONGUE_S } from './session-longue';
  */
 
 /** Une session fermée · empreinte de son jeton CSRF et fin de sa vie possible, en secondes. */
-export interface SessionFermee {
+export type SessionFermee = {
   e: string;
   f: number;
-}
+};
 
 /**
  * Au-delà, la liste ne grandit plus · le compte se ferme en entier
@@ -40,13 +40,16 @@ export function empreinteSession(csrf: string): string {
 }
 
 /**
- * Jusqu'à quand garder la trace · la vie la plus longue qu'une session née à
- * `origine` peut atteindre, trente jours, quelle que soit l'échéance du jeton
- * présenté à la déconnexion. Une copie volée d'une session longue se prolonge
- * à l'usage · gardée jusqu'à la seule échéance du jeton présenté, la trace
- * tombait et la copie, prolongée entre-temps, revenait.
+ * Jusqu'à quand garder la trace · une session LONGUE se prolonge à l'usage
+ * jusqu'aux trente jours de son origine, quelle que soit l'échéance du jeton
+ * présenté à la déconnexion · gardée jusqu'à cette seule échéance, la trace
+ * tombait et une copie volée, prolongée entre-temps, revenait. Une session
+ * COURTE ne se prolonge jamais (`demandeDeReemission` garde son échéance) ·
+ * son échéance suffit, et la garder trente jours remplissait la liste d'un
+ * poste partagé jusqu'au plafond, qui ferme alors tous les appareils.
  */
-export function finDeVie(origine: number, exp: number | undefined): number {
+export function finDeVie(origine: number, exp: number | undefined, longue: boolean): number {
+  if (!longue && exp !== undefined) return exp;
   return Math.max(exp ?? 0, origine + DUREE_MAXIMALE_SESSION_LONGUE_S);
 }
 
@@ -69,7 +72,7 @@ export function estSessionFermee(brut: unknown, csrf: string | undefined, mainte
 /**
  * Ajoute une session fermée · les traces échues tombent, un doublon n'est pas
  * réécrit. `debordement` vrai · la liste dépasserait le plafond, l'appelant
- * ferme alors tout le compte et pose `liste` (vide).
+ * ferme alors tout le compte et pose `liste`, réduite à la session fermée.
  */
 export function ajouterSessionFermee(
   brut: unknown,
@@ -77,6 +80,9 @@ export function ajouterSessionFermee(
   maintenantS: number,
 ): { liste: SessionFermee[]; debordement: boolean } {
   const vivantes = lireSessionsFermees(brut).filter((s) => s.f > maintenantS && s.e !== nouvelle.e);
-  if (vivantes.length + 1 > PLAFOND_SESSIONS_FERMEES) return { liste: [], debordement: true };
+  // Le compte entier se ferme, mais la session de CETTE déconnexion reste
+  // dans la liste · authentifiée dans la même seconde que la fermeture du
+  // compte, la comparaison à la seconde ne la tient pas pour antérieure.
+  if (vivantes.length + 1 > PLAFOND_SESSIONS_FERMEES) return { liste: [nouvelle], debordement: true };
   return { liste: [...vivantes, nouvelle], debordement: false };
 }

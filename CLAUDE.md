@@ -5265,10 +5265,13 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   n'effaçait que le cookie, et une copie prise avant ouvrait encore le
   dossier jusqu'à l'échéance. L'empreinte du jeton CSRF de la session
   (recopié par toute prolongation) entre dans `User.sessionsFermees`, lue
-  par `JwtStrategy` sur le compte déjà chargé, gardée trente jours depuis
-  l'origine ; les AUTRES appareils restent ouverts. Liste relue sous verrou
-  de la ligne, plafonnée à cent, au-delà le compte entier se ferme. Une base
-  en panne n'empêche pas d'effacer le cookie, et la réponse le dit
+  par `JwtStrategy` sur le compte déjà chargé ; les AUTRES appareils restent
+  ouverts. Gardée jusqu'à la fin de vie possible · l'échéance d'une session
+  courte, trente jours depuis l'origine pour une longue, qu'une copie volée
+  prolonge ; un jeton ÉCHU mais signé ferme quand même la session. Verrou du
+  DOSSIER du compte avant la ligne (ordre de tout acte audité), liste
+  plafonnée à cent, au-delà le compte entier se ferme. Une base en panne
+  n'empêche pas d'effacer le cookie, et la réponse le dit
   (`sessionFermee: false`).
 - **« Rester connecté sur cet appareil »** (`src/modules/auth/session-longue.ts`,
   audit final F270, décision de Manasse). La case est DÉCOCHÉE par défaut.

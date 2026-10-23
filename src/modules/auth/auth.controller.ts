@@ -157,7 +157,13 @@ export class AuthController {
     try {
       sessionFermee = (await this.authService.fermerLaSession(req ? extraireJetonDuCookie(req) : null)).fermee;
     } catch (e) {
-      this.journal.error(`Déconnexion · la session n'a pas pu être fermée sur le serveur (${(e as Error)?.name ?? 'erreur'}).`);
+      // Nom et code seulement · le message d'une erreur de connexion à la base
+      // peut citer l'hôte, et ce journal ne doit jamais porter la chaîne de
+      // connexion (CLAUDE.md § 4).
+      const code = (e as { code?: unknown })?.code;
+      this.journal.error(
+        `Déconnexion · la session n'a pas pu être fermée sur le serveur (${(e as Error)?.name ?? 'erreur'}${typeof code === 'string' ? `, ${code}` : ''}).`,
+      );
     }
     effacerCookiesSession(res);
     return { deconnecte: true, sessionFermee };

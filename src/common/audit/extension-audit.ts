@@ -300,7 +300,7 @@ export function cleDuVerrouDuDossier(model: string, args: unknown, acteurTenantI
 }
 
 /** Le verrou consultatif du dossier, réentrant dans la session · `ecrireMaillon` le reprend sans attendre. */
-async function prendreLeVerrouDuDossier(tx: Prisma.TransactionClient, cle: string): Promise<void> {
+export async function prendreLeVerrouDuDossier(tx: Prisma.TransactionClient, cle: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cle}))`;
 }
 

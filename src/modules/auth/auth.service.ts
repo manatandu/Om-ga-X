@@ -21,7 +21,7 @@ import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
 import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, estUnDossierDEssai, renvoiPossible } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
 import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
-import { ajouterMaillon } from '../../common/audit/extension-audit';
+import { ajouterMaillon, prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { horsCloisonnement } from '../../common/cloisonnement/contexte-cloisonnement';
 import { normaliserCourriel } from '../../common/courriel';
 import { dansContexteAudit, acteurCourant, ACTEUR_SYSTEME } from '../../common/audit/contexte-audit';
@@ -810,7 +810,12 @@ export class AuthService {
     if (!jeton) return { fermee: false };
     let charge: ChargeJeton;
     try {
-      charge = this.jwt.verify<ChargeJeton>(jeton);
+      // L'ÉCHÉANCE N'EST PAS LUE, LA SIGNATURE L'EST (relecture du 2026-10-23)
+      // · le cookie de ce poste a pu échoir sans usage pendant qu'une copie,
+      // utilisée ailleurs, se prolongeait avec le même jeton CSRF. Refuser le
+      // jeton échu laissait cette copie ouverte ; `finDeVie` borne la trace
+      // aux trente jours de l'origine.
+      charge = this.jwt.verify<ChargeJeton>(jeton, { ignoreExpiration: true });
     } catch {
       return { fermee: false };
     }
@@ -818,19 +823,32 @@ export class AuthService {
     const maintenantS = Math.floor(maintenantMs / 1000);
     const nouvelle = {
       e: empreinteSession(charge.csrf),
-      f: finDeVie(charge.origine ?? charge.iat ?? maintenantS, charge.exp),
+      f: finDeVie(charge.origine ?? charge.iat ?? maintenantS, charge.exp, charge.longue === true),
     };
+    const userId = charge.sub;
     return horsCloisonnement('déconnexion · la session désignée par un jeton signé, hors session', () =>
       transactionJournalisee(this.prisma, async (tx) => {
+        const proprietaire = await tx.$queryRaw<{ tenantId: string }[]>`
+          SELECT "tenantId" FROM "users" WHERE "id" = ${userId}`;
+        if (proprietaire.length === 0) return { fermee: false };
+        const tenantId = proprietaire[0].tenantId;
+        // LE VERROU DU DOSSIER AVANT LA LIGNE (relecture du 2026-10-23) · c'est
+        // l'ordre de tout acte audité (`extension-audit.ts`) ; pris après le
+        // `FOR UPDATE`, il croisait celui d'un administrateur qui ferme les
+        // sessions du même compte, et PostgreSQL annulait l'un des deux. La
+        // clé est celle du DOSSIER du compte · sans elle, la mise à jour
+        // retombait sur la clé « plateforme », et les déconnexions de tous
+        // les cabinets s'attendaient l'une l'autre.
+        await prendreLeVerrouDuDossier(tx, tenantId);
         const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
-          SELECT "sessionsFermees" FROM "users" WHERE "id" = ${charge.sub} FOR UPDATE`;
+          SELECT "sessionsFermees" FROM "users" WHERE "id" = ${userId} FOR UPDATE`;
         if (lignes.length === 0) return { fermee: false };
         const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, nouvelle, maintenantS);
         await tx.user.update({
-          where: { id: charge.sub },
+          where: { id: userId, tenantId },
           data: debordement
-            ? { sessionsFermees: [], sessionsInvalidesAvant: new Date(maintenantMs) }
-            : { sessionsFermees: liste as unknown as Prisma.InputJsonValue },
+            ? { sessionsFermees: liste, sessionsInvalidesAvant: new Date(maintenantMs) }
+            : { sessionsFermees: liste },
         });
         return { fermee: true };
       }),
