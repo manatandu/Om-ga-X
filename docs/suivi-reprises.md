@@ -526,3 +526,25 @@ mineurs, relevés par les deux tours de relecture de chaque fonction.
   modérés, corrigés en 11), react-router 6 (redirection ouverte par barre
   oblique inverse, corrigée en 7, sans portée en HashRouter), glob, ajv,
   webpack (outillage de construction).
+
+## Campagne de pénétration v2, ligne securite (2026-10-23)
+
+Sondes élargies sur l'instance jetable (affectation massive de drapeaux
+comptables, IDOR par identifiant direct, second facteur, pollution de
+paramètres, pollution de prototype, verbe HTTP exotique, override de méthode,
+corps surdimensionné, écriture sur le journal d'audit). UNE faiblesse trouvée
+et corrigée · `GET /tiers?type[]=...` arrivait en tableau et tombait en 500
+(entrée malformée, aucune fuite) · `type` validé par ParseEnumPipe, `recherche`
+en tableau refusée (400 nommé). Les autres paramètres de requête scalaires
+balayés ne tombent pas en 500 (comptes, écritures, relances tolèrent). Tout le
+reste a résisté.
+
+Décision sur le point « adresse directe `*.run.app` » (du relevé v1) · le
+correctif en code n'est PAS réalisable proprement · l'`X-Forwarded-For` arrive
+en une chaîne, seule l'infrastructure sait combien d'entrées sont authentiques ;
+une règle en code soit ne ferme rien (rembourrage), soit, calée sur l'IP de
+droite, bloque tous les cabinets derrière l'adresse partagée de Firebase. La
+défense réelle contre la force brute reste le VERROUILLAGE PAR COMPTE
+(`verrouillage.ts`, keyé sur le compte, non sur l'IP, non contourné par un
+`X-Forwarded-For` forgé) ; le point se ferme dans l'infrastructure (n'admettre
+à Cloud Run que le trafic du site).

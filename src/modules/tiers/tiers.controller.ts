@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,11 +24,18 @@ export class TiersController {
 
   @Get()
   async lister(
+    // `type` est VALIDÉ par un pipe · sans lui, `?type[]=X` arrivait en
+    // TABLEAU, que Prisma refusait sur un filtre d'énumération, et la requête
+    // tombait en 500 au lieu d'un 400 nommé (relevé de sécurité du 2026-10-23,
+    // une entrée malformée ne doit pas faire une panne). Un tableau comme une
+    // valeur hors énumération donnent désormais 400.
     @CurrentUser() user: AuthenticatedUser,
-    @Query('type') type?: TypeTiers,
-    @Query('recherche') recherche?: string,
+    @Query('type', new ParseEnumPipe(TypeTiers, { optional: true })) type?: TypeTiers,
+    @Query('recherche') recherche?: string | string[],
     @Query('actifsSeuls') actifsSeuls?: string,
   ) {
+    // `recherche` en tableau tomberait de même sur le `contains` de Prisma.
+    if (Array.isArray(recherche)) throw new BadRequestException('Le critère de recherche doit être une valeur unique.');
     return this.tiersService.lister(user.tenantId, { type, recherche, actifsSeuls: actifsSeuls === 'true' });
   }
 
