@@ -21,7 +21,7 @@ admin@vmgconsulting.net) : rien n'est envoyé par le site lui-même, et la page 
 
 ## Photos
 
-Quatre emplacements sont réservés (`data-emplacement` : `cabinet`, `equipe-1`, `equipe-2`, `equipe-3`).
+Quatre photos d illustration (générées par ordinateur) sont posées dans `photos/` : `cabinet.jpg`, `equipe-1.jpg`, `equipe-2.jpg`, `equipe-3.jpg`.
 Pour poser une photo : déposer le fichier dans ce dossier, puis dans la `<figure>` remplacer
 `<span></span>` par `<img src="photo.jpg" alt="description de l'image">` et retirer
 `aria-hidden="true"` de la figure (et de `.photos` pour les trois du bas).
