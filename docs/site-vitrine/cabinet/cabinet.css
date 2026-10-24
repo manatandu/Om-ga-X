@@ -170,3 +170,5 @@ textarea{min-height:130px;resize:vertical}
   .js .revele,.js .mot{opacity:1!important;transform:none!important}
   .js .chemin::before{transform:none!important}
 }
+.marque,.entete .bouton{white-space:nowrap}
+@media (max-width:420px){.entete .bouton{padding:0 16px;min-height:42px;font-size:14px}.marque{font-size:16px}}
