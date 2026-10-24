@@ -18,3 +18,18 @@ Pages statiques (aucune construction) : `index.html`, `cabinet.css`, `cabinet.js
 
 Le formulaire ouvre le client de courriel du visiteur (`mailto:` vers
 admin@vmgconsulting.net) : rien n'est envoyé par le site lui-même, et la page le dit.
+
+## Photos
+
+Quatre emplacements sont réservés (`data-emplacement` : `cabinet`, `equipe-1`, `equipe-2`, `equipe-3`).
+Pour poser une photo : déposer le fichier dans ce dossier, puis dans la `<figure>` remplacer
+`<span></span>` par `<img src="photo.jpg" alt="description de l'image">` et retirer
+`aria-hidden="true"` de la figure (et de `.photos` pour les trois du bas).
+
+## Périmètre des missions
+
+Le site ne présente que des activités qui ne sont pas réservées aux experts-comptables inscrits
+(loi n° 15/002, art. 43 et 71 : tenue de la comptabilité de tiers, organisation comptable,
+conseil fiscal, certification, révision). Formation, études économiques et statistiques,
+indicateurs de projet et solutions logicielles sont hors de cette liste. Ne pas ajouter de
+mission de l'art. 43 avant l'inscription au tableau de l'Ordre.

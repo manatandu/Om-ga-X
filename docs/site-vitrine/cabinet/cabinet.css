@@ -96,6 +96,17 @@ details[open] summary{color:var(--or)}
 details[open] summary::after{transform:rotate(45deg);background:var(--or);color:var(--nuit);border-color:var(--or)}
 details p{padding:0 56px 26px 0;max-width:42em;color:rgba(255,255,255,.76);animation:entre .3s ease both}
 
+/* Emplacements de photos : remplacer le <span> par <img src="..." alt="..."> et retirer aria-hidden de la figure */
+.photo{margin:0;position:relative;overflow:hidden;border-radius:14px;background:var(--encre);aspect-ratio:4/3}
+.photo-large{margin-top:40px;aspect-ratio:21/9}
+.photo>span{position:absolute;inset:0;background:
+  radial-gradient(420px 220px at 80% 20%,rgba(227,169,60,.28),transparent 70%),
+  repeating-linear-gradient(0deg,transparent 0 31px,rgba(255,255,255,.07) 31px 32px)}
+.photo::after{content:"";position:absolute;inset:14px;border:1px solid rgba(227,169,60,.45);border-radius:8px;pointer-events:none}
+.photo img{display:block;width:100%;height:100%;object-fit:cover}
+.photos{margin-top:56px;display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+@media (max-width:760px){.photos{grid-template-columns:1fr}.photo-large{aspect-ratio:4/3}}
+
 /* Chemin */
 .chemin{margin-top:44px;display:grid;gap:0;grid-template-columns:repeat(3,1fr);position:relative}
 .chemin::before{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--regle)}
