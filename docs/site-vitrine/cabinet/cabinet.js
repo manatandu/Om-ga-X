@@ -19,6 +19,19 @@
       barre.style.width = (total > 0 ? Math.min(100, (haut / total) * 100) : 0) + '%';
     }
   }
+  var haut = document.getElementById('haut');
+  if (haut) {
+    haut.hidden = false;
+    haut.addEventListener('click', function (e) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: calme ? 'auto' : 'smooth' });
+    });
+  }
+  function montreHaut() {
+    if (haut) haut.classList.toggle('visible', (window.pageYOffset || document.documentElement.scrollTop) > 500);
+  }
+  window.addEventListener('scroll', montreHaut, { passive: true });
+  montreHaut();
   window.addEventListener('scroll', defile, { passive: true });
   defile();
   var revele = document.querySelectorAll('.revele, .chemin');
