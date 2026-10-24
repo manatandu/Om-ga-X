@@ -13,7 +13,7 @@
   var barre = document.getElementById('progres');
   function defile() {
     var haut = window.pageYOffset || document.documentElement.scrollTop;
-    if (entete) entete.classList.toggle('pleine', haut > 24);
+    if (entete && !document.body.classList.contains('page-texte')) entete.classList.toggle('pleine', haut > 24);
     if (barre) {
       var total = document.documentElement.scrollHeight - window.innerHeight;
       barre.style.width = (total > 0 ? Math.min(100, (haut / total) * 100) : 0) + '%';
