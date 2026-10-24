@@ -5,15 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>VMG Consulting · conseil en gestion, comptabilité et fiscalité</title>
 <meta name="description" content="VMG Consulting, cabinet de conseil en gestion, comptabilité et fiscalité à destination des associations, ONG, projets de développement et entreprises en République démocratique du Congo.">
-<meta name="theme-color" content="#2a1f5c">
+<meta name="theme-color" content="#1b1342">
 <meta name="color-scheme" content="light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="cabinet.css">
+<script>document.documentElement.className='js'</script>
 <script src="cabinet.js" defer></script>
 </head>
 <body>
 <a class="evitement" href="#principal">Aller au contenu</a>
-<header class="entete">
-  <a class="marque" href="./" aria-label="VMG Consulting, accueil">VMG Consulting</a>
+<div class="progres" aria-hidden="true"><i id="progres"></i></div>
+
+<header class="entete" id="entete">
+  <a class="marque" href="./" aria-label="VMG Consulting, accueil"><span class="marque-signe" aria-hidden="true">V</span>VMG Consulting</a>
   <nav aria-label="Principal">
     <a href="#cabinet">Le cabinet</a>
     <a href="#missions">Missions</a>
@@ -21,98 +27,144 @@
     <a href="#solutions">Solutions</a>
     <a href="#contact">Contact</a>
   </nav>
-  <a class="bouton" href="#contact">Nous écrire</a>
+  <a class="bouton bouton-or" href="#contact">Nous écrire</a>
 </header>
 
 <main id="principal">
-  <section class="tete" aria-labelledby="titre">
-    <p class="surtitre">Conseil en gestion, comptabilité et fiscalité · République démocratique du Congo</p>
-    <h1 id="titre">Des comptes tenus avec rigueur, au service des organisations qui agissent.</h1>
-    <p class="chapeau">VMG Consulting accompagne les associations, les ONG, les projets de développement et les entreprises congolaises dans l'organisation de leur gestion et le respect de leurs obligations.</p>
-    <p class="actions">
-      <a class="bouton bouton-plein" href="#contact">Nous écrire</a>
-      <a class="bouton" href="#missions">Voir nos missions</a>
-    </p>
+  <section class="heros" aria-labelledby="titre">
+    <div class="heros-fond" aria-hidden="true"></div>
+    <svg class="cachet" viewBox="0 0 200 200" aria-hidden="true" focusable="false">
+      <defs><path id="cercle" d="M100,100 m-78,0 a78,78 0 1,1 156,0 a78,78 0 1,1 -156,0"/></defs>
+      <circle cx="100" cy="100" r="96" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text font-size="13" letter-spacing="3.4" fill="currentColor" font-weight="600"><textPath href="#cercle">VMG CONSULTING · KINSHASA · RIGUEUR · CLARTÉ · MÉTHODE ·</textPath></text>
+      <text x="100" y="118" text-anchor="middle" font-size="52" font-weight="800" fill="currentColor">V</text>
+    </svg>
+    <div class="heros-texte">
+      <p class="surtitre">Conseil en gestion, comptabilité et fiscalité · RDC</p>
+      <h1 id="titre"><span class="mot">Des</span> <span class="mot">comptes</span> <span class="mot">tenus</span> <span class="mot">avec</span> <span class="mot">rigueur,</span> <span class="mot or">au</span> <span class="mot or">service</span> <span class="mot or">de</span> <span class="mot or">ceux</span> <span class="mot or">qui</span> <span class="mot or">agissent.</span></h1>
+      <p class="chapeau">VMG Consulting accompagne les associations, les ONG, les projets de développement et les entreprises congolaises dans l'organisation de leur gestion et le respect de leurs obligations.</p>
+      <p class="actions">
+        <a class="bouton bouton-or" href="#contact">Parler au cabinet</a>
+        <a class="bouton bouton-clair" href="#missions">Voir nos missions</a>
+      </p>
+    </div>
+    <ul class="reperes" aria-label="Repères">
+      <li><b>SYCEBNL</b><span>entités à but non lucratif</span></li>
+      <li><b>SYSCOHADA</b><span>sociétés et entreprises</span></li>
+      <li><b>Franc congolais</b><span>comptabilité tenue en monnaie légale</span></li>
+    </ul>
   </section>
-
-  <div class="filet" aria-hidden="true"></div>
 
   <section id="cabinet" class="bloc" aria-labelledby="t-cabinet">
-    <h2 id="t-cabinet">Le cabinet</h2>
-    <dl class="fiche">
-      <div><dt>Vision</dt><dd>Des organisations congolaises dont la gestion est claire, régulière et vérifiable, parce que la rigueur comptable est à leur portée, quelle que soit leur taille.</dd></div>
-      <div><dt>Mission</dt><dd>Aider nos clients à organiser leur comptabilité, à produire des états financiers fiables et à tenir leurs obligations légales et fiscales.</dd></div>
-      <div><dt>Clientèle</dt><dd>Associations et ordres professionnels, ONG et projets de développement financés par des bailleurs, petites et moyennes entreprises.</dd></div>
-      <div><dt>Référentiels</dt><dd>Nous travaillons selon le droit comptable de l'OHADA : le SYCEBNL pour les entités à but non lucratif, le SYSCOHADA pour les sociétés et entreprises.</dd></div>
-      <div><dt>Statut</dt><dd>VMG Consulting est en cours de constitution. Ses domaines d'intervention seront précisés et ajustés au fur et à mesure que ses moyens et son agrément le permettent.</dd></div>
-    </dl>
+    <div class="colonne">
+      <p class="etiquette revele">Le cabinet</p>
+      <h2 id="t-cabinet" class="revele">Rendre la rigueur comptable accessible à toute organisation congolaise.</h2>
+      <div class="trois">
+        <article class="revele"><h3>Vision</h3><p>Des organisations dont la gestion est claire, régulière et vérifiable, quelle que soit leur taille.</p></article>
+        <article class="revele"><h3>Mission</h3><p>Aider nos clients à organiser leur comptabilité, à produire des états financiers fiables et à tenir leurs obligations légales et fiscales.</p></article>
+        <article class="revele"><h3>Méthode</h3><p>Le droit comptable de l'OHADA comme socle, des chiffres justifiés pièce à l'appui, un langage clair pour les dirigeants.</p></article>
+      </div>
+      <p class="statut revele"><b>Cabinet en cours de constitution.</b> Nos domaines d'intervention seront précisés et ajustés à mesure que nos moyens et notre agrément le permettent.</p>
+    </div>
   </section>
 
-  <div class="filet" aria-hidden="true"></div>
-
-  <section id="missions" class="bloc" aria-labelledby="t-missions">
-    <h2 id="t-missions">Missions</h2>
-    <p class="intro">Les domaines ci-dessous sont ceux que le cabinet vise. Ils seront ouverts un à un, selon sa capacité réelle et les conditions que la loi pose à chacun.</p>
-    <dl class="fiche">
-      <div><dt>Organisation comptable</dt><dd>Mettre en place l'organisation comptable et administrative d'une entité : plan de comptes, circuit des pièces, procédures, manuel de procédures.</dd></div>
-      <div><dt>Tenue et mise en ordre</dt><dd>Tenue, organisation et redressement de la comptabilité, établissement des états financiers et de leurs notes annexes.</dd></div>
-      <div><dt>Conseil fiscal</dt><dd>Avis en matière fiscale et assistance dans l'accomplissement des obligations déclaratives.</dd></div>
-      <div><dt>Projets de développement</dt><dd>Suivi budgétaire et comptable des projets financés par des bailleurs, rapports financiers et justification des fonds.</dd></div>
-      <div><dt>Formation</dt><dd>Formation des équipes comptables et des dirigeants d'associations aux référentiels et aux bonnes pratiques de gestion.</dd></div>
-      <div><dt>Études</dt><dd>Travaux et études économiques et statistiques pour le compte d'entreprises et d'organismes.</dd></div>
-    </dl>
+  <section class="bloc bloc-lavis" aria-labelledby="t-profil">
+    <div class="colonne">
+      <p class="etiquette revele">Votre organisation</p>
+      <h2 id="t-profil" class="revele">Choisissez votre situation.</h2>
+      <div class="onglets" role="tablist" aria-label="Type d'organisation">
+        <button role="tab" id="o-asso" aria-controls="p-asso" aria-selected="true">Association</button>
+        <button role="tab" id="o-ong" aria-controls="p-ong" aria-selected="false" tabindex="-1">ONG et projet</button>
+        <button role="tab" id="o-ent" aria-controls="p-ent" aria-selected="false" tabindex="-1">Entreprise</button>
+      </div>
+      <div class="panneaux">
+        <div role="tabpanel" id="p-asso" aria-labelledby="o-asso" class="panneau">
+          <p class="ref">Référentiel · SYCEBNL</p>
+          <p class="grand">Une association rend compte à ses membres, à ses donateurs et à l'administration.</p>
+          <ul class="liste"><li>Organiser la gestion et le circuit des pièces</li><li>Préparer les états financiers de fin d'exercice</li><li>Former le trésorier et l'équipe</li></ul>
+        </div>
+        <div role="tabpanel" id="p-ong" aria-labelledby="o-ong" class="panneau" hidden>
+          <p class="ref">Référentiel · SYCEBNL, projets de développement</p>
+          <p class="grand">Un projet financé rend compte au bailleur, ligne par ligne.</p>
+          <ul class="liste"><li>Suivre le budget par rubrique et par bailleur</li><li>Préparer les rapports financiers et la justification des fonds</li><li>Former l'équipe aux exigences des financeurs</li></ul>
+        </div>
+        <div role="tabpanel" id="p-ent" aria-labelledby="o-ent" class="panneau" hidden>
+          <p class="ref">Référentiel · SYSCOHADA</p>
+          <p class="grand">Une entreprise veut des chiffres fiables pour décider et pour se mettre en règle.</p>
+          <ul class="liste"><li>Organiser la fonction comptable et ses procédures</li><li>Appuyer la préparation des états financiers</li><li>Former les équipes et mener des études économiques</li></ul>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <div class="filet" aria-hidden="true"></div>
+  <section id="missions" class="bloc bloc-encre" aria-labelledby="t-missions">
+    <div class="colonne">
+      <p class="etiquette revele">Missions</p>
+      <h2 id="t-missions" class="revele">Ce que le cabinet vise, et ouvrira un domaine après l'autre.</h2>
+      <p class="intro revele">Chaque domaine sera ouvert selon notre capacité réelle et les conditions que la loi pose à chacun.</p>
+      <div class="accordeon">
+        <details class="revele"><summary><span>Organisation comptable</span></summary><p>Plan de comptes, circuit des pièces, procédures et manuel de procédures : une organisation qui tient quand l'équipe change.</p></details>
+        <details class="revele"><summary><span>Tenue et mise en ordre</span></summary><p>Tenue, organisation et redressement de la comptabilité, établissement des états financiers et de leurs notes annexes.</p></details>
+        <details class="revele"><summary><span>Conseil fiscal</span></summary><p>Avis en matière fiscale et assistance dans l'accomplissement des obligations déclaratives.</p></details>
+        <details class="revele"><summary><span>Projets de développement</span></summary><p>Suivi budgétaire et comptable des projets financés, rapports financiers et justification des fonds auprès des bailleurs.</p></details>
+        <details class="revele"><summary><span>Formation</span></summary><p>Formation des équipes comptables et des dirigeants d'associations aux référentiels et aux bonnes pratiques de gestion.</p></details>
+        <details class="revele"><summary><span>Études</span></summary><p>Travaux et études économiques et statistiques pour le compte d'entreprises et d'organismes.</p></details>
+      </div>
+    </div>
+  </section>
 
   <section id="objectifs" class="bloc" aria-labelledby="t-objectifs">
-    <h2 id="t-objectifs">Objectifs</h2>
-    <dl class="fiche">
-      <div><dt>À court terme</dt><dd>Construire une offre limitée à ce que le cabinet sait faire et peut garantir, et nouer ses premières collaborations avec des associations et des projets.</dd></div>
-      <div><dt>À moyen terme</dt><dd>Étendre les missions à mesure que l'équipe, les compétences et l'agrément professionnel le permettent.</dd></div>
-      <div><dt>Notre exigence</dt><dd>Une comptabilité conforme aux textes en vigueur, des chiffres que l'on peut justifier pièce à l'appui, un langage clair pour les dirigeants.</dd></div>
-    </dl>
+    <div class="colonne">
+      <p class="etiquette revele">Objectifs</p>
+      <h2 id="t-objectifs" class="revele">Grandir au rythme de ce que nous savons garantir.</h2>
+      <ol class="chemin">
+        <li class="revele"><span class="etape">Aujourd'hui</span><h3>Une offre limitée et tenue</h3><p>Construire une offre à la mesure de nos moyens, et nouer nos premières collaborations avec des associations et des projets.</p></li>
+        <li class="revele"><span class="etape">Ensuite</span><h3>Des missions élargies</h3><p>Étendre les missions à mesure que l'équipe, les compétences et l'agrément professionnel le permettent.</p></li>
+        <li class="revele"><span class="etape">Toujours</span><h3>Une exigence constante</h3><p>Une comptabilité conforme aux textes en vigueur, des chiffres que l'on peut justifier, un langage clair.</p></li>
+      </ol>
+    </div>
   </section>
 
-  <div class="filet" aria-hidden="true"></div>
-
-  <section id="solutions" class="bloc" aria-labelledby="t-solutions">
-    <h2 id="t-solutions">Solutions</h2>
-    <p class="intro">Le cabinet s'appuie sur des outils qu'il conçoit lui-même, pour ses missions et pour ses clients.</p>
-    <dl class="fiche">
-      <div><dt>OmegaX</dt><dd>Logiciel de comptabilité selon le SYCEBNL et le SYSCOHADA, en francs congolais, avec états financiers et notes annexes. <a href="https://omegax.vmgconsulting.net">Voir le site d'OmegaX</a>.</dd></div>
-    </dl>
+  <section id="solutions" class="bloc bloc-lavis" aria-labelledby="t-solutions">
+    <div class="colonne">
+      <p class="etiquette revele">Solutions</p>
+      <h2 id="t-solutions" class="revele">Des outils conçus par le cabinet, pour ses missions et pour ses clients.</h2>
+      <a class="carte revele" href="https://omegax.vmgconsulting.net">
+        <span class="carte-nom">OmegaX</span>
+        <span class="carte-texte">Logiciel de comptabilité selon le SYCEBNL et le SYSCOHADA, en francs congolais, avec états financiers et notes annexes.</span>
+        <span class="carte-lien">Voir le site d'OmegaX <i aria-hidden="true">→</i></span>
+      </a>
+    </div>
   </section>
 
-  <div class="filet" aria-hidden="true"></div>
-
-  <section id="contact" class="bloc" aria-labelledby="t-contact">
-    <h2 id="t-contact">Nous contacter</h2>
-    <p class="intro">Pour présenter votre organisation, demander un échange ou poser une question, écrivez-nous à <a class="adr" href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>.</p>
-
-    <form id="demande" novalidate>
-      <div class="rang">
-        <label for="entite">Entité<input id="entite" name="entite" autocomplete="organization"></label>
-        <label for="type">Votre demande
-          <select id="type" name="type">
-            <option>Une mission pour mon organisation</option>
-            <option>Formation</option>
-            <option>OmegaX : devis ou essai</option>
-            <option>Autre question</option>
-          </select>
-        </label>
-      </div>
-      <div class="rang">
-        <label for="nom">Nom<input id="nom" name="nom" autocomplete="name"></label>
-        <label for="courriel">Courriel<input id="courriel" name="courriel" type="email" autocomplete="email"></label>
-      </div>
-      <label for="message">Message<textarea id="message" name="message"></textarea></label>
-      <p class="gestes">
-        <button class="bouton bouton-plein" type="submit">Préparer le message</button>
-      </p>
-      <p class="retour" id="retour" role="status" hidden></p>
-      <p class="note">Ce formulaire ouvre votre messagerie avec le message prêt à envoyer à admin@vmgconsulting.net. Rien n'est envoyé tant que vous ne l'envoyez pas vous-même.</p>
-    </form>
+  <section id="contact" class="bloc bloc-encre" aria-labelledby="t-contact">
+    <div class="colonne etroite">
+      <p class="etiquette revele">Contact</p>
+      <h2 id="t-contact" class="revele">Parlons de votre organisation.</h2>
+      <p class="intro revele">Présentez-vous, demandez un échange ou posez une question : <a class="adr" href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>.</p>
+      <form id="demande" class="revele" novalidate>
+        <div class="rang">
+          <label for="entite">Organisation<input id="entite" name="entite" autocomplete="organization"></label>
+          <label for="type">Votre demande
+            <select id="type" name="type">
+              <option>Une mission pour mon organisation</option>
+              <option>Formation</option>
+              <option>OmegaX : devis ou essai</option>
+              <option>Autre question</option>
+            </select>
+          </label>
+        </div>
+        <div class="rang">
+          <label for="nom">Nom<input id="nom" name="nom" autocomplete="name"></label>
+          <label for="courriel">Courriel<input id="courriel" name="courriel" type="email" autocomplete="email"></label>
+        </div>
+        <label for="message">Message<textarea id="message" name="message"></textarea></label>
+        <p class="gestes"><button class="bouton bouton-or" type="submit">Préparer le message</button></p>
+        <p class="retour" id="retour" role="status" hidden></p>
+        <p class="note">Ce formulaire ouvre votre messagerie avec le message prêt à envoyer à admin@vmgconsulting.net. Rien n'est envoyé tant que vous ne l'envoyez pas vous-même.</p>
+      </form>
+    </div>
   </section>
 </main>
 
