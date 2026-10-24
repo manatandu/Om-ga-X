@@ -237,7 +237,10 @@ puis, le 2026-10-24, l'ADRESSE DU SITE séparée de celle du logiciel (« Pour l
 logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine de
 `omegax.vmgconsulting.net` ouvre la page publique, et toute page du logiciel
 demandée sous ce nom part vers `oomega.web.app` (`lib/adresse-du-site.ts`,
-avant tout rendu), sans toucher au serveur.
+avant tout rendu), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET VMG
+Consulting (`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
+courriel, hébergées hors du dépôt), choisi par Manasse (« Site du cabinet VMG »), sans
+toucher au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VMG Consulting · cabinet comptable</title>
+<meta name="description" content="VMG Consulting, cabinet comptable en RDC, éditeur du logiciel de comptabilité OmegaX (SYCEBNL et SYSCOHADA).">
+<meta name="theme-color" content="#2a1f5c">
+<meta name="color-scheme" content="light">
+<link rel="stylesheet" href="cabinet.css">
+<script src="cabinet.js" defer></script>
+</head>
+<body>
+<a class="evitement" href="#principal">Aller au contenu</a>
+<header class="entete">
+  <a class="marque" href="./" aria-label="VMG Consulting, accueil">VMG Consulting</a>
+  <nav aria-label="Principal">
+    <a href="#omegax">OmegaX</a>
+    <a href="#contact">Contact</a>
+  </nav>
+  <a class="bouton" href="#contact">Nous écrire</a>
+</header>
+
+<main id="principal">
+  <section class="tete" aria-labelledby="titre">
+    <p class="surtitre">Cabinet comptable</p>
+    <h1 id="titre">VMG Consulting</h1>
+    <p class="chapeau">Cabinet comptable en République démocratique du Congo, éditeur du logiciel de comptabilité OmegaX pour les associations, ONG, projets de développement et entreprises.</p>
+    <p class="actions">
+      <a class="bouton bouton-plein" href="https://omegax.vmgconsulting.net">Découvrir OmegaX</a>
+      <a class="bouton" href="#contact">Nous écrire</a>
+    </p>
+  </section>
+
+  <div class="filet" aria-hidden="true"></div>
+
+  <section id="omegax" class="bloc" aria-labelledby="t-omegax">
+    <h2 id="t-omegax">Notre logiciel</h2>
+    <dl class="fiche">
+      <div><dt>OmegaX</dt><dd>Logiciel de comptabilité tenu selon le SYCEBNL (entités à but non lucratif) et le SYSCOHADA (sociétés et entreprises), en francs congolais. Il produit les états financiers et leurs notes annexes.</dd></div>
+      <div><dt>Essai et accès</dt><dd>Le site du logiciel présente les référentiels, l'installation en ligne ou sur site, et l'essai gratuit lorsqu'il est ouvert.</dd></div>
+    </dl>
+    <p class="actions"><a class="bouton bouton-plein" href="https://omegax.vmgconsulting.net">Voir le site d'OmegaX</a></p>
+  </section>
+
+  <div class="filet" aria-hidden="true"></div>
+
+  <section id="contact" class="bloc" aria-labelledby="t-contact">
+    <h2 id="t-contact">Nous contacter</h2>
+    <p class="intro">Pour une demande de devis, un essai d'OmegaX ou une question, écrivez-nous à <a class="adr" href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>.</p>
+
+    <form id="demande" novalidate>
+      <div class="rang">
+        <label for="entite">Entité<input id="entite" name="entite" autocomplete="organization"></label>
+        <label for="type">Votre demande
+          <select id="type" name="type">
+            <option>Devis OmegaX</option>
+            <option>Essai d'OmegaX</option>
+            <option>Autre question</option>
+          </select>
+        </label>
+      </div>
+      <div class="rang">
+        <label for="nom">Nom<input id="nom" name="nom" autocomplete="name"></label>
+        <label for="courriel">Courriel<input id="courriel" name="courriel" type="email" autocomplete="email"></label>
+      </div>
+      <label for="message">Message<textarea id="message" name="message"></textarea></label>
+      <p class="gestes">
+        <button class="bouton bouton-plein" type="submit">Préparer le message</button>
+      </p>
+      <p class="retour" id="retour" role="status" hidden></p>
+      <p class="note">Ce formulaire ouvre votre messagerie avec le message prêt à envoyer à admin@vmgconsulting.net. Rien n'est envoyé tant que vous ne l'envoyez pas vous-même.</p>
+    </form>
+  </section>
+</main>
+
+<footer class="pied">
+  <p>© <span id="annee">2026</span> VMG Consulting · <a href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a></p>
+  <nav aria-label="Informations légales">
+    <a href="https://oomega.web.app/#/confidentialite">Confidentialité d'OmegaX</a>
+    <a href="https://oomega.web.app/#/contrat-de-licence">Contrat de licence d'OmegaX</a>
+  </nav>
+</footer>
+</body>
+</html>

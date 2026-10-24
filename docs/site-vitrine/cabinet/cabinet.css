@@ -1,0 +1,56 @@
+/* Site du cabinet VMG Consulting · même registre que la page publique d'OmegaX
+   (charte § 9 bis) : encre, blanc, gris, filets, aucun effet, aucune couleur d'accent.
+   Polices du système : ce site est servi à part du logiciel, sans ses fichiers de police. */
+:root{--encre:#2a1f5c;--encre-douce:#4a4078;--texte:#1d1a2e;--discret:#5b5670;--regle:#c9c4da;--filet:#dedbe8;--fond:#fff;--lavis:#f6f5fa;--signal:#b52e26;--colonne:960px;--gouttiere:max(16px,calc((100vw - var(--colonne)) / 2));color-scheme:light}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--fond);color:var(--texte);font:400 15px/1.6 'IBM Plex Sans','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:var(--encre);color:#fff}
+a{color:inherit;text-underline-offset:3px}
+h1,h2{margin:0;color:var(--encre);font-weight:600;text-wrap:balance}
+p,dl,dd{margin:0}
+[hidden]{display:none!important}
+.evitement{position:absolute;left:-999px;top:8px;background:var(--encre);color:#fff;padding:8px 12px;border-radius:4px;z-index:30}
+.evitement:focus{left:8px}
+:focus-visible{outline:2px solid var(--encre);outline-offset:2px;border-radius:2px}
+.entete{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:28px;padding:6px var(--gouttiere);background:#fff;border-bottom:1px solid var(--regle)}
+.marque{display:flex;align-items:center;min-height:44px;font-weight:600;color:var(--encre);text-decoration:none;font-size:16px;letter-spacing:-.005em}
+.entete nav{display:flex;flex:1 1 auto}
+.entete nav a{padding:12px 10px;text-decoration:none;font-size:14px;color:var(--discret);border-bottom:2px solid transparent}
+.entete nav a:hover{color:var(--encre);border-bottom-color:var(--encre)}
+.bouton{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 18px;border:1px solid var(--encre);border-radius:999px;color:var(--encre);background:#fff;text-decoration:none;font:500 14px/1 inherit;font-family:inherit;cursor:pointer}
+.bouton:hover{background:var(--lavis)}
+.bouton-plein{background:var(--encre);color:#fff}
+.bouton-plein:hover{background:var(--encre-douce)}
+main>section,main>.filet{margin-left:var(--gouttiere);margin-right:var(--gouttiere)}
+.tete{padding-top:56px;padding-bottom:48px}
+.surtitre{font-size:13px;color:var(--discret);margin-bottom:8px}
+h1{font-size:clamp(1.8rem,3.4vw,2.5rem);line-height:1.15}
+.chapeau{margin-top:14px;max-width:40em;font-size:16px}
+.actions{margin-top:20px;display:flex;flex-wrap:wrap;gap:10px}
+.filet{--vide:min(24px,13.3%);display:grid;grid-template-columns:1fr var(--vide) 1fr;height:1px}
+.filet::before,.filet::after{content:"";height:1px;background:var(--encre);opacity:.55}
+.filet::before{grid-column:1}
+.filet::after{grid-column:3}
+.bloc{padding-top:44px;padding-bottom:52px}
+.bloc>h2{font-size:1.35rem}
+.intro{margin-top:8px;max-width:44em;color:var(--discret)}
+.fiche{margin-top:16px;border-top:2px solid var(--encre)}
+.fiche>div{display:grid;grid-template-columns:11em minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--filet)}
+.fiche dt{color:var(--discret)}
+.adr{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:.92em;color:var(--encre)}
+form{margin-top:20px;display:grid;gap:14px;max-width:640px;border:1px solid var(--regle);border-radius:4px;padding:16px;background:var(--lavis)}
+.rang{display:grid;gap:14px}
+@media (min-width:560px){.rang{grid-template-columns:1fr 1fr}}
+label{display:grid;gap:6px;font-size:13px;font-weight:500;min-width:0}
+input,select,textarea{font:inherit;font-size:16px;color:var(--texte);background:#fff;border:1px solid var(--regle);border-radius:2px;padding:9px 10px;width:100%;min-width:0}
+textarea{min-height:110px;resize:vertical}
+.note{font-size:13px;color:var(--discret)}
+.retour{padding:10px 12px;border-left:3px solid var(--encre);background:#fff;font-size:14px}
+.retour.ko{border-left-color:var(--signal);color:var(--signal)}
+.pied{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:16px var(--gouttiere) 24px;border-top:1px solid var(--regle);font-size:13px;color:var(--discret)}
+.pied nav{display:flex;flex-wrap:wrap;gap:4px 18px}
+.pied a{color:var(--discret)}
+.pied a:hover{color:var(--encre)}
+@media (max-width:640px){.fiche>div{grid-template-columns:minmax(0,1fr);gap:0}.entete nav{display:none}.entete{justify-content:space-between}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
