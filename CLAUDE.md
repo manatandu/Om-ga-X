@@ -232,7 +232,12 @@ Microfina++ (« la 2e possibilité. Fais le proprement »), et le même jour
 le VISA D'UN RIB par un second utilisateur (« Lève le gel pour le visa d'un
 RIB »), les autres idées de ce logiciel restant au suivi ; puis, le
 2026-10-23, la page publique et l'écran de connexion remis au registre de
-l'application (« Le tout en cascade », charte § 9 bis), sans toucher au serveur.
+l'application (« Le tout en cascade », charte § 9 bis), sans toucher au serveur ;
+puis, le 2026-10-24, l'ADRESSE DU SITE séparée de celle du logiciel (« Pour le
+logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine de
+`omegax.vmgconsulting.net` ouvre la page publique, et toute page du logiciel
+demandée sous ce nom part vers `oomega.web.app` (`lib/adresse-du-site.ts`,
+avant tout rendu), sans toucher au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

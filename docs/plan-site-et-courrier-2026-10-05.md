@@ -26,7 +26,14 @@ fixe ce qu'on construit, dans quel ordre, et ce qui reste à trancher.
 1. **Un seul domaine, vmgconsulting.net.** Le .com n'est pas retenu (lapsus
    de la conversation, corrigé le même jour).
    - `vmgconsulting.net` : site de présentation et de vente.
-   - `app.vmgconsulting.net` : le logiciel, plus tard (voir § 5).
+   - `app.vmgconsulting.net` : le logiciel, plus tard (voir § 5). REMPLACÉ le
+     2026-10-24 (décision de Manasse, « Pour le logiciel, laisse
+     omegax.web.app ») · le logiciel RESTE à son adresse Firebase,
+     `oomega.web.app`, celle que cite le contrat de licence ; aucun
+     `app.` n'est créé.
+   - `omegax.vmgconsulting.net` : le site d'OmegaX (page publique), sur le
+     même site Firebase · sa racine ouvre `/vitrine/` et toute page du
+     logiciel part vers `oomega.web.app` (`client/src/lib/adresse-du-site.ts`).
    - `admin@vmgconsulting.net` : courriel, déjà en place.
 2. **Vente sur demande d'abord.** Formulaire, devis, dossier créé par l'éditeur.
    L'inscription publique reste fermée (`INSCRIPTION_PUBLIQUE`). Le paiement
