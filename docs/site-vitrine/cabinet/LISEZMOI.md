@@ -33,3 +33,7 @@ Le site ne présente que des activités qui ne sont pas réservées aux experts-
 conseil fiscal, certification, révision). Formation, études économiques et statistiques,
 indicateurs de projet et solutions logicielles sont hors de cette liste. Ne pas ajouter de
 mission de l'art. 43 avant l'inscription au tableau de l'Ordre.
+
+## Logo
+
+Logo retenu : le cachet (proposition 1). Fichiers dans `logo/` : `logo-clair.svg`, `logo-sombre.svg`, `icone-clair.svg`, `icone-sombre.svg`, `favicon.svg`. Le nom écrit en toutes lettres utilise une police du système : à convertir en tracés pour un usage imprimé.

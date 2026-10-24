@@ -20,7 +20,7 @@ h1,h2,h3,.marque,.carte-nom,.reperes b,.grand{font-family:'Bricolage Grotesque',
 .entete{position:fixed;inset:0 0 auto 0;z-index:40;display:flex;align-items:center;gap:28px;padding:10px var(--g);color:#fff;transition:background .25s,box-shadow .25s}
 .entete.pleine{background:rgba(27,19,66,.94);backdrop-filter:blur(8px);box-shadow:0 1px 0 rgba(255,255,255,.08)}
 .marque{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-.01em;color:#fff;text-decoration:none;min-height:44px}
-.marque-signe{display:grid;place-items:center;width:30px;height:30px;border:1.5px solid var(--or);border-radius:50%;color:var(--or);font-size:16px;font-weight:800}
+.marque-signe{flex:none;width:36px;height:36px}
 .entete nav{display:flex;gap:4px;flex:1}
 .entete nav a{padding:10px 12px;font-size:14px;font-weight:500;color:rgba(255,255,255,.82);text-decoration:none;border-radius:6px}
 .entete nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
