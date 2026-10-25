@@ -246,6 +246,11 @@ export type HeuresProposees = {
   heures: number;
   /** Une partie n'a pas pu se compter (semaine incomplète) · la proposition est un minimum. */
   minimum: boolean;
+  /**
+   * Les heures du SAMEDI · la majoration ne s'y présélectionne jamais, la
+   * convention seule dit si elle est due (« éventuellement », mention 11).
+   */
+  samedi: boolean;
 };
 
 export type TotauxDuMois = {
@@ -273,18 +278,18 @@ export function heuresAProposer(semaines: readonly CompteDeLaSemaine[]): { totau
   };
   const lignes: HeuresProposees[] = [];
   if (totaux.supplementaires > 0) {
-    lignes.push({ nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'Heures supplémentaires', heures: totaux.supplementaires, minimum: incompletes });
+    lignes.push({ nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'Heures supplémentaires', heures: totaux.supplementaires, minimum: incompletes, samedi: false });
   }
-  if (totaux.nuit > 0) lignes.push({ nature: 'TRAVAIL_DE_NUIT', libelle: 'Heures de nuit', heures: totaux.nuit, minimum: false });
+  if (totaux.nuit > 0) lignes.push({ nature: 'TRAVAIL_DE_NUIT', libelle: 'Heures de nuit', heures: totaux.nuit, minimum: false, samedi: false });
   const reposEtFeries = enHeures(enCentiemes(totaux.dimanche) + enCentiemes(totaux.ferie));
   if (reposEtFeries > 0) {
-    lignes.push({ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du dimanche et des jours fériés', heures: reposEtFeries, minimum: false });
+    lignes.push({ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du dimanche et des jours fériés', heures: reposEtFeries, minimum: false, samedi: false });
   }
   // Le samedi est un jour OUVRABLE (Code du travail, art. 7, point 9) · son
   // supplément n'est payé que si la convention le prévoit (« éventuellement »,
   // mention 11). Ligne à part, que le cabinet retire s'il ne la doit pas.
   if (totaux.samedi > 0) {
-    lignes.push({ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: totaux.samedi, minimum: false });
+    lignes.push({ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: totaux.samedi, minimum: false, samedi: true });
   }
   return { totaux, lignes };
 }

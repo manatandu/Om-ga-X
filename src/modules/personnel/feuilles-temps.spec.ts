@@ -95,7 +95,7 @@ describe('nuit, dimanche, férié et samedi · comptés à part, proposés à pa
 
   it('le samedi reste une ligne à part · son supplément n’est dû que si la convention le prévoit', () => {
     const { lignes } = heuresAProposer([semaine('2026-10-05', [0, 0, 0, 0, 0, 5, 0])]);
-    expect(lignes).toEqual([{ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: 5, minimum: false }]);
+    expect(lignes).toEqual([{ nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: 5, minimum: false, samedi: true }]);
   });
 
   it('un mois sans heure ne propose rien · un zéro ne se propose pas', () => {

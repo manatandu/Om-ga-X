@@ -9,8 +9,8 @@ import { heuresPourLeBulletin } from './heures-majorees';
  */
 describe('la reprise des heures à la simulation', () => {
   const proposees = [
-    { nature: 'HEURES_SUPPLEMENTAIRES' as const, libelle: 'Heures supplémentaires', heures: 5.5, minimum: false, majorationId: 'm-hs', majorations: 1 },
-    { nature: 'TRAVAIL_DE_NUIT' as const, libelle: 'Heures de nuit', heures: 2, minimum: false, majorationId: null, majorations: 2 },
+    { nature: 'HEURES_SUPPLEMENTAIRES' as const, libelle: 'Heures supplémentaires', heures: 5.5, minimum: false, samedi: false, majorationId: 'm-hs', majorations: 1 },
+    { nature: 'TRAVAIL_DE_NUIT' as const, libelle: 'Heures de nuit', heures: 2, minimum: false, samedi: false, majorationId: null, majorations: 2 },
   ];
 
   it('ajoute aux lignes tapées, jette les lignes vides, laisse le taux horaire à taper', () => {

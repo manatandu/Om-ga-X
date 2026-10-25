@@ -68,6 +68,7 @@ export interface LigneProposee {
   libelle: string;
   heures: number;
   minimum: boolean;
+  samedi: boolean;
   majorationId: string | null;
   majorations: number;
 }

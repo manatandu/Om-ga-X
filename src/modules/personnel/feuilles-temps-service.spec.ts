@@ -17,6 +17,7 @@ function doublure(p: {
   absences?: Array<{ du: Date; au: Date; demiJourneeDebut: boolean; demiJourneeFin: boolean }>;
   feuillesDuMois?: Array<{ id: string; du: Date; au: Date }>;
   joursDuMois?: Array<{ jour: Date; heures: number; heuresNuit: number }>;
+  majorations?: Array<{ id: string; nature: string; libelle: string }>;
 }) {
   const ecrits: string[] = [];
   const salarie = { id: 's-1', contrats: [{ dateEntreeEnVigueur: J('2026-01-01'), dateFin: null }] };
@@ -56,7 +57,7 @@ function doublure(p: {
       findMany: jest.fn().mockResolvedValue(p.joursDuMois ?? []),
     },
     heuresCompteurJour: { create: jest.fn(), update: jest.fn(), groupBy: jest.fn().mockResolvedValue([]) },
-    majorationHeures: { findMany: jest.fn().mockResolvedValue([{ id: 'm-hs', nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'HS' }]) },
+    majorationHeures: { findMany: jest.fn().mockResolvedValue(p.majorations ?? [{ id: 'm-hs', nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'HS' }]) },
   };
   const prisma = { ...tx, $transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as unknown as PrismaService;
   return { svc: new FeuillesTempsService(prisma), ecrits };
@@ -122,8 +123,24 @@ describe('la proposition du mois', () => {
     // juillet sans majoration déclarée · proposé sans majoration, jamais
     // rattaché à une autre nature.
     expect(r.lignes).toEqual([
-      { nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'Heures supplémentaires', heures: 5, minimum: true, majorationId: 'm-hs', majorations: 1 },
-      { nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: 8, minimum: false, majorationId: null, majorations: 0 },
+      { nature: 'HEURES_SUPPLEMENTAIRES', libelle: 'Heures supplémentaires', heures: 5, minimum: true, samedi: false, majorationId: 'm-hs', majorations: 1 },
+      { nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Heures du samedi', heures: 8, minimum: false, samedi: true, majorationId: null, majorations: 0 },
+    ]);
+  });
+
+  it('LE SAMEDI NE REÇOIT JAMAIS DE MAJORATION PRÉSÉLECTIONNÉE · même seule de sa nature, le dimanche la reçoit', async () => {
+    const { svc } = doublure({
+      feuillesDuMois: [{ id: 'f-1', du: J('2026-06-29'), au: J('2026-07-31') }],
+      joursDuMois: [
+        { jour: J('2026-07-04'), heures: 6, heuresNuit: 0 },
+        { jour: J('2026-07-05'), heures: 4, heuresNuit: 0 },
+      ],
+      majorations: [{ id: 'm-repos', nature: 'TRAVAIL_REPOS_OU_FERIE', libelle: 'Dimanche et fériés' }],
+    });
+    const r = await svc.duMois('t', 's-1', '2026-07');
+    expect(r.lignes.map((l) => [l.libelle, l.heures, l.majorationId])).toEqual([
+      ['Heures du dimanche et des jours fériés', 4, 'm-repos'],
+      ['Heures du samedi', 6, null],
     ]);
   });
 });

@@ -418,7 +418,9 @@ export class FeuillesTempsService {
       totaux,
       lignes: lignes.map((l) => {
         const c = candidates(l.nature);
-        return { ...l, majorationId: c.length === 1 ? c[0].id : null, majorations: c.length };
+        // Le samedi est ouvrable (Code du travail, art. 7, point 9) · aucune
+        // majoration ne s'y présélectionne, même seule de sa nature.
+        return { ...l, majorationId: c.length === 1 && !l.samedi ? c[0].id : null, majorations: c.length };
       }),
       // Les compteurs libres du MOIS CIVIL · sans effet sur la paie.
       compteurs: cumuls
