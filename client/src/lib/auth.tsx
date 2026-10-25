@@ -6,6 +6,7 @@ import { oublierPrechargement, prechargerExercices } from './prechargement';
 import { peutEcrirePourRole, peutValiderPourRole } from './roles-cantonnes';
 import { surSessionPerdue } from './session-perdue';
 import { deconnecterServeur, fermerLaSession } from './deconnexion';
+import { oublierLEcranVu } from './logiciels';
 
 interface MeResponse {
   id: string;
@@ -20,6 +21,12 @@ interface MeResponse {
   /** Mot de passe transité par un tiers · l'écran de changement s'impose
    *  avant l'espace de travail (voir ZoneProtegee, App.tsx). */
   doitChangerMotDePasse: boolean;
+  /**
+   * Les logiciels (tuiles) que l'administrateur ouvre à cet utilisateur ·
+   * `null` = toutes. Un affichage, jamais un droit (`lib/logiciels.ts`). Absent
+   * d'un ancien serveur = toutes.
+   */
+  logicielsAutorises?: string[] | null;
   tenant: {
     id: string;
     nom: string;
@@ -133,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // attend cette réponse (`apresDeconnexion`).
         void deconnecterServeur(() => api.post('/auth/logout'));
         oublierPrechargement();
+        oublierLEcranVu();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(motif);
@@ -232,6 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       () => api.post('/auth/logout'),
       () => {
         ouverte.current = false;
+        // La connexion suivante, dans cet onglet, remontre l'écran des logiciels.
+        oublierLEcranVu();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(null);

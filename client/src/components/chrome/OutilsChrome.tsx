@@ -56,7 +56,7 @@ function BoutonChrome({
   );
 }
 
-export function NavigationChrome() {
+export function NavigationChrome({ onLogiciels }: { onLogiciels?: () => void } = {}) {
   const navigate = useNavigate();
   const { fermerTout } = useFenetresActions();
   const { fenetres } = useFenetres();
@@ -82,6 +82,18 @@ export function NavigationChrome() {
           <path d="M5 8.6V16h10V8.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </BoutonChrome>
+      {/* Rappelle l'écran des logiciels · absent quand le dossier n'en sert qu'un
+          ou que l'utilisateur n'a rien à choisir. Un affichage, pas un droit. */}
+      {onLogiciels && (
+        <BoutonChrome titre="Logiciels" infobulle="Logiciels · changer de logiciel" onClick={onLogiciels}>
+          <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1" />
+            <rect x="11" y="3.5" width="5.5" height="5.5" rx="1" />
+            <rect x="3.5" y="11" width="5.5" height="5.5" rx="1" />
+            <rect x="11" y="11" width="5.5" height="5.5" rx="1" />
+          </svg>
+        </BoutonChrome>
+      )}
     </div>
   );
 }

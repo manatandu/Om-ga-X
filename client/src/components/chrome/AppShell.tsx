@@ -22,6 +22,17 @@ import { fenetreOuverteAuRole } from '../../lib/roles-cantonnes';
 import { fenetreOuverteSelonAdmin } from '../../lib/reserve-admin';
 import { cheminAuMenu } from '../../lib/profil-dossier';
 import { filtrerParProfil } from './menu-groupes';
+import { EcranLogiciels } from './EcranLogiciels';
+import { LogicielActifProvider } from '../../lib/logiciel-actif';
+import {
+  ecranDejaVuDansLaSession,
+  ecrireLogicielChoisi,
+  etatDuChoix,
+  filtrerParLogiciel,
+  lireLogicielChoisi,
+  logicielsServis,
+  type CleLogiciel,
+} from '../../lib/logiciels';
 
 /**
  * L'espace de travail, calqué sur la fenêtre principale de Sage 100 i7 :
@@ -666,7 +677,7 @@ export function AppShell() {
   // exige le cours de l'USD du jour, et la fenêtre qui le cote lui était
   // ouverte sans qu'aucun menu n'y mène. La liste est celle de
   // `fenetreOuverteAuRole` (roles-cantonnes.ts), et un spec l'y tient.
-  const menus: MenuDef[] =
+  const menusDuProfil: MenuDef[] =
     utilisateur?.role === 'GESTIONNAIRE_PAIE'
       ? [
           {
@@ -698,10 +709,46 @@ export function AppShell() {
           return cheminAuMenu(chemin, utilisateur?.tenant);
         });
 
+  // LES LOGICIELS (TUILES) · un AFFICHAGE posé SUR le menu que le profil vient
+  // de filtrer, jamais à sa place (lib/logiciels.ts). Une tuile n'existe que si
+  // une de ses commandes survit déjà au référentiel, au profil, aux modules et
+  // au rôle ; l'attribution de l'administrateur (`logicielsAutorises`, null =
+  // toutes) ne fait que retirer des tuiles. Le gestionnaire de paie a son
+  // menu propre et n'a pas de tuiles à choisir. Aucune route n'est refusée ici.
+  const suitLesLogiciels = utilisateur?.role !== 'GESTIONNAIRE_PAIE';
+  const idPoste = { tenant: utilisateur?.tenant.id ?? '', user: utilisateur?.id ?? '' };
+  const logicielsDuDossier = suitLesLogiciels
+    ? logicielsServis(menusDuProfil, utilisateur?.logicielsAutorises)
+    : [];
+  const [logicielChoisi, setLogicielChoisi] = useState<string | null>(() =>
+    lireLogicielChoisi(idPoste.tenant, idPoste.user),
+  );
+  const [ecranDejaVu, setEcranDejaVu] = useState(() => ecranDejaVuDansLaSession(idPoste.tenant, idPoste.user));
+  const [rappelLogiciels, setRappelLogiciels] = useState(false);
+  const etatLogiciel = suitLesLogiciels
+    ? etatDuChoix(logicielsDuDossier, logicielChoisi, ecranDejaVu, rappelLogiciels)
+    : { logiciel: null, ecran: false };
+  const choisirLogiciel = (cle: CleLogiciel) => {
+    ecrireLogicielChoisi(idPoste.tenant, idPoste.user, cle);
+    setLogicielChoisi(cle);
+    setEcranDejaVu(true);
+    setRappelLogiciels(false);
+  };
+  // Rappelable tant qu'il y a quelque chose à choisir · avec une seule tuile
+  // servie, l'écran n'a pas lieu d'être.
+  const peutChoisirUnLogiciel = suitLesLogiciels && logicielsDuDossier.length > 1;
+  const menus = suitLesLogiciels ? filtrerParLogiciel(menusDuProfil, etatLogiciel.logiciel) : menusDuProfil;
+
+  // `overflow-x-hidden` (racine ci-dessous) : garde-fou de dernier rang. Aucun
+  // élément du chrome ne doit dépasser en largeur, mais si l'un le fait un
+  // jour, il sera rogné au lieu d'emmener toute l'application sur le côté.
   return (
-    // `overflow-x-hidden` : garde-fou de dernier rang. Aucun élément du
-    // chrome ne doit dépasser en largeur, mais si l'un le fait un jour, il
-    // sera rogné au lieu d'emmener toute l'application sur le côté.
+    <LogicielActifProvider
+      value={{
+        actif: etatLogiciel.logiciel,
+        changer: peutChoisirUnLogiciel ? () => setRappelLogiciels(true) : null,
+      }}
+    >
     <div className="h-screen flex flex-col bg-bg text-text overflow-x-hidden">
       {/*
         Barre de titre · elle porte l'identité du dossier ouvert, comme la
@@ -750,7 +797,7 @@ export function AppShell() {
             360 px. */}
         <MenuBar
           menus={menus}
-          avant={<NavigationChrome />}
+          avant={<NavigationChrome onLogiciels={peutChoisirUnLogiciel ? () => setRappelLogiciels(true) : undefined} />}
           apres={
             <>
               {/* La cloche interroge /courrier chaque minute · pour un rôle à
@@ -785,6 +832,16 @@ export function AppShell() {
         {fenetres.map((f) => (
           <Fenetre key={f.cle} fenetre={f} active={f.cle === cleActive} />
         ))}
+        {/* L'écran des logiciels se POSE SUR l'espace de travail sans le
+            démonter · rappelé en cours de travail, il ne ferme aucune fenêtre. */}
+        {etatLogiciel.ecran && (
+          <EcranLogiciels
+            servis={logicielsDuDossier}
+            actif={etatLogiciel.logiciel}
+            onChoisir={choisirLogiciel}
+            onRetour={etatLogiciel.logiciel ? () => choisirLogiciel(etatLogiciel.logiciel as CleLogiciel) : undefined}
+          />
+        )}
       </main>
 
       <div className="ecran-seul contents">
@@ -794,5 +851,6 @@ export function AppShell() {
       {aProposOuvert && <AProposModale onFermer={() => setAProposOuvert(false)} />}
       {monCompteOuvert && <ModaleMonCompte onFermer={() => setMonCompteOuvert(false)} />}
     </div>
+    </LogicielActifProvider>
   );
 }

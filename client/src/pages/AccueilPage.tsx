@@ -34,6 +34,8 @@ import {
 } from '../components/chrome/icons';
 import type { SVGProps } from 'react';
 import { LignesSquelette } from '../components/chrome/Squelette';
+import { useLogicielActif } from '../lib/logiciel-actif';
+import { cheminDansLogiciel, logicielDef } from '../lib/logiciels';
 
 /**
  * ACCUEIL · le FOND de l'espace de travail, jamais une fenêtre. Les fenêtres
@@ -169,6 +171,10 @@ export function AccueilPage() {
   const navigate = useNavigate();
   const { utilisateur, estAdmin, seDeconnecter } = useAuth();
   const referentiel = utilisateur?.tenant.referentiel;
+  // Le logiciel choisi (écran des tuiles) restreint aussi les raccourcis de
+  // l'accueil, comme la barre de menus · un affichage, jamais un droit.
+  const { actif: logicielActif, changer: changerDeLogiciel } = useLogicielActif();
+  const dansLeLogiciel = (chemin: string) => logicielActif === null || cheminDansLogiciel(chemin, logicielActif);
   const { exerciceCourant, chargement: chargementExercices } = useExercice();
   const [aProposOuvert, setAProposOuvert] = useState(false);
   const tenantId = utilisateur?.tenant.id ?? '';
@@ -297,14 +303,16 @@ export function AccueilPage() {
       .filter((t) => !t.admin || estAdmin)
       .filter((t) => fenetreDisponible(t, referentiel))
       // Même filtre de profil que la barre de menus (lib/profil-dossier.ts).
-      .filter((t) => cheminAuMenu(t.chemin, utilisateur?.tenant));
+      .filter((t) => cheminAuMenu(t.chemin, utilisateur?.tenant))
+      .filter((t) => dansLeLogiciel(t.chemin));
 
   // ACCUEIL PAR MÉTIER · les tâches du rôle en tête, passées par le même
   // filtre que les menus (`lib/accueil-par-metier.ts`). Aucun droit n'en naît.
   const metier = tachesDuRole(utilisateur?.role);
   const tachesVisibles = metier.taches
     .filter((t) => !t.admin || estAdmin)
-    .filter((t) => cheminAuMenu(t.chemin, utilisateur?.tenant));
+    .filter((t) => cheminAuMenu(t.chemin, utilisateur?.tenant))
+    .filter((t) => dansLeLogiciel(t.chemin));
 
   const toutesTuiles = GROUPES.flatMap((g) => tuilesVisibles(g));
   const tuilesFavorites = favoris.map((c) => toutesTuiles.find((t) => t.chemin === c)).filter((t): t is TuileDef => !!t);
@@ -413,6 +421,17 @@ export function AccueilPage() {
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-[11.5px]">
                 <dt className="text-text-dim">Dossier</dt>
                 <dd className="font-semibold">{utilisateur?.tenant.nom}</dd>
+                {changerDeLogiciel && (
+                  <>
+                    <dt className="text-text-dim">Logiciel</dt>
+                    <dd className="flex items-center gap-2">
+                      <span className="font-semibold">{logicielDef(logicielActif)?.libelle ?? 'Aucun choisi'}</span>
+                      <button type="button" onClick={changerDeLogiciel} className="text-sel text-[11.5px]">
+                        Changer
+                      </button>
+                    </dd>
+                  </>
+                )}
                 <dt className="text-text-dim">Référentiel</dt>
                 <dd>
                   {utilisateur?.tenant.referentiel}

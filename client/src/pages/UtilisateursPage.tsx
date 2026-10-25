@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { ModaleFonctions } from '../components/ModaleFonctions';
 import { ModaleJournaux } from '../components/ModaleJournaux';
+import { ModaleLogiciels } from '../components/ModaleLogiciels';
 import type { AvisAcces, RoleUtilisateur, Utilisateur } from '../lib/types';
 import { PortailModale } from '../components/PortailModale';
 
@@ -36,6 +37,7 @@ export function UtilisateursPage() {
   // Profil de fonctions (point 15).
   const [fonctionsCible, setFonctionsCible] = useState<Utilisateur | null>(null);
   const [journauxCible, setJournauxCible] = useState<Utilisateur | null>(null);
+  const [logicielsCible, setLogicielsCible] = useState<Utilisateur | null>(null);
   const [reinitCible, setReinitCible] = useState<Utilisateur | null>(null);
   const [reinitMotDePasse, setReinitMotDePasse] = useState('');
   const [reinitErreur, setReinitErreur] = useState<string | null>(null);
@@ -310,6 +312,12 @@ export function UtilisateursPage() {
                   {u.restreindreJournaux ? `Journaux (${u.journauxAutorises?.length ?? 0})` : 'Journaux'}
                 </button>
               )}
+              {/* Jamais l'administrateur · il n'est pas restreint, et c'est lui qui attribue. */}
+              {u.role !== 'ADMIN_CABINET' && (
+                <button onClick={() => setLogicielsCible(u)} className="text-[11.5px] text-sel">
+                  {u.restreindreLogiciels ? `Logiciels (${u.logicielsAutorises?.length ?? 0})` : 'Logiciels'}
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -338,6 +346,20 @@ export function UtilisateursPage() {
           onFermer={() => setJournauxCible(null)}
           onEnregistre={() => {
             setJournauxCible(null);
+            void charger();
+          }}
+        />
+      )}
+
+      {logicielsCible && (
+        <ModaleLogiciels
+          utilisateurId={logicielsCible.id}
+          email={logicielsCible.email}
+          restreindre={!!logicielsCible.restreindreLogiciels}
+          logiciels={logicielsCible.logicielsAutorises ?? []}
+          onFermer={() => setLogicielsCible(null)}
+          onEnregistre={() => {
+            setLogicielsCible(null);
             void charger();
           }}
         />
