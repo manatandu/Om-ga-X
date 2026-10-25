@@ -7,7 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { UtilisateurService } from './utilisateur.service';
 import { AvisAccesService } from './avis-acces.service';
-import { CreerUtilisateurDto, DefinirFonctionsDto, DefinirJournauxDto, ModifierUtilisateurDto, ReinitialiserMotDePasseDto } from './dto/utilisateur.dto';
+import { CreerUtilisateurDto, DefinirFonctionsDto, DefinirJournauxDto, DefinirLogicielsDto, ModifierUtilisateurDto, ReinitialiserMotDePasseDto } from './dto/utilisateur.dto';
 import { RoleUtilisateur } from '@prisma/client';
 
 // Réservé à l'admin du cabinet : gérer qui a accès au dossier et avec quel
@@ -108,6 +108,16 @@ export class UtilisateurController {
   @Put(':id/journaux')
   async definirJournaux(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: DefinirJournauxDto) {
     return this.utilisateurService.definirJournaux(user.tenantId, id, dto);
+  }
+
+  /**
+   * Logiciels (tuiles) attribués · un AFFICHAGE, jamais un droit, sans fermer
+   * de session (`UtilisateurService.definirLogiciels`).
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Put(':id/logiciels')
+  async definirLogiciels(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: DefinirLogicielsDto) {
+    return this.utilisateurService.definirLogiciels(user.tenantId, id, dto);
   }
 
   /**

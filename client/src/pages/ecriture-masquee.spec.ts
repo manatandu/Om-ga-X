@@ -56,6 +56,7 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'pages/ParametresDossierPage.tsx': "paramètres du dossier, réservés à l'administrateur",
   'components/ModaleFonctions.tsx': "profil de fonctions d'un utilisateur, route réservée à l'administrateur",
   'components/ModaleJournaux.tsx': "journaux autorisés d'un utilisateur, route réservée à l'administrateur",
+  'components/ModaleLogiciels.tsx': "logiciels attribués à un utilisateur, route réservée à l'administrateur",
   'components/MaintenanceImmobilisations.tsx': "renumérotation des biens, structure du registre réservée à l'administrateur (ligne sage-l4, n° 73)",
   'components/NaturesCompte.tsx': "natures de compte (fourchettes, défauts, alignement), routes réservées à l'administrateur",
   'pages/PlanComptesPage.tsx': "ouverture et modification des comptes du plan, réservées à l'administrateur",

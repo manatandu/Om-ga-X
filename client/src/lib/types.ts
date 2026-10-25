@@ -87,6 +87,9 @@ export interface Utilisateur {
   /** Journaux autorisés (priorité 5) · faux = saisie dans tous les journaux. */
   restreindreJournaux?: boolean;
   journauxAutorises?: string[];
+  /** Logiciels (tuiles) attribués · faux = toutes ; un affichage, jamais un droit. */
+  restreindreLogiciels?: boolean;
+  logicielsAutorises?: string[];
 }
 export type ClasseCompte =
   | 'CLASSE_1' | 'CLASSE_2' | 'CLASSE_3' | 'CLASSE_4'

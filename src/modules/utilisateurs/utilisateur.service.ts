@@ -7,6 +7,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
 import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { LOGICIELS, ROLES_SANS_LOGICIELS } from './logiciels';
 
 const SALT_ROUNDS = 12;
 
@@ -27,6 +28,8 @@ const SELECTION = {
   fonctionsAutorisees: true,
   restreindreJournaux: true,
   journauxAutorises: true,
+  restreindreLogiciels: true,
+  logicielsAutorises: true,
 } as const;
 
 /** Ne dit pas à qui l'adresse appartient · même phrase à la lecture et à la base. */
@@ -147,6 +150,56 @@ export class UtilisateurService {
     });
   }
 
+  /**
+   * LOGICIELS ATTRIBUÉS (écran de tuiles, `logiciels.ts`) · ce que
+   * l'utilisateur voit après sa connexion. Mêmes refus que les deux
+   * restrictions voisines · jamais un administrateur (il ouvre et ferme les
+   * tuiles des autres), cloisonné par dossier. UNE DIFFÉRENCE VOULUE · aucune
+   * session n'est fermée (`sessionsInvalidesAvant` intact) · c'est un
+   * affichage, pas un droit, et l'effet vaut à la prochaine lecture de
+   * /auth/me par l'intéressé (ouverture, rechargement, retour sur son onglet).
+   * Une restriction sans aucune tuile est refusée · l'utilisateur n'aurait
+   * aucune porte ; pour ne rien lui laisser saisir, c'est le rôle.
+   *
+   * CE QUE LE SERVEUR NE JUGE PAS · qu'une tuile cochée soit SERVIE par le
+   * dossier. Ce jugement se lit sur le menu filtré du client (référentiel,
+   * profil, modules, rôle) ; le recopier ici ferait deux règles qui divergent.
+   * La modale le dit tuile par tuile, et l'écran nomme ce qui est attribué
+   * sans être servi.
+   */
+  async definirLogiciels(tenantId: string, userId: string, dto: { restreindre: boolean; logiciels?: string[] }) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+    if (user.role === RoleUtilisateur.ADMIN_CABINET && dto.restreindre) {
+      throw new BadRequestException(
+        "Un administrateur n'est jamais restreint · c'est lui qui attribue les logiciels des autres. Changez d'abord son rôle.",
+      );
+    }
+    if (user.role === RoleUtilisateur.GESTIONNAIRE_PAIE && dto.restreindre) {
+      throw new BadRequestException(
+        "Le gestionnaire de paie a son propre menu, réduit au personnel et aux cours de devises · une attribution de logiciels n'y changerait rien.",
+      );
+    }
+    const demandes = dto.logiciels ?? [];
+    const connus: readonly string[] = LOGICIELS;
+    const inconnu = demandes.find((l) => !connus.includes(l));
+    if (inconnu) throw new BadRequestException(`Logiciel inconnu : ${inconnu}`);
+    const choisis = [...new Set(demandes)];
+    if (dto.restreindre && choisis.length === 0) {
+      throw new BadRequestException(
+        'Cochez au moins un logiciel · un utilisateur sans aucun logiciel ne pourrait rien ouvrir. Pour ne rien lui laisser saisir, changez son rôle.',
+      );
+    }
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        restreindreLogiciels: dto.restreindre,
+        logicielsAutorises: dto.restreindre ? choisis : [],
+      },
+      select: SELECTION,
+    });
+  }
+
   async modifier(tenantId: string, userId: string, utilisateurCourantId: string, dto: ModifierUtilisateurDto) {
     const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) {
@@ -165,6 +218,13 @@ export class UtilisateurService {
           // ne fermait rien : rétrograder un ADMIN_CABINET le laissait agir en
           // administrateur jusqu'à l'expiration de son jeton, soit huit heures.
           ...(dto.estActif === false || dto.role !== undefined ? { sessionsInvalidesAvant: new Date() } : {}),
+          // UNE ATTRIBUTION DE LOGICIELS NE SURVIT PAS À UN RÔLE QUI NE LA SUIT
+          // PAS · promu administrateur (ou passé gestionnaire de paie), le
+          // compte garderait sinon sa liste en base, et la retrouverait en
+          // silence le jour où il redeviendrait comptable.
+          ...(dto.role !== undefined && ROLES_SANS_LOGICIELS.includes(dto.role)
+            ? { restreindreLogiciels: false, logicielsAutorises: [] }
+            : {}),
         },
         select: SELECTION,
       });

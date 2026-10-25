@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { MOT_DE_PASSE, appelApi, creerDossier, seConnecter, surveiller } from './outils';
+import { MOT_DE_PASSE, appelApi, creerDossier, entrerDansUnLogiciel, seConnecter, surveiller } from './outils';
 
 /**
  * VISA D'UN RIB PAR UN SECOND UTILISATEUR (2026-10-21, gel levé par Manasse ·
@@ -159,7 +159,7 @@ test('visa des RIB · refus, visa par un second utilisateur, visa qui tient à l
 /** Le comptable, déjà connecté sur son navigateur, vise le RIB depuis la fiche du fournisseur. */
 async function viserALEcran(autre: Page) {
   await autre.goto('/');
-  await expect(autre.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
+  await entrerDansUnLogiciel(autre);
   await autre.goto('/#/tiers');
   await autre.getByRole('button', { name: /FRS-VISA/ }).click();
   await autre.getByRole('button', { name: 'Viser le RIB Equity BCDC', exact: true }).click();

@@ -6,6 +6,7 @@ import { oublierPrechargement, prechargerExercices } from './prechargement';
 import { peutEcrirePourRole, peutValiderPourRole } from './roles-cantonnes';
 import { surSessionPerdue } from './session-perdue';
 import { deconnecterServeur, fermerLaSession } from './deconnexion';
+import { oublierLEcranVu } from './logiciels';
 
 interface MeResponse {
   id: string;
@@ -20,6 +21,14 @@ interface MeResponse {
   /** Mot de passe transité par un tiers · l'écran de changement s'impose
    *  avant l'espace de travail (voir ZoneProtegee, App.tsx). */
   doitChangerMotDePasse: boolean;
+  /**
+   * Les logiciels (tuiles) que l'administrateur ouvre à cet utilisateur ·
+   * `null` = toutes. Un affichage, jamais un droit (`lib/logiciels.ts`). Absent
+   * d'un ancien serveur = toutes.
+   */
+  logicielsAutorises?: string[] | null;
+  /** Clés attribuées d'une tuile retirée depuis · nommées, jamais comptées comme valides. */
+  logicielsRetires?: string[];
   tenant: {
     id: string;
     nom: string;
@@ -133,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // attend cette réponse (`apresDeconnexion`).
         void deconnecterServeur(() => api.post('/auth/logout'));
         oublierPrechargement();
+        oublierLEcranVu();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(motif);
@@ -201,6 +211,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * RELECTURE DU COMPTE AU RETOUR SUR L'ONGLET · une attribution de logiciels
+   * (ou un module activé) posée par l'administrateur pendant que l'onglet
+   * était caché se voit au retour, sans recharger. Au plus une fois par
+   * trente secondes. Ce n'est PAS `chargerUtilisateur` · un échec réseau ici
+   * ne ferme pas la session (on garde ce qu'on a lu, et la prochaine requête
+   * dira la panne) ; une session réellement perdue passe par
+   * `surSessionPerdue`, que le client d'API lève sur le 401 marqué.
+   */
+  const derniereRelecture = useRef(0);
+  useEffect(() => {
+    const surRetour = () => {
+      if (document.visibilityState !== 'visible' || !ouverte.current) return;
+      const maintenant = Date.now();
+      if (maintenant - derniereRelecture.current < 30_000) return;
+      derniereRelecture.current = maintenant;
+      api.get<MeEtCsrf>('/auth/me').then(
+        ({ csrfToken, ...me }) => {
+          if (!ouverte.current) return;
+          synchroniserCsrf(csrfToken);
+          setUtilisateur(me);
+        },
+        () => undefined,
+      );
+    };
+    document.addEventListener('visibilitychange', surRetour);
+    return () => document.removeEventListener('visibilitychange', surRetour);
+  }, []);
+
   const seConnecter = async (csrfToken: string) => {
     setMotifDeconnexion(null);
     setCsrf(csrfToken);
@@ -232,6 +271,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       () => api.post('/auth/logout'),
       () => {
         ouverte.current = false;
+        // La connexion suivante, dans cet onglet, remontre l'écran des logiciels.
+        oublierLEcranVu();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(null);
