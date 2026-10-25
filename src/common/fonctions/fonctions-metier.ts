@@ -74,6 +74,9 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   RibsTiersController: FonctionMetier.TIERS,
   LieuxLivraisonController: FonctionMetier.TIERS,
   EcritureController: FonctionMetier.SAISIE,
+  // Ligne microfina-m1 · le visa précède la validation, il en suit la fonction ·
+  // un profil sans « Validation » ne vise pas plus qu'il ne valide.
+  CircuitVisaController: FonctionMetier.VALIDATION,
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,
