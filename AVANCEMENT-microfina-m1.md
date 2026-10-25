@@ -29,9 +29,27 @@ idées 1 et 5 du § 4).
    `GET /concordance?exerciceId`, lecture seule), écran
    `pages/ConcordancePage.tsx`, menu État > Contrôle et révision.
 
+3. Scénario sur vraie base (2026-10-25) · serveur compilé, PostgreSQL 16
+   jetable, dossier SYSCOHADA, un administrateur A et deux comptables B et C,
+   double regard et circuit activés, à travers la clôture de 2026 et dans 2027.
+   Trente-deux constats au vert, dont · B saisit, C réécrit puis ne vise ni
+   ne valide (faille fermée) ; le visa retiré par la modification, une
+   empreinte périmée refusée ; la réimputation par C fait de C l'auteur ; le
+   retrait du visa par son seul auteur ; la facture non visée refusée à la
+   comptabilisation, visée par C puis passée. Soldes lus contre le calcul à la
+   main · banque 2026, 1 200 000 − 350 000 = 850 000 ; report 2027, 850 000 au
+   521 et 850 000 au 131 ; banque 2027, 850 000 − 100 000 − 40 000 = 710 000 ;
+   charge 100 000, charge réimputée 40 000, vente 0. Concordance · analytique en
+   écart (lignes de classe ventilée sans répartition, comme le module le dit),
+   stocks et paie non calculés, le reste sans objet ; exercice étranger 404.
+   Journal du serveur sans erreur.
+
 ## Reste
 
-1. Scénario sur vraie base à travers une clôture, relectures.
+1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
+   aucun outil de lancement d'agent n'est servi à cette session · relecture
+   faite à la main dans leur esprit (correction de la réimputation en une
+   requête, commit 0c884fe), relecture par les agents à faire.
 
 ## Constat de l'audit de sécurité, vérifié dans le code (2026-10-25)
 
