@@ -97,6 +97,7 @@ const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').
 const BrouillardPage = lazy(() => import('../pages/BrouillardPage').then((m) => ({ default: m.BrouillardPage })));
 const ImportPage = lazy(() => import('../pages/ImportPage').then((m) => ({ default: m.ImportPage })));
 const ControlesPage = lazy(() => import('../pages/ControlesPage').then((m) => ({ default: m.ControlesPage })));
+const ConcordancePage = lazy(() => import('../pages/ConcordancePage').then((m) => ({ default: m.ConcordancePage })));
 const DossierRevisionPage = lazy(() =>
   import('../pages/DossierRevisionPage').then((m) => ({ default: m.DossierRevisionPage })),
 );
@@ -631,6 +632,8 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/brouillard$/, titre: 'Brouillard', titreCourt: 'Brouillard', rendre: () => <BrouillardPage /> },
   { motif: /^\/import$/, titre: 'Importer des données', titreCourt: 'Import', rendre: () => <ImportPage /> },
   { motif: /^\/controles$/, titre: 'Analyse et contrôles', titreCourt: 'Contrôles', rendre: () => <ControlesPage /> },
+  // Ligne microfina-m1, idée 12 · une lecture, aux deux référentiels · chaque famille relit la confrontation de son module.
+  { motif: /^\/concordance$/, titre: 'Concordance des modules', titreCourt: 'Concordance', rendre: () => <ConcordancePage /> },
   {
     motif: /^\/dossier-revision$/,
     titre: 'Dossier de révision',

@@ -541,6 +541,8 @@ export function AppShell() {
           separateurAvant: true,
           items: [
             { label: 'Analyse et contrôles', chemin: '/controles', onClick: () => navigate('/controles') },
+            // Ligne microfina-m1, idée 12 · les confrontations des modules, réunies, en lecture.
+            { label: 'Concordance des modules', chemin: '/concordance', onClick: () => navigate('/concordance') },
             { label: 'Dossier de révision', chemin: '/dossier-revision', onClick: () => navigate('/dossier-revision') },
             // L'inventaire extra-comptable, ses deux moitiés. Elles sont ici et
             // non sous « États financiers » : un comptage de magasin n'est pas

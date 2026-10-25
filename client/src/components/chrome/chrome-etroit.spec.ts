@@ -239,7 +239,10 @@ describe('menu « État » à 360 px', () => {
     // Le 2026-10-04 (ligne A20), la comptabilité de gestion est entrée sous
     // « Suivi et prévision », à côté du simulateur · un coût, un seuil, une
     // répartition en OD analytiques, rien au livre-journal. Les bornes tiennent.
-    expect(tous).toHaveLength(31);
+    // Le 2026-10-25 (ligne microfina-m1, idée 12), la concordance des modules
+    // avec la comptabilité est entrée sous « Contrôle et révision » · une
+    // relecture du cabinet, qui n'écrit rien. Les bornes tiennent.
+    expect(tous).toHaveLength(32);
     expect([...vues].sort()).toEqual([...tous].sort());
     // DEUX BORNES, et plus un chiffre relevé d'un cran à chaque ajout · c'est
     // la troisième fois en une journée qu'une édition nouvelle faisait tomber
