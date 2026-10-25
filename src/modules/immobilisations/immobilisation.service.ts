@@ -160,6 +160,7 @@ import {
   type MouvementLu,
 } from './transfert-depreciation-en-cours';
 import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-remplacee';
+import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
   motifRefusModeDegressif,
@@ -3118,6 +3119,14 @@ export class ImmobilisationService {
      * ces deux valeurs.
      */
     plan: { degressif?: boolean; revision?: { effet: Date; dureeResiduelleAns: number } | null } = {},
+    /**
+     * LIGNE SAGE-L4, N° 73 · le premier jour où CE dossier détient le bien,
+     * entré par un transfert du groupe (`debutDeDetention`) · null pour tout
+     * autre bien. Il ne borne que la PÉRIODE dotée, jamais le plan · les
+     * années écoulées et le ré-étalement se comptent toujours depuis la mise
+     * en service, comme chez celui qui a cédé.
+     */
+    debutDetention: Date | null = null,
   ): number {
     // PAS DE MISE EN SERVICE, PAS DE DOTATION · AUDCIF art. 45, la date de
     // début d'amortissement est celle où l'actif est « en état de
@@ -3208,6 +3217,24 @@ export class ImmobilisationService {
       const premierMois = new Date(Date.UTC(debutRestantes.getUTCFullYear(), debutRestantes.getUTCMonth(), 1));
       const ecoules = Math.max(0, moisEntre(premierMois, exercice.dateDebut) - 1) / 12;
       annuitePleine = annuiteDegressive(reliquat, tauxDegressif, dureeRestantes - ecoules);
+    } else if ((cumulDepreciation > EPSILON || revisionActive) && debutDetention && debutDetention > exercice.dateDebut) {
+      /*
+        LIGNE SAGE-L4, N° 73 · UN BIEN RÉ-ÉTALÉ ENTRÉ PAR TRANSFERT EN COURS
+        D'EXERCICE. Le reliquat lu ici est celui du JOUR D'ENTRÉE · celui qui
+        a cédé a déjà doté les mois d'avant, et sa dotation complémentaire est
+        dans le cumul qui a suivi le bien. Le diviser par les années restant
+        au DÉBUT de l'exercice ré-étalerait sur une durée trop longue (300 000
+        sur trois ans au lieu de deux ans et demi · 50 000 au lieu de 60 000
+        pour juillet à décembre). La durée restante se compte donc en mois
+        depuis l'entrée (Titre VIII ch. 12 § 2.4.1, « durée d'utilité restant
+        à courir »).
+      */
+      const origine = revisionActive ? plan.revision!.effet : dateMiseEnService;
+      const premierMois = new Date(Date.UTC(origine.getUTCFullYear(), origine.getUTCMonth(), 1));
+      const dureeMois = (revisionActive ? plan.revision!.dureeResiduelleAns : dureeAns) * 12;
+      const veille = new Date(debutDetention.getTime() - 86_400_000);
+      const ecoules = debutDetention > premierMois ? Math.max(0, moisEntre(premierMois, veille)) : 0;
+      annuitePleine = (reliquat * 12) / Math.max(1, dureeMois - ecoules);
     } else if (cumulDepreciation > EPSILON || revisionActive) {
       annuitePleine = reliquat / Math.max(1, anneesRestantes);
     } else {
@@ -3218,7 +3245,9 @@ export class ImmobilisationService {
     let montant: number;
     if (premiereAnnuite) {
       const premierJourMoisMES = new Date(Date.UTC(dateMiseEnService.getUTCFullYear(), dateMiseEnService.getUTCMonth(), 1));
-      const debutProrata = premierJourMoisMES < exercice.dateDebut ? exercice.dateDebut : premierJourMoisMES;
+      const debutBrut = premierJourMoisMES < exercice.dateDebut ? exercice.dateDebut : premierJourMoisMES;
+      // Un bien entré par transfert et mis en service ici · rien avant son entrée.
+      const debutProrata = debutDetention && debutDetention > debutBrut ? debutDetention : debutBrut;
       /*
         LA PÉRIODE EST CELLE DE L'EXERCICE, PAS UNE ANNÉE (audit final F34).
 
@@ -3272,7 +3301,14 @@ export class ImmobilisationService {
       */
       // Sur un premier exercice long, la période en porte plus de douze
       // (audit final F34, voir la première annuité).
-      const moisPeriode = Math.max(0, moisEntre(exercice.dateDebut, exercice.dateFin));
+      // LIGNE SAGE-L4, N° 73 · ENTRÉ PAR TRANSFERT EN COURS D'EXERCICE, le bien
+      // n'est doté ici qu'à partir du mois qui suit son entrée · celui qui l'a
+      // cédé a doté les mois d'avant, celui du transfert compris. Au SMT, sans
+      // prorata, celui qui cède a pris l'annuité pleine · rien ici cette année.
+      const entreeEnCours = !!debutDetention && debutDetention > exercice.dateDebut;
+      if (entreeEnCours && sansProrata) return 0;
+      const debutPeriode = entreeEnCours ? debutDetention! : exercice.dateDebut;
+      const moisPeriode = debutPeriode > exercice.dateFin ? 0 : Math.max(0, moisEntre(debutPeriode, exercice.dateFin));
       montant = sansProrata ? annuitePleine : annuitePleine * (moisPeriode / 12);
     }
     return Math.min(montant, reliquat);
@@ -3315,7 +3351,7 @@ export class ImmobilisationService {
         // contredisait la balance de tout bien déprécié, alors que ce tableau
         // existe pour s'y recouper.
         depreciations: {
-          select: { sens: true, montant: true, exercice: { select: { dateFin: true } } },
+          select: { sens: true, montant: true, nature: true, exercice: { select: { dateFin: true } } },
         },
       },
       orderBy: [{ compteImmobilisation: { numero: 'asc' } }, { dateAcquisition: 'asc' }],
@@ -3472,7 +3508,7 @@ export class ImmobilisationService {
         // un tableau qui l'ignorerait annoncerait une dotation que
         // passerDotation refuserait ensuite de poster.
         depreciations: {
-          select: { sens: true, montant: true, exercice: { select: { dateFin: true } } },
+          select: { sens: true, montant: true, nature: true, exercice: { select: { dateFin: true } } },
         },
         // Les relevés d'unités d'œuvre · le tableau LIT ce qui a été saisi et
         // n'en réclame aucun. Un bien sans relevé y affiche une dotation
@@ -3606,7 +3642,7 @@ export class ImmobilisationService {
             amortissementsHorsDotations(immo),
             this.cumulDepreciation(
               immo.depreciations
-                .filter((d) => d.exercice.dateFin < exercice.dateFin)
+                .filter((d) => estDepreciationAnterieure(d, exercice))
                 .map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
             ),
             sansProrata,
@@ -3616,6 +3652,7 @@ export class ImmobilisationService {
             // refuse d'avancer sans le chiffre.
             unitesParImmo.get(immo.id) ?? null,
             planDuBien(immo),
+            debutDeDetention(immo.dateEntreeGroupe),
           );
 
       // Mois effectivement servis : depuis le mois de mise en service (ou le
@@ -3625,11 +3662,15 @@ export class ImmobilisationService {
       // tableau pour sa valeur brute, sans dotation.
       const finService = immo.dateSortie && immo.dateSortie < exercice.dateFin ? immo.dateSortie : exercice.dateFin;
       const miseEnService = immo.dateMiseEnService;
+      // Ligne sage-l4, n° 73 · un bien entré par transfert ne sert ici qu'à
+      // partir du mois qui suit son entrée.
+      const detention = debutDeDetention(immo.dateEntreeGroupe);
       const servis = moisDeLExercice.map(({ annee, mois }) => {
         if (!miseEnService) return false;
         const premierJour = new Date(Date.UTC(annee, mois, 1));
         const dernierJour = new Date(Date.UTC(annee, mois + 1, 0));
-        const debutService = new Date(Date.UTC(miseEnService.getUTCFullYear(), miseEnService.getUTCMonth(), 1));
+        const debutMes = new Date(Date.UTC(miseEnService.getUTCFullYear(), miseEnService.getUTCMonth(), 1));
+        const debutService = detention && detention > debutMes ? detention : debutMes;
         return debutService <= dernierJour && premierJour <= finService;
       });
       const nbServis = servis.filter(Boolean).length;
@@ -3910,12 +3951,13 @@ export class ImmobilisationService {
       // ne peut donc pas déjà ré-étaler le plan de la même annuité.
       this.cumulDepreciation(
         immo.depreciations
-          .filter((d) => d.exercice.dateFin < exercice.dateFin)
+          .filter((d) => estDepreciationAnterieure(d, exercice))
           .map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
       ),
       sansProrata,
       uniteOeuvre,
       planDuBien(immo),
+      debutDeDetention(immo.dateEntreeGroupe),
     );
     if (montant <= EPSILON) {
       throw new BadRequestException('Aucun montant à doter · le bien est déjà entièrement amorti ou hors période');
@@ -4038,7 +4080,7 @@ export class ImmobilisationService {
         horsDotations,
         this.cumulDepreciation(
           immo.depreciations
-            .filter((d) => d.exercice.dateFin < exercice.dateFin)
+            .filter((d) => estDepreciationAnterieure(d, exercice))
             .map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
         ),
         sansProrata,
@@ -4046,6 +4088,7 @@ export class ImmobilisationService {
           ? await this.unitesOeuvreDe(tenantId, immo, exercice.id, exercice.dateFin)
           : null,
         plan,
+        debutDeDetention(immo.dateEntreeGroupe),
       );
     }
 
@@ -4070,6 +4113,8 @@ export class ImmobilisationService {
         sansProrata,
         unites(e.id),
         plan,
+        // Ligne sage-l4, n° 73 · rien d'avant l'entrée du bien dans ce dossier.
+        debutDeDetention(immo.dateEntreeGroupe),
       );
       if (m > EPSILON) rejouees.push({ montant: m });
     }
@@ -4803,6 +4848,97 @@ export class ImmobilisationService {
     }
   }
 
+  /**
+   * LIGNE SAGE-L4, N° 73 · CE QUE LE BIEN PORTE AU JOUR D'UN TRANSFERT DANS LE
+   * GROUPE (`transfert-groupe.service.ts`) · la dotation complémentaire de
+   * l'exercice jusqu'au mois du transfert compris, calculée comme celle de la
+   * sortie (fiche du compte 81 · « amortissement complémentaire pour la
+   * période écoulée entre l'ouverture de l'exercice et la date de cession »),
+   * le cumul des amortissements et des dépréciations qui suivent le bien, le
+   * compte 29 qui les porte, et les faits qui refusent le transfert. Rien
+   * n'est écrit.
+   */
+  async situationAuTransfert(tenantId: string, id: string, exercice: { id: string; dateDebut: Date; dateFin: Date }, date: Date) {
+    const immo = await this.trouver(tenantId, id);
+    const regime = await this.regimeComptable(tenantId);
+    const dotationDeLExercicePassee = immo.dotations.some((d) => d.exerciceId === exercice.id);
+    const sansComplement =
+      dotationDeLExercicePassee ||
+      immo.statut !== StatutImmobilisation.EN_SERVICE ||
+      !immo.dateMiseEnService ||
+      !!motifNonAmortissable(immo.compteImmobilisation.numero, regime.referentiel) ||
+      !!motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl) ||
+      immo.dureeNonLimitee;
+    const complement = sansComplement
+      ? 0
+      : Math.round(
+          this.calculerDotation(
+            Number(immo.valeurOrigine),
+            Number(immo.valeurResiduelle),
+            immo.dureeAmortissementAns,
+            debutAmortissement(immo),
+            immo.dotations.map((d) => ({ montant: Number(d.montant) })),
+            { dateDebut: exercice.dateDebut, dateFin: date },
+            amortissementsHorsDotations(immo),
+            this.cumulDepreciation(
+              immo.depreciations.filter((d) => estDepreciationAnterieure(d, exercice)).map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
+            ),
+            this.sansProrataTemporis(regime),
+            await this.unitesOeuvreDe(tenantId, immo, exercice.id, date),
+            planDuBien(immo),
+            debutDeDetention(immo.dateEntreeGroupe),
+          ) * 100,
+        ) / 100;
+    const cumulAmortiAvant = immo.dotations.reduce((s, d) => s + Number(d.montant), 0) + amortissementsHorsDotations(immo);
+    const depreciations = this.cumulDepreciation(immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant) })));
+    const porteur = porteurDeLaDepreciation(
+      immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant), compteDepreciationId: d.compteDepreciationId, compteContrepartieId: d.compteContrepartieId })),
+    );
+    const [composantsEnService, reevaluations, subventions, mouvementsDemantelement, contrat] = await Promise.all([
+      this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
+      this.prisma.ligneReevaluationBilan.count({ where: { tenantId, immobilisationId: id } }),
+      this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
+      this.prisma.mouvementDemantelement.count({ where: { tenantId, immobilisationId: id } }),
+      this.prisma.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
+    ]);
+    const comptes = porteur
+      ? await this.prisma.compte.findMany({
+          where: { tenantId, id: { in: [porteur.compteDepreciationId, porteur.compteContrepartieDotationId].filter((x): x is string => !!x) } },
+          select: { id: true, numero: true },
+        })
+      : [];
+    return {
+      immo,
+      complement,
+      cumulAmortiAvant,
+      depreciations,
+      porteur: porteur
+        ? {
+            compteDepreciationId: porteur.compteDepreciationId,
+            numeroDepreciation: comptes.find((c) => c.id === porteur.compteDepreciationId)?.numero ?? null,
+            numeroContrepartieDotation: comptes.find((c) => c.id === porteur.compteContrepartieDotationId)?.numero ?? null,
+          }
+        : null,
+      faits: {
+        statut: immo.statut,
+        dateAcquisition: immo.dateAcquisition,
+        dateMiseEnService: immo.dateMiseEnService,
+        compteEnCours: !!immo.compteEnCoursId && !immo.ecritureMiseEnServiceId,
+        composantDe: !!immo.immobilisationPrincipaleId,
+        composantsEnService,
+        degressifFiscal: !!immo.degressifFiscal,
+        reevaluations,
+        subventionsNonSoldees: subventions,
+        detteAleatoireNonSoldee: !!immo.natureAcquisitionAleatoire && !immo.ecritureSoldeDetteAleatoireId,
+        demantelement: immo.coutFuturDemantelement !== null || mouvementsDemantelement > 0,
+        locationAcquisition: !!contrat,
+        unitesOeuvreDeprecie: immo.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE && depreciations > EPSILON,
+        dotationDeLExercicePassee,
+        dateEntreeGroupe: immo.dateEntreeGroupe,
+      },
+    };
+  }
+
   async sortir(tenantId: string, userId: string, id: string, dto: SortieImmobilisation, opts: { depuisEchange?: boolean } = {}) {
     const immo = await this.trouver(tenantId, id);
     if (immo.statut !== StatutImmobilisation.EN_SERVICE) {
@@ -4968,12 +5104,13 @@ export class ImmobilisationService {
           amortissementsHorsDotations(immo),
           this.cumulDepreciation(
             immo.depreciations
-              .filter((d) => d.exercice.dateFin < exercice.dateFin)
+              .filter((d) => estDepreciationAnterieure(d, exercice))
               .map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
           ),
           this.sansProrataTemporis(regime),
           await this.unitesOeuvreDe(tenantId, immo, dto.exerciceId, dateSortie),
           planDuBien(immo),
+          debutDeDetention(immo.dateEntreeGroupe),
         );
     if (montantComplement > EPSILON) cumulAmorti += montantComplement;
 

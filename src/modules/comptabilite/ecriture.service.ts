@@ -1983,6 +1983,10 @@ export class EcritureService {
       ],
       ["une dotation aux amortissements", this.prisma.dotationAmortissement.count({ where: parLEcriture })],
       ["une dépréciation d'immobilisation", this.prisma.depreciationImmobilisation.count({ where: parLEcriture })],
+      [
+        "le transfert d'un bien dans le groupe (fenêtre Groupe · la pièce ou son négatif, dans les deux dossiers)",
+        this.prisma.transfertImmobilisationGroupe.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
       // Le reclassement d'un bien · la clé est RESTRICT, et sans ce refus nommé
       // la base levait une erreur brute après que la garde avait laissé passer
       // (audit du serveur I1, voir detenteurs-ecriture.ts).
@@ -4615,6 +4619,18 @@ export class EcritureService {
    */
   async mouvementsDeCoutsEmpruntIncorpores(tenantId: string, exerciceId: string | null): Promise<VirementsParCompte> {
     return this.mouvementsLiesParCompte(tenantId, exerciceId, { coutEmpruntIncorpore: { isNot: null } });
+  }
+
+  /**
+   * LIGNE SAGE-L4, N° 73 · les mouvements des pièces de transfert d'un bien
+   * dans le groupe ET de leurs négatifs, par compte, reconnus par la LIAISON
+   * (`TransfertImmobilisationGroupe.ecritureId`, `ecritureNegatifId`). Lus par
+   * le tableau des flux du SYSCOHADA, où le transfert est neutralisé (ch. 5
+   * § 1.3 · aucune trésorerie) ; le négatif d'une annulation s'y annule avec
+   * sa pièce.
+   */
+  async mouvementsDeTransfertGroupe(tenantId: string, exerciceId: string | null, arreteAu?: Date): Promise<VirementsParCompte> {
+    return this.mouvementsLiesParCompte(tenantId, exerciceId, { OR: [{ transfertGroupe: { isNot: null } }, { transfertGroupeNegatif: { isNot: null } }] }, arreteAu);
   }
 
   /** Une seule lecture des écritures LIÉES à un module, par compte · une somme demandée à la base. */

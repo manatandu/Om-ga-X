@@ -53,6 +53,7 @@ export function champsAEffetDemandes(dto: Partial<Record<ChampAEffet, unknown>>)
 const LIBELLES_USAGES: Record<string, string> = {
   'DotationAmortissement.immobilisationId': 'dotations',
   'DepreciationImmobilisation.immobilisationId': 'dépréciations',
+  'TransfertImmobilisationGroupe.immobilisationId': 'transfert dans le groupe',
   'RevisionPlanAmortissement.immobilisationId': 'révisions du plan',
   'AmortissementDerogatoire.immobilisationId': 'amortissements dérogatoires',
   'LigneReevaluationBilan.immobilisationId': 'réévaluations',

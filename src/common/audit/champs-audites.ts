@@ -316,6 +316,7 @@ export const MODELES_AUDITES = new Set<string>([
   'FeuilleTemps',
   'JourFeuilleTemps',
   'CompteurHeures',
+  'TransfertImmobilisationGroupe',
   'HeuresCompteurJour',
   // Un RIB de salarié modifié en silence détourne un salaire (comme RibTiers) ·
   // un paiement des salaires passe une pièce au journal, et son annulation

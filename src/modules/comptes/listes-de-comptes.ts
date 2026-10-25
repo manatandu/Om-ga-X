@@ -67,6 +67,15 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       '378 au SYCEBNL (fiche du compte 37), seule racine admise par le serveur · la reprise en est presque toujours le ' +
       'premier mouvement, la règle viderait la liste.',
   },
+  // Ligne sage-l4, n° 73 · les comptes de liaison du transfert d'un bien
+  // dans le groupe, servis avec les dossiers, journaux et exercices.
+  '/immobilisations/transferts-groupe/contexte': {
+    regime: 'texte',
+    motif:
+      "Le transfert d'un bien entre le siège et un établissement passe par les comptes permanents de liaison 184 et 185 " +
+      '(AUDCIF, Titre VII, fiche du compte 18), seules racines admises par le serveur · le transfert en est souvent le premier ' +
+      'mouvement, la règle viderait la liste.',
+  },
   '/creances-douteuses/comptes': {
     regime: 'texte',
     motif:

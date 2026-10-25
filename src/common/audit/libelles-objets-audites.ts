@@ -130,6 +130,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   FeuilleTemps: 'Feuille de temps',
   JourFeuilleTemps: "Heures d'un jour de la feuille de temps",
   CompteurHeures: "Compteur libre d'heures",
+  TransfertImmobilisationGroupe: "Transfert d'un bien dans le groupe",
   HeuresCompteurJour: "Heures portées à un compteur libre",
   RibSalarie: "Coordonnées bancaires d'un salarié",
   PaiementSalaires: 'Paiement des salaires',

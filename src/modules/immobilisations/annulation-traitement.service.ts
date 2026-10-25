@@ -602,7 +602,11 @@ export class AnnulationTraitementService {
         libelle:
           d.nature === NatureMouvementDepreciation.CLOTURE
             ? `la dépréciation de l'exercice clos le ${jour(d.exercice.dateFin)}`
-            : 'le transfert de la dépréciation à la mise en service',
+            : d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE
+              ? // Ligne sage-l4, n° 73 · la dépréciation qui a suivi le bien,
+                // défaite seulement avec le transfert (fenêtre Groupe).
+                'le transfert du bien dans le groupe (annulez le transfert depuis le siège)'
+              : 'le transfert de la dépréciation à la mise en service',
         bien: nom.get(d.immobilisationId),
       })),
       ...revisions.map((r) => ({ nature: 'REVISION_PLAN' as const, id: r.id, exerciceFin: r.exercice.dateFin, creeLe: r.createdAt, libelle: `la révision du plan du ${jour(r.dateDecision)}`, bien: nom.get(r.immobilisationId) })),
