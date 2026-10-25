@@ -474,7 +474,10 @@ jobs:
 
           # Fermée par défaut · posée seulement si la variable de dépôt vaut
           # « true », et dite dans le journal du déploiement (jamais une clé).
-          if os.environ.get("INSCRIPTION_ESSAI") == "true":
+          # Les blancs autour sont écartés · une variable saisie « true␣ » à la
+          # console GitHub (espace de fin, vu le 2026-10-25) fermait la porte
+          # en silence, alors que le serveur, lui, reste strict sur « true ».
+          if os.environ.get("INSCRIPTION_ESSAI", "").strip() == "true":
               variables["INSCRIPTION_ESSAI"] = "true"
               print("::notice::L'inscription avec essai est OUVERTE (INSCRIPTION_ESSAI)", file=sys.stderr)
           else:
