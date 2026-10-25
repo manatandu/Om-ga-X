@@ -466,6 +466,15 @@ quitte donc le registre dense du § 9 bis pour la COMPOSITION du site du cabinet
   1,2 s ; quatre animations nommées (mots, lignes du journal, accordéon, tampon
   « Validée » posé une fois).
 
+- **Les trois pages d'information** (contrat de licence, confidentialité,
+  questions fréquentes) portent le même cadre que la page d'accueil · bandeau
+  d'encre et logo blanc, titre sur papier réglé avec le double trait, corps
+  blanc à 15 px, pied d'encre (`CadrePagePublique`, styles `.cadre-public`).
+  Leurs contenus restent ceux des fenêtres de l'espace de travail.
+- **Le ton** · des phrases d'un logiciel de gestion qui décrit ce qu'il fait,
+  sans slogan ni superlatif ; les intertitres nomment la rubrique
+  (« Cycle comptable », « Installation »).
+
 Tenu par `vitrine-publique.spec.ts` et `vitrine-script.spec.ts`.
 
 ---

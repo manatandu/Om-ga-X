@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:title" content="OmegaX · comptabilité SYCEBNL et SYSCOHADA">
-<meta property="og:description" content="Des comptes qui bouclent, dans le bon référentiel. Logiciel de comptabilité pour les associations, ONG, projets et entreprises de RDC.">
+<meta property="og:description" content="Comptabilité SYCEBNL et SYSCOHADA pour les entités de RDC Logiciel de comptabilité pour les associations, ONG, projets et entreprises de RDC.">
 <link rel="icon" href="/icone.svg" type="image/svg+xml">
 <link rel="preload" href="/polices/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/polices/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -39,8 +39,8 @@
   <div class="heros-fond" aria-hidden="true"></div>
   <div class="heros-texte">
     <p class="surtitre">Logiciel de comptabilité · édité par VMG Consulting</p>
-    <h1 id="titre"><span class="mot">Des</span> <span class="mot">comptes</span> <span class="mot">qui</span> <span class="mot">bouclent,</span> <span class="mot">dans</span> <span class="mot">le</span> <span class="mot vif">bon</span> <span class="mot vif">référentiel.</span></h1>
-    <p class="chapeau">OmegaX tient la comptabilité des associations, ONG, projets de développement et entreprises de RDC, selon le SYCEBNL et le SYSCOHADA. Il refuse ce qui ne boucle pas et produit les états financiers avec leurs notes annexes.</p>
+    <h1 id="titre"><span class="mot">Comptabilité</span> <span class="mot vif">SYCEBNL</span> <span class="mot">et</span> <span class="mot vif">SYSCOHADA</span> <span class="mot">pour</span> <span class="mot">les</span> <span class="mot">entités</span> <span class="mot">de</span> <span class="mot">RDC</span></h1>
+    <p class="chapeau">OmegaX tient la comptabilité des associations, ONG, projets de développement et entreprises. Il refuse les écritures déséquilibrées et produit les états financiers avec leurs notes annexes.</p>
     <p class="actions">
       <a class="bouton bouton-plein essai-duree" href="/#/essai" data-essai hidden>Essayer gratuitement</a>
       <a class="bouton bouton-plein" href="/#/connexion" data-connexion>Se connecter</a>
@@ -64,17 +64,17 @@
     </table>
   </figure>
   <ul class="reperes" aria-label="Ce qu'OmegaX refuse">
-    <li><b>Équilibre</b><span>Une écriture déséquilibrée n'est pas enregistrée.</span></li>
+    <li><b>Équilibre</b><span>Une écriture dont le débit diffère du crédit est refusée.</span></li>
     <li><b>Irréversibilité</b><span>Une écriture validée ne se modifie plus.</span></li>
-    <li><b>Piste</b><span>Qui a saisi, qui a validé et quand : le journal le restitue.</span></li>
+    <li><b>Piste d'audit</b><span>Auteur, validateur et dates de chaque écriture figurent au journal.</span></li>
   </ul>
 </section>
 
 <section id="essayer" class="bloc" aria-labelledby="t-essayer">
   <div class="colonne">
-    <p class="etiquette revele">La pièce de journal</p>
-    <h2 id="t-essayer" class="revele">Changez un montant : la pièce ne passe plus.</h2>
-    <p class="intro revele">Un exemple fictif, dans la fenêtre de saisie du logiciel. Rien n'est enregistré.</p>
+    <p class="etiquette revele">Démonstration</p>
+    <h2 id="t-essayer" class="revele">Saisie d'une pièce de journal</h2>
+    <p class="intro revele">Exemple fictif, dans la fenêtre de saisie du logiciel. Modifiez un montant : la pièce déséquilibrée est refusée.</p>
     <div class="essai-grille">
       <figure class="feuille revele" aria-labelledby="feuille-titre">
         <figcaption class="feuille-haut">
@@ -136,8 +136,8 @@
 
 <section id="cycle" class="bloc bloc-lavis" aria-labelledby="t-cycle">
   <div class="colonne">
-    <p class="etiquette revele">Le cycle comptable</p>
-    <h2 id="t-cycle" class="revele">De la pièce à la liasse</h2>
+    <p class="etiquette revele">Fonctionnement</p>
+    <h2 id="t-cycle" class="revele">Cycle comptable</h2>
     <ol class="chemin">
       <li class="revele">
         <div class="chemin-texte">
@@ -158,7 +158,7 @@
         <div class="chemin-texte">
           <p class="etape">Étape 2</p>
           <h3>Lettrage et rapprochement bancaire</h3>
-          <p>Chaque tiers a ses comptes, sa fiche et ses échéances ; le lettrage est manuel ou proposé. Importez le relevé de la banque : OmegaX propose les correspondances avec vos écritures, et vous confirmez celles qui sont justes. Une ligne sans écriture est signalée « à comptabiliser ». Aucun écart n'est absorbé en silence.</p>
+          <p>Chaque tiers a ses comptes, sa fiche et ses échéances ; le lettrage est manuel ou proposé. Importez le relevé de la banque : OmegaX propose les correspondances avec vos écritures, et vous confirmez celles qui sont justes. Une ligne sans écriture est signalée « à comptabiliser ». Un écart n'est jamais absorbé : il reste visible.</p>
         </div>
         <table class="fig" aria-label="Exemple : trois lignes de relevé bancaire rapprochées de trois écritures, une quatrième sans écriture, à comptabiliser">
           <thead><tr><th scope="col">Relevé de la banque</th><th scope="col" class="num">Montant</th><th scope="col">Écriture du dossier</th></tr></thead>
@@ -204,8 +204,8 @@
 
 <section id="domaines" class="bloc" aria-labelledby="t-dom">
   <div class="colonne">
-    <p class="etiquette revele">Les modules</p>
-    <h2 id="t-dom" class="revele">Ce qu'OmegaX tient aussi</h2>
+    <p class="etiquette revele">Modules</p>
+    <h2 id="t-dom" class="revele">Autres modules</h2>
     <p class="intro revele">La paie, la révision, la gestion commerciale, la consolidation et les normes IFRS s'activent dossier par dossier.</p>
     <ul class="trois">
       <li class="revele">
@@ -244,9 +244,9 @@
 
 <section id="referentiels" class="bloc" aria-labelledby="t-ref">
   <div class="colonne">
-    <p class="etiquette revele">Les référentiels</p>
-    <h2 id="t-ref" class="revele">Deux référentiels, deux plans de comptes</h2>
-    <p class="intro revele">Le référentiel se choisit à la création du dossier. Le plan de comptes, les états financiers et le vocabulaire sont ceux de ce référentiel, sans mélange. Un même numéro peut y avoir deux sens.</p>
+    <p class="etiquette revele">Référentiels</p>
+    <h2 id="t-ref" class="revele">Référentiels et plans de comptes</h2>
+    <p class="intro revele">Le référentiel se choisit à la création du dossier. Le plan de comptes et les états financiers sont ceux de ce référentiel. Un même numéro de compte peut avoir un sens différent d'un plan à l'autre.</p>
 
     <div class="plans">
       <article class="plan revele" data-ref="SYCEBNL" aria-labelledby="p-sycebnl">
@@ -294,8 +294,8 @@
 
 <section id="installation" class="bloc" aria-labelledby="t-ins">
   <div class="colonne">
-    <p class="etiquette revele">L'installation</p>
-    <h2 id="t-ins" class="revele">En ligne ou sur votre poste</h2>
+    <p class="etiquette revele">Déploiement</p>
+    <h2 id="t-ins" class="revele">Installation</h2>
     <div class="partage-deux">
       <article class="revele">
         <h3>En ligne</h3>
@@ -313,7 +313,7 @@
 
 <section id="questions" class="bloc bloc-encre" aria-labelledby="t-q">
   <div class="colonne etroite">
-    <p class="etiquette revele">Questions</p>
+    <p class="etiquette revele">Aide</p>
     <h2 id="t-q" class="revele">Questions fréquentes</h2>
     <div class="questions">
       <details>
@@ -347,11 +347,11 @@
 <section class="bloc appel" aria-labelledby="t-appel">
   <div class="carte revele">
     <div data-sans-essai>
-      <h2 id="t-appel">Ouvrir un dossier OmegaX</h2>
+      <h2 id="t-appel">Ouvrir un dossier</h2>
       <p>Pour ouvrir un dossier ou poser une question, écrivez à <a href="mailto:admin@vmgconsulting.net">admin@vmgconsulting.net</a>. Si vous avez déjà un dossier, connectez-vous.</p>
     </div>
     <div data-avec-essai hidden>
-      <h2 id="t-appel-essai">Essayez OmegaX pendant <span data-jours></span> jours</h2>
+      <h2 id="t-appel-essai">Essai de <span data-jours></span> jours</h2>
       <p>Créez un dossier d'essai avec votre adresse e-mail. Le mot de passe provisoire vous y est envoyé.</p>
     </div>
     <p class="actions">

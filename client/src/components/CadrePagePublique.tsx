@@ -29,27 +29,52 @@ export const PAGES_PUBLIQUES = [
 ] as const satisfies readonly { chemin: CheminPagePublique; libelle: string }[];
 
 export function CadrePagePublique({ titre, sousTitre, children }: { titre: string; sousTitre?: string; children: ReactNode }) {
+  const autres = PAGES_PUBLIQUES.filter((p) => p.libelle !== titre && !titre.startsWith(p.libelle));
   return (
-    <div className="min-h-screen bg-bg py-6 px-4">
-      <div className="mx-auto max-w-[760px] bg-surface border border-border px-4 sm:px-6 py-5">
-        <h1 className="text-[13px] font-bold">{titre}</h1>
-        {sousTitre && <p className="text-[11px] text-text-dim mt-1 mb-3">{sousTitre}</p>}
-        {children}
-        <div className="ecran-seul mt-5 pt-3 border-t border-border flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px]">
-          <a href="#/connexion" className="text-sel underline">
-            Retour à l’ouverture du fichier comptable
-          </a>
-          {PAGES_PUBLIQUES.filter((p) => p.libelle !== titre && !titre.startsWith(p.libelle)).map((p) => (
-            <a key={p.chemin} href={`#${p.chemin}`} className="text-sel underline">
+    <div className="cadre-public">
+      <header className="cadre-public-entete ecran-seul">
+        <a href="/vitrine/" aria-label="OmegaX, page d’accueil du site">
+          <img src="/logo-omegax-blanc.svg" alt="OmegaX" width="130" height="26" />
+        </a>
+        <nav aria-label="Pages d’information">
+          {autres.map((p) => (
+            <a key={p.chemin} href={`#${p.chemin}`}>
               {p.libelle}
             </a>
           ))}
+        </nav>
+        <a href="#/connexion" className="cadre-public-bouton">
+          Se connecter
+        </a>
+      </header>
+      <div className="cadre-public-tete">
+        <div className="cadre-public-colonne">
+          <h1>{titre}</h1>
+          {sousTitre && <p>{sousTitre}</p>}
+        </div>
+      </div>
+      <main className="cadre-public-colonne cadre-public-corps">
+        {children}
+        <div className="ecran-seul cadre-public-pied-page">
+          <a href="#/connexion" className="text-sel underline">
+            Retour à l’ouverture du fichier comptable
+          </a>
           <LienPreferencesMesure className="text-sel underline" />
           <button type="button" onClick={() => window.print()} className="ml-auto text-sel underline">
             Imprimer
           </button>
         </div>
-      </div>
+      </main>
+      <footer className="cadre-public-pied ecran-seul">
+        <p>© {new Date().getFullYear()} VMG Consulting · OmegaX</p>
+        <nav aria-label="Informations légales">
+          {PAGES_PUBLIQUES.map((p) => (
+            <a key={p.chemin} href={`#${p.chemin}`}>
+              {p.libelle}
+            </a>
+          ))}
+        </nav>
+      </footer>
     </div>
   );
 }
