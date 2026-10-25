@@ -128,8 +128,46 @@ de produit.
   lire que les fiches qui existaient à la clôture.
 - Questions de la ligne pour Manasse (fiche de la ligne) · « Corriger
   l'entrée » d'une valeur d'acquisition validée ; retrait d'une fiche née
-  d'une écriture déjà passée (lecture de D7) ; transfert d'un bien entre
-  deux dossiers du groupe par les comptes de liaison (n° 73).
+  d'une écriture déjà passée (lecture de D7).
+- N° 73 · TRANCHÉ PAR LA LOI LE 2026-10-25, construit (SYSCOHADA) · le
+  transfert d'un bien entre le siège et une cellule passe par les comptes
+  permanents de liaison 184 et 185 (AUDCIF, Titre VII, fiche du compte 18 ·
+  « égaux et de sens contraire dans les deux comptabilités », opérations
+  « traitées comme s'il s'agissait d'un tiers », mêmes pièces, même
+  période), à sa valeur d'entrée avec ses amortissements et ses
+  dépréciations, plan inchangé, sans 81 ni 82 (AUDCIF art. 35 et 36) ;
+  « comme un tiers » régit la tenue du compte de liaison, jamais la valeur.
+  Deux pièces nées ensemble ; annulation motivée des deux côtés (art. 20,
+  al. 2) ; neutralisé au tableau des flux (Titre IX ch. 5 § 1.3, aucune
+  trésorerie). Lecture d'OmegaX à confirmer · à la NOTE 3A, l'entrée se lit
+  en « Acquisitions, apports, créations » chez celui qui reçoit et en
+  « Cessions, scissions, hors service » chez celui qui cède (le 184 porte
+  la dotation de l'établissement, un apport) ; rien n'est reclassé en
+  virement de poste à poste.
+- N° 73, limites écrites · deux cellules ne se transfèrent pas un bien
+  directement (fiche du compte 18, siège et établissement), refusé avec
+  l'issue (deux transferts par le siège) ; bien réévalué, à dérogatoire, en
+  cours, composant ou principal à composants, à subvention non soldée, à
+  dette aléatoire, à démantèlement, en location-acquisition, aux unités
+  d'œuvre déprécié · refus nommés, non servis ; le numéro d'inventaire déjà
+  pris chez celui qui reçoit n'est pas repris (fiche sans numéro, que la
+  maintenance du registre nomme).
+
+### Question à Manasse (ligne sage-l4, n° 73, SYCEBNL)
+
+- Le transfert d'un bien entre deux dossiers d'un groupe SYCEBNL est REFUSÉ
+  et ce refus est gelé par un test (`transfert-groupe.spec.ts`). Lu · la
+  fiche du compte 58 du SYCEBNL (Partie 2 ch. 3) ne fait passer par le 58 que
+  la trésorerie (« par le crédit : des comptes de trésorerie », le 585
+  « Virements de fonds », le 588 « Autres virements internes »), et le
+  compte 18 du SYCEBNL porte des emprunts (son 185 est « Dépôts et
+  cautionnements reçus ») ;
+  aucun texte lu n'y fait passer un bien. Deux voies, que le corpus ne
+  tranche pas · (a) n'admettre entre cellules que des fonds, par le 58
+  (état actuel) ; (b) admettre le bien par le 588 « Autres virements
+  internes », au-delà de la lettre du texte, avec la même mécanique qu'au
+  SYSCOHADA (valeur d'entrée, amortissements et dépréciations, sans 81 ni
+  82). Laquelle retenir ?
 - Relevé de la ligne · la création admet une valeur résiduelle supérieure à
   la valeur d'origine · la borner dans `preparerFiche`.
 

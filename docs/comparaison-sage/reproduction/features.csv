@@ -25,9 +25,9 @@ n,fonction,renvois,ligne,priorite,clone,note
 66,"Modifier, supprimer ou dupliquer une fiche",M4-B-41,L4,must,yes,
 67,"Annuler une dotation ou un traitement (inventaire, révision, réévaluation, dérogatoire)",M4-B-54 M4-B-56,L4,must,yes,
 68,Créer les biens à partir des écritures déjà passées,M4-B-58,L4,must,yes,
-73,"Fusion de fichiers d'immobilisations, renumérotation, maintenance",M4-B-35,L4,should,partial,"renumérotation et maintenance faites ; fusion d'un autre dossier du groupe non servie (comptes de liaison, question à Manasse)"
+73,"Fusion de fichiers d'immobilisations, renumérotation, maintenance",M4-B-35,L4,should,yes,"renumérotation et maintenance faites ; transfert d'un bien entre le siège et une cellule par les comptes de liaison (SYSCOHADA, fiche du compte 18) ; SYCEBNL refusé, question à Manasse"
 75,"Banques et mode de paiement du salarié ; paiement des salaires (ordres, virements, chèques, billetage)",M7-9 M7-28 M6-151 M7-60,L5,must,yes,"mode convenu et RIB du salarié, paiement agrégé au 422, ordre de virement, billetage, annulation en négatif"
-78,"Temps de travail : heures, absences, arrêts et indemnités journalières, gestion des temps, assistant de préparation",M7-10 M7-49 M7-51 M7-56 M7-77,L5,must,partial,"absences (treize causes), heures majorées à taux déclaré, arrêts et indemnités de la Caisse ; feuilles de temps et compteurs libres non repris, aucun texte ne les régit"
+78,"Temps de travail : heures, absences, arrêts et indemnités journalières, gestion des temps, assistant de préparation",M7-10 M7-49 M7-51 M7-56 M7-77,L5,must,yes,"absences (treize causes), heures majorées à taux déclaré, arrêts et indemnités de la Caisse ; feuilles de temps (Code du travail, art. 119), heures supplémentaires proposées au bulletin, compteurs libres"
 79,Congés acquis chaque mois,M7-32,L5,must,yes,"compteur par année de service de date à date, allocation de l'art. 142, reprise déclarée (conges-acquis.ts)"
 85,Questionnaire société et salarié,M7-26,L5,should,yes,questionnaire en lecture puis écriture des seuls champs existants ; tenue au dossier ou au salarié en question (Q3)
 88,"Ventilation analytique de la paie, pointages",M7-63 M6-149,L5,must,yes,"répartition par salarié, plan et mois de paie, posée au centime à la passation ; pointage des heures par section non repris (voir 78)"

@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Referentiel } from '@prisma/client';
 import { REFERENTIELS_KEY } from '../../common/decorators/referentiels.decorator';
@@ -208,6 +210,19 @@ describe('transfert d’un bien dans le groupe · l’annuité de l’année du 
     expect(recu).toBeCloseTo(60_000, 2);
     const cede = svc.calculerDotation(600_000, 0, 4, D('2026-01-01'), [{ montant: 150_000 }], { dateDebut: D('2027-01-01'), dateFin: D('2027-06-15') }, 0, 90_000, false, null, {}, null);
     expect(cede).toBeCloseTo(60_000, 2);
+  });
+
+  it('le contrôle de l’amortissement hors module écarte la pièce du transfert et son négatif par leur liaison', () => {
+    // Vu sur vraie base le 2026-10-25 · une annulation défait la sortie et
+    // retire la fiche née, si bien que plus rien ne retenait les pièces et
+    // leurs négatifs · le contrôle 15 bis les aurait lus « hors du module ».
+    const controles = readFileSync(join(__dirname, '..', 'controles', 'controles.service.ts'), 'utf8');
+    const bloc = controles.slice(controles.indexOf('const lignes28 = '), controles.indexOf("code: 'AMORTISSEMENT_IMMO_HORS_MODULE'"));
+    expect(bloc).toContain('transfertGroupe: null');
+    expect(bloc).toContain('transfertGroupeNegatif: null');
+    // L'annulation ne compte pas le transfert lui-même parmi les actes du
+    // dossier qui a reçu · la clé d'exclusion est « Modèle.colonne ».
+    expect(readFileSync(join(__dirname, 'transfert-groupe.service.ts'), 'utf8')).toContain("['TransfertImmobilisationGroupe.immobilisationId']");
   });
 
   it('la dépréciation qui a suivi le bien compte dès l’exercice d’entrée · le plan se ré-étale', () => {
