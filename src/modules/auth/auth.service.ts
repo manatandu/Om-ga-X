@@ -301,7 +301,8 @@ export class AuthService {
     const reponse = {
       message:
         "Si l'adresse est valide, un courriel part dans quelques instants avec votre mot de passe provisoire. " +
-        "Pensez à regarder le dossier des courriers indésirables. Rien après un quart d'heure · écrivez à admin@vmgconsulting.net.",
+        "Pensez à regarder le dossier des courriers indésirables. Si cette adresse a déjà un dossier, connectez-vous avec votre mot de passe. " +
+        "Rien après un quart d'heure · écrivez à admin@vmgconsulting.net.",
       joursEssai: JOURS_ESSAI,
     };
 

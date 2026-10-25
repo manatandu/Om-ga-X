@@ -138,6 +138,8 @@ describe('AuthService.inscrireEnEssai', () => {
     expect(JSON.stringify(r)).not.toContain('NE-DOIT-JAMAIS-SORTIR');
     expect(r).not.toHaveProperty('accessToken');
     expect(r.joursEssai).toBe(30);
+    // la réponse commune guide celui qui a déjà un dossier SANS dire que l'adresse est connue
+    expect(r.message).toContain('déjà un dossier');
   });
 
   it('une adresse déjà prise rend la MÊME réponse et ne crée ni n envoie rien', async () => {
