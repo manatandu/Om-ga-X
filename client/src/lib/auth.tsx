@@ -27,6 +27,8 @@ interface MeResponse {
    * d'un ancien serveur = toutes.
    */
   logicielsAutorises?: string[] | null;
+  /** Clés attribuées d'une tuile retirée depuis · nommées, jamais comptées comme valides. */
+  logicielsRetires?: string[];
   tenant: {
     id: string;
     nom: string;
@@ -207,6 +209,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     prechargerExercices(() => api.get<Exercice[]>('/exercices'));
     chargerUtilisateur();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * RELECTURE DU COMPTE AU RETOUR SUR L'ONGLET · une attribution de logiciels
+   * (ou un module activé) posée par l'administrateur pendant que l'onglet
+   * était caché se voit au retour, sans recharger. Au plus une fois par
+   * trente secondes. Ce n'est PAS `chargerUtilisateur` · un échec réseau ici
+   * ne ferme pas la session (on garde ce qu'on a lu, et la prochaine requête
+   * dira la panne) ; une session réellement perdue passe par
+   * `surSessionPerdue`, que le client d'API lève sur le 401 marqué.
+   */
+  const derniereRelecture = useRef(0);
+  useEffect(() => {
+    const surRetour = () => {
+      if (document.visibilityState !== 'visible' || !ouverte.current) return;
+      const maintenant = Date.now();
+      if (maintenant - derniereRelecture.current < 30_000) return;
+      derniereRelecture.current = maintenant;
+      api.get<MeEtCsrf>('/auth/me').then(
+        ({ csrfToken, ...me }) => {
+          if (!ouverte.current) return;
+          synchroniserCsrf(csrfToken);
+          setUtilisateur(me);
+        },
+        () => undefined,
+      );
+    };
+    document.addEventListener('visibilitychange', surRetour);
+    return () => document.removeEventListener('visibilitychange', surRetour);
   }, []);
 
   const seConnecter = async (csrfToken: string) => {

@@ -51,6 +51,38 @@ concerne.
      AppShell) ; `ecran-logiciels.e2e.ts` prouve choix, rappel, attribution,
      entrée directe, et que la fenêtre hors logiciel s'ouvre encore.
 
+4. **Relecture (React, échecs silencieux), premier tour corrigé**
+   - Utilisateur enfermé : le serveur ne juge PAS qu'une tuile soit servie (il
+     recopierait la règle du menu) ; la modale marque « non servi par ce
+     dossier », avertit et refuse l'enregistrement quand aucune tuile cochée
+     n'est servie ; l'écran NOMME les logiciels attribués sans être servis et
+     les clés mortes (`logicielsRetires` rendu par /auth/me), avec l'issue.
+   - Restriction qui ressuscite : un passage au rôle administrateur ou
+     gestionnaire de paie efface l'attribution (`ROLES_SANS_LOGICIELS`, test).
+     Le gestionnaire de paie est refusé en 400 nommé, son bouton masqué.
+   - Couche sur les fenêtres : marqueur `ATTRIBUT_COUCHE_ECRAN` lu par
+     `echapPourLaFenetre`, Échap = retour au logiciel en cours, `inert` sur
+     l'accueil et les fenêtres, fenêtres dans leur propre contexte
+     d'empilement (`z-0`) sous l'écran (`z-10`), quelle que soit la valeur du
+     compteur `ordre` ; une commande commune choisie depuis l'écran l'écarte ;
+     le démarrage guidé attend sa fermeture.
+   - Effet : /auth/me relu au retour sur l'onglet (au plus toutes les trente
+     secondes, un échec ne ferme pas la session). La bulle dit « à sa
+     prochaine ouverture, à un rechargement, ou en revenant sur son onglet »,
+     jamais « immédiat ».
+   - Mineurs : `@ArrayMaxSize`, liste facultative si `restreindre` est faux,
+     modale en dialogue (Échap, focus initial, fermeture tenue pendant
+     l'envoi), valeur du contexte mémorisée, e2e d'une commande ouverte par la
+     barre après « Tiers et trésorerie » et d'Échap sous l'écran.
+
+## Au suivi (hors périmètre)
+
+- `journauxAutorises` et `fonctionsAutorisees` ont le même défaut d'origine :
+  un utilisateur promu administrateur garde en base sa restriction, qui
+  ressusciterait s'il redevenait comptable (`UtilisateurService.modifier`
+  n'efface ni `restreindreJournaux` ni `restreindreFonctions`). Non corrigé
+  ici.
+
 ## Reste (NIVEAU 3, hors de cette ligne)
 
 **Masquer n'est pas refuser.** Aucune route n'est refusée sur le fondement d'un
@@ -95,5 +127,7 @@ npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamode
   typés, mais restent à constater sur le job `tests-navigateur.yml`.
 - Tout futur chemin de menu doit entrer dans une tuile : le spec client tombe
   sinon, c'est voulu.
-- L'écran des tuiles recouvre l'espace de travail (z-index 9999 dans `main`) :
-  une modale (portail dans `body`) reste au-dessus, comme avant.
+- Ce que « le dossier sert » est lu sur le menu de la session de
+  l'administrateur : une tuile servie à lui et pas au rôle du collaborateur
+  (rare, les fenêtres réservées sont rangées en Administration) n'est pas
+  marquée dans la modale ; l'écran du collaborateur la nomme alors.

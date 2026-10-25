@@ -173,7 +173,7 @@ export function AccueilPage() {
   const referentiel = utilisateur?.tenant.referentiel;
   // Le logiciel choisi (écran des tuiles) restreint aussi les raccourcis de
   // l'accueil, comme la barre de menus · un affichage, jamais un droit.
-  const { actif: logicielActif, changer: changerDeLogiciel } = useLogicielActif();
+  const { actif: logicielActif, changer: changerDeLogiciel, ecranOuvert: ecranLogicielsOuvert } = useLogicielActif();
   const dansLeLogiciel = (chemin: string) => logicielActif === null || cheminDansLogiciel(chemin, logicielActif);
   const { exerciceCourant, chargement: chargementExercices } = useExercice();
   const [aProposOuvert, setAProposOuvert] = useState(false);
@@ -559,7 +559,9 @@ export function AccueilPage() {
         </div>
       </div>
 
-      {demarrageOuvert && demarrage && (
+      {/* Le démarrage guidé attend que l'écran des logiciels soit fermé · sa
+          modale, portée dans le body, passerait au-dessus des tuiles. */}
+      {demarrageOuvert && demarrage && !ecranLogicielsOuvert && (
         <DemarrageGuide
           etat={demarrage}
           onFermer={() => {

@@ -34,13 +34,27 @@ test('l’écran des logiciels : choix, rappel, attribution par l’administrate
   await ecran.getByRole('button', { name: 'Tiers et trésorerie', exact: true }).click();
   await expect(ecran).toHaveCount(0);
   await page.getByRole('button', { name: 'Structure', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Plan des tiers' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Plan comptable' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // La commande s'ouvre PAR LA BARRE restreinte, pas seulement par l'adresse.
+  await page.getByRole('menuitem', { name: 'Plan des tiers' }).click();
+  const croix = page.locator('button[aria-label^="Fermer "]');
+  await expect(croix).toHaveCount(1);
+  await expect(page).toHaveURL(/#\/tiers/);
 
   // Masquer n'est pas refuser : la fenêtre hors du logiciel s'ouvre encore par son adresse.
   await page.goto('/#/comptes');
-  await expect(page.locator('button[aria-label^="Fermer "]').first()).toBeVisible();
+  await expect(croix).toHaveCount(2);
+
+  // Échap sous l'écran rappelé : il revient au logiciel en cours et ne ferme
+  // AUCUNE des fenêtres cachées dessous.
+  await page.getByRole('button', { name: 'Logiciels', exact: true }).click();
+  await expect(ecran).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(ecran).toHaveCount(0);
+  await expect(croix).toHaveCount(2);
+  await page.getByRole('button', { name: 'Structure', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Plan des tiers' })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // Le bouton « Logiciels » rappelle l'écran, sans fermer la fenêtre ouverte.
   await page.getByRole('button', { name: 'Logiciels', exact: true }).click();

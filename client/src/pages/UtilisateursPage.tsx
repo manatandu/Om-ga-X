@@ -312,8 +312,9 @@ export function UtilisateursPage() {
                   {u.restreindreJournaux ? `Journaux (${u.journauxAutorises?.length ?? 0})` : 'Journaux'}
                 </button>
               )}
-              {/* Jamais l'administrateur · il n'est pas restreint, et c'est lui qui attribue. */}
-              {u.role !== 'ADMIN_CABINET' && (
+              {/* Ni l'administrateur (jamais restreint, c'est lui qui attribue), ni
+                  le gestionnaire de paie (son menu propre ne suit pas les logiciels). */}
+              {u.role !== 'ADMIN_CABINET' && u.role !== 'GESTIONNAIRE_PAIE' && (
                 <button onClick={() => setLogicielsCible(u)} className="text-[11.5px] text-sel">
                   {u.restreindreLogiciels ? `Logiciels (${u.logicielsAutorises?.length ?? 0})` : 'Logiciels'}
                 </button>

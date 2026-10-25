@@ -33,7 +33,18 @@ export function modaleOuverte(): boolean {
   return document.querySelector(`[${ATTRIBUT_MODALE}]`) !== null;
 }
 
-/** Échap revient-il à la fenêtre active ? Ni prise par une couche, ni sous une modale. */
+/**
+ * Marqueur d'une couche qui RECOUVRE l'espace de travail sans être une modale
+ * (l'écran des logiciels) · la fenêtre active est dessous, cachée, et Échap
+ * ne doit jamais la fermer sans qu'on la voie.
+ */
+export const ATTRIBUT_COUCHE_ECRAN = 'data-couche-ecran';
+
+export function coucheEcranOuverte(): boolean {
+  return document.querySelector(`[${ATTRIBUT_COUCHE_ECRAN}]`) !== null;
+}
+
+/** Échap revient-il à la fenêtre active ? Ni prise par une couche, ni sous une modale ou l'écran des logiciels. */
 export function echapPourLaFenetre(e: KeyboardEvent): boolean {
-  return e.key === 'Escape' && !e.defaultPrevented && !modaleOuverte();
+  return e.key === 'Escape' && !e.defaultPrevented && !modaleOuverte() && !coucheEcranOuverte();
 }

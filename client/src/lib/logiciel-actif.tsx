@@ -11,9 +11,23 @@ import { createContext, useContext } from 'react';
 export interface LogicielActif {
   actif: string | null;
   changer: (() => void) | null;
+  /**
+   * Les logiciels que le DOSSIER sert, attribution mise à part, vus depuis la
+   * session en cours · la modale d'attribution marque d'après eux les tuiles
+   * qui ne serviraient à rien. `null` = inconnu (rendu hors du chrome), et
+   * alors rien n'est marqué plutôt que tout.
+   */
+  servisParLeDossier: readonly string[] | null;
+  /** L'écran des logiciels recouvre l'espace de travail · le démarrage guidé attend qu'il se ferme. */
+  ecranOuvert: boolean;
 }
 
-const LogicielActifContexte = createContext<LogicielActif>({ actif: null, changer: null });
+const LogicielActifContexte = createContext<LogicielActif>({
+  actif: null,
+  changer: null,
+  servisParLeDossier: null,
+  ecranOuvert: false,
+});
 
 export const LogicielActifProvider = LogicielActifContexte.Provider;
 

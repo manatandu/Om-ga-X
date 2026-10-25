@@ -10,6 +10,7 @@ import {
   estCommun,
   etatDuChoix,
   filtrerParLogiciel,
+  logicielsNonServis,
   logicielsServis,
 } from './logiciels';
 
@@ -220,6 +221,90 @@ describe("l'écran des tuiles : quand il se montre", () => {
 
   it("un choix mémorisé que l'attribution a retiré n'est pas suivi", () => {
     expect(etatDuChoix(deux, 'IFRS', true, false)).toEqual({ logiciel: null, ecran: true });
+  });
+});
+
+describe('attribués sans être servis : nommés, jamais tus', () => {
+  const servis = LOGICIELS.filter((l) => ['COMPTABILITE', 'TIERS_TRESORERIE'].includes(l.cle));
+
+  it('null = rien à nommer', () => {
+    expect(logicielsNonServis(servis, null)).toEqual([]);
+  });
+
+  it('une attribution sur des tuiles éteintes les rend, dans l’ordre de la table', () => {
+    expect(logicielsNonServis(servis, ['IFRS', 'COMPTABILITE', 'PAIE']).map((l) => l.cle)).toEqual(['PAIE', 'IFRS']);
+  });
+
+  it('une clé morte n’est jamais comptée comme un logiciel', () => {
+    expect(logicielsNonServis(servis, ['ANCIENNE'])).toEqual([]);
+    expect(logicielsServis([{ titre: 'X', items: [{ label: 'a', chemin: '/saisie' }] }], ['ANCIENNE'])).toEqual([]);
+  });
+});
+
+describe('la couche des logiciels sur les fenêtres (lecture de la source)', () => {
+  const shell = src('../components/chrome/AppShell.tsx');
+  const ecran = src('../components/chrome/EcranLogiciels.tsx');
+  const echap = src('./echap.ts');
+
+  it('Échap sous l’écran ne ferme jamais la fenêtre cachée, et revient au logiciel en cours', () => {
+    expect(echap).toContain('!modaleOuverte() && !coucheEcranOuverte()');
+    expect(ecran).toContain('{...{ [ATTRIBUT_COUCHE_ECRAN]: \'\' }}');
+    expect(ecran).toContain('ecouterEchap(');
+  });
+
+  it('l’accueil et les fenêtres sont inertes tant que l’écran est posé', () => {
+    const main = shell.slice(shell.indexOf('<main'), shell.indexOf('</main>'));
+    expect(main.match(/\{\.\.\.\(ecranAffiche \? \{ inert: '' \} : \{\}\)\}/g)?.length).toBe(2);
+  });
+
+  it('les fenêtres vivent dans leur propre contexte d’empilement, sous l’écran', () => {
+    const main = shell.slice(shell.indexOf('<main'), shell.indexOf('</main>'));
+    const calque = main.slice(main.lastIndexOf('<div', main.indexOf('fenetres.map((f)')), main.indexOf('fenetres.map((f)'));
+    expect(calque).toContain('absolute inset-0 z-0');
+    expect(ecran).toContain('absolute inset-0 z-10');
+  });
+
+  it('une commande commune choisie depuis l’écran l’écarte', () => {
+    expect(shell).toContain('if (etatLogiciel.ecran && estCommun(location.pathname)) setEcranSuspendu(true);');
+  });
+
+  it('le démarrage guidé attend la fermeture de l’écran', () => {
+    expect(src('../pages/AccueilPage.tsx')).toContain('{demarrageOuvert && demarrage && !ecranLogicielsOuvert && (');
+  });
+
+  it('la valeur du contexte est mémorisée', () => {
+    expect(shell).toContain('const valeurLogicielActif = useMemo(');
+    expect(shell).toContain('<LogicielActifProvider value={valeurLogicielActif}>');
+  });
+
+  it('le compte se relit au retour sur l’onglet, sans fermer la session sur un échec', () => {
+    const auth = src('./auth.tsx');
+    // Le corps de l'écouteur, découpé par ses deux bornes structurelles (jamais par une distance).
+    const corps = auth.slice(auth.indexOf('const derniereRelecture = useRef(0);'), auth.indexOf("document.addEventListener('visibilitychange'"));
+    expect(corps.length).toBeGreaterThan(0);
+    expect(corps).toContain("api.get<MeEtCsrf>('/auth/me')");
+    expect(corps).not.toContain('setUtilisateur(null)');
+  });
+});
+
+describe('la modale d’attribution (lecture de la source)', () => {
+  const modale = src('../components/ModaleLogiciels.tsx');
+
+  it('est un dialogue, Échap et focus initial, fermeture tenue pendant l’envoi', () => {
+    expect(modale).toContain('role="dialog"');
+    expect(modale).toContain('aria-modal="true"');
+    expect(modale).toContain('ecouterEchap(');
+    expect(modale).toContain('if (!envoi) onFermer();');
+    expect(modale).toContain('premierChamp.current?.focus()');
+  });
+
+  it('marque les logiciels que le dossier ne sert pas et refuse d’enfermer l’utilisateur', () => {
+    expect(modale).toContain('non servi par ce dossier');
+    expect(modale).toContain('disabled={!estAdmin || envoi || aucuneCocheeServie}');
+  });
+
+  it('le bouton n’est offert ni à l’administrateur ni au gestionnaire de paie', () => {
+    expect(src('../pages/UtilisateursPage.tsx')).toContain("u.role !== 'ADMIN_CABINET' && u.role !== 'GESTIONNAIRE_PAIE' && (");
   });
 });
 

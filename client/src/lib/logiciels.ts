@@ -244,6 +244,21 @@ export function logicielsServis(menus: readonly MenuDef[], autorisees: readonly 
 }
 
 /**
+ * LES LOGICIELS ATTRIBUÉS QUE LE DOSSIER NE SERT PAS (module éteint,
+ * référentiel sans la fonction, aucune cellule) · ils ne donnent aucune tuile,
+ * et l'écran doit les NOMMER, sans quoi l'utilisateur lit « aucun logiciel »
+ * sans savoir que son administrateur lui en a bien attribué. `servisParLeDossier`
+ * est `logicielsServis(menus, null)`.
+ */
+export function logicielsNonServis(
+  servisParLeDossier: readonly LogicielDef[],
+  autorisees: readonly string[] | null | undefined,
+): LogicielDef[] {
+  if (!autorisees) return [];
+  return LOGICIELS.filter((l) => autorisees.includes(l.cle) && !servisParLeDossier.some((s) => s.cle === l.cle));
+}
+
+/**
  * Restreint la barre de menus au logiciel choisi. Un groupe qui se vide ne
  * s'affiche pas (règle commune de `lignesDuMenu`), et un menu qui n'a plus
  * aucune commande disparaît de la barre plutôt que de s'ouvrir sur du vide.

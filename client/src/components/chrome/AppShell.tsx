@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { useExercice } from '../../lib/exercice';
@@ -27,9 +27,11 @@ import { LogicielActifProvider } from '../../lib/logiciel-actif';
 import {
   ecranDejaVuDansLaSession,
   ecrireLogicielChoisi,
+  estCommun,
   etatDuChoix,
   filtrerParLogiciel,
   lireLogicielChoisi,
+  logicielsNonServis,
   logicielsServis,
   type CleLogiciel,
 } from '../../lib/logiciels';
@@ -725,30 +727,56 @@ export function AppShell() {
   );
   const [ecranDejaVu, setEcranDejaVu] = useState(() => ecranDejaVuDansLaSession(idPoste.tenant, idPoste.user));
   const [rappelLogiciels, setRappelLogiciels] = useState(false);
+  // Une commande COMMUNE (courrier, impressions différées, aide) choisie
+  // depuis l'écran l'écarte · sa fenêtre s'ouvrirait sinon sous lui.
+  const [ecranSuspendu, setEcranSuspendu] = useState(false);
   const etatLogiciel = suitLesLogiciels
     ? etatDuChoix(logicielsDuDossier, logicielChoisi, ecranDejaVu, rappelLogiciels)
     : { logiciel: null, ecran: false };
+  const ecranAffiche = etatLogiciel.ecran && !ecranSuspendu;
+  // Ce que le DOSSIER sert, sans l'attribution · la modale des utilisateurs
+  // marque d'après lui les tuiles qui ne serviraient à rien, et l'écran nomme
+  // ce qui est attribué sans être servi (au lieu de « aucun logiciel »).
+  const servisParLeDossier = suitLesLogiciels ? logicielsServis(menusDuProfil, null) : [];
+  const attribuesNonServis = suitLesLogiciels
+    ? logicielsNonServis(servisParLeDossier, utilisateur?.logicielsAutorises)
+    : [];
   const choisirLogiciel = (cle: CleLogiciel) => {
     ecrireLogicielChoisi(idPoste.tenant, idPoste.user, cle);
     setLogicielChoisi(cle);
     setEcranDejaVu(true);
     setRappelLogiciels(false);
+    setEcranSuspendu(false);
   };
+  const rappelerLesLogiciels = useCallback(() => {
+    setEcranSuspendu(false);
+    setRappelLogiciels(true);
+  }, []);
+  useEffect(() => {
+    if (etatLogiciel.ecran && estCommun(location.pathname)) setEcranSuspendu(true);
+    // Seule l'adresse décide · l'état de l'écran se lit au moment du changement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
   // Rappelable tant qu'il y a quelque chose à choisir · avec une seule tuile
   // servie, l'écran n'a pas lieu d'être.
   const peutChoisirUnLogiciel = suitLesLogiciels && logicielsDuDossier.length > 1;
   const menus = suitLesLogiciels ? filtrerParLogiciel(menusDuProfil, etatLogiciel.logiciel) : menusDuProfil;
+  const clesServiesParLeDossier = servisParLeDossier.map((l) => l.cle).join(',');
+  const valeurLogicielActif = useMemo(
+    () => ({
+      actif: etatLogiciel.logiciel,
+      changer: peutChoisirUnLogiciel ? rappelerLesLogiciels : null,
+      servisParLeDossier: clesServiesParLeDossier ? clesServiesParLeDossier.split(',') : [],
+      ecranOuvert: ecranAffiche,
+    }),
+    [etatLogiciel.logiciel, peutChoisirUnLogiciel, rappelerLesLogiciels, clesServiesParLeDossier, ecranAffiche],
+  );
 
   // `overflow-x-hidden` (racine ci-dessous) : garde-fou de dernier rang. Aucun
   // élément du chrome ne doit dépasser en largeur, mais si l'un le fait un
   // jour, il sera rogné au lieu d'emmener toute l'application sur le côté.
   return (
-    <LogicielActifProvider
-      value={{
-        actif: etatLogiciel.logiciel,
-        changer: peutChoisirUnLogiciel ? () => setRappelLogiciels(true) : null,
-      }}
-    >
+    <LogicielActifProvider value={valeurLogicielActif}>
     <div className="h-screen flex flex-col bg-bg text-text overflow-x-hidden">
       {/*
         Barre de titre · elle porte l'identité du dossier ouvert, comme la
@@ -797,7 +825,7 @@ export function AppShell() {
             360 px. */}
         <MenuBar
           menus={menus}
-          avant={<NavigationChrome onLogiciels={peutChoisirUnLogiciel ? () => setRappelLogiciels(true) : undefined} />}
+          avant={<NavigationChrome onLogiciels={peutChoisirUnLogiciel ? rappelerLesLogiciels : undefined} />}
           apres={
             <>
               {/* La cloche interroge /courrier chaque minute · pour un rôle à
@@ -822,21 +850,36 @@ export function AppShell() {
         faire défiler l'espace, elle doit être bornée (voir Fenetre.tsx).
       */}
       <main className="relative z-0 flex-1 min-h-0 overflow-hidden">
-        <div className="absolute inset-0 overflow-auto">
+        {/* `inert` tant que l'écran des logiciels est posé · ni le clavier ni
+            un lecteur d'écran n'atteignent ce qu'il recouvre. */}
+        <div className="absolute inset-0 overflow-auto" {...(ecranAffiche ? { inert: '' } : {})}>
           {utilisateur?.role !== 'GESTIONNAIRE_PAIE' && (
             <LimiteErreur titreFenetre="Accueil">
               <AccueilPage />
             </LimiteErreur>
           )}
         </div>
-        {fenetres.map((f) => (
-          <Fenetre key={f.cle} fenetre={f} active={f.cle === cleActive} />
-        ))}
+        {/* LES FENÊTRES DANS LEUR PROPRE CONTEXTE D'EMPILEMENT (`z-0`) · leur
+            rang (`ordre`, compteur sans plafond de fenetres.tsx) ne se compare
+            plus à celui de l'écran des logiciels, qui reste toujours au-dessus.
+            Le calque laisse passer le pointeur vers l'accueil, seules les
+            fenêtres le reprennent. Même géométrie que `main` (inset-0) · le
+            bornage des fenêtres lit `parentElement`, inchangé en taille. */}
+        <div
+          className="absolute inset-0 z-0 pointer-events-none [&>*]:pointer-events-auto"
+          {...(ecranAffiche ? { inert: '' } : {})}
+        >
+          {fenetres.map((f) => (
+            <Fenetre key={f.cle} fenetre={f} active={f.cle === cleActive} />
+          ))}
+        </div>
         {/* L'écran des logiciels se POSE SUR l'espace de travail sans le
             démonter · rappelé en cours de travail, il ne ferme aucune fenêtre. */}
-        {etatLogiciel.ecran && (
+        {ecranAffiche && (
           <EcranLogiciels
             servis={logicielsDuDossier}
+            nonServis={attribuesNonServis}
+            retires={utilisateur?.logicielsRetires ?? []}
             actif={etatLogiciel.logiciel}
             onChoisir={choisirLogiciel}
             onRetour={etatLogiciel.logiciel ? () => choisirLogiciel(etatLogiciel.logiciel as CleLogiciel) : undefined}
