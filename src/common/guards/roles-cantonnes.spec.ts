@@ -15,6 +15,7 @@ import { BaremesPaieController } from '../../modules/personnel/baremes-paie.cont
 import { CongesController } from '../../modules/personnel/conges.controller';
 import { AbsencesController } from '../../modules/personnel/absences.controller';
 import { MajorationsHeuresController } from '../../modules/personnel/majorations-heures.controller';
+import { FeuillesTempsController } from '../../modules/personnel/feuilles-temps.controller';
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
 import { QuestionnairePaieController } from '../../modules/personnel/questionnaire-paie.controller';
@@ -201,7 +202,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -255,6 +256,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/personnel/baremes-paie.controller.ts',
       // Ligne sage-l5 · le compteur des congés fait partie du registre.
       'modules/personnel/conges.controller.ts',
+      // Ligne sage-l5 · les feuilles de temps font partie du registre (fonction 78, reste).
+      'modules/personnel/feuilles-temps.controller.ts',
       'modules/personnel/majorations-heures.controller.ts',
       // Ligne sage-l5 · le paiement du salarié et des salaires (fonction 75).
       'modules/personnel/paiement-salaires.controller.ts',

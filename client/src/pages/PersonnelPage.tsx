@@ -8,6 +8,8 @@ import { OngletBaremesPaie } from '../components/BaremesPaie';
 import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '../components/RubriquesAvancesPaie';
 import { OngletCongesPaie } from '../components/paie/CongesPaie';
 import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
+import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
+import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
 import { PaiementDuSalarie } from '../components/paie/PaiementDuSalarie';
@@ -631,6 +633,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // serveur.
   const [majorations, setMajorations] = useState<ListeMajorations | null>(null);
   const [lignesHeures, setLignesHeures] = useState<LigneHeures[]>([]);
+  // LIGNE SAGE-L5, FONCTION 78, RESTE · les heures des feuilles de temps du
+  // mois et ce que le serveur en propose · reprises au clic dans les heures
+  // majorées, jamais substituées. Null tant qu'elles ne sont pas LUES.
+  const [heuresDuMois, setHeuresDuMois] = useState<HeuresDuMois | null>(null);
   const [tous, setTous] = useState(false);
   // Les contrats saisis avec un montant et sans monnaie, comptés par le
   // serveur sur le dossier entier · null tant que le registre n'est pas lu,
@@ -848,6 +854,25 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       (e: ApiError) => {
         if (!actuel) return;
         setCongesDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
+
+  useEffect(() => {
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setHeuresDuMois(null);
+      return;
+    }
+    let actuel = true;
+    api.get<HeuresDuMois>(`/personnel/salaries/${selection}/feuilles-temps/mois/${moisDePaie}`).then(
+      (r) => actuel && setHeuresDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setHeuresDuMois(null);
         setErreur(e.message);
       },
     );
@@ -1480,6 +1505,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Congés'
                       : o === 'absences'
                       ? 'Absences'
+                      : o === 'temps'
+                      ? 'Feuilles de temps'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -2968,6 +2995,59 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {selection && heuresDuMois && (heuresDuMois.totaux.heures > 0 || heuresDuMois.compteurs.length > 0) && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Heures des feuilles de temps
+                <Aide
+                  titre="Heures des feuilles de temps"
+                  texte="Les semaines qui se paient ce mois, du lundi au dimanche, lues sur les feuilles de temps du salarié. Une heure au-delà de huit dans la journée, ou au-delà de quarante-cinq dans la semaine pour les heures restées dans les huit, est une heure supplémentaire. Un jour de contrat qu'aucune feuille ne couvre rend le compte de sa semaine incomplet · la proposition est alors un minimum. « Reprendre » ajoute ces heures aux heures majorées, la majoration présélectionnée quand une seule est déclarée pour leur nature ; le taux horaire se tape. Les compteurs libres sont ceux du mois civil, sans effet sur la paie."
+                  source="Code du travail, art. 119, 121 et 124 · arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, mention 11"
+                />
+              </div>
+              <div>
+                {heuresAffichees(heuresDuMois.totaux.heures)} h travaillées · {heuresAffichees(heuresDuMois.totaux.supplementaires)} h supplémentaires
+                {heuresDuMois.totaux.supplementairesIncompletes ? ' au moins' : ''} · {heuresAffichees(heuresDuMois.totaux.nuit)} h de nuit
+                {heuresDuMois.totaux.dimanche + heuresDuMois.totaux.ferie > 0
+                  ? ` · ${heuresAffichees(heuresDuMois.totaux.dimanche + heuresDuMois.totaux.ferie)} h le dimanche ou un férié`
+                  : ''}
+                {heuresDuMois.totaux.samedi > 0 ? ` · ${heuresAffichees(heuresDuMois.totaux.samedi)} h le samedi` : ''}
+              </div>
+              {heuresDuMois.semaines
+                .filter((w) => w.joursNonCouverts.length > 0)
+                .map((w) => (
+                  <div key={w.lundi} role="status" className="text-warning">
+                    Semaine du {w.lundi} au {w.dimanche} · aucune feuille ne couvre {w.joursNonCouverts.join(', ')} · la limite de la semaine ne se calcule pas.
+                  </div>
+                ))}
+              {heuresDuMois.compteurs.length > 0 && (
+                <div className="text-text-dim">
+                  Compteurs du mois · {heuresDuMois.compteurs.map((c) => `${c.code} ${heuresAffichees(c.heures)} h`).join(' · ')}
+                </div>
+              )}
+              {heuresDuMois.lignes.length > 0 && peutEcrire && (
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <button
+                    type="button"
+                    className="border border-border px-2.5 py-0.5 disabled:opacity-50"
+                    disabled={!majorations || !majorations.majorations.some((m) => m.actif)}
+                    title={
+                      !majorations || !majorations.majorations.some((m) => m.actif)
+                        ? 'Aucune majoration déclarée · déclarez-la d’abord dans l’onglet Barèmes.'
+                        : undefined
+                    }
+                    onClick={() => setLignesHeures(lignesPourLaSimulation(heuresDuMois.lignes, lignesHeures))}
+                  >
+                    Reprendre les heures
+                  </button>
+                  {(!majorations || !majorations.majorations.some((m) => m.actif)) && (
+                    <span className="text-text-dim">Aucune majoration déclarée · déclarez-la d’abord dans l’onglet Barèmes.</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {majorations && majorations.majorations.some((m) => m.actif) && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
@@ -3711,6 +3791,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
 
       {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'temps' && <OngletFeuillesTempsPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}

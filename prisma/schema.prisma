@@ -932,6 +932,10 @@ model Tenant {
   absencesSalaries                     AbsenceSalarie[]
   majorationsHeures                    MajorationHeures[]
   indemnitesCaisseAbsences             IndemniteCaisseAbsence[]
+  feuillesTemps                        FeuilleTemps[]
+  joursFeuillesTemps                   JourFeuilleTemps[]
+  compteursHeures                      CompteurHeures[]
+  heuresCompteursJours                 HeuresCompteurJour[]
   // Ligne sage-l5 · fonction 75, banques du salarié et paiement des salaires.
   ribsSalaries                         RibSalarie[]
   paiementsSalaires                    PaiementSalaires[]
@@ -8023,6 +8027,8 @@ model Salarie {
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   repriseConges           RepriseCongesSalarie?
   absences                AbsenceSalarie[]
+  /// Ligne sage-l5, fonction 78 · les feuilles de temps du salarié.
+  feuillesTemps           FeuilleTemps[]
   conges                  CongeSalarie[]
   // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU (Code du
   // travail, art. 98, al. 2, « au temps et au lieu convenus »), déclaré,
@@ -10990,6 +10996,94 @@ model IndemniteCaisseAbsence {
   @@unique([absenceId, mois, annuleLe])
   @@index([tenantId, absenceId, mois])
   @@map("indemnites_caisse_absences")
+}
+
+// Ligne sage-l5 · fonction 78, reste · feuilles de temps et compteurs libres.
+
+/// UNE FEUILLE DE TEMPS · un salarié, une période de trente et un jours au
+/// plus, les heures de chaque jour SAISIES, jamais un montant. Aucun texte ne
+/// régit la feuille (choix d'organisation) ; ce qu'elle fait des heures se lit
+/// au Code du travail (art. 119, 121, 124), dans `personnel/feuilles-temps.ts`.
+/// Deux feuilles non annulées d'un même salarié ne se chevauchent pas. Une
+/// feuille ne se supprime pas · elle s'annule avec son motif, au journal
+/// d'audit, puisqu'elle propose des heures au bulletin.
+model FeuilleTemps {
+  id              String             @id @default(uuid())
+  tenantId        String
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  salarieId       String
+  salarie         Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  du              DateTime           @db.Date
+  au              DateTime           @db.Date
+  observation     String?            @db.VarChar(500)
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?            @db.VarChar(500)
+  creePar         String
+  createdAt       DateTime           @default(now())
+  jours           JourFeuilleTemps[]
+
+  @@index([tenantId, salarieId, du])
+  @@map("feuilles_temps")
+}
+
+/// LES HEURES D'UN JOUR de la feuille · les heures travaillées et, parmi
+/// elles, celles de nuit (art. 124, de 19 h à 5 h). Un jour de la période sans
+/// ligne vaut zéro · la feuille le couvre. Retouchée par identifiant, jamais
+/// supprimée (journal d'audit).
+model JourFeuilleTemps {
+  id              String               @id @default(uuid())
+  tenantId        String
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  feuilleId       String
+  feuille         FeuilleTemps         @relation(fields: [feuilleId], references: [id], onDelete: Restrict)
+  jour            DateTime             @db.Date
+  heures          Decimal              @db.Decimal(5, 2)
+  heuresNuit      Decimal              @default(0) @db.Decimal(5, 2)
+  modifiePar      String
+  modifieLe       DateTime             @default(now())
+  heuresCompteurs HeuresCompteurJour[]
+
+  @@unique([feuilleId, jour])
+  @@index([tenantId, feuilleId])
+  @@map("jours_feuilles_temps")
+}
+
+/// UN COMPTEUR LIBRE D'HEURES (Sage, compteurs libres) · nommé par le
+/// dossier, alimenté par les feuilles de temps, SANS EFFET DE PAIE tant que
+/// rien ne le relie à une rubrique. Il ne se supprime pas · il se désactive.
+model CompteurHeures {
+  id           String               @id @default(uuid())
+  tenantId     String
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  code         String               @db.VarChar(10)
+  libelle      String               @db.VarChar(60)
+  actif        Boolean              @default(true)
+  desactiveLe  DateTime?
+  desactivePar String?
+  creePar      String
+  createdAt    DateTime             @default(now())
+  heures       HeuresCompteurJour[]
+
+  @@unique([tenantId, code])
+  @@map("compteurs_heures")
+}
+
+/// Les heures d'un jour portées à un compteur libre · indépendantes des heures
+/// travaillées (une astreinte, une délégation ne sont pas forcément du travail).
+model HeuresCompteurJour {
+  id         String           @id @default(uuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  jourId     String
+  jour       JourFeuilleTemps @relation(fields: [jourId], references: [id], onDelete: Restrict)
+  compteurId String
+  compteur   CompteurHeures   @relation(fields: [compteurId], references: [id], onDelete: Restrict)
+  heures     Decimal          @db.Decimal(5, 2)
+
+  @@unique([jourId, compteurId])
+  @@index([tenantId, compteurId])
+  @@map("heures_compteurs_jours")
 }
 
 // Ligne sage-l5 · fonction 75 · banques du salarié et paiement des salaires.

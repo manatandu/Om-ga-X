@@ -15,6 +15,8 @@ export const ONGLETS_PERSONNEL = [
   'bulletins',
   'conges',
   'absences',
+  // Ligne sage-l5, fonction 78, reste · les feuilles de temps et les compteurs libres.
+  'temps',
   'rubriques',
   'baremes',
   'decompte',

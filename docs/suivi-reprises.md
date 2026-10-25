@@ -79,12 +79,24 @@ de produit.
   un mois qui contient un jour de mise à pied ou d'absence non rémunérée
   n'acquiert rien, nommé à l'écran avec le jour en cause. Le texte ne dit
   pas s'il faut plutôt compter les jours et les convertir.
-- Q2 · la maternité, Caisse qui paie la salariée sans subrogation · le Code
-  (art. 130, art. 59) fait devoir les deux tiers à l'employeur, l'arrêté
-  n° 146/2018 (art. 63) fait payer par la Caisse l'intégralité de la
-  rémunération journalière moyenne. Aucun texte lu ne dit le cumul ni
-  l'imputation (l'art. 106, al. 2 ne vise que l'accident du travail).
-  OmegaX propose les deux tiers et ne déduit rien.
+- Q2 · CLOSE, TRANCHÉE PAR LA LOI LE 2026-10-25, aucun code · la maternité,
+  Caisse qui paie la salariée sans subrogation. Code du travail, art. 130,
+  al. 2 (« la femme salariée a droit aux deux tiers de sa rémunération ») et
+  art. 59 (l'obligation de l'art. 130 survit à la suspension), art. 131
+  (« Toute convention contraire aux dispositions des articles 129 et 130
+  ci-dessus est nulle de plein droit ») ; loi n° 16/009, art. 48, et arrêté
+  n° 146/2018, art. 63 (l'indemnité de la Caisse, « intégralité de la
+  rémunération journalière moyenne ») et art. 139, al. 2 et 3 (subrogation de
+  plein droit de l'employeur en règle, totale s'il paie toute la
+  rémunération, « à la limite de la partie versée » s'il n'en paie qu'une
+  partie). Sans subrogation, l'employeur doit les deux tiers et ne déduit
+  rien · aucun texte n'autorise l'imputation (l'art. 106, al. 2 ne vise que
+  l'accident du travail), et une règle de protection ne se tranche pas
+  contre celle qu'elle protège (CLAUDE.md, P5). C'est ce que fait déjà
+  `personnel/absences.ts` (régime des deux tiers, déduction réservée à
+  `DEDUITE` sur l'accident du travail, subrogation partielle bornée à la
+  partie versée) ; aucun message ni aucune bulle ne disait la question
+  ouverte.
 - Q3 · nature de l'employeur pour l'INPP, régime de la retenue, classe et
   personnes à charge se ressaisissent chaque mois (champs de la simulation,
   figés par le bulletin émis). Les garder au dossier et au salarié pour

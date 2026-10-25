@@ -151,6 +151,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'conges',
       // Ligne sage-l5 · ses absences (fonction 78) · la relation seule.
       'absences',
+      // Ligne sage-l5 · ses feuilles de temps (fonction 78, reste) · la relation seule.
+      'feuillesTemps',
       // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU est un fait
       // de gestion (art. 98, al. 2), admis ; RIB, lignes de paiement et
       // d'ordre de virement · les relations seules.
@@ -321,6 +323,23 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'motifAnnulation',
       'creePar',
       'createdAt',
+    ],
+    // LIGNE SAGE-L5, FONCTION 78, RESTE · LA FEUILLE DE TEMPS · le journal dit
+    // son salarié, sa période et son annulation ; l'observation est masquée.
+    FeuilleTemps: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'du',
+      'au',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
+      'jours',
     ],
     // L'AVANCE AU SALARIÉ · le journal dit qu'elle existe, de quel type, à
     // quelle date et sur quelle pièce ; le montant et l'objet sont masqués,

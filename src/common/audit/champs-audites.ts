@@ -309,6 +309,14 @@ export const MODELES_AUDITES = new Set<string>([
   // Une indemnité de la Caisse déduite ou reçue par subrogation change ce que
   // le bulletin propose.
   'IndemniteCaisseAbsence',
+  // Ligne sage-l5, fonction 78, reste · une heure saisie à la feuille de temps
+  // change les heures supplémentaires proposées au bulletin sans qu'aucun
+  // montant ne la nomme ; un compteur libre change ce que les feuilles
+  // cumulent · la trace dit qui a saisi quoi, et quand.
+  'FeuilleTemps',
+  'JourFeuilleTemps',
+  'CompteurHeures',
+  'HeuresCompteurJour',
   // Un RIB de salarié modifié en silence détourne un salaire (comme RibTiers) ·
   // un paiement des salaires passe une pièce au journal, et son annulation
   // rend les bulletins payables · la trace dit qui et quand.
@@ -619,6 +627,10 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // masquée comme la rémunération ; sa pièce nomme le bordereau. Le mois, le
   // traitement et l'annulation restent.
   IndemniteCaisseAbsence: ['montant', 'piece'],
+  // Ligne sage-l5, fonction 78, reste · l'observation d'une feuille de temps
+  // peut dire pourquoi un jour est vide (une maladie, une garde d'enfant),
+  // même raison que l'absence · les dates, les heures et l'annulation restent.
+  FeuilleTemps: ['observation'],
   // Ligne sage-l5 · les coordonnées d'un salarié sont une donnée de la
   // personne, que l'aide-comptable ne lit pas · la trace dit qu'un RIB a
   // changé, qui l'a changé et quand, et la banque ; les numéros sont masqués.
