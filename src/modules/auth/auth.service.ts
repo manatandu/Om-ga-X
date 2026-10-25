@@ -39,6 +39,7 @@ import {
   SessionEnCours,
 } from './session-longue';
 import { ajouterSessionFermee, empreinteSession, finDeVie } from './sessions-fermees';
+import { logicielsDeLaSession } from '../utilisateurs/logiciels';
 
 export const SALT_ROUNDS = 12;
 
@@ -886,6 +887,10 @@ export class AuthService {
       // Le client force l'écran de changement de mot de passe avant
       // l'espace de travail tant que ce drapeau est vrai.
       doitChangerMotDePasse: user.doitChangerMotDePasse,
+      // Les tuiles que l'administrateur ouvre à cet utilisateur · `null` =
+      // toutes. Relu à chaque appel · l'attribution prend effet à la
+      // prochaine lecture, sans fermer de session (`utilisateurs/logiciels.ts`).
+      logicielsAutorises: logicielsDeLaSession(user),
       tenant: {
         id: user.tenant.id,
         nom: user.tenant.nom,

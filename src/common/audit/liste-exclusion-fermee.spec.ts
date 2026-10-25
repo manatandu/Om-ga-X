@@ -68,6 +68,10 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // la banque à un caissier la veille d'un décaissement doit se relire.
     'restreindreJournaux',
     'journauxAutorises',
+    // Logiciels attribués (écran de tuiles) · ADMIS : qui a ouvert ou fermé
+    // quelle tuile à qui se relit, même si c'est un affichage.
+    'restreindreLogiciels',
+    'logicielsAutorises',
     // Double authentification · ADMIS pour sa DATE seulement : qui l'a
     // activée ou retirée, et quand, se relit. Le secret, le dernier pas et
     // les empreintes des codes de secours sont exclus.

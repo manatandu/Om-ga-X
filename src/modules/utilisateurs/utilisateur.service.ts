@@ -7,6 +7,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
 import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { LOGICIELS } from './logiciels';
 
 const SALT_ROUNDS = 12;
 
@@ -27,6 +28,8 @@ const SELECTION = {
   fonctionsAutorisees: true,
   restreindreJournaux: true,
   journauxAutorises: true,
+  restreindreLogiciels: true,
+  logicielsAutorises: true,
 } as const;
 
 /** Ne dit pas à qui l'adresse appartient · même phrase à la lecture et à la base. */
@@ -142,6 +145,43 @@ export class UtilisateurService {
         restreindreJournaux: dto.restreindre,
         journauxAutorises: dto.restreindre ? ids : [],
         sessionsInvalidesAvant: new Date(),
+      },
+      select: SELECTION,
+    });
+  }
+
+  /**
+   * LOGICIELS ATTRIBUÉS (écran de tuiles, `logiciels.ts`) · ce que
+   * l'utilisateur voit après sa connexion. Mêmes refus que les deux
+   * restrictions voisines · jamais un administrateur (il ouvre et ferme les
+   * tuiles des autres), cloisonné par dossier. UNE DIFFÉRENCE VOULUE · aucune
+   * session n'est fermée (`sessionsInvalidesAvant` intact) · c'est un
+   * affichage, pas un droit, et l'effet est immédiat à la relecture de
+   * /auth/me. Une restriction sans aucune tuile est refusée · l'utilisateur
+   * n'aurait aucune porte ; pour ne rien lui laisser saisir, c'est le rôle.
+   */
+  async definirLogiciels(tenantId: string, userId: string, dto: { restreindre: boolean; logiciels: string[] }) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+    if (user.role === RoleUtilisateur.ADMIN_CABINET && dto.restreindre) {
+      throw new BadRequestException(
+        "Un administrateur n'est jamais restreint · c'est lui qui attribue les logiciels des autres. Changez d'abord son rôle.",
+      );
+    }
+    const connus: readonly string[] = LOGICIELS;
+    const inconnu = dto.logiciels.find((l) => !connus.includes(l));
+    if (inconnu) throw new BadRequestException(`Logiciel inconnu : ${inconnu}`);
+    const choisis = [...new Set(dto.logiciels)];
+    if (dto.restreindre && choisis.length === 0) {
+      throw new BadRequestException(
+        'Cochez au moins un logiciel · un utilisateur sans aucun logiciel ne pourrait rien ouvrir. Pour ne rien lui laisser saisir, changez son rôle.',
+      );
+    }
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        restreindreLogiciels: dto.restreindre,
+        logicielsAutorises: dto.restreindre ? choisis : [],
       },
       select: SELECTION,
     });

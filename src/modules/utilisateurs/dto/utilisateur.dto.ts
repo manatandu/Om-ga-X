@@ -1,6 +1,7 @@
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsOptional, IsUUID, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsUUID, MinLength } from 'class-validator';
 import { CourrielNormalise } from '../../../common/courriel';
 import { FonctionMetier, RoleUtilisateur } from '@prisma/client';
+import { LOGICIELS } from '../logiciels';
 
 export class CreerUtilisateurDto {
   @CourrielNormalise()
@@ -50,4 +51,17 @@ export class DefinirJournauxDto {
   @IsArray()
   @IsUUID('all', { each: true })
   journaux!: string[];
+}
+
+/**
+ * Logiciels (tuiles) attribués · voir `../logiciels.ts`. `restreindre: false`
+ * rend toutes les tuiles (le « null » du sens) ; la liste est alors ignorée.
+ */
+export class DefinirLogicielsDto {
+  @IsBoolean()
+  restreindre!: boolean;
+
+  @IsArray()
+  @IsIn(LOGICIELS, { each: true })
+  logiciels!: string[];
 }
