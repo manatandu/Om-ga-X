@@ -3546,8 +3546,11 @@ export class ControlesService {
     // la date n'existe qu'une fois les comptes arrêtés par les organes.
     //
     // Les quatre mois se comptent de date à date (`ajouterMois`, jour borné au
-    // dernier du mois) · 31 décembre donne 30 avril ; une clôture au 30 juin
-    // donne le 30 octobre et non le 31, la lecture la plus courte, qui avertit
+    // dernier du mois) · l'exercice coïncidant avec l'année civile (art. 7,
+    // al. 2), la clôture tombe au 31 décembre et la limite au 30 avril. Une
+    // autre date de clôture ne vient que d'une cessation d'activité (art. 7,
+    // al. 4 · exercice arrêté à la dissolution) ; elle suit la même règle, la
+    // lecture la plus courte (30 juin donne 30 octobre, pas 31), qui avertit
     // plus tôt. Le jour courant est celui de Kinshasa, et le délai n'est
     // dépassé qu'au lendemain de sa date (`echeanceDepassee`).
     const aujourdhuiArrete = jourDeKinshasa(new Date(maintenant));
