@@ -247,7 +247,9 @@ poste, attribution par utilisateur par l'administrateur
 (`User.restreindreLogiciels`, `logicielsAutorises`, `PUT
 /utilisateurs/:id/logiciels`), effacée quand le rôle ne la suit pas ;
 MASQUER N'EST PAS REFUSER · le refus par le serveur, module par module, reste
-au suivi.
+au suivi ; et le même jour les DOUZE IDÉES DE MICROFINA++, toutes cochées par
+Manasse (« pouvons-nous attaquer les fonctionnalités de microfina ? », puis
+les douze cases), en quatre lignes · `docs/comparaison-microfina/plan-reproduction-microfina.md`.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
