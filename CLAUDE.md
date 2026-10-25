@@ -81,7 +81,7 @@ docs/            plan de construction, audits, guides pilote, notes de droit
                  · historique/ range les documents révolus, sous bandeau (F267)
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
 .claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
-                 et ses six compagnes, impeccable (§ 11)
+                 et ses six compagnes, impeccable, security-audit (§ 11)
 .claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max et d'impeccable (§ 11)
 ```
 
@@ -5949,6 +5949,20 @@ Les conseils de ces compétences ne priment JAMAIS sur ce fichier · la charte
 OmegaX (§ 9 bis), le modèle Sage (§ 9 ter) et « aucun paragraphe explicatif à
 l'écran » l'emportent là où elles les contredisent. Cela ne remplace pas leur
 déploiement par Réglages → Compétences, que Manasse tient seul.
+
+COMPÉTENCE `security-audit` DE CLOUDFLARE (2026-10-25, demande expresse de
+Manasse · « Installe https://github.com/cloudflare/security-audit-skill.git Et
+execute l'audit du logiciel avec ») · copiée dans `.claude/skills/security-audit/`
+depuis le commit `c1c8a8c` de son dépôt, licence MIT jointe (`LICENSE`), son
+mode d'emploi gardé en `README.amont.md`. Rien n'y est exécuté à l'installation ;
+ses deux validateurs (`validate-findings.cjs`, `validate-coverage-ledger.cjs`)
+ne lisent que des fichiers, sans réseau ni sous-processus, et ses propres tests
+passent. Une seule retouche · les tirets cadratins remplacés par « · ». Ses
+sorties d'audit s'écrivent HORS du dépôt (règle de la compétence), et le code
+d'OmegaX n'est jamais lancé par elle hors d'un bac à sable isolé du réseau ;
+faute de ce bac à sable, l'audit reste une lecture du source, et ce qui ne s'y
+tranche pas est dit « à valider ». Ses constats se classent comme ceux des
+autres relecteurs et ne priment pas sur ce fichier.
 
 SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
 « Installe ce MCP ») · déclaré dans `.mcp.json` à la racine, composants Magic UI
