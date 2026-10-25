@@ -409,3 +409,28 @@ export async function verifierCaisseProvisionnee(
   const motif = await motifCaisseNonProvisionnee(prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
   if (motif) throw new BadRequestException(motif);
 }
+
+/**
+ * LE SOLDE D'UNE CAISSE À LA FIN D'UN JOUR (ligne microfina-m2, idée 5 ·
+ * arrêté de caisse quotidien) · la MÊME lecture que le jugement ci-dessus,
+ * pour qu'un arrêté et un refus de sortie ne disent jamais deux soldes
+ * différents de la même caisse au même jour. Tous statuts sauf la situation
+ * et l'à-nouveau provisoire (une sortie au brouillard a quitté la caisse), à
+ * la date INSCRITE (art. 22, 4°), ouverture remontée vers les exercices
+ * précédents non clôturés, dans l'unité du jugement (une devise quand toutes
+ * les lignes jusqu'au jour en portent une seule, sinon francs). En centimes.
+ * Lecture seule · elle n'écrit ni ne juge rien.
+ */
+export async function soldeDeCaisseAuJour(
+  prisma: Client,
+  tenantId: string,
+  compteId: string,
+  exercice: { id: string; dateDebut: Date },
+  jour: string,
+): Promise<{ devise: string | null; soldeCentimes: number }> {
+  const existants = (await mouvementsParJour(prisma, tenantId, compteId, exercice.id, undefined)).filter((m) => m.jour <= jour);
+  const ouverture = await mouvementsDOuverture(prisma, tenantId, compteId, exercice);
+  const { devise } = uniteDuJugement([...ouverture, ...existants]);
+  const solde = [...ouverture, ...existants].reduce((s, m) => s + netDansLUnite(m, devise), 0);
+  return { devise, soldeCentimes: Math.round(solde) };
+}

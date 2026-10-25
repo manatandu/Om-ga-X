@@ -188,6 +188,9 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/controles': 'contrôles du dossier, tout le plan',
   '/controles/dossier-revision': 'dossier de révision, tout le plan',
   '/controles/caisse': 'caisses 57 à solde lu sur la balance, contrôle de révision',
+  // Ligne microfina-m2, idée 5 · la situation du jour compte chaque caisse 57
+  // du plan, comme le procès-verbal de comptage · un arrêté ne saisit rien.
+  '/caisses/situation': 'situation des caisses 57 du plan au jour, lue sur les écritures, aucune saisie',
   '/etats-financiers/projet/emplois-ressources': 'état financier, tout le plan',
   '/etats-financiers/projet/note-bailleur': 'état financier, tout le plan',
   '/fiscalite/exercices/:exerciceId/propositions-retraitements': 'retraitements fiscaux proposés sur les comptes mouvementés',

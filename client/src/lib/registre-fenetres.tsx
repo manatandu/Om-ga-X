@@ -106,6 +106,9 @@ const DevisesPage = lazy(() => import('../pages/DevisesPage').then((m) => ({ def
 const RelancesPage = lazy(() => import('../pages/RelancesPage').then((m) => ({ default: m.RelancesPage })));
 const ConventionsFinancementPage = lazy(() => import('../pages/ConventionsFinancementPage').then((m) => ({ default: m.ConventionsFinancementPage })));
 const EngagementsPage = lazy(() => import('../pages/EngagementsPage').then((m) => ({ default: m.EngagementsPage })));
+const ChequesEmisPage = lazy(() => import('../pages/ChequesEmisPage').then((m) => ({ default: m.ChequesEmisPage })));
+const ArreteCaissePage = lazy(() => import('../pages/ArreteCaissePage').then((m) => ({ default: m.ArreteCaissePage })));
+const BonsCommandePage = lazy(() => import('../pages/BonsCommandePage').then((m) => ({ default: m.BonsCommandePage })));
 const OdAnalytiquesPage = lazy(() => import('../pages/OdAnalytiquesPage').then((m) => ({ default: m.OdAnalytiquesPage })));
 const ComptabiliteGestionPage = lazy(() =>
   import('../pages/ComptabiliteGestionPage').then((m) => ({ default: m.ComptabiliteGestionPage })),
@@ -208,6 +211,10 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/reglements$/, titre: 'Règlement des tiers', titreCourt: 'Règlements', rendre: () => <ReglementsPage /> },
   { motif: /^\/virements-fonds$/, titre: 'Virement de fonds', titreCourt: 'Virements', rendre: () => <VirementsFondsPage /> },
   { motif: /^\/remises$/, titre: 'Remises en banque', titreCourt: 'Remises', rendre: () => <RemisesPage /> },
+  // Ligne microfina-m2, idée 5 · arrêté de caisse quotidien et plafond d'encaisse, aux deux référentiels.
+  // Ligne microfina-m2, idée 9 · le registre des chèques émis, aux deux référentiels.
+  { motif: /^\/cheques-emis$/, titre: 'Chèques émis', titreCourt: 'Chèques émis', rendre: () => <ChequesEmisPage /> },
+  { motif: /^\/arrete-caisse$/, titre: 'Arrêté de caisse', titreCourt: 'Arrêté de caisse', rendre: () => <ArreteCaissePage /> },
   { motif: /^\/remises\/types$/, titre: 'Types de remise', titreCourt: 'Types de remise', rendre: () => <RemisesPage ongletInitial="types" /> },
   { motif: /^\/effets$/, titre: 'Effets de commerce', titreCourt: 'Effets', rendre: () => <EffetsPage /> },
   { motif: /^\/extraits-bancaires$/, titre: 'Extraits bancaires', titreCourt: 'Extraits', rendre: () => <ExtraitsBancairesPage /> },
@@ -703,6 +710,16 @@ export const FENETRES: DefinitionFenetre[] = [
     titreCourt: 'Engagements',
     referentielsApplicables: ['SYCEBNL'],
     rendre: () => <EngagementsPage />,
+  },
+  {
+    // Ligne microfina-m2, idée 2 · le bon remis fait naître l'engagement de
+    // ses lignes budgétaires (Application 22, règle (d)). SYCEBNL seul, comme
+    // le registre, et le serveur refuse pareil (`@ReferentielsAutorises`).
+    motif: /^\/bons-commande$/,
+    titre: 'Bons de commande fournisseur',
+    titreCourt: 'Bons de commande',
+    referentielsApplicables: ['SYCEBNL'],
+    rendre: () => <BonsCommandePage />,
   },
   // LE MENU « ? » · comme celui de Sage 100 i7 (Rubriques d'aide, Consulter le
   // manuel, Sage sur le Web, À propos · manuel de référence de Sage 100

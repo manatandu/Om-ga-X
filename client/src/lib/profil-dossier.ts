@@ -47,6 +47,8 @@ export const CHEMINS_SANS_OBJET_SMT: readonly string[] = [
   '/etats-personnalises',
   '/palmares-journaux',
   '/engagements',
+  // Le bon de commande fait naître l'engagement · même masque que le registre (ligne microfina-m2).
+  '/bons-commande',
   // Révision du cabinet · décision d'OmegaX pour une petite entité.
   '/circularisation',
   '/questionnaire-revision',

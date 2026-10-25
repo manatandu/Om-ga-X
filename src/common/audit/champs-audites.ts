@@ -40,6 +40,10 @@ export const MODELES_AUDITES = new Set<string>([
   // Un RIB modifié en silence détourne un paiement · la banque se journalise.
   'Banque',
   'RibBanque',
+  // Ligne microfina-m2, idée 9 · le carnet reçu et chaque numéro servi · un
+  // chèque délié ou annulé en silence couvrirait un paiement détourné.
+  'Chequier',
+  'ChequeEmis',
   'LibelleEcriture',
   'Tiers',
   // Retirer le contrat ou le RCCM d'un tiers doit laisser une trace · le
@@ -264,6 +268,10 @@ export const MODELES_AUDITES = new Set<string>([
   // l'écart qu'ils produisent. Un chiffre corrigé après coup referme un écart
   // que la commission avait à trancher, et le PV imprimé ne le dirait pas.
   'ProcesVerbalComptageCaisse',
+  // Ligne microfina-m2, idée 5 · l'arrêté quotidien (figé, annulé avec son
+  // motif) et le plafond d'encaisse, convention du dossier qui avertit.
+  'ArreteCaisse',
+  'PlafondEncaisse',
   'Exoneration',
   'LiquidationTva',
   'RetraitementFiscal',
@@ -345,6 +353,12 @@ export const MODELES_AUDITES = new Set<string>([
   'RapportBailleur',
   'EngagementDepense',
   'ExecutionEngagement',
+  // Ligne microfina-m2, idée 2 · le bon de commande qui fait naître
+  // l'engagement, ses lignes (ce qui est engagé) et la facture qui l'exécute ·
+  // une ligne retouchée ou une part retirée déplace le crédit disponible.
+  'BonCommandeFournisseur',
+  'LigneBonCommande',
+  'ExecutionBonCommande',
   // L'OD analytique déplace du réalisé entre sections sans passer par le
   // journal · journalisée à la tête, comme l'écriture.
   'OdAnalytique',
@@ -450,6 +464,7 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   LigneReevaluationBilan:
     'Lignes par bien de la réévaluation, journalisée à la tête · écrites avec elle ; seuls la reprise de la provision et l’imputation d’une perte les retouchent, actes eux-mêmes journalisés ou portés par une écriture.',
   CoupureComptee: 'Ventilation par coupure du PV de comptage, journalisé · le total compté est sur le PV.',
+  CoupureArreteCaisse: "Ventilation par coupure de l'arrêté de caisse, journalisé · les espèces comptées et le solde figé sont sur l'arrêté, qui ne se retouche pas.",
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
   LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,

@@ -4382,6 +4382,8 @@ export interface EngagementDepense {
   /** Ce qui pèse ENCORE sur le budget · jamais le montant entier. */
   resteAExecuter: number;
   executions: ExecutionEngagement[];
+  /** Le bon de commande qui l'a fait naître · il se tient alors par son bon (ligne microfina-m2). */
+  bonCommande?: { id: string; numero: number | null } | null;
 }
 
 export interface EcritureRattachable {
@@ -5120,4 +5122,70 @@ export interface LieuBien {
   code: string;
   intitule: string;
   _count: { immobilisations: number };
+}
+
+// ---------------------------------------------------------------------------
+// Bons de commande fournisseur (ligne microfina-m2, idée 2)
+// ---------------------------------------------------------------------------
+
+export type StatutBonCommande = 'BROUILLON' | 'REMIS' | 'CLOS';
+
+export interface BonCommandeResume {
+  id: string;
+  numero: number | null;
+  statut: StatutBonCommande;
+  objet: string;
+  fournisseurNom: string | null;
+  tiersId: string;
+  dateRemise: string | null;
+  montantTTC: number;
+  resteAFacturer: number;
+  resteAvantCloture: number;
+  motifCloture: string | null;
+}
+
+export interface BonCommandeDetail {
+  id: string;
+  numero: number | null;
+  statut: StatutBonCommande;
+  objet: string;
+  tiers: { id: string; code: string; nom: string };
+  fournisseurNom: string | null;
+  exercice: { id: string; statut: string };
+  dateRemise: string | null;
+  motifCloture: string | null;
+  lignes: {
+    id: string;
+    ordre: number;
+    designation: string;
+    quantite: number;
+    prixUnitaire: number;
+    montantHT: number;
+    montantTva: number;
+    section: { id: string; code: string; intitule: string };
+  }[];
+  parSection: {
+    section: { id: string; code: string; intitule: string } | undefined;
+    engage: number;
+    resteAFacturer: number;
+    engagement: { id: string; reference: string; sectionId: string; statut: string } | null;
+  }[];
+  factures: {
+    factureId: string;
+    numeroSerie: string;
+    dateFacture: string;
+    numeroPiece: number | null;
+    engagementExecute: boolean;
+    parts: { section: string; montant: number }[];
+  }[];
+}
+
+export interface FactureExecutable {
+  id: string;
+  numeroSerie: string;
+  dateFacture: string;
+  numeroPiece: number | null;
+  montantTTC: number;
+  dejaAffecte: number;
+  disponible: number;
 }

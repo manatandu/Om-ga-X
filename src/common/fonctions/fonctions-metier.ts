@@ -91,6 +91,9 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   TitresPlacementController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
+  // Ligne microfina-m2 · arrêté de caisse et registre des chèques émis.
+  ArretesCaisseController: FonctionMetier.TRESORERIE,
+  ChequesController: FonctionMetier.TRESORERIE,
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
   // 153) · elle dit quelle facture le règlement paie.
   ImputationsPaiementsController: FonctionMetier.TRESORERIE,
@@ -113,6 +116,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   MagasinController: FonctionMetier.STOCKS,
   EmballagesController: FonctionMetier.STOCKS,
   AnalytiqueController: FonctionMetier.ANALYTIQUE,
+  // Ligne microfina-m2 · le bon de commande engage le budget (SYCEBNL, Application 22).
+  BonsCommandeController: FonctionMetier.ANALYTIQUE,
   ComptabiliteGestionController: FonctionMetier.ANALYTIQUE,
   BailleurController: FonctionMetier.ANALYTIQUE,
   ConventionFinancementController: FonctionMetier.ANALYTIQUE,
