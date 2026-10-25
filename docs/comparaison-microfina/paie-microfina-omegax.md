@@ -1,5 +1,12 @@
 # La paie et le personnel · Microfina++ et OmegaX (2026-10-25)
 
+> **Lecture complète du manuel (2026-10-25).** Ce document a été écrit sans
+> pouvoir lire le manuel au-delà du folio 79. Le PDF entier a depuis été lu,
+> captures comprises · `audit-manuel-microfina-306-pages.md` le remplace pour
+> la lecture du manuel et en corrige les lignes (partie A, § 3 ; partie C,
+> § 3). Il reste en place pour son raisonnement et ses renvois à la CAMEC.
+
+
 Audit comparatif, sans décision. Rien de ce qui suit n'est codé : toute
 amélioration nommée au § (d) est une FONCTION NOUVELLE, sous le gel des
 nouveautés (CLAUDE.md § 5), et n'entre sur `main` que si Manasse lève le gel

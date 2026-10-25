@@ -1,5 +1,12 @@
 # Audit du manuel Microfina++, module par module, face à OmegaX (2026-10-25)
 
+> **Lecture complète du manuel (2026-10-25).** Ce document a été écrit sans
+> pouvoir lire le manuel au-delà du folio 79. Le PDF entier a depuis été lu,
+> captures comprises · `audit-manuel-microfina-306-pages.md` le remplace pour
+> la lecture du manuel et en corrige les lignes (partie A, § 3 ; partie C,
+> § 3). Il reste en place pour son raisonnement et ses renvois à la CAMEC.
+
+
 Document d'audit, sans décision. Il COMPLÈTE
 `docs/comparaison-microfina/analyse-microfina-omegax.md` (2026-10-21), qui
 reste en place, et `docs/comparaison-microfina/paie-microfina-omegax.md`,
