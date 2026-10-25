@@ -112,7 +112,18 @@ describe('le transfert d’un brouillard hérité dans un journal ordinaire', ()
     expect(update).toHaveBeenCalledTimes(1);
     const { where, data } = update.mock.calls[0][0];
     expect(where).toEqual({ id: 'e1' });
-    expect(data).toEqual({ journalId: 'jOD', numeroPiece: 42, date: new Date('2026-04-10') });
+    // Le journal et le numéro sont du contenu · le transfert nomme son auteur
+    // (ici aucun, il est INCONNU) et fait tomber le visa (ligne microfina-m1).
+    expect(data).toEqual({
+      journalId: 'jOD',
+      numeroPiece: 42,
+      date: new Date('2026-04-10'),
+      contenuPar: null,
+      contenuLe: expect.any(Date),
+      viseePar: null,
+      viseeLe: null,
+      viseeEmpreinte: null,
+    });
     expect(Object.keys(data)).not.toContain('lignes');
     expect(Object.keys(data)).not.toContain('statut');
     for (const f of Object.values(ligneEcriture)) expect(f).not.toHaveBeenCalled();
@@ -161,7 +172,7 @@ describe('le transfert d’un brouillard hérité dans un journal ordinaire', ()
       sectionsParId: new Map(),
     } as never);
     await service.transfererDansUnJournalOrdinaire('t1', 'e1', { journalId: 'jOD', reporterAuPremierJourOuvert: true });
-    expect(update.mock.calls[0][0].data).toEqual({
+    expect(update.mock.calls[0][0].data).toMatchObject({
       journalId: 'jOD',
       numeroPiece: 42,
       date: new Date('2026-04-01'),

@@ -15,6 +15,8 @@ function monde(
     taux?: number;
     montantTva?: number;
     imposable?: boolean;
+    circuitVisa?: boolean;
+    visee?: boolean;
   } = {},
 ) {
   // La doublure HONORE le filtre · par identifiant (le compte de gestion
@@ -30,6 +32,7 @@ function monde(
       findFirst: jest.fn(async () => ({
         id: 'f1', sens: 'VENTE', nature: 'FACTURE', numeroSerie: 'F-7', contrepartieNom: 'ASBL', autresImpotsEtTaxes: null,
         ecritureId: o.lie ? 'e0' : null, dateFacture: new Date('2026-10-15T00:00:00Z'),
+        saisiePar: 'u', viseePar: o.visee ? 'v' : null, viseeLe: o.visee ? new Date('2026-10-16T08:00:00Z') : null,
         tiers: { comptesRattaches: [{ compteId: 'c411' }] },
         lignes: [
           {
@@ -48,7 +51,7 @@ function monde(
         ),
       ),
     },
-    tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: o.referentiel ?? 'SYSCOHADA' })) },
+    tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: o.referentiel ?? 'SYSCOHADA', circuitVisa: o.circuitVisa ?? false })) },
     exercice: { findFirst: jest.fn(async () => ({ id: 'ex' })) },
     ecriture: { delete: jest.fn() },
   };
@@ -71,6 +74,14 @@ describe('passer l’écriture d’une facture · service', () => {
     await expect(monde({ lie: true }).s.comptabiliser('t', 'u', 'f1', { journalId: 'j', compteGestionId: 'c706' })).rejects.toThrow(/déjà liée/);
     await expect(monde({ journal: 'ACHATS' }).s.comptabiliser('t', 'u', 'f1', { journalId: 'j', compteGestionId: 'c706' })).rejects.toThrow(/journal de ventes/);
     await expect(monde({ numero: '60100000' }).s.comptabiliser('t', 'u', 'f1', { journalId: 'j', compteGestionId: 'c706' })).rejects.toThrow(/classe 7/);
+  });
+
+  it('sous le circuit de visa, une facture non visée ne se comptabilise pas ; visée, elle passe (ligne microfina-m1)', async () => {
+    const nonVisee = monde({ circuitVisa: true });
+    await expect(nonVisee.s.comptabiliser('t', 'u', 'f1', { journalId: 'jv', compteGestionId: 'c706' })).rejects.toThrow(/pas visée/);
+    expect(nonVisee.ecritures.creer).not.toHaveBeenCalled();
+    const visee = monde({ circuitVisa: true, visee: true });
+    await expect(visee.s.comptabiliser('t', 'u', 'f1', { journalId: 'jv', compteGestionId: 'c706' })).resolves.toMatchObject({ ecritureId: 'e1' });
   });
 
   it('refuse le taux d’un autre dossier porté par une pièce ancienne (audit final F120)', async () => {

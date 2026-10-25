@@ -27,7 +27,7 @@ function monde(numerotation: string, exercice = exerciceOuvert) {
   // relecture de la dissolution) · la doublure les rend.
   const tx = {
     ligneEcriture: { deleteMany: jest.fn() },
-    ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+    ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
     // Aucune pièce jointe (ligne sage-l6) · leur description n'a rien à suivre.
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
     exercice: { findFirst: jest.fn().mockResolvedValue(exercice) },

@@ -689,6 +689,17 @@ model Tenant {
   // (`tiers/visa-rib.ts`). Un RIB modifié en silence détourne un paiement ·
   // le visa met un second regard entre la saisie et l'argent qui part.
   visaRibs                      Boolean  @default(false)
+  // CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1 · Microfina++,
+  // « visa puis validation », M p. 130 à 133). Une OPTION, désactivée par
+  // défaut, comme le double regard · aucun texte lu ne l'impose. AUDCIF
+  // art. 22, 2° impose la validation et ne nomme personne ; l'art. 69 laisse
+  // les procédures à l'entité (SYSCOHADA), le SYCEBNL les demande par son
+  // art. 16, 2), l'art. 69 lui étant exclu par son art. 3. Activée, une
+  // écriture n'entre au livre-journal qu'une fois VISÉE, sur son contenu
+  // présent, par un autre utilisateur que l'auteur de son dernier contenu, et
+  // une facture ne se comptabilise qu'une fois visée (approbation, CPCC
+  // ch. 3, § 3.1.1) · `comptabilite/circuit-visa.ts`.
+  circuitVisa                   Boolean  @default(false)
   // SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36 · Sage, « écart
   // de règlement » sous un montant paramétré) · le reste qu'un règlement peut
   // passer en charge en soldant le tiers (`reglements/ecart-escompte.ts` ·
@@ -2023,6 +2034,30 @@ model Ecriture {
   /// et le service refuse l'un sans l'autre.
   secondRegardNom   String?
   secondRegardMotif String?
+
+  /// L'AUTEUR DU DERNIER CONTENU (ligne microfina-m1, idée 1 · constat de
+  /// l'audit de sécurité du 2026-10-25). `createdBy` dit qui a SAISI la pièce,
+  /// jamais qui l'a réécrite ensuite au brouillard · le double regard
+  /// comparait le validateur au seul `createdBy`, et un comptable qui
+  /// réécrivait le brouillard d'un collègue puis le validait passait sans
+  /// trace. `contenuLe` est posé par tout changement du contenu après la
+  /// création (modification, réimputation, transfert, retouche d'un module),
+  /// `contenuPar` nomme son auteur · `contenuLe` sans `contenuPar` dit un
+  /// chemin qui n'a pas nommé le sien (auteur INCONNU, `circuit-visa.ts`).
+  /// Les deux nuls · le contenu est celui de la création, son auteur est
+  /// `createdBy`.
+  contenuPar String?
+  contenuLe  DateTime?
+
+  /// LE VISA AVANT VALIDATION (`Tenant.circuitVisa`) · qui, quand, et
+  /// l'EMPREINTE du contenu visé. Toute saisie du contenu le fait tomber (les
+  /// trois remis à nul, comme le visa d'un RIB), et la validation rejoue
+  /// l'empreinte · un contenu changé par un chemin qui n'aurait pas remis le
+  /// visa à nul n'entre pas pour autant au livre-journal sous un visa qui ne
+  /// le couvre plus.
+  viseePar       String?
+  viseeLe        DateTime?
+  viseeEmpreinte String?
 
   // Régularisations et abonnements dont cette écriture est l'aboutissement.
   regularisationConstatee             Regularisation?             @relation("RegulConstatation")
@@ -7451,6 +7486,18 @@ model Facture {
   /// dupliquée. Un pour un : deux factures ne partagent pas une écriture.
   ecritureId String?   @unique
   ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: SetNull)
+
+  /// L'AUTEUR DE L'ENREGISTREMENT ET LE VISA DE LA FACTURE (ligne
+  /// microfina-m1, idée 1 · CPCC ch. 3, § 3.1.1, « suit l'approbation des
+  /// factures […] et réceptionne celles approuvées »). Sous le circuit de visa
+  /// (`Tenant.circuitVisa`), une facture ne se comptabilise qu'une fois visée
+  /// par un autre utilisateur que celui qui l'a enregistrée. Une facture ne se
+  /// modifie pas (elle se supprime ou s'annule par une note de crédit) · son
+  /// visa ne tombe donc jamais. `saisiePar` nul · facture d'avant la règle,
+  /// auteur inconnu, et l'écran le dit.
+  saisiePar String?
+  viseePar  String?
+  viseeLe   DateTime?
 
   lignes            LigneFacture[]
   createdAt         DateTime           @default(now())

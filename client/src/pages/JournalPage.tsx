@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { IconFilter, IconExport } from '../components/chrome/icons';
 import { ModaleCorrection } from '../components/ModaleCorrection';
 import { ModaleReimputation } from '../components/ModaleReimputation';
+import { FicheImputation } from '../components/FicheImputation';
 import { BoutonPiecesEcriture, ModalePiecesDetachees, ModalePiecesEcriture } from '../components/PiecesJointes';
 import { motifDecompteIllisible } from '../lib/pieces-jointes';
 import { piecesDeLEcriture, type DecomptePieces } from '../lib/pieces-jointes';
@@ -247,6 +248,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   // celle des pièces détachées, et le décompte de l'exercice (null tant qu'il
   // n'est pas lu · jamais « aucune » sur un décompte illisible).
   const [piecesOuvertes, setPiecesOuvertes] = useState<string | null>(null);
+  // Ligne microfina-m1 · la fiche d'imputation d'une pièce.
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
+  const fermerFiche = useCallback(() => setFicheOuverte(null), []);
   const [detacheesOuvertes, setDetacheesOuvertes] = useState(false);
   const [decomptePieces, setDecomptePieces] = useState<DecomptePieces | null>(null);
   // Un décompte illisible se DIT (relecture « échecs silencieux » de la ligne
@@ -1088,7 +1092,15 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               </span>
               <span className="font-mono text-text-dim">{l.premiereLigne ? l.journal : ''}</span>
               <span className="font-mono text-[11px] text-text-dim text-right">
-                {l.premiereLigne ? (l.numeroPiece ?? '·') : ''}
+                {/* La fiche d'imputation (ligne microfina-m1) · la pièce avec sa
+                    saisie, son visa et sa validation, imprimable. */}
+                {l.premiereLigne ? (
+                  <button type="button" onClick={() => setFicheOuverte(l.ecritureId)} title="Fiche d'imputation" className="hover:underline">
+                    {l.numeroPiece ?? '·'}
+                  </button>
+                ) : (
+                  ''
+                )}
               </span>
               <span className="font-mono text-[11px] text-text-dim truncate">{l.premiereLigne ? l.reference : ''}</span>
               <span className="font-mono" title={l.compte}>
@@ -1429,6 +1441,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         />
       )}
 
+      {ficheOuverte && <FicheImputation ecritureId={ficheOuverte} onFermer={fermerFiche} />}
       {piecesOuvertes && (
         <ModalePiecesEcriture
           ecritureId={piecesOuvertes}

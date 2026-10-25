@@ -53,7 +53,9 @@ function service(
 ) {
   const tx = {
     ligneEcriture: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }) },
+    // `update` · la tête de chaque pièce du brouillard réimputée nomme son
+    // auteur (ligne microfina-m1).
+    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }), update: jest.fn().mockResolvedValue({ id: 'e' }) },
   };
   const prisma = {
     compte: {
@@ -81,6 +83,15 @@ describe('Réimputation · le service', () => {
     const r = await s.reimputer('t', 'u', { ligneIds: ['b', 'v'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['b'] } }, data: { compteId: 'c604' } });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledTimes(1);
+    // LA FAILLE DE L'AUDIT DE SÉCURITÉ (ligne microfina-m1) · l'auteur de la
+    // réimputation au brouillard devient l'auteur du dernier contenu de la
+    // pièce, et son visa tombe · sans quoi il la validait ensuite sous le
+    // double regard, au nom de celui qui l'avait saisie.
+    expect(tx.ecriture.update).toHaveBeenCalledTimes(1);
+    expect(tx.ecriture.update.mock.calls[0][0]).toMatchObject({
+      where: { id: 'e-b' },
+      data: { contenuPar: 'u', viseePar: null, viseeEmpreinte: null },
+    });
     const data = tx.ecriture.create.mock.calls[0][0].data;
     expect(data.motifCorrection).toBe('Mauvais compte');
     expect(data.journalId).toBe('j');

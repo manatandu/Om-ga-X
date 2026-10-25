@@ -139,7 +139,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     // relecture de la dissolution) · la doublure les rend.
     const tx = {
       ligneEcriture: { deleteMany },
-      ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+      ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
       pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
     };
@@ -221,7 +221,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
   it('la description des pièces jointes suit la date et le libellé, dans la transaction', async () => {
     const { svc, tx } = monde();
     tx.ecriture.findFirst
-      .mockResolvedValueOnce({ exerciceId: 'ex1' })
+      .mockResolvedValueOnce({ exerciceId: 'ex1', statut: 'BROUILLARD' })
       .mockResolvedValueOnce({
         statut: 'BROUILLARD', estANouveauProvisoire: false, numeroPiece: 3, date: new Date('2026-03-15'),
         libelle: 'Loyer de mars', journalId: 'j1', journal: { code: 'ACH' },
@@ -431,8 +431,12 @@ describe('validation', () => {
       validees: 1,
       dejaValidees: 1,
       refuseesSecondRegard: 0,
+      refuseesAuteurInconnu: 0,
+      refuseesVisa: 0,
       sousDerogation: 0,
       motifRefus: null,
+      motifAuteurInconnu: null,
+      motifVisa: null,
       ecarteesJournalDeSituation: 0,
     });
     // La borne de dossier est exigée dans le filtre, pas seulement supposée

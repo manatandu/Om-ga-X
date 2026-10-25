@@ -1,3 +1,4 @@
+import { contenuChange } from '../comptabilite/circuit-visa';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutEcriture, StatutExercice } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -643,6 +644,11 @@ export class DeclarationDeviseANouveauService {
         },
       });
       if (count !== 1) throw new ConflictException('La ligne a changé entre la lecture et la déclaration · relisez-la.');
+      // LE CONTENU DE L'À-NOUVEAU A CHANGÉ (ligne microfina-m1) · l'auteur de
+      // la déclaration devient l'auteur du dernier contenu, et un visa posé
+      // tombe (`circuit-visa.ts`, règle 2). Une mise à jour unitaire, au
+      // journal d'audit.
+      await tx.ecriture.update({ where: { id: ligne.ecritureId }, data: contenuChange(base.createdBy, new Date()), select: { id: true } });
       const creees: string[] = [];
       for (const p of suivantes) {
         const c = await tx.ligneEcriture.create({

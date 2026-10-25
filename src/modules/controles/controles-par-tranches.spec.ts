@@ -25,6 +25,8 @@ function ecriture(i: number, avecReference: boolean) {
     createdAt: new Date('2026-05-10'),
     statut: 'VALIDEE',
     createdBy: 'u1',
+    contenuPar: null as string | null,
+    contenuLe: null as Date | null,
     valideeBy: 'u2',
     secondRegardNom: null,
     estGenereeParCloture: false,
@@ -122,6 +124,19 @@ describe('batterie de contrôles · lecture par tranches (F185)', () => {
     const { svc } = servicePagine(ecritures);
     const inverse = (await svc.analyser('t', 'ex')).anomalies.find((a) => a.code === 'TIERS_SOLDE_INVERSE');
     expect(inverse?.occurrences[0]).toMatchObject({ reference: '41110000', montant: (2 * LOT_ECRITURES + 7) * 100 - 200_000 });
+  });
+});
+
+describe('contrôle 26 · l’auteur du DERNIER contenu (ligne microfina-m1, constat de l’audit de sécurité)', () => {
+  it('signale B qui a réécrit puis validé la pièce de A, et jamais A qui valide le contenu de B', async () => {
+    const reecriteParB = { ...ecriture(1, true), createdBy: 'A', contenuPar: 'B', contenuLe: new Date('2026-05-11'), valideeBy: 'B' };
+    const valideeParA = { ...ecriture(2, true), createdBy: 'A', contenuPar: 'B', contenuLe: new Date('2026-05-11'), valideeBy: 'A' };
+    // Un contenu d'auteur inconnu n'est pas une coïncidence d'identité constatée.
+    const inconnue = { ...ecriture(3, true), createdBy: 'A', contenuPar: null, contenuLe: new Date('2026-05-11'), valideeBy: 'A' };
+    const { svc } = servicePagine([reecriteParB, valideeParA, inconnue]);
+    const a = (await svc.analyser('t', 'ex')).anomalies.find((x) => x.code === 'VALIDATION_PAR_SON_AUTEUR');
+    expect(a?.occurrences.map((o) => o.reference)).toEqual(['VT n° 1']);
+    expect(a?.libelle).toBe('Écritures validées par l’auteur de leur dernier contenu');
   });
 });
 

@@ -1824,6 +1824,8 @@ export interface ParametresDossier {
   doubleRegardValidation: boolean;
   /** Visa des RIB par un second utilisateur avant tout ordre de virement (option, faux par défaut). */
   visaRibs: boolean;
+  /** Circuit de visa avant validation (ligne microfina-m1) · option du dossier, fausse par défaut. */
+  circuitVisa?: boolean;
   /** Ligne sage-l1, fonction 60 · refus de clôturer un journal non imprimé (option, faux par défaut). */
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */
@@ -2029,10 +2031,29 @@ export interface EtatBudgetaire {
 // n'entre jamais au livre-journal (ligne sage-l1, fonction 12).
 export type StatutEcriture = 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 
+/** L'état du visa d'une pièce du brouillard, sur son contenu présent (ligne microfina-m1). */
+export type EtatVisaPiece = 'A_VISER' | 'VISEE' | 'VISA_TOMBE';
+export type NaturePiece = 'SAISIE' | 'OD' | 'FACTURE' | 'REGLEMENT';
+
 export interface LigneBrouillard {
   id: string;
   date: string;
   createdAt: string;
+  /** La nature de la pièce · le visa se filtre objet par objet. */
+  nature?: NaturePiece;
+  natureLibelle?: string;
+  facture?: string | null;
+  /** L'auteur de la saisie, en courriel. */
+  saisiePar?: string | null;
+  /** L'auteur du dernier contenu quand il n'est plus celui de la saisie · `null` s'il est inconnu. */
+  dernierContenuPar?: string | null;
+  dernierContenuLe?: string | null;
+  dernierContenuConnu?: boolean | null;
+  /** L'empreinte du contenu affiché · renvoyée au visa, qui refuse un contenu changé depuis. */
+  empreinte?: string | null;
+  visa?: { etat: EtatVisaPiece; visePar: string | null; viseLe: string | null } | null;
+  /** Le refus que le lecteur recevrait s'il visait, `null` s'il peut viser (ou hors du circuit). */
+  motifRefusVisa?: string | null;
   journal: string;
   journalIntitule: string;
   /**
@@ -2082,6 +2103,37 @@ export interface EtatBrouillard {
   tronque?: boolean;
   plafond?: number;
   delaiCentralisationJours: number;
+  /** Le circuit de visa du dossier · la colonne et le bouton « Viser » n'existent que sous lui. */
+  circuitVisa?: boolean;
+  doubleRegard?: boolean;
+}
+
+/** Le compte rendu d'un visa · chaque pièce refusée revient nommée avec son motif. */
+export interface ResultatVisa {
+  visees: number;
+  refusees: { id: string; piece: string; motif: string }[];
+  avertissements: { id: string; piece: string; avertissement: string }[];
+}
+
+/** La fiche d'imputation d'une pièce (CPCC ch. 2, § 2.6.1 · Microfina++, « Saisie par / Approuvée par »). */
+export interface FicheImputation {
+  id: string;
+  statut: string;
+  journal: { code: string; intitule: string };
+  numeroPiece: number | null;
+  date: string;
+  dateValeur: string | null;
+  libelle: string;
+  reference: string | null;
+  nature: NaturePiece;
+  natureLibelle: string;
+  facture: string | null;
+  lignes: { compte: string; intitule: string; libelle: string | null; debit: number; credit: number; echeance: string | null; sections: string[] }[];
+  saisie: { par: string | null; le: string };
+  dernierContenu: { par: string | null; auteurConnu: boolean; le: string } | null;
+  visa: { par: string | null; le: string | null; surLeContenuPresent: boolean } | null;
+  validation: { par: string | null; le: string } | null;
+  secondRegard: { nom: string; motif: string | null } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -4489,8 +4541,14 @@ export type QualificationExemptionIs = {
 export type ResultatValidation = {
   validees: number;
   dejaValidees: number;
-  /** Écartées parce que leur auteur est celui qui valide · double regard. */
+  /** Écartées parce que l'auteur de leur DERNIER contenu est celui qui valide · double regard. */
   refuseesSecondRegard: number;
+  /** Écartées sous le double regard, l'auteur du dernier contenu n'étant pas connu. */
+  refuseesAuteurInconnu?: number;
+  motifAuteurInconnu?: string | null;
+  /** Écartées sous le circuit de visa · non visées, ou visa tombé avec le contenu. */
+  refuseesVisa?: number;
+  motifVisa?: string | null;
   /** Validées sous le visa nominatif d'un second regard exercé hors logiciel. */
   sousDerogation: number;
   /** La phrase sourcée à servir, aiguillée sur le référentiel du dossier. */

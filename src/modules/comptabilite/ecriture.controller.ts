@@ -130,7 +130,7 @@ export class EcritureController {
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
   ) {
-    return this.ecritureService.brouillard(user.tenantId, { exerciceId, journalId, dateDebut, dateFin });
+    return this.ecritureService.brouillard(user.tenantId, { exerciceId, journalId, dateDebut, dateFin }, user.userId);
   }
 
   /** Modifie une écriture EN BROUILLARD · une écriture validée ne se modifie plus. */
@@ -144,7 +144,7 @@ export class EcritureController {
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
-    return this.ecritureService.modifier(user.tenantId, id, dto, { jugerLaCaisse: true });
+    return this.ecritureService.modifier(user.tenantId, id, dto, { jugerLaCaisse: true, auteur: user.userId });
   }
 
   /**
@@ -160,7 +160,7 @@ export class EcritureController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransfererEcritureDto,
   ) {
-    return this.ecritureService.transfererDansUnJournalOrdinaire(user.tenantId, id, dto);
+    return this.ecritureService.transfererDansUnJournalOrdinaire(user.tenantId, id, dto, user.userId);
   }
 
   /** Supprime une écriture EN BROUILLARD. */

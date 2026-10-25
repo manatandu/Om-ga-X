@@ -1,3 +1,4 @@
+import { estFactureVisee, nommerAuteur } from '../comptabilite/circuit-visa';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { NatureFacture, Prisma, SensFacture, StatutEcriture } from '@prisma/client';
@@ -48,6 +49,7 @@ export class FacturationService {
         // Décret n° 011/42, art. 60 · la mention n'est due que par le dossier
         // AUTORISÉ, et seulement sur les factures qu'il DÉLIVRE.
         regimeExigibiliteTva: true,
+        circuitVisa: true,
       },
     });
   }
@@ -180,9 +182,20 @@ export class FacturationService {
       }),
       this.prisma.facture.count({ where: { tenantId, ...filtre } }),
     ]);
+    // LE VISA DE CHAQUE FACTURE (ligne microfina-m1, idée 1), ses auteurs
+    // résolus en courriel · un auditeur ne lit pas un identifiant, et un
+    // utilisateur retiré du dossier est nommé comme tel.
+    const auteurs = [...new Set(factures.flatMap((f) => [f.saisiePar, f.viseePar]).filter((x): x is string => typeof x === 'string' && x !== ''))];
+    const courriels = new Map(
+      auteurs.length === 0
+        ? []
+        : (await this.prisma.user.findMany({ where: { tenantId, id: { in: auteurs } }, select: { id: true, email: true } })).map((u) => [u.id, u.email] as const),
+    );
 
     return {
       homologation: HOMOLOGATION,
+      // Le circuit de visa du dossier · sans lui, la colonne de visa ne se montre pas.
+      circuitVisa: t.circuitVisa,
       obligationDAcceptation: OBLIGATION_DACCEPTATION,
       // Décret n° 011/42, art. 60 · l'écran propose la mention cochée sur une
       // vente d'un dossier autorisé aux débits (audit final F24).
@@ -223,6 +236,12 @@ export class FacturationService {
           mentionsSocieteEmetteur: f.mentionsSocieteEmetteur as MentionsRecopiees | null,
           autresImpotsEtTaxes: nombre(f.autresImpotsEtTaxes),
           ecritureId: f.ecritureId,
+          visa: {
+            vise: estFactureVisee(f),
+            saisiePar: nommerAuteur(f.saisiePar, courriels),
+            visePar: nommerAuteur(f.viseePar, courriels),
+            viseLe: f.viseeLe,
+          },
           lignes: f.lignes.map((l) => ({
             id: l.id,
             ordre: l.ordre,
@@ -244,7 +263,14 @@ export class FacturationService {
     };
   }
 
-  async enregistrer(tenantId: string, dto: EnregistrerFactureDto) {
+  async enregistrer(
+    tenantId: string,
+    dto: EnregistrerFactureDto,
+    // L'auteur de l'enregistrement (ligne microfina-m1, idée 1) · sous le
+    // circuit de visa, il ne vise pas sa propre facture. `null` pour une pièce
+    // que le logiciel émet lui-même (facture d'abonnement de la console).
+    saisiePar: string | null = null,
+  ) {
     const t = await this.dossier(tenantId);
     // LES REFUS NOMMENT LE TEXTE EN VIGUEUR À LA DATE DE LA PIÈCE (audit final
     // F229) · une pièce de 2022 se juge sur l'art. 100 du décret n° 011/42, une
@@ -328,6 +354,7 @@ export class FacturationService {
     const facture = await this.prisma.facture.create({
       data: {
         tenantId,
+        saisiePar,
         sens: dto.sens,
         numeroSerie: dto.numeroSerie.trim(),
         dateFacture,
@@ -404,7 +431,7 @@ export class FacturationService {
    * vendeur. Sur un ACHAT, c'est la note reçue d'un fournisseur, enregistrée
    * pour la même raison qu'une facture reçue : la tenir dans le facturier.
    */
-  async emettreNoteDeCredit(tenantId: string, factureId: string, dto: EmettreNoteDeCreditDto) {
+  async emettreNoteDeCredit(tenantId: string, factureId: string, dto: EmettreNoteDeCreditDto, saisiePar: string | null = null) {
     const initiale = await this.prisma.facture.findFirst({
       where: { id: factureId, tenantId },
       include: { lignes: { orderBy: { ordre: 'asc' } }, noteDeCredit: { select: { numeroSerie: true } } },
@@ -468,6 +495,7 @@ export class FacturationService {
     const note = await this.prisma.facture.create({
       data: {
         tenantId,
+        saisiePar,
         sens: initiale.sens,
         nature: NatureFacture.NOTE_DE_CREDIT,
         factureAnnuleeId: initiale.id,

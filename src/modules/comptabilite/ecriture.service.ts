@@ -36,6 +36,20 @@ import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
 import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import {
+  LIBELLES_NATURE,
+  MOTIF_AUTEUR_INCONNU_DOUBLE_REGARD,
+  auteurDuDernierContenu,
+  contenuChange,
+  empreinteDuContenu,
+  etatDuVisa,
+  motifNonVisees,
+  motifRefusVisaEcriture,
+  natureDeLaPiece,
+  nommerAuteur,
+  partitionnerLaValidation,
+} from './circuit-visa';
+import { SELECT_CONTENU_VISE, SELECT_TRACES_VISA, contenuLu } from './circuit-visa-lecture';
 import { agregatsParCompte, filtresDesTroisColonnes, filtresDesTroisColonnesDeLaPeriode, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
 import {
   ecrituresAvantLaPeriode,
@@ -1552,7 +1566,16 @@ export class EcritureService {
    * un total, le journal un autre, et rien ne le signalait. Ce refus était
    * écrit dans ce commentaire sans qu'une ligne l'exécute.
    */
-  async modifier(tenantId: string, ecritureId: string, dto: ModifierEcritureDto, options: { jugerLaCaisse?: boolean } = {}) {
+  async modifier(
+    tenantId: string,
+    ecritureId: string,
+    dto: ModifierEcritureDto,
+    // L'AUTEUR DE LA MODIFICATION (ligne microfina-m1, idée 1) · il devient
+    // l'auteur du dernier contenu, que le double regard et le visa lisent.
+    // Absent, la modification est marquée d'un auteur INCONNU, jamais
+    // attribuée à `createdBy` · c'est l'oubli qui ouvrait la faille.
+    options: { jugerLaCaisse?: boolean; auteur?: string } = {},
+  ) {
     const ecriture = await this.trouverEnBrouillard(tenantId, ecritureId);
     await this.verifierAucunModuleNeLaTient(tenantId, [ecritureId], 'se modifie');
     const facture = await this.prisma.facture.findFirst({
@@ -1609,8 +1632,15 @@ export class EcritureService {
       async (tx) => {
         // L'écriture a pu changer d'exercice depuis la lecture (arrêt à la
         // dissolution) · son exercice se relit ici, avec la date.
-        const tenue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true } });
+        const tenue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true, statut: true } });
         if (!tenue) throw new NotFoundException('Écriture introuvable');
+        // VALIDÉE ENTRE LA LECTURE ET LA TRANSACTION (ligne microfina-m1) ·
+        // les lignes d'une pièce entrée au livre-journal ne se remplacent
+        // jamais (AUDCIF art. 22, 2°), et la validation sous verrou lit
+        // l'auteur et le visa d'une pièce qui ne doit plus bouger.
+        if (tenue.statut !== StatutEcriture.BROUILLARD && tenue.statut !== StatutEcriture.SITUATION) {
+          throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
+        }
         await relireLExerciceDansLaTransaction(tx, tenantId, tenue.exerciceId, date);
         if (dto.lignes) {
           // Les ventilations analytiques suivent leurs lignes (onDelete: Cascade
@@ -1630,6 +1660,8 @@ export class EcritureService {
             libelle: dto.libelle ?? undefined,
             reference: dto.reference ?? undefined,
             ...(dto.lignes ? { lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) } } : {}),
+            // L'auteur du dernier contenu, et le visa qui tombe (circuit-visa.ts, règle 2).
+            ...contenuChange(options.auteur ?? null, new Date()),
           },
           include: { lignes: { include: { compte: true } }, journal: true },
         });
@@ -1667,6 +1699,10 @@ export class EcritureService {
     tenantId: string,
     ecritureId: string,
     dto: { journalId: string; reporterAuPremierJourOuvert?: boolean },
+    // Le journal et le numéro sont du contenu (AUDCIF art. 22, 1° · l'origine) ·
+    // l'auteur du transfert devient l'auteur du dernier contenu (ligne
+    // microfina-m1), absent il est INCONNU, jamais `createdBy`.
+    auteur: string | null = null,
   ) {
     const ecriture = await this.prisma.ecriture.findFirst({
       where: { id: ecritureId, tenantId },
@@ -1733,6 +1769,7 @@ export class EcritureService {
             // Reportée, elle garde sa date réelle · la date de valeur déjà
             // portée (une pièce déjà reportée) prime sur la date d'origine.
             ...(dateValeur ? { dateValeur: ecriture.dateValeur ?? dateValeur } : {}),
+            ...contenuChange(auteur, new Date()),
           },
           select: { id: true, numeroPiece: true, date: true, dateValeur: true, journal: { select: { code: true } } },
         });
@@ -1760,6 +1797,9 @@ export class EcritureService {
     tenantId: string,
     ecritureId: string,
     dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
+    // L'auteur du geste du module (ligne microfina-m1) · absent, la retouche
+    // est marquée d'un auteur INCONNU (circuit-visa.ts, règle 4).
+    auteur: string | null = null,
   ): Promise<boolean> {
     const ecriture = await tx.ecriture.findFirst({
       where: { id: ecritureId, tenantId },
@@ -1799,6 +1839,7 @@ export class EcritureService {
         date,
         ...(dto.libelle ? { libelle: dto.libelle } : {}),
         lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
+        ...contenuChange(auteur, new Date()),
       },
       select: { id: true },
     });
@@ -2254,7 +2295,7 @@ export class EcritureService {
     // finirait par diverger.
     const dossier = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
-      select: { doubleRegardValidation: true, referentiel: true },
+      select: { doubleRegardValidation: true, circuitVisa: true, referentiel: true },
     });
 
     const visa = this.visaSecondRegard(derogation);
@@ -2268,38 +2309,92 @@ export class EcritureService {
     // report à nouveau resté non validable disparaîtrait du bilan d'ouverture
     // tout en restant à la balance, et le bilan d'ouverture cesserait de
     // correspondre au bilan de clôture sans qu'aucun total ne bouge.
-    const soumises =
-      dossier.doubleRegardValidation && !visa
-        ? aValider.filter((e) => !e.estGenereeParCloture)
-        : [];
-    const ecartees = soumises.filter((e) => e.createdBy === valideeBy);
-    const idsEcartees = new Set(ecartees.map((e) => e.id));
-    const validables = aValider.filter((e) => !idsEcartees.has(e.id));
-
+    //
+    // L'AUTEUR COMPARÉ EST CELUI DU DERNIER CONTENU (ligne microfina-m1,
+    // constat de l'audit de sécurité du 2026-10-25) · `createdBy` seul laissait
+    // passer le comptable qui réécrivait le brouillard d'un collègue
+    // (`modifier`, réimputation au brouillard) puis le validait. Le circuit de
+    // visa (`Tenant.circuitVisa`) exige en plus un visa posé sur le contenu
+    // PRÉSENT · `circuit-visa.ts`. La dérogation nominative lève le double
+    // regard, jamais le visa · c'est une procédure que l'entité s'est donnée.
+    const exigences = { doubleRegard: dossier.doubleRegardValidation && !visa, visa: dossier.circuitVisa };
     const valideeAt = new Date();
-    if (validables.length > 0) {
-      await this.prisma.ecriture.updateMany({
-        where: { id: { in: validables.map((e) => e.id) }, tenantId },
-        // Le visa n'est apposé QUE si une dérogation a été produite. Tamponner
-        // tout le lot poserait un second regard nominatif sur des pièces qui
-        // n'en avaient pas besoin, et le document remis à un auditeur
-        // affirmerait une relecture qui n'a pas eu lieu.
-        data: {
-          statut: StatutEcriture.VALIDEE,
-          valideeAt,
-          valideeBy,
-          ...(visa ? { secondRegardNom: visa.nom, secondRegardMotif: visa.motif } : {}),
-        },
-      });
+    const donneesValidation = {
+      statut: StatutEcriture.VALIDEE,
+      valideeAt,
+      valideeBy,
+      // Le visa nominatif n'est apposé QUE si une dérogation a été produite.
+      // Tamponner tout le lot poserait un second regard nominatif sur des
+      // pièces qui n'en avaient pas besoin, et le document remis à un
+      // auditeur affirmerait une relecture qui n'a pas eu lieu.
+      ...(visa ? { secondRegardNom: visa.nom, secondRegardMotif: visa.motif } : {}),
+    };
+
+    if (!exigences.doubleRegard && !exigences.visa) {
+      if (aValider.length > 0) {
+        await this.prisma.ecriture.updateMany({
+          where: { id: { in: aValider.map((e) => e.id) }, tenantId },
+          data: donneesValidation,
+        });
+      }
+      return {
+        validees: aValider.length,
+        dejaValidees: dejaValidees.length,
+        refuseesSecondRegard: 0,
+        refuseesAuteurInconnu: 0,
+        refuseesVisa: 0,
+        sousDerogation: visa ? aValider.length : 0,
+        motifRefus: null,
+        motifAuteurInconnu: null,
+        motifVisa: null,
+        // Une sélection explicite les refuse en les nommant (ci-dessus) · seule
+        // la validation par période les écarte en les comptant.
+        ecarteesJournalDeSituation: 0,
+      };
     }
+
+    // SOUS VERROU · l'auteur et le visa se relisent dans la transaction qui
+    // valide, les lignes de l'écriture verrouillées (la modification d'un
+    // brouillard met sa tête à jour et attend la fin du geste). Lus avant,
+    // ils laissaient un contenu réécrit entre la lecture et la validation
+    // entrer au livre-journal sous l'auteur ou le visa d'avant.
+    const ids = aValider.map((e) => e.id);
+    const { partition, relues } = await transactionJournalisee(
+      this.prisma,
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
+        const lues = await tx.ecriture.findMany({
+          where: { id: { in: ids }, tenantId, statut: StatutEcriture.BROUILLARD },
+          select: { id: true, estGenereeParCloture: true, ...SELECT_TRACES_VISA, ...SELECT_CONTENU_VISE },
+        });
+        const p = partitionnerLaValidation(
+          lues.map((e) => ({ ...e, empreinte: exigences.visa ? empreinteDuContenu(contenuLu(e)) : null })),
+          valideeBy,
+          exigences,
+        );
+        if (p.validables.length > 0) {
+          await tx.ecriture.updateMany({
+            where: { id: { in: p.validables }, tenantId, statut: StatutEcriture.BROUILLARD },
+            data: donneesValidation,
+          });
+        }
+        return { partition: p, relues: lues.length };
+      },
+      // Un lot de validation par période relit toutes ses pièces et leurs lignes.
+      { timeout: 60_000 },
+    );
+    const refuseesVisa = partition.nonVisees.length + partition.visaTombe.length;
     return {
-      validees: validables.length,
-      dejaValidees: dejaValidees.length,
-      refuseesSecondRegard: ecartees.length,
-      sousDerogation: visa ? validables.length : 0,
-      motifRefus: ecartees.length > 0 ? this.motifDoubleRegard(dossier.referentiel) : null,
-      // Une sélection explicite les refuse en les nommant (ci-dessus) · seule
-      // la validation par période les écarte en les comptant.
+      validees: partition.validables.length,
+      // Validées par un autre geste entre la première lecture et le verrou.
+      dejaValidees: dejaValidees.length + (aValider.length - relues),
+      refuseesSecondRegard: partition.refuseesSecondRegard.length,
+      refuseesAuteurInconnu: partition.refuseesAuteurInconnu.length,
+      refuseesVisa,
+      sousDerogation: visa ? partition.validables.length : 0,
+      motifRefus: partition.refuseesSecondRegard.length > 0 ? this.motifDoubleRegard(dossier.referentiel) : null,
+      motifAuteurInconnu: partition.refuseesAuteurInconnu.length > 0 ? MOTIF_AUTEUR_INCONNU_DOUBLE_REGARD : null,
+      motifVisa: motifNonVisees(partition.nonVisees.length, partition.visaTombe.length),
       ecarteesJournalDeSituation: 0,
     };
   }
@@ -2338,7 +2433,7 @@ export class EcritureService {
   private motifDoubleRegard(referentiel: Referentiel): string {
     const commun =
       'Ce dossier exige un second regard : une écriture n’est validée que par un autre utilisateur que celui qui ' +
-      'l’a saisie. Aucun texte n’impose cette séparation · c’est une procédure que l’entité s’est donnée, et elle ' +
+      'en a écrit le dernier contenu (saisie ou modification au brouillard). Aucun texte n’impose cette séparation · c’est une procédure que l’entité s’est donnée, et elle ' +
       'se règle dans Paramètres du dossier. ';
     return referentiel === Referentiel.SYCEBNL
       ? commun +
@@ -2403,8 +2498,12 @@ export class EcritureService {
         validees: 0,
         dejaValidees: 0,
         refuseesSecondRegard: 0,
+        refuseesAuteurInconnu: 0,
+        refuseesVisa: 0,
         sousDerogation: 0,
         motifRefus: null,
+        motifAuteurInconnu: null,
+        motifVisa: null,
         ecarteesJournalDeSituation,
         motifEcarteesJournalDeSituation,
       };
@@ -2427,10 +2526,14 @@ export class EcritureService {
   async brouillard(
     tenantId: string,
     params: { exerciceId: string; journalId?: string; dateDebut?: string; dateFin?: string },
+    // L'utilisateur qui lit · le brouillard lui dit quelles pièces il peut
+    // viser (ligne microfina-m1, idée 1 · l'auteur du dernier contenu ne vise
+    // pas le sien).
+    lecteurId: string | null = null,
   ) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
-      select: { referentiel: true },
+      select: { referentiel: true, circuitVisa: true, doubleRegardValidation: true },
     });
     const joursCentralisation = JOURS_CENTRALISATION[tenant.referentiel];
     // Le statut de l'exercice décide de ce qui est validable (audit final F77).
@@ -2490,25 +2593,82 @@ export class EcritureService {
       take: PLAFOND_ECRITURES_PAR_FENETRE,
       include: {
         journal: { select: { code: true, intitule: true, type: true } },
+        // La facture par sa LIAISON · la nature « Facture » du visa ne se lit
+        // jamais sur un libellé (`circuit-visa.ts`, `natureDeLaPiece`).
+        facture: { select: { numeroSerie: true } },
         lignes: {
           include: {
             compte: { select: { numero: true, intitule: true } },
-            ventilations: { select: { sectionId: true, debit: true, credit: true } },
+            ventilations: { select: { sectionId: true, planId: true, debit: true, credit: true } },
           },
         },
       },
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     });
 
+    // LES AUTEURS EN COURRIEL (ligne microfina-m1) · saisie, dernier contenu
+    // et visa · un auditeur ne lit pas un identifiant, et un utilisateur
+    // retiré du dossier est nommé comme tel.
+    // Lus sous le circuit seulement · hors de lui, le brouillard ne montre ni
+    // visa ni auteurs, et ne paie pas la lecture.
+    const auteurs = tenant.circuitVisa
+      ? [...new Set(ecritures.flatMap((e) => [e.createdBy, e.contenuPar, e.viseePar]).filter((x): x is string => typeof x === 'string' && x !== ''))]
+      : [];
+    const courriels = new Map(
+      auteurs.length === 0
+        ? []
+        : (await this.prisma.user.findMany({ where: { tenantId, id: { in: auteurs } }, select: { id: true, email: true } })).map(
+            (u) => [u.id, u.email] as const,
+          ),
+    );
+
     const lignes = ecritures.map((e) => {
       const anciennete = ancienneteJours(e.createdAt, maintenant);
       const invalidable = brouillardInvalidable(e, exercice.statut);
       const debit = e.lignes.reduce((s, l) => s + Number(l.debit), 0);
       const credit = e.lignes.reduce((s, l) => s + Number(l.credit), 0);
+      // LE CIRCUIT DE VISA (ligne microfina-m1, idée 1) · l'empreinte du
+      // contenu que l'écran montre, renvoyée au visa (règle 5), l'état du
+      // visa sur ce contenu, et le refus que le lecteur recevrait.
+      // Hors du circuit, rien de tout cela n'est servi (`null`) · l'empreinte
+      // ne se calcule que là où un visa peut la renvoyer.
+      const circuit = tenant.circuitVisa === true;
+      const empreinte = circuit ? empreinteDuContenu(contenuLu(e)) : null;
+      const auteur = circuit ? auteurDuDernierContenu(e) : null;
+      const nature = natureDeLaPiece({
+        journalType: e.journal.type,
+        aUneFacture: e.facture != null,
+        numerosComptes: e.lignes.map((l) => l.compte.numero),
+      });
+      const refusDeVisa =
+        circuit && empreinte && lecteurId
+          ? motifRefusVisaEcriture({ ...e, journalDeSituation: estJournalDeSituation(e.journal) }, lecteurId, empreinte, empreinte)
+          : null;
       return {
         id: e.id,
         date: e.date.toISOString().slice(0, 10),
         createdAt: e.createdAt.toISOString(),
+        nature,
+        natureLibelle: LIBELLES_NATURE[nature],
+        facture: e.facture?.numeroSerie ?? null,
+        saisiePar: circuit ? nommerAuteur(e.createdBy, courriels) : null,
+        // Le dernier contenu quand il n'est plus celui de la saisie · `null`
+        // pour un auteur inconnu, que `dernierContenuConnu` dit.
+        dernierContenuPar: !auteur || e.contenuLe === null ? null : auteur.connu ? nommerAuteur(auteur.id, courriels) : null,
+        dernierContenuLe: circuit ? e.contenuLe : null,
+        dernierContenuConnu: auteur ? auteur.connu : null,
+        empreinte,
+        visa:
+          empreinte === null
+            ? null
+            : {
+                etat: etatDuVisa(e, empreinte),
+                visePar: nommerAuteur(e.viseePar, courriels),
+                viseLe: e.viseeLe,
+              },
+        // `null` hors du circuit ou sans lecteur · sinon le refus que le
+        // lecteur recevrait, ou rien (il peut viser).
+        motifRefusVisa: refusDeVisa?.motif ?? null,
         journal: e.journal.code,
         journalIntitule: e.journal.intitule,
         numeroPiece: e.numeroPiece,
@@ -2569,6 +2729,10 @@ export class EcritureService {
       tronque: totaux.nombre > lignes.length,
       plafond: PLAFOND_ECRITURES_PAR_FENETRE,
       delaiCentralisationJours: joursCentralisation,
+      // Le circuit de visa et le double regard du dossier · l'écran montre la
+      // colonne du visa et le bouton « Viser » sous le premier seulement.
+      circuitVisa: tenant.circuitVisa,
+      doubleRegard: tenant.doubleRegardValidation,
     };
   }
 
@@ -2736,6 +2900,16 @@ export class EcritureService {
         // final F2) · la fusion d'un compte chargé en faisait des milliers.
         if (auBrouillard.length) {
           await tx.ligneEcriture.updateMany({ where: { id: { in: auBrouillard.map((l) => l.id) } }, data: { compteId: cible.id } });
+          // L'IMPUTATION EST DU CONTENU (AUDCIF art. 22, 1°) · l'auteur de la
+          // réimputation devient l'auteur du dernier contenu de chaque pièce,
+          // et son visa tombe (ligne microfina-m1, constat de l'audit de
+          // sécurité · réimputer le brouillard d'un collègue puis le valider
+          // passait le double regard). Une mise à jour par pièce, au journal
+          // d'audit.
+          const maintenant = new Date();
+          for (const id of new Set(auBrouillard.map((l) => l.ecritureId))) {
+            await tx.ecriture.update({ where: { id }, data: contenuChange(createdBy, maintenant), select: { id: true } });
+          }
         }
         const passees: { numeroPiece: number | null; journal: string }[] = [];
         for (const groupe of parEcriture.values()) {
@@ -2797,7 +2971,10 @@ export class EcritureService {
       "Trop d'écritures enregistrées au même instant · veuillez réessayer.",
       // Chaque pièce passée coûte son numéro et sa tête, chaque ligne validée
       // deux inscriptions, chacune avec ses ventilations.
-      { operations: 1 + parEcriture.size * 2 + validees.reduce((t, l) => t + 2 * (1 + l.ventilations.length), 0) },
+      {
+        operations:
+          1 + new Set(auBrouillard.map((l) => l.ecritureId)).size + parEcriture.size * 2 + validees.reduce((t, l) => t + 2 * (1 + l.ventilations.length), 0),
+      },
     );
   }
 

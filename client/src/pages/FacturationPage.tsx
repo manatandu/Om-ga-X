@@ -57,6 +57,8 @@ type Facture = {
   /** AUSCGIE art. 17, recopiée à l'établissement d'une vente · null sur un achat ou une pièce antérieure. */
   mentionsSocieteEmetteur: MentionsRecopiees | null;
   ecritureId: string | null;
+  /** Le visa de la facture (ligne microfina-m1) · ses auteurs en courriel, servis par le serveur. */
+  visa?: { vise: boolean; saisiePar: string | null; visePar: string | null; viseLe: string | null };
   lignes: {
     id: string;
     ordre: number;
@@ -105,6 +107,8 @@ type Etat = {
     reserveSupports: string;
   };
   regimeExigibiliteTva?: string | null;
+  /** Le circuit de visa du dossier (ligne microfina-m1) · la facture se vise avant sa comptabilisation. */
+  circuitVisa?: boolean;
   /** La période lue et la tranche rendue (audit final F188) · le total est celui de la période entière. */
   periode: PeriodeListe;
   total: number;
@@ -169,7 +173,7 @@ export const RESERVE_ACCISES_VERDICT =
   "Le verdict porte sur les mentions de l'art. 26 du décret n° 23/10 (ou de l'art. 100 du décret n° 011/42 avant le 3 mars 2023). Le fabricant d'une marchandise ou le fournisseur d'un service visé à l'art. 3 du Code des accises doit en outre faire ressortir séparément les droits d'accises et le droit d'accises spécial dont l'opération est passible (art. 19, 3 et art. 20, 4). La pièce ne porte qu'un montant global d'autres impôts et taxes : elle ne fait pas cette séparation, et OmegaX ne sait pas si l'émetteur est visé."
 
 export function FacturationPage() {
-  const { peutEcrire, utilisateur } = useAuth();
+  const { peutEcrire, peutValider, utilisateur } = useAuth();
   // Le serveur refuse l'écriture à la lecture seule ; l'écran ne la propose pas.
   const [noteSur, setNoteSur] = useState<string | null>(null);
   const [noteNumero, setNoteNumero] = useState('');
@@ -219,6 +223,17 @@ export function FacturationPage() {
     window.addEventListener('afterprint', fermer);
     return () => window.removeEventListener('afterprint', fermer);
   }, []);
+  const viserFacture = async (id: string) => {
+    setErreurVisa(null);
+    try {
+      const r = await api.post<{ numeroSerie: string; avertissement: string | null }>(`/circuit-visa/factures/${id}`);
+      setAvisListe(`Facture ${r.numeroSerie} visée.${r.avertissement ? ` ${r.avertissement}` : ''}`);
+      void recharger();
+    } catch (e) {
+      setErreurVisa(e instanceof ApiError ? e.message : 'Visa impossible');
+    }
+  };
+
   const imprimer = (f: Facture) => {
     setAImprimer(f);
     // La pièce doit être rendue avant que la boîte d'impression ne fige la page.
@@ -235,6 +250,8 @@ export function FacturationPage() {
   const originePeriode: OriginePeriode = periodeChoisie ? 'CHOISIE' : periodeDefaut.origine;
   const [erreurListe, setErreurListe] = useState<string | null>(null);
   const [avisListe, setAvisListe] = useState<string | null>(null);
+  // Le refus d'un visa se dit au-dessus de la liste, sans la masquer.
+  const [erreurVisa, setErreurVisa] = useState<string | null>(null);
   // DEUX LECTURES SE CROISENT (relecture audit final F188) · le sélecteur
   // d'exercice se résout en deux temps (défaut, puis choix mémorisé), et un
   // champ de date se tape chiffre par chiffre. Seule la DERNIÈRE demandée
@@ -752,6 +769,7 @@ export function FacturationPage() {
         </div>
         {erreurListe && <p className="text-[11.5px] text-danger mb-1.5">{erreurListe}</p>}
         {avisListe && <p className="text-[11.5px] text-warning mb-1.5">{avisListe}</p>}
+        {erreurVisa && <p className="text-[11.5px] text-danger mb-1.5">{erreurVisa}</p>}
         {/* UNE LECTURE REFUSÉE NE LAISSE PAS LES LIGNES D'AVANT sous le libellé de
             la période demandée · elles se liraient comme sa réponse. */}
         {!erreurListe && libelleTranche(etat, etat.factures.length) && (
@@ -809,7 +827,22 @@ export function FacturationPage() {
                           )}
                         </div>
                       )}
-                      {peutEcrire && !f.ecritureId && (
+                      {/* LE VISA DE LA FACTURE (ligne microfina-m1, idée 1 · CPCC
+                          ch. 3, § 3.1.1) · sous le circuit, elle se vise avant
+                          sa comptabilisation, par un autre que son auteur ; le
+                          serveur refuse la comptabilisation sinon. */}
+                      {etat.circuitVisa && f.visa && (
+                        <p className={`text-[11px] mt-1 ${f.visa.vise ? 'text-positive' : 'text-text-dim'}`}>
+                          {f.visa.vise ? `Visée par ${f.visa.visePar ?? '·'}` : 'À viser'}
+                          {f.visa.saisiePar ? ` · enregistrée par ${f.visa.saisiePar}` : ''}
+                        </p>
+                      )}
+                      {etat.circuitVisa && peutValider && f.visa && !f.visa.vise && !f.ecritureId && (
+                        <button type="button" className="mt-1 text-[11px] underline block" onClick={() => void viserFacture(f.id)}>
+                          Viser
+                        </button>
+                      )}
+                      {peutEcrire && !f.ecritureId && (!etat.circuitVisa || f.visa?.vise) && (
                         <PasserEcritureFacture
                           facture={f}
                           onFait={(avis) => {
