@@ -162,12 +162,15 @@ de produit.
   « Virements de fonds », le 588 « Autres virements internes »), et le
   compte 18 du SYCEBNL porte des emprunts (son 185 est « Dépôts et
   cautionnements reçus ») ;
-  aucun texte lu n'y fait passer un bien. Deux voies, que le corpus ne
-  tranche pas · (a) n'admettre entre cellules que des fonds, par le 58
-  (état actuel) ; (b) admettre le bien par le 588 « Autres virements
-  internes », au-delà de la lettre du texte, avec la même mécanique qu'au
-  SYSCOHADA (valeur d'entrée, amortissements et dépréciations, sans 81 ni
-  82). Laquelle retenir ?
+  aucun texte lu n'y fait passer un bien. TRANCHÉ PAR LA LOI (2026-10-25,
+  relu par la session) · la fiche SYCEBNL du compte 58 dit son contenu,
+  « les mouvements de virement entre les comptes de trésorerie », le fait
+  fonctionner « par le crédit » et « par le débit » des seuls « comptes de
+  trésorerie », et exige qu'il soit « soldé à la fin de l'exercice » · un
+  bien passé par le 588 n'est pas un virement de trésorerie et laisserait
+  le 588 de chaque dossier ouvert à la clôture. Voie (a) retenue, le refus
+  reste ; la voie (b) irait contre la lettre de la fiche et n'est pas
+  servie.
 - Relevé de la ligne · la création admet une valeur résiduelle supérieure à
   la valeur d'origine · la borner dans `preparerFiche`.
 
