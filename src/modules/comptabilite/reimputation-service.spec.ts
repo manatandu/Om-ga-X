@@ -55,7 +55,7 @@ function service(
     ligneEcriture: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     // `update` · la tête de chaque pièce du brouillard réimputée nomme son
     // auteur (ligne microfina-m1).
-    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }), update: jest.fn().mockResolvedValue({ id: 'e' }) },
+    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }), update: jest.fn().mockResolvedValue({ id: 'e' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
   };
   const prisma = {
     compte: {
@@ -87,9 +87,9 @@ describe('Réimputation · le service', () => {
     // réimputation au brouillard devient l'auteur du dernier contenu de la
     // pièce, et son visa tombe · sans quoi il la validait ensuite sous le
     // double regard, au nom de celui qui l'avait saisie.
-    expect(tx.ecriture.update).toHaveBeenCalledTimes(1);
-    expect(tx.ecriture.update.mock.calls[0][0]).toMatchObject({
-      where: { id: 'e-b' },
+    expect(tx.ecriture.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.ecriture.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: { in: ['e-b'] }, tenantId: 't', statut: StatutEcriture.BROUILLARD },
       data: { contenuPar: 'u', viseePar: null, viseeEmpreinte: null },
     });
     const data = tx.ecriture.create.mock.calls[0][0].data;

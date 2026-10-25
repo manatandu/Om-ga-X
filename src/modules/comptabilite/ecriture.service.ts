@@ -2904,12 +2904,14 @@ export class EcritureService {
           // réimputation devient l'auteur du dernier contenu de chaque pièce,
           // et son visa tombe (ligne microfina-m1, constat de l'audit de
           // sécurité · réimputer le brouillard d'un collègue puis le valider
-          // passait le double regard). Une mise à jour par pièce, au journal
-          // d'audit.
-          const maintenant = new Date();
-          for (const id of new Set(auBrouillard.map((l) => l.ecritureId))) {
-            await tx.ecriture.update({ where: { id }, data: contenuChange(createdBy, maintenant), select: { id: true } });
-          }
+          // passait le double regard). UNE requête pour toutes les pièces,
+          // comme les lignes (F2 · la fusion d'un compte chargé en touche des
+          // milliers) · le journal d'audit en garde le filtre, qui nomme les
+          // pièces, et les données, qui nomment l'auteur.
+          await tx.ecriture.updateMany({
+            where: { id: { in: [...new Set(auBrouillard.map((l) => l.ecritureId))] }, tenantId, statut: StatutEcriture.BROUILLARD },
+            data: contenuChange(createdBy, new Date()),
+          });
         }
         const passees: { numeroPiece: number | null; journal: string }[] = [];
         for (const groupe of parEcriture.values()) {
