@@ -44,6 +44,14 @@ idées 1 et 5 du § 4).
    stocks et paie non calculés, le reste sans objet ; exercice étranger 404.
    Journal du serveur sans erreur.
 
+4. Bloc du § 3 (2026-10-25) · serveur `tsc` 0 erreur, `jest` 974 suites ·
+   943 vertes au premier passage (13 644 tests), 2 tests rouges corrigés
+   (`comptes-proposes.spec.ts` · fiche d'imputation rangée ;
+   `fonctions-metier.spec.ts` · CircuitVisaController sous Validation) et 29
+   suites tuées par le manque de mémoire de la machine (SIGTERM, SIGKILL),
+   les 31 rejouées vertes (614 tests) ; `npm run build` vert. Client `tsc`
+   0 erreur, `npm test` 307 fichiers, 2 487 tests verts, `npm run build` vert.
+
 ## Reste
 
 1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
