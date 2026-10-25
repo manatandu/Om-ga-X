@@ -2524,6 +2524,12 @@ des pages » n'est pas repris par le § 1.4 de la Partie 4 du SYCEBNL · LACUNE 
 TEXTE, non comblée ; les quatre mentions sont servies aux deux sans être dites
 obligatoires des deux. Le délai de quatre mois n'est PAS un refus ; seul un arrêté
 antérieur à la clôture est refusé, et null efface (§ 1.6, nouvel arrêté).
+LE SIGNAL SUIT L'ART. 23 (décision par la loi du 2026-10-25, confirmée par
+Manasse, « on arrête les comptes avant le 30/04 ») · rien pendant l'exercice
+(il n'y a rien à arrêter, le signal fabriquait une anomalie, § 10 bis) ; de la
+clôture à la fin des quatre mois, comptés de date à date (31/12 donne 30/04,
+`ajouterMois`), une INFORMATION qui dit la date limite ; le lendemain, au jour
+de Kinshasa (`echeanceDepassee`), un AVERTISSEMENT qui nomme le délai dépassé.
 
 **IMMOBILISATIONS · PLAN VERROUILLÉ (2026-10-01, arrêté avec Manasse).**
 `docs/plan-immobilisations-verrouille.md` fixe l'ordre des lots (défauts
