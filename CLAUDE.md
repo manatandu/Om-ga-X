@@ -250,6 +250,9 @@ MASQUER N'EST PAS REFUSER · le refus par le serveur, module par module, reste
 au suivi ; et le même jour les DOUZE IDÉES DE MICROFINA++, toutes cochées par
 Manasse (« pouvons-nous attaquer les fonctionnalités de microfina ? », puis
 les douze cases), en quatre lignes · `docs/comparaison-microfina/plan-reproduction-microfina.md`.
+Le même jour, la PAGE PUBLIQUE au dessin du site du cabinet (« le même design
+que vmgconsulting.net […] avec ses propres couleurs », « Ne mets pas de cachets
+tournant »), charte § 9 ter, sans toucher au serveur.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -5638,11 +5641,15 @@ OmegaX, JAMAIS le vert de Sage.
   texte blanc, les lignes séparées par un filet, sans quadrillage vertical ni
   zébrure, total sur `--a-50` (`index.css`, bloc TABLEAUX). Le bouton
   principal (`bg-sel`) est une pilule, comme le « + Créer » de Sage Active.
-- **La page publique et la connexion ont le registre de l'application**
-  (charte § 9 bis, 2026-10-23) · fiche et grilles à filet, démonstration dans
-  une fenêtre du logiciel, aucun effet de défilement, aucun compteur, aucun
-  ornement de fond (cercles, halos), aucun aplat plein-largeur d'appel. Tenu
-  par `vitrine-publique.spec.ts`.
+- **La connexion a le registre de l'application** (charte § 9 bis,
+  2026-10-23) · aucun effet de défilement, aucun ornement de fond, aucun aplat
+  plein-largeur d'appel. **La page publique a la composition du site du
+  cabinet, avec les couleurs d'OmegaX** (charte § 9 ter, décision de Manasse
+  du 2026-10-25) · bandeau sombre, mots qui apparaissent, apparitions au
+  défilement, frise, accordéon, carte d'appel ; ni l'or ni la nuit du cabinet,
+  aucun cachet tournant, aucun compteur ; motifs du métier (papier réglé,
+  double trait des totaux, case du pointage) ; rien de caché sans script.
+  Tenu par `vitrine-publique.spec.ts`.
 - **Aucun titre de page.** La barre de titre de la fenêtre porte le titre ; un
   fil d'Ariane ou un `<h1>` qui le répète est retiré. Les titres de CADRE
   (bloc, onglet, tableau) restent.
