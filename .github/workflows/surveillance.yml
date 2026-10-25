@@ -31,6 +31,10 @@ env:
   # chemin-là que les navigateurs empruntent, c'est lui qui doit répondre.
   URL_SANTE_RELAIS: https://oomega.web.app/api/health
   URL_SITE: https://oomega.web.app/
+  # LA PAGE PUBLIQUE D'OMEGAX (décision du 2026-10-24) · son adresse propre est
+  # servie par le même hébergement ; une adresse mal rattachée ou un certificat
+  # tombé se verrait sinon à la première visite d'un client.
+  URL_PAGE_PUBLIQUE: https://omegax.vmgconsulting.net/
   ETIQUETTE: panne-production
 
 jobs:
@@ -42,7 +46,7 @@ jobs:
         id: sonde
         run: |
           echec=""
-          for cible in "$URL_SANTE" "$URL_SANTE_RELAIS" "$URL_SITE"; do
+          for cible in "$URL_SANTE" "$URL_SANTE_RELAIS" "$URL_SITE" "$URL_PAGE_PUBLIQUE"; do
             ok=0
             for essai in 1 2 3; do
               # /health répond 503 quand la base est injoignable · -f en fait un échec.
