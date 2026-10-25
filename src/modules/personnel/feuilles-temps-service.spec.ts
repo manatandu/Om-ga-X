@@ -143,4 +143,19 @@ describe('la proposition du mois', () => {
       ['Heures du samedi', 6, null],
     ]);
   });
+
+  it('UNE HEURE SAISIE QU’AUCUN CONTRAT NE COUVRE PLUS est nommée, jamais comptée ni tue', async () => {
+    const { svc } = doublure({
+      feuillesDuMois: [{ id: 'f-1', du: J('2026-07-01'), au: J('2026-07-31') }],
+      joursDuMois: [{ jour: J('2026-07-20'), heures: 9, heuresNuit: 0 }],
+    });
+    // Le contrat finit le 10 juillet · posé après la saisie du 20.
+    (svc as unknown as { prisma: { salarie: { findFirst: jest.Mock } } }).prisma.salarie.findFirst.mockResolvedValue({
+      id: 's-1',
+      contrats: [{ dateEntreeEnVigueur: J('2026-01-01'), dateFin: J('2026-07-10') }],
+    });
+    const r = await svc.duMois('t', 's-1', '2026-07');
+    expect(r.joursHorsContrat).toEqual(['2026-07-20']);
+    expect(r.totaux.heures).toBe(0);
+  });
 });

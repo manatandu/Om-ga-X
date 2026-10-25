@@ -358,6 +358,10 @@ export class FeuillesTempsService {
     const dernierDuMois = new Date(Date.UTC(a, m, 0));
 
     const semaines = [];
+    // UNE HEURE SAISIE QU'AUCUN CONTRAT NE COUVRE PLUS · la fin d'un contrat
+    // posée après la saisie laisse des heures que le compte ne lit pas (le
+    // jour hors contrat est connu, à zéro) · elles sont nommées, jamais tues.
+    const joursHorsContrat: string[] = [];
     if (bornes) {
       const feuilles = await this.prisma.feuilleTemps.findMany({
         where: { tenantId, salarieId, annuleLe: null, du: { lte: bornes.au }, au: { gte: bornes.du } },
@@ -379,7 +383,10 @@ export class FeuillesTempsService {
           const j = iso(d);
           // Hors contrat · connu, à zéro (aucune heure n'y est admise) ; le
           // tableau n'en porte pas la clé.
-          if (!sousContrat(d, contrats)) continue;
+          if (!sousContrat(d, contrats)) {
+            if ((saisis.get(j)?.heures ?? 0) > 0) joursHorsContrat.push(j);
+            continue;
+          }
           const couvert = feuilles.some((f) => f.du.getTime() <= d.getTime() && f.au.getTime() >= d.getTime());
           lus[j] = couvert ? (saisis.get(j) ?? { heures: 0, heuresNuit: 0 }) : null;
         }
@@ -431,6 +438,7 @@ export class FeuillesTempsService {
         .filter((x) => x.heures > 0)
         .sort((x, y) => x.code.localeCompare(y.code)),
       bulletinEmis: bulletin ? { numero: bulletin.numero } : null,
+      joursHorsContrat,
     };
   }
 

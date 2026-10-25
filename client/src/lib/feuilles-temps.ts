@@ -88,6 +88,8 @@ export interface HeuresDuMois {
   lignes: LigneProposee[];
   compteurs: { compteurId: string; code: string; libelle: string; heures: number }[];
   bulletinEmis: { numero: number } | null;
+  /** Des heures saisies sur un jour qu'aucun contrat ne couvre plus · non comptées, nommées. */
+  joursHorsContrat: string[];
 }
 
 /** Un nombre tapé à la française · « 7,5 », « 7.5 », espaces tolérés ; illisible, `null`. */

@@ -2995,7 +2995,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
-          {selection && heuresDuMois && (heuresDuMois.totaux.heures > 0 || heuresDuMois.compteurs.length > 0) && (
+          {selection && heuresDuMois && (heuresDuMois.totaux.heures > 0 || heuresDuMois.compteurs.length > 0 || heuresDuMois.joursHorsContrat.length > 0) && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
                 Heures des feuilles de temps
@@ -3020,6 +3020,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     Semaine du {w.lundi} au {w.dimanche} · aucune feuille ne couvre {w.joursNonCouverts.join(', ')} · la limite de la semaine ne se calcule pas.
                   </div>
                 ))}
+              {heuresDuMois.joursHorsContrat.length > 0 && (
+                <div role="status" className="text-warning">
+                  Heures saisies hors contrat, non comptées · {heuresDuMois.joursHorsContrat.join(', ')}.
+                </div>
+              )}
               {heuresDuMois.compteurs.length > 0 && (
                 <div className="text-text-dim">
                   Compteurs du mois · {heuresDuMois.compteurs.map((c) => `${c.code} ${heuresAffichees(c.heures)} h`).join(' · ')}
