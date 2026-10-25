@@ -39,7 +39,7 @@ import {
   SessionEnCours,
 } from './session-longue';
 import { ajouterSessionFermee, empreinteSession, finDeVie } from './sessions-fermees';
-import { logicielsDeLaSession } from '../utilisateurs/logiciels';
+import { logicielsDeLaSession, logicielsRetiresDeLaSession } from '../utilisateurs/logiciels';
 
 export const SALT_ROUNDS = 12;
 
@@ -892,6 +892,9 @@ export class AuthService {
       // toutes. Relu à chaque appel · l'attribution prend effet à la
       // prochaine lecture, sans fermer de session (`utilisateurs/logiciels.ts`).
       logicielsAutorises: logicielsDeLaSession(user),
+      // Les clés attribuées d'une tuile retirée depuis · nommées à l'écran,
+      // jamais comptées comme valides.
+      logicielsRetires: logicielsRetiresDeLaSession(user),
       tenant: {
         id: user.tenant.id,
         nom: user.tenant.nom,

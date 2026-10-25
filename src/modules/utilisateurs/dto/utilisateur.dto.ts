@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsUUID, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsUUID, MinLength } from 'class-validator';
 import { CourrielNormalise } from '../../../common/courriel';
 import { FonctionMetier, RoleUtilisateur } from '@prisma/client';
 import { LOGICIELS } from '../logiciels';
@@ -61,7 +61,10 @@ export class DefinirLogicielsDto {
   @IsBoolean()
   restreindre!: boolean;
 
+  /** Facultatif quand `restreindre` est faux (la liste est alors vidée). */
+  @IsOptional()
   @IsArray()
+  @ArrayMaxSize(LOGICIELS.length)
   @IsIn(LOGICIELS, { each: true })
-  logiciels!: string[];
+  logiciels?: string[];
 }

@@ -41,3 +41,29 @@ export function logicielsDeLaSession(u: {
   const connus: readonly string[] = LOGICIELS;
   return (u.logicielsAutorises ?? []).filter((l) => connus.includes(l));
 }
+
+/**
+ * LES CLÉS ATTRIBUÉES QUE LA LISTE NE CONNAÎT PLUS (tuile retirée depuis) ·
+ * rendues À PART pour être NOMMÉES à l'écran, jamais comptées comme une
+ * attribution valide. Sans elles, un utilisateur dont l'attribution ne
+ * porterait que des clés mortes verrait « aucun logiciel » sans savoir pourquoi.
+ */
+export function logicielsRetiresDeLaSession(u: {
+  role: string;
+  restreindreLogiciels?: boolean | null;
+  logicielsAutorises?: string[] | null;
+}): string[] {
+  if (u.role === 'ADMIN_CABINET' || !u.restreindreLogiciels) return [];
+  const connus: readonly string[] = LOGICIELS;
+  return (u.logicielsAutorises ?? []).filter((l) => !connus.includes(l));
+}
+
+/**
+ * Les rôles qui ne suivent pas les logiciels · l'administrateur (jamais
+ * restreint) et le gestionnaire de paie, qui a son propre menu réduit
+ * (`AppShell`, `fenetreOuverteAuRole`). Une attribution posée sur eux ne
+ * changerait rien à l'écran · elle est refusée, et un changement de rôle vers
+ * l'un d'eux efface celle qu'il portait, sans quoi elle ressusciterait au
+ * premier retour à un autre rôle.
+ */
+export const ROLES_SANS_LOGICIELS: readonly string[] = ['ADMIN_CABINET', 'GESTIONNAIRE_PAIE'];

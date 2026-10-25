@@ -3,7 +3,7 @@ import { join } from 'path';
 import { RoleUtilisateur } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { UtilisateurService } from './utilisateur.service';
-import { LOGICIELS, logicielsDeLaSession } from './logiciels';
+import { LOGICIELS, logicielsDeLaSession, logicielsRetiresDeLaSession } from './logiciels';
 
 /**
  * LOGICIELS ATTRIBUÉS · un affichage, jamais un droit. Ce qui casserait en
@@ -75,6 +75,55 @@ describe('la définition des logiciels attribués', () => {
     const { s, update } = service(RoleUtilisateur.ADMIN_CABINET);
     await s.definirLogiciels('t1', 'u2', { restreindre: false, logiciels: [] });
     expect(update).toHaveBeenCalled();
+  });
+});
+
+describe('les clés mortes, le gestionnaire de paie, le changement de rôle', () => {
+  it('une clé retirée de la liste est rendue à part, jamais comptée comme valide', () => {
+    const u = { role: 'COMPTABLE', restreindreLogiciels: true, logicielsAutorises: ['ANCIENNE_TUILE', 'PAIE'] };
+    expect(logicielsDeLaSession(u)).toEqual(['PAIE']);
+    expect(logicielsRetiresDeLaSession(u)).toEqual(['ANCIENNE_TUILE']);
+    expect(logicielsRetiresDeLaSession({ ...u, restreindreLogiciels: false })).toEqual([]);
+  });
+
+  function service(role: RoleUtilisateur) {
+    const update = jest.fn(async (a: unknown) => a);
+    const p = { user: { findFirst: jest.fn(async () => ({ id: 'u2', role, estActif: true })), update } };
+    return { s: new UtilisateurService(p as unknown as PrismaService), update };
+  }
+
+  it('refuse de restreindre un gestionnaire de paie, qui a son propre menu', async () => {
+    const { s, update } = service(RoleUtilisateur.GESTIONNAIRE_PAIE);
+    await expect(s.definirLogiciels('t1', 'u2', { restreindre: true, logiciels: ['PAIE'] })).rejects.toThrow(/propre menu/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('la liste est facultative quand on lève la restriction', async () => {
+    const { s, update } = service(RoleUtilisateur.COMPTABLE);
+    await s.definirLogiciels('t1', 'u2', { restreindre: false });
+    expect((update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toEqual({
+      restreindreLogiciels: false,
+      logicielsAutorises: [],
+    });
+  });
+
+  it('promu administrateur, le compte perd son attribution (elle ne ressuscite pas au retour à comptable)', async () => {
+    const { s, update } = service(RoleUtilisateur.COMPTABLE);
+    await s.modifier('t1', 'u2', 'u1', { role: RoleUtilisateur.ADMIN_CABINET });
+    expect((update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toMatchObject({
+      role: RoleUtilisateur.ADMIN_CABINET,
+      restreindreLogiciels: false,
+      logicielsAutorises: [],
+    });
+  });
+
+  it('passé gestionnaire de paie, de même ; passé lecture seule, l’attribution reste', async () => {
+    const paie = service(RoleUtilisateur.COMPTABLE);
+    await paie.s.modifier('t1', 'u2', 'u1', { role: RoleUtilisateur.GESTIONNAIRE_PAIE });
+    expect((paie.update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toMatchObject({ restreindreLogiciels: false });
+    const lecture = service(RoleUtilisateur.COMPTABLE);
+    await lecture.s.modifier('t1', 'u2', 'u1', { role: RoleUtilisateur.LECTURE_SEULE });
+    expect((lecture.update.mock.calls[0][0] as { data: Record<string, unknown> }).data).not.toHaveProperty('restreindreLogiciels');
   });
 });
 
