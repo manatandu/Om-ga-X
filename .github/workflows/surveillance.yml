@@ -35,6 +35,10 @@ env:
   # servie par le même hébergement ; une adresse mal rattachée ou un certificat
   # tombé se verrait sinon à la première visite d'un client.
   URL_PAGE_PUBLIQUE: https://omegax.vmgconsulting.net/
+  # LE SITE DU CABINET (hébergé hors du dépôt, Cloudflare Pages) · son nom de
+  # domaine est celui que les clients de VMG tapent, une panne d'adresse ou de
+  # certificat s'y verrait sinon à la première visite.
+  URL_SITE_CABINET: https://vmgconsulting.net/
   ETIQUETTE: panne-production
 
 jobs:
@@ -46,7 +50,7 @@ jobs:
         id: sonde
         run: |
           echec=""
-          for cible in "$URL_SANTE" "$URL_SANTE_RELAIS" "$URL_SITE" "$URL_PAGE_PUBLIQUE"; do
+          for cible in "$URL_SANTE" "$URL_SANTE_RELAIS" "$URL_SITE" "$URL_PAGE_PUBLIQUE" "$URL_SITE_CABINET"; do
             ok=0
             for essai in 1 2 3; do
               # /health répond 503 quand la base est injoignable · -f en fait un échec.
