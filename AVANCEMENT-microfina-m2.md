@@ -129,10 +129,20 @@ Décision de Manasse du 2026-10-25 · les douze idées Microfina++ levées du ge
 4. Bon de commande · un « bon de réception » (CPCC § 1.2, force probante
    réunie) n'est pas tenu · à ouvrir plus tard ?
 
-## Reste
+## Relecture (faite, un tour)
 
-- relectures (silent-failure-hunter, typescript-reviewer, react-reviewer),
-  corrections des BLOQUANTS et MAJEURS, second tour au plus.
+Aucun outil de lancement d'agent n'était offert à cette session · la
+relecture a été conduite à la main sur la grille de `silent-failure-hunter`,
+`typescript-reviewer` et `react-reviewer` (`.claude/agents/`). Corrigé ·
+(1) route `numeros/annulation` masquée par `:id/annulation` (trouvé par le
+scénario, gelé) ; (2) pièce d'un chèque retirée du journal (SET NULL) qui
+restait affichée comme la pièce qui paie · `pieceRetiree` servi et dit ;
+(3) une requête par chèque et une par carnet au registre · une lecture
+groupée pour la tranche, une somme par compte de banque ; (4) réponses
+périmées (autre caisse, autre carnet) jetées par jeton à l'écran, et un
+registre illisible n'affiche plus l'ancien. Restent dits, non corrigés ·
+le décompte « au brouillard » de l'arrêté ne compte que l'exercice du jour
+(le solde, lui, remonte l'exercice précédent non clos).
 
 ## Scénario sur vraie base (fait)
 

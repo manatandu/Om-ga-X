@@ -109,26 +109,28 @@ export function ArreteCaissePage() {
     }
   }, [jour]);
 
+  // Une réponse d'une autre caisse ou d'un autre jour, arrivée tard, est jetée ·
+  // sans quoi l'écran montrait le solde d'une caisse sous le nom d'une autre.
+  const jetonCaisse = useRef(0);
   const chargerCaisse = useCallback(async () => {
-    if (!compteId) {
-      setApercu(null);
-      setArretes(null);
-      setPlafonds(null);
-      return;
-    }
+    const j = ++jetonCaisse.current;
+    setApercu(null);
+    setArretes(null);
+    setPlafonds(null);
+    if (!compteId) return;
     try {
       const [a, l, p] = await Promise.all([
         api.get<Apercu>(`/caisses/arretes/apercu?compteId=${compteId}&jour=${jour}`),
         api.get<{ arretes: Arrete[]; total: number; tronque: boolean }>(`/caisses/arretes?compteId=${compteId}`),
         api.get<Plafond[]>(`/caisses/plafonds?compteId=${compteId}`),
       ]);
+      if (j !== jetonCaisse.current) return;
       setApercu(a);
       setGrille(grilleProposee(a.coupuresProposees));
       setArretes(l);
       setPlafonds(p);
     } catch (e) {
-      setApercu(null);
-      setErreur(e instanceof ApiError ? e.message : 'Caisse illisible.');
+      if (j === jetonCaisse.current) setErreur(e instanceof ApiError ? e.message : 'Caisse illisible.');
     }
   }, [compteId, jour]);
 

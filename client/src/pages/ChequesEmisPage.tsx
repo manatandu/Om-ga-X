@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -50,6 +50,7 @@ interface ChequeLu {
   montant: number | null;
   pieceDecrite: string | null;
   pieceAuBrouillard: boolean;
+  pieceRetiree: boolean;
   encaisseLe: string | null;
   motifAnnulation: string | null;
 }
@@ -81,18 +82,24 @@ export function ChequesEmisPage() {
   const [pieces, setPieces] = useState<{ pieces: PieceProposee[]; total: number; tronque: boolean; motif: string | null } | null>(null);
   const [relierPour, setRelierPour] = useState<string | null>(null);
 
+  // Le registre d'un autre carnet, arrivé tard, est jeté (jeton).
+  const jeton = useRef(0);
   const charger = useCallback(async () => {
+    const j = ++jeton.current;
     try {
       const [b, c, r] = await Promise.all([
         api.get<BanqueLue[]>('/banques'),
         api.get<{ chequiers: Chequier[]; total: number; tronque: boolean }>('/cheques/chequiers'),
         api.get<{ cheques: ChequeLu[]; total: number; tronque: boolean; enCirculation: { nombre: number; montant: number } }>(`/cheques${carnetId ? `?chequierId=${carnetId}` : ''}`),
       ]);
+      if (j !== jeton.current) return;
       setBanques(b);
       setChequiers(c);
       setRegistre(r);
       setErreurLecture(null);
     } catch (e) {
+      if (j !== jeton.current) return;
+      setRegistre(null);
       setErreurLecture(e instanceof ApiError ? e.message : 'Registre illisible.');
     }
   }, [carnetId]);
@@ -398,6 +405,7 @@ export function ChequesEmisPage() {
                   <td className="max-w-[300px] truncate">
                     {c.pieceDecrite ?? '·'}
                     {c.pieceAuBrouillard ? ' (brouillard)' : ''}
+                    {c.pieceRetiree ? ' (retirée du journal)' : ''}
                   </td>
                   <td className="ecran-seul flex gap-1">
                     {peutEcrire && c.etat === 'EMIS_SANS_PIECE' && (

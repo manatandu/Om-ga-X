@@ -353,6 +353,10 @@ export class ChequesService {
         montant: ch.montant === null ? null : Number(ch.montant),
         pieceDecrite: ch.pieceDecrite,
         pieceAuBrouillard: ch.ecriture?.statut === StatutEcriture.BROUILLARD,
+        // UNE PIÈCE RETIRÉE DU JOURNAL SE DIT · la liaison tombe avec elle
+        // (SET NULL), la description reste ; sans ce drapeau, l'écran la
+        // montrait comme la pièce qui paie encore le chèque.
+        pieceRetiree: ch.etat === EtatChequeEmis.EMIS && ch.ecritureId === null && ch.pieceDecrite !== null,
         encaisseLe: etatLu === 'ENCAISSE' ? encaisseLe : null,
         motifAnnulation: ch.motifAnnulation,
       });
@@ -364,14 +368,20 @@ export class ChequesService {
       where: { tenantId, ...(chequierId ? { id: chequierId } : {}) },
       select: { id: true, rib: { select: { journal: { select: { compteTresorerieId: true } } } } },
     });
-    let nombreCirculation = 0;
-    let centimesCirculation = 0;
+    // Une somme par COMPTE DE BANQUE, ses carnets ensemble · jamais une
+    // requête par carnet (un dossier ancien en compte des dizaines).
+    const parCompte = new Map<string | null, string[]>();
     for (const c of carnets) {
       const compte = c.rib.journal?.compteTresorerieId ?? null;
+      parCompte.set(compte, [...(parCompte.get(compte) ?? []), c.id]);
+    }
+    let nombreCirculation = 0;
+    let centimesCirculation = 0;
+    for (const [compte, ids] of parCompte) {
       const a = await this.prisma.chequeEmis.aggregate({
         where: {
           tenantId,
-          chequierId: c.id,
+          chequierId: { in: ids },
           etat: EtatChequeEmis.EMIS,
           ...(compte
             ? {
