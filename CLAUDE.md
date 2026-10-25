@@ -240,7 +240,14 @@ demandée sous ce nom part vers `oomega.web.app` (`lib/adresse-du-site.ts`,
 avant tout rendu), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET VMG
 Consulting (`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
 courriel, hébergées hors du dépôt), choisi par Manasse (« Site du cabinet VMG »), sans
-toucher au serveur.
+toucher au serveur ; puis, le 2026-10-25, l'ÉCRAN DES LOGICIELS après la
+connexion (« Le tout en cascade ») · tuiles tirées du menu réel
+(`client/src/lib/logiciels.ts`, confrontée au menu par son spec), choix du
+poste, attribution par utilisateur par l'administrateur
+(`User.restreindreLogiciels`, `logicielsAutorises`, `PUT
+/utilisateurs/:id/logiciels`), effacée quand le rôle ne la suit pas ;
+MASQUER N'EST PAS REFUSER · le refus par le serveur, module par module, reste
+au suivi.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

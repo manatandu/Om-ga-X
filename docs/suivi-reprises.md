@@ -548,3 +548,24 @@ défense réelle contre la force brute reste le VERROUILLAGE PAR COMPTE
 (`verrouillage.ts`, keyé sur le compte, non sur l'IP, non contourné par un
 `X-Forwarded-For` forgé) ; le point se ferme dans l'infrastructure (n'admettre
 à Cloud Run que le trafic du site).
+
+## Relevés en attente · écran des logiciels (2026-10-25)
+
+- `journauxAutorises` et `fonctionsAutorisees` ont le même défaut d'origine :
+  un utilisateur promu administrateur garde en base sa restriction, qui
+  ressusciterait s'il redevenait comptable (`UtilisateurService.modifier`
+  n'efface ni `restreindreJournaux` ni `restreindreFonctions`). Non corrigé
+  ici.
+
+**Masquer n'est pas refuser.** Aucune route n'est refusée sur le fondement d'un
+logiciel : une adresse tapée ouvre toujours sa fenêtre, et le serveur ne
+connaît l'attribution que pour la rendre à l'écran. Pour que « ce qui ne
+concerne pas l'utilisateur ne soit pas accessible », il reste, module par
+module, à poser le refus au serveur (un garde qui relit `logicielsAutorises`
+sur chaque contrôleur rangé dans une tuile, sur le modèle de
+`@ReferentielsAutorises` + `ReferentielGuard`), et à l'aiguillage client
+(`fenetreOuverteAuRole`). À noter au suivi, pas à coder avant décision :
+une commande rangée dans plusieurs tuiles (paramètres du dossier, journal
+d'écritures exportées, contrôles) doit être autorisée si l'une des tuiles
+l'est. Aucune fonction n'est marquée « bientôt disponible ».
+
