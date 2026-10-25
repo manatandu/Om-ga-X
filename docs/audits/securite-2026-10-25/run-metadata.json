@@ -1,0 +1,57 @@
+{
+  "run_id": "om-ga-x-run-1",
+  "repo": "manatandu/Om-ga-X",
+  "target": "/home/user/audit-cible",
+  "source_ref": "d1e16b3 (main, worktree propre, détaché)",
+  "profile": "quick",
+  "scope_paths": [
+    "src",
+    "client/src",
+    "prisma",
+    "installation",
+    "scripts",
+    ".github/workflows",
+    "Dockerfile",
+    "client/firebase.json",
+    "client/public"
+  ],
+  "budget": 32,
+  "execution_policy": "sandboxed-source-and-local-only",
+  "sandbox": "indisponible · aucun bac à sable imposé par le système (réseau coupé, environnement vide, montages en lecture seule, limites) ; aucune exécution du code de la cible, revue du source seule",
+  "companion_files": [],
+  "prior_runs": [],
+  "prior_runs_note": "aucun ledger ni findings.json antérieur au format de la compétence ; campagnes de sécurité internes antérieures (2026-10-22 et 2026-10-23) non au format",
+  "shared_file_owners": {
+    "run-metadata.json": "parent",
+    "architecture.md": "parent",
+    "coverage-ledger.json": "parent",
+    "findings.json": "parent",
+    "REPORT.md": "parent",
+    "FINDINGS-DETAIL.md": "parent",
+    "NEEDS-VALIDATION.md": "parent"
+  },
+  "budget_plan": {
+    "reconnaissance": 4,
+    "final_critic": 1,
+    "validation_reserve_min": 7,
+    "hunters_max": 12
+  },
+  "agents_spent": 29,
+  "run_status": "complete",
+  "hunter_order": [
+    "h01",
+    "h09",
+    "h03",
+    "h05",
+    "h04",
+    "h02",
+    "h06",
+    "h08",
+    "h10",
+    "h07",
+    "h11",
+    "h12"
+  ],
+  "hunter_order_rationale": "anonymous surfaces first, then cross-tenant and platform authority, then authenticated controls, exports and files, CI, templates, business logic, client; ties by coverage_id",
+  "budget_note": "budget proposé par la session (24), relevé à 32 par la session elle-même avant la phase de validation pour que chaque candidat ait un vérificateur indépendant ; aucun budget fixé par l utilisateur"
+}

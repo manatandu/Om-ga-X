@@ -1,0 +1,2701 @@
+[
+  {
+    "coverage_id": ".github%2Fworkflows%23privileged%20workflows%3B%20Dockerfile%3B%20client%2Ffirebase.json%3B%20.mcp.json::.github%2Fworkflows%2Fdeploy-cloud-run.yml%23secrets%2C%20deploy%20identity%2C%20ingress::profile%2Fquick%2Fall-in-scope-subsystems::SUPPLY-CHAIN-AND-RELEASE.md%23Untrusted%20code%20in%20a%20privileged%20workflow",
+    "canonical_refs": {
+      "surface": ".github/workflows#privileged workflows; Dockerfile; client/firebase.json; .mcp.json",
+      "boundary": ".github/workflows/deploy-cloud-run.yml#secrets, deploy identity, ingress",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow"
+    },
+    "surface": "CI, release and deployment configuration",
+    "boundary": "Workflow privilege, secrets and ingress",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Untrusted code in a privileged workflow",
+    "starting_paths": [
+      ".github/workflows",
+      "Dockerfile",
+      ".gcloudignore",
+      "client/firebase.json",
+      ".mcp.json",
+      "package.json"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Workflow command and expression confusion",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Universal moves",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Validation rules",
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+      "CLOUD-AND-DEPLOYMENT.md#Secret exposure across workload boundaries",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h10",
+    "reviewed_paths": [
+      ".gcloudignore",
+      ".github/dependabot.yml",
+      ".github/workflows/charge-k6.yml",
+      ".github/workflows/deploy-cloud-run.yml",
+      ".github/workflows/firebase-hosting-merge.yml",
+      ".github/workflows/firebase-hosting-pull-request.yml",
+      ".github/workflows/paquet-sur-site.yml",
+      ".github/workflows/requetes-production.yml",
+      ".github/workflows/sauvegarde-base.yml",
+      ".github/workflows/surveillance.yml",
+      ".github/workflows/tests-navigateur.yml",
+      ".gitignore",
+      ".mcp.json",
+      "CLAUDE.md",
+      "Dockerfile",
+      "client/firebase.json",
+      "package.json",
+      "src/app.module.ts",
+      "src/bootstrap.ts",
+      "src/common/audit/audit-contexte.interceptor.ts",
+      "src/common/sauts-de-confiance.ts",
+      "src/main.ts",
+      "src/modules/auth/auth.controller.ts",
+      "src/modules/exports/restitution/restitution.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml"
+        ],
+        "invariant": "Pull-request events never reach production secrets or deployment: the deploy job is gated to push/workflow_dispatch on refs/heads/main, verifier reads no secret, no pull_request_target.",
+        "method": "source",
+        "result": "Holds for the workflow as written on main: migrer-et-deployer has `if: github.ref == 'refs/heads/main' && (push || workflow_dispatch)` (line 238); verifier uses only throwaway values; workflow permissions contents: read. The gate is however only as strong as the workflow file in the triggering ref (see candidate on repository-scoped secrets).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          ".github/workflows/firebase-hosting-pull-request.yml",
+          ".github/workflows/firebase-hosting-merge.yml",
+          ".github/workflows/requetes-production.yml",
+          ".github/workflows/sauvegarde-base.yml",
+          ".github/workflows/paquet-sur-site.yml",
+          ".github/workflows/charge-k6.yml",
+          ".github/workflows/tests-navigateur.yml",
+          ".github/workflows/surveillance.yml"
+        ],
+        "invariant": "Production secrets (DB URL, GCP SA key, JWT secret, Firebase SA, licence private key) are bound to a protected environment or otherwise unreachable from non-main refs.",
+        "method": "source",
+        "result": "No workflow declares `environment:`; all secrets are read as `secrets.*` at job/step level, i.e. repository or organisation secrets available to any workflow run in this repository (push to any branch, same-repo pull_request). Raised as needs_validation candidate.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".github/workflows/firebase-hosting-pull-request.yml"
+        ],
+        "invariant": "Fork pull requests and Dependabot do not receive the Firebase deploy service account.",
+        "method": "source",
+        "result": "Job `if` restricts to head.repo == github.repository and author != dependabot[bot] (line 23 of file). Fork PRs excluded. Same-repo branch PRs run PR-controlled `npm ci && npm run build` (client package.json, vite config) in the same job that then hands FIREBASE_SERVICE_ACCOUNT to action-hosting-deploy; covered under the repository-scoped secrets candidate.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".github/workflows/requetes-production.yml",
+          ".github/workflows/charge-k6.yml",
+          ".github/workflows/surveillance.yml",
+          ".github/workflows/sauvegarde-base.yml"
+        ],
+        "invariant": "No attacker-controlled event field, branch name or free-text input is interpolated into a shell command via `${{ }}`.",
+        "method": "source",
+        "result": "Holds. requetes-production input is a choice passed through env (CHOIX); charge-k6 inputs passed through env; surveillance interpolates only step outputs from its own curl targets via env; sauvegarde interpolates `vars.BUCKET_SAUVEGARDES` (admin-set repository variable) and env.HORODATAGE (self-produced). No github.event.* text fields used in run blocks.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          "Dockerfile",
+          ".gcloudignore",
+          ".gitignore",
+          ".github/workflows/deploy-cloud-run.yml"
+        ],
+        "invariant": "The source uploaded to Cloud Build and the built image carry no secret (env file, node_modules with secrets, /tmp/env-vars.yaml).",
+        "method": "source",
+        "result": "Holds. env-vars.yaml is written to /tmp outside the uploaded tree; .gcloudignore includes .gitignore (node_modules, dist, .env) plus .git and .claude; Dockerfile build steps receive no secret; runtime vars arrive by --env-vars-file at deploy, not build. The failure-path step that tails Cloud Build logs therefore prints no secret.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          "src/common/sauts-de-confiance.ts",
+          "src/bootstrap.ts",
+          "src/main.ts",
+          "src/app.module.ts",
+          "src/modules/auth/auth.controller.ts",
+          "src/common/audit/audit-contexte.interceptor.ts",
+          "client/firebase.json"
+        ],
+        "invariant": "The backend trusts X-Forwarded-For only from the intended ingress chain (Firebase Hosting then Cloud Run front end); a peer that bypasses Firebase cannot choose req.ip.",
+        "method": "source",
+        "result": "Fails in source: Cloud Run is deployed `--allow-unauthenticated` with no `--ingress` restriction and no application-level origin proof, while `trust proxy` is fixed to 2 hops. A direct call to *.run.app with a forged leading X-Forwarded-For entry makes Express select the forged value. The code comment acknowledges the gap. Raised as needs_validation (hosted front-end XFF behaviour and ingress setting not observable).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          "client/firebase.json"
+        ],
+        "invariant": "Hosting rewrite sends /api/** only to the intended Cloud Run service and sets restrictive headers.",
+        "method": "source",
+        "result": "Holds: rewrite to serviceId comptaflow-api in us-east1; CSP script-src 'self', frame-ancestors 'none', HSTS, nosniff. No path in firebase.json exposes secrets.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h10",
+        "reviewed_paths": [
+          ".mcp.json",
+          "package.json",
+          ".github/dependabot.yml"
+        ],
+        "invariant": "Developer/agent tooling and dependency updates do not introduce an unreviewed execution path into a privileged CI job.",
+        "method": "source",
+        "result": "No privileged CI job consumes .mcp.json; it runs only in developer/agent sessions (pinned @magicuidesign/mcp@2.0.0, transitive deps unlocked). Dependabot PRs get no secrets (verifier and tests-navigateur are secret-less; Firebase preview excludes Dependabot). Residual: npm ci in the deploy job runs lifecycle scripts with DATABASE_URL in env (hardening).",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-09",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          ".github/workflows/firebase-hosting-merge.yml",
+          ".github/workflows/firebase-hosting-pull-request.yml",
+          ".github/workflows/requetes-production.yml",
+          ".github/workflows/sauvegarde-base.yml",
+          "CLAUDE.md"
+        ],
+        "invariant": "Independent verification of candidate ci/production-secrets-repository-scoped-reachable-from-branch-workflows",
+        "method": "source",
+        "result": "needs_validation: Whether these secrets are repository/organisation secrets or environment secrets with a main-only branch policy is not observable from source (only the absence of `environment:` in the workflows is).",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-10",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          "src/app.module.ts",
+          "src/bootstrap.ts",
+          "src/common/audit/audit-contexte.interceptor.ts",
+          "src/common/sauts-de-confiance.ts",
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/exports/restitution/restitution.controller.ts"
+        ],
+        "invariant": "Independent verification of candidate deploy/cloud-run-public-ingress-forwarded-for-trust-two-hops",
+        "method": "source",
+        "result": "needs_validation: Effective ingress setting and invoker IAM of the deployed comptaflow-api service are not observable from source (gcloud run deploy without --ingress keeps whatever value the service already has, which could have been restricted in the console).",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "ci/production-secrets-repository-scoped-reachable-from-branch-workflows",
+      "deploy/cloud-run-public-ingress-forwarded-for-trust-two-hops"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "deploy-cloud-run.yml line 255-261 runs `npm ci` (all dependency lifecycle scripts plus the prisma postinstall) in the same step that exports the direct production DATABASE_URL; run `npm ci --ignore-scripts` and `npx prisma generate` in a step without secrets, and expose DATABASE_URL only to `prisma migrate deploy`.",
+      "GCP_SA_KEY is a long-lived JSON service-account key (deploy-cloud-run.yml line 265, sauvegarde-base.yml line 338); prefer Workload Identity Federation bound to the main branch / production environment, and separate the deploy identity from the backup-bucket writer.",
+      "Third-party actions holding deploy credentials are referenced by mutable tags (FirebaseExtended/action-hosting-deploy@v0 with the Firebase service account, google-github-actions/auth@v2 and setup-gcloud@v2 with GCP_SA_KEY); pin to full commit SHAs and let Dependabot (github-actions ecosystem already configured) bump the SHAs.",
+      "requetes-production.yml read-only guarantee rests on PGOPTIONS and a keyword filter; additionally use a dedicated read-only database role for that secret rather than the migration-capable direct endpoint.",
+      ".mcp.json pins @magicuidesign/mcp@2.0.0 but its transitive dependencies are resolved unlocked at every `npx -y` launch in developer/agent sessions that may hold repository push credentials; consider a lockfile-backed local install.",
+      "The Firebase PR preview job uses the same service account as the live deploy; a preview-only identity limited to preview channels would bound a compromised PR build."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "client%2Fsrc%23SPA%2C%20client%2Fpublic%23vitrine%20and%20service%20worker::client%2Fsrc%2Flib%2Fapi.ts%23credentials%2C%20CSRF%20in%20localStorage%3B%20client%2Ffirebase.json%23CSP::profile%2Fquick%2Fall-in-scope-subsystems::CLIENT-SIDE.md%23DOM-based%20XSS",
+    "canonical_refs": {
+      "surface": "client/src#SPA, client/public#vitrine and service worker",
+      "boundary": "client/src/lib/api.ts#credentials, CSRF in localStorage; client/firebase.json#CSP",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "CLIENT-SIDE.md#DOM-based XSS"
+    },
+    "surface": "Browser client",
+    "boundary": "DOM rendering, storage, CORS and navigation",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "DOM-based XSS",
+    "starting_paths": [
+      "client/src",
+      "client/public",
+      "client/firebase.json",
+      "src/bootstrap.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#DOM-based XSS",
+      "CLIENT-SIDE.md#Browser-storage disclosure and stale authorization",
+      "CLIENT-SIDE.md#Credentialed CORS trust",
+      "CLIENT-SIDE.md#Client-side navigation confusion",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-h12",
+    "reviewed_paths": [
+      "client/firebase.json",
+      "client/public/sw.js",
+      "client/public/vitrine/vitrine.js",
+      "client/src/components/CadrePagePublique.tsx",
+      "client/src/components/ModaleDoubleAuth.tsx",
+      "client/src/components/chrome/AppShell.tsx",
+      "client/src/lib/adresse-du-site.ts",
+      "client/src/lib/api.ts",
+      "client/src/lib/auth.tsx",
+      "client/src/lib/deconnexion.ts",
+      "client/src/lib/dossiersRecents.ts",
+      "client/src/lib/lien-page-legale.ts",
+      "client/src/main.tsx",
+      "client/src/pages/ImportPage.tsx",
+      "installation/windows/initialiser.ps1",
+      "src/bootstrap.ts",
+      "src/main.ts",
+      "src/modules/auth/double-authentification.ts",
+      "src/modules/auth/session.constants.ts",
+      "src/modules/sur-site/interface-sur-site.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "client/src/components/ModaleDoubleAuth.tsx",
+          "client/src/components/CadrePagePublique.tsx",
+          "client/src/components/chrome/AppShell.tsx",
+          "client/src/pages/ImportPage.tsx",
+          "client/src/lib/lien-page-legale.ts",
+          "src/modules/auth/double-authentification.ts"
+        ],
+        "invariant": "No attacker-controlled browser or server value reaches an HTML/script-executing DOM sink or an executable URL in the SPA.",
+        "method": "source",
+        "result": "Grep of client/src (non-spec) finds no dangerouslySetInnerHTML, innerHTML, outerHTML, insertAdjacentHTML, document.write, eval/new Function, srcdoc, iframe, postMessage listener, useSearchParams or document.referrer/window.name read. Dynamic hrefs are: otpauth URI built server-side with fixed 'otpauth://totp/' prefix and encoded label (double-authentification.ts:103); legal-page links from a closed union of three constant paths (lien-page-legale.ts); a static data:text/csv template (ImportPage.tsx:180); blob: URLs for downloads with server filename only in the download attribute. React text interpolation escapes all server messages. No finding.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "client/src/main.tsx",
+          "client/src/lib/adresse-du-site.ts"
+        ],
+        "invariant": "Client-side redirect cannot be steered to an attacker-chosen origin or javascript: scheme.",
+        "method": "source",
+        "result": "The only location write is window.location.replace(redirectionDuSite(location)) (main.tsx:16). It fires only when hostname equals omegax.vmgconsulting.net and returns either '/vitrine/' or the constant 'https://oomega.web.app' concatenated with location.pathname (always beginning with '/'), search and hash, so the destination host is fixed. No open redirect.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "client/public/vitrine/vitrine.js",
+          "client/public/sw.js"
+        ],
+        "invariant": "The public vitrine script and the service worker expose no DOM sink, cache or interception that could serve one account's data to another.",
+        "method": "source",
+        "result": "vitrine.js writes only through textContent/setAttribute of constant values and a numeric trial duration; its fetch uses credentials 'omit'. sw.js has no fetch handler, caches nothing and deletes all caches on activate, so no response survives logout or account switch.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "client/src/lib/api.ts",
+          "client/src/lib/auth.tsx",
+          "client/src/lib/deconnexion.ts",
+          "client/src/lib/dossiersRecents.ts"
+        ],
+        "invariant": "Browser storage holds no session credential usable after logout and no private response readable by a later account on the same device.",
+        "method": "source",
+        "result": "Session JWT is an httpOnly cookie; localStorage holds only the CSRF token (useless without the cookie, cleared by setCsrf(null) on logout and lost session, auth.tsx:146,190,276), and setCsrf clears the in-memory referentiels cache. Logout also closes the session server-side (POST /auth/logout awaited). dossiersRecents keeps dossier name and login email by design, no secret. Other keys are UI preferences keyed by tenant. No stale-authorization path with a less-trusted reader found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "src/bootstrap.ts",
+          "src/modules/auth/session.constants.ts",
+          "installation/windows/initialiser.ps1"
+        ],
+        "invariant": "Credentialed CORS is granted only to named, publisher-controlled origins.",
+        "method": "source",
+        "result": "optionsCors uses a fixed list (oomega.web.app, oomega.firebaseapp.com, omegax.vmgconsulting.net) plus CORS_ORIGIN when NODE_ENV=production; origin reflection (origin:true) only when NODE_ENV is not production. On-site initialiser writes NODE_ENV=production, so the on-site server also uses the fixed list, and its cookie is SameSite=Lax. No reflected or weakly matched origin with credentials in deployed modes.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h12",
+        "reviewed_paths": [
+          "client/firebase.json",
+          "src/modules/sur-site/interface-sur-site.ts",
+          "src/main.ts"
+        ],
+        "invariant": "Hosted and on-site interface CSP blocks inline and third-party script execution.",
+        "method": "source",
+        "result": "Both policies set script-src 'self', object-src 'none', base-uri 'self', frame-ancestors 'none'; hosted connect-src adds only the two EU telemetry hosts. API responses carry helmet default-src 'none'. No same-origin script gadget found in the SPA sources reviewed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "x_hardening": [
+      "client/firebase.json and src/modules/sur-site/interface-sur-site.ts keep style-src 'unsafe-inline'; removing it would narrow CSS-injection exfiltration if an HTML sink were ever introduced.",
+      "client/src/lib/dossiersRecents.ts keeps the last five dossier names and login emails in localStorage of the device; on shared workstations an explicit 'forget this device' at logout would avoid disclosing prior users' identifiers.",
+      "src/bootstrap.ts reflects any Origin with credentials (origin:true) whenever NODE_ENV is not 'production'; a deployment or on-site config that omitted NODE_ENV would expose credentialed CORS, so defaulting to the closed list unless an explicit development flag is set would remove that dependency."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%23authenticated%20GET%20handlers%20that%20create%20or%20update%20rows%20%28104%20controllers%20expose%20%40Get%29::CSRF%20exemption%20for%20safe%20methods%20in%20src%2Fmodules%2Fauth%2Fjwt.strategy.ts%20with%20hosted%20cookie%20SameSite%3DNone%20%28session.constants.ts%29%20versus%20services%20writing%20during%20GET::profile%2Fquick%2Fall-in-scope-subsystems::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+    "canonical_refs": {
+      "surface": "src/modules#authenticated GET handlers that create or update rows (104 controllers expose @Get)",
+      "boundary": "CSRF exemption for safe methods in src/modules/auth/jwt.strategy.ts with hosted cookie SameSite=None (session.constants.ts) versus services writing during GET",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF"
+    },
+    "surface": "Authenticated GET handlers that write state",
+    "boundary": "CSRF exemption of safe methods with SameSite=None cookie",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Ordinary CSRF",
+    "starting_paths": [
+      "src/modules/auth/jwt.strategy.ts",
+      "src/modules/auth/session.constants.ts",
+      "src/modules/exports/export.controller.ts",
+      "src/modules/journaux/impressions-journal.ts",
+      "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+      "src/modules/comptes/natures-compte.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 2,
+    "status": "deferred",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "quick_profile_final_critic: accepted by the final coverage critic after the single hunter wave; the quick profile launches no follow-up wave. h02 sampled only exports and courrier GET routes and already found a state-recording GET (ImpressionJournal / ExtraitPeriode numbering, which feeds the refusClotureJournalNonImprime closure option); its x_uncovered asks for a deterministic inventory of all GET handlers with persistent side effects, which no unit performed (h04's LicenceGuard check only scanned GET handler names)."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%23authenticated%20mutating%20routes%20%28POST%2C%20PUT%2C%20PATCH%2C%20DELETE%29::src%2Fcommon%2Fguards%2Froles.guard.ts%23RolesGuard%2C%20roles-cantonnes%2C%20fonctions-metier%2C%20perimetre-journaux%2C%20licence.guard::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "src/modules#authenticated mutating routes (POST, PUT, PATCH, DELETE)",
+      "boundary": "src/common/guards/roles.guard.ts#RolesGuard, roles-cantonnes, fonctions-metier, perimetre-journaux, licence.guard",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Authenticated mutating routes",
+    "boundary": "Role, restricted role, function profile, journal scope and licence guards",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "src/common/guards",
+      "src/common/fonctions",
+      "src/common/perimetre",
+      "src/common/decorators",
+      "src/modules/licence",
+      "src/modules/utilisateurs"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-h04",
+    "reviewed_paths": [
+      "src/app.module.ts",
+      "src/bootstrap.ts",
+      "src/common/audit/audit-contexte.interceptor.ts",
+      "src/common/audit/contexte-audit.ts",
+      "src/common/audit/journal-audit.controller.ts",
+      "src/common/decorators/acces-roles-cantonnes.decorator.ts",
+      "src/common/decorators/current-user.decorator.ts",
+      "src/common/decorators/roles.decorator.ts",
+      "src/common/fonctions/fonctions-metier.ts",
+      "src/common/guards/ecritures-reservees.spec.ts",
+      "src/common/guards/mot-de-passe-a-changer.guard.ts",
+      "src/common/guards/roles-cantonnes.ts",
+      "src/common/guards/roles.guard.ts",
+      "src/common/perimetre/extension-perimetre-journaux.ts",
+      "src/modules/auth/jwt-auth.guard.ts",
+      "src/modules/banques/banques.controller.ts",
+      "src/modules/comptabilite/ecriture.controller.ts",
+      "src/modules/comptabilite/ecriture.service.ts",
+      "src/modules/comptes/compte.controller.ts",
+      "src/modules/comptes/compte.service.ts",
+      "src/modules/conditions-licence/conditions-licence.controller.ts",
+      "src/modules/devises/declaration-devise-a-nouveau.service.ts",
+      "src/modules/devises/devises.controller.ts",
+      "src/modules/devises/devises.service.ts",
+      "src/modules/effets/effets.controller.ts",
+      "src/modules/exercice/exercice.controller.ts",
+      "src/modules/exports/restitution/restitution.controller.ts",
+      "src/modules/import/import.controller.ts",
+      "src/modules/journaux/impressions-journal.controller.ts",
+      "src/modules/journaux/journal.controller.ts",
+      "src/modules/lettrage/lettrage.controller.ts",
+      "src/modules/licence/licence.guard.ts",
+      "src/modules/licence/licence.service.ts",
+      "src/modules/personnel/absences.controller.ts",
+      "src/modules/personnel/avances-rubriques.controller.ts",
+      "src/modules/personnel/baremes-paie.controller.ts",
+      "src/modules/personnel/conges.controller.ts",
+      "src/modules/personnel/majorations-heures.controller.ts",
+      "src/modules/personnel/paiement-salaires.controller.ts",
+      "src/modules/personnel/personnel.controller.ts",
+      "src/modules/personnel/pieces-jointes-salarie.controller.ts",
+      "src/modules/personnel/questionnaire-paie.controller.ts",
+      "src/modules/personnel/repartitions-analytiques-paie.controller.ts",
+      "src/modules/plateforme/abonnements/abonnements.service.ts",
+      "src/modules/plateforme/operateur-plateforme.guard.ts",
+      "src/modules/plateforme/plateforme.service.ts",
+      "src/modules/reglements/ordres-virement.controller.ts",
+      "src/modules/reglements/ordres-virement.service.ts",
+      "src/modules/remises/remises.controller.ts",
+      "src/modules/stocks/magasin.controller.ts",
+      "src/modules/sur-site/sur-site.controller.ts",
+      "src/modules/tenant/modules-optionnels.ts",
+      "src/modules/tenant/tenant.controller.ts",
+      "src/modules/tenant/tenant.service.ts",
+      "src/modules/tiers/ribs-tiers.controller.ts",
+      "src/modules/tiers/ribs-tiers.service.ts",
+      "src/modules/tiers/tiers.controller.ts",
+      "src/modules/tiers/tiers.service.ts",
+      "src/modules/tresorerie/operations-tresorerie.controller.ts",
+      "src/modules/tresorerie/titres-placement.controller.ts",
+      "src/modules/tva/taux-tva.controller.ts",
+      "src/modules/tva/taux-tva.service.ts",
+      "src/modules/utilisateurs/dto/utilisateur.dto.ts",
+      "src/modules/utilisateurs/utilisateur.controller.ts",
+      "src/modules/utilisateurs/utilisateur.service.ts",
+      "src/modules/virements-fonds/virements-fonds.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/common/guards/roles.guard.ts",
+          "src/common/guards/ecritures-reservees.spec.ts",
+          "src/common/decorators/roles.decorator.ts",
+          "src/app.module.ts",
+          "src/modules/journaux/journal.controller.ts",
+          "src/modules/stocks/magasin.controller.ts",
+          "src/modules/journaux/impressions-journal.controller.ts",
+          "src/common/guards/mot-de-passe-a-changer.guard.ts",
+          "src/common/decorators/current-user.decorator.ts"
+        ],
+        "invariant": "Every authenticated POST/PUT/PATCH/DELETE route in src/modules carries @Roles (method or class) and is served by a controller whose @UseGuards includes RolesGuard, so LECTURE_SEULE cannot write through a route with a forgotten decorator.",
+        "method": "source",
+        "result": "Independent structural scan of all *.controller.ts files (917 route decorators, single- and multi-line forms checked) found only four write-verb routes without @Roles (regularisation simuler, devises reevaluation/calcul, operations-specifiques proposition, tiers :id/calculer), all compute-only and listed in ROUTES_DE_CALCUL; AuthController, SurSiteController and PlateformeController are covered by their own guards. No controller uses @Roles without RolesGuard; the only APP_GUARD is ThrottlerGuard. Write routes that list LECTURE_SEULE (personnel simulation/decompte/livre-de-paie/retenues-proposees, magasin confrontation, impressions-journal, impressions-differees) are reads or print traces by design.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/common/guards/roles-cantonnes.ts",
+          "src/common/decorators/acces-roles-cantonnes.decorator.ts",
+          "src/modules/auth/jwt-auth.guard.ts",
+          "src/modules/personnel/personnel.controller.ts",
+          "src/modules/personnel/paiement-salaires.controller.ts",
+          "src/modules/personnel/absences.controller.ts",
+          "src/modules/personnel/avances-rubriques.controller.ts",
+          "src/modules/personnel/baremes-paie.controller.ts",
+          "src/modules/personnel/conges.controller.ts",
+          "src/modules/personnel/majorations-heures.controller.ts",
+          "src/modules/personnel/pieces-jointes-salarie.controller.ts",
+          "src/modules/personnel/questionnaire-paie.controller.ts",
+          "src/modules/personnel/repartitions-analytiques-paie.controller.ts",
+          "src/modules/reglements/ordres-virement.controller.ts",
+          "src/modules/reglements/ordres-virement.service.ts",
+          "src/modules/devises/devises.controller.ts",
+          "src/modules/comptabilite/ecriture.controller.ts",
+          "src/modules/virements-fonds/virements-fonds.controller.ts",
+          "src/modules/remises/remises.controller.ts",
+          "src/modules/effets/effets.controller.ts",
+          "src/modules/tresorerie/operations-tresorerie.controller.ts",
+          "src/modules/tresorerie/titres-placement.controller.ts",
+          "src/modules/devises/declaration-devise-a-nouveau.service.ts",
+          "src/modules/devises/devises.service.ts"
+        ],
+        "invariant": "AIDE_COMPTABLE is refused validation/correction/paie posting and the whole personnel module (reads included); GESTIONNAIRE_PAIE is refused everything not explicitly opened; a method-level AccesRolesCantonnes override cannot silently reopen personnel routes to the aide.",
+        "method": "source",
+        "result": "JwtAuthGuard applies routeOuverteAuRoleCantonne to every authenticated route (covering @Roles-less reads for GESTIONNAIRE_PAIE) and RolesGuard maps cantoned roles onto COMPTABLE/LECTURE_SEULE only where the route allows. All ten personnel controllers set class-level {aideComptable:false, gestionnairePaie:true}; their only method-level overrides are @ReserveAuComptable (both false), so no override leaves aideComptable undefined. Salary payment orders, the other personnel-bearing path, filter salary lines for AIDE_COMPTABLE in lister/detail/avisReglement/imprimer/annuler (personnelOuvert). Validation, correction, reimputation, paie comptabilisation and every module annulation that inscribes a validated negative (remises, effets, virements-fonds, titres, operations-tresorerie, creances-douteuses, devises, annulation-traitement, paiement-salaires, declaration devise a-nouveau) carry @ReserveAuComptable; admin-only routes are refused to cantoned roles because rolesSatisfaits requires COMPTABLE or LECTURE_SEULE in the list.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/common/fonctions/fonctions-metier.ts",
+          "src/modules/auth/jwt-auth.guard.ts",
+          "src/modules/lettrage/lettrage.controller.ts"
+        ],
+        "invariant": "The function profile restricts every writing controller (no writing controller falls through fonctionDeRoute=null, which motifRefusFonction treats as open) and never restricts or widens beyond the role.",
+        "method": "source",
+        "result": "Every class exporting a POST/PUT/PATCH/DELETE route appears in FONCTION_PAR_CONTROLEUR or CONTROLEURS_HORS_PROFIL (the one apparent gap, LettrageDossierController, has only a GET). The profile is evaluated in JwtAuthGuard after role checks, only for write verbs, never for ADMIN_CABINET; RolesGuard still runs afterwards, so a ticked function cannot widen a role.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/common/perimetre/extension-perimetre-journaux.ts",
+          "src/common/audit/audit-contexte.interceptor.ts",
+          "src/common/audit/contexte-audit.ts",
+          "src/modules/comptabilite/ecriture.service.ts"
+        ],
+        "invariant": "A user restricted to certain journals cannot create, modify, move, validate or delete an Ecriture/LigneEcriture outside them by any Prisma path.",
+        "method": "source",
+        "result": "Extension covers create/createMany/update/updateMany/upsert/delete/deleteMany on Ecriture and LigneEcriture, re-reads the journal of targeted rows (inside the current transaction), checks a journal change by journalId or journal.connect.id (no compound-unique journal connect exists in src), and treats line writes that touch anything but lettrage/pointage as saisie. No raw-SQL UPDATE/INSERT/DELETE on ecritures or lignes exists outside the purge; nested ecriture writes from other models are not used. The acteur context (journauxAutorises) is posted by the interceptor after guards and is null for ADMIN_CABINET.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/modules/licence/licence.guard.ts",
+          "src/modules/licence/licence.service.ts",
+          "src/modules/conditions-licence/conditions-licence.controller.ts",
+          "src/modules/sur-site/sur-site.controller.ts"
+        ],
+        "invariant": "An expired-subscription dossier is read-only: no writing route of the tenant escapes LicenceGuard, and a suspended licence closes everything.",
+        "method": "source",
+        "result": "All tenant write routes carry LicenceGuard except auth (own account), plateforme (operator console), sur-site (installation, own guard) and conditions-licence accept/accuse (deliberately reachable to restore the contract, admin only). LicenceGuard admits only GET/HEAD under lectureSeule; SUSPENDUE is fully closed; PROPRIETAIRE short-circuit is intentional. No GET handler with a ledger-changing side effect was found among the GET handler names reviewed.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/modules/utilisateurs/utilisateur.controller.ts",
+          "src/modules/utilisateurs/utilisateur.service.ts",
+          "src/modules/utilisateurs/dto/utilisateur.dto.ts",
+          "src/modules/plateforme/operateur-plateforme.guard.ts",
+          "src/modules/plateforme/plateforme.service.ts",
+          "src/bootstrap.ts"
+        ],
+        "invariant": "Lead from h05: a tenant ADMIN_CABINET acting through PATCH /utilisateurs/:id, PUT :id/fonctions, PUT :id/journaux, :id/deconnecter or :id/deverrouiller on an account holding estOperateurPlateforme cannot gain or transfer platform privilege.",
+        "method": "source",
+        "result": "Settled, no privilege gain. ModifierUtilisateurDto exposes only role and estActif and the global ValidationPipe (whitelist + forbidNonWhitelisted) strips everything else, so estOperateurPlateforme, email and tenantId cannot be written; every gesture is bounded to the admin's own tenant by findFirst({id, tenantId}). OperateurPlateformeGuard depends only on the flag (plus 2FA/recent full login), not on role, so a role change neither grants nor removes the console; PlateformeController is hors profil so function/journal restrictions do not touch it. The residual effect is availability only: an admin of the same dossier as the operator account can deactivate or disconnect it, which is within that admin's authority over his own dossier's accounts (the last-admin lock still applies).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h04",
+        "reviewed_paths": [
+          "src/modules/tiers/tiers.controller.ts",
+          "src/modules/tiers/ribs-tiers.controller.ts",
+          "src/modules/tiers/tiers.service.ts",
+          "src/modules/tiers/ribs-tiers.service.ts",
+          "src/modules/banques/banques.controller.ts",
+          "src/modules/comptes/compte.controller.ts",
+          "src/modules/comptes/compte.service.ts",
+          "src/modules/import/import.controller.ts",
+          "src/modules/tenant/tenant.controller.ts",
+          "src/modules/exercice/exercice.controller.ts",
+          "src/modules/exports/restitution/restitution.controller.ts",
+          "src/common/audit/journal-audit.controller.ts",
+          "src/modules/tva/taux-tva.controller.ts",
+          "src/modules/tva/taux-tva.service.ts",
+          "src/modules/tenant/modules-optionnels.ts",
+          "src/modules/tenant/tenant.service.ts",
+          "src/modules/plateforme/abonnements/abonnements.service.ts"
+        ],
+        "invariant": "No weaker alternate path reaches an admin-only state change (tiers/RIB/bank structure, plan comptable, dossier settings, closures, import, full restitution, audit journal).",
+        "method": "source",
+        "result": "Tiers and RIB creation/modification exist only behind @Roles(ADMIN_CABINET) routes (tiers.create and ribTiers.create/update only in their own services, plus the operator demo seeding); RIB visa is @ReserveAuComptable; import, restitution, audit journal, tenant settings, exercise/journal closures and their annulment are admin only. The comptable-open /comptes/en-saisie path re-reads the dossier option server-side and refuses collectifs. TVA liquidation annulment only deletes a brouillard entry through EcritureService. No body field can override authorization (DTO scan for tenantId/createdBy/valideeBy/estOperateurPlateforme found none).",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "x_hardening": [
+      "Subscription entitlements are not enforced server-side: the formula catalogue (abonnements.service.ts FORMULES_INITIALES · Essentiel '2 utilisateurs', paie and groupe sold as options) has no counterpart in UtilisateurService.creer or TenantService.modifierModules, and modules-optionnels.ts declares the PAIE/REVISION/CONSOLIDATION/IFRS flags display-only; any tenant ADMIN_CABINET can enable all modules and create unlimited users. Documented as a deliberate decision; if the grid is meant to bind, a server-side check keyed on the cabinet's AbonnementCabinet is needed.",
+      "Function profiles do not isolate every path that puts an entry into the livre-journal: module annulations that inscribe a VALIDEE negative (virements-fonds, remises, effets, titres, operations-tresorerie under TRESORERIE; creances-douteuses under SAISIE) and DeclarationDeviseANouveauService.declarer (VALIDEE correction when doubleRegardValidation is off, under STRUCTURE) succeed for a COMPTABLE whose profile omits VALIDATION. Roles are correct (@ReserveAuComptable); only the profile separation is weaker than FONCTION_PAR_METHODE suggests. Mapping these methods to VALIDATION in FONCTION_PAR_METHODE would align them.",
+      "ecritures-reservees.spec.ts only checks that @Roles is present; it does not check that the class also lists RolesGuard in @UseGuards nor that a write route excludes LECTURE_SEULE. An independent scan found no such case today; adding both assertions would keep it so.",
+      "The per-user software tiles (PUT /utilisateurs/:id/logiciels) restrict display only; the server-side refusal module by module is still on the backlog (CLAUDE.md § 5, 'MASQUER N'EST PAS REFUSER'). An administrator may believe a tile restriction limits access when it does not.",
+      "Variant noted for h05 (operator grant, its boundary): because PlateformeService.onModuleInit promotes any account whose email exactly equals a configured operator address at the next boot, and POST /utilisateurs lets any tenant ADMIN_CABINET create an account with an arbitrary unused email and a password of his choice, an operator address that is configured but not yet registered (e.g. the workflow default admin@vmgconsulting.net if unused) could be pre-claimed from a customer dossier. Not investigated further here; owned by h05."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%23authenticated%20tenant%20routes%20%28107%20controllers%29::src%2Fcommon%2Fcloisonnement%2Fextension-cloisonnement.ts%23extensionCloisonnement::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Missing%20tenant%20or%20owner%20enforcement",
+    "canonical_refs": {
+      "surface": "src/modules#authenticated tenant routes (107 controllers)",
+      "boundary": "src/common/cloisonnement/extension-cloisonnement.ts#extensionCloisonnement",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement"
+    },
+    "surface": "Authenticated tenant routes",
+    "boundary": "Prisma tenant-isolation extension and its escape hatches",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Missing tenant or owner enforcement",
+    "starting_paths": [
+      "src/common/cloisonnement",
+      "src/common/prisma.service.ts",
+      "src/common/audit/audit-contexte.interceptor.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Composite-key and namespace collision",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h03",
+    "reviewed_paths": [
+      "prisma/migrations/20260918180000_circularisation/migration.sql",
+      "prisma/schema.prisma",
+      "src/common/audit/audit-contexte.interceptor.ts",
+      "src/common/cloisonnement/contexte-cloisonnement.ts",
+      "src/common/cloisonnement/extension-cloisonnement.ts",
+      "src/common/cloisonnement/modeles-cloisonnes.ts",
+      "src/common/guards/referentiel.guard.ts",
+      "src/common/prisma.service.ts",
+      "src/modules/analytique/analytique.service.ts",
+      "src/modules/analytique/engagement.service.ts",
+      "src/modules/bailleurs/convention-financement.service.ts",
+      "src/modules/circularisation/circularisation.controller.ts",
+      "src/modules/circularisation/circularisation.service.ts",
+      "src/modules/circularisation/dto/circularisation.dto.ts",
+      "src/modules/commercial/commercial.service.ts",
+      "src/modules/comptabilite/caisse-provisionnee.ts",
+      "src/modules/comptes/compte.service.ts",
+      "src/modules/comptes/dto/creer-compte.dto.ts",
+      "src/modules/devises/declaration-devise-a-nouveau.service.ts",
+      "src/modules/emballages/emballages.service.ts",
+      "src/modules/exports/modifications/export-modifications.service.ts",
+      "src/modules/immobilisations/annulation-traitement.service.ts",
+      "src/modules/immobilisations/immobilisation.service.ts",
+      "src/modules/journaux/journal.service.ts",
+      "src/modules/provisions/provisions.service.ts",
+      "src/modules/registre-donateurs/donation.service.ts",
+      "src/modules/remises/remises.service.ts",
+      "src/modules/stocks/magasin.service.ts",
+      "src/modules/tiers/tiers.service.ts",
+      "src/modules/tva/taux-tva.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h03",
+        "reviewed_paths": [
+          "src/common/cloisonnement/extension-cloisonnement.ts",
+          "src/common/cloisonnement/contexte-cloisonnement.ts",
+          "src/common/cloisonnement/modeles-cloisonnes.ts"
+        ],
+        "invariant": "Every Prisma operation on a cloisonne model is bound to the session tenant by value (collections), re-read before unit writes, verified after unit reads, and creations/updates cannot move a row to another tenant",
+        "method": "source",
+        "result": "filtreBorne checks the tenantId VALUE (equals/in only), rejects NOT/none/isNot/every and partial OR; rule B re-reads the owner through the current transaction; rule A nulls foreign unit reads and injects tenantId into narrow selects; rule D/E check data.tenantId and tenant.connect. No bypass of the top-level row found. The extension does NOT inspect scalar foreign keys in data (compteId, tiersId, ...), nested writes, or rows returned by include/select of relations; when the where is bound (rule A short-circuit at line 349) the result is returned unchecked. Isolation of related rows therefore depends entirely on each service validating body-supplied FK ids.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h03",
+        "reviewed_paths": [
+          "src/common/prisma.service.ts",
+          "src/common/audit/audit-contexte.interceptor.ts",
+          "src/common/guards/referentiel.guard.ts"
+        ],
+        "invariant": "Tenant context is present whenever request-controlled selectors reach Prisma",
+        "method": "source",
+        "result": "Context is set by a global interceptor after guards; it is skipped when request.user.email is absent. Only ReferentielGuard queries Prisma in a guard, by the session tenantId. Pipes (EXERCICE_REQUIS porteurs) run after interceptors. No request-controlled selector found reaching Prisma without context in this unit.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h03",
+        "reviewed_paths": [
+          "src/common/prisma.service.ts",
+          "src/modules/comptabilite/caisse-provisionnee.ts",
+          "src/modules/exports/modifications/export-modifications.service.ts"
+        ],
+        "invariant": "Raw SQL (which bypasses the extension) binds tenantId explicitly",
+        "method": "source",
+        "result": "All $queryRaw/$executeRaw sites reviewed outside plateforme and auth (peer-owned) bind tenantId in the WHERE clause or only take advisory locks keyed by tenantId; no unbound raw read found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h03",
+        "reviewed_paths": [
+          "src/modules/analytique/engagement.service.ts",
+          "src/modules/bailleurs/convention-financement.service.ts",
+          "src/modules/tiers/tiers.service.ts",
+          "src/modules/analytique/analytique.service.ts",
+          "src/modules/immobilisations/annulation-traitement.service.ts",
+          "src/modules/devises/declaration-devise-a-nouveau.service.ts"
+        ],
+        "invariant": "Models carried by their parent (no tenantId, outside the extension) are reached only through a parent bound to the tenant",
+        "method": "source",
+        "result": "Unit reads/writes on LigneEcriture, TrancheFinancement, RapportBailleur, ExecutionEngagement, TiersCompte, EcheanceReglement, DotationAmortissement, DepreciationImmobilisation are preceded by a findFirst bound through the parent relation (ecriture/convention/engagement/immobilisation: { tenantId }) or by a tenant-bound parent lookup.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h03",
+        "reviewed_paths": [
+          "src/modules/circularisation/circularisation.service.ts",
+          "src/modules/circularisation/circularisation.controller.ts",
+          "src/modules/circularisation/dto/circularisation.dto.ts",
+          "prisma/migrations/20260918180000_circularisation/migration.sql",
+          "src/modules/comptes/compte.service.ts",
+          "src/modules/comptes/dto/creer-compte.dto.ts",
+          "src/modules/registre-donateurs/donation.service.ts",
+          "src/modules/stocks/magasin.service.ts",
+          "src/modules/provisions/provisions.service.ts",
+          "src/modules/commercial/commercial.service.ts",
+          "src/modules/emballages/emballages.service.ts",
+          "src/modules/remises/remises.service.ts",
+          "src/modules/journaux/journal.service.ts",
+          "src/modules/tva/taux-tva.service.ts",
+          "src/modules/immobilisations/immobilisation.service.ts",
+          "prisma/schema.prisma"
+        ],
+        "invariant": "Body-supplied foreign-key ids are confirmed to belong to the session tenant before being stored (because the extension does not check them)",
+        "method": "source",
+        "result": "Heuristic sweep of `xxxId: dto.xxxId` writes; most are validated by a tenant-bound findFirst or helper. Two are not: CreerDemandeDto.tiersId in circularisation (stored unvalidated and later returned via include tiers {code, nom}) and CreerCompteDto/ModifierCompteDto.tauxTvaDefautId in compte.service (spread into data unvalidated; no read path returning the foreign TauxTva found, so hardening only).",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-03",
+        "reviewed_paths": [
+          "prisma/migrations/20260918180000_circularisation/migration.sql",
+          "prisma/schema.prisma",
+          "src/common/cloisonnement/extension-cloisonnement.ts",
+          "src/modules/circularisation/circularisation.controller.ts",
+          "src/modules/circularisation/circularisation.service.ts",
+          "src/modules/circularisation/dto/circularisation.dto.ts",
+          "src/modules/commercial/commercial.service.ts"
+        ],
+        "invariant": "Independent verification of candidate circularisation/creerDemande:tiersId-not-bound-to-tenant",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox on the audit host for this run: the compiled server was not executed against two dummy tenants, so the cross-tenant code/nom disclosure is source-inferred, not observed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "circularisation/creerDemande:tiersId-not-bound-to-tenant"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "CompteService.creer and modifier spread dto.tauxTvaDefautId into compte data without a tenant-bound TauxTva lookup (src/modules/comptes/compte.service.ts lines 247-260 and 505); no read path returning the foreign TauxTva was found (EcritureService checks tauxTvaId against the tenant at line 1147, and the FK is ON DELETE SET NULL), so the effect is a dangling cross-tenant reference only. Validate it like TauxTvaService.verifierComptes does for its accounts.",
+      "The cloisonnement extension guards the top-level row only; it never verifies scalar foreign keys in create/update data, nested relation writes, or rows returned through include/select of relations. A generic guard (e.g. verifying that every included cloisonne row carries the session tenantId, or validating FK ids of cloisonne targets on create/update) would turn the per-service discipline into an engine guarantee, as the module's own header intends.",
+      "Rule A returns null when an unbound findFirst first matches a foreign row even if a same-tenant row also matches; this fails closed (no leak) but can make a service believe a record is absent. Requiring a bound where for findFirst on cloisonne models would remove the ambiguity.",
+      "AuditContexteInterceptor returns without any tenant context when request.user.email is absent; with no dossier the extension lets unit reads through unchecked and accepts any literal tenantId on collections. No authenticated user without email was found, but the guard would be stronger failing closed when a user is present without a tenant."
+    ],
+    "x_uncovered": [
+      {
+        "surface": "src/modules#create/update DTO foreign-key ids (≈270 `xxxId: dto.xxxId` writes across services)",
+        "boundary": "per-service FK ownership validation (no engine-level check in extension-cloisonnement.ts)",
+        "subsystem": "profile/quick/all-in-scope-subsystems",
+        "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+        "starting_paths": [
+          "src/modules/immobilisations/immobilisation.service.ts",
+          "src/modules/reglements/reglements.service.ts",
+          "src/modules/analytique/analytique.service.ts",
+          "src/modules/consolidation/cumul.service.ts",
+          "src/modules/analytique/gestion/comptabilite-gestion.service.ts",
+          "src/modules/immobilisations/location-acquisition/location-acquisition.service.ts"
+        ],
+        "reason": "This quick unit sampled the sweep and found one disclosing instance; an exhaustive deterministic pass pairing every DTO relation id with its tenant-bound lookup (and every include that returns the related row) needs its own coverage unit."
+      }
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%23create%2Fupdate%20DTO%20foreign-key%20ids%20%28about%20270%20%60xxxId%3A%20dto.xxxId%60%20writes%29%20and%20include%2Fselect%20of%20related%20rows::per-service%20FK%20ownership%20validation%3B%20src%2Fcommon%2Fcloisonnement%2Fextension-cloisonnement.ts%20does%20not%20inspect%20scalar%20FKs%2C%20nested%20writes%20or%20included%20relations::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Missing%20tenant%20or%20owner%20enforcement",
+    "canonical_refs": {
+      "surface": "src/modules#create/update DTO foreign-key ids (about 270 `xxxId: dto.xxxId` writes) and include/select of related rows",
+      "boundary": "per-service FK ownership validation; src/common/cloisonnement/extension-cloisonnement.ts does not inspect scalar FKs, nested writes or included relations",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement"
+    },
+    "surface": "Foreign-key ids carried by create/update DTOs and included relations",
+    "boundary": "Per-service ownership check of related ids",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Missing tenant or owner enforcement",
+    "starting_paths": [
+      "src/common/cloisonnement/extension-cloisonnement.ts",
+      "src/modules/immobilisations/immobilisation.service.ts",
+      "src/modules/reglements/reglements.service.ts",
+      "src/modules/analytique/analytique.service.ts",
+      "src/modules/consolidation/cumul.service.ts",
+      "src/modules/analytique/gestion/comptabilite-gestion.service.ts",
+      "src/modules/immobilisations/location-acquisition/location-acquisition.service.ts",
+      "prisma/schema.prisma"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 2,
+    "status": "deferred",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "quick_profile_final_critic: accepted by the final coverage critic after the single hunter wave; the quick profile launches no follow-up wave. h03 local check 5 was a heuristic sample (one disclosing instance found, circularisation tiersId) and its x_uncovered states the exhaustive pairing of every DTO relation id with a tenant-bound lookup, and every include that returns the related row, is NOT covered; the extension's own header (rule A short-circuit returns bound-where results unchecked) makes each service the only control."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fauth%2Fauth.controller.ts%23anonymous%20POST%20%2Fauth%2Flogin%2C%2Fauth%2Flogout%2C%2Fauth%2Fregister%2C%2Fauth%2Finscription-essai::src%2Fmodules%2Fauth%2Fauth.service.ts%23connexion%2C%20inscription%2C%20verrouillage%2C%20second%20facteur::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "src/modules/auth/auth.controller.ts#anonymous POST /auth/login,/auth/logout,/auth/register,/auth/inscription-essai",
+      "boundary": "src/modules/auth/auth.service.ts#connexion, inscription, verrouillage, second facteur",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Anonymous authentication and sign-up routes",
+    "boundary": "Login, lockout, TOTP, trial sign-up",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "src/modules/auth",
+      "src/config/validate-env.ts",
+      "src/common/guards"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation",
+      "WEB-PROTOCOL-AND-AUTH.md#MFA enrollment and assurance downgrade",
+      "WEB-PROTOCOL-AND-AUTH.md#Account linking and identity collision",
+      "WEB-PROTOCOL-AND-AUTH.md#Password reset and broader recovery",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h01",
+    "reviewed_paths": [
+      "client/firebase.json",
+      "client/src/lib/auth.tsx",
+      "src/app.module.ts",
+      "src/bootstrap.ts",
+      "src/common/audit/extension-audit.ts",
+      "src/modules/auth/auth.controller.ts",
+      "src/modules/auth/auth.service.ts",
+      "src/modules/auth/double-authentification.ts",
+      "src/modules/auth/dto/inscription-essai.dto.ts",
+      "src/modules/auth/dto/login.dto.ts",
+      "src/modules/auth/dto/register.dto.ts",
+      "src/modules/auth/inscription-essai.ts",
+      "src/modules/auth/jwt.strategy.ts",
+      "src/modules/auth/session.constants.ts",
+      "src/modules/auth/verrouillage.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/verrouillage.ts"
+        ],
+        "invariant": "The per-account lockout bounds password and second-factor guesses per account regardless of how many source addresses or concurrent requests are used.",
+        "method": "source",
+        "result": "login() reads the User row once (auth.service.ts:416), checks verrouilleJusqua from that read (456), and on failure writes ABSOLUTE values computed from the stale read (decompteApresEchec, verrouillage.ts:75-84; update at auth.service.ts:466-472). No atomic increment, no conditional update, no row lock. Concurrent failed attempts that read the row before the first write all pass the lock check and collapse to a single increment. Candidate auth-login-failure-counter-lost-update.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/double-authentification.ts"
+        ],
+        "invariant": "A TOTP step or a backup code authorizes at most one login (one-time state).",
+        "method": "source",
+        "result": "secondFacteurAccepte (double-authentification.ts:148) checks dernierPasDoubleAuth / codesSecoursDoubleAuth from the same stale read; consumption is written unconditionally afterwards (auth.service.ts:505-511). Two concurrent logins with the same code both succeed. Folded into the same root cause as the lockout race (variant, low impact: requires the password and the code).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.controller.ts",
+          "src/bootstrap.ts",
+          "src/modules/auth/session.constants.ts",
+          "src/modules/auth/dto/login.dto.ts"
+        ],
+        "invariant": "An anonymous cross-site page cannot bind a victim browser to a session of an account the attacker controls (login CSRF / session fixation into attacker account).",
+        "method": "source",
+        "result": "POST /auth/login has no CSRF/Origin check (auth.controller.ts:135-145), the global urlencoded parser is enabled (bootstrap.ts:65), LoginDto accepts email/motDePasse as plain strings, and the session cookie is SameSite=None; Secure in hosted mode (session.constants.ts:42-47), overwriting any existing __session. /auth/me re-serves the CSRF token so the SPA becomes fully functional in the attacker's dossier. Browser acceptance of the Set-Cookie on a cross-site top-level form POST via the Firebase relay is not source-visible. Candidate auth-login-csrf-cross-site-form.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/dto/register.dto.ts"
+        ],
+        "invariant": "The public register door cannot be used to pick a licence type or create a dossier when closed.",
+        "method": "source",
+        "result": "Hosted: refused unless INSCRIPTION_PUBLIQUE==='true' (controller:79). typeLicence rejected when present, including null (controller:93); PROPRIETAIRE also refused in the service (service:120). whitelist+forbidNonWhitelisted prevents other fields. On-site: only when no tenant exists (premierDossierAttendu); a TOCTOU between count and creation can create two first dossiers, but an attacker able to race could simply register first anyway (inherent to the open first-install door). No finding.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/inscription-essai.ts",
+          "src/modules/auth/dto/inscription-essai.dto.ts"
+        ],
+        "invariant": "The anonymous trial door creates only expiring trial dossiers, never returns a session, never discloses the password to anyone but the mailbox owner, and cannot reset an existing established account.",
+        "method": "source",
+        "result": "Gated by INSCRIPTION_ESSAI and not on-site; password drawn server-side and sent only to the address (envoyerUnSecret); no session returned; same response for new/existing address. Resend limited to ADMIN_CABINET of a dossier whose licence is exactly a 30-day ABONNEMENT, account still doitChangerMotDePasse, created < 72 h, 10 min between sends. A third party can rotate the provisional password (to the owner's own mailbox) and revoke its sessions in that window; the dossier test is by licence duration, not origin, so a console-created 30-day cabinet also qualifies. No credential disclosure or cross-principal access; recorded as hardening.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/auth/auth.service.ts"
+        ],
+        "invariant": "Logout revokes the presented session server-side and only that session; it cannot be abused to affect another account.",
+        "method": "source",
+        "result": "fermerLaSession verifies the JWT signature (ignoreExpiration only), touches only the row of the signed sub under the dossier lock and FOR UPDATE, records the CSRF-token fingerprint. Unauthenticated/unsigned tokens close nothing. Cross-site logout CSRF (SameSite=None cookie, no CSRF on /auth/logout) can only force-logout the victim's own session: availability nuisance, hardening only.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/double-authentification.ts"
+        ],
+        "invariant": "A valid first factor alone cannot enroll, replace or remove the second factor, and 2FA-enabled accounts never get a session without a valid code.",
+        "method": "source",
+        "result": "Login with doubleAuthActiveDepuis returns deuxiemeFacteurRequis with no session (service:491-492); wrong code counts as a failure. initier needs only a session but the secret is inert; activer, desactiver and regenerer require bcrypt-verified current password plus a TOTP/backup code; activer/desactiver revoke other sessions and notify out of band. No bypass found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h01",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/verrouillage.ts"
+        ],
+        "invariant": "Failed logins do not disclose account existence or lock state.",
+        "method": "source",
+        "result": "Unknown address runs bcrypt on EMPREINTE_FACTICE; unknown/wrong/locked share MOTIF_IDENTIFIANTS_INVALIDES; residual DB-write timing difference is documented. A disabled account with the correct password gets a distinct message (service:481-483) and a 2FA account with the correct password gets deuxiemeFacteurRequis, both inherent password-correctness signals already bounded by lockout/throttle. No finding.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-01",
+        "reviewed_paths": [
+          "src/app.module.ts",
+          "src/common/audit/extension-audit.ts",
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/double-authentification.ts",
+          "src/modules/auth/verrouillage.ts"
+        ],
+        "invariant": "Independent verification of candidate auth-login-failure-counter-lost-update",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox is available on the audit host for this run, so the concurrent burst against a compiled server and a disposable PostgreSQL could not be executed and the collapsed counter was not observed.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-02",
+        "reviewed_paths": [
+          "client/firebase.json",
+          "client/src/lib/auth.tsx",
+          "src/bootstrap.ts",
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/auth/dto/login.dto.ts",
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/auth/session.constants.ts"
+        ],
+        "invariant": "Independent verification of candidate auth-login-csrf-cross-site-form",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox on the audit host for this run: no server, relay or browser may be executed, so the cross-site form submission cannot be observed locally.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "auth-login-failure-counter-lost-update",
+      "auth-login-csrf-cross-site-form"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "POST /auth/logout has no CSRF protection and the hosted cookie is SameSite=None, so a cross-site form can force-logout the victim's current session (fermerLaSession). Availability nuisance only; an Origin/Sec-Fetch-Site check would close it.",
+      "inscription-essai resend (auth.service.ts:318) lets anyone who knows the address of an unopened trial admin rotate its provisional password and revoke its sessions every 10 minutes for 72 h; estUnDossierDEssai identifies trial dossiers by a 30-day ABONNEMENT duration rather than by their origin, so a console-created 30-day cabinet also qualifies. The new password goes only to the owner's mailbox; no disclosure.",
+      "On-site first-dossier door (auth.controller.ts:73-78) checks premierDossierAttendu then calls register without a lock; two concurrent first registrations can both succeed. Inherent to an open first-install door; an advisory lock around count+create would make it deterministic.",
+      "validate-env.ts only warns on a short or known JWT_SECRET; refusing to start in production would remove the dependency on deployment discipline (JWT verification itself is owned by h02).",
+      "inscription-essai lets anyone pre-claim an arbitrary address with a trial dossier (email squatting), blocking later console creation for that address until the trial is purged."
+    ],
+    "x_uncovered": [
+      {
+        "surface": "src/modules/auth/auth.controller.ts#authenticated POST /auth/changer-adresse",
+        "boundary": "src/modules/auth/auth.service.ts#changerAdresse · unverified identifier change and collision with boot-time operator grant",
+        "subsystem": "profile/quick/all-in-scope-subsystems",
+        "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Account linking and identity collision",
+        "starting_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/plateforme/plateforme.service.ts",
+          ".github/workflows/deploy-cloud-run.yml"
+        ],
+        "reason": "Handed to h05, whose boundary includes the operator grant."
+      }
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fauth%2Fjwt.strategy.ts%23cookie%20__session%20and%20Bearer%20on%20every%20authenticated%20route::src%2Fmodules%2Fauth%2Fjwt.strategy.ts%23validate%2C%20CSRF%2C%20revocation%2C%20session-longue::profile%2Fquick%2Fall-in-scope-subsystems::WEB-PROTOCOL-AND-AUTH.md%23JWT%20verification%20and%20claim%20binding",
+    "canonical_refs": {
+      "surface": "src/modules/auth/jwt.strategy.ts#cookie __session and Bearer on every authenticated route",
+      "boundary": "src/modules/auth/jwt.strategy.ts#validate, CSRF, revocation, session-longue",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#JWT verification and claim binding"
+    },
+    "surface": "Authenticated session token",
+    "boundary": "JWT verification, CSRF, revocation, cookie scope",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "JWT verification and claim binding",
+    "starting_paths": [
+      "src/modules/auth/jwt.strategy.ts",
+      "src/modules/auth/jwt-auth.guard.ts",
+      "src/modules/auth/session.constants.ts",
+      "src/modules/auth/session-longue.ts",
+      "src/modules/auth/sessions-fermees.ts",
+      "src/bootstrap.ts",
+      "src/common/sauts-de-confiance.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#JWT verification and claim binding",
+      "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+      "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport",
+      "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-h02",
+    "reviewed_paths": [
+      "installation/windows/initialiser.ps1",
+      "package-lock.json",
+      "src/bootstrap.ts",
+      "src/common/sauts-de-confiance.ts",
+      "src/config/validate-env.ts",
+      "src/modules/auth/auth.controller.ts",
+      "src/modules/auth/auth.module.ts",
+      "src/modules/auth/auth.service.ts",
+      "src/modules/auth/jwt-auth.guard.ts",
+      "src/modules/auth/jwt.strategy.ts",
+      "src/modules/auth/session-longue.ts",
+      "src/modules/auth/session.constants.ts",
+      "src/modules/auth/sessions-fermees.ts",
+      "src/modules/courrier/courrier.controller.ts",
+      "src/modules/exports/export.controller.ts",
+      "src/modules/exports/export.service.ts",
+      "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+      "src/modules/exports/impression-differee/impression-differee.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h02",
+        "reviewed_paths": [
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/auth/auth.module.ts",
+          "src/modules/auth/session-longue.ts",
+          "package-lock.json",
+          "src/config/validate-env.ts"
+        ],
+        "invariant": "Session JWT signature is verified with a server-pinned symmetric key; alg none and key selectors (kid/jku/x5u) cannot be used; exp/nbf enforced; no other token type signed with the same secret can be replayed as a session",
+        "method": "source",
+        "result": "passport-jwt 4.0.1 / jsonwebtoken 9.0.2 with secretOrKey = config.getOrThrow('JWT_SECRET') and ignoreExpiration:false (jwt.strategy.ts:64-79); jsonwebtoken 9 defaults to HS256/384/512 for a string secret and rejects unsigned tokens; no kid/jku handling exists. The only signer is emettreSession (session-longue.ts:238,245) and the only other verify is fermerLaSession (auth.service.ts:820, signature checked, expiry ignored by design). No pending-2FA, reset or invite token is signed with JWT_SECRET, so the absence of aud/iss has no cross-purpose replay. Weak-secret only warns (validate-env.ts:35-41); production value not source-visible (secret).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h02",
+        "reviewed_paths": [
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/auth/session.constants.ts",
+          "src/bootstrap.ts",
+          "src/modules/auth/auth.controller.ts"
+        ],
+        "invariant": "Every cookie-authenticated state-changing request carries an X-CSRF-Token equal to the JWT csrf claim; a cross-site request cannot satisfy or skip the check",
+        "method": "source",
+        "result": "validate() enforces header === payload.csrf for POST/PUT/PATCH/DELETE when the token travels in the cookie (jwt.strategy.ts:103-111). No @All/@Options/@Head/@Search routes and no method-override exist. The exemption keys on the presence of ANY Authorization header while the extractor takes the cookie first (jwt.strategy.ts:67,103), so cookie+Authorization:Basic skips CSRF with the cookie's identity; a cross-site page cannot add Authorization without a CORS preflight, and cors 2.8.5 with the closed origin list (bootstrap.ts:366-381, deploy CORS_ORIGIN lists only the site origins) does not approve it, and the server never sends WWW-Authenticate so no browser-cached Basic credentials exist. Not exploitable; recorded as hardening. The access token is never returned in a response body (auth.controller.ts:45-49).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h02",
+        "reviewed_paths": [
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/auth/session-longue.ts",
+          "src/modules/auth/sessions-fermees.ts",
+          "src/modules/auth/auth.service.ts"
+        ],
+        "invariant": "Revocation (sessionsInvalidesAvant), per-session logout (sessionsFermees) and the 30-day/7-day long-session bounds cannot be escaped by prolongation, reissue or stale copies",
+        "method": "source",
+        "result": "User row is re-read on every request (jwt.strategy.ts:116-122); revocation compares the signed authentification claim (copied by prolongation, session-longue.ts:165-178) truncated to the second; closed sessions are matched by sha256 of the csrf claim kept until origine+30d for long sessions (sessions-fermees.ts:43-61), prolongation copies csrf and origine and is capped by echeanceSessionLongue; reissues mint a new csrf. Logout verifies the signature before recording (auth.service.ts:815-858). Only residual: a token authenticated in the same wall-clock second as a revocation survives it (documented trade-off), not a cross-principal finding.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h02",
+        "reviewed_paths": [
+          "src/modules/auth/jwt-auth.guard.ts",
+          "src/modules/auth/session.constants.ts",
+          "src/common/sauts-de-confiance.ts",
+          "src/bootstrap.ts",
+          "installation/windows/initialiser.ps1"
+        ],
+        "invariant": "Cookie scope/transport and forwarded-header trust cannot downgrade or replace another user's session cookie, and no absolute URL or authorization decision derives from Host/X-Forwarded-*",
+        "method": "source",
+        "result": "Hosted cookie is httpOnly, Secure, SameSite=None, Path=/, host-only (session.constants.ts:42-47); on-site lax/non-secure with NODE_ENV=production set by initialiser.ps1:91 so CORS stays the closed list. The only consumer of req.hostname/req.secure (forwarded-header derived under trust proxy 2) is estHttpLocal (session.constants.ts:69-71), which only changes flags on the requester's own Set-Cookie; no reset link, redirect or tenant routing reads Host or X-Forwarded-*. Legacy cookie omegax_session is read only as a fallback; Firebase strips it and run.app/web.app are public suffixes. Prolonged cookie is set only after the guard admits the request (jwt-auth.guard.ts:111-114).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h02",
+        "reviewed_paths": [
+          "src/modules/exports/export.controller.ts",
+          "src/modules/exports/export.service.ts",
+          "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+          "src/modules/exports/impression-differee/impression-differee.controller.ts",
+          "src/modules/courrier/courrier.controller.ts"
+        ],
+        "invariant": "GET routes (exempt from the CSRF check, cookie sent cross-site under SameSite=None) do not perform state changes an anonymous cross-site attacker can trigger",
+        "method": "source",
+        "result": "GET /exports/journal records an ImpressionJournal attributed to the caller (export.service.ts:1073-1083) and GET /exports/balance|grand-livre with du/au consume an ExtraitPeriode number (extraits-periode.service.ts:57-80), but both require an exerciceId UUID of the victim's dossier (impressionDuJournal returns null without it, export.service.ts:1114; grand livre/balance use EXERCICE_REQUIS), which a cross-site attacker does not know; impact is a falsified 'printed' marker or a burnt extract number, not readable cross-site. Recorded as hardening; a full inventory of side-effecting GET handlers is returned as uncovered.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "x_hardening": [
+      "src/modules/auth/jwt.strategy.ts:103 decides the CSRF exemption on the mere presence of an Authorization header while the extractor (line 67) prefers the cookie; a request carrying the cookie plus any non-Bearer Authorization value is authenticated by the cookie without the CSRF check. Not reachable cross-site today (preflight + closed CORS list, no WWW-Authenticate challenge), but the exemption should be keyed on the token actually extracted (e.g. compare ExtractJwt.fromAuthHeaderAsBearerToken()(req) to the token used, or extract Bearer first and treat the cookie path as cookie only).",
+      "src/modules/auth/session.constants.ts:42-47 keeps SameSite=None for the hosted cookie although the API is now same-origin behind the Firebase /api relay; SameSite=Lax (or Strict) would remove ambient-cookie CSRF on cross-site form POSTs (e.g. the anonymous POST /auth/logout, which a cross-site form can trigger to close the victim's current session) and on side-effecting GETs, without relying solely on the header check.",
+      "src/bootstrap.ts:366 grants credentialed CORS to https://omegax.vmgconsulting.net (and the comment says the vitrine calls the API under its own origin, without CORS); any script or DNS takeover on that origin could read /auth/me (csrfToken) and act as a user logged in on oomega.web.app. Dropping it from the credentialed list narrows the session trust boundary to the application origins.",
+      "GET /exports/journal and period exports (export.controller.ts:98-145, 154-255) persist state (ImpressionJournal, ExtraitPeriode numbering) on a CSRF-exempt method; an insider who knows the exerciceId can make a victim's browser record a false 'journal imprimé' under the victim's name, which satisfies the refusClotureJournalNonImprime closure option. Consider moving the recording to a POST or requiring the CSRF header on these GETs.",
+      "src/config/validate-env.ts:35-41 only warns on a short or known JWT_SECRET; failing startup in production would prevent HS256 forgery from a weak deployed secret (deployed value not source-visible)."
+    ],
+    "x_uncovered": [
+      {
+        "surface": "src/modules#authenticated GET routes with persistent side effects",
+        "boundary": "CSRF exemption for safe methods in src/modules/auth/jwt.strategy.ts versus services that write during GET handlers",
+        "subsystem": "profile/quick/all-in-scope-subsystems",
+        "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+        "starting_paths": [
+          "src/modules/exports/export.controller.ts",
+          "src/modules/journaux/impressions-journal.ts",
+          "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+          "src/modules/comptes/natures-compte.ts"
+        ],
+        "reason": "This unit sampled the exports and courrier GET routes only; a deterministic inventory of all 107 controllers' GET handlers that create or update rows (impressions, numbering, lazily seeded rows) is needed to confirm none is reachable cross-site without a dossier UUID."
+      }
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fcomptabilite%23ecritures%20validation%3B%20reglements%23ordres%20de%20virement%3B%20tiers%23RIB%20et%20visa%3B%20virements-fonds::src%2Fmodules%2Fcomptabilite%2Fecriture.service.ts%23valider%2C%20double%20regard%3B%20tiers%2Fvisa-rib.ts::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Business%20logic",
+    "canonical_refs": {
+      "surface": "src/modules/comptabilite#ecritures validation; reglements#ordres de virement; tiers#RIB et visa; virements-fonds",
+      "boundary": "src/modules/comptabilite/ecriture.service.ts#valider, double regard; tiers/visa-rib.ts",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Business logic"
+    },
+    "surface": "Accounting and payment workflows",
+    "boundary": "Irreversible validation, RIB visa, payment orders",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Business logic",
+    "starting_paths": [
+      "src/modules/comptabilite",
+      "src/modules/reglements",
+      "src/modules/tiers",
+      "src/modules/virements-fonds",
+      "src/modules/personnel"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h11",
+    "reviewed_paths": [
+      "prisma/schema.prisma",
+      "src/modules/comptabilite/detenteurs-ecriture.ts",
+      "src/modules/comptabilite/ecriture.controller.ts",
+      "src/modules/comptabilite/ecriture.service.ts",
+      "src/modules/controles/controles.service.ts",
+      "src/modules/personnel/paiement-salaires.controller.ts",
+      "src/modules/personnel/ribs-salaries.service.ts",
+      "src/modules/reglements/ordres-virement.service.ts",
+      "src/modules/tiers/ribs-tiers.controller.ts",
+      "src/modules/tiers/ribs-tiers.service.ts",
+      "src/modules/tiers/tiers.service.ts",
+      "src/modules/tiers/visa-rib.ts",
+      "src/modules/virements-fonds/virements-fonds.controller.ts",
+      "src/modules/virements-fonds/virements-fonds.dto.ts",
+      "src/modules/virements-fonds/virements-fonds.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/comptabilite/ecriture.service.ts",
+          "src/modules/comptabilite/ecriture.controller.ts",
+          "src/modules/controles/controles.service.ts",
+          "prisma/schema.prisma"
+        ],
+        "invariant": "With Tenant.doubleRegardValidation on, a brouillard entry is validated only by a user other than the one who entered its content (CLAUDE.md 10 ter; valider doc comment).",
+        "method": "source",
+        "result": "valider compares only Ecriture.createdBy to the validator (ecriture.service.ts:2275). PATCH /ecritures/:id (controller 137-147, ADMIN_CABINET/COMPTABLE) calls modifier without a user and the update at ecriture.service.ts:1625 rewrites date, libelle, reference and replaces all lines without recording the modifier; reimputation of brouillard lines (2738) likewise changes accounts in place. A comptable can therefore rewrite a colleague's draft and validate it himself; the self-validation control VALIDATION_PAR_SON_AUTEUR (controles.service.ts:1789) uses the same createdBy predicate and stays silent. Candidate raised.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/tiers/visa-rib.ts",
+          "src/modules/tiers/ribs-tiers.service.ts",
+          "src/modules/tiers/ribs-tiers.controller.ts"
+        ],
+        "invariant": "Any change of tiers RIB coordinates drops the visa and records its author; the author cannot visa; the visa binds to the version read.",
+        "method": "source",
+        "result": "creer stamps saisiPar/saisiLe; modifier relocks the row FOR UPDATE and applies saisieDesCoordonnees when coordonneesChangees on normalised values; viser relocks, compares saisiLe to saisiLeLu, refuses the author (403) and an already visa'd RIB. Writes restricted to ADMIN_CABINET, visa to ADMIN_CABINET/COMPTABLE with ReserveAuComptable. No other write path to ribTiers coordinates found (grep). Holds.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/personnel/ribs-salaries.service.ts",
+          "src/modules/personnel/paiement-salaires.controller.ts"
+        ],
+        "invariant": "Salary RIB visa follows the same rules as tiers RIB visa.",
+        "method": "source",
+        "result": "Same implementation (row lock, saisieDesCoordonnees on change, motifRefusVisa); creation/modification ADMIN_CABINET only, visa ADMIN_CABINET/COMPTABLE with ReserveAuComptable so both restricted roles are refused. Holds.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/tiers/tiers.service.ts"
+        ],
+        "invariant": "A RIB moved to another beneficiary by tiers fusion loses its visa (visa-rib rule 6).",
+        "method": "source",
+        "result": "fusionner, inside the same journalised transaction, rewrites every RIB of the source tiers with saisieDesCoordonnees(fusion author) before reporterReferences; concurrent viser is serialised by the row lock and then fails the saisiLe comparison. Holds.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/reglements/ordres-virement.service.ts"
+        ],
+        "invariant": "When visa is required, a payment order is only created on visa'd principal RIBs and carries exactly the coordinates that were visa'd.",
+        "method": "source",
+        "result": "preparer/preparerSalaries read the principal RIB once with its visa fields, refuse non-visa'd RIBs before any piece, and copy coordinates from that same row into PreparationOrdre; creerDans uses only the prepared copy and refuses a line without a prepared beneficiary. exigeLeVisa fails closed on a missing tenant. No TOCTOU between visa check and copied coordinates. Holds.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h11",
+        "reviewed_paths": [
+          "src/modules/virements-fonds/virements-fonds.service.ts",
+          "src/modules/virements-fonds/virements-fonds.controller.ts",
+          "src/modules/virements-fonds/virements-fonds.dto.ts",
+          "src/modules/comptabilite/detenteurs-ecriture.ts"
+        ],
+        "invariant": "A fund transfer's paired pieces cannot be edited apart, amounts are positive, and cancellation happens once.",
+        "method": "source",
+        "result": "DTO enforces montant >= 0.01 with 2 decimals; the four VirementFonds ecriture links are in detenteurs-ecriture so PATCH/DELETE on a single piece is refused by verifierAucunModuleNeLaTient; cancellation deletes brouillard with status-filtered deleteMany inside the transaction and is ReserveAuComptable. No business-logic break found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-11",
+        "reviewed_paths": [
+          "prisma/schema.prisma",
+          "src/modules/comptabilite/ecriture.controller.ts",
+          "src/modules/comptabilite/ecriture.service.ts",
+          "src/modules/controles/controles.service.ts"
+        ],
+        "invariant": "Independent verification of candidate src/modules/comptabilite/ecriture.service.ts:valider:double-regard-createdBy-ignores-modification",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox is available on the audit host for this run, so target code (compiled server and a disposable PostgreSQL) cannot be executed; the bypass is established from source but the end-to-end result (validees=1, refuseesSecondRegard=0 for an entry rewritten and validated by the same user) has not been observed locally.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "src/modules/comptabilite/ecriture.service.ts:valider:double-regard-createdBy-ignores-modification"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "valider accepts a self-attested derogation (secondRegardNom + secondRegardMotif free text, ValiderEcrituresDto) from any validator, which disables the double regard for the whole batch, including the caller's own entries; this is designed and leaves a nominative trace on the entry, but nothing restricts who may invoke it (e.g. an admin-only or option-controlled derogation).",
+      "valider binds to no reviewed version: it reads entries with findMany then updateMany by id without re-checking statut, lines or a version stamp read by the validator, unlike the RIB visa (saisiLeLu); an author can change lines between the reviewer's reading and the click, and the reviewer validates content he did not see. A version token (updatedAt) compared in a conditional update would bind the second regard to what was read.",
+      "On a payment order, when RibTiers.titulaire is null the printed beneficiary falls back to Tiers.nom, which an administrator can change without any visa; the account number stays visa'd, so the impact is limited to the printed name."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fexports%23restitution%20ZIP%2C%20impression%20differee%20produireEnMemoire%2C%20Excel%20exports%20up%20to%20MAX_LIGNES_EXPORT%3B%20long-running%20per-dossier%20locks::shared%20Node%20heap%20%28460%20MiB%29%20and%20Prisma%20pool%20of%2010%20per%20Cloud%20Run%20instance%20at%20--concurrency%2080%2C%20shared%20across%20tenants::profile%2Fquick%2Fall-in-scope-subsystems::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Database%20and%20downstream%20query%20amplification",
+    "canonical_refs": {
+      "surface": "src/modules/exports#restitution ZIP, impression differee produireEnMemoire, Excel exports up to MAX_LIGNES_EXPORT; long-running per-dossier locks",
+      "boundary": "shared Node heap (460 MiB) and Prisma pool of 10 per Cloud Run instance at --concurrency 80, shared across tenants",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Database and downstream query amplification"
+    },
+    "surface": "Tenant-triggered whole-dossier reads and long locks",
+    "boundary": "Shared heap and connection pool across tenants",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Database and downstream query amplification",
+    "starting_paths": [
+      "src/modules/exports/restitution/restitution.service.ts",
+      "src/modules/exports/impression-differee/impression-differee.service.ts",
+      "src/modules/exports/export.service.ts",
+      "src/common/lecture-par-lots.ts",
+      "src/common/prisma.service.ts",
+      ".github/workflows/deploy-cloud-run.yml"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Database and downstream query amplification",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 2,
+    "status": "deferred",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "quick_profile_final_critic: accepted by the final coverage critic after the single hunter wave; the quick profile launches no follow-up wave. RESOURCE-EXHAUSTION was selected in architecture.md for the shared 460 MiB heap, but the only unit carrying it (h08) checked just xlsx decompression and multer limits; no unit examined authenticated tenant-triggered whole-dossier reads (restitution of every table, in-memory deferred prints, 200 000-line exports) or connection holding against the 10-connection pool that other tenants share."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fexports%23restitution%2C%20exports%20Excel%2C%20export%20des%20modifications%2C%20impression%20differee::src%2Fmodules%2Fexports%2Frestitution%2Ftables-restitution.ts%23borneDuModele%3B%20import%2Flecture-fichier.ts%23ecrireCelluleCsv::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "canonical_refs": {
+      "surface": "src/modules/exports#restitution, exports Excel, export des modifications, impression differee",
+      "boundary": "src/modules/exports/restitution/tables-restitution.ts#borneDuModele; import/lecture-fichier.ts#ecrireCelluleCsv",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage"
+    },
+    "surface": "Data export and restitution",
+    "boundary": "Export scope and exported-file content",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Feature abuse and data leakage",
+    "starting_paths": [
+      "src/modules/exports",
+      "src/modules/import",
+      "src/common/telemetrie"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Import and restore authority expansion",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Analytics, logs, traces, and diagnostics as alternate readers",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-h06",
+    "reviewed_paths": [
+      "prisma/schema.prisma",
+      "src/common/audit/champs-audites.ts",
+      "src/common/cloisonnement/modeles-cloisonnes.ts",
+      "src/common/telemetrie/filtre-pannes.ts",
+      "src/common/telemetrie/nettoyage-telemetrie.ts",
+      "src/common/telemetrie/telemetrie-serveur.ts",
+      "src/modules/courrier/courrier.service.ts",
+      "src/modules/exports/export-fpm.service.ts",
+      "src/modules/exports/export.controller.ts",
+      "src/modules/exports/export.service.ts",
+      "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+      "src/modules/exports/impression-differee/dto/demander-impression.dto.ts",
+      "src/modules/exports/impression-differee/impression-differee.controller.ts",
+      "src/modules/exports/impression-differee/impression-differee.service.ts",
+      "src/modules/exports/impression-differee/impression-differee.ts",
+      "src/modules/exports/modifications/export-modifications.controller.ts",
+      "src/modules/exports/modifications/export-modifications.service.ts",
+      "src/modules/exports/restitution/manifeste-restitution.ts",
+      "src/modules/exports/restitution/restitution.controller.ts",
+      "src/modules/exports/restitution/restitution.service.ts",
+      "src/modules/exports/restitution/tables-restitution.ts",
+      "src/modules/exports/selections/selections-edition.controller.ts",
+      "src/modules/import/dto/import.dto.ts",
+      "src/modules/import/import.controller.ts",
+      "src/modules/import/import.service.ts",
+      "src/modules/import/lecture-fichier.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/modules/exports/restitution/restitution.controller.ts",
+          "src/modules/exports/restitution/restitution.service.ts",
+          "src/modules/exports/restitution/tables-restitution.ts",
+          "src/common/cloisonnement/modeles-cloisonnes.ts",
+          "prisma/schema.prisma"
+        ],
+        "invariant": "The tenant restitution ZIP reads every table only within the session tenant: cloisonned models by {tenantId}, parent-carried models by a mandatory relation chain ending in tenantId, unknown models refused, Tenant row by its own id, pieces by tenantId; route restricted to ADMIN_CABINET of the session tenant.",
+        "method": "source",
+        "result": "borneDuModele returns {tenantId} for MODELES_CLOISONNES, a nested relation filter for BORNES_PORTEES (e.g. VentilationAnalytique -> ligne.ecriture.tenantId) and throws ModeleSansBorne otherwise; lignesCsvBrutes, inventaire and the piece loops only use that bound or {tenantId}; contenuDocument re-reads each piece with {id, tenantId}. Publisher-registry models (LicenceSurSiteEmise, AbonnementCabinet, RappelSuppressionEssai, DossierEssaiSupprime) are in MODELES_HORS_DOSSIER and not restituted. The controller takes tenantId only from the session and carries @Roles(ADMIN_CABINET). No cross-tenant or above-role path found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/common/audit/champs-audites.ts",
+          "src/modules/exports/restitution/tables-restitution.ts",
+          "src/modules/courrier/courrier.service.ts",
+          "prisma/schema.prisma"
+        ],
+        "invariant": "The restitution never emits credentials or second-factor material (password hash, operator flag, TOTP secret, replay step, recovery-code hashes) and mails carrying a secret are stored without it.",
+        "method": "source",
+        "result": "colonnesDuModele removes COLONNES_JAMAIS_RESTITUEES (User.motDePasse, estOperateurPlateforme, secretDoubleAuth, dernierPasDoubleAuth, codesSecoursDoubleAuth); schema scan found no other secret-bearing scalar on tenant models (Tenant has no SMTP/API secret columns). CourrierService.envoyerUnSecret stores corpsGarde and refuses a kept body that contains the secret message. Only User.sessionsFermees (SHA-256 of CSRF tokens of already-closed sessions) remains, which grants nothing.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/modules/import/lecture-fichier.ts",
+          "src/modules/exports/restitution/manifeste-restitution.ts"
+        ],
+        "invariant": "ecrireCelluleCsv output and spreadsheet formula injection in restitution CSVs.",
+        "method": "source",
+        "result": "ecrireCelluleCsv quotes separators, quotes, newlines and edge spaces but does not neutralise leading =,+,-,@. It is used only by the restitution. This is a documented design decision: the manifest tells the reader to open CSVs through the spreadsheet text import and explains that values are restituted unaltered for machine re-reading. Recorded as hardening, not a finding.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/modules/exports/export.controller.ts",
+          "src/modules/exports/export.service.ts",
+          "src/modules/exports/export-fpm.service.ts",
+          "src/modules/exports/extraits-periode/extraits-periode.service.ts",
+          "src/modules/exports/modifications/export-modifications.service.ts"
+        ],
+        "invariant": "Excel exports reading parent-carried LigneEcriture/TiersCompte (outside the cloisonnement extension) always bound by the session tenant through the parent relation.",
+        "method": "source",
+        "result": "Every ligneEcriture count/findMany/groupBy/aggregate and tiersCompte.findMany in the export services carries ecriture.tenantId or tiers.tenantId (export-fpm.service.ts verifierVolume/parcourirGrandLivre/rattachements/soldesDesCollectifs via filtresDesTroisColonnes({tenantId}), export.service.ts grandLivreCompletExcelEnFlux perimetre, export-modifications groupBy, extraits-periode refuserSiVide). Raw SQL in export-modifications and impression-differee binds tenantId explicitly. Export controller has no @AccesRolesCantonnes, so the payroll-only role stays closed.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/modules/exports/impression-differee/impression-differee.controller.ts",
+          "src/modules/exports/impression-differee/impression-differee.service.ts",
+          "src/modules/exports/impression-differee/impression-differee.ts",
+          "src/modules/exports/impression-differee/dto/demander-impression.dto.ts",
+          "src/modules/exports/modifications/export-modifications.controller.ts",
+          "src/modules/exports/modifications/export-modifications.service.ts",
+          "src/modules/exports/selections/selections-edition.controller.ts"
+        ],
+        "invariant": "Deferred prints and change exports: stored criteria cannot name another tenant's exercice/journal, production runs in the session tenant, stored files are downloadable only within their tenant, and they never yield data beyond what the requester could export directly.",
+        "method": "source",
+        "result": "criteresOuMotif whitelists criteria fields; demander checks exercice and journal with {id, tenantId} before numbering; traiter only picks demands of the session tenant and produces via the same export engines bounded by tenantId; fichier/retirerFichier use findFirst {id, tenantId} (foreign id = 404, same as missing). Produced books equal ordinary exports readable by any non-payroll role, so download by any tenant reader is not an escalation. Producing a change export is COMPTABLE/ADMIN with @ReserveAuComptable.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/modules/import/import.controller.ts",
+          "src/modules/import/import.service.ts",
+          "src/modules/import/dto/import.dto.ts"
+        ],
+        "invariant": "Import cannot write into another tenant or a closed exercice, and is limited to the tenant administrator.",
+        "method": "source",
+        "result": "Both routes carry @Roles(ADMIN_CABINET); contexte() resolves exercice with {id, tenantId} and refuses a CLOTURE exercice, journals and comptes read with {tenantId}; created entries carry the session tenantId and the journal's numbering. No authority expansion found in this unit (parsing limits are owned by h08).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h06",
+        "reviewed_paths": [
+          "src/common/telemetrie/nettoyage-telemetrie.ts",
+          "src/common/telemetrie/filtre-pannes.ts",
+          "src/common/telemetrie/telemetrie-serveur.ts"
+        ],
+        "invariant": "Telemetry (Sentry/PostHog) never carries tenant data: events rebuilt from closed field lists, paths normalised, messages only for allow-listed error types and scrubbed, request data collection disabled.",
+        "method": "source",
+        "result": "nettoyerEvenementSentry rebuilds events from allow-listed keys, drops stack variables and source lines, replaces messages of non allow-listed types by [message]; FiltrePannes reports only 5xx with the declared route pattern; default integrations off and dataCollection all false; PostHog only $pageview with normalised path and enumerated role/referentiel. No tenant-data leak path found.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "x_hardening": [
+      "Restitution CSVs (src/modules/import/lecture-fichier.ts ecrireCelluleCsv, used only by src/modules/exports/restitution/restitution.service.ts) do not neutralise leading =,+,-,@; this is a documented decision in manifeste-restitution.ts (open via text import). An optional companion copy with formula-neutralised cells, or a per-cell prefix flag documented in the manifest, would remove the double-click risk for the administrator who downloads the archive.",
+      "User.sessionsFermees (SHA-256 of CSRF tokens of closed sessions) is excluded from the audit journal but not from COLONNES_JAMAIS_RESTITUEES; it grants nothing, but adding it to the restitution exclusion list would keep session-management material out of the archive consistently with the second-factor columns.",
+      "Server-side error logging (Nest BaseExceptionFilter stack/message for 5xx, ImpressionDiffereeService logger.error with erreur.stack) can carry Prisma validation messages that echo query arguments into Cloud Run logs readable by the operator; this is operator-only under the deployment model, but it sits uneasily with the stated rule that VMG never sees client data. Applying nettoyerMessage to logged messages would align the log sink with the telemetry sink."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fimport%23base64%20xlsx%2Fcsv%3B%20src%2Fcommon%2Fpieces-jointes%23multer%20uploads%3B%20groupe%20canevas%3B%20consolidation::src%2Fmodules%2Fimport%2Flecture-fichier.ts%23lireClasseur%3B%20pieces-jointes.ts%23type%20par%20signature::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "src/modules/import#base64 xlsx/csv; src/common/pieces-jointes#multer uploads; groupe canevas; consolidation",
+      "boundary": "src/modules/import/lecture-fichier.ts#lireClasseur; pieces-jointes.ts#type par signature",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "File uploads and spreadsheet imports",
+    "boundary": "Upload typing and spreadsheet parsing limits",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Resource and file handling",
+    "starting_paths": [
+      "src/modules/import",
+      "src/common/pieces-jointes",
+      "src/modules/tiers/documents-tiers.controller.ts",
+      "src/modules/virements-fonds",
+      "src/modules/groupe",
+      "src/modules/consolidation",
+      "src/modules/rapprochement",
+      "src/bootstrap.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Decompression and representation amplification",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h08",
+    "reviewed_paths": [
+      ".github/workflows/deploy-cloud-run.yml",
+      "Dockerfile",
+      "src/bootstrap.ts",
+      "src/common/pieces-jointes/pieces-jointes.service.ts",
+      "src/common/pieces-jointes/pieces-jointes.ts",
+      "src/common/pieces-jointes/recevoir-une-piece.ts",
+      "src/modules/consolidation/cumul.service.ts",
+      "src/modules/consolidation/dto/perimetre.dto.ts",
+      "src/modules/groupe/dto/groupe.dto.ts",
+      "src/modules/groupe/groupe.service.ts",
+      "src/modules/import/dto/import.dto.ts",
+      "src/modules/import/import.controller.ts",
+      "src/modules/import/lecture-fichier.ts",
+      "src/modules/rapprochement/rapprochement.controller.ts",
+      "src/modules/rapprochement/rapprochement.service.ts",
+      "src/modules/tiers/documents-tiers.controller.ts",
+      "src/modules/virements-fonds/virements-fonds.controller.ts",
+      "src/modules/virements-fonds/virements-fonds.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h08",
+        "reviewed_paths": [
+          "src/modules/import/lecture-fichier.ts",
+          "src/modules/import/import.controller.ts",
+          "src/modules/import/dto/import.dto.ts",
+          "src/bootstrap.ts",
+          "src/modules/rapprochement/rapprochement.service.ts",
+          "src/modules/rapprochement/rapprochement.controller.ts",
+          "src/modules/consolidation/cumul.service.ts",
+          "src/modules/consolidation/dto/perimetre.dto.ts",
+          "src/modules/groupe/groupe.service.ts",
+          "src/modules/groupe/dto/groupe.dto.ts",
+          ".github/workflows/deploy-cloud-run.yml",
+          "Dockerfile"
+        ],
+        "invariant": "An uploaded xlsx is parsed only within a bound on its decompressed size and cell count, so one request cannot exhaust the shared process heap",
+        "method": "source",
+        "result": "Only the compressed transfer is bounded (JSON body 12 MB in bootstrap.ts; DTO MaxLength 11,000,000 base64 chars for import, rapprochement and canevas; consolidation ImporterBalanceEntiteDto has no MaxLength and relies on the body cap). lireXlsx (lecture-fichier.ts:163-165) and importerCanevasDuGroupe (groupe.service.ts:1679-1682) pass the buffer straight to ExcelJS xlsx.load with no check of archive entry sizes, expanded size, row count or cell count. Cloud Run runs --concurrency 80 and --max-instances 4 in one Node process per instance, so heap exhaustion in one request affects concurrent requests from other tenants. The library's in-memory expansion and the deployed memory limit are not source-visible: needs_validation.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h08",
+        "reviewed_paths": [
+          "src/common/pieces-jointes/pieces-jointes.ts",
+          "src/common/pieces-jointes/recevoir-une-piece.ts",
+          "src/common/pieces-jointes/pieces-jointes.service.ts",
+          "src/modules/tiers/documents-tiers.controller.ts",
+          "src/modules/virements-fonds/virements-fonds.controller.ts",
+          "src/modules/virements-fonds/virements-fonds.service.ts"
+        ],
+        "invariant": "Multer uploads are size bounded, typed by signature, and never written to a filesystem path from a client name",
+        "method": "source",
+        "result": "Holds. FileInterceptor uses in-memory storage with limits fileSize TAILLE_MAX_DOCUMENT (5 MB), files 1 and fields 2 to 4. The type is the leading bytes checked against a closed list and must match the extension. Content is stored in the database, the client name is only decoded and cleaned for display or Content-Disposition, nothing is written to disk and nothing is decompressed. No path traversal, zip slip or temp-file exposure.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-07",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          "Dockerfile",
+          "src/bootstrap.ts",
+          "src/modules/consolidation/cumul.service.ts",
+          "src/modules/consolidation/dto/perimetre.dto.ts",
+          "src/modules/groupe/groupe.service.ts",
+          "src/modules/import/dto/import.dto.ts",
+          "src/modules/import/import.controller.ts",
+          "src/modules/import/lecture-fichier.ts",
+          "src/modules/rapprochement/rapprochement.service.ts"
+        ],
+        "invariant": "Independent verification of candidate xlsx-load-without-decompressed-size-bound",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox is available on the audit host, so no fixture could be parsed to observe ExcelJS memory growth; target code was not executed",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "xlsx-load-without-decompressed-size-bound"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "ImporterBalanceEntiteDto.contenuBase64 (src/modules/consolidation/dto/perimetre.dto.ts) lacks the MaxLength and IsBase64 its sibling DTOs carry; only the 12 MB body limit bounds it.",
+      "CSV parsing (analyserCsv) is linear in input and bounded by the 12 MB body; detecterSeparateur parses the full text three times, which is linear and bounded."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fplateforme%2Fplateforme.controller.ts%23GET%20%2Fplateforme%2Fessais-echus%2C%20POST%20essais-echus%2Frappels%2C%20POST%20essais-echus%2F%3AtenantId%2Fsupprimer::src%2Fmodules%2Fplateforme%2Fessais-echus%2Fessais-echus.service.ts%23horsCloisonnement%20eligibility%20re-read%3B%20purger-dossier.ts%23%24executeRawUnsafe%20schema-derived%20DELETE%20outside%20the%20cloisonnement%20and%20audit%20extensions::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Retention%20and%20queued-work%20overrun",
+    "canonical_refs": {
+      "surface": "src/modules/plateforme/plateforme.controller.ts#GET /plateforme/essais-echus, POST essais-echus/rappels, POST essais-echus/:tenantId/supprimer",
+      "boundary": "src/modules/plateforme/essais-echus/essais-echus.service.ts#horsCloisonnement eligibility re-read; purger-dossier.ts#$executeRawUnsafe schema-derived DELETE outside the cloisonnement and audit extensions",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun"
+    },
+    "surface": "Expired-trial deletion by the platform operator",
+    "boundary": "Out-of-isolation eligibility re-read and raw-SQL purge",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Retention and queued-work overrun",
+    "starting_paths": [
+      "src/modules/plateforme/essais-echus/essais-echus.service.ts",
+      "src/modules/plateforme/essais-echus/purger-dossier.ts",
+      "src/modules/plateforme/essais-echus/essais-echus.ts",
+      "src/modules/plateforme/essais-echus/courriel-rappel.ts",
+      "src/modules/plateforme/plateforme.controller.ts",
+      "src/modules/courrier/courrier.service.ts",
+      "prisma/schema.prisma"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 2,
+    "status": "deferred",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "quick_profile_final_critic: accepted by the final coverage critic after the single hunter wave; the quick profile launches no follow-up wave. No unit reviewed essais-echus or purger-dossier (absent from every reviewed_paths list); h03 excluded raw SQL in plateforme as peer-owned and h05 reviewed only plateforme.service/controller. This is the only $executeRawUnsafe site in src (purger-dossier.ts:297,303), runs under horsCloisonnement with a tenantId taken from the URL, and the deletion lifecycle block (eligibility: non-trial, group member, subscribed, prolonged licence; cross-dossier relations; queued mail retained) is unmapped in the ledger."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fplateforme%2Fplateforme.controller.ts%23console%20routes%3B%20src%2Fmodules%2Fgroupe%23siege%20and%20cell%20routes::src%2Fmodules%2Fplateforme%2Foperateur-plateforme.guard.ts%23OperateurPlateformeGuard%3B%20contexte-cloisonnement%23perimetreDeGroupe::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Chained%20vulnerabilities%20and%20trust%20boundaries",
+    "canonical_refs": {
+      "surface": "src/modules/plateforme/plateforme.controller.ts#console routes; src/modules/groupe#siege and cell routes",
+      "boundary": "src/modules/plateforme/operateur-plateforme.guard.ts#OperateurPlateformeGuard; contexte-cloisonnement#perimetreDeGroupe",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries"
+    },
+    "surface": "Platform console and group routes",
+    "boundary": "Operator guard, operator grant, group perimeter",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Chained vulnerabilities and trust boundaries",
+    "starting_paths": [
+      "src/modules/plateforme",
+      "src/modules/groupe",
+      "src/common/cloisonnement/contexte-cloisonnement.ts",
+      "src/modules/utilisateurs"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Step-up binding and bypass",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h05",
+    "reviewed_paths": [
+      ".github/workflows/deploy-cloud-run.yml",
+      "client/src/pages/PlateformePage.tsx",
+      "src/common/cloisonnement/contexte-cloisonnement.ts",
+      "src/modules/auth/auth.controller.ts",
+      "src/modules/auth/auth.service.ts",
+      "src/modules/auth/double-authentification.ts",
+      "src/modules/auth/jwt.strategy.ts",
+      "src/modules/auth/session-longue.ts",
+      "src/modules/groupe/groupe.controller.ts",
+      "src/modules/groupe/groupe.service.ts",
+      "src/modules/licence/licence-de-cellule.ts",
+      "src/modules/plateforme/operateur-plateforme.guard.ts",
+      "src/modules/plateforme/plateforme.controller.ts",
+      "src/modules/plateforme/plateforme.service.ts",
+      "src/modules/tenant/tenant.service.ts",
+      "src/modules/tiers/tiers.service.ts",
+      "src/modules/utilisateurs/avis-acces.service.ts",
+      "src/modules/utilisateurs/utilisateur.controller.ts",
+      "src/modules/utilisateurs/utilisateur.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/modules/plateforme/operateur-plateforme.guard.ts",
+          "src/modules/plateforme/plateforme.controller.ts",
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/auth/session-longue.ts"
+        ],
+        "invariant": "Every /plateforme route requires JwtAuthGuard + OperateurPlateformeGuard: DB-reloaded estOperateurPlateforme, active TOTP, and a full (password+code) login under 8 h.",
+        "method": "source",
+        "result": "Holds as written: controller-level @UseGuards(JwtAuthGuard, OperateurPlateformeGuard) covers all 22 console routes; flag and 2FA state are reloaded from the DB per request (jwt.strategy.ts:190-191); connexionComplete is only minted by login, register, and TOTP activate/deactivate (auth.service.ts:275,523,635,649). The guard does not bind the operator to any tenant and checks only the account's current flag, so its assurance reduces to how the flag and the account's credentials are obtained (see candidates).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/modules/plateforme/plateforme.service.ts",
+          "src/modules/auth/auth.service.ts",
+          "src/modules/utilisateurs/utilisateur.service.ts",
+          "src/modules/groupe/groupe.service.ts",
+          ".github/workflows/deploy-cloud-run.yml"
+        ],
+        "invariant": "The operator flag is granted only to an account whose control of the listed address was proven (handed-over lead from h01).",
+        "method": "source",
+        "result": "Fails: onModuleInit promotes any account whose stored email exactly equals a listed address (plateforme.service.ts:75-79), on every instance boot; the stored email is never verified on any door that sets it (changerAdresse auth.service.ts:744-760; POST /utilisateurs utilisateur.service.ts:67-80 with admin-chosen password; creerCellule groupe.service.ts:472-497 returns the temp password). Grant-only design plus the comment that unknown addresses are promoted when later created make pre-listed or vacated addresses claimable. Whether the deployed list currently contains an unclaimed address is not source-visible.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/modules/utilisateurs/utilisateur.service.ts",
+          "src/modules/utilisateurs/utilisateur.controller.ts",
+          "src/modules/auth/double-authentification.ts"
+        ],
+        "invariant": "The console's 2FA step-up cannot be removed from an operator account by a principal that lacks the operator's second factor.",
+        "method": "source",
+        "result": "Fails: an ADMIN_CABINET of the operator's own dossier can POST /utilisateurs/:id/reinitialiser-mot-de-passe on the operator, choosing the provisional password; the update clears TOTP (SANS_DOUBLE_AUTH, utilisateur.service.ts:284) with no exclusion of estOperateurPlateforme accounts, and the flag stays. The admin then logs in as the operator, enrolls its own TOTP and passes the guard.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/common/cloisonnement/contexte-cloisonnement.ts",
+          "src/modules/groupe/groupe.service.ts",
+          "src/modules/groupe/groupe.controller.ts",
+          "src/modules/tenant/tenant.service.ts",
+          "src/modules/tiers/tiers.service.ts"
+        ],
+        "invariant": "perimetreDeGroupe only widens to dossiers linked to the session dossier by dossierMereId, and that link is writable only by the operator console or by creerCellule of a newly created cell.",
+        "method": "source",
+        "result": "Holds: perimetreDeGroupe builds the set from the server (dansLeGroupe groupe.service.ts:380-391, cell lookup celluleDuGroupe :1410-1419); nested scopes only add inherited entries; dossierMereId is written only in plateforme.service.ts (modifierGroupe) and groupe.service.ts (creerCellule, forced to the caller). No tenant route lets a non-operator set or choose the link. The trust therefore rests entirely on the operator console (candidate 3).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/modules/plateforme/plateforme.service.ts",
+          "src/modules/licence/licence-de-cellule.ts"
+        ],
+        "invariant": "The operator cannot read or write a client's ledger (CLAUDE.md: VMG never sees client data; console shows only commercial sheet and licence).",
+        "method": "source",
+        "result": "Fails: modifierGroupe attaches any dossier (no cells, same referentiel, not the editor) as a cell of any non-editor mother without client consent; creerCabinet returns the new admin's temporary password to the operator (plateforme.service.ts:458,510), giving the operator a mother it can log into; /groupe/cellules/:id/balance, canevas and import-canevas then read and write the victim's ledger.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h05",
+        "reviewed_paths": [
+          "src/modules/plateforme/plateforme.service.ts"
+        ],
+        "invariant": "reinitialiserAdmin, designerDossierEditeur, modifierLicence stay within operator-only effects and do not leak secrets to the operator.",
+        "method": "source",
+        "result": "Holds: reinitialiserAdmin draws the password and mails it directly to the client admin, refuses without transport, filters by tenantId+email+ADMIN_CABINET; editor licence is immutable from the console; PROPRIETAIRE cannot be attributed by PATCH. No finding beyond the operator being able to drop another operator's 2FA (recorded as hardening).",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-04",
+        "reviewed_paths": [
+          ".github/workflows/deploy-cloud-run.yml",
+          "src/modules/auth/auth.controller.ts",
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/groupe/groupe.service.ts",
+          "src/modules/plateforme/operateur-plateforme.guard.ts",
+          "src/modules/plateforme/plateforme.service.ts",
+          "src/modules/utilisateurs/utilisateur.service.ts"
+        ],
+        "invariant": "Independent verification of candidate plateforme/onModuleInit:operator-grant-by-unverified-email",
+        "method": "source",
+        "result": "needs_validation: Decisive deployment fact outside the repository: whether the deployed OPERATEURS_PLATEFORME (secret API_OPERATEURS_PLATEFORME, or the default admin@vmgconsulting.net) currently or at any past boot contained an address held by no User row. Without such an address the path yields nothing.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-05",
+        "reviewed_paths": [
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/double-authentification.ts",
+          "src/modules/auth/jwt.strategy.ts",
+          "src/modules/plateforme/operateur-plateforme.guard.ts",
+          "src/modules/utilisateurs/avis-acces.service.ts",
+          "src/modules/utilisateurs/utilisateur.controller.ts",
+          "src/modules/utilisateurs/utilisateur.service.ts"
+        ],
+        "invariant": "Independent verification of candidate utilisateurs/reinitialiserMotDePasse:operator-2fa-reset-by-co-admin",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox on the audit host, so the bounded local reproduction could not be run in this source-only run.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-06",
+        "reviewed_paths": [
+          "client/src/pages/PlateformePage.tsx",
+          "src/common/cloisonnement/contexte-cloisonnement.ts",
+          "src/modules/groupe/groupe.controller.ts",
+          "src/modules/groupe/groupe.service.ts",
+          "src/modules/plateforme/plateforme.controller.ts",
+          "src/modules/plateforme/plateforme.service.ts"
+        ],
+        "invariant": "Independent verification of candidate plateforme/modifierGroupe:operator-bridges-client-dossier-into-own-group",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox is available on the audit host, so the end-to-end read of a grafted dossier's balance cannot be observed locally in this run.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "plateforme/onModuleInit:operator-grant-by-unverified-email",
+      "utilisateurs/reinitialiserMotDePasse:operator-2fa-reset-by-co-admin",
+      "plateforme/modifierGroupe:operator-bridges-client-dossier-into-own-group"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "reinitialiserAdmin (plateforme.service.ts:534-597) does not exclude estOperateurPlateforme accounts and clears their TOTP; one operator can strip another operator's second factor (password still goes only to the target's mailbox).",
+      "Boot promotion is grant-only and never revoked by removing an address from OPERATEURS_PLATEFORME; a stale flag on a demoted or address-changed account persists until manual SQL.",
+      "Tenant is not a cloisonné model; modifierGroupe and listeCabinets rely solely on the operator guard, and the victim dossier receives no notice when it is attached to a group.",
+      "AvisAccesService mails the new address on user creation, which is only a detective control for an operator-address squat if VMG monitors that mailbox."
+    ],
+    "x_uncovered": [
+      {
+        "surface": "src/modules/utilisateurs/utilisateur.controller.ts#PATCH /utilisateurs/:id (role, estActif) on privileged accounts",
+        "boundary": "src/modules/utilisateurs/utilisateur.service.ts#modifier",
+        "subsystem": "profile/quick/all-in-scope-subsystems",
+        "attack_class": "ATTACK-CLASSES.md#Access control",
+        "starting_paths": [
+          "src/modules/utilisateurs/utilisateur.service.ts",
+          "src/modules/utilisateurs/utilisateur.controller.ts"
+        ],
+        "reason": "Tenant-admin actions on accounts that hold platform-wide privileges (role change, deactivation, journal/function profiles) need a dedicated unit; only the password-reset variant was settled here."
+      }
+    ]
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Frelances%23letter%20templates%3B%20remises%23bordereau%20templates%3B%20tiers%2Fmodeles-impression%3B%20courrier::src%2Fmodules%2Frelances%2Frelances.service.ts%23template%20rendering%20and%20outbound%20mail::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "src/modules/relances#letter templates; remises#bordereau templates; tiers/modeles-impression; courrier",
+      "boundary": "src/modules/relances/relances.service.ts#template rendering and outbound mail",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "Templated documents and outbound mail",
+    "boundary": "Template rendering and mail recipients",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Injection",
+    "starting_paths": [
+      "src/modules/relances",
+      "src/modules/remises",
+      "src/modules/tiers/modeles-impression.ts",
+      "src/modules/courrier",
+      "src/modules/plateforme/abonnements"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-h07",
+    "reviewed_paths": [
+      "src/modules/courrier/adresse-courriel.ts",
+      "src/modules/courrier/courrier.controller.ts",
+      "src/modules/courrier/courrier.service.ts",
+      "src/modules/courrier/dto/courrier.dto.ts",
+      "src/modules/courrier/transport-courriel.ts",
+      "src/modules/plateforme/abonnements/courriels-editeur.service.ts",
+      "src/modules/relances/relances.controller.ts",
+      "src/modules/relances/relances.service.ts",
+      "src/modules/remises/remise-en-banque.ts",
+      "src/modules/remises/remises.controller.ts",
+      "src/modules/tiers/modeles-impression.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h07",
+        "reviewed_paths": [
+          "src/modules/relances/relances.service.ts",
+          "src/modules/relances/relances.controller.ts"
+        ],
+        "invariant": "Relance letter composition (composer, objetDeLaRelance) must not let tenant data reach a dangerous sink or cross a principal boundary",
+        "method": "source",
+        "result": "composer (relances.service.ts:709-740) uses sequential String.replace with string replacements built from tiers name, entity name and ecriture libelles; the template (niveau.modeleTexte) is written by ADMIN_CABINET only (relances.controller.ts:23-30) and emission is ADMIN_CABINET/COMPTABLE (:60-61). Output is plain text stored in Relance.texte and sent as text/plain mail body. No HTML, shell, SQL or file sink. '$' replacement patterns and token re-expansion only reshuffle text already present in the letter; since the same principals can write arbitrary text into libelles and names directly, no capability is gained. Recorded as hardening.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h07",
+        "reviewed_paths": [
+          "src/modules/remises/remise-en-banque.ts",
+          "src/modules/remises/remises.controller.ts"
+        ],
+        "invariant": "Bordereau template rendering must not let lower-trust data alter the printed document beyond its own text or reach a dangerous sink",
+        "method": "source",
+        "result": "documentBordereau (remise-en-banque.ts:237-252) uses the same sequential string .replace pattern; template restricted to ADMIN_CABINET (remises.controller.ts:31-38), token set validated (motifRefusModeleBordereau :192-203), values (reference, titulaire, banqueTiree) entered by COMPTABLE. Output is printable plain text; totals are computed server-side; '$' patterns can only duplicate existing template text. No boundary crossed; hardening only.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h07",
+        "reviewed_paths": [
+          "src/modules/tiers/modeles-impression.ts"
+        ],
+        "invariant": "Tiers print-model wrapping must not re-interpret document content or user values as template syntax",
+        "method": "source",
+        "result": "cadreDuModele (modeles-impression.ts:179-204) replaces tokens in one pass with a function replacer (no '$' pattern interpretation), never passes the composed document through replacement, unknown tokens rejected at save (motifRefusTexteModele :122-140). Safe.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h07",
+        "reviewed_paths": [
+          "src/modules/courrier/courrier.service.ts",
+          "src/modules/courrier/transport-courriel.ts",
+          "src/modules/courrier/adresse-courriel.ts",
+          "src/modules/courrier/courrier.controller.ts",
+          "src/modules/courrier/dto/courrier.dto.ts"
+        ],
+        "invariant": "Outbound mail must not allow recipient-list or header injection from tenant-controlled address, display name or subject",
+        "method": "source",
+        "result": "Recipient addresses are validated before enqueue (adresseAcceptable: no whitespace/CR/LF, no ',' or ';', single '@', dotted domain, <=254; courrier.service.ts:298-305). transport-courriel.ts:198-217 passes recipient as nodemailer object {name, address}, subject and text separately; sender from env. Display names (tiers name) and subject (niveau libelle + entity name containing '\\n') rely on nodemailer header encoding (address names encoded/quoted, header newlines folded to spaces); envelope recipients derive only from the validated address. node_modules is not present in the tree, so the library behaviour is the well-known nodemailer behaviour and not re-read here. Courrier routes are tenant-scoped; resend restricted to ADMIN/COMPTABLE.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h07",
+        "reviewed_paths": [
+          "src/modules/plateforme/abonnements/courriels-editeur.service.ts"
+        ],
+        "invariant": "Publisher invoice/licence mails must be sent from the publisher tenant only and to a validated address",
+        "method": "source",
+        "result": "envoyerFacture checks facture.tenantId equals session tenant (courriels-editeur.service.ts:79-81) and both paths go through mettreEnFile address validation; callers are operator console routes (guard owned by h05). No injection sink.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "x_hardening": [
+      "src/modules/relances/relances.service.ts:728-739 and src/modules/remises/remise-en-banque.ts:242-251 render templates with chained String.prototype.replace(regex, string): user values (tiers name, ecriture libelle, cheque reference, titulaire, dossier/banque name) are interpreted as replacement patterns ('$&', '$`', \"$'\", '$$'), and a value containing a later token (e.g. a dossier or bank named '{lignes}' or a tiers named '{detail}') is expanded by the following pass. Effect is limited to reshuffling text already in the same letter/bordereau, written by the same tenant principals, so no boundary is crossed; use a single-pass function replacer as tiers/modeles-impression.ts:193 does (modele.replace(/\\{(\\w+)\\}/g, (b, n) => valeurs[n] ?? b)) and add a regression case with a libelle of \"$`\" and a tiers named '{detail}'.",
+      "Mail subject for relances includes the entity name joined with '\\n' (relances.service.ts:802, 889); header safety rests entirely on nodemailer folding/encoding. Normalising CR/LF to spaces in objetDeLaRelance and in destinataireNom before enqueue would make the invariant source-visible rather than library-dependent."
+    ],
+    "x_uncovered": []
+  },
+  {
+    "coverage_id": "src%2Fmodules%2Fsur-site%2Fsur-site.controller.ts%23anonymous%20%2Fsur-site%2Fetat%2C%2Fsur-site%2Flicence%20and%20installation-admin%20routes::src%2Fmodules%2Fsur-site%2Flicence-signee.ts%23Ed25519%20licence%3B%20chiffrement-sauvegarde.ts%3B%20administrateur-installation.guard.ts::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "canonical_refs": {
+      "surface": "src/modules/sur-site/sur-site.controller.ts#anonymous /sur-site/etat,/sur-site/licence and installation-admin routes",
+      "boundary": "src/modules/sur-site/licence-signee.ts#Ed25519 licence; chiffrement-sauvegarde.ts; administrateur-installation.guard.ts",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets"
+    },
+    "surface": "On-site install surfaces",
+    "boundary": "Signed licence, backup encryption, installation admin",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Cryptography and secrets",
+    "starting_paths": [
+      "src/modules/sur-site",
+      "installation",
+      "src/main.ts",
+      "src/modules/auth/double-authentification.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Unexpected service or management-plane reachability",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe code in scope (TypeScript only)"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt assembly or tool-calling in the product"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no RPC, broker or inbound webhook; mail is outbound SMTP only"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "no native app or local IPC; on-site mode is a LAN web server"
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "CLIENT-SIDE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+        "reason": "domain owned by another unit of this run; this unit stays on its assigned boundary"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-h09",
+    "reviewed_paths": [
+      "installation/dechiffrer-sauvegarde.cjs",
+      "installation/windows/initialiser.ps1",
+      "installation/windows/omegax-service.xml",
+      "src/common/mode-installation.ts",
+      "src/modules/auth/auth.controller.ts",
+      "src/modules/auth/auth.service.ts",
+      "src/modules/auth/double-authentification.ts",
+      "src/modules/sur-site/administrateur-installation.guard.ts",
+      "src/modules/sur-site/chiffrement-sauvegarde.ts",
+      "src/modules/sur-site/cle-publique-editeur.ts",
+      "src/modules/sur-site/licence-signee.ts",
+      "src/modules/sur-site/licence-sur-site.service.ts",
+      "src/modules/sur-site/sauvegarde-sur-site.service.ts",
+      "src/modules/sur-site/sur-site.controller.ts",
+      "src/modules/sur-site/sur-site.dto.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-h09",
+        "reviewed_paths": [
+          "src/modules/sur-site/licence-signee.ts",
+          "src/modules/sur-site/cle-publique-editeur.ts",
+          "src/modules/sur-site/licence-sur-site.service.ts"
+        ],
+        "invariant": "An anonymously deposited licence file is accepted only if Ed25519-signed by the hard-coded VMG public key over a canonical serialisation, bound to this machine fingerprint, and no crypto failure falls back to acceptance",
+        "method": "source",
+        "result": "verifierLicence validates content shape, verifies Ed25519 over serialiser() (fixed key order) with the constant public key (never read from env), treats any verify exception as SIGNATURE_INVALIDE, then checks machine fingerprint, clock rollback, expiration and maintenance date. deposer() only writes a file whose verdict is VALIDE and refuses an older emiseLe than the current valid licence. No fallback-to-accept path found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h09",
+        "reviewed_paths": [
+          "src/modules/sur-site/sur-site.controller.ts",
+          "src/modules/sur-site/administrateur-installation.guard.ts",
+          "src/modules/auth/auth.service.ts",
+          "src/modules/auth/auth.controller.ts",
+          "src/common/mode-installation.ts"
+        ],
+        "invariant": "Backup and dossier-creation routes are reachable only by the ADMIN_CABINET of the first (installation) tenant on an on-site install; anonymous /sur-site routes expose no tenant data and are inert in hosted mode",
+        "method": "source",
+        "result": "The four reserved routes carry JwtAuthGuard, RolesGuard and AdministrateurInstallationGuard in that order; the guard refuses when not SUR_SITE, when role is not ADMIN_CABINET, or when tenantId differs from the oldest tenant (dossierDInstallation). /sur-site/etat returns {surSite:false} in hosted mode and /sur-site/licence throws BadRequest there. Anonymous etat discloses licence holder, number and machine fingerprint only (hardening).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h09",
+        "reviewed_paths": [
+          "src/modules/sur-site/chiffrement-sauvegarde.ts",
+          "installation/dechiffrer-sauvegarde.cjs"
+        ],
+        "invariant": "External backup copies use authenticated encryption with a fresh nonce per file, a slow KDF, and never leave partially decrypted or plaintext output on failure",
+        "method": "source",
+        "result": "AES-256-GCM with randomBytes(12) IV per file, scrypt N=2^15 r=8 p=1 with 16-byte random salt, tag appended and checked via setAuthTag; decryption writes to .partiel and unlinks on failure, renames only on success; recopier refuses to copy when no key is configured (no plaintext fallback). Phrase read from TTY, not argv. Derived key is stored on the poste next to plaintext local copies, documented by design.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h09",
+        "reviewed_paths": [
+          "src/modules/sur-site/sauvegarde-sur-site.service.ts",
+          "src/modules/sur-site/sur-site.controller.ts",
+          "installation/windows/omegax-service.xml",
+          "installation/windows/initialiser.ps1"
+        ],
+        "invariant": "An application-level installation admin can choose a backup destination without making the Windows service (LocalSystem) touch arbitrary local paths or authenticate to arbitrary network hosts",
+        "method": "source",
+        "result": "definirCopieExterne accepts any absolute path including UNC (only isAbsolute + existsSync + test write), and the service runs under LocalSystem (WinSW without a declared account). existsSync/writeFileSync/chiffrerFichier on a \\\\host\\share path make the machine account authenticate over SMB to an attacker-chosen host, repeated hourly by recopierSiAbsente. Candidate needs_validation (Windows/AD behaviour not source-visible, no sandbox).",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-h09",
+        "reviewed_paths": [
+          "src/modules/auth/double-authentification.ts",
+          "installation/windows/initialiser.ps1"
+        ],
+        "invariant": "Security-critical secrets (TOTP secret, backup codes, on-site DB password and JWT secret) come from a CSPRNG and secret comparisons are constant-time",
+        "method": "source",
+        "result": "TOTP secret randomBytes(20), backup codes randomBytes(7) hashed with SHA-256, TOTP compared with timingSafeEqual on equal-length 6-digit strings; initialiser.ps1 uses RandomNumberGenerator for 16-byte DB password and 32-byte JWT_SECRET, DB bound to 127.0.0.1, omegax.env ACL-restricted. No weak randomness found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "verifier-08",
+        "reviewed_paths": [
+          "installation/windows/initialiser.ps1",
+          "installation/windows/omegax-service.xml",
+          "src/modules/sur-site/administrateur-installation.guard.ts",
+          "src/modules/sur-site/chiffrement-sauvegarde.ts",
+          "src/modules/sur-site/sauvegarde-sur-site.service.ts",
+          "src/modules/sur-site/sur-site.controller.ts",
+          "src/modules/sur-site/sur-site.dto.ts"
+        ],
+        "invariant": "Independent verification of candidate sur-site/sauvegarde-sur-site.service/definirCopieExterne-unc-localsystem",
+        "method": "source",
+        "result": "needs_validation: No OS-enforced sandbox and no Windows host available for this run, so no target code may be executed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "sur-site/sauvegarde-sur-site.service/definirCopieExterne-unc-localsystem"
+    ],
+    "unresolved": [],
+    "x_hardening": [
+      "Licence anti-rollback in LicenceSurSiteService.deposer compares only emiseLe, so any anonymous LAN client holding another VMG-signed licence for the same machine with an equal or later emiseLe (e.g. a shorter-lived or lower dossiersMax one) can replace the installed one via POST /sur-site/licence; consider requiring authentication (installation admin) once a valid licence exists.",
+      "GET /sur-site/etat anonymously returns licence holder name, licence number, machine fingerprint and premierDossierAttendu to any LAN client; acceptable for first-run UX but could be reduced to statut/empreinte once a tenant exists.",
+      "The clock-rollback guard relies on horloge.json under DOSSIER_DONNEES, which local Windows administrators can delete; this is licensing enforcement only, not a cross-principal boundary.",
+      "The external-copy AES key is derived once and stored (with its salt) in sauvegarde-externe.json on the same disk as the plaintext local dumps; documented design, protected only by the ACL set in initialiser.ps1.",
+      "pg_dump stderr is returned verbatim in the BadRequest of SauvegardeSurSiteService.executer to the installation admin; it does not include PGPASSWORD (passed by env) but may reveal host paths.",
+      "AdministrateurInstallationGuard derives the installation tenant as the oldest Tenant row; on a fresh install the first /auth/register after the licence is deposited (open to the LAN) becomes installation admin, and two concurrent registrations can both pass premierDossierAttendu (count==0). The register route itself is owned by h01; noted here because the guard's trust depends on it.",
+      "TOTP secrets (User.secretDoubleAuth) are stored unencrypted in the database column; acceptable given DB access control but an application-level encryption key would limit exposure of a database dump."
+    ],
+    "x_uncovered": []
+  }
+]
