@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { MOT_DE_PASSE, creerDossier } from './outils';
+import { MOT_DE_PASSE, creerDossier, entrerDansUnLogiciel } from './outils';
 
 /**
  * « RESTER CONNECTÉ SUR CET APPAREIL » SURVIT À LA FERMETURE DU NAVIGATEUR
@@ -15,7 +15,7 @@ async function connecter(page: Page, email: string, rester: boolean) {
   await page.fill('input[type=password]', MOT_DE_PASSE);
   if (rester) await page.getByRole('checkbox', { name: 'Rester connecté sur cet appareil' }).check();
   await page.getByRole('button', { name: 'Ouvrir le dossier' }).click();
-  await expect(page.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
+  await entrerDansUnLogiciel(page);
 }
 
 /** Ferme le navigateur et le rouvre · seuls les cookies datés passent. */
@@ -37,7 +37,7 @@ test('case cochée · la session survit à la fermeture du navigateur', async ({
   // Sept jours sans usage au plus (session-longue.ts) · le cookie est daté.
   expect(session?.expires ?? 0).toBeGreaterThan(Date.now() / 1000 + 6 * 86_400);
   await reouverte.goto('/');
-  await expect(reouverte.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
+  await entrerDansUnLogiciel(reouverte);
 });
 
 test('case décochée · la fermeture du navigateur ramène à la connexion', async ({ page, browser }) => {

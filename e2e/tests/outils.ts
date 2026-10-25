@@ -165,7 +165,26 @@ export async function seConnecter(page: Page, email: string) {
   await page.fill('input[type=email]', email);
   await page.fill('input[type=password]', MOT_DE_PASSE);
   await page.getByRole('button', { name: 'Ouvrir le dossier' }).click();
-  await expect(page.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
+  await entrerDansUnLogiciel(page);
+}
+
+/**
+ * L'ÉCRAN DES LOGICIELS S'INTERCALE APRÈS LA CONNEXION (2026-10-25) · un
+ * utilisateur qui a plusieurs logiciels choisit celui qui le concerne avant
+ * que la barre de menus ne se restreigne. Le parcours le traverse comme un
+ * utilisateur, par un clic sur la tuile, sans l'ignorer ni le désactiver :
+ * l'écran est un affichage posé SUR l'espace de travail, les fenêtres que
+ * les tests ouvrent par adresse restent des routes ouvertes (masquer n'est
+ * pas refuser). Le logiciel par défaut est la comptabilité, qui porte le menu
+ * Structure que les parcours attendent.
+ */
+export async function entrerDansUnLogiciel(page: Page, logiciel = 'Comptabilité') {
+  const ecran = page.getByRole('region', { name: 'Choix du logiciel' });
+  const structure = page.getByRole('button', { name: 'Structure', exact: true });
+  await expect(ecran.or(structure).first()).toBeVisible();
+  if (await ecran.isVisible()) await ecran.getByRole('button', { name: logiciel, exact: true }).click();
+  await expect(structure).toBeVisible();
+  await expect(ecran).toHaveCount(0);
 }
 
 /**
