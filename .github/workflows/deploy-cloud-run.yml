@@ -126,21 +126,20 @@ jobs:
       # de trente minutes · la limite du tas est relevée pour les tests seuls,
       # jamais pour le service, dont le tas reste celui qui est mesuré
       # (docs/capacite-mesuree.md). Et l'étape est bornée · un blocage échoue
-      # au lieu de pendre six heures. DEUX PROCESSUS DE TEST, PAS TROIS
-      # (2026-10-28) · trois processus à 4 Go chacun ne tenaient plus dans les
-      # 16 Go du coureur, base jetable comprise, une fois la suite passée à
-      # près de mille fichiers · un processus était tué en fin de course, sa
-      # suite « failed to run » sans qu'aucun test n'échoue, quatre
-      # déploiements de suite. À deux processus, les deux sont encore tombés
-      # ensemble en fin de course, quand leur tas est au plus haut · la suite
-      # se joue donc en DEUX MOITIÉS l'une après l'autre (`--shard`), chacune
-      # avec des processus neufs, qui n'accumulent que la moitié du chemin.
+      # au lieu de pendre six heures. LE TAS QUI CRÈVE EN QUATRE-VINGTS
+      # SECONDES (2026-10-28) · ts-jest vérifiait les types et gardait le
+      # programme TypeScript entier dans chaque processus, deux gigaoctets
+      # dès la première suite quand le cache est froid, ce qu'il est
+      # toujours sur le coureur · quatre déploiements de suite sont tombés
+      # en « heap out of memory » sans qu'aucun test n'échoue. Les tests ne
+      # font plus que transpiler (`isolatedModules`, package.json), les
+      # types restent jugés par « Typage du serveur » juste au-dessus.
       - name: Tests du serveur
         if: matrix.suite == 'complete'
         timeout-minutes: 30
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: npx jest --ci --maxWorkers=2 --shard=1/2 && npx jest --ci --maxWorkers=2 --shard=2/2
+        run: npx jest --ci
 
       - name: Construction du serveur
         run: npm run build
