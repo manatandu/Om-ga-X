@@ -52,6 +52,51 @@ idées 1 et 5 du § 4).
    les 31 rejouées vertes (614 tests) ; `npm run build` vert. Client `tsc`
    0 erreur, `npm test` 307 fichiers, 2 487 tests verts, `npm run build` vert.
 
+5. Relecture du circuit et de la concordance (2026-10-28), constats vérifiés
+   dans le code puis corrigés, chacun avec son test ·
+   - M1 · la réimputation relit le statut DANS sa transaction (lignes filtrées
+     sur l'écriture non validée, nombre exigé, sinon 409 nommé ; tête de même).
+   - M2 · ventiler ou effacer la ventilation d'une ligne au brouillard pose
+     l'auteur du dernier contenu, sous `FOR UPDATE` de la tête
+     (`poserAuteurDeLaVentilation`), l'utilisateur passé par le contrôleur.
+   - M3 · la retouche d'une fiche d'immobilisation passe `userId` à
+     `modifierPieceDuModule` ; tout appel de ce chemin nomme son auteur (spec
+     de structure) ; la dérogation nominative (nom et motif du second regard)
+     part enfin de l'écran Brouillard, offerte après un refus du double regard.
+   - M4 · le registre des provisions nomme le solde de ses comptes (natures
+     et court terme du module) qu'aucune ligne ne porte (`horsRegistre`), le
+     module des créances douteuses celui des 416 et 491 qu'aucune créance ne
+     porte (`solde416SansCreance`, `solde491SansCreance`) · la concordance les
+     confronte à zéro, jamais « concorde » ni « sans objet ».
+   - M5 · validation par tranches de 500 (`LOT_ECRITURES`), une transaction
+     par tranche, têtes `FOR UPDATE` et exercices `FOR SHARE`, équilibre,
+     exercice, auteur et visa relus dedans, contenu visé lu sous le circuit
+     seul ; l'échec d'une tranche nomme ce que les précédentes ont validé
+     (`echecDUneTranche`) ; la pièce retirée entre deux lectures est comptée à
+     part (`retireesEntreTemps`), jamais « déjà validée ».
+   - Mineurs · lot de visas et de retraits · tout refus HTTP et toute panne
+     rangés dans `refusees` ; facture d'abonnement émise par le logiciel ·
+     motif propre (`emiseParLeLogiciel`, lu sur `factureAbonnement`) ;
+     concordance des banques bornée au dernier relevé daté au plus tard de la
+     clôture, rapprochement en cours dit.
+
+6. Rejeu sur vraie base de M1 et M5 (2026-10-28,
+   `scripts/rejouer-circuit-visa.cjs`) · PostgreSQL 16 jetable, serveur
+   compilé, dossier SYSCOHADA, A administrateur, B et C comptables, double
+   regard et circuit actifs. Janvier 2026 · 1 200 pièces saisies par A, visées
+   par B, validées par C en une validation par période (trois tranches, 0,5 s,
+   1 200 en base) ; A, auteur, écarté par le double regard. Quatorze courses
+   (huit en 2026, six en 2027 après la clôture) · C réimpute 60 lignes au
+   brouillard pendant que B valide les mêmes pièces · onze refus en 409 nommé
+   « validées pendant la réimputation » (la fenêtre de la course atteinte,
+   que le code d'avant laissait déplacer en place), trois réimputations par
+   inscription en négatif ; aucune ligne d'une pièce validée déplacée en
+   place. Soldes · 6052 + 6053 = 1 445 000, 521 en 2026 = 48 555 000, report
+   2027 48 555 000, mouvements 2027 − 240 000, fin 2027 48 315 000. Clôture de
+   2026 passée. Journal du serveur sans erreur. La base est montée hors du
+   scratchpad (`/var/tmp`) · les droits du scratchpad se refermaient sous
+   PostgreSQL en cours de route.
+
 ## Reste
 
 1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
@@ -130,14 +175,9 @@ passe le double regard, et le contrôle ne le voit pas.
 
 ## Limites écrites
 
-- La ventilation analytique d'une ligne au brouillard ne nomme pas son auteur
-  (route d'analytique, hors de cette ligne) · elle fait tomber le VISA par
-  l'empreinte, mais ne change pas l'auteur du dernier contenu pour le double
-  regard.
-- `FicheImmobilisationService` (immobilisations, ligne partiels-sage) appelle
-  `modifierPieceDuModule` sans auteur · le contenu est dit d'auteur INCONNU, et
-  le double regard demande alors le nom et le motif du second regard porté hors
-  du logiciel (dérogation existante), jamais une présomption.
+- (levées le 2026-10-28) la ventilation analytique nomme son auteur ; la
+  fiche d'immobilisation aussi ; l'auteur INCONNU ne reste qu'aux chemins qui
+  n'en ont pas, et sa dérogation nominative part de l'écran Brouillard.
 - La commande (M2) n'a que son point d'entrée (`ObjetDuCircuit` 'COMMANDE').
 
 ## Questions pour Manasse
@@ -147,13 +187,13 @@ passe le double regard, et le contrôle ne le voit pas.
 2. Une facture visée dont l'écriture passe au brouillard est visée deux fois
    (la facture, puis l'écriture) · garder les deux visas, ou tenir l'écriture
    d'une facture visée pour visée ?
-3. La ventilation analytique doit-elle compter comme un changement de contenu
-   pour le double regard (pas seulement pour le visa) ?
+3. (tranchée par la relecture M2, convention C2) la ventilation analytique
+   compte comme un changement de contenu pour le double regard aussi.
 
 ## Commandes de vérification
 
 ```bash
-cd /home/user/wt-microfina-m1
+cd /home/user/wt-m1
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 ```
