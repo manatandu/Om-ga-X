@@ -131,13 +131,16 @@ jobs:
       # 16 Go du coureur, base jetable comprise, une fois la suite passée à
       # près de mille fichiers · un processus était tué en fin de course, sa
       # suite « failed to run » sans qu'aucun test n'échoue, quatre
-      # déploiements de suite.
+      # déploiements de suite. À deux processus, les deux sont encore tombés
+      # ensemble en fin de course, quand leur tas est au plus haut · la suite
+      # se joue donc en DEUX MOITIÉS l'une après l'autre (`--shard`), chacune
+      # avec des processus neufs, qui n'accumulent que la moitié du chemin.
       - name: Tests du serveur
         if: matrix.suite == 'complete'
         timeout-minutes: 30
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: npx jest --ci --maxWorkers=2
+        run: npx jest --ci --maxWorkers=2 --shard=1/2 && npx jest --ci --maxWorkers=2 --shard=2/2
 
       - name: Construction du serveur
         run: npm run build
