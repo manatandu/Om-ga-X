@@ -91,7 +91,8 @@ export type RoleComptePaie =
   | 'AUTRES_IMPOTS_ET_TAXES'
   | 'IRPP_RETENU'
   | 'REMUNERATIONS_DUES'
-  | 'TRANSFERTS_DE_CHARGES';
+  | 'TRANSFERTS_DE_CHARGES'
+  | 'MISSIONS';
 
 export type CompteDuRole = {
   readonly SYSCOHADA: string;
@@ -250,6 +251,19 @@ export const NOMENCLATURE_PAIE: Readonly<Record<RoleComptePaie, CompteDuRole>> =
     intitule: "Transferts de charges d'exploitation",
     divergent: false,
   },
+  // LIGNE MICROFINA-M3, IDÉE 3 · l'indemnité forfaitaire de mission portée au
+  // bulletin, et le remboursement sur pièce de la même mission · « les frais
+  // de voyage […] dont le montant lui est soit remboursé, soit compris dans
+  // les rémunérations, doivent en principe être enregistrés en 62 ou 63 »
+  // (fiche du compte 66, AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3), et le 638
+  // des deux plans ouvre 6384 « Missions » · même numéro, même intitulé aux
+  // deux semis.
+  MISSIONS: {
+    SYSCOHADA: '63840000',
+    SYCEBNL: '63840000',
+    intitule: 'Missions',
+    divergent: false,
+  },
 } as const;
 
 /** A8 (p) · le 6614 vise le personnel national ; le non-national est au 6624. */
@@ -369,7 +383,12 @@ export type VerdictPassation = {
 
 export type EntreePassation = {
   readonly referentiel: Referentiel;
-  readonly elements: readonly { nature: NatureElementPaie; libelle: string; montantFc: number; enNature?: boolean }[];
+  /**
+   * `missionId` · l'indemnité forfaitaire d'une mission (ligne microfina-m3,
+   * idée 3), posée par le serveur, jamais reçue du client · elle a son
+   * compte (rôle MISSIONS), là où la même nature sans mission n'en a pas.
+   */
+  readonly elements: readonly { nature: NatureElementPaie; libelle: string; montantFc: number; enNature?: boolean; missionId?: string }[];
   readonly cotisations: readonly {
     cle: string;
     charge: 'EMPLOYEUR' | 'TRAVAILLEUR';
@@ -447,6 +466,12 @@ export function passationPaie(entree: EntreePassation): VerdictPassation {
     // comme tout avantage en nature (fiche du compte 66 des deux textes).
     if (!estVerseEnEspeces(e.nature, e.enNature) && e.nature !== 'AVANTAGE_EN_NATURE') {
       parRole.set('AVANTAGES_EN_NATURE', (parRole.get('AVANTAGES_EN_NATURE') ?? 0) + Math.max(0, e.montantFc));
+      continue;
+    }
+    // L'indemnité forfaitaire d'une mission · la fiche du compte 66 tranche
+    // pour elle ce que la nature seule ne tranche pas (voir le rôle MISSIONS).
+    if (e.missionId && e.nature === 'FRAIS_DE_VOYAGE_OU_AVANTAGE_DE_FONCTION') {
+      parRole.set('MISSIONS', (parRole.get('MISSIONS') ?? 0) + Math.max(0, e.montantFc));
       continue;
     }
     const sansImputation = NATURES_SANS_IMPUTATION[e.nature];

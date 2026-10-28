@@ -9,6 +9,8 @@ import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '.
 import { OngletCongesPaie } from '../components/paie/CongesPaie';
 import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
+import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
+import { OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
@@ -254,6 +256,8 @@ interface Simulation {
   /** LIGNE SAGE-L5 · les allocations de congé que le serveur a rejouées et ajoutées aux éléments. */
   allocationsConge?: { congeId: string; du: string; au: string; jours: number; tauxJournalier: number; devise: 'CDF' | 'USD'; montant: number }[];
   reserveRetenuesAvances?: string | null;
+  /** Ligne microfina-m3, idée 6 · l'échéance d'un plan d'étalement non portée ou portée en moins. */
+  avertissementsRetenuesPlanifiees?: string[];
   /** « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée, jamais refusée. */
   reserveSaisies?: string | null;
   net: {
@@ -618,11 +622,19 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [avisModele, setAvisModele] = useState<string[]>([]);
   const [avancesSalarie, setAvancesSalarie] = useState<AvanceSalaire[]>([]);
   const [retenuesAvances, setRetenuesAvances] = useState<Record<string, string>>({});
+  // Ligne microfina-m3, idée 6 · les valeurs que le plan d'étalement a
+  // préremplies, pour ne refaire que celles-là au changement de mois.
+  const retenuesPreremplies = useRef<Record<string, string>>({});
   // LIGNE SAGE-L5 · les congés dont le bulletin du mois peut porter
   // l'allocation. Null tant que la liste n'est pas LUE ; seul l'identifiant
   // part au serveur, qui rejoue le montant.
   const [congesDuMois, setCongesDuMois] = useState<CongeDuMois[] | null>(null);
   const [congesPortes, setCongesPortes] = useState<Record<string, boolean>>({});
+  // LIGNE MICROFINA-M3, IDÉE 3 · les missions dont le bulletin du mois peut
+  // porter les frais dus au travailleur. Null tant que la liste n'est pas
+  // LUE ; seul l'identifiant part, le serveur rejoue les montants.
+  const [missionsDuMois, setMissionsDuMois] = useState<MissionLue[] | null>(null);
+  const [missionsPortees, setMissionsPortees] = useState<Record<string, boolean>>({});
   // LIGNE SAGE-L5, FONCTION 78 · les absences du mois et la proposition du
   // serveur · reprise au clic, jamais substituée. La moyenne de l'art. 66 se
   // déclare (zéro est une réponse).
@@ -822,9 +834,32 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       setListesTronquees((l) => ({ ...l, avances: null }));
       return;
     }
-    api.get<{ avances: AvanceSalaire[]; total: number; tronque: boolean }>(`/personnel/avances?salarieId=${selection}`).then(
+    // LIGNE MICROFINA-M3, IDÉE 6 · le mois de paie lisible part avec la
+    // demande · le serveur rend la retenue que chaque plan d'étalement
+    // propose, que la saisie préremplit sans écraser ce qui a été tapé.
+    const moisLisible = /^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie) ? `&moisDePaie=${moisDePaie}` : '';
+    api.get<{ avances: AvanceSalaire[]; total: number; tronque: boolean }>(`/personnel/avances?salarieId=${selection}${moisLisible}`).then(
       (r) => {
         setAvancesSalarie(r.avances);
+        setRetenuesAvances((prec) => {
+          const suivant: Record<string, string> = {};
+          for (const [id, v] of Object.entries(prec)) {
+            // Ce qui a été tapé reste ; ce qui avait été prérempli se refait
+            // pour le nouveau mois.
+            if (retenuesPreremplies.current[id] !== v) suivant[id] = v;
+          }
+          const preremplies: Record<string, string> = {};
+          for (const a of r.avances) {
+            const m = a.proposition?.montantFc;
+            if (typeof m === 'number' && m > 0 && suivant[a.id] === undefined) {
+              const v = m.toFixed(2);
+              suivant[a.id] = v;
+              preremplies[a.id] = v;
+            }
+          }
+          retenuesPreremplies.current = preremplies;
+          return suivant;
+        });
         setListesTronquees((l) => ({ ...l, avances: libelleListeBornee(r, r.avances.length, 'avances du salarié') }));
       },
       (e: ApiError) => {
@@ -832,7 +867,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         setErreur(e.message);
       },
     );
-  }, [onglet, selection]);
+  }, [onglet, selection, moisDePaie]);
 
   useEffect(() => {
     if (onglet !== 'simulation') return;
@@ -841,6 +876,26 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       setErreur(e.message);
     });
   }, [onglet]);
+
+  useEffect(() => {
+    setMissionsPortees({});
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setMissionsDuMois(null);
+      return;
+    }
+    let actuel = true;
+    api.get<MissionLue[]>(`/personnel/salaries/${selection}/missions/mois/${moisDePaie}`).then(
+      (r) => actuel && setMissionsDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setMissionsDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
 
   useEffect(() => {
     setCongesPortes({});
@@ -992,6 +1047,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       // serveur par le moteur du décompte final (art. 142).
       ...(Object.values(congesPortes).some(Boolean)
         ? { allocationsConge: Object.entries(congesPortes).filter(([, oui]) => oui).map(([congeId]) => ({ congeId })) }
+        : {}),
+      // Ligne microfina-m3, idée 3 · la mission seule part ; forfait et
+      // remboursement sont rejoués au serveur.
+      ...(Object.values(missionsPortees).some(Boolean)
+        ? { missionsPortees: Object.entries(missionsPortees).filter(([, oui]) => oui).map(([missionId]) => ({ missionId })) }
         : {}),
       // LIGNE SAGE-L5 · les heures majorées · la majoration et le montant sont
       // relus au serveur ; une ligne incomplète ne part pas (`simuler` la dit).
@@ -1508,6 +1568,16 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Absences'
                       : o === 'temps'
                       ? 'Feuilles de temps'
+                      : o === 'missions'
+                      ? 'Missions'
+                      : o === 'demandes'
+                      ? 'Demandes de congé'
+                      : o === 'echeances'
+                      ? 'Échéances des contrats'
+                      : o === 'formation'
+                      ? 'Formation'
+                      : o === 'declaration'
+                      ? 'Main-d’œuvre'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -2977,6 +3047,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                                 ? 'Acompte du'
                                 : 'Avance du'}{' '}
                           {a.dateOctroi.slice(0, 10)} · {a.objet}
+                          {a.proposition && <div className="text-[11px] text-text-dim">{a.proposition.motif}</div>}
                         </td>
                         <td className="py-1 pr-2 text-text-dim">{a.compte.compte}</td>
                         <td className="py-1 pr-2 text-right">solde {fc(a.soldeFc)} FC</td>
@@ -3201,6 +3272,41 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {selection && missionsDuMois && missionsDuMois.length > 0 && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Frais de mission du mois
+                <Aide
+                  titre="Frais de mission du mois"
+                  texte="Les missions du salarié qui portent un frais dû au travailleur. Cochée, la mission entre au bulletin · l'indemnité forfaitaire, hors rémunération et imposable, et le remboursement sur pièces, hors des deux assiettes ; tous deux se passent au 6384. L'émission lie la mission au bulletin ; annuler le bulletin la libère."
+                  source="Code du travail, art. 7, point 8 · loi n° 23/053, art. 68, 1°"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {missionsDuMois.map((m) => (
+                    <tr key={m.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            disabled={deviseStipulation === 'USD'}
+                            checked={missionsPortees[m.id] === true}
+                            onChange={(e) => setMissionsPortees((p) => ({ ...p, [m.id]: e.target.checked }))}
+                          />
+                          Mission n° {m.numero} · {m.destination} du {dateCourte(m.dateDepart)} au {dateCourte(m.dateRetour)}
+                        </label>
+                      </td>
+                      <td className="py-1 pr-2 text-right">forfait {fc(m.totaux.forfaitFc)} FC</td>
+                      <td className="py-1 text-right">remboursement {fc(m.totaux.justifieFc)} FC</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {deviseStipulation === 'USD' && <div className="text-warning mt-1">Les frais de mission sont tenus en francs · un bulletin stipulé en dollars ne les porte pas.</div>}
             </div>
           )}
 
@@ -3527,6 +3633,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     {simulation.reserveSaisies && <li className="text-warning">{simulation.reserveSaisies}</li>}
                   </ul>
                 )}
+                {simulation.avertissementsRetenuesPlanifiees && simulation.avertissementsRetenuesPlanifiees.length > 0 && (
+                  <ul className="mt-1.5 text-[11px] text-warning">
+                    {simulation.avertissementsRetenuesPlanifiees.map((a, i) => (
+                      <li key={i}>{a}</li>
+                    ))}
+                  </ul>
+                )}
                 <ul className="mt-1.5 text-[11px] text-text-dim">
                   {simulation.net.reserves.map((r, i) => (
                     <li key={i} className="py-0.5 border-t border-border/40">
@@ -3805,6 +3918,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'temps' && <OngletFeuillesTempsPaie salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'missions' && <OngletMissionsPaie salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'demandes' && <OngletDemandesConge salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'echeances' && <OngletEcheancierContrats />}
+      {onglet === 'formation' && <OngletFormation salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'declaration' && <OngletDeclarationMainOeuvre />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}

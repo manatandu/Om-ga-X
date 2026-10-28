@@ -47,15 +47,16 @@ describe('Chaque numéro de la nomenclature est RÉELLEMENT ouvert dans son semi
     }
   });
 
-  it("gèle le décompte · UN SEUL rôle diverge sur les vingt", () => {
+  it("gèle le décompte · UN SEUL rôle diverge sur les vingt et un", () => {
     // Dix-sept jusqu'au 2026-09-27 · le transfert de charges des avantages en
     // nature (781) est le dix-huitième (audit final F22), même numéro aux deux.
     // A8 · les indemnités de fin de contrat (6614) sont le dix-neuvième,
     // même numéro et même fiche aux deux textes. DÉCISION T1 DU 2026-10-07 ·
     // les deux rôles INPP et ONEM (4334, 4335) font place à trois · 6415,
-    // 6413 et 4428, mêmes numéros aux deux plans.
+    // 6413 et 4428, mêmes numéros aux deux plans. LIGNE MICROFINA-M3 · le
+    // 6384 « Missions » est le vingt et unième, même numéro aux deux.
     const divergents = roles.filter((x) => NOMENCLATURE_PAIE[x].divergent);
-    expect(roles).toHaveLength(20);
+    expect(roles).toHaveLength(21);
     expect(divergents).toEqual(['CNSS_PENSIONS']);
   });
 

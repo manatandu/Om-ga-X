@@ -27,6 +27,10 @@ import { QuestionnairePaieController } from './questionnaire-paie.controller';
 import { QuestionnairePaieService } from './questionnaire-paie.service';
 import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.module';
 import { PiecesJointesSalarieController } from './pieces-jointes-salarie.controller';
+import { MissionsController } from './missions.controller';
+import { MissionsService } from './missions.service';
+import { SuiviPersonnelController } from './suivi-personnel.controller';
+import { SuiviPersonnelService } from './suivi-personnel.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -45,6 +49,10 @@ import { PiecesJointesSalarieController } from './pieces-jointes-salarie.control
     QuestionnairePaieController,
     // Ligne sage-l6 · les documents de la fiche du salarié (fonction 22).
     PiecesJointesSalarieController,
+    // Ligne microfina-m3, idée 3 · ordres et frais de mission.
+    MissionsController,
+    // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
+    SuiviPersonnelController,
   ],
   providers: [
     PersonnelService,
@@ -59,6 +67,8 @@ import { PiecesJointesSalarieController } from './pieces-jointes-salarie.control
     RibsSalariesService,
     RepartitionsAnalytiquesPaieService,
     QuestionnairePaieService,
+    MissionsService,
+    SuiviPersonnelService,
   ],
   exports: [PersonnelService],
 })

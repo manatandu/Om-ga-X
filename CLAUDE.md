@@ -1611,13 +1611,15 @@ bénéficiaires, jamais un nom de constante.
 **P3 · LA PASSATION COMPTABLE** (`docs/paie-p3-passation-comptable.md`). AUCUN
 NUMÉRO DE COMPTE DE PAIE HORS DE `passation-paie.ts`, ET AUCUN SANS SON RÉFÉRENTIEL.
 
-**VINGT RÔLES, UN SEUL DIVERGE** (dont le 78100000 des avantages en nature, voir
-P9, et le 66140000 des indemnités de fin de contrat depuis A8 ; décision T1 du
+**VINGT ET UN RÔLES, UN SEUL DIVERGE** (dont le 78100000 des avantages en nature, voir
+P9, le 66140000 des indemnités de fin de contrat depuis A8, et le 63840000
+« Missions » de la ligne microfina-m3, porté par l'élément du bulletin qui vient
+d'une mission, la même nature sans mission restant sans imputation ; décision T1 du
 2026-10-07 · les rôles INPP et ONEM du 4334 et du 4335 font place au 64150000, au
 64130000 et au 44280000) · la retraite OBLIGATOIRE est au **43130000** en SYSCOHADA (sous
 431), au **43210000** en SYCEBNL (sous 432). Le reste coïncide · 6611, 6612, 6613,
 6614, 6615, 6617, 6618, 6631, 6634, 6638, 6641, 6413, 6415, 4311, 4312, 4428, 4472,
-4220, 781. **La
+4220, 781, 6384. **La
 correction évidente est un piège** · le 432 SYSCOHADA est la retraite COMPLÉMENTAIRE
 (43200000), le SYCEBNL ouvre 4321 obligatoire, 4322 complémentaire, 4328 autres ;
 corriger 4313 en 432 rangerait l'obligatoire sous une nature FACULTATIVE. Un test

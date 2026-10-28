@@ -17,6 +17,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -425,6 +426,12 @@ export class AllocationCongePorteeDto {
   congeId!: string;
 }
 
+/** Ligne microfina-m3, idée 3 · une mission dont le bulletin porte les frais dus au travailleur. */
+export class MissionPorteeDto {
+  @IsUUID('4')
+  missionId!: string;
+}
+
 /**
  * LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · des heures majorées du mois · la
  * majoration est celle que le cabinet a déclarée avec sa source, relue au
@@ -466,6 +473,14 @@ export class SimulationPaieDto {
   @ValidateNested({ each: true })
   @Type(() => HeuresMajoreesDto)
   heuresMajorees?: HeuresMajoreesDto[];
+
+  /** Ligne microfina-m3, idée 3 · les missions dont le bulletin porte le forfait et le remboursement sur pièces. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => MissionPorteeDto)
+  missionsPortees?: MissionPorteeDto[];
 
   /** Retenues d'avance, d'acompte et de prêt · le salarié doit être nommé. */
   @IsOptional()
@@ -1149,11 +1164,29 @@ export class AvanceSalaireDto {
   @IsString() @MinLength(1) @MaxLength(200) objet!: string;
   @IsString() @MinLength(1) @MaxLength(200) pieceJustificative!: string;
 
+  // Ligne microfina-m3, idée 6 · le plan d'étalement, jugé par
+  // `motifRefusEtalement` (avances-salaire.ts), qui dit pourquoi en français.
+  @IsOptional() @IsString() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Le premier mois de retenue se lit AAAA-MM.' })
+  premierMoisRetenue?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(120) nombreEcheances?: number;
+
   // Saisie-arrêt seulement (passe O4-C2) · exigés et refusés ailleurs par
   // `motifRefusSaisieArret`, le service disant pourquoi en français.
   @IsOptional() @IsString() @MaxLength(200) referenceActe?: string;
   @IsOptional() @IsString() @MaxLength(200) greffe?: string;
   @IsOptional() @IsString() @MaxLength(200) destinataire?: string;
+}
+
+/**
+ * Ligne microfina-m3, idée 6 · le plan d'étalement d'une avance existante,
+ * déclaré ou retiré (`premierMoisRetenue` null). Une proposition, jamais une
+ * retenue · voir avances-salaire.ts.
+ */
+export class EtalementAvanceDto {
+  @IsOptional() @IsString() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Le premier mois de retenue se lit AAAA-MM.' })
+  premierMoisRetenue?: string | null;
+  @IsOptional() @IsInt() @Min(1) @Max(120) nombreEcheances?: number | null;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) retenueMensuelleFc?: number | null;
 }
 
 /** La mainlevée d'une saisie-arrêt (AUPSRVE, art. 201) · déclarée une fois. */

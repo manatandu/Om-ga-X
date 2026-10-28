@@ -327,6 +327,15 @@ export const MODELES_AUDITES = new Set<string>([
   // sur quelles sections la paie portera ses charges · qui l'a déclarée,
   // retirée, et pourquoi.
   'RepartitionAnalytiquePaie',
+  // Ligne microfina-m3, idée 3 · une mission annulée, un frais ajouté ou
+  // retiré changent ce que le bulletin porte · la trace dit qui et quand.
+  'MissionSalarie',
+  'FraisMission',
+  // Ligne microfina-m3, lot 2 · une demande accordée fait naître un congé, une
+  // formation réalisée nomme ses présents · la trace dit qui et quand.
+  'DemandeCongeSalarie',
+  'FormationPersonnel',
+  'ParticipantFormation',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -611,6 +620,12 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   EnfantACharge: ['nom', 'postNom', 'prenoms', 'dateNaissance'],
   ContratTravail: ['remunerationBase', 'avantagesConvenus'],
   AvanceSalaire: ['montantFc', 'retenueMensuelleFc', 'objet'],
+  // Ligne microfina-m3 · le montant d'un frais de mission entre au net du
+  // salarié (le forfait est même imposable) · masqué comme la rémunération.
+  FraisMission: ['montantFc'],
+  // Ligne microfina-m3, idée 7 · l'observation et le motif peuvent dire la
+  // raison du congé (même raison que l'absence) · dates, statut et auteurs restent.
+  DemandeCongeSalarie: ['observation', 'motifDecision'],
   // Ligne sage-l5 · le taux journalier et la moyenne des primes sont la
   // RÉMUNÉRATION, masquée comme celle du contrat ; les dates et le motif
   // restent, ce sont eux que la trace doit dire.

@@ -206,6 +206,8 @@ function service(opts: { salarie?: unknown; actif?: unknown; max?: number | null
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     versionBaremePaie: { findFirst: jest.fn().mockResolvedValue(null) },
     bulletinPaie: { findFirst: bulletinFindFirst, aggregate, create, update: jest.fn() },
+    // Ligne microfina-m3, idée 6 · les plans d'étalement du salarié · aucun ici.
+    avanceSalaire: { findMany: jest.fn().mockResolvedValue([]) },
   };
   prisma.$executeRaw = jest.fn().mockResolvedValue(0);
   prisma.$transaction = (fn: (tx: unknown) => unknown) => fn(prisma);

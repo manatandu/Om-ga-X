@@ -141,8 +141,12 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // temps, leurs jours, les compteurs libres d'heures et leurs heures,
     // chacun borné par son tenantId (ligne sage-l5, fonction 78, reste) ;
     // 206 avec les transferts de biens dans le groupe, bornés par leur
-    // tenantId, un côté par dossier (ligne sage-l4, fonction 73, reste).
-    expect(modeles).toHaveLength(206);
+    // tenantId, un côté par dossier (ligne sage-l4, fonction 73, reste) ;
+    // 208 avec les ordres de mission et leurs frais, bornés par leur
+    // tenantId (ligne microfina-m3, idée 3) ; 211 avec les demandes de congé,
+    // les formations et leurs participants, chacun borné par son tenantId
+    // (même ligne, lot 2).
+    expect(modeles).toHaveLength(211);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

@@ -218,3 +218,173 @@ export function reserveQuotiteSaisies(saisiesFc: number, quotiteFc: number | nul
   }
   return null;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// LA RETENUE ÉTALÉE (ligne microfina-m3, idée 6) · durée du prélèvement et
+// retenue proposée d'office sur chaque bulletin jusqu'au solde.
+//
+// CE QUE LA LOI DIT, ET CE QU'ELLE NE DIT PAS. L'article 112 du Code du travail
+// AUTORISE les retenues « à titre d'avances » (c) et « à titre de prêt » (f),
+// et c'est tout · il ne fixe ni durée, ni échéance, ni plafond (il ne renvoie
+// à l'article 114 que pour son litera d). Le plan d'étalement est donc une
+// CONVENTION entre l'employeur et le travailleur, que le cabinet DÉCLARE · deux
+// formes, l'une ou l'autre · un NOMBRE D'ÉCHÉANCES (la durée du prélèvement,
+// l'échéance en découle), ou une RETENUE MENSUELLE (la durée en découle), et
+// dans les deux cas le PREMIER MOIS de paie qui retient.
+//
+// « D'OFFICE » VEUT DIRE PROPOSÉE ET PRÉREMPLIE, JAMAIS SUBSTITUÉE · le serveur
+// rend, pour un mois de paie, la retenue que le plan propose (`retenueProposee`),
+// l'écran la préremplit, et la simulation DIT la retenue planifiée que le
+// bulletin ne porte pas, ou porte en moins (`ecartsAuPlan`). Le bulletin retient
+// ce que la saisie porte · une retenue imposée par le logiciel serait une
+// réduction de rémunération que personne n'a décidée ce mois-là, et l'art. 112
+// frappe de nullité ce qui n'est pas dans sa liste, pas ce qui n'est pas retenu.
+//
+// LA SAISIE-ARRÊT NE S'ÉTALE PAS ICI · « le mode de calcul de la fraction
+// saisissable et les modalités de son règlement » sont dans l'acte notifié
+// (AUPSRVE, art. 184, 3°) · un plan d'OmegaX s'y substituerait.
+//
+// CONVENTIONS D'OMEGAX, dites comme telles · les échéances se calculent en
+// centimes entiers, toutes égales, la DERNIÈRE prenant le reste (jamais un
+// centime perdu ni ajouté) ; au-delà du plan, tant qu'un solde reste dû (un
+// mois sauté, un bulletin annulé), la retenue proposée reste l'échéance
+// courante bornée par le solde · un mois sauté n'est JAMAIS rattrapé en
+// doublant une échéance ; la durée est bornée à 120 mois.
+// ──────────────────────────────────────────────────────────────────────────
+
+export const ECHEANCES_AU_PLUS = 120;
+
+export type PlanEtalement = {
+  readonly montantFc: number;
+  readonly premierMois: string;
+  readonly nombreEcheances: number | null;
+  readonly retenueMensuelleFc: number | null;
+};
+
+const MOIS_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const rangDuMois = (mois: string) => {
+  const [a, m] = mois.split('-').map(Number);
+  return a * 12 + (m - 1);
+};
+const moisDuRang = (rang: number) => `${Math.floor(rang / 12)}-${String((rang % 12) + 1).padStart(2, '0')}`;
+
+/** Le refus d'un plan d'étalement, ou null. Rien de déclaré = aucun plan. */
+export function motifRefusEtalement(a: {
+  type: TypeAvance;
+  montantFc: number;
+  dateOctroi: Date | string;
+  premierMoisRetenue?: string | null;
+  nombreEcheances?: number | null;
+  retenueMensuelleFc?: number | null;
+}): string | null {
+  const premier = a.premierMoisRetenue?.trim() || null;
+  if (a.nombreEcheances != null && !premier) {
+    return "Une durée de prélèvement se compte à partir d'un premier mois de paie · déclarez-le (AAAA-MM).";
+  }
+  if (!premier) return null;
+  if (a.type === 'SAISIE_ARRET') {
+    return (
+      "Une saisie-arrêt ne s'étale pas dans OmegaX · l'acte notifié fixe « le mode de calcul de la fraction saisissable " +
+      "et les modalités de son règlement » (AUPSRVE, art. 184, 3°)."
+    );
+  }
+  if (!MOIS_RE.test(premier)) return 'Le premier mois de retenue se lit AAAA-MM.';
+  const octroi = typeof a.dateOctroi === 'string' ? a.dateOctroi.slice(0, 7) : a.dateOctroi.toISOString().slice(0, 7);
+  if (rangDuMois(premier) < rangDuMois(octroi)) {
+    return `Le premier mois de retenue (${premier}) précède le mois de l'octroi (${octroi}) · on ne retient pas une avance qui n'est pas encore consentie.`;
+  }
+  const n = a.nombreEcheances ?? null;
+  const r = a.retenueMensuelleFc ?? null;
+  if (n === null && r === null) {
+    return "Un plan d'étalement se déclare par sa durée (nombre d'échéances) ou par sa retenue mensuelle · l'une des deux.";
+  }
+  if (n !== null && r !== null) {
+    return "Déclarez la durée OU la retenue mensuelle · la durée fixe l'échéance, la retenue fixe la durée, et les deux ensemble pourraient se contredire.";
+  }
+  if (n !== null && (!Number.isInteger(n) || n < 1 || n > ECHEANCES_AU_PLUS)) {
+    return `La durée du prélèvement est un nombre entier de mois, de 1 à ${ECHEANCES_AU_PLUS} (convention d'OmegaX).`;
+  }
+  if (n !== null && c(a.montantFc) < n) return "Le montant consenti ne se répartit pas en autant d'échéances d'un centime au moins.";
+  if (r !== null && Math.ceil(c(a.montantFc) / c(r)) > ECHEANCES_AU_PLUS) {
+    return `Cette retenue mensuelle étalerait l'avance sur plus de ${ECHEANCES_AU_PLUS} mois (convention d'OmegaX) · augmentez-la.`;
+  }
+  return null;
+}
+
+/**
+ * L'ÉCHÉANCIER DU PLAN, mois par mois, en centimes entiers · la dernière
+ * échéance prend le reste, si bien que leur somme est le montant consenti, au
+ * centime (jeu d'essai · 100 000 en trois échéances, 33 333,33 + 33 333,33 +
+ * 33 333,34).
+ */
+export function echeancierAvance(p: PlanEtalement): { mois: string; montantFc: number }[] {
+  const total = c(p.montantFc);
+  const depart = rangDuMois(p.premierMois);
+  const montants: number[] = [];
+  if (p.nombreEcheances != null) {
+    const base = Math.floor(total / p.nombreEcheances);
+    for (let i = 0; i < p.nombreEcheances; i++) montants.push(i === p.nombreEcheances - 1 ? total - base * (p.nombreEcheances - 1) : base);
+  } else if (p.retenueMensuelleFc != null) {
+    const r = c(p.retenueMensuelleFc);
+    let reste = total;
+    while (reste > 0 && montants.length < ECHEANCES_AU_PLUS) {
+      montants.push(Math.min(r, reste));
+      reste -= Math.min(r, reste);
+    }
+  }
+  return montants.map((m, i) => ({ mois: moisDuRang(depart + i), montantFc: m / 100 }));
+}
+
+/**
+ * LA RETENUE QUE LE PLAN PROPOSE POUR UN MOIS DE PAIE, bornée par le solde.
+ * `null` avec un motif quand rien n'est proposé (avant le premier mois, solde
+ * nul) · jamais un zéro qui passerait pour une échéance.
+ */
+export function retenueProposee(
+  p: PlanEtalement,
+  moisDePaie: string,
+  soldeFc: number,
+): { montantFc: number | null; motif: string; rang: number | null; auDelaDuPlan: boolean } {
+  if (!MOIS_RE.test(moisDePaie)) return { montantFc: null, motif: 'Mois de paie illisible.', rang: null, auDelaDuPlan: false };
+  if (c(soldeFc) <= 0) return { montantFc: null, motif: 'Avance soldée · plus rien à retenir.', rang: null, auDelaDuPlan: false };
+  const echeances = echeancierAvance(p);
+  const rang = rangDuMois(moisDePaie) - rangDuMois(p.premierMois);
+  if (rang < 0) {
+    return { montantFc: null, motif: `Le plan commence en ${p.premierMois} · rien n'est retenu avant.`, rang: null, auDelaDuPlan: false };
+  }
+  const auDela = rang >= echeances.length;
+  // Au-delà du plan · l'échéance courante (la première, que toutes égalent
+  // sauf la dernière), jamais une somme rattrapée.
+  const echeance = auDela ? echeances[0]?.montantFc ?? 0 : echeances[rang].montantFc;
+  const montant = Math.min(c(echeance), c(soldeFc)) / 100;
+  return {
+    montantFc: montant,
+    motif: auDela
+      ? `Échéance au-delà du plan (${echeances.length} mois) · un solde de ${soldeFc.toFixed(2)} FC reste dû, la retenue proposée est bornée par lui.`
+      : `Échéance ${rang + 1} sur ${echeances.length} du plan.`,
+    rang: auDela ? null : rang + 1,
+    auDelaDuPlan: auDela,
+  };
+}
+
+/**
+ * CE QUE LE BULLETIN PORTE, CONFRONTÉ AU PLAN · une phrase par avance
+ * planifiée dont la retenue proposée n'est pas portée, ou l'est en moins.
+ * Un avertissement, jamais un refus (voir l'en-tête).
+ */
+export function ecartsAuPlan(
+  proposees: readonly { avanceId: string; libelle: string; montantFc: number }[],
+  portees: readonly { avanceId: string; montantFc: number }[],
+): string[] {
+  const phrases: string[] = [];
+  for (const p of proposees) {
+    const porte = portees.find((x) => x.avanceId === p.avanceId)?.montantFc ?? 0;
+    if (c(porte) >= c(p.montantFc)) continue;
+    phrases.push(
+      porte > 0
+        ? `${p.libelle} · le plan d'étalement propose ${p.montantFc.toFixed(2)} FC ce mois-ci, le bulletin en retient ${porte.toFixed(2)} FC. L'écart reste dû et se retiendra plus tard.`
+        : `${p.libelle} · le plan d'étalement propose une retenue de ${p.montantFc.toFixed(2)} FC ce mois-ci, que le bulletin ne porte pas. Le solde reste dû.`,
+    );
+  }
+  return phrases;
+}
