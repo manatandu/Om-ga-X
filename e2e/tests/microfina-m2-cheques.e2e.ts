@@ -80,7 +80,9 @@ test('chèque émis puis pointé au rapprochement · encaissé, lu après la cl�
 
   // L'écran le dit, sans bouton d'annulation (la banque l'a payé).
   await page.goto('/#/cheques-emis');
-  const ligne = page.locator('tr', { hasText: '0000201' });
+  // La ligne du CHÈQUE, pas celle du chéquier (« 0000201 à … ») qui porte le
+  // même numéro dans sa plage · nom de la ligne lu au début, date d'émission comprise.
+  const ligne = page.getByRole('row', { name: /^RAW 0000201 \d{2}\/\d{2}\/\d{4}/ });
   await expect(ligne).toContainText(`Encaissé le 31/03/${annee}`);
   await expect(ligne.getByRole('button', { name: 'Annuler' })).toHaveCount(0);
   await expect(page.getByText(/En circulation · 0 chèque\(s\)/)).toBeVisible();
