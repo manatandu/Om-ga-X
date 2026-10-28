@@ -115,4 +115,32 @@ describe('la validation lit l’auteur et le visa sous verrou', () => {
     for (const nom of ecrivent) expect(analytique.get(nom)).toContain('poserAuteurDeLaVentilation(tx');
     expect(analytique.get('poserAuteurDeLaVentilation')).toMatch(/FOR UPDATE[\s\S]*contenuChange\(userId/);
   });
+
+  // RELECTURE M3 · l'auteur INCONNU est réservé aux chemins qui n'en ont pas ·
+  // tout appel de `modifierPieceDuModule` hors du service nomme l'auteur de son
+  // geste (cinquième argument), sans quoi la pièce retouchée par un
+  // utilisateur nommé était refusée au double regard.
+  it('tout appel de modifierPieceDuModule passe l’auteur du geste', () => {
+    const racine = join(__dirname, '..', '..');
+    const { execSync } = require('child_process') as typeof import('child_process');
+    const fichiers = execSync('grep -rl "modifierPieceDuModule(" --include=*.ts .', { cwd: racine, encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => f && !f.endsWith('.spec.ts') && !f.endsWith('ecriture.service.ts'));
+    expect(fichiers.length).toBeGreaterThan(0);
+    for (const f of fichiers) {
+      const appels = argumentsDe(readFileSync(join(racine, f), 'utf8'), 'modifierPieceDuModule(');
+      expect(appels.length).toBeGreaterThan(0);
+      for (const a of appels) {
+        // Les arguments de premier niveau · virgules hors accolades, crochets et parenthèses.
+        let profondeur = 0;
+        let virgules = 0;
+        for (const c of a.slice(1, -1)) {
+          if ('({['.includes(c)) profondeur++;
+          else if (')}]'.includes(c)) profondeur--;
+          else if (c === ',' && profondeur === 0) virgules++;
+        }
+        expect({ f, nombre: virgules + 1 - (/,\s*$/.test(a.slice(1, -1)) ? 1 : 0) }).toEqual({ f, nombre: 5 });
+      }
+    }
+  });
 });

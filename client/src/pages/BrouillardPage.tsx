@@ -139,6 +139,14 @@ export function BrouillardPage() {
   // Ligne microfina-m1 · la fiche d'imputation ouverte, et le filtre « objet par objet ».
   const [ficheId, setFicheId] = useState<string | null>(null);
   const [nature, setNature] = useState<NaturePiece | ''>('');
+  // LA DÉROGATION NOMINATIVE (relecture du circuit de visa, M3) · le motif de
+  // l'auteur inconnu et celui du double regard la nomment comme issue, et le
+  // serveur l'accepte (`secondRegardNom`, `secondRegardMotif`), mais aucun
+  // écran ne l'envoyait · l'issue écrite était impossible. Offerte après un
+  // refus de ce type seulement, jamais d'office.
+  const [derogationOfferte, setDerogationOfferte] = useState(false);
+  const [secondRegardNom, setSecondRegardNom] = useState('');
+  const [secondRegardMotif, setSecondRegardMotif] = useState('');
 
   const charger = async () => {
     if (!exerciceCourant) return;
@@ -230,6 +238,22 @@ export function BrouillardPage() {
     return `${r.validees} écriture(s) entrée(s) au livre-journal.${visa}${situation}`;
   };
 
+  /** Les deux champs vont ensemble · le serveur refuse l'un sans l'autre, en le disant. */
+  const derogation = () =>
+    derogationOfferte && (secondRegardNom.trim() || secondRegardMotif.trim())
+      ? { secondRegardNom: secondRegardNom.trim(), secondRegardMotif: secondRegardMotif.trim() }
+      : {};
+
+  const apresValidation = (r: ResultatValidation, siRienAFaire?: string) => {
+    setInfo(phraseValidation(r, siRienAFaire));
+    if (r.refuseesSecondRegard > 0 || (r.refuseesAuteurInconnu ?? 0) > 0) setDerogationOfferte(true);
+    else if (r.sousDerogation > 0) {
+      setSecondRegardNom('');
+      setSecondRegardMotif('');
+      setDerogationOfferte(false);
+    }
+  };
+
   const validerSelection = async () => {
     if (selection.size === 0) return;
     setEnvoi(true);
@@ -237,8 +261,9 @@ export function BrouillardPage() {
     try {
       const r = await api.post<ResultatValidation>('/ecritures/valider', {
         ecritureIds: [...selection],
+        ...derogation(),
       });
-      setInfo(phraseValidation(r));
+      apresValidation(r);
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Validation impossible');
@@ -256,8 +281,9 @@ export function BrouillardPage() {
         exerciceId: exerciceCourant.id,
         dateLimite,
         journalId: journalId || undefined,
+        ...derogation(),
       });
-      setInfo(phraseValidation(r, 'Rien à valider jusqu’à cette date.'));
+      apresValidation(r, 'Rien à valider jusqu’à cette date.');
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Validation impossible');
@@ -556,6 +582,34 @@ export function BrouillardPage() {
             Fermer
           </button>
         </div>
+      )}
+      {peutValider && derogationOfferte && (
+        <fieldset className="mb-2.5 flex flex-wrap items-end gap-2 border border-border rounded-[3px] bg-surface px-2.5 py-1.5">
+          <legend className="text-[11px] font-bold text-text-dim px-1">Second regard porté hors du logiciel</legend>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-text-dim">Nom</span>
+            <input
+              value={secondRegardNom}
+              onChange={(e) => setSecondRegardNom(e.target.value)}
+              maxLength={120}
+              className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px] min-w-[180px]"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-[220px]">
+            <span className="text-[11px] font-bold text-text-dim">Ce qui a été relu</span>
+            <input
+              value={secondRegardMotif}
+              onChange={(e) => setSecondRegardMotif(e.target.value)}
+              maxLength={300}
+              className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px]"
+            />
+          </label>
+          <Aide
+            titre="Second regard porté hors du logiciel"
+            texte="Renseignés, le nom et le motif accompagnent la prochaine validation · ils lèvent le double regard, jamais le visa, et sont portés sur chaque pièce validée et sur sa fiche d'imputation."
+            source="Double regard · option du dossier"
+          />
+        </fieldset>
       )}
 
       {etat && etat.totaux.enRetard > 0 && (

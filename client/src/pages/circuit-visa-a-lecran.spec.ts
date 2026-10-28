@@ -52,6 +52,19 @@ describe('le brouillard vise ce qu’il a montré', () => {
     expect(corps).toContain('r.motifAuteurInconnu');
   });
 
+  // RELECTURE M3 · l'issue que nomment les motifs de l'auteur inconnu et du
+  // double regard (le nom et le motif du second regard porté hors du
+  // logiciel) doit pouvoir partir · aucun écran ne l'envoyait.
+  it('les deux validations envoient la dérogation nominative, offerte après un refus du double regard', () => {
+    expect(corpsDe(brouillard, 'const validerSelection = async')).toContain('...derogation()');
+    expect(corpsDe(brouillard, 'const validerJusqua = async')).toContain('...derogation()');
+    const derog = corpsDe(brouillard, 'const derogation = (');
+    expect(derog).toContain('secondRegardNom');
+    expect(derog).toContain('secondRegardMotif');
+    expect(corpsDe(brouillard, 'const apresValidation = (')).toMatch(/refuseesAuteurInconnu[\s\S]*setDerogationOfferte\(true\)/);
+    expect(brouillard).toContain('{peutValider && derogationOfferte && (');
+  });
+
   it('le filtre par nature vide la sélection · rien ne se vise ni ne se valide à l’aveugle', () => {
     const i = brouillard.indexOf('setNature(e.target.value');
     expect(brouillard.slice(i, i + 300)).toContain('setSelection(new Set())');
