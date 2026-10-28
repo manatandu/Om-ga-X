@@ -90,7 +90,7 @@ export function AProposModale({ onFermer }: { onFermer: () => void }) {
                 qui n'est pas connu est dit, jamais remplacé. */}
             <p className="text-text-dim">{ligneMiseEnProduction(identiteConstruction())}</p>
             <p className="text-text-dim">{ligneLangue()}</p>
-            <p className="text-text-dim">© VMG Consulting · logiciel protégé par le droit d’auteur.</p>
+            <p className="text-text-dim">© OmegaX · logiciel protégé par le droit d’auteur.</p>
           </div>
           <div className="border-t border-border px-3 py-2 flex justify-end">
             <button ref={refFermer} onClick={onFermer} className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1">

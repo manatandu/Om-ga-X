@@ -175,14 +175,14 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(reponse('q-formules')).toContain('Essentiel (1 dossier, 2 utilisateurs · tenue, états financiers, notes)');
   });
 
-  it('dit la pratique de VMG Consulting sur les données, comme la politique de confidentialité, jamais une impossibilité', () => {
-    // Relecture B1 · la FAQ répondait « Non. » à « VMG voit-il mes données ? »
+  it('dit la pratique de l’éditeur sur les données, comme la politique de confidentialité, jamais une impossibilité', () => {
+    // Relecture B1 · la FAQ répondait « Non. » à « l'éditeur voit-il mes données ? »
     // alors que la sauvegarde de chaque nuit lit toute la base et la
-    // restaure pour contrôle. La réponse dit ce que VMG fait et nomme ses
+    // restaure pour contrôle. La réponse dit ce que l'éditeur fait et nomme ses
     // accès, les mêmes que la politique.
-    const r = reponse('q-vmg-voit');
-    expect(r.startsWith('VMG Consulting ne consulte pas le contenu de vos dossiers.')).toBe(true);
-    expect(r).toContain('la sauvegarde chiffrée de chaque nuit, dont elle détient la clé');
+    const r = reponse('q-editeur-voit');
+    expect(r.startsWith('L’éditeur d’OmegaX ne consulte pas le contenu de vos dossiers.')).toBe(true);
+    expect(r).toContain('la sauvegarde chiffrée de chaque nuit, dont il détient la clé');
     expect(r).toContain('la restauration de contrôle automatique');
     expect(r).toContain('requêtes de maintenance');
     const politique = lire('src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ');
@@ -226,10 +226,10 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(reponse('q-langue')).toContain('aucune autre langue n’est proposée');
   });
 
-  it('dit les coordonnées de VMG Consulting à arrêter tant que le contrat les dit à arrêter', () => {
-    // Le jour où VMG Consulting les arrête dans le contrat, la réponse se
+  it('dit les coordonnées de l’éditeur à arrêter tant que le contrat les dit à arrêter', () => {
+    // Le jour où l'éditeur les arrête dans le contrat, la réponse se
     // réécrit avec elles · ce test tombe pour qu'on n'oublie pas.
-    expect(mentionsAArreter().length > 0).toBe(reponse('q-joindre').includes('doivent être arrêtés par VMG Consulting'));
+    expect(mentionsAArreter().length > 0).toBe(reponse('q-joindre').includes('doivent être arrêtés par l’éditeur'));
   });
 
   it('aucune réponse n’annonce une fonction à venir (CLAUDE.md § 4)', () => {

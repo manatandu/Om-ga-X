@@ -50,14 +50,14 @@ test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture'
   await page.getByRole('link', { name: 'Contrat de licence' }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Contrat de licence d’OmegaX' })).toBeVisible();
   await expect(page.getByText(/^Version \d+ du .+ · langue du contrat · français$/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: '4. Droits de VMG Consulting sur OmegaX' })).toBeVisible();
-  await expect(page.getByText('(à arrêter par VMG Consulting)').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^4\. Droits de l.éditeur sur OmegaX$/ })).toBeVisible();
+  await expect(page.getByText(/\(à arrêter par l.éditeur\)/).first()).toBeVisible();
   // La page publique ne porte pas l'acceptation · elle n'a pas de dossier.
   await expect(page.getByText('Acceptation par ce dossier')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Politique de confidentialité' }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Politique de confidentialité d’OmegaX' })).toBeVisible();
-  await expect(page.getByText('VMG Consulting ne consulte pas le contenu de vos dossiers.')).toBeVisible();
+  await expect(page.getByText('L’éditeur d’OmegaX ne consulte pas le contenu de vos dossiers.')).toBeVisible();
 
   await page.getByRole('link', { name: 'Retour à l’ouverture du fichier comptable' }).click();
   await expect(page.getByRole('button', { name: 'Ouvrir le dossier' })).toBeVisible();

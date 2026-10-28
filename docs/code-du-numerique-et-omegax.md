@@ -33,9 +33,9 @@ comptabilité.
 protection des données · **sauf lorsqu'un transfert vers un pays tiers est
 envisagé**. Ce qui nous ramène au point dur.
 
-**Ce que l'art. 189 ne règle pas · le régime de VMG lui-même** (passe D4,
+**Ce que l'art. 189 ne règle pas · le régime de l'éditeur lui-même** (passe D4,
 D4-A5). La dispense vise le TRAITEMENT comptable des clients, pas l'ACTIVITÉ
-de VMG, qui fournit un service numérique. Le Livre I la soumet à un régime ·
+de l'éditeur, qui fournit un service numérique. Le Livre I la soumet à un régime ·
 art. 13, « nul ne peut exercer une activité dans le secteur du numérique en
 République Démocratique du Congo, sans se soumettre à l'un des régimes
 juridiques prévus » ; l'autorisation de l'art. 15, 4° vise « les fournisseurs
@@ -92,9 +92,9 @@ licence ; rapatrier l'hébergement en RDC.
 
 > **Réserve de la passe D4 (D4-C1)** sur la deuxième issue · le 2° vise un
 > contrat « entre la personne concernée et le responsable du traitement ».
-> Pour les données des dossiers, VMG est sous-traitant et les personnes
+> Pour les données des dossiers, l'éditeur est sous-traitant et les personnes
 > concernées (salariés, membres, fournisseurs) n'ont aucun contrat avec lui ;
-> pour les données de compte, le contrat lie VMG au cabinet, personne morale.
+> pour les données de compte, le contrat lie l'éditeur au cabinet, personne morale.
 > Et l'art. 229 veut que le sous-traitant ne traite « que sur instruction
 > documentée du responsable du traitement, y compris en ce qui concerne les
 > transferts ». La page publique ne l'invoque donc plus, et dit la base en
@@ -113,10 +113,10 @@ du responsable du traitement. »
 **Deux obligations, pas une** (passe D4, D4-C2). L'alinéa 1er charge le
 RESPONSABLE de notifier l'Autorité et la personne ; l'alinéa 2 charge le
 SOUS-TRAITANT d'avertir le seul responsable. Pour les données de compte et de
-traçabilité, VMG est responsable · il notifie l'Autorité et l'utilisateur.
-Pour les données des dossiers, VMG est sous-traitant · il avertit l'entité, à
+traçabilité, l'éditeur est responsable · il notifie l'Autorité et l'utilisateur.
+Pour les données des dossiers, l'éditeur est sous-traitant · il avertit l'entité, à
 qui il revient de notifier l'Autorité et ses propres salariés, membres et
-fournisseurs. Sur site, VMG n'a accès à rien · l'entité est seule en cause. La
+fournisseurs. Sur site, l'éditeur n'a accès à rien · l'entité est seule en cause. La
 page publique le dit ainsi depuis le 2026-09-30.
 
 **Un second destinataire, l'ANCY** (passe D4, D4-D5). Art. 276, al. 3 ·
@@ -126,7 +126,7 @@ pénétrations susceptibles d'entraver le fonctionnement d'un autre système
 informatique ou réseau » ; al. 4, il « est tenu de se conformer aux mesures
 édictées » par elle, isolement compris. La condition est plus étroite que
 l'art. 244 · une atteinte SUSCEPTIBLE D'ENTRAVER UN AUTRE système, pas tout
-incident. L'exploitant est VMG pour la version en ligne ; pour une
+incident. L'exploitant est l'éditeur pour la version en ligne ; pour une
 installation sur site, c'est vraisemblablement l'entité qui fait tourner le
 poste, LECTURE qui reste à confirmer. L'organisation de l'ANCY relève d'une
 ordonnance présidentielle (art. 275) qui n'est pas au corpus, et son
@@ -170,5 +170,5 @@ ne peut pas être respecté.
 La politique de confidentialité énonce l'hébergement hors RDC, et dit la base
 du transfert en cours de qualification. Elle **ne dit pas** que l'autorisation de l'art. 201 n'a pas été
 obtenue · publier un aveu de non-conformité sur une page publique est une
-décision de VMG, pas un geste de développement, et elle se prend après l'avis
+décision de l'éditeur, pas un geste de développement, et elle se prend après l'avis
 du juriste, pas avant.

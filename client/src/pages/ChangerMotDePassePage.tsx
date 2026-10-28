@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
  * ÉCRAN BLOQUANT DE PREMIÈRE CONNEXION · s'affiche À LA PLACE de l'espace
  * de travail tant que doitChangerMotDePasse est vrai (voir ZoneProtegee,
  * App.tsx). Le mot de passe de ce compte a transité par un tiers (console
- * VMG, siège du groupe, ou admin du dossier) : tant qu'il n'est pas
+ * de l'éditeur, siège du groupe, ou admin du dossier) : tant qu'il n'est pas
  * remplacé, ce tiers pourrait ouvrir le dossier · d'où le passage obligé.
  */
 export function ChangerMotDePassePage() {

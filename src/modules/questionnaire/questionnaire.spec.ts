@@ -111,7 +111,7 @@ describe('les vingt-quatre items du CPCC, mot pour mot', () => {
     );
   });
 
-  it('donne une source à chaque item du CPCC et un fondement à chaque item de VMG', () => {
+  it('donne une source à chaque item du CPCC et un fondement à chaque item de l’éditeur', () => {
     for (const i of ITEMS_QUESTIONNAIRE) {
       if (i.origine === 'CPCC') {
         expect({ code: i.code, source: Boolean(i.source), fondement: i.fondement }).toEqual({
@@ -130,9 +130,9 @@ describe('les vingt-quatre items du CPCC, mot pour mot', () => {
     }
   });
 
-  it('préfixe le code par l’origine · aucun item de VMG ne peut se lire comme du CPCC', () => {
+  it('préfixe le code par l’origine · aucun item de l’éditeur ne peut se lire comme du CPCC', () => {
     for (const i of ITEMS_QUESTIONNAIRE) {
-      expect(i.code.startsWith(i.origine === 'CPCC' ? 'CPCC-' : 'VMG-')).toBe(true);
+      expect(i.code.startsWith(i.origine === 'CPCC' ? 'CPCC-' : 'EDI-')).toBe(true);
     }
   });
 });
@@ -238,9 +238,9 @@ describe('une forme ne s’échange pas contre une autre', () => {
   });
 });
 
-describe('VMG-ENG-1 · les sûretés réelles sont un objet du recensement', () => {
+describe('EDI-ENG-1 · les sûretés réelles sont un objet du recensement', () => {
   it('nomme hypothèques, nantissements et gages, y compris sur les dettes du bilan, avec leur fondement', () => {
-    const item = ITEM_PAR_CODE.get('VMG-ENG-1')!;
+    const item = ITEM_PAR_CODE.get('EDI-ENG-1')!;
     expect(item.objets).toEqual([
       'Cautions',
       'Avals',
@@ -250,7 +250,7 @@ describe('VMG-ENG-1 · les sûretés réelles sont un objet du recensement', () 
     expect(item.fondement).toContain('AUDCIF, Titre VII, compte 16');
     expect(item.fondement).toContain('« Dettes garanties par des sûretés réelles »');
     expect(item.fondement).toContain('« hypothèques, nantissements, gages, autres »');
-    // Posé aux deux référentiels · le filtre ne porte que sur VMG-ENG-3.
+    // Posé aux deux référentiels · le filtre ne porte que sur EDI-ENG-3.
     expect(item.referentiel).toBeUndefined();
   });
 });
@@ -265,13 +265,13 @@ describe('le référentiel filtre l’item, pas le questionnaire', () => {
       [CycleQuestionnaire.ENGAGEMENTS_HORS_BILAN],
       Referentiel.SYSCOHADA,
     );
-    expect(sycebnl.map((i) => i.code)).toContain('VMG-ENG-3');
-    expect(syscohada.map((i) => i.code)).not.toContain('VMG-ENG-3');
+    expect(sycebnl.map((i) => i.code)).toContain('EDI-ENG-3');
+    expect(syscohada.map((i) => i.code)).not.toContain('EDI-ENG-3');
   });
 
   it('refuse d’y répondre dans le mauvais référentiel', async () => {
     const { svc } = service({ questionnaire: questionnaire(), referentiel: Referentiel.SYSCOHADA });
-    await expect(svc.repondre('t1', 'q1', 'u1', { code: 'VMG-ENG-3', reponse: ReponseItem.OUI })).rejects.toThrow(
+    await expect(svc.repondre('t1', 'q1', 'u1', { code: 'EDI-ENG-3', reponse: ReponseItem.OUI })).rejects.toThrow(
       /contresens/,
     );
   });
@@ -355,10 +355,10 @@ describe('ce qui empêche de clore', () => {
 });
 
 describe('les cycles ajoutés par le cabinet', () => {
-  it('en porte vingt-cinq, tous marqués VMG', () => {
-    const vmg = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'VMG');
-    expect(vmg).toHaveLength(25);
-    expect(vmg.every((i) => i.origine === 'VMG')).toBe(true);
+  it('en porte vingt-cinq, tous marqués de l’éditeur', () => {
+    const editeur = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'EDITEUR');
+    expect(editeur).toHaveLength(25);
+    expect(editeur.every((i) => i.origine === 'EDITEUR')).toBe(true);
   });
 
   it('n’ajoute aucun item sur les sept rubriques que le CPCC couvre', () => {
@@ -371,16 +371,16 @@ describe('les cycles ajoutés par le cabinet', () => {
       CycleQuestionnaire.PROVISIONS,
       CycleQuestionnaire.CREANCES,
     ];
-    const intrus = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'VMG' && rubriquesCpcc.includes(i.cycle));
+    const intrus = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'EDITEUR' && rubriquesCpcc.includes(i.cycle));
     // Le séminaire est repris tel quel · le compléter DANS ses rubriques
     // rendrait indiscernable ce qu'il demande de ce que le cabinet ajoute.
     expect(intrus).toEqual([]);
   });
 
   it('reprend la logique du CPCC · chaînage et polarité inversée', () => {
-    const vmg = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'VMG');
-    expect(vmg.filter((i) => i.ouvertPar).length).toBeGreaterThan(0);
-    expect(vmg.filter((i) => i.polariteException === 'OUI').length).toBeGreaterThan(0);
+    const editeur = ITEMS_QUESTIONNAIRE.filter((i) => i.origine === 'EDITEUR');
+    expect(editeur.filter((i) => i.ouvertPar).length).toBeGreaterThan(0);
+    expect(editeur.filter((i) => i.polariteException === 'OUI').length).toBeGreaterThan(0);
   });
 });
 

@@ -1,6 +1,6 @@
 # Charte graphique OmegaX
 
-**Version 2 · 5 septembre 2026.** Propriété de VMG Consulting.
+**Version 2 · 5 septembre 2026.** Propriété de l'éditeur.
 Elle remplace la note `marque-omegax.md`, dont le signe était tracé au compas
 et le mot composé en texte.
 
@@ -431,12 +431,12 @@ PAGE PUBLIQUE, le § 9 ter les remplace depuis le 2026-10-25.
 ## 9 ter. La page publique · la composition du cabinet, les couleurs d'OmegaX
 
 Décidé par Manasse le 2026-10-25 : « J'aimerai que le site de
-omegax.vmgconsulting.net ait le même design que vmgconsulting.net avec des
+[la page publique] ait le même design que [le site de l'éditeur] avec des
 animations, motifs, esthétique mais avec ses propres couleurs de sa charte. Ne
-copie pas les couleurs du site de VMG Consulting », puis, le même jour, « Ne
+copie pas les couleurs du site de l'éditeur », puis, le même jour, « Ne
 mets pas de cachets tournant ». La page publique (`client/public/vitrine/`)
 quitte donc le registre dense du § 9 bis pour la COMPOSITION du site du cabinet
-(`docs/site-vitrine/cabinet/`), et garde la charte d'OmegaX pour tout le reste.
+(retiré du dépôt le 2026-10-28), et garde la charte d'OmegaX pour tout le reste.
 
 - **Repris du cabinet** · bandeau sombre sous un en-tête transparent qui se
   remplit au défilement, titre d'affiche dont les mots apparaissent un à un,
@@ -479,16 +479,19 @@ Tenu par `vitrine-publique.spec.ts` et `vitrine-script.spec.ts`.
 
 ---
 
-## 10. Cosignature avec VMG Consulting
+## 10. Cosignature avec l'éditeur
 
-OmegaX est un produit du cabinet VMG Consulting. Trois postures, et il faut
-choisir laquelle avant de composer :
+OmegaX est un produit de l'éditeur. Depuis le 2026-10-28 (décision de
+Manasse), OmegaX s'affiche SEUL · la posture « Produit »
+est la seule servie, et l'éditeur n'y est pas nommé tant qu'il n'a pas arrêté
+sa dénomination. Les deux autres restent décrites pour le jour où il le fera.
+Trois postures, et il faut choisir laquelle avant de composer :
 
 | Posture | Ce qu'elle dit | Composition |
 |---|---|---|
-| **Produit** | OmegaX parle en son nom | marque OmegaX seule ; VMG en mention de pied, en texte |
-| **Cautionnement** | VMG répond du produit | OmegaX à gauche, filet vertical d'un trait, VMG à droite, hauteurs de logotype égales |
-| **Édition** | VMG parle, OmegaX est cité | marque VMG en tête, OmegaX en signature de pied, à la moitié de sa hauteur |
+| **Produit** | OmegaX parle en son nom | marque OmegaX seule ; l'éditeur en mention de pied, en texte |
+| **Cautionnement** | L'éditeur répond du produit | OmegaX à gauche, filet vertical d'un trait, l'éditeur à droite, hauteurs de logotype égales |
+| **Édition** | L'éditeur parle, OmegaX est cité | marque de l'éditeur en tête, OmegaX en signature de pied, à la moitié de sa hauteur |
 
 Dans la posture de cautionnement, les deux marques sont séparées par la somme
 de leurs deux zones de protection, jamais moins. Elles ne se touchent jamais,
@@ -558,8 +561,8 @@ Dit franchement, pour que personne ne l'invente :
 - **Pas de mode sombre.** L'interface n'en a pas aujourd'hui. Le jour où elle
   en aura un, chaque couple du § 7.4 devra être remesuré : un rapport de
   contraste ne se transpose pas d'un fond clair à un fond sombre.
-- **Pas de charte de marque VMG Consulting.** Le § 10 dit comment cosigner ;
-  il ne dit pas comment se dessine la marque VMG, qui n'existe pas ici.
+- **Pas de charte de marque de l'éditeur.** Le § 10 dit comment cosigner ;
+  il ne dit pas comment se dessine la marque de l'éditeur, qui n'existe pas ici.
 - **Pas de photographie, pas d'illustration, pas d'icônographie de marque.**
   L'iconographie de l'interface suit ses propres règles (`icons.tsx`).
 - **Pas de déclinaison animée.** Une marque qui s'anime doit d'abord tenir

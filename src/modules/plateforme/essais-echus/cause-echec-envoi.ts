@@ -1,7 +1,7 @@
 /**
  * LA CAUSE D'UN ÉCHEC D'ENVOI, RÉDUITE À UNE CATÉGORIE · jamais le texte.
  *
- * VMG NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT (CLAUDE.md § 8). Le texte
+ * L'ÉDITEUR NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT (CLAUDE.md § 8). Le texte
  * qu'un serveur de messagerie rend sur un refus porte presque toujours l'adresse
  * du destinataire (« 550 5.1.1 <jean@client.cd>: Recipient address rejected »),
  * et le refus d'écriture de la file la cite aussi (« Adresse de destinataire

@@ -13,6 +13,8 @@ import {
   joursDepuis,
   FormulePrix,
   numeroFactureSuivant,
+  PREFIXE_SERIE_ABONNEMENTS,
+  PREFIXES_SERIE_ANTERIEURS,
   verdictPeriode,
 } from './facturation-abonnements';
 import { jourDeKinshasaIso } from '../../../common/echeance';
@@ -60,10 +62,10 @@ const jour = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 /**
  * LES ABONNEMENTS DES CABINETS ET LEUR FACTURATION, dans la console.
  *
- * LES FACTURES NAISSENT DANS LE DOSSIER DE VMG, par le module de facturation
+ * LES FACTURES NAISSENT DANS LE DOSSIER DE L'ÉDITEUR, par le module de facturation
  * du logiciel · la même pièce, les mêmes mentions, la même numérotation que
  * pour n'importe quel dossier, et JAMAIS un second circuit de facturation.
- * L'assujettissement à la TVA est donc celui du dossier de VMG
+ * L'assujettissement à la TVA est donc celui du dossier de l'éditeur
  * (`Tenant.assujettiTva`), l'interrupteur que Manasse basculera à la création
  * effective de la société · non assujetti, aucune ligne ne porte de TVA.
  *
@@ -283,7 +285,11 @@ export class AbonnementsService {
         annee,
         (
           await this.prisma.facture.findMany({
-            where: { tenantId: editeur, sens: SensFacture.VENTE, numeroSerie: { startsWith: `VMG-${annee}-` } },
+            where: {
+              tenantId: editeur,
+              sens: SensFacture.VENTE,
+              OR: [PREFIXE_SERIE_ABONNEMENTS, ...PREFIXES_SERIE_ANTERIEURS].map((p) => ({ numeroSerie: { startsWith: `${p}-${annee}-` } })),
+            },
             select: { numeroSerie: true },
           })
         ).map((e) => e.numeroSerie),

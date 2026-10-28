@@ -17,18 +17,20 @@ import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
  * décrirait un traitement que le logiciel ne fait pas serait pire qu'aucune
  * politique : elle serait fausse, et opposable.
  *
- * CE QUE VMG CONSULTING A ARRÊTÉ ET CE QUI RESTE À ARRÊTER · le courriel des
- * demandes (admin@vmgconsulting.net) et la ville (Kinshasa, RDC) sont donnés
- * par Manasse le 17 octobre 2026 ; aucune adresse de rue n'est inscrite, et
- * le texte dit qu'elle n'est pas encore publiée. Inventer une rue ferait
- * passer un document juridique pour complet alors qu'il dirigerait les
- * demandes vers le vide. Restent à arrêter, et dits comme tels dans le texte,
- * le prestataire de messagerie et quelques durées.
+ * CE QUI RESTE À ARRÊTER PAR L'ÉDITEUR · depuis le retrait du nom de
+ * l'ancien éditeur (2026-10-28), l'éditeur n'est plus nommé · sa dénomination, son courriel
+ * et son adresse sont écrits « à arrêter par l'éditeur », la formule du
+ * contrat de licence (`A_ARRETER` du module serveur, relue par
+ * `confidentialite-code-numerique.spec.ts`). Inventer un nom, un courriel ou
+ * une rue ferait passer un document juridique pour complet alors qu'il
+ * dirigerait les demandes vers le vide (Code du numérique, art. 52 · « OmegaX »
+ * est un logiciel, pas la personne qui le vend). Restent aussi à arrêter, et
+ * dits comme tels, le prestataire de messagerie et quelques durées.
  */
 
 // Mise à jour du 15 octobre 2026 (ligne pages-legales) · la console de
 // l'éditeur (session longue admise, redemandée après huit heures), le
-// stockage local du navigateur, l'accès de VMG Consulting aux données et la
+// stockage local du navigateur, l'accès de l'éditeur aux données et la
 // règle de modification. Une politique modifiée change sa date, comme le
 // font celles de 37signals (« Whenever we make a significant change to our
 // policies, we will refresh the date at the top of this page »).
@@ -37,7 +39,7 @@ import { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 
 // Mise à jour du 21 octobre 2026 · le sort des dossiers d'essai non souscrits
 // (cent quatre-vingts jours après le terme, rappel d'au moins trente jours,
-// suppression par VMG Consulting depuis sa console), ligne suppression-essais.
+// suppression par l'éditeur depuis sa console), ligne suppression-essais.
 //
 // Mise à jour du 17 octobre 2026 · présentation sur le modèle des politiques
 // des grands éditeurs (demande de Manasse, d'après celle de Cloudflare) ·
@@ -151,9 +153,9 @@ export function ContenuConfidentialite() {
     <>
         <P>
           OmegaX est un logiciel de comptabilité destiné aux associations sans but lucratif, aux organisations non
-          gouvernementales et aux entreprises de la République démocratique du Congo. Il est édité et exploité par le
-          cabinet <strong>VMG Consulting</strong>, qui est le responsable du traitement des données décrites
-          ci-dessous.
+          gouvernementales et aux entreprises de la République démocratique du Congo. Il est édité et exploité par
+          <strong>l’éditeur d’OmegaX</strong> (dénomination à arrêter par l’éditeur), qui est le responsable du traitement des
+          données décrites ci-dessous.
         </P>
 
         <div className="border-l-4 border-[var(--a-700)] bg-[var(--a-50)] px-3 py-2 mb-3">
@@ -189,10 +191,10 @@ export function ContenuConfidentialite() {
           <li>
             <strong>Les personnes dont les données figurent dans un dossier</strong> · salariés, fournisseurs,
             clients, membres, donateurs. Pour elles, c’est l’entité qui tient le dossier qui est responsable du
-            traitement ; VMG Consulting n’agit que pour son compte (section 2).
+            traitement ; l’éditeur n’agit que pour son compte (section 2).
           </li>
           <li>
-            <strong>Les opérateurs de la console</strong> de VMG Consulting.
+            <strong>Les opérateurs de la console</strong> de l’éditeur.
           </li>
         </ul>
 
@@ -204,7 +206,7 @@ export function ContenuConfidentialite() {
           <strong>Les données de vos dossiers comptables</strong> · plan de comptes, journaux, écritures, tiers,
           immobilisations, budgets, états financiers et pièces que vous y saisissez. Elles vous appartiennent. Elles
           peuvent contenir des données personnelles si vous en saisissez (nom d’un fournisseur, d’un membre, d’un
-          salarié) : dans ce cas, c’est votre entité qui en est responsable, et VMG Consulting n’agit que comme
+          salarié) : dans ce cas, c’est votre entité qui en est responsable, et l’éditeur n’agit que comme
           sous-traitant, pour votre compte et sur vos instructions.
         </P>
         <P>
@@ -225,7 +227,7 @@ export function ContenuConfidentialite() {
           dans aucune table ; son limiteur en garde une empreinte en mémoire tant que le service tourne. Comme pour
           toute requête, l’hébergeur (Google Cloud Run) inscrit l’adresse dans ses journaux techniques.{' '}
           <em>
-            La durée de conservation de ces journaux doit être arrêtée par VMG Consulting et portée ici avant toute
+            La durée de conservation de ces journaux doit être arrêtée par l’éditeur et portée ici avant toute
             publication de cette page sur un magasin d’applications.
           </em>
         </P>
@@ -250,7 +252,7 @@ export function ContenuConfidentialite() {
               <tr>
                 <td>Données de vos dossiers</td>
                 <td>Tenir votre comptabilité</td>
-                <td>Celui que votre entité, responsable, retient ; VMG Consulting agit sur ses instructions (article 229)</td>
+                <td>Celui que votre entité, responsable, retient ; l’éditeur agit sur ses instructions (article 229)</td>
               </tr>
               <tr>
                 <td>Journal d’audit, adresse IP de chaque acte</td>
@@ -331,7 +333,7 @@ export function ContenuConfidentialite() {
             <P>
               Cette installation d’OmegaX est <strong>installée sur un ordinateur de votre entité</strong>. La base de
               données, le serveur d’application et l’interface y tournent tous les trois : vos dossiers comptables
-              restent sur cet ordinateur et ne sont confiés à aucun hébergeur. VMG Consulting n’y a pas accès.
+              restent sur cet ordinateur et ne sont confiés à aucun hébergeur. L’éditeur n’y a pas accès.
             </P>
             <P>
               Un courriel ne part du logiciel (relance, avis d’accès) que si votre entité a configuré une messagerie
@@ -366,9 +368,9 @@ export function ContenuConfidentialite() {
                 <strong>Google Cloud Storage</strong>, dans la région <strong>europe-west1</strong> (Belgique).
               </li>
               <li>
-                <strong>Le prestataire de messagerie</strong> (SMTP) retenu par VMG Consulting reçoit l’adresse du
+                <strong>Le prestataire de messagerie</strong> (SMTP) retenu par l’éditeur reçoit l’adresse du
                 destinataire et le texte des courriers que le logiciel envoie à votre demande · relances, factures,
-                licences, avis d’accès. <em>Son nom doit être arrêté par VMG Consulting et porté ici avant toute
+                licences, avis d’accès. <em>Son nom doit être arrêté par l’éditeur et porté ici avant toute
                 publication de cette page sur un magasin d’applications.</em>
               </li>
               <li>
@@ -394,7 +396,7 @@ export function ContenuConfidentialite() {
               les messages d’erreur sont réduits à leur forme, et aucun enregistrement de votre session n’est fait.
               Comme toute connexion, ces deux services voient passer l’adresse réseau qui leur écrit.{' '}
               <em>
-                Le réglage qui leur interdit de la conserver doit être activé par VMG Consulting dans chacun des deux
+                Le réglage qui leur interdit de la conserver doit être activé par l’éditeur dans chacun des deux
                 services avant toute publication de cette page sur un magasin d’applications.
               </em>
             </P>
@@ -409,7 +411,7 @@ export function ContenuConfidentialite() {
               vers un État tiers suppose l’autorisation préalable de l’Autorité de protection des données ; son
               article 202 énumère les cas où un tel transfert reste possible. <strong>La base juridique du transfert
               opéré ici est en cours de qualification.</strong> Pour les données personnelles de vos dossiers, dont
-              votre entité est responsable, le transfert relève de ses instructions, VMG Consulting agissant pour son
+              votre entité est responsable, le transfert relève de ses instructions, l’éditeur agissant pour son
               compte (article 229).
             </P>
           </>
@@ -436,7 +438,7 @@ export function ContenuConfidentialite() {
           {!surSite && (
             <em>
               {' '}
-              Leur durée de conservation doit être arrêtée par VMG Consulting et portée ici avant toute publication
+              Leur durée de conservation doit être arrêtée par l’éditeur et portée ici avant toute publication
               de cette page sur un magasin d’applications.
             </em>
           )}
@@ -446,16 +448,16 @@ export function ContenuConfidentialite() {
             Une <strong>sauvegarde</strong> de la base est produite chaque jour sur cet ordinateur, et les trente plus
             récentes sont gardées, sauf réglage différent de votre installation. Une copie peut en être déposée hors
             du poste, <strong>chiffrée</strong> par une phrase secrète que choisit l’administrateur de l’installation ·
-            sans elle, la copie ne se relit pas, et VMG Consulting ne la détient pas.
+            sans elle, la copie ne se relit pas, et l’éditeur ne la détient pas.
           </P>
         ) : (
           <P>
             Une <strong>sauvegarde chiffrée</strong> de la base est produite chaque nuit. Elle est chiffrée avant de
-            quitter le serveur qui la produit, et VMG Consulting est seul à détenir la clé qui permet de la lire. Le
+            quitter le serveur qui la produit, et l’éditeur est seul à détenir la clé qui permet de la lire. Le
             fichier est conservé quatre-vingt-dix jours par GitHub ; sa copie déposée dans Google Cloud Storage
             (europe-west1) n’a pas de durée fixée par le logiciel.{' '}
             <em>
-              La durée de conservation de cette copie doit être arrêtée par VMG Consulting et portée ici avant toute
+              La durée de conservation de cette copie doit être arrêtée par l’éditeur et portée ici avant toute
               publication de cette page sur un magasin d’applications.
             </em>
           </P>
@@ -463,11 +465,11 @@ export function ContenuConfidentialite() {
         {!surSite && (
           <P>
             Un <strong>dossier d’essai</strong> arrivé à son terme passe en lecture seule · ses données restent
-            consultables et exportables, rien ne s’y écrit plus. Sauf souscription d’un abonnement, VMG Consulting le
+            consultables et exportables, rien ne s’y écrit plus. Sauf souscription d’un abonnement, l’éditeur le
             conserve <strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime. Un courriel
             de rappel part à l’adresse de l’administrateur du dossier <strong>au moins trente jours avant</strong> la
             suppression, avec la voie d’exportation (Fichier &gt; Restituer le dossier complet). La suppression est
-            faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche
+            faite par l’éditeur depuis sa console, après vérification de ces délais, et non par une tâche
             automatique · elle est irréversible. Les sauvegardes chiffrées de la nuit gardent une trace du dossier
             jusqu’à leur propre terme (ci-dessus).
           </P>
@@ -495,8 +497,8 @@ export function ContenuConfidentialite() {
           passe change, qu’un accès est retiré ou qu’un rôle est modifié.
         </P>
         <P>
-          <strong>VMG Consulting ne consulte pas le contenu de vos dossiers.</strong> Ses accès techniques à la
-          base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de
+          <strong>L’éditeur d’OmegaX ne consulte pas le contenu de vos dossiers.</strong> Ses accès techniques à la
+          base se limitent à la sauvegarde chiffrée de chaque nuit, dont il détient la clé, à la restauration de
           contrôle automatique qui l’éprouve et ne rend que des décomptes et le contrôle de l’équilibre des
           écritures, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres, jamais un
           montant, un compte, un objet ni un motif. Sa console d’exploitation ne montre d’un dossier que sa fiche
@@ -509,7 +511,7 @@ export function ContenuConfidentialite() {
         <Titre id="violation">9. Si vos données étaient exposées</Titre>
         {surSite ? (
           <P>
-            Sur cette installation, VMG Consulting n’a accès à aucune donnée. L’article 244 du Code du numérique met
+            Sur cette installation, l’éditeur n’a accès à aucune donnée. L’article 244 du Code du numérique met
             la notification d’une violation, <strong>sans délai</strong>, à l’Autorité de protection des données et
             aux personnes concernées, à la charge du responsable du traitement · votre entité, pour les données
             qu’elle tient sur cet ordinateur.
@@ -518,13 +520,13 @@ export function ContenuConfidentialite() {
           <>
             <P>
               L’article 244 du Code du numérique distingue deux obligations. Pour les{' '}
-              <strong>données de compte et de traçabilité</strong>, dont VMG Consulting est responsable, nous
+              <strong>données de compte et de traçabilité</strong>, dont l’éditeur est responsable, nous
               notifierons <strong>sans délai</strong>, à l’Autorité de protection des données et à vous-même, toute
               violation les ayant affectées (alinéa 1er).
             </P>
             <P>
-              Pour les <strong>données personnelles de vos dossiers</strong>, dont votre entité est responsable, VMG
-              Consulting, sous-traitant, vous avertira <strong>sans délai</strong> de toute atteinte à leur sécurité
+              Pour les <strong>données personnelles de vos dossiers</strong>, dont votre entité est responsable,
+              l’éditeur, sous-traitant, vous avertira <strong>sans délai</strong> de toute atteinte à leur sécurité
               (alinéa 2) · il revient alors à votre entité de notifier l’Autorité et les personnes concernées
               (alinéa 1er). Dans les deux cas, nous vous dirons ce qui a été atteint, quand, et ce que nous avons
               fait, plutôt que de vous adresser une formule.
@@ -550,17 +552,14 @@ export function ContenuConfidentialite() {
           et 239).
         </P>
         <P>
-          Le traitement que VMG Consulting fait des données de vos dossiers pour le compte de votre entité est réglé
+          Le traitement que l’éditeur fait des données de vos dossiers pour le compte de votre entité est réglé
           par l’article 9 du <LienPageLegale chemin="/contrat-de-licence">contrat de licence</LienPageLegale>,
           comme le veut l’article 229 du Code du numérique.
         </P>
         <P>
-          Pour toute autre demande, écrivez à VMG Consulting à l’adresse{' '}
-          <a href="mailto:admin@vmgconsulting.net" className="text-sel underline">
-            admin@vmgconsulting.net
-          </a>
-          . Le cabinet est établi à Kinshasa, en République démocratique du Congo ; vous pouvez aussi lui écrire par voie
-          postale à cette ville, l’adresse de la rue n’étant pas encore publiée.
+          Pour toute autre demande, adressez-vous à l’éditeur d’OmegaX. Son courriel et son adresse postale ne
+          sont pas encore publiés (à arrêter par l’éditeur) · ils ne sont pas inscrits d’office, une adresse inventée dirigerait vos
+          demandes vers le vide.
         </P>
         <P>
           <strong>Délais.</strong> Nous vous disons la suite donnée à votre demande dans les{' '}
@@ -584,24 +583,18 @@ export function ContenuConfidentialite() {
         <Titre id="modifications">12. Modifications</Titre>
         <P>
           Cette politique peut évoluer avec le logiciel, et la date de sa dernière mise à jour figure en tête de
-          page. Elle fait partie de l’offre de VMG Consulting (Code du numérique, article 53, 10°) · une modification
+          page. Elle fait partie de l’offre de l’éditeur (Code du numérique, article 53, 10°) · une modification
           de ce qu’elle engage suit l’article 15 du contrat de licence, c’est-à-dire l’article 34 du Code du
           numérique · projet communiqué au moins trente jours ouvrables avant son entrée en vigueur.
         </P>
 
         <Titre id="contact">13. Nous contacter</Titre>
         <div className="border border-border px-3 py-2 mb-2 text-[11.5px] leading-relaxed">
-          <p className="font-bold">VMG Consulting</p>
+          <p className="font-bold">L’éditeur d’OmegaX</p>
           <p>Responsable du traitement des données de compte et de traçabilité</p>
-          <p className="mt-1">
-            Courriel ·{' '}
-            <a href="mailto:admin@vmgconsulting.net" className="text-sel underline">
-              admin@vmgconsulting.net
-            </a>
-          </p>
-          <p>
-            Adresse · Kinshasa, République démocratique du Congo
-          </p>
+          <p className="mt-1">Dénomination · (à arrêter par l’éditeur)</p>
+          <p>Courriel · (à arrêter par l’éditeur)</p>
+          <p>Adresse · (à arrêter par l’éditeur)</p>
         </div>
         <P>
           Si notre réponse ne vous satisfait pas, vous pouvez saisir l’Autorité de protection des données (article

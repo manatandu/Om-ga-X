@@ -93,7 +93,7 @@ interface SuiviPieces {
  * client paie, c'est-à-dire pas dans le seul cas où elle sert : la sortie
  * d'un client (suspendre, archiver, restituer, purger). Ce sont ses données ;
  * les retenir comme moyen de pression est exactement ce qu'une garantie de
- * réversibilité doit exclure. C'est une décision de VMG et non une règle de
+ * réversibilité doit exclure. C'est une décision de l'éditeur et non une règle de
  * droit · aucun texte lu ne tranche, c'est une clause de contrat de licence.
  */
 @Injectable()

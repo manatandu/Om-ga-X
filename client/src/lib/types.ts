@@ -5016,7 +5016,7 @@ export interface RegistreFaiblesses {
  * Le catalogue vit côté serveur · vingt-quatre items du CPCC repris mot pour
  * mot, dix-sept de ses impératifs, et vingt-cinq questions du cabinet sur les
  * cycles que le séminaire ne couvre pas. Chaque ligne porte son ORIGINE, et
- * l'écran l'affiche · une question de VMG ne doit jamais se lire comme une
+ * l'écran l'affiche · une question de l'éditeur ne doit jamais se lire comme une
  * exigence du CPCC.
  */
 export interface ReponseQuestionnaireItem {
@@ -5035,7 +5035,7 @@ export interface LigneQuestionnaire {
   code: string;
   cycle: string;
   libelle: string;
-  origine: 'CPCC' | 'VMG';
+  origine: 'CPCC' | 'EDITEUR';
   forme: 'OUI_NON' | 'DONNEE' | 'TEXTE_LIBRE' | 'TRAVAIL';
   /** « OUI » sur le seul item du CPCC dont la polarité est inversée. */
   polariteException?: 'OUI' | 'NON';
@@ -5056,7 +5056,7 @@ export interface SyntheseQuestionnaire {
   exceptions: number;
   exceptionsSansCommentaire: number;
   itemsCpcc: number;
-  itemsVmg: number;
+  itemsEditeur: number;
 }
 
 export interface QuestionnaireRevision {

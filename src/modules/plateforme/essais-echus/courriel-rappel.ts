@@ -10,10 +10,10 @@ import { JOURS_CONSERVATION_ESSAI } from './essais-echus';
  * l'adresse de l'administrateur, et se lit dans la file du dossier.
  *
  * Le chemin d'exportation est celui de l'écran (`Fichier > Restituer le dossier
- * complet`) ; l'adresse de contact est celle que l'inscription en libre-service
- * donne déjà à celui qui n'a rien reçu.
+ * complet`). Il ne donne AUCUNE adresse de contact · l'éditeur n'en a pas
+ * arrêté depuis le retrait du nom de l'ancien éditeur (décision de Manasse du
+ * 2026-10-28), et une adresse inventée dirigerait le client vers le vide.
  */
-export const ADRESSE_CONTACT_EDITEUR = 'admin@vmgconsulting.net';
 
 /** Un jour (minuit UTC) écrit en toutes lettres. */
 const jourEnLettres = (jour: Date) =>
@@ -30,8 +30,8 @@ export function avisRappelSuppression(dates: { termeLe: Date; supprimableLe: Dat
     'La suppression est irréversible.\n\n' +
     'Pour garder vos données, avant cette date :\n' +
     '- exportez le dossier : menu Fichier > Restituer le dossier complet (une archive ZIP, un fichier CSV par table) ;\n' +
-    `- ou souscrivez un abonnement en écrivant à ${ADRESSE_CONTACT_EDITEUR}.\n\n` +
+    "- ou souscrivez un abonnement auprès de l'éditeur d'OmegaX.\n\n" +
     'Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu\'à leur propre terme.\n\n' +
-    'VMG Consulting\n';
+    'OmegaX\n';
   return { sujet: `OmegaX · votre dossier d'essai sera supprimé à partir du ${jourEnLettres(dates.supprimableLe)}`, corps };
 }

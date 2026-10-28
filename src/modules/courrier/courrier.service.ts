@@ -177,7 +177,7 @@ export class CourrierService {
 
   /**
    * UN SECRET NE S'ÉCRIT PAS DANS LA FILE (2026-10-09, décision de Manasse ·
-   * « VMG ne doit pas voir les informations du client »).
+   * « [l'éditeur] ne doit pas voir les informations du client »).
    *
    * Le corps d'un message reste EN CLAIR dans `messages` après l'envoi, part
    * dans la sauvegarde de chaque nuit, et `GET /courrier/:id` le rend à tout

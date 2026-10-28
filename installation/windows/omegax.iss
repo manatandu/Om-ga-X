@@ -20,7 +20,10 @@ AppId={{6F1D3C52-8B0E-4B7A-9C41-0D6E2A7F5B93}
 AppName=OmegaX
 AppVersion={#Version} ({#Commit})
 AppVerName=OmegaX {#Version}
-AppPublisher=VMG Consulting
+; L'éditeur affiché est OmegaX (2026-10-28) · ce champ n'est qu'un libellé
+; (Programmes et fonctionnalités), il ne touche ni AppId ni les chemins, et
+; une mise à jour reconnaît toujours l'installation existante.
+AppPublisher=OmegaX
 DefaultDirName={autopf}\OmegaX
 DisableProgramGroupPage=yes
 DisableDirPage=auto
@@ -89,7 +92,7 @@ begin
     if Trim(String(Version)) <> '{#PgMajeur}' then
     begin
       Result := 'La base de ce poste est en PostgreSQL ' + Trim(String(Version)) +
-        ' et ce paquet porte PostgreSQL {#PgMajeur}. La mise à jour est arrêtée avant toute copie. Contactez VMG Consulting.';
+        ' et ce paquet porte PostgreSQL {#PgMajeur}. La mise à jour est arrêtée avant toute copie. Contactez l''éditeur d''OmegaX.';
       exit;
     end;
   end;
@@ -110,6 +113,6 @@ begin
     if Code <> 0 then
       MsgBox('La préparation d''OmegaX a échoué (code ' + IntToStr(Code) + ').' + #13#10 +
         'Le journal est dans ' + ExpandConstant('{commonappdata}') + '\OmegaX\installation.log.' + #13#10 +
-        'Transmettez-le à VMG Consulting.', mbError, MB_OK);
+        'Transmettez-le à l''éditeur d''OmegaX.', mbError, MB_OK);
   end;
 end;

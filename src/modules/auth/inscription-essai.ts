@@ -10,7 +10,7 @@ import { motDePasseTireAuSort } from '../plateforme/reinitialisation-admin';
  * une licence sans échéance, le produit gratuit à vie à côté du produit vendu.
  * Cette porte-ci ne crée que des dossiers d'ESSAI, à échéance, et elle n'ouvre
  * aucune session · le mot de passe provisoire part au SEUL courriel donné, qui
- * se trouve ainsi vérifié (« VMG ne voit jamais les informations d'un client »,
+ * se trouve ainsi vérifié (« l'éditeur ne voit jamais les informations d'un client »,
  * décision du 2026-10-09 ; même parti que la console).
  */
 export const ORIGINE_INSCRIPTION_ESSAI = 'INSCRIPTION_ESSAI';
@@ -82,7 +82,7 @@ export function avisInscriptionEssai(motDePasseProvisoire: string, finEssai: Dat
     "Il vous sera demandé de le changer à votre première connexion. Si vous n'êtes pas à l'origine de cette demande, " +
     'ignorez ce message : sans ce mot de passe, personne ne peut ouvrir le dossier.\n\n' +
     "À la fin de l'essai le dossier reste consultable, mais plus modifiable, jusqu'à l'abonnement.\n\n" +
-    "VMG Consulting n'a pas connaissance de ce mot de passe.\n";
+    "L'éditeur d'OmegaX n'a pas connaissance de ce mot de passe.\n";
   return {
     sujet: nouveau ? "OmegaX · votre dossier d'essai" : 'OmegaX · votre mot de passe provisoire',
     corps: texte(motDePasseProvisoire),

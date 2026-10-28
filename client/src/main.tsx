@@ -3,18 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { autoriserRechargement } from './lib/rechargement-chunk';
 import { demarrerTelemetrieInterface } from './lib/telemetrie';
-import { redirectionDuSite } from './lib/adresse-du-site';
 import './index.css';
 
-/*
- * LE SITE ET LE LOGICIEL NE PARTAGENT PAS LEUR ADRESSE (lib/adresse-du-site.ts) ·
- * sous l'adresse du site, la racine ouvre la page publique et toute page du
- * logiciel part vers son adresse. L'aiguillage joue AVANT tout le reste · ni
- * télémétrie, ni service worker, ni rendu sous le nom du site.
- */
-const versAilleurs = redirectionDuSite(window.location);
-if (versAilleurs !== null) window.location.replace(versAilleurs);
-else demarrer();
+demarrer();
 
 function demarrer() {
   /*

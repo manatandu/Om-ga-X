@@ -66,7 +66,7 @@ export function CadrePagePublique({ titre, sousTitre, children }: { titre: strin
         </div>
       </main>
       <footer className="cadre-public-pied ecran-seul">
-        <p>© {new Date().getFullYear()} VMG Consulting · OmegaX</p>
+        <p>© {new Date().getFullYear()} OmegaX</p>
         <nav aria-label="Informations légales">
           {PAGES_PUBLIQUES.map((p) => (
             <a key={p.chemin} href={`#${p.chemin}`}>

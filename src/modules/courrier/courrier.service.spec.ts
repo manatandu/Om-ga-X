@@ -162,7 +162,7 @@ function transportFactice(options: { configure: boolean; envoyer?: jest.Mock }) 
     etat: jest.fn(() => ({
       configure: options.configure,
       manques: options.configure ? [] : [{ variable: 'SMTP_HOST', raison: 'variable absente' }],
-      expediteur: options.configure ? 'omegax@vmg-consulting.cd' : null,
+      expediteur: options.configure ? 'omegax@exemple.cd' : null,
     })),
     envoyer,
   } as unknown as TransportCourriel & { envoyer: jest.Mock; etat: jest.Mock };

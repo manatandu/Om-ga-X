@@ -2,10 +2,10 @@ import { courrielFactureAbonnement, courrielLicenceSurSite, dateLisible, montant
 import { CourrielsEditeurService } from './courriels-editeur.service';
 
 const FACTURE = {
-  numeroSerie: 'VMG-2026-0007',
+  numeroSerie: 'OMX-2026-0007',
   dateFacture: '2026-09-01',
   periode: '2026-09',
-  emetteurNom: 'VMG Consulting',
+  emetteurNom: 'Éditeur Exemple SARL',
   mentionsLigne: 'SARL · au capital de 10 000 000 FC · RCCM CD/KIN/1',
   contrepartieNom: 'ONG Kin',
   lignes: [{ designation: 'Formule Standard', quantite: 1, prixUnitaire: 290000, montantHT: 290000, montantTva: 46400 }],
@@ -19,10 +19,10 @@ describe('courriel de la facture d’abonnement', () => {
   const c = courrielFactureAbonnement(FACTURE);
 
   it('reprend la pièce · numéro, émetteur et mentions, client, lignes, totaux, cours', () => {
-    expect(c.sujet).toBe('Facture VMG-2026-0007 · abonnement OmegaX 2026-09');
+    expect(c.sujet).toBe('Facture OMX-2026-0007 · abonnement OmegaX 2026-09');
     for (const attendu of [
-      'facture n° VMG-2026-0007 du 01/09/2026',
-      'Émetteur : VMG Consulting',
+      'facture n° OMX-2026-0007 du 01/09/2026',
+      'Émetteur : Éditeur Exemple SARL',
       'SARL · au capital de 10 000 000 FC · RCCM CD/KIN/1',
       'Client : ONG Kin',
       'Formule Standard',
@@ -70,8 +70,8 @@ describe('envoi des pièces de l’éditeur · service', () => {
           id: 'fa1', periode: '2026-09', montantUsd: 100, cours: 2900,
           abonnement: { cabinet: { licence: { dateExpiration: new Date('2026-10-15T23:59:59Z') } } },
           facture: {
-            tenantId: o.tenantFacture ?? 'editeur', numeroSerie: 'VMG-2026-0007', dateFacture: new Date('2026-09-01T00:00:00Z'),
-            emetteurNom: 'VMG Consulting', mentionsSocieteEmetteur: { denomination: 'VMG', ligne: 'SARL', manquantes: [] },
+            tenantId: o.tenantFacture ?? 'editeur', numeroSerie: 'OMX-2026-0007', dateFacture: new Date('2026-09-01T00:00:00Z'),
+            emetteurNom: 'Éditeur Exemple SARL', mentionsSocieteEmetteur: { denomination: 'Éditeur Exemple', ligne: 'SARL', manquantes: [] },
             contrepartieNom: 'ONG Kin', tiers: { email: o.email === undefined ? 'compta@ong.cd' : o.email, nom: 'ONG Kin' },
             lignes: [{ designation: 'Standard', quantite: 1, prixUnitaire: 290000, montantHT: 290000, montantTva: 0, imposable: false }],
           },

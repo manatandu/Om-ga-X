@@ -68,7 +68,7 @@ const LIBELLE_LICENCE: Record<TypeLicence, string> = {
   ABONNEMENT: 'Abonnement',
   PERPETUEL_SAAS: 'Perpétuelle (SaaS)',
   PERPETUEL_ONPREMISE: 'Perpétuelle (sur site)',
-  PROPRIETAIRE: 'Éditeur (VMG Consulting)',
+  PROPRIETAIRE: 'Éditeur d’OmegaX',
 };
 
 /**
@@ -76,7 +76,7 @@ const LIBELLE_LICENCE: Record<TypeLicence, string> = {
  * la ligne sous chaque sélecteur le nomme, la bulle l'explique.
  */
 const AIDE_LICENCE_SUR_SITE =
-  "Une installation sur site tient sa licence d'un fichier signé par VMG, vérifié sans internet et lié au poste · il s'émet dans le cadre « Licences sur site » de cette console. " +
+  "Une installation sur site tient sa licence d'un fichier signé par l'éditeur, vérifié sans internet et lié au poste · il s'émet dans le cadre « Licences sur site » de cette console. " +
   "Attribué à un dossier hébergé, ce type le mettrait hors service dès sa première requête, et le serveur le refuse. Pour une licence sans échéance en ligne, choisir « Perpétuelle (SaaS) ».";
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
@@ -446,7 +446,7 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
       {reinitFait && (
         <div className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mt-2 mb-2">
           Accès administrateur réinitialisé pour <strong>{reinitFait}</strong>. Un mot de passe provisoire lui est envoyé
-          par courriel · VMG ne le connaît pas.
+          par courriel · l'éditeur ne le connaît pas.
         </div>
       )}
 
@@ -577,7 +577,7 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
                       </button>
                       <Aide
                         titre="Dossier de l'éditeur"
-                        texte="Le dossier de VMG Consulting, propriétaire du logiciel. Sa licence ne se coupe jamais, parce que c'est depuis ce dossier que la console rouvre celle des autres. Il n'y en a qu'un, et il se désigne une fois."
+                        texte="Le dossier de l'éditeur, propriétaire du logiciel. Sa licence ne se coupe jamais, parce que c'est depuis ce dossier que la console rouvre celle des autres. Il n'y en a qu'un, et il se désigne une fois."
                         source="OmegaX"
                       />
                     </div>

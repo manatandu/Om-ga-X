@@ -31,12 +31,16 @@ describe('optionsCors · le cache du contrôle préalable', () => {
   });
 });
 
-describe('le domaine du cabinet est une origine du site (2026-10-17)', () => {
-  it('admis d’office par le serveur et par le workflow, comme les deux adresses Firebase', () => {
+describe('les origines du site sont les deux adresses Firebase, et elles seules (2026-10-28)', () => {
+  it('le serveur et le workflow admettent les mêmes, sans l’ancien domaine du cabinet', () => {
+    // Le domaine du cabinet, admis le 2026-10-17, est retiré avec le nom de
+    // l'ancien éditeur (décision de Manasse du 2026-10-28, « tout retirer »).
     const racine = join(__dirname, '..');
-    expect(readFileSync(join(racine, 'src/bootstrap.ts'), 'utf8')).toContain("'https://omegax.vmgconsulting.net'];");
-    expect(readFileSync(join(racine, '.github/workflows/deploy-cloud-run.yml'), 'utf8')).toContain(
-      'CORS_ORIGIN: https://oomega.web.app,https://oomega.firebaseapp.com,https://omegax.vmgconsulting.net',
+    expect(readFileSync(join(racine, 'src/bootstrap.ts'), 'utf8')).toContain(
+      "const ORIGINES_SITE = ['https://oomega.web.app', 'https://oomega.firebaseapp.com'];",
+    );
+    expect(readFileSync(join(racine, '.github/workflows/deploy-cloud-run.yml'), 'utf8')).toMatch(
+      /CORS_ORIGIN: https:\/\/oomega\.web\.app,https:\/\/oomega\.firebaseapp\.com\n/,
     );
   });
 });

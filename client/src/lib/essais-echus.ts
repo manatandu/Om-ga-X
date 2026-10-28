@@ -15,7 +15,7 @@ export interface EssaiEchu {
   rappelDepuisLe: string | null;
   /**
    * `causeEchec` est une CATÉGORIE servie par le serveur, jamais le texte de
-   * l'erreur du transport (il cite l'adresse du client, que VMG ne voit pas).
+   * l'erreur du transport (il cite l'adresse du client, que l'éditeur ne voit pas).
    */
   rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: string | null; causeEchec: string | null } | null;
   nombreUtilisateurs: number;

@@ -105,7 +105,7 @@ export function courrielLicenceSurSite(l: LicenceACourrieler): Courriel {
     'Pour l’installer, ouvrez OmegaX sur le poste serveur et déposez le fichier joint depuis l’écran d’ouverture.',
     'Elle ne vaut que sur le poste dont l’empreinte figure ci-dessus.',
     '',
-    'VMG Consulting',
+    'OmegaX',
   ].join('\n');
   return {
     sujet: `Licence OmegaX ${l.numero} · ${l.titulaire}`,

@@ -458,12 +458,12 @@ export class GroupeService {
     // comptable du siège, celui de l'entité.
     if (mere.plafondCellules === null) {
       throw new BadRequestException(
-        "La création de cellules n'est pas activée pour ce dossier · rapprochez-vous de VMG Consulting",
+        "La création de cellules n'est pas activée pour ce dossier · rapprochez-vous de l'éditeur d'OmegaX",
       );
     }
     if (mere._count.cellules >= mere.plafondCellules) {
       throw new BadRequestException(
-        `Plafond de ${mere.plafondCellules} cellules atteint · rapprochez-vous de VMG Consulting pour l'augmenter`,
+        `Plafond de ${mere.plafondCellules} cellules atteint · rapprochez-vous de l'éditeur d'OmegaX pour l'augmenter`,
       );
     }
 

@@ -6,7 +6,7 @@ Manasse (CLAUDE.md, § 5). Chaque requête a d'abord été éprouvée sur une ba
 jetable, à travers une clôture (CLAUDE.md, § 10).
 
 AUCUNE NE MONTRE UNE DONNÉE D'UN CLIENT (décision de Manasse du 2026-10-09 ·
-« VMG ne doit pas voir les informations du client, c'est confidentiel et non
+« L'éditeur ne doit pas voir les informations du client, c'est confidentiel et non
 discutable »). Elles rendent des IDENTIFIANTS, des dates et des NOMBRES · ni
 montant, ni compte, ni objet, ni motif, ni nom de dossier. Ce qui doit être
 gardé avant une purge est copié DANS la base, sans être lu à l'écran. La
@@ -272,7 +272,7 @@ ROLLBACK;
    de la contre-passation (AUDCIF art. 20, al. 2 ; le report, validé par la
    clôture, ne se retouche pas, art. 22, 2°) ; N+1 déjà clos, dans
    l'exercice en cours avec la mention aux Notes annexes (art. 20, al. 4).
-   L'écriture est passée par le CLIENT, dans son dossier · VMG lui transmet
+   L'écriture est passée par le CLIENT, dans son dossier · l'éditeur lui transmet
    l'identifiant de la contre-passation, et rien de ses comptes.
 
 Éprouvées sur la base jetable du banc (point m5 du scénario de la ligne A,

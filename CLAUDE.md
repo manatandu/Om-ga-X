@@ -1,7 +1,8 @@
 # OmegaX
 
 Logiciel de comptabilité SYCEBNL / SYSCOHADA pour les ASBL, ONG et entreprises
-de RDC. Propriété du cabinet **VMG Consulting**, qui l'exploite et le vend.
+de RDC. Il se présente sous son seul nom · son éditeur, qui l'exploite et le vend,
+n'y est pas nommé (décision de Manasse du 2026-10-28, « OmegaX seul »).
 
 Ce fichier est le règlement intérieur du dépôt. Il est chargé à chaque session.
 Les règles marquées **JAMAIS** ont chacune coûté un incident réel : ne pas les
@@ -223,7 +224,7 @@ jours (« Oui vas-y »), sans paiement en ligne, qui reste exclu ; et le même
 jour la POLITIQUE DE CONFIDENTIALITÉ présentée sur le modèle de Cloudflare
 (« Oui tu peux modifier selon ce style »), avec le bandeau de consentement
 que la loi impose à la mesure de l'interface, et le domaine
-`omegax.vmgconsulting.net` admis comme origine du site ; et le même jour la
+du cabinet admis comme origine du site (retiré le 2026-10-28) ; et le même jour la
 PAGE PUBLIQUE refaite (« Crée un landing page encore plus moderne »), qui ne
 touche pas au serveur ; et la SUPPRESSION DES DOSSIERS D'ESSAI ÉCHUS cent
 quatre-vingts jours après leur terme (« Construit maintenant ») ; puis, le
@@ -234,12 +235,11 @@ RIB »), les autres idées de ce logiciel restant au suivi ; puis, le
 2026-10-23, la page publique et l'écran de connexion remis au registre de
 l'application (« Le tout en cascade », charte § 9 bis), sans toucher au serveur ;
 puis, le 2026-10-24, l'ADRESSE DU SITE séparée de celle du logiciel (« Pour le
-logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine de
-`omegax.vmgconsulting.net` ouvre la page publique, et toute page du logiciel
-demandée sous ce nom part vers `oomega.web.app` (`lib/adresse-du-site.ts`,
-avant tout rendu), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET VMG
+logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine du
+domaine du cabinet ouvrait la page publique (aiguillage retiré le
+2026-10-28 avec ce domaine), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET de l'ancien éditeur
 Consulting (`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
-courriel, hébergées hors du dépôt), choisi par Manasse (« Site du cabinet VMG »), sans
+courriel, hébergées hors du dépôt), choisi par Manasse (retiré du dépôt le 2026-10-28), sans
 toucher au serveur ; puis, le 2026-10-25, l'ÉCRAN DES LOGICIELS après la
 connexion (« Le tout en cascade ») · tuiles tirées du menu réel
 (`client/src/lib/logiciels.ts`, confrontée au menu par son spec), choix du
@@ -251,8 +251,14 @@ au suivi ; et le même jour les DOUZE IDÉES DE MICROFINA++, toutes cochées par
 Manasse (« pouvons-nous attaquer les fonctionnalités de microfina ? », puis
 les douze cases), en quatre lignes · `docs/comparaison-microfina/plan-reproduction-microfina.md`.
 Le même jour, la PAGE PUBLIQUE au dessin du site du cabinet (« le même design
-que vmgconsulting.net […] avec ses propres couleurs », « Ne mets pas de cachets
+que [le site du cabinet] […] avec ses propres couleurs », « Ne mets pas de cachets
 tournant »), charte § 9 ter, sans toucher au serveur.
+Puis, le 2026-10-28, le RETRAIT DU NOM DE L'ANCIEN ÉDITEUR (« retirer tout ce
+qui concerne » le cabinet, « OmegaX seul », « même logiciel, autre marque »,
+sites et domaine du cabinet « tout retirer ») · contrat de licence en
+version 2, la version 1, jamais acceptable, retirée (Code du numérique,
+art. 34 et 53, 9°, aucun contrat formé), codes du questionnaire en `EDI-…`,
+série des factures d'abonnement continue sous le préfixe `OMX`.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -270,7 +276,7 @@ ou redéclenché sans que la ligne suive fait tomber le test.
 | `firebase-hosting-pull-request.yml` | demande de tirage ouverte depuis le dépôt même, sauf par Dependabot, qui n'en reçoit pas les secrets | construction du client et canal de prévisualisation Firebase |
 | `tests-navigateur.yml` | push sur `main`, demande de tirage, à la main | client construit et servi en relayant `/api` vers le serveur réel et un Postgres jetable, Playwright sous Chromium et WebKit (`e2e/`, § 10) |
 | `sauvegarde-base.yml` | horaire, chaque nuit à 02:00 UTC ; à la main | `pg_dump` chiffré + restauration de contrôle, qui doit rendre la source table par table et ligne par ligne, décomptée dans l'instantané même de l'export (audit final F262) |
-| `surveillance.yml` | horaire, toutes les quinze minutes ; à la main | interroge le service, le relais `/api` du site, le site, la page publique d'OmegaX (`omegax.vmgconsulting.net`) et le site du cabinet (`vmgconsulting.net`) ; après trois échecs, ouvre l'issue « Panne de production », refermée au retour |
+| `surveillance.yml` | horaire, toutes les quinze minutes ; à la main | interroge le service, le relais `/api` du site, le site, la page publique d'OmegaX (`oomega.web.app/vitrine/`) ; après trois échecs, ouvre l'issue « Panne de production », refermée au retour |
 | `paquet-sur-site.yml` | à la main seulement | paquet d'installation Windows (`OmegaX-installation-<date>-<commit>.exe`) |
 | `charge-k6.yml` | à la main seulement | banc de charge k6 (`e2e/k6/`, profil, cabinets et durée choisis au lancement) contre le serveur compilé bridé comme en production (un cœur, 460 Mio, pool de 10) et une base jetable en PostgreSQL 18 (Neon) et 17 (sur site), aucun secret ; chiffres bruts, surveillance et journal du serveur en artefacts ; jamais Cloud Run ni Neon, que nul workflow ne peut mesurer sans préproduction |
 | `requetes-production.yml` | à la main seulement | lit les requêtes R1 et R2 du paquet 1 sur la base de production, blocs pris dans `docs/requetes-production-paquet-1.md`, session en lecture seule, identifiants et nombres seulement |
@@ -2368,8 +2374,9 @@ un MOT ENTIER (`etat-etafi.ts`). Comptes à solder nommés à la clôture seulem
 **Questionnaire de révision · vingt-quatre items du CPCC.** § VI et § VII, sept
 rubriques, vingt-quatre questions, dix-sept impératifs, aucune découpe « par
 cycle » à lui prêter. Chaque code dit son origine · « CPCC-… » mot pour mot avec
-renvoi, « VMG-… » question de l'éditeur avec fondement ; décompte EN DUR, six
-libellés figés, aucun VMG dans les sept rubriques. Propriétés · CHAÎNAGE (« Si
+renvoi, « EDI-… » question de l'éditeur avec fondement (préfixe de l'ancien
+éditeur jusqu'au 2026-10-28, réponses migrées) ; décompte EN DUR, six libellés figés, aucun item
+de l'éditeur dans les sept rubriques. Propriétés · CHAÎNAGE (« Si
 oui, une attestation a-t-elle été établie ? » ; « Si non, comment a-t-on procédé
 pour la sélection des fournisseurs à circulariser ? », seule chaîne « Non →
 suite ») ; POLARITÉ (seul « Y a-t-il un chevauchement avec l'exercice en cours sur
@@ -4046,7 +4053,7 @@ jamais l'administrateur ; table par contrôleur, valider à part de saisir
 Poser un profil ferme les sessions, colonnes ADMISES au journal d'audit.
 
 **Changer sa propre adresse de connexion (2026-09-25).** Demandé par Manasse
-(admin@vmgconsulting.cd devient .net). `POST /auth/changer-adresse`, Fichier > Mon compte… (tous rôles depuis le 2026-09-27,
+(son adresse changeait de domaine). `POST /auth/changer-adresse`, Fichier > Mon compte… (tous rôles depuis le 2026-09-27,
 audit de l'interface F3). Mot de passe actuel exigé ; unicité par la contrainte de
 la base, sans lecture hors cloisonnement ; adresse prise refusée sans dire à qui ;
 sessions fermées, une neuve reposée ; PAS une sortie de mot de passe provisoire.
@@ -4418,7 +4425,7 @@ modules).
 **Installation sur site (2026-09-26, décision de Manasse).** Licence en FICHIER
 SIGNÉ, PC Windows serveur (`src/modules/sur-site/`, `installation/`,
 `paquet-sur-site.yml`, `docs/installation-sur-site.md`,
-`MODE_INSTALLATION=SUR_SITE`). (1) Ed25519, clé PRIVÉE de VMG ; code à clé PUBLIQUE,
+`MODE_INSTALLATION=SUR_SITE`). (1) Ed25519, clé PRIVÉE de l'éditeur ; code à clé PUBLIQUE,
 jamais lue dans l'environnement (`cle-publique-editeur.ts`) ; ordre FIXE
 (`serialiser`). (2) MachineGuid haché, jamais une adresse MAC ; `finMaintenance`
 borne les VERSIONS (`version-sur-site.json`, jamais l'horloge), `expiration` l'USAGE
@@ -4457,7 +4464,7 @@ Specs de `src/modules/sur-site/` ; `icacls` et WinSW à constater au premier paq
 **Abonnements des cabinets (2026-09-26, grille décidée par Manasse).** Essentiel,
 Standard, Cabinet, option Groupe, paie en option de l'Essentiel, mensuel ou annuel,
 trente jours d'essai (`src/modules/plateforme/abonnements/`). (1) Factures dans le
-dossier de VMG (PROPRIETAIRE) par `FacturationService.enregistrer` ; TVA selon
+dossier de l'éditeur (PROPRIETAIRE) par `FacturationService.enregistrer` ; TVA selon
 `Tenant.assujettiTva`, taux du dossier, jamais en dur ; session dans ce dossier. (2)
 Prix en dollars SAISIS · sans prix, période REFUSÉE ; facture en francs au cours du
 JOUR saisi, refusée sans lui. (3) L'essai couvre tout mois commencé avant sa fin,
@@ -4531,7 +4538,7 @@ test si un modèle du schéma n'est ni purgé ni exclu AVEC SON MOTIF
 TRACE (`DossierEssaiSupprime`, sans clé étrangère, hors dossier, journalisée dans
 la chaîne du dossier de l'OPÉRATEUR) ne porte que l'identifiant, des dates et des
 NOMBRES · aucun nom d'entité, aucune adresse, aucun montant ; la liste de la
-console non plus (VMG ne voit jamais les informations d'un client), ni le compte
+console non plus (l'éditeur ne voit jamais les informations d'un client), ni le compte
 rendu des rappels, ni le journal du serveur · un échec d'envoi n'y paraît que
 par sa CATÉGORIE (`cause-echec-envoi.ts` · refus du destinataire,
 authentification, réseau, autre), jamais par le texte du transport, qui cite
@@ -4565,8 +4572,11 @@ Manasse).** Contrat de licence, foire aux questions et politique de
 confidentialité sont PUBLICS (écran d'ouverture, cadre imprimable) et
 ouverts en fenêtre par le menu « ? ». LE CONTRAT EST UN MODULE PUR
 (`conditions-licence/conditions-de-licence.ts`), une seule rédaction pour
-l'écran et la pièce jointe ; ce que nul texte ne fixe et que VMG n'a pas
-arrêté s'écrit « (à arrêter par VMG Consulting) », jamais un blanc. UNE
+l'écran et la pièce jointe ; ce que nul texte ne fixe et que l'éditeur n'a
+pas arrêté s'écrit « (à arrêter par l’éditeur) », jamais un blanc, sa
+dénomination comprise (art. 52, 1° et 2°, version 2 du 2026-10-28 · « OmegaX »
+est un logiciel, pas une personne, et l'acceptation reste fermée tant qu'aucune
+entité n'est nommée). UNE
 VERSION PUBLIÉE NE SE RÉÉCRIT PAS (contrat, art. 15 ; art. 53, 9°) · son
 texte est archivé mot pour mot (`versions-publiees.ts`, `versions/`), son
 empreinte SHA-256 (`empreinte.ts`, pur, les deux côtés) gelée par
@@ -4595,7 +4605,7 @@ sans abonnement (une cellule lit celui de son siège) ou sous une licence
 perpétuelle hébergée (art. 53, 5°) ; jamais pour le dossier de l'éditeur
 ni une démonstration ; elle n'interrompt jamais l'accès (art. 30, al. 3).
 Le logiciel est une œuvre protégée (art. 47 ; ordonnance-loi n° 86-033,
-art. 1er et 96). VMG DIT SA PRATIQUE, jamais une impossibilité · elle ne
+art. 1er et 96). L'ÉDITEUR DIT SA PRATIQUE, jamais une impossibilité · il ne
 consulte pas le contenu des dossiers, et chacun de ses accès techniques
 (sauvegarde, restauration de contrôle, requêtes de maintenance) est nommé
 à côté de son workflow. La FAQ ne dit un délai que confronté au code
@@ -4616,7 +4626,7 @@ contre le § 6, refus d'une écriture déséquilibrée contre le service, charte
 de clôture du § 9 de la charte), mouvement réduit. LE LIEN D'ESSAI NE S'OFFRE QUE
 SUR UNE PORTE LUE OUVERTE (`GET /api/auth/inscription-essai/etat`, même critère
 que `lib/essai.ts`) · caché au départ, une lecture absente, échouée ou fermée le
-laisse caché et la page donne l'adresse de VMG ; la durée affichée est celle que
+laisse caché et la page renvoie à l'éditeur, sans adresse ; la durée affichée est celle que
 le serveur rend, jamais écrite en dur. La feuille de journal du haut de page est
 un exemple FICTIF qui ne s'enregistre nulle part, et le dit. Les `?v=` de la
 feuille de style et du script se montent ENSEMBLE à chaque changement (cache par
@@ -5205,7 +5215,7 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   l'adresse du relais Firebase pour tout le monde. Un appel direct à
   `*.run.app` reste possible, et se ferme dans l'infrastructure.
 - **Auto-inscription fermée** · `POST /auth/register` refuse sauf si
-  `INSCRIPTION_PUBLIQUE=true`. Un dossier naît depuis la console VMG ou par le
+  `INSCRIPTION_PUBLIQUE=true`. Un dossier naît depuis la console de l'éditeur ou par le
   siège d'un groupe. `AuthService.register` reste le pipeline commun de toutes
   les créations : ne pas en écrire un second.
   **L'ESSAI EN LIBRE-SERVICE EST UNE AUTRE PORTE, FERMÉE PAR SA PROPRE
@@ -5505,9 +5515,9 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   `$transaction(` écrit ailleurs, forme TABLEAU comprise (elle n'a pas de
   contexte asynchrone).
 
-- **VMG NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT** (décision de Manasse
+- **L'ÉDITEUR NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT** (décision de Manasse
   du 2026-10-09 · « c'est confidentiel et non discutable »). L'accès
-  exclusif de VMG porte sur les FONCTIONNALITÉS, jamais sur les données
+  exclusif de l'éditeur porte sur les FONCTIONNALITÉS, jamais sur les données
   d'autrui · son dossier d'éditeur reçoit tous les modules
   (`modulesServis`), et la console ne montre d'un cabinet que sa fiche
   commerciale et sa licence. Le mot de passe provisoire d'un administrateur
@@ -5522,8 +5532,8 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   fait par le client, dans son dossier.
 
 - **Le dossier de l'éditeur ne se coupe jamais** · `TypeLicence.PROPRIETAIRE`.
-  C'est un verrou de sûreté avant d'être une formule commerciale : VMG
-  Consulting possède le logiciel, ne paie rien, et c'est depuis SON dossier que
+  C'est un verrou de sûreté avant d'être une formule commerciale : l'éditeur
+  possède le logiciel, ne paie rien, et c'est depuis SON dossier que
   les licences des autres se rouvrent. Un dossier d'éditeur coupé, par une
   échéance ou par une suspension posée par mégarde, verrouille l'opérateur hors
   de la console qui sert à déverrouiller · panne sans issue, silencieuse
