@@ -238,7 +238,7 @@ puis, le 2026-10-24, l'ADRESSE DU SITE séparée de celle du logiciel (« Pour l
 logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine du
 domaine du cabinet ouvrait la page publique (aiguillage retiré le
 2026-10-28 avec ce domaine), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET de l'ancien éditeur
-Consulting (`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
+(`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
 courriel, hébergées hors du dépôt), choisi par Manasse (retiré du dépôt le 2026-10-28), sans
 toucher au serveur ; puis, le 2026-10-25, l'ÉCRAN DES LOGICIELS après la
 connexion (« Le tout en cascade ») · tuiles tirées du menu réel

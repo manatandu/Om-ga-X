@@ -57,7 +57,7 @@ export const MOTIF_REFUS_SYCEBNL =
   "Le transfert d'un bien entre deux dossiers du groupe n'est servi qu'au SYSCOHADA (AUDCIF, Titre VII, fiche du compte 18 · " +
   'comptes de liaison 184 à 187). Au SYCEBNL, le compte 18 porte des emprunts et la fiche du compte 58 ne vise que la ' +
   "trésorerie (« par le crédit : des comptes de trésorerie », Partie 2 ch. 3) · aucun texte lu n'y fait passer un bien. " +
-  'La question est posée à VMG Consulting.';
+  'La question reste ouverte au suivi.';
 
 /** Le premier jour du mois qui suit l'entrée · le mois du transfert a été doté chez celui qui cède. */
 export function debutDeDetention(dateEntreeGroupe: Date | null | undefined): Date | null {
