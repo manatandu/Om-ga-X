@@ -318,7 +318,7 @@ export class ChequesService {
       // M3) · l'original et le négatif se pointent ensemble, leur somme nulle,
       // et le pointage ne dit plus que la banque a débité · l'annulation reste
       // ouverte (`etatDuCheque`, PIÈCE ANNULÉE).
-      const corrigee = ch.ecritureId ? await tx.ecriture.count({ where: { tenantId, corrigeEcritureId: ch.ecritureId } }) : 0;
+      const corrigee = ch.ecritureId ? await tx.ecriture.count({ where: { tenantId, corrigeEcritureId: ch.ecritureId, ...HORS_SITUATION } }) : 0;
       if (ch.ecritureId && compte && corrigee === 0) {
         const pointees = await tx.ligneEcriture.count({ where: { ecritureId: ch.ecritureId, compteId: compte, rapprochementId: { not: null } } });
         if (pointees > 0) throw new BadRequestException('Ce chèque est pointé au rapprochement face au relevé · la banque l’a payé, il ne s’annule plus.');

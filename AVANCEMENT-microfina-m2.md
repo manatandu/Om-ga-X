@@ -203,10 +203,15 @@ avant correction · tous confirmés.
   clôture, total à une date d'arrêté).
 
 Rejeu sur vraie base (PostgreSQL 16 jetable, serveur compilé, SYCEBNL
-projets, N = 2025, N+1 = 2026, clôture de N traversée) · 28 constats, 0
+projets, N = 2025, N+1 = 2026, clôture de N traversée) · 27 constats, 0
 écart, script hors dépôt `scenario-m2-relecture.cjs`. Le chemin API du test
 navigateur rejoué de même sur SYSCOHADA · 5 constats, 0 écart (Playwright non
 lancé ici, aucun navigateur installé).
+
+Bloc § 3 (2026-10-28) · serveur `tsc` net, `jest` 670 suites et 11 789 tests
+verts (six suites tuées par manque de mémoire sur la machine partagée,
+rejouées seules, vertes), `npm run build` net ; client `tsc` net, `vitest`
+306 fichiers et 2 485 tests verts, `npm run build` net ; e2e `tsc` net.
 
 ## Commandes de vérification
 
