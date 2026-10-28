@@ -186,7 +186,9 @@ test('SYSCOHADA · demande de congé saisie à l’écran, accordée par un seco
   // Une seconde décision est refusée.
   expect(await statutDuRefus(appelApi(autre, 'POST', `/personnel/demandes-conge/${demandes[0].id}/accord`, {}, entetes))).toBe(409);
 
-  await page.goto('/#/personnel?onglet=demandes');
+  // La page est déjà sur cette adresse · un `goto` au même fragment ne
+  // recharge rien sous Chromium, et le tableau gardait « En attente ».
+  await page.reload();
   const tableauRelu = page.getByRole('table', { name: 'Demandes de congé' });
   await expect(tableauRelu.getByText('Accordée')).toBeVisible();
   await tableauRelu.getByRole('button', { name: 'Titre de congé' }).click();
