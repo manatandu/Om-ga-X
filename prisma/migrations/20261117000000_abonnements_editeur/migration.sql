@@ -1,5 +1,5 @@
 -- Abonnements des cabinets clients et leurs factures · registre de l'éditeur,
--- hors de tout dossier. Les factures elles-mêmes vivent dans le dossier de VMG.
+-- hors de tout dossier. Les factures elles-mêmes vivent dans le dossier de l'éditeur.
 
 -- CreateEnum
 CREATE TYPE "TypeFormuleAbonnement" AS ENUM ('FORMULE', 'OPTION');

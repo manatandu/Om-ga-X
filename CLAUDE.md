@@ -258,7 +258,15 @@ qui concerne » le cabinet, « OmegaX seul », « même logiciel, autre marque �
 sites et domaine du cabinet « tout retirer ») · contrat de licence en
 version 2, la version 1, jamais acceptable, retirée (Code du numérique,
 art. 34 et 53, 9°, aucun contrat formé), codes du questionnaire en `EDI-…`,
-série des factures d'abonnement continue sous le préfixe `OMX`.
+série des factures d'abonnement continue sous le préfixe `OMX`, après
+la plus grande facture reliée à un abonnement, l'ancien préfixe n'étant plus
+nommé. Le nom est retiré aussi des commentaires de cinq migrations déjà
+appliquées (décision de Manasse du même jour, « supprime ce nom de partout »),
+seule exception écrite à la règle qui fige une migration appliquée ·
+`prisma migrate deploy` relu sur une base déjà migrée (« Database schema is up
+to date ») et sur une base neuve avant le geste ; l'historique Git n'est pas
+réécrit. Le modèle anonyme du site d'un cabinet distributeur est gardé sur la
+branche `sauvegarde/site-cabinet`, sans historique, qu'aucun workflow ne lit.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

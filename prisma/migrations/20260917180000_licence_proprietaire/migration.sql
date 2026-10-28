@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- LICENCE DE L'ÉDITEUR · le dossier de VMG Consulting n'est pas un client.
+-- LICENCE DE L'ÉDITEUR · le dossier de l'éditeur n'est pas un client.
 --
 -- ## LE VERROU SANS ISSUE QUE CETTE MIGRATION FERME
 --

@@ -33,7 +33,7 @@ CREATE UNIQUE INDEX "evenements_audit_empreinte_key" ON "evenements_audit"("empr
 --
 -- NULLS NOT DISTINCT est indispensable et non décoratif : par défaut Postgres
 -- tient deux NULL pour distincts, et la chaîne de la PLATEFORME (tenantId nul,
--- les actes de la console VMG) n'aurait alors aucune protection contre
+-- les actes de la console de l'éditeur) n'aurait alors aucune protection contre
 -- l'insertion intercalaire · exactement la chaîne où elle importe le plus.
 -- Disponible depuis PostgreSQL 15 ; la base est en 18.
 CREATE UNIQUE INDEX "evenements_audit_tenantId_rang_key"

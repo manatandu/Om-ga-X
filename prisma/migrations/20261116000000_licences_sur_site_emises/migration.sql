@@ -1,4 +1,4 @@
--- Registre des licences d'installation sur site émises par la console de VMG.
+-- Registre des licences d'installation sur site émises par la console de l'éditeur.
 
 -- CreateTable
 CREATE TABLE "licences_sur_site_emises" (
