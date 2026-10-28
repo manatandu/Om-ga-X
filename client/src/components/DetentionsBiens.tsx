@@ -180,7 +180,12 @@ export function DetenteurImmobilisation({
     );
   }, [bien.id]);
   useEffect(() => charger(), [charger]);
-  useEffect(() => onOccupe?.(occupe), [occupe, onOccupe]);
+  // Le rappel passe par une référence · la fiche le recrée à chaque rendu, et
+  // le mettre en dépendance relançait l'effet, qui la faisait se redessiner,
+  // sans fin.
+  const surOccupe = useRef(onOccupe);
+  surOccupe.current = onOccupe;
+  useEffect(() => surOccupe.current?.(occupe), [occupe]);
 
   // Les salariés sous contrat à la DATE du geste · relus quand elle change.
   useEffect(() => {

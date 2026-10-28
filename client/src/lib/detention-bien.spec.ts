@@ -21,3 +21,13 @@ describe('détenteur d’un bien · côté écran (ligne Microfina M4)', () => {
     expect(dateLue(null)).toBe('·');
   });
 });
+
+describe('le volet Détenteur ne se redessine pas sans fin', () => {
+  it('le rappel de la fiche passe par une référence, jamais en dépendance de l’effet', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const source = readFileSync(join(__dirname, '../components/DetentionsBiens.tsx'), 'utf8');
+    expect(source).toContain('useEffect(() => surOccupe.current?.(occupe), [occupe]);');
+    expect(source).not.toContain('[occupe, onOccupe]');
+  });
+});

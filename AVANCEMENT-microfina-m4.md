@@ -44,7 +44,13 @@ sur une période).
 ## Reste
 
 - Rejeu sur vraie base FAIT · `scripts/rejouer-detentions-biens.cjs`, tout vert (PostgreSQL 16 jetable).
-- Relecture « échecs silencieux ».
+- Relecture « échecs silencieux » FAITE (relecture propre, sans agent) ·
+  liste des lieux en échec dite au lieu d'une liste vide ; boucle de rendu
+  du volet (rappel instable en dépendance d'effet) corrigée et gelée.
+- Test navigateur `microfina-m4-detenteur.e2e.ts` vert sous Chromium en
+  local, avec `immobilisations.e2e.ts` et `sage-l4-annulation.e2e.ts`.
+- À faire à l'intégration · deux tours de relecture (comptable,
+  typescript-reviewer, react-reviewer), tests navigateur WebKit au CI.
 
 ## Commandes
 
