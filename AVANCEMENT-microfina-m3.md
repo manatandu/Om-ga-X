@@ -72,10 +72,41 @@ Branche de sauvegarde · `travail/microfina-m3`. Copie · `/home/user/wt-microfi
   la retenue d'un autre mois se préremplissait).
 - Questions au suivi · `docs/suivi-reprises.md`, section microfina-m3.
 
+- **Relecture indépendante (2026-10-28), corrigée.**
+  M1 · course frais / émission · `lierMissionsAuBulletin` prend la mission
+  `FOR UPDATE`, relit ses frais et refuse en 409 des totaux différents de la
+  simulation ; ajout, retrait de frais et annulation en `transactionJournalisee`
+  sous le même verrou, porteur relu dedans (`missions-course.spec.ts`).
+  M2 · accord · le congé naît d'abord, la demande est prise en un `updateMany`
+  DEMANDEE vers ACCORDEE qui porte `congeId`, compte nul = congé annulé et 409 ;
+  héritée accordée sans congé · `POST /personnel/demandes-conge/:id/reparation`
+  (relier au congé de mêmes dates, ou remettre en attente, motif, journal
+  d'audit) (`suivi-personnel-accord.spec.ts`).
+  M3 · main-d'œuvre · entrées et sorties lues à l'art. 217 (engagement, départ
+  de l'entreprise) · entrée = contrat pris d'effet sans autre contrat en vigueur
+  la veille, sortie = contrat fini sans autre en vigueur le lendemain, en
+  mouvements ; règle servie (`REGLE_MOUVEMENTS_MAIN_OEUVRE`) et dite en bulle.
+  Mineurs · montants au point des milliers refusés à l'écran (`lireNombre` de
+  D15) ; ordre de mission refusé sans contrat en vigueur au départ ; bulletin
+  annulé dit (`bulletinAnnule`) ; bulle · pas de double passage au 6384 ;
+  reliquat de fin de plan DIT avec l'issue (la proposition reste l'échéance,
+  la convention « jamais rattrapé » gelée par le spec) ; réalisation d'une
+  formation en une transaction ; plafond des inscrits sous verrou ; demande
+  qui chevauche une demande en attente refusée (409), double envoi gardé
+  (verrou du salarié) ; échéancier filtré en base sur l'horizon avant la
+  borne ; test navigateur rendu robuste et étendu à une demande accordée.
+- **Rejeu de la relecture sur vraie base** (`scratchpad/rejeu/m3-rejeu-relecture.mjs`,
+  PostgreSQL 16 sous /var/tmp/m3-pg) · vingt courses émission / frais · vingt
+  409, aucun bulletin qui fige un forfait différent ; émission seule, 90 000
+  figés = 90 000 ; double accord simultané · un seul passe, un seul congé
+  actif, lié ; héritée remise en attente puis accordée ; CDD renouvelé puis
+  CDI · 2026 deux entrées zéro sortie, 2027 une entrée une sortie · SANS ÉCART.
+
 ## Reste
 
-- Test navigateur `e2e/tests/microfina-m3-personnel.e2e.ts` (écrit, non joué
-  ici · aucun navigateur dans le conteneur), à jouer par `tests-navigateur.yml`.
+- Test navigateur `e2e/tests/microfina-m3-personnel.e2e.ts` (deux scénarios,
+  typés, non joués ici · aucun navigateur dans le conteneur), à jouer par
+  `tests-navigateur.yml`.
 
 ## Commandes
 
