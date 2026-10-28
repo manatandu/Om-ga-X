@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Req, Res, UnsupportedMediaTypeException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -23,6 +23,8 @@ import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonn
 /** Le refus d'une licence choisie à la porte publique d'inscription (relevé de sécurité du 2026-10-23). */
 export const MOTIF_LICENCE_A_L_INSCRIPTION =
   "La licence d'un dossier ne se choisit pas à l'inscription · elle est posée par l'éditeur depuis sa console.";
+
+export const MOTIF_CONNEXION_EN_JSON = 'La connexion se fait en JSON (Content-Type: application/json) · un formulaire posté depuis un autre site est refusé.';
 
 @Controller('auth')
 export class AuthController {
@@ -135,6 +137,15 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('login')
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response, @Req() req?: Request) {
+    // LA CONNEXION NE SE FAIT QU'EN JSON (audit de sécurité du 2026-10-25,
+    // piste 9). Un formulaire d'un autre site poste en
+    // `application/x-www-form-urlencoded` sans aucun contrôle préalable, et la
+    // réponse posait le cookie de session de l'ATTAQUANT dans le navigateur de
+    // la victime · ce qu'elle saisissait ensuite partait dans son dossier à
+    // lui. SameSite n'y peut rien, il règle l'envoi du cookie, pas sa pose.
+    // Un corps JSON venu d'un autre site exige un contrôle CORS préalable, que
+    // la liste des origines admises refuse. L'interface envoie déjà du JSON.
+    if (typeof req?.is === 'function' && !req.is('application/json')) throw new UnsupportedMediaTypeException(MOTIF_CONNEXION_EN_JSON);
     // `req.ip` SEUL, réglé par le nombre de relais de confiance
     // (sauts-de-confiance.ts, audit final F160) · la tête de X-Forwarded-For
     // s'écrit par le client. Porté au maillon CONNEXION (passe D4, D4-C4).

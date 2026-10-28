@@ -2,7 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { JwtStrategy, extraireJetonDuCookie } from './jwt.strategy';
 import { AuthService } from './auth.service';
-import { AuthController, MOTIF_LICENCE_A_L_INSCRIPTION } from './auth.controller';
+import { AuthController, MOTIF_CONNEXION_EN_JSON, MOTIF_LICENCE_A_L_INSCRIPTION } from './auth.controller';
 import { COOKIE_SESSION } from './session.constants';
 
 /**
@@ -136,6 +136,24 @@ describe('AuthController · le jeton de session ne sort que par le cookie', () =
     expect(options.httpOnly).toBe(true);
     expect(options.secure).toBe(true);
     expect(options.sameSite).toBe('none');
+  });
+
+  it('PISTE 9 · une connexion postée par formulaire est refusée avant tout essai de mot de passe', async () => {
+    // Un formulaire d'un autre site poste en urlencoded sans contrôle
+    // préalable, et sa réponse posait la session de l'attaquant chez la
+    // victime (audit de sécurité du 2026-10-25).
+    const { appels, res } = reponse();
+    const login = jest.fn();
+    const controleur = new AuthController({ login } as never, { get: () => undefined } as never);
+    const formulaire = { is: (t: string) => (t === 'application/json' ? false : t), ip: '1.2.3.4' };
+    await expect(controleur.login({ email: 'a@a.cd', motDePasse: 'x' } as never, res, formulaire as never)).rejects.toThrow(
+      MOTIF_CONNEXION_EN_JSON,
+    );
+    expect(login).not.toHaveBeenCalled();
+    expect(appels).toEqual([]);
+    const json = { is: (t: string) => (t === 'application/json' ? t : false), ip: '1.2.3.4' };
+    login.mockResolvedValue({ accessToken: 'jwt', csrfToken: 'c' });
+    await expect(controleur.login({ email: 'a@a.cd', motDePasse: 'x' } as never, res, json as never)).resolves.toEqual({ csrfToken: 'c' });
   });
 
   it('logout efface le cookie de session', async () => {
