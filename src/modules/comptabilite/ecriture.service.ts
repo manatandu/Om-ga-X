@@ -2,7 +2,16 @@ import { motifLignesTenues } from './lignes-tenues';
 import { preparerLesPiecesADetacher, retoucherDescriptionDesPieces } from './pieces-jointes-ecriture';
 import { ecartClasse9, motifRefusClasse9 } from './classe-9-equilibree';
 import { motifExerciceCloture } from './exercice-cloture';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { LOT_ECRITURES, LOT_LECTURE, PremiersSelon, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { regrouperSurCollectifs } from '../tiers/collectifs-tiers';
 import { PrismaService } from '../../common/prisma.service';
@@ -640,6 +649,8 @@ export interface OptionsCreation {
 
 @Injectable()
 export class EcritureService {
+  private readonly journalServeur = new Logger(EcritureService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly journalService: JournalService,
@@ -2240,11 +2251,44 @@ export class EcritureService {
     ecritureIds: string[],
     derogation?: { secondRegardNom?: string; secondRegardMotif?: string },
   ) {
-    const ecritures = await this.prisma.ecriture.findMany({
-      where: { id: { in: ecritureIds }, tenantId },
-      include: { lignes: true, exercice: { select: { statut: true } }, journal: { select: { code: true, type: true } } },
-    });
-    if (ecritures.length !== ecritureIds.length) {
+    // LA LECTURE PRÉALABLE SE FAIT PAR TRANCHES, SANS LE CONTENU (relecture du
+    // circuit de visa, M5) · elle ne sert qu'aux refus nommés qui arrêtent le
+    // lot AVANT toute validation (situation, report provisoire, exercice
+    // clôturé, déséquilibre) · les lignes ne sont lues que pour leurs sommes,
+    // jamais gardées, et la mémoire ne suit plus la taille de la période.
+    const idsDemandes = [...new Set(ecritureIds)];
+    const ecritures: {
+      id: string;
+      statut: StatutEcriture;
+      numeroPiece: number | null;
+      estANouveauProvisoire: boolean;
+      exercice: { statut: StatutExercice };
+      journal: { code: string; type: TypeJournal };
+      debit: number;
+      credit: number;
+    }[] = [];
+    for (let i = 0; i < idsDemandes.length; i += LOT_ECRITURES) {
+      const lot = await this.prisma.ecriture.findMany({
+        where: { id: { in: idsDemandes.slice(i, i + LOT_ECRITURES) }, tenantId },
+        select: {
+          id: true,
+          statut: true,
+          numeroPiece: true,
+          estANouveauProvisoire: true,
+          exercice: { select: { statut: true } },
+          journal: { select: { code: true, type: true } },
+          lignes: { select: { debit: true, credit: true } },
+        },
+      });
+      for (const { lignes, ...e } of lot) {
+        ecritures.push({
+          ...e,
+          debit: lignes.reduce((s, l) => s + Number(l.debit), 0),
+          credit: lignes.reduce((s, l) => s + Number(l.credit), 0),
+        });
+      }
+    }
+    if (ecritures.length !== idsDemandes.length) {
       throw new NotFoundException('Une ou plusieurs écritures sont introuvables pour ce dossier.');
     }
     const dejaValidees = ecritures.filter((e) => e.statut === StatutEcriture.VALIDEE);
@@ -2269,26 +2313,7 @@ export class EcritureService {
       );
     }
 
-    for (const e of aValider) {
-      // Le report PROVISOIRE ne se valide jamais · validé, il ne pourrait plus
-      // être remplacé à la relance ni par la clôture (AUDCIF art. 22, 2°).
-      if (e.estANouveauProvisoire) {
-        throw new BadRequestException(
-          "Le report à-nouveau PROVISOIRE ne se valide pas · il est remplacé par le report définitif à la clôture de l'exercice précédent.",
-        );
-      }
-      if (e.exercice.statut === StatutExercice.CLOTURE) {
-        throw new ForbiddenException(`L'exercice de l'écriture ${e.journal.code} n° ${e.numeroPiece ?? ''} est clôturé.`);
-      }
-      const debit = e.lignes.reduce((s, l) => s + Number(l.debit), 0);
-      const credit = e.lignes.reduce((s, l) => s + Number(l.credit), 0);
-      if (Math.abs(debit - credit) > 0.005) {
-        throw new BadRequestException(
-          `L'écriture ${e.journal.code} n° ${e.numeroPiece ?? ''} est déséquilibrée (${debit} / ${credit}) : ` +
-            'corrigez-la avant de la valider.',
-        );
-      }
-    }
+    for (const e of aValider) this.refusAvantValidation(e);
 
     // Le dossier est relu ICI et pas ailleurs · même chemin que `brouillard`,
     // qui lit le référentiel de la même façon. Un second chemin de lecture
@@ -2330,73 +2355,184 @@ export class EcritureService {
       ...(visa ? { secondRegardNom: visa.nom, secondRegardMotif: visa.motif } : {}),
     };
 
-    if (!exigences.doubleRegard && !exigences.visa) {
-      if (aValider.length > 0) {
-        await this.prisma.ecriture.updateMany({
-          where: { id: { in: aValider.map((e) => e.id) }, tenantId },
-          data: donneesValidation,
-        });
-      }
-      return {
-        validees: aValider.length,
-        dejaValidees: dejaValidees.length,
-        refuseesSecondRegard: 0,
-        refuseesAuteurInconnu: 0,
-        refuseesVisa: 0,
-        sousDerogation: visa ? aValider.length : 0,
-        motifRefus: null,
-        motifAuteurInconnu: null,
-        motifVisa: null,
-        // Une sélection explicite les refuse en les nommant (ci-dessus) · seule
-        // la validation par période les écarte en les comptant.
-        ecarteesJournalDeSituation: 0,
-      };
-    }
-
-    // SOUS VERROU · l'auteur et le visa se relisent dans la transaction qui
-    // valide, les lignes de l'écriture verrouillées (la modification d'un
-    // brouillard met sa tête à jour et attend la fin du geste). Lus avant,
-    // ils laissaient un contenu réécrit entre la lecture et la validation
-    // entrer au livre-journal sous l'auteur ou le visa d'avant.
+    // UNE TRANSACTION PAR TRANCHE, SOUS VERROU (relecture M5) · auteur, visa,
+    // équilibre et statut de l'exercice se relisent dans la transaction qui
+    // valide, les têtes verrouillées (la modification d'un brouillard met sa
+    // tête à jour et attend la fin du geste). Une seule transaction pour toute
+    // la période tenait le verrou de chaque pièce jusqu'à soixante secondes,
+    // et son échec tombait en 500 sans dire ce qui était passé. Chaque tranche
+    // est entière ou rien ; une tranche qui échoue arrête la suite, et le refus
+    // dit combien de pièces des tranches précédentes sont entrées au
+    // livre-journal (elles y restent, art. 22, 2°).
     const ids = aValider.map((e) => e.id);
-    const { partition, relues } = await transactionJournalisee(
-      this.prisma,
-      async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
-        const lues = await tx.ecriture.findMany({
-          where: { id: { in: ids }, tenantId, statut: StatutEcriture.BROUILLARD },
-          select: { id: true, estGenereeParCloture: true, ...SELECT_TRACES_VISA, ...SELECT_CONTENU_VISE },
-        });
-        const p = partitionnerLaValidation(
-          lues.map((e) => ({ ...e, empreinte: exigences.visa ? empreinteDuContenu(contenuLu(e)) : null })),
-          valideeBy,
-          exigences,
+    const cumul = { validables: 0, nonVisees: 0, visaTombe: 0, refuseesSecondRegard: 0, refuseesAuteurInconnu: 0, dejaValidees: 0, retirees: 0 };
+    const tranches = Math.ceil(ids.length / LOT_ECRITURES);
+    for (let k = 0; k < tranches; k++) {
+      const tranche = ids.slice(k * LOT_ECRITURES, (k + 1) * LOT_ECRITURES);
+      let r: Awaited<ReturnType<EcritureService['validerUneTranche']>>;
+      try {
+        r = await transactionJournalisee(
+          this.prisma,
+          (tx) => this.validerUneTranche(tx, tenantId, tranche, valideeBy, exigences, donneesValidation),
+          { timeout: 20_000 },
         );
-        if (p.validables.length > 0) {
-          await tx.ecriture.updateMany({
-            where: { id: { in: p.validables }, tenantId, statut: StatutEcriture.BROUILLARD },
-            data: donneesValidation,
-          });
-        }
-        return { partition: p, relues: lues.length };
-      },
-      // Un lot de validation par période relit toutes ses pièces et leurs lignes.
-      { timeout: 60_000 },
-    );
-    const refuseesVisa = partition.nonVisees.length + partition.visaTombe.length;
+      } catch (err) {
+        throw this.echecDUneTranche(tenantId, err, k + 1, tranches, cumul.validables);
+      }
+      cumul.validables += r.partition.validables.length;
+      cumul.nonVisees += r.partition.nonVisees.length;
+      cumul.visaTombe += r.partition.visaTombe.length;
+      cumul.refuseesSecondRegard += r.partition.refuseesSecondRegard.length;
+      cumul.refuseesAuteurInconnu += r.partition.refuseesAuteurInconnu.length;
+      cumul.dejaValidees += r.dejaValidees;
+      cumul.retirees += r.retirees;
+    }
+    const refuseesVisa = cumul.nonVisees + cumul.visaTombe;
     return {
-      validees: partition.validables.length,
+      validees: cumul.validables,
       // Validées par un autre geste entre la première lecture et le verrou.
-      dejaValidees: dejaValidees.length + (aValider.length - relues),
-      refuseesSecondRegard: partition.refuseesSecondRegard.length,
-      refuseesAuteurInconnu: partition.refuseesAuteurInconnu.length,
+      dejaValidees: dejaValidees.length + cumul.dejaValidees,
+      // RETIRÉES ENTRE LES DEUX LECTURES (relecture M5, mineur) · supprimées
+      // ou passées hors du brouillard autrement que par une validation ·
+      // comptées « déjà validées », elles faisaient croire la période
+      // centralisée sur des pièces qui n'y sont pas entrées.
+      retireesEntreTemps: cumul.retirees,
+      refuseesSecondRegard: cumul.refuseesSecondRegard,
+      refuseesAuteurInconnu: cumul.refuseesAuteurInconnu,
       refuseesVisa,
-      sousDerogation: visa ? partition.validables.length : 0,
-      motifRefus: partition.refuseesSecondRegard.length > 0 ? this.motifDoubleRegard(dossier.referentiel) : null,
-      motifAuteurInconnu: partition.refuseesAuteurInconnu.length > 0 ? MOTIF_AUTEUR_INCONNU_DOUBLE_REGARD : null,
-      motifVisa: motifNonVisees(partition.nonVisees.length, partition.visaTombe.length),
+      sousDerogation: visa ? cumul.validables : 0,
+      motifRefus: cumul.refuseesSecondRegard > 0 ? this.motifDoubleRegard(dossier.referentiel) : null,
+      motifAuteurInconnu: cumul.refuseesAuteurInconnu > 0 ? MOTIF_AUTEUR_INCONNU_DOUBLE_REGARD : null,
+      motifVisa: motifNonVisees(cumul.nonVisees, cumul.visaTombe),
+      // Une sélection explicite les refuse en les nommant (ci-dessus) · seule
+      // la validation par période les écarte en les comptant.
       ecarteesJournalDeSituation: 0,
     };
+  }
+
+  /**
+   * Les refus qui arrêtent le lot · avant toute validation sur la première
+   * lecture, puis de nouveau SOUS VERROU (relecture M5, mineur · un exercice
+   * clôturé ou une pièce rééquilibrée entre les deux lectures entrait sinon au
+   * livre-journal sur la foi de la première).
+   */
+  private refusAvantValidation(e: {
+    numeroPiece: number | null;
+    estANouveauProvisoire: boolean;
+    exercice: { statut: StatutExercice };
+    journal: { code: string };
+    debit: number;
+    credit: number;
+  }) {
+    // Le report PROVISOIRE ne se valide jamais · validé, il ne pourrait plus
+    // être remplacé à la relance ni par la clôture (AUDCIF art. 22, 2°).
+    if (e.estANouveauProvisoire) {
+      throw new BadRequestException(
+        "Le report à-nouveau PROVISOIRE ne se valide pas · il est remplacé par le report définitif à la clôture de l'exercice précédent.",
+      );
+    }
+    if (e.exercice.statut === StatutExercice.CLOTURE) {
+      throw new ForbiddenException(`L'exercice de l'écriture ${e.journal.code} n° ${e.numeroPiece ?? ''} est clôturé.`);
+    }
+    if (Math.abs(e.debit - e.credit) > 0.005) {
+      throw new BadRequestException(
+        `L'écriture ${e.journal.code} n° ${e.numeroPiece ?? ''} est déséquilibrée (${e.debit} / ${e.credit}) : ` +
+          'corrigez-la avant de la valider.',
+      );
+    }
+  }
+
+  /**
+   * UNE TRANCHE DE LA VALIDATION, dans sa transaction · les têtes au
+   * brouillard verrouillées (`FOR UPDATE`), les exercices en partage
+   * (`FOR SHARE` · la clôture, qui change leur statut, attend la fin de la
+   * tranche), puis tout ce qui décide relu · statut, équilibre, auteur, visa.
+   * Le contenu visé n'est lu que sous le circuit de visa.
+   */
+  private async validerUneTranche(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ids: string[],
+    valideeBy: string,
+    exigences: { doubleRegard: boolean; visa: boolean },
+    donneesValidation: Prisma.EcritureUpdateManyMutationInput,
+  ) {
+    await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
+    await tx.$queryRaw`SELECT x."id" FROM "exercices" x WHERE x."tenantId" = ${tenantId} AND x."id" IN (SELECT e."exerciceId" FROM "ecritures" e WHERE e."id" = ANY(${ids}::text[]) AND e."tenantId" = ${tenantId} AND e."statut" = 'BROUILLARD') FOR SHARE`;
+    const base = {
+      id: true,
+      statut: true,
+      numeroPiece: true,
+      estGenereeParCloture: true,
+      estANouveauProvisoire: true,
+      exercice: { select: { statut: true } },
+      journal: { select: { code: true } },
+      ...SELECT_TRACES_VISA,
+    } satisfies Prisma.EcritureSelect;
+    const lues = exigences.visa
+      ? (
+          await tx.ecriture.findMany({
+            where: { id: { in: ids }, tenantId, statut: StatutEcriture.BROUILLARD },
+            select: { ...base, ...SELECT_CONTENU_VISE },
+          })
+        ).map((e) => ({ ...e, empreinte: empreinteDuContenu(contenuLu(e)) as string | null }))
+      : (
+          await tx.ecriture.findMany({
+            where: { id: { in: ids }, tenantId, statut: StatutEcriture.BROUILLARD },
+            select: { ...base, lignes: { select: { debit: true, credit: true } } },
+          })
+        ).map((e) => ({ ...e, empreinte: null as string | null }));
+    const auBrouillard = lues.filter((e) => e.statut === StatutEcriture.BROUILLARD);
+    for (const e of auBrouillard) {
+      this.refusAvantValidation({
+        ...e,
+        debit: e.lignes.reduce((s, l) => s + Number(l.debit), 0),
+        credit: e.lignes.reduce((s, l) => s + Number(l.credit), 0),
+      });
+    }
+    const partition = partitionnerLaValidation(auBrouillard, valideeBy, exigences);
+    if (partition.validables.length > 0) {
+      await tx.ecriture.updateMany({
+        where: { id: { in: partition.validables }, tenantId, statut: StatutEcriture.BROUILLARD },
+        data: donneesValidation,
+      });
+    }
+    // Ce que le verrou n'a plus trouvé au brouillard · validé par un autre
+    // geste, ou retiré (supprimé, transféré), et ce n'est pas la même chose.
+    const vues = new Set(auBrouillard.map((e) => e.id));
+    const manquantes = ids.filter((id) => !vues.has(id));
+    const valideesAilleurs =
+      manquantes.length > 0
+        ? await tx.ecriture.count({ where: { id: { in: manquantes }, tenantId, statut: StatutEcriture.VALIDEE } })
+        : 0;
+    return { partition, dejaValidees: valideesAilleurs, retirees: manquantes.length - valideesAilleurs };
+  }
+
+  /**
+   * L'ÉCHEC D'UNE TRANCHE SE DIT (relecture M5) · son refus nommé, ou la
+   * panne consignée au journal du serveur, et toujours ce que les tranches
+   * précédentes ont fait entrer au livre-journal · jamais un 500 opaque qui
+   * laisserait croire que rien n'est passé.
+   */
+  private echecDUneTranche(tenantId: string, err: unknown, rang: number, total: number, dejaPassees: number): HttpException {
+    const suite =
+      dejaPassees > 0
+        ? ` ${dejaPassees} écriture(s) des tranches précédentes sont entrées au livre-journal et y restent · relancez la validation pour les autres.`
+        : '';
+    const tranche = total > 1 ? ` (tranche ${rang} sur ${total})` : '';
+    if (err instanceof HttpException) {
+      if (!suite && !tranche) return err;
+      return new HttpException(`${err.message.replace(/\.\s*$/, '')}${tranche}.${suite}`, err.getStatus());
+    }
+    this.journalServeur.error(
+      `Validation du dossier ${tenantId} · tranche ${rang} sur ${total} interrompue`,
+      err instanceof Error ? err.stack : String(err),
+    );
+    return new ServiceUnavailableException(
+      `La validation s'est interrompue${tranche} · aucune pièce de cette tranche n'est validée.` +
+        (suite || ' Aucune écriture n’est entrée au livre-journal, relancez la validation.') +
+        ' L’incident est consigné au journal du serveur.',
+    );
   }
 
   /**

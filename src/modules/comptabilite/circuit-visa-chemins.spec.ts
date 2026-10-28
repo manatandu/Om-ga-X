@@ -93,9 +93,15 @@ describe('les portes passent l’utilisateur de la session', () => {
 });
 
 describe('la validation lit l’auteur et le visa sous verrou', () => {
-  const corps = methodes(SERVICE).get('valider') ?? '';
+  // La validation se fait par tranches (relecture M5) · chaque tranche, dans
+  // SA transaction, verrouille, relit et valide.
+  const valider = methodes(SERVICE).get('valider') ?? '';
+  const corps = methodes(SERVICE).get('validerUneTranche') ?? '';
   it('relit les traces dans la transaction qui valide, lignes verrouillées', () => {
+    expect(valider).toMatch(/transactionJournalisee\(\s*this\.prisma,\s*\(tx\) => this\.validerUneTranche\(tx,/);
     expect(corps).toMatch(/FOR UPDATE/);
+    expect(corps).toMatch(/"exercices"[\s\S]*FOR SHARE/);
+    expect(corps).toContain('this.refusAvantValidation(');
     expect(corps).toContain('partitionnerLaValidation(');
     expect(corps).toContain('SELECT_TRACES_VISA');
     // Plus aucune comparaison au seul créateur.

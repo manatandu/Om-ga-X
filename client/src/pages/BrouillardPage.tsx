@@ -214,7 +214,12 @@ export function BrouillardPage() {
     // la validation par période · dit après le reste, jamais tu (la période
     // ne passerait pas pour centralisée).
     const situation =
-      (r.ecarteesJournalDeSituation ?? 0) > 0 ? ` ${r.motifEcarteesJournalDeSituation ?? ''}`.trimEnd() : '';
+      ((r.ecarteesJournalDeSituation ?? 0) > 0 ? ` ${r.motifEcarteesJournalDeSituation ?? ''}`.trimEnd() : '') +
+      // Une pièce retirée pendant la validation n'est pas entrée au
+      // livre-journal · dite, jamais lue comme déjà validée (relecture M5).
+      ((r.retireesEntreTemps ?? 0) > 0
+        ? ` ${r.retireesEntreTemps} pièce(s) retirée(s) du brouillard pendant la validation, non validée(s).`
+        : '');
     // LE VISA ET L'AUTEUR INCONNU (ligne microfina-m1) · comptés comme le
     // double regard, AVANT le cas vide · un lot écarté faute de visa n'est pas
     // un brouillard vide.

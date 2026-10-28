@@ -4541,6 +4541,11 @@ export type QualificationExemptionIs = {
 export type ResultatValidation = {
   validees: number;
   dejaValidees: number;
+  /**
+   * Retirées du brouillard entre la lecture et le verrou (supprimées,
+   * transférées) · jamais comptées « déjà validées » (relecture M5).
+   */
+  retireesEntreTemps?: number;
   /** Écartées parce que l'auteur de leur DERNIER contenu est celui qui valide · double regard. */
   refuseesSecondRegard: number;
   /** Écartées sous le double regard, l'auteur du dernier contenu n'étant pas connu. */

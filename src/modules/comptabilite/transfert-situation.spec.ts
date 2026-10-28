@@ -244,7 +244,12 @@ describe('la validation du brouillard hérité', () => {
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex1' }) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'jOD' }) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ doubleRegardValidation: false, referentiel: 'SYSCOHADA' }) },
+      // La validation se fait par tranches, chacune dans sa transaction sous
+      // verrou (relecture M5) · la doublure sert la transaction et le verrou.
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((f: (t: unknown) => unknown) => f(prisma));
     return new EcritureService(prisma as unknown as PrismaService, {} as JournalService, {} as unknown as ExerciceService, {} as AnalytiqueService);
   }
 
@@ -271,27 +276,27 @@ describe('la validation du brouillard hérité', () => {
 
   it('la validation par période l’écarte en le comptant, et valide le reste', async () => {
     const updateMany = jest.fn();
+    const e2 = {
+      id: 'e2',
+      statut: StatutEcriture.BROUILLARD,
+      numeroPiece: 3,
+      createdBy: 'u',
+      estANouveauProvisoire: false,
+      estGenereeParCloture: false,
+      exercice: { statut: StatutExercice.OUVERT },
+      journal: { code: 'OD', type: TypeJournal.GENERAL },
+      lignes: [
+        { debit: 100, credit: 0 },
+        { debit: 0, credit: 100 },
+      ],
+    };
     const findMany = jest
       .fn()
       // Le lot · hors journal de situation.
       .mockResolvedValueOnce([{ id: 'e2' }])
-      // Les écritures du lot relues par `valider`.
-      .mockResolvedValueOnce([
-        {
-          id: 'e2',
-          statut: StatutEcriture.BROUILLARD,
-          numeroPiece: 3,
-          createdBy: 'u',
-          estANouveauProvisoire: false,
-          estGenereeParCloture: false,
-          exercice: { statut: StatutExercice.OUVERT },
-          journal: { code: 'OD', type: TypeJournal.GENERAL },
-          lignes: [
-            { debit: 100, credit: 0 },
-            { debit: 0, credit: 100 },
-          ],
-        },
-      ]);
+      // Les écritures du lot relues par `valider`, puis sous verrou par la tranche.
+      .mockResolvedValueOnce([e2])
+      .mockResolvedValueOnce([e2]);
     const count = jest.fn().mockResolvedValue(2);
     const r = await service(findMany, count, updateMany).validerJusqua('t1', 'u', { exerciceId: 'ex1', dateLimite: '2026-04-30' });
     const lot = findMany.mock.calls[0][0].where;

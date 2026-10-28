@@ -425,7 +425,11 @@ describe('validation', () => {
           referentiel: 'SYCEBNL',
         }),
       },
+      // La validation se fait par tranches, chacune dans sa transaction sous
+      // verrou (relecture M5).
+      $queryRaw: jest.fn().mockResolvedValue([]),
     } as Faux;
+    prisma.$transaction = jest.fn((f: (t: Faux) => unknown) => f(prisma));
     const resultat = await service(prisma).valider('t1', 'u1', ['e1', 'e2']);
     expect(resultat).toEqual({
       validees: 1,
@@ -438,12 +442,13 @@ describe('validation', () => {
       motifAuteurInconnu: null,
       motifVisa: null,
       ecarteesJournalDeSituation: 0,
+      retireesEntreTemps: 0,
     });
     // La borne de dossier est exigée dans le filtre, pas seulement supposée
     // depuis la sélection qui précède · c'est ce que vérifie la garde de
     // cloisonnement au moteur (src/common/cloisonnement).
     expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ['e1'] }, tenantId: 't1' } }),
+      expect.objectContaining({ where: { id: { in: ['e1'] }, tenantId: 't1', statut: 'BROUILLARD' } }),
     );
   });
 });
