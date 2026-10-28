@@ -212,6 +212,8 @@ export class TenantService {
       creationCompteEnSaisie: tenant.creationCompteEnSaisie,
       // Visa des RIB (`tiers/visa-rib.ts`) · aux deux référentiels, comme le double regard.
       visaRibs: tenant.visaRibs,
+      // Circuit de visa avant validation (`comptabilite/circuit-visa.ts`) · aux deux référentiels.
+      circuitVisa: tenant.circuitVisa,
       // Ligne sage-l2, fonction 36 · aux deux référentiels ; `null` = aucun seuil fixé.
       seuilEcartReglement: tenant.seuilEcartReglement === null ? null : Number(tenant.seuilEcartReglement),
       attestationExemptionIs: tenant.attestationExemptionIs,
@@ -1245,6 +1247,21 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaRibs } });
+    return this.parametres(tenantId);
+  }
+
+  /**
+   * LE CIRCUIT DE VISA · posé ou retiré par l'administrateur, au journal
+   * d'audit (le dossier est audité). Le retirer ne dévalide rien et ne
+   * retire aucun visa · les pièces se valident alors sans lui, et celles
+   * déjà visées gardent leur trace.
+   */
+  async modifierCircuitVisa(tenantId: string, circuitVisa: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { circuitVisa } });
     return this.parametres(tenantId);
   }
 

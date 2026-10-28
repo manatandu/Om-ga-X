@@ -199,11 +199,16 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/controles': 'contrôles du dossier, tout le plan',
   '/controles/dossier-revision': 'dossier de révision, tout le plan',
   '/controles/caisse': 'caisses 57 à solde lu sur la balance, contrôle de révision',
+  // Ligne microfina-m2, idée 5 · la situation du jour compte chaque caisse 57
+  // du plan, comme le procès-verbal de comptage · un arrêté ne saisit rien.
+  '/caisses/situation': 'situation des caisses 57 du plan au jour, lue sur les écritures, aucune saisie',
   '/etats-financiers/projet/emplois-ressources': 'état financier, tout le plan',
   '/etats-financiers/projet/note-bailleur': 'état financier, tout le plan',
   '/fiscalite/exercices/:exerciceId/propositions-retraitements': 'retraitements fiscaux proposés sur les comptes mouvementés',
   '/simulations-budgetaires/:id/calcul': 'simulation lue sur le réalisé des classes 6 et 7, tout le plan',
   '/stocks/variation/:exerciceId': 'variation de stocks, comptes lus dans le plan (« les comptes viennent du plan, pas de la balance »)',
+  '/circuit-visa/ecritures/:id/fiche':
+    "fiche d'imputation d'une pièce déjà passée (ligne microfina-m1), les comptes de ses lignes nommés, aucun compte à choisir",
   '/immobilisations/maintenance':
     "rapprochement du registre des immobilisations et de la balance (ligne sage-l4, n° 73), comptes de biens et d'amortissement mouvementés, aucun compte à choisir",
 };

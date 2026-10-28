@@ -61,6 +61,7 @@ import { QuestionnaireModule } from './modules/questionnaire/questionnaire.modul
 import { MonnaieFonctionnelleModule } from './modules/monnaie-fonctionnelle/monnaie-fonctionnelle.module';
 import { ProvisionsModule } from './modules/provisions/provisions.module';
 import { CreancesDouteusesModule } from './modules/creances-douteuses/creances-douteuses.module';
+import { ConcordanceModule } from './modules/concordance/concordance.module';
 import { FiscaliteModule } from './modules/fiscalite/fiscalite.module';
 import { PlateformeModule } from './modules/plateforme/plateforme.module';
 import { GroupeModule } from './modules/groupe/groupe.module';
@@ -146,6 +147,8 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     MonnaieFonctionnelleModule,
     ProvisionsModule,
     CreancesDouteusesModule,
+    // Ligne microfina-m1 · la concordance des modules avec la comptabilité.
+    ConcordanceModule,
     FiscaliteModule,
     PlateformeModule,
     GroupeModule,

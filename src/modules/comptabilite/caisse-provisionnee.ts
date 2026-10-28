@@ -283,7 +283,13 @@ async function mouvementsParJour(
  * précédent encore ouvert lit la caisse de ce précédent · la règle laisse
  * alors passer ce qu'elle aurait pu refuser, jamais l'inverse.
  */
-async function mouvementsDOuverture(prisma: Client, tenantId: string, compteId: string, exercice: { id: string; dateDebut: Date }): Promise<MouvementLu[]> {
+async function mouvementsDOuverture(
+  prisma: Client,
+  tenantId: string,
+  compteId: string,
+  exercice: { id: string; dateDebut: Date },
+  remontes?: string[],
+): Promise<MouvementLu[]> {
   const mouvements: MouvementLu[] = [];
   let courant = exercice;
   for (let rang = 0; rang < 20; rang++) {
@@ -298,6 +304,7 @@ async function mouvementsDOuverture(prisma: Client, tenantId: string, compteId: 
     });
     if (!precedent || precedent.statut === StatutExercice.CLOTURE) return mouvements;
     mouvements.push(...(await mouvementsParJour(prisma, tenantId, compteId, precedent.id, undefined)));
+    remontes?.push(precedent.id);
     courant = precedent;
   }
   return mouvements;
@@ -408,4 +415,32 @@ export async function verifierCaisseProvisionnee(
 ): Promise<void> {
   const motif = await motifCaisseNonProvisionnee(prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
   if (motif) throw new BadRequestException(motif);
+}
+
+/**
+ * LE SOLDE D'UNE CAISSE À LA FIN D'UN JOUR (ligne microfina-m2, idée 5 ·
+ * arrêté de caisse quotidien) · la MÊME lecture que le jugement ci-dessus,
+ * pour qu'un arrêté et un refus de sortie ne disent jamais deux soldes
+ * différents de la même caisse au même jour. Tous statuts sauf la situation
+ * et l'à-nouveau provisoire (une sortie au brouillard a quitté la caisse), à
+ * la date INSCRITE (art. 22, 4°), ouverture remontée vers les exercices
+ * précédents non clôturés, dans l'unité du jugement (une devise quand toutes
+ * les lignes jusqu'au jour en portent une seule, sinon francs). En centimes.
+ * Lecture seule · elle n'écrit ni ne juge rien.
+ */
+export async function soldeDeCaisseAuJour(
+  prisma: Client,
+  tenantId: string,
+  compteId: string,
+  exercice: { id: string; dateDebut: Date },
+  jour: string,
+): Promise<{ devise: string | null; soldeCentimes: number; exercicesRemontes: string[] }> {
+  const existants = (await mouvementsParJour(prisma, tenantId, compteId, exercice.id, undefined)).filter((m) => m.jour <= jour);
+  // Les exercices antérieurs que le solde remonte sont RENDUS (relecture m4) ·
+  // l'arrêté compte leur brouillard et le dit, au lieu de le lire sans un mot.
+  const exercicesRemontes: string[] = [];
+  const ouverture = await mouvementsDOuverture(prisma, tenantId, compteId, exercice, exercicesRemontes);
+  const { devise } = uniteDuJugement([...ouverture, ...existants]);
+  const solde = [...ouverture, ...existants].reduce((s, m) => s + netDansLUnite(m, devise), 0);
+  return { devise, soldeCentimes: Math.round(solde), exercicesRemontes };
 }

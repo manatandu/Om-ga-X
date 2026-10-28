@@ -37,6 +37,21 @@ const EPSILON = 0.005;
 /** Ce que le sélecteur de rattachement montre à la fois · le reste se cherche. */
 const PLAFOND_RATTACHABLES = 200;
 
+/**
+ * L'ENGAGEMENT NÉ D'UN BON DE COMMANDE SE TIENT PAR SON BON (ligne
+ * microfina-m2, idée 2) · la facture l'exécute depuis le bon, le bon le clôt
+ * et le rouvre. Retouché à la main ici, le bon et son engagement diraient
+ * deux restes différents, et le tableau d'exécution budgétaire lirait l'un
+ * quand le registre des bons montrerait l'autre.
+ */
+export function refuserSiNeDUnBon(engagement: { bonCommandeId: string | null }) {
+  if (engagement.bonCommandeId) {
+    throw new BadRequestException(
+      "Cet engagement est né d'un bon de commande · il se tient par son bon (Traitement > Achats > Bons de commande fournisseur) : la facture l'exécute, le bon le clôt ou le rouvre.",
+    );
+  }
+}
+
 @Injectable()
 export class EngagementService {
   constructor(private readonly prisma: PrismaService) {}
@@ -93,6 +108,7 @@ export class EngagementService {
       orderBy: [{ date: 'asc' }, { reference: 'asc' }],
       include: {
         section: { select: { id: true, code: true, intitule: true } },
+        bonCommande: { select: { id: true, numero: true } },
         executions: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -114,6 +130,7 @@ export class EngagementService {
         statut: e.statut,
         motifCloture: e.motifCloture,
         section: e.section,
+        bonCommande: e.bonCommande,
         montantExecute: execute,
         resteAExecuter: EngagementService.resteAExecuter(e),
         executions: e.executions.map((x) => ({
@@ -201,6 +218,7 @@ export class EngagementService {
       include: { executions: { select: { montant: true, ecritureId: true } }, exercice: { select: { statut: true } } },
     });
     if (!engagement) throw new NotFoundException('Engagement introuvable dans ce dossier.');
+    refuserSiNeDUnBon(engagement);
     refuserSiExerciceBudgetaireClos(engagement.exercice.statut);
     if (engagement.statut === StatutEngagement.CLOS) {
       throw new BadRequestException(
@@ -282,9 +300,10 @@ export class EngagementService {
   async detacherExecution(tenantId: string, engagementId: string, executionId: string) {
     const execution = await this.prisma.executionEngagement.findFirst({
       where: { id: executionId, engagementId, engagement: { tenantId } },
-      select: { id: true, engagement: { select: { exercice: { select: { statut: true } } } } },
+      select: { id: true, engagement: { select: { bonCommandeId: true, exercice: { select: { statut: true } } } } },
     });
     if (!execution) throw new NotFoundException("Rattachement introuvable sur cet engagement.");
+    refuserSiNeDUnBon(execution.engagement);
     refuserSiExerciceBudgetaireClos(execution.engagement.exercice.statut);
     await this.prisma.executionEngagement.delete({ where: { id: executionId } });
     return { detache: true };
@@ -299,9 +318,10 @@ export class EngagementService {
   async clore(tenantId: string, engagementId: string, dto: CloreEngagementDto) {
     const engagement = await this.prisma.engagementDepense.findFirst({
       where: { id: engagementId, tenantId },
-      select: { id: true, statut: true, exercice: { select: { statut: true } } },
+      select: { id: true, statut: true, bonCommandeId: true, exercice: { select: { statut: true } } },
     });
     if (!engagement) throw new NotFoundException('Engagement introuvable dans ce dossier.');
+    refuserSiNeDUnBon(engagement);
     refuserSiExerciceBudgetaireClos(engagement.exercice.statut);
     if (engagement.statut === StatutEngagement.CLOS) {
       throw new BadRequestException('Cet engagement est déjà clos.');
@@ -321,9 +341,10 @@ export class EngagementService {
   async rouvrir(tenantId: string, engagementId: string) {
     const engagement = await this.prisma.engagementDepense.findFirst({
       where: { id: engagementId, tenantId },
-      select: { id: true, statut: true, exercice: { select: { statut: true } } },
+      select: { id: true, statut: true, bonCommandeId: true, exercice: { select: { statut: true } } },
     });
     if (!engagement) throw new NotFoundException('Engagement introuvable dans ce dossier.');
+    refuserSiNeDUnBon(engagement);
     refuserSiExerciceBudgetaireClos(engagement.exercice.statut);
     if (engagement.statut !== StatutEngagement.CLOS) {
       throw new BadRequestException("Cet engagement n'est pas clos.");
@@ -342,9 +363,10 @@ export class EngagementService {
   async supprimer(tenantId: string, engagementId: string) {
     const engagement = await this.prisma.engagementDepense.findFirst({
       where: { id: engagementId, tenantId },
-      select: { id: true, _count: { select: { executions: true } }, exercice: { select: { statut: true } } },
+      select: { id: true, bonCommandeId: true, _count: { select: { executions: true } }, exercice: { select: { statut: true } } },
     });
     if (!engagement) throw new NotFoundException('Engagement introuvable dans ce dossier.');
+    refuserSiNeDUnBon(engagement);
     refuserSiExerciceBudgetaireClos(engagement.exercice.statut);
     if (engagement._count.executions > 0) {
       throw new BadRequestException(

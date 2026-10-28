@@ -12,5 +12,7 @@ import { CreancesDouteusesService } from './creances-douteuses.service';
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, LettrageModule, TvaModule],
   controllers: [CreancesDouteusesController],
   providers: [CreancesDouteusesService],
+  // Ligne microfina-m1 · la concordance relit le rapprochement du module.
+  exports: [CreancesDouteusesService],
 })
 export class CreancesDouteusesModule {}

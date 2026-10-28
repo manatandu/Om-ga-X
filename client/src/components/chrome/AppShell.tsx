@@ -351,12 +351,16 @@ export function AppShell() {
             { label: 'Règlement des tiers', chemin: '/reglements', onClick: () => navigate('/reglements') },
             // Banque ou caisse vers une autre, par le 585 (virements-fonds/).
             { label: 'Virement de fonds', chemin: '/virements-fonds', onClick: () => navigate('/virements-fonds') },
+            // Ligne microfina-m2, idée 5 · la caisse comptée au jour, par coupures (inventaire/).
+            { label: 'Arrêté de caisse', chemin: '/arrete-caisse', onClick: () => navigate('/arrete-caisse') },
             // Ligne sage-l3, fonction 40 · chèques et cartes reçus, bordereau, avis de crédit (remises/).
             { label: 'Remises en banque', chemin: '/remises', onClick: () => navigate('/remises') },
             // Ligne sage-l3, fonction 39 · effets à recevoir et à payer, escompte, impayé (effets/).
             { label: 'Effets de commerce', chemin: '/effets', onClick: () => navigate('/effets') },
             // Ligne sage-l3, fonction 47 · crédits de trésorerie et dépôts à terme (tresorerie/).
             { label: 'Financements et placements', chemin: '/financements-placements', onClick: () => navigate('/financements-placements') },
+            // Ligne microfina-m2, idée 9 · chéquiers et chèques tirés, encaissés au rapprochement (banques/).
+            { label: 'Chèques émis', chemin: '/cheques-emis', onClick: () => navigate('/cheques-emis') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
             // Ligne sage-l3, fonction 45 · relevés importés par compte, édition chaînée (rapprochement/).
             { label: 'Extraits bancaires', chemin: '/extraits-bancaires', onClick: () => navigate('/extraits-bancaires') },
@@ -406,7 +410,13 @@ export function AppShell() {
             // La colonne Engagement du tableau d'exécution budgétaire (jeu
             // « projets de développement »). Le serveur refuse pareil.
             ...(estSycebnl
-              ? [{ label: 'Registre des engagements de dépense', chemin: '/engagements', onClick: () => navigate('/engagements') }]
+              ? [
+                  { label: 'Registre des engagements de dépense', chemin: '/engagements', onClick: () => navigate('/engagements') },
+                  // Ligne microfina-m2, idée 2 · le bon de commande fournisseur
+                  // fait naître l'engagement (SYCEBNL, Application 22, règle (d)),
+                  // rangé à côté du registre qu'il nourrit.
+                  { label: 'Bons de commande fournisseur', chemin: '/bons-commande', onClick: () => navigate('/bons-commande') },
+                ]
               : []),
             // Les facilités douanières de l'article 39 de la loi 004/2001 · un
             // arrêté prévisionnel périmé se découvre d'ordinaire au port.
@@ -541,6 +551,8 @@ export function AppShell() {
           separateurAvant: true,
           items: [
             { label: 'Analyse et contrôles', chemin: '/controles', onClick: () => navigate('/controles') },
+            // Ligne microfina-m1, idée 12 · les confrontations des modules, réunies, en lecture.
+            { label: 'Concordance des modules', chemin: '/concordance', onClick: () => navigate('/concordance') },
             { label: 'Dossier de révision', chemin: '/dossier-revision', onClick: () => navigate('/dossier-revision') },
             // L'inventaire extra-comptable, ses deux moitiés. Elles sont ici et
             // non sous « États financiers » : un comptage de magasin n'est pas

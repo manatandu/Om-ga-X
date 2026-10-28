@@ -10,6 +10,8 @@ import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
 import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.module';
 import { PiecesJointesSectionController } from './pieces-jointes-section.controller';
+import { BonsCommandeController } from './bons-commande.controller';
+import { BonsCommandeService } from './bons-commande.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, PiecesJointesModule],
@@ -17,8 +19,9 @@ import { PiecesJointesSectionController } from './pieces-jointes-section.control
   // elle lit les sections et écrit les OD, sans module de plus ni import
   // circulaire avec la comptabilité générale.
   // Ligne sage-l6 · les documents des sections (fonction 22).
-  controllers: [AnalytiqueController, ComptabiliteGestionController, PiecesJointesSectionController],
-  providers: [AnalytiqueService, EtatsAnalytiquesService, EngagementService, OdAnalytiqueService, ComptabiliteGestionService],
+  // Ligne microfina-m2, idée 2 · les bons de commande qui font naître les engagements.
+  controllers: [AnalytiqueController, ComptabiliteGestionController, PiecesJointesSectionController, BonsCommandeController],
+  providers: [AnalytiqueService, EtatsAnalytiquesService, EngagementService, OdAnalytiqueService, ComptabiliteGestionService, BonsCommandeService],
   exports: [AnalytiqueService, EngagementService],
 })
 export class AnalytiqueModule {}

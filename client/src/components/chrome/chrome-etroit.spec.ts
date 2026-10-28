@@ -239,7 +239,10 @@ describe('menu « État » à 360 px', () => {
     // Le 2026-10-04 (ligne A20), la comptabilité de gestion est entrée sous
     // « Suivi et prévision », à côté du simulateur · un coût, un seuil, une
     // répartition en OD analytiques, rien au livre-journal. Les bornes tiennent.
-    expect(tous).toHaveLength(31);
+    // Le 2026-10-25 (ligne microfina-m1, idée 12), la concordance des modules
+    // avec la comptabilité est entrée sous « Contrôle et révision » · une
+    // relecture du cabinet, qui n'écrit rien. Les bornes tiennent.
+    expect(tous).toHaveLength(32);
     expect([...vues].sort()).toEqual([...tous].sort());
     // DEUX BORNES, et plus un chiffre relevé d'un cran à chaque ajout · c'est
     // la troisième fois en une journée qu'une édition nouvelle faisait tomber
@@ -403,8 +406,11 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // « Remises en banque » au même groupe (ligne sage-l3, fonction 40,
     // 2026-10-22), puis « Effets de commerce » (fonction 39, même jour) et
     // « Extraits bancaires » (fonction 45, même jour), puis « Financements et
-    // placements » (fonction 47, même jour).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 26],
+    // placements » (fonction 47, même jour). Puis, ligne microfina-m2 (2026-10-25),
+    // « Bons de commande fournisseur » sous « Déclarations et registres », à
+    // côté du registre des engagements qu'il nourrit, « Arrêté de caisse » et
+    // « Chèques émis » sous « Tiers et trésorerie ».
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 29],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);

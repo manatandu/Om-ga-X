@@ -111,6 +111,10 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
       solde491: 400_000,
       depreciationModule: 400_000,
       horsModule491: 0,
+      // Concordance (Microfina M1) · aucun solde du 416 ni du 491 hors des
+      // comptes des créances du module.
+      solde416SansCreance: 0,
+      solde491SansCreance: 0,
     });
 
     // L'écriture de la dotation est TENUE · elle ne se supprime pas du journal.
@@ -136,6 +140,10 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
       solde491: 0,
       depreciationModule: 0,
       horsModule491: 0,
+      // Concordance (Microfina M1) · aucun solde du 416 ni du 491 hors des
+      // comptes des créances du module.
+      solde416SansCreance: 0,
+      solde491SansCreance: 0,
     });
     // Une créance dont une revue est gardée, même annulée, ne se retire plus.
     await expect(appelApi(page, 'DELETE', `/creances-douteuses/${creance.id}`)).rejects.toThrow(/400 · .*même annulés/);

@@ -250,7 +250,9 @@ describe('la modification d’une fiche', () => {
         { compteId: 'c-2451', debit: 15_000_000, credit: 0 },
         { compteId: 'c-521', debit: 0, credit: 15_000_000 },
       ],
-    });
+    // L'auteur de la retouche (relecture du circuit de visa, M3) · absent, la
+    // pièce était dite d'auteur inconnu et refusée au double regard.
+    }, 'u-1');
     expect(prisma.immobilisation.update.mock.calls[0][0].data).toMatchObject({ valeurOrigine: 15_000_000 });
     expect(prisma.immobilisation.update.mock.calls[0][0].data.ecritureAcquisition).toBeUndefined();
     expect(prisma.ecriture.deleteMany).not.toHaveBeenCalled();

@@ -157,6 +157,11 @@ const EXCEPTIONS: Exception[] = [
   // Ligne sage-l6 · la pièce jointe se dépose sur une écriture désignée par son identifiant, simulation comprise (une
   // simulation se justifie comme une opération) ; la règle du retrait lit son statut, elle ne le filtre pas.
   { fichier: 'src/modules/comptabilite/pieces-jointes-ecriture.ts', fonction: 'lireEcritureDesPieces', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne microfina-m1 · le visa et son retrait relisent, sous le verrou, la pièce désignée par son identifiant, et
+  // la garde même lit son statut (refus nommé hors du brouillard) ; la fiche d'imputation dit le statut qu'elle lit.
+  { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'viserEcritures', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'retirerVisas', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'ficheImputation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'verifierComptesCollectifs', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'trouverEnBrouillard', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },

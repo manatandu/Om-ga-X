@@ -526,6 +526,17 @@ export class ModifierVisaRibsDto {
 }
 
 /**
+ * CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1) · une option,
+ * désactivée par défaut, comme le double regard · aucun texte lu ne l'impose
+ * (AUDCIF art. 22, 2° et 69 ; SYCEBNL art. 16, 2)). Voir
+ * `comptabilite/circuit-visa.ts`.
+ */
+export class ModifierCircuitVisaDto {
+  @IsBoolean()
+  circuitVisa!: boolean;
+}
+
+/**
  * REFUSER DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
  * décision D3) · une option, désactivée par défaut, comme le double regard ·
  * l'AUDCIF art. 22, 3° impose la clôture informatique sans la subordonner à

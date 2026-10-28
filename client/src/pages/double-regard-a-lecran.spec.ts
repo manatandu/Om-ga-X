@@ -31,13 +31,13 @@ describe('le brouillard rend compte des écartées', () => {
     // réapparaître « Rien à valider » sur un lot entièrement refusé.
     const i = brouillard.indexOf('const phraseValidation');
     expect(i).toBeGreaterThan(0);
-    const corps = brouillard.slice(i, i + 900);
+    const corps = brouillard.slice(i, i + 2200);
     expect(corps.indexOf('refuseesSecondRegard > 0')).toBeLessThan(corps.indexOf('r.validees === 0'));
   });
 
   it('la phrase servie porte le motif sourcé, pas seulement un nombre', () => {
     const i = brouillard.indexOf('const phraseValidation');
-    expect(brouillard.slice(i, i + 900)).toContain('r.motifRefus');
+    expect(brouillard.slice(i, i + 2200)).toContain('r.motifRefus');
   });
 });
 
@@ -74,8 +74,8 @@ describe("l'option se règle, et l'écran dit qu'aucun texte ne l'impose", () =>
   it('le contrat de validation porte les cinq compteurs', () => {
     const i = types.indexOf('export type ResultatValidation');
     expect(i).toBeGreaterThan(0);
-    const bloc = types.slice(i, i + 700);
-    for (const champ of ['validees', 'dejaValidees', 'refuseesSecondRegard', 'sousDerogation', 'motifRefus']) {
+    const bloc = types.slice(i, i + 1400);
+    for (const champ of ['validees', 'dejaValidees', 'refuseesSecondRegard', 'sousDerogation', 'motifRefus', 'refuseesAuteurInconnu', 'refuseesVisa', 'motifVisa']) {
       expect(bloc).toContain(champ);
     }
   });

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PrismaService } from '../../common/prisma.service';
 import { refuserBailleurHorsSycebnl } from '../../common/bailleur-referentiel';
 import { refuserSiLignesFigees } from '../exercice/gel-cloture';
-import { ClasseCompte, Prisma, Referentiel, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, Prisma, Referentiel, StatutEcriture, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import {
   CreerPlanAnalytiqueDto,
   CreerSectionDto,
@@ -17,6 +17,7 @@ import { motifRefusClasseVentilee, motifRefusMontantAnalytique } from './od-anal
 import { refuserSiExerciceBudgetaireClos } from './exercice-budgetaire-clos';
 import { libelleReference, referencesVers, type Reference } from '../../common/suppression/references';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { contenuChange } from '../comptabilite/circuit-visa';
 import { idApres, lireParLots } from '../../common/lecture-par-lots';
 import {
   ReleveLongueurs,
@@ -621,7 +622,7 @@ export class AnalytiqueService {
    * n'y en a aucune. Une dépense peut ainsi être partagée entre deux projets
    * et rapportée à un seul bailleur.
    */
-  async ventilerLigne(tenantId: string, ligneEcritureId: string, ventilations: LigneVentilationDto[]) {
+  async ventilerLigne(tenantId: string, ligneEcritureId: string, ventilations: LigneVentilationDto[], userId: string | null) {
     const ligne = await this.prisma.ligneEcriture.findFirst({
       where: { id: ligneEcritureId, ecriture: { tenantId } },
       include: { compte: { select: { numero: true, classe: true } } },
@@ -685,6 +686,7 @@ export class AnalytiqueService {
 
     const plansTouches = [...parPlan.keys()];
     await transactionJournalisee(this.prisma, async (tx) => {
+      await this.poserAuteurDeLaVentilation(tx, tenantId, ligne.ecritureId, userId);
       // On n'efface que les plans touchés : ventiler l'axe Projet ne doit pas
       // effacer l'axe Bailleur posé auparavant.
       await tx.ventilationAnalytique.deleteMany({
@@ -710,15 +712,41 @@ export class AnalytiqueService {
   }
 
   /** Efface toute ventilation de la ligne, tous plans confondus. */
-  async effacerVentilation(tenantId: string, ligneEcritureId: string) {
+  async effacerVentilation(tenantId: string, ligneEcritureId: string, userId: string | null) {
     const ligne = await this.prisma.ligneEcriture.findFirst({
       where: { id: ligneEcritureId, ecriture: { tenantId } },
-      select: { id: true },
+      select: { id: true, ecritureId: true },
     });
     if (!ligne) throw new NotFoundException('Ligne d\'écriture introuvable pour ce dossier');
     await refuserSiLignesFigees(this.prisma, tenantId, [ligneEcritureId], 'effacer la ventilation');
-    await this.prisma.ventilationAnalytique.deleteMany({ where: { ligneEcritureId } });
+    await transactionJournalisee(this.prisma, async (tx) => {
+      await this.poserAuteurDeLaVentilation(tx, tenantId, ligne.ecritureId, userId);
+      await tx.ventilationAnalytique.deleteMany({ where: { ligneEcritureId } });
+    });
     return { efface: true };
+  }
+
+  /**
+   * LA VENTILATION EST DU CONTENU DE LA PIÈCE (ligne microfina-m1, relecture
+   * M2 · convention C2, le budget fait partie de ce que le responsable
+   * approuve d'une dépense). Elle faisait tomber le visa par l'empreinte, mais
+   * l'auteur du dernier contenu restait celui de la saisie · un comptable qui
+   * ventilait le brouillard d'un collègue le validait ensuite sous le double
+   * regard sans que rien ne le dise. Au brouillard, la tête est relue SOUS
+   * VERROU (`FOR UPDATE`, la validation prend le même) et nomme l'auteur de la
+   * ventilation ; validée, l'écriture n'a plus de visa ni de double regard à
+   * tenir, et rien n'est posé sur elle.
+   */
+  private async poserAuteurDeLaVentilation(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ecritureId: string,
+    userId: string | null,
+  ) {
+    const [tete] = await tx.$queryRaw<{ statut: string }[]>`
+      SELECT "statut"::text AS "statut" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    if (tete?.statut !== StatutEcriture.BROUILLARD) return;
+    await tx.ecriture.update({ where: { id: ecritureId }, data: contenuChange(userId, new Date()) });
   }
 
   async ventilationsDeLigne(tenantId: string, ligneEcritureId: string) {

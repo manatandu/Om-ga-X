@@ -1,3 +1,4 @@
+import { motifComptabilisationSansVisa } from '../comptabilite/circuit-visa';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { SensFacture, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -44,6 +45,14 @@ export class ComptabilisationFactureService {
     });
     if (!f) throw new NotFoundException('Facture introuvable dans ce dossier.');
     if (f.ecritureId) throw new BadRequestException('Cette facture est déjà liée à une écriture · elle ne se passe pas deux fois.');
+    // LE CIRCUIT DE VISA (ligne microfina-m1, idée 1 · CPCC ch. 3, § 3.1.1,
+    // « suit l'approbation des factures […] et réceptionne celles
+    // approuvées ») · sous l'option du dossier, une facture ne se
+    // comptabilise qu'une fois visée. Une facture ne se modifie pas · le visa
+    // lu ici ne peut plus tomber avant la pièce.
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { circuitVisa: true } });
+    const sansVisa = motifComptabilisationSansVisa(f, dossier.circuitVisa === true);
+    if (sansVisa) throw new BadRequestException(sansVisa);
     // Le taux d'une ligne se relit à son dossier (audit final F120) · une pièce
     // enregistrée avant la vérification ne passerait pas le compte d'un voisin.
     if (f.lignes.some((l) => l.tauxTva && l.tauxTva.tenantId !== tenantId)) {

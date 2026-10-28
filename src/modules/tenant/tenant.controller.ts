@@ -12,6 +12,7 @@ import {
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
   ModifierVisaRibsDto,
+  ModifierCircuitVisaDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
   ModifierSeuilEcartReglementDto,
@@ -187,6 +188,16 @@ export class TenantController {
     @Body() dto: ModifierVisaRibsDto,
   ) {
     return this.tenantService.modifierVisaRibs(user.tenantId, dto.visaRibs);
+  }
+
+  /** Circuit de visa avant validation · voir `comptabilite/circuit-visa.ts`. */
+  @Patch('circuit-visa')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierCircuitVisa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierCircuitVisaDto,
+  ) {
+    return this.tenantService.modifierCircuitVisa(user.tenantId, dto.circuitVisa);
   }
 
   /** Création d'un compte pendant la saisie · ligne sage-l1, fonction 14. */

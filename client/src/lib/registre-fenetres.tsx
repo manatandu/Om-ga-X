@@ -97,6 +97,7 @@ const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').
 const BrouillardPage = lazy(() => import('../pages/BrouillardPage').then((m) => ({ default: m.BrouillardPage })));
 const ImportPage = lazy(() => import('../pages/ImportPage').then((m) => ({ default: m.ImportPage })));
 const ControlesPage = lazy(() => import('../pages/ControlesPage').then((m) => ({ default: m.ControlesPage })));
+const ConcordancePage = lazy(() => import('../pages/ConcordancePage').then((m) => ({ default: m.ConcordancePage })));
 const DossierRevisionPage = lazy(() =>
   import('../pages/DossierRevisionPage').then((m) => ({ default: m.DossierRevisionPage })),
 );
@@ -106,6 +107,9 @@ const DevisesPage = lazy(() => import('../pages/DevisesPage').then((m) => ({ def
 const RelancesPage = lazy(() => import('../pages/RelancesPage').then((m) => ({ default: m.RelancesPage })));
 const ConventionsFinancementPage = lazy(() => import('../pages/ConventionsFinancementPage').then((m) => ({ default: m.ConventionsFinancementPage })));
 const EngagementsPage = lazy(() => import('../pages/EngagementsPage').then((m) => ({ default: m.EngagementsPage })));
+const ChequesEmisPage = lazy(() => import('../pages/ChequesEmisPage').then((m) => ({ default: m.ChequesEmisPage })));
+const ArreteCaissePage = lazy(() => import('../pages/ArreteCaissePage').then((m) => ({ default: m.ArreteCaissePage })));
+const BonsCommandePage = lazy(() => import('../pages/BonsCommandePage').then((m) => ({ default: m.BonsCommandePage })));
 const OdAnalytiquesPage = lazy(() => import('../pages/OdAnalytiquesPage').then((m) => ({ default: m.OdAnalytiquesPage })));
 const ComptabiliteGestionPage = lazy(() =>
   import('../pages/ComptabiliteGestionPage').then((m) => ({ default: m.ComptabiliteGestionPage })),
@@ -208,6 +212,10 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/reglements$/, titre: 'Règlement des tiers', titreCourt: 'Règlements', rendre: () => <ReglementsPage /> },
   { motif: /^\/virements-fonds$/, titre: 'Virement de fonds', titreCourt: 'Virements', rendre: () => <VirementsFondsPage /> },
   { motif: /^\/remises$/, titre: 'Remises en banque', titreCourt: 'Remises', rendre: () => <RemisesPage /> },
+  // Ligne microfina-m2, idée 5 · arrêté de caisse quotidien et plafond d'encaisse, aux deux référentiels.
+  // Ligne microfina-m2, idée 9 · le registre des chèques émis, aux deux référentiels.
+  { motif: /^\/cheques-emis$/, titre: 'Chèques émis', titreCourt: 'Chèques émis', rendre: () => <ChequesEmisPage /> },
+  { motif: /^\/arrete-caisse$/, titre: 'Arrêté de caisse', titreCourt: 'Arrêté de caisse', rendre: () => <ArreteCaissePage /> },
   { motif: /^\/remises\/types$/, titre: 'Types de remise', titreCourt: 'Types de remise', rendre: () => <RemisesPage ongletInitial="types" /> },
   { motif: /^\/effets$/, titre: 'Effets de commerce', titreCourt: 'Effets', rendre: () => <EffetsPage /> },
   { motif: /^\/extraits-bancaires$/, titre: 'Extraits bancaires', titreCourt: 'Extraits', rendre: () => <ExtraitsBancairesPage /> },
@@ -631,6 +639,8 @@ export const FENETRES: DefinitionFenetre[] = [
   { motif: /^\/brouillard$/, titre: 'Brouillard', titreCourt: 'Brouillard', rendre: () => <BrouillardPage /> },
   { motif: /^\/import$/, titre: 'Importer des données', titreCourt: 'Import', rendre: () => <ImportPage /> },
   { motif: /^\/controles$/, titre: 'Analyse et contrôles', titreCourt: 'Contrôles', rendre: () => <ControlesPage /> },
+  // Ligne microfina-m1, idée 12 · une lecture, aux deux référentiels · chaque famille relit la confrontation de son module.
+  { motif: /^\/concordance$/, titre: 'Concordance des modules', titreCourt: 'Concordance', rendre: () => <ConcordancePage /> },
   {
     motif: /^\/dossier-revision$/,
     titre: 'Dossier de révision',
@@ -703,6 +713,16 @@ export const FENETRES: DefinitionFenetre[] = [
     titreCourt: 'Engagements',
     referentielsApplicables: ['SYCEBNL'],
     rendre: () => <EngagementsPage />,
+  },
+  {
+    // Ligne microfina-m2, idée 2 · le bon remis fait naître l'engagement de
+    // ses lignes budgétaires (Application 22, règle (d)). SYCEBNL seul, comme
+    // le registre, et le serveur refuse pareil (`@ReferentielsAutorises`).
+    motif: /^\/bons-commande$/,
+    titre: 'Bons de commande fournisseur',
+    titreCourt: 'Bons de commande',
+    referentielsApplicables: ['SYCEBNL'],
+    rendre: () => <BonsCommandePage />,
   },
   // LE MENU « ? » · comme celui de Sage 100 i7 (Rubriques d'aide, Consulter le
   // manuel, Sage sur le Web, À propos · manuel de référence de Sage 100

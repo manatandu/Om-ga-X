@@ -74,6 +74,9 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   RibsTiersController: FonctionMetier.TIERS,
   LieuxLivraisonController: FonctionMetier.TIERS,
   EcritureController: FonctionMetier.SAISIE,
+  // Ligne microfina-m1 · le visa précède la validation, il en suit la fonction ·
+  // un profil sans « Validation » ne vise pas plus qu'il ne valide.
+  CircuitVisaController: FonctionMetier.VALIDATION,
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,
@@ -91,6 +94,9 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   TitresPlacementController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
+  // Ligne microfina-m2 · arrêté de caisse et registre des chèques émis.
+  ArretesCaisseController: FonctionMetier.TRESORERIE,
+  ChequesController: FonctionMetier.TRESORERIE,
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
   // 153) · elle dit quelle facture le règlement paie.
   ImputationsPaiementsController: FonctionMetier.TRESORERIE,
@@ -114,6 +120,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   MagasinController: FonctionMetier.STOCKS,
   EmballagesController: FonctionMetier.STOCKS,
   AnalytiqueController: FonctionMetier.ANALYTIQUE,
+  // Ligne microfina-m2 · le bon de commande engage le budget (SYCEBNL, Application 22).
+  BonsCommandeController: FonctionMetier.ANALYTIQUE,
   ComptabiliteGestionController: FonctionMetier.ANALYTIQUE,
   BailleurController: FonctionMetier.ANALYTIQUE,
   ConventionFinancementController: FonctionMetier.ANALYTIQUE,
