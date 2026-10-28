@@ -323,6 +323,8 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain("Elle ne satisfait pas à elle seule à l'obligation de conservation");
     expect(deplie).toContain("Ce n'est pas une réversibilité");
     expect(deplie).toContain("Ce n'est pas un instantané");
+    // Décision du 2026-10-28 · un libellé en « = » n'est pas neutralisé, et c'est dit.
+    expect(deplie).toContain('peut être lu comme une FORMULE');
     // Audit final F97, puis ligne sage-l6 (fonction 22) · les pièces jointes
     // SONT archivées, écritures comprises ; ce que le logiciel ne garde pas,
     // ce sont les ORIGINAUX, et il ne vérifie pas qu'une écriture a sa pièce.

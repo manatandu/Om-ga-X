@@ -125,7 +125,7 @@ export function OngletDemandesConge({ salaries, peutEcrire }: { salaries: Salari
         Demandes de congé
         <Aide
           titre="Demandes de congé"
-          texte="La date du congé se fixe de commun accord. La demande du travailleur se saisit avec sa date ; un autre utilisateur du dossier l'accorde ou la refuse. L'accord pose le congé par la route ordinaire, avec ses contrôles (solde, absences, bulletins émis). Le circuit est facultatif : le congé se pose aussi directement dans l'onglet Congés. Le délai de six mois de l'article 140 n'est pas calculé, le texte ne disant pas de quelle date il court."
+          texte="La date du congé se fixe de commun accord. La demande du travailleur se saisit avec sa date ; un autre utilisateur du dossier l'accorde ou la refuse. L'accord pose le congé par la route ordinaire, avec ses contrôles (solde, absences, bulletins émis). Le circuit est facultatif : le congé se pose aussi directement dans l'onglet Congés. Le délai de six mois de l'article 140 court de la naissance du droit, à l'expiration de l'année de services · le compteur des congés signale les jours nés non pris six mois après, sans jamais refuser le congé."
           source="Code du travail, art. 140, al. 4 et art. 141"
         />
       </div>

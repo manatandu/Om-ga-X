@@ -70,7 +70,12 @@ describe('Échéancier des contrats (art. 42, 43 al. 4, 69)', () => {
   });
   it('un terme de CDD passé reste nommé tant que le contrat court', () => {
     const cdd = { ...base, type: 'DUREE_DETERMINEE', clauseEssai: false, dateFinPrevue: d('2027-05-31'), emploiPermanent: false };
-    expect(echeancesDuContrat(cdd, d('2028-01-01'))[0]).toMatchObject({ objet: 'FIN_CDD', depassee: true });
+    const e = echeancesDuContrat(cdd, d('2027-06-10'))[0];
+    expect(e).toMatchObject({ objet: 'FIN_CDD', depassee: true, article: 'art. 69 et 41, al. 3' });
+    // Art. 41, al. 3 · la continuation de service vaut de plein droit CDI,
+    // dit avec sa formule, sans requalifier en base.
+    expect(e.consequence).toMatch(/de plein droit/);
+    expect(e.consequence).toMatch(/art\. 41, al\. 2/);
   });
   it("le CDD pour emploi permanent rappelle l'art. 42 · un contrat terminé ne figure plus", () => {
     const cdd = { ...base, type: 'DUREE_DETERMINEE', clauseEssai: false, dateFinPrevue: d('2027-05-31'), emploiPermanent: true };

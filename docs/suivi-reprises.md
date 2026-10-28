@@ -173,7 +173,7 @@ de produit.
   servie.
 - Relevé de la ligne · la création admet une valeur résiduelle supérieure à
   la valeur d'origine · la borner dans `preparerFiche`.
-- Question ouverte (2026-10-28) · NOTE 3A du SYSCOHADA, le transfert d'un
+- Question ouverte (2026-10-28), le corpus étant muet · NOTE 3A du SYSCOHADA, le transfert d'un
   bien entre établissements paraît en « Acquisitions » chez celui qui reçoit
   et en « Cessions » chez celui qui cède. Lu · le ch. 6 du Titre IX ne
   définit pas ses colonnes, la fiche du compte 18 ne parle pas du tableau des
@@ -640,23 +640,28 @@ n° 23/053, art. 68 et 69 (`fiscalite-rdc`, `code-general-2026/references/05`)
 art. 1er (`smig-cotisations-textes-application/`) · fiche du compte 66 des
 deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · AUPSRVE, art. 184.
 
-- **Délai de six mois de l'art. 140, al. 4** (« sans toutefois que la prise
-  effective du congé puisse dépasser de six mois la date prévue pour son
-  ouverture ») · « la date prévue pour son ouverture » se lit soit la date où
-  le droit naît (al. 3, expiration de l'année de services), soit la date que
-  l'accord a fixée. Aucun texte lu ne départage · aucun refus ni avertissement
-  n'est codé (`suivi-personnel.ts`). Question à Manasse.
-- **Poursuite des services après le terme d'un CDD** · l'art. 69 dit que le
-  contrat prend fin au terme ; l'art. 41, al. 3 requalifie « la continuation
-  de service en dehors des cas prévus à l'alinéa précédent » (renouvellements)
-  ; aucun article lu ne dit expressément le sort d'un CDD dont le travailleur
-  reste en service au-delà du terme sans renouvellement. L'échéancier dit le
-  terme passé, sans requalifier.
-- **Deux conventions pour le plafond de l'essai** · `verdictEssai`
-  (`regles-contrat-travail.ts`) convertit « un mois » et « six mois » en 30 et
-  180 jours ; l'échéancier de la ligne les compte de date à date, comme le
-  plafond de l'art. 41. À aligner (date à date, lecture la plus proche du
-  texte) dans une ligne qui touche le contrôle des contrats.
+- **Délai de six mois de l'art. 140, al. 4** · TRANCHÉ PAR LA LOI
+  (2026-10-28). La seule date que l'article fixe est celle de l'al. 3 (« le
+  droit au congé naît à l'expiration d'une année de services comptée de date
+  à date ») ; lire « la date prévue pour son ouverture » comme la date de
+  l'accord ferait borner l'accord par lui-même. Le délai court de la
+  naissance du droit, lecture qui protège aussi le travailleur (P5). C'est
+  celle que le compteur des congés servait déjà (`compteurConges`, signal
+  des jours nés non pris six mois après) ; dit, jamais refusé (al. 2, le
+  travailleur ne peut renoncer au congé). Bulle de l'écran mise à jour.
+- **Poursuite des services après le terme d'un CDD** · TRANCHÉ PAR LA LOI
+  (2026-10-28). Art. 41, al. 3 · « la continuation de service en dehors des
+  cas prévus à l'alinéa précédent » (travaux saisonniers, ouvrages bien
+  définis, travaux fixés par arrêté) « constitue[nt] de plein droit
+  l'exécution d'un contrat de travail à durée indéterminée ». L'échéancier
+  le dit sur un terme passé d'un contrat qui court, avec la formule et
+  l'exception de l'al. 2, sans requalifier en base (P1).
+- **Plafond de l'essai** · TRANCHÉ PAR LA LOI (2026-10-28). « Un mois » et
+  « six mois » (art. 43, al. 3) se comptent de date à date, comme l'art. 41
+  et l'art. 140, al. 3 · `verdictEssai` compte désormais comme l'échéancier
+  (`plafondEssaiEnJours`, 181 jours pour un essai entré le 5 janvier), les
+  trente jours par mois ne servant plus qu'en repli dit, date d'entrée
+  illisible.
 - **Frais de mission sur un bulletin stipulé en dollars** · refusés, avec
   l'issue (écriture au 6384 au journal de trésorerie) ; le cours qui
   convertirait un frais en francs vers la stipulation n'est fixé par aucun
@@ -664,11 +669,61 @@ deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · AUPSRVE, art. 184.
 - **Avance de mission** (somme remise avant le départ, régularisée au retour)
   et **ventilation analytique** des frais de mission par projet ou bailleur ·
   non servies ; l'avance relève du 4211 et de l'art. 112, c), sa
-  régularisation par les frais justifiés reste à concevoir.
+  régularisation par les frais justifiés reste à concevoir. Fonction
+  nouvelle, sous le gel · au suivi, pas une question de droit.
 - **Visa d'un plan d'étalement par un second utilisateur** (idée 2 de la
-  partie C de l'audit Microfina++) · non servi ; le plan n'est qu'une
-  proposition, la retenue reste celle que le bulletin porte.
+  partie C de l'audit Microfina++) · non servi ; aucun texte ne l'impose
+  (AUDCIF art. 69, procédures « sous [la] responsabilité » de l'entité), le
+  plan n'est qu'une proposition, la retenue reste celle que le bulletin
+  porte. Fonction nouvelle, sous le gel.
+- **Reliquat d'un centime en fin de plan** · gardé · aucun texte ne fixe
+  l'arrondi d'une retenue étalée, la dernière échéance prend le reste comme
+  la dernière sortie d'un stock (convention d'OmegaX, dite).
 - **Déclaration de la main-d'œuvre (art. 218)** · formulaire, date limite et
   dérogations relèvent de l'arrêté du Ministre de l'art. 219, absent du
   corpus ; le bilan social de l'art. 218, al. 2 n'est pas servi. Texte à
   fournir.
+
+
+## Décisions par la loi du 2026-10-28 · questions des lignes Microfina et sécurité
+
+Demande de Manasse · « Réfère-toi à la loi et tranche ce que tu peux ».
+
+- **M1 · règlement d'une facture non visée** · NON BLOQUÉ. AUDCIF art. 16,
+  al. 2 (« les mouvements affectant le patrimoine de l'entité sont
+  enregistrés en comptabilité, opération par opération ») · un paiement
+  sorti de la trésorerie s'enregistre, visa ou non ; refuser sa saisie
+  laisserait le livre-journal sans l'opération. Le visa est une procédure
+  de contrôle interne que l'entité « détermine, sous sa responsabilité »
+  (art. 69 ; SYCEBNL art. 16, 2), qui exclut l'art. 69 par son art. 3) ·
+  OmegaX n'en ajoute pas une que nul texte n'impose. Seule la
+  comptabilisation de la facture attend son visa, comme aujourd'hui.
+- **M1 · deux visas** · GARDÉS. Le visa de la facture (contrôle interne,
+  art. 69) et la validation de l'écriture (entrée au livre-journal, art. 22,
+  2°) sont deux actes distincts ; l'un ne tient pas lieu de l'autre.
+- **M2 · bon remis en N et non facturé** · lecture littérale gardée · la
+  règle (d) le fait peser « au cours de l'exercice budgétaire » où il est
+  remis, et c'est dit à l'écran. **Bon de commande au SYSCOHADA** · aucun
+  engagement budgétaire au SYSCOHADA ; l'ouvrir aux sociétés comme pièce
+  d'achat serait une fonction nouvelle, sous le gel · fermé.
+- **M4 · sortie d'un bien détenu par un salarié** · SIGNALÉE, NON REFUSÉE.
+  AUDCIF art. 16, al. 2 · le vol, la perte ou la cession d'un bien détenu
+  est un mouvement du patrimoine qui s'enregistre ; le refuser tant que la
+  détention est ouverte empêcherait de l'inscrire. La détention se clôt à
+  côté.
+- **M4 · accès du gestionnaire de paie aux détentions** · FERMÉ. Aucun texte
+  ne le régit ; la règle du dépôt pour les rôles cantonnés est la liste
+  fermée (CLAUDE.md, § 8, cinq rôles). S'ouvre sur décision de Manasse.
+- **M4 · département et direction** · non repris, structure nouvelle sous le
+  gel · au suivi.
+- **Sécurité · formules dans l'archive de restitution** · la donnée n'est PAS
+  neutralisée (AUDCIF art. 22, 1°, restitution « sous une forme directement
+  intelligible » de ce qui est entré) ; le manifeste dit désormais le risque
+  à l'ouverture par un tableur et la façon d'ouvrir les CSV.
+
+Restent à Manasse, que nul texte ne régit · fermer Cloud Run au seul trafic
+du site (réglage de la console Google) ; retirer de l'index Git les fichiers
+engendrés (`node_modules/`, `dist/`) ; le cadrage du logiciel d'audit ;
+l'identité de l'éditeur pour la version 3 du contrat de licence (Code du
+numérique, art. 52) ; l'anomalie n° 9 de la NOTE 3A (corpus muet) ; l'arrêté
+de l'art. 219 (texte à fournir) ; la demande de mise à jour Dependabot.

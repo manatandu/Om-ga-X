@@ -123,6 +123,15 @@ l'ordre d'un CSV est ARBITRAIRE. La chronologie qu'exigent l'AUDCIF art. 17,
 Seul \`${fichierDeLaTable('EvenementAudit')}\` fait exception et se lit par son
 rang, sans quoi sa chaîne d'empreintes serait invérifiable.
 
+**Les CSV recopient chaque texte tel qu'il a été saisi.** Un libellé qui
+commence par « = », « + », « - » ou « @ » peut être lu comme une FORMULE par
+un tableur qui ouvre le fichier directement (Excel, Calc), et calculé à
+l'ouverture. OmegaX ne le neutralise pas · ajouter un caractère en tête
+changerait la donnée restituée, que l'AUDCIF art. 22, 1° veut restituer
+« sous une forme directement intelligible », telle qu'elle est entrée.
+Ouvrez ces fichiers par l'import de texte du tableur, colonnes en format
+texte, ou par un lecteur de CSV, et non par un double clic.
+
 **Ce n'est pas un instantané.** Les tables sont lues l'une après l'autre, sans
 transaction commune. Un dossier en cours d'usage pendant l'extraction peut
 donc produire une archive dont deux tables ne se correspondent pas

@@ -5,6 +5,7 @@ import {
   journeesJourLeJourAvant,
   JOURS_DECLARATION_ARTICLE_217,
   JOURS_PAR_MOIS_ESSAI,
+  plafondEssaiEnJours,
   aptitudeProvisoirePerimee,
   declarationsDues,
   joursEntre,
@@ -409,8 +410,9 @@ describe('la clause d’essai (art. 43)', () => {
 
   it('RÉDUITE DE PLEIN DROIT à six mois pour un travailleur qualifié', () => {
     const v = verdictEssai({ ...CONTRAT, clauseEssai: true, essaiConstateParEcrit: true, essaiDureeJours: 365 });
-    expect(v.plafondJours).toBe(6 * JOURS_PAR_MOIS_ESSAI);
-    expect(v.dureeOpposableJours).toBe(180);
+    // Du 5 janvier au 4 juillet 2026 inclus · 181 jours, de date à date.
+    expect(v.plafondJours).toBe(181);
+    expect(v.dureeOpposableJours).toBe(181);
     expect(v.reduiteDePleinDroit).toBe(true);
   });
 
@@ -422,8 +424,9 @@ describe('la clause d’essai (art. 43)', () => {
       essaiConstateParEcrit: true,
       essaiDureeJours: 90,
     });
-    expect(v.plafondJours).toBe(30);
-    expect(v.dureeOpposableJours).toBe(30);
+    // Du 5 janvier au 4 février 2026 inclus · 31 jours.
+    expect(v.plafondJours).toBe(31);
+    expect(v.dureeOpposableJours).toBe(31);
     expect(v.reduiteDePleinDroit).toBe(true);
   });
 
@@ -441,15 +444,26 @@ describe('la clause d’essai (art. 43)', () => {
     expect(v.reduiteDePleinDroit).toBe(false);
   });
 
-  it('AVOUE SA CONVERSION · le texte plafonne en MOIS, le logiciel compte en jours', () => {
-    // Un dossier dont l'essai tombe à un jour du plafond doit savoir que
-    // c'est la convention du logiciel qui tranche, et non le texte.
-    const v = verdictEssai({ ...CONTRAT, clauseEssai: true, essaiConstateParEcrit: true, essaiDureeJours: 181 });
-    expect(v.reserve).toContain('MOIS');
-    expect(v.reserve).toContain('convention du logiciel');
+  it('COMPTE LE MOIS DE DATE À DATE · 181 jours passent un essai commencé le 5 janvier, 182 sont réduits', () => {
+    const v181 = verdictEssai({ ...CONTRAT, clauseEssai: true, essaiConstateParEcrit: true, essaiDureeJours: 181 });
+    expect(v181.reduiteDePleinDroit).toBe(false);
+    const v182 = verdictEssai({ ...CONTRAT, clauseEssai: true, essaiConstateParEcrit: true, essaiDureeJours: 182 });
+    expect(v182.reduiteDePleinDroit).toBe(true);
+    expect(v182.reserve).toContain('de date à date');
     // Les deux alinéas que le logiciel ne peut PAS appliquer sont dits.
-    expect(v.reserve).toContain('alinéa 4');
-    expect(v.reserve).toContain("délais d'engagement et de route");
+    expect(v182.reserve).toContain('alinéa 4');
+    expect(v182.reserve).toContain("délais d'engagement et de route");
+  });
+
+  it('février · un mois depuis le 31 janvier 2026 s’arrête au dernier jour du mois suivant', () => {
+    expect(plafondEssaiEnJours('2026-01-31', 1)).toBe(28);
+    expect(plafondEssaiEnJours('2026-03-15', 1)).toBe(31);
+  });
+
+  it('REPLI DIT · une date d’entrée illisible garde trente jours par mois, et le dit', () => {
+    const v = verdictEssai({ ...CONTRAT, dateEntreeEnVigueur: '', clauseEssai: true, essaiConstateParEcrit: true, essaiDureeJours: 181 });
+    expect(v.plafondJours).toBe(6 * JOURS_PAR_MOIS_ESSAI);
+    expect(v.reserve).toContain('convention du logiciel');
   });
 });
 

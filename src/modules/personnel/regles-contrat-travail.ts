@@ -673,18 +673,36 @@ export interface VerdictEssai {
 }
 
 /**
- * UN MOIS OU SIX MOIS, ET LE TEXTE NE DIT PAS EN JOURS.
+ * UN MOIS OU SIX MOIS, COMPTÉS DE DATE À DATE (décision par la loi du
+ * 2026-10-28).
  *
- * L'article plafonne « un mois » et « six mois ». Les convertir en 30 et 180
- * jours est une CONVENTION, pas une lecture · elle est assumée ici, nommée, et
- * rendue avec la réserve, pour qu'un dossier dont l'essai tombe à un jour du
- * plafond sache que c'est la conversion qui tranche, et non le texte.
+ * L'article 43, al. 3 plafonne « un mois » et « six mois ». Le mois se compte
+ * de date à date, comme le plafond de deux ans de l'art. 41 et l'année de
+ * services de l'art. 140, al. 3 (« comptée de date à date ») · un essai
+ * commencé le 5 janvier plafonne au 4 juillet inclus, soit 181 jours, et non
+ * 180. La conversion à trente jours par mois, servie jusque-là, était une
+ * convention du logiciel qui raccourcissait l'essai d'un ou deux jours sur la
+ * plupart des dates d'entrée · elle n'est plus qu'un repli, dit, quand la date
+ * d'entrée en vigueur est illisible. La durée STIPULÉE, saisie en jours, se
+ * compte en jours, et la même règle sert l'échéancier (`finEssaiOpposable`).
  */
 export const JOURS_PAR_MOIS_ESSAI = 30;
 
+const MS_PAR_JOUR_ESSAI = 86_400_000;
+
+/** Nombre de jours du plafond, de la date d'entrée (comprise) à la même date n mois plus tard (exclue). */
+export function plafondEssaiEnJours(dateEntreeEnVigueur: Date | string | null | undefined, mois: number): number | null {
+  const texte = dateEntreeEnVigueur instanceof Date ? (Number.isNaN(dateEntreeEnVigueur.getTime()) ? '' : dateEntreeEnVigueur.toISOString()) : dateEntreeEnVigueur;
+  if (!texte || !/^\d{4}-\d{2}-\d{2}/.test(texte)) return null;
+  const debut = new Date(`${texte.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(debut.getTime())) return null;
+  return Math.round((ajouterMois(debut, mois).getTime() - debut.getTime()) / MS_PAR_JOUR_ESSAI);
+}
+
 export function verdictEssai(contrat: ContratPourControle): VerdictEssai {
   const plafondMois = contrat.manoeuvreSansSpecialite ? 1 : 6;
-  const plafondJours = plafondMois * JOURS_PAR_MOIS_ESSAI;
+  const deDateADate = plafondEssaiEnJours(contrat.dateEntreeEnVigueur, plafondMois);
+  const plafondJours = deDateADate ?? plafondMois * JOURS_PAR_MOIS_ESSAI;
   if (!contrat.clauseEssai) {
     return {
       dureeOpposableJours: null,
@@ -702,9 +720,9 @@ export function verdictEssai(contrat: ContratPourControle): VerdictEssai {
     reduiteDePleinDroit: reduite,
     ecritManquant: !contrat.essaiConstateParEcrit,
     reserve:
-      `Le plafond de l'article 43 est exprimé en MOIS (${plafondMois}), non en jours : ` +
-      `OmegaX le convertit à ${JOURS_PAR_MOIS_ESSAI} jours par mois, soit ${plafondJours} jours. ` +
-      'La conversion est une convention du logiciel, pas une lecture du texte. ' +
+      (deDateADate !== null
+        ? `Le plafond de l'article 43 est exprimé en MOIS (${plafondMois}) · compté de date à date depuis l'entrée en vigueur, il fait ${plafondJours} jours. `
+        : `Le plafond de l'article 43 est exprimé en MOIS (${plafondMois}) · la date d'entrée en vigueur étant illisible, OmegaX le convertit à ${JOURS_PAR_MOIS_ESSAI} jours par mois, soit ${plafondJours} jours, convention du logiciel et non lecture du texte. `) +
       "La prolongation des services au-delà de la durée maximale « entraîne automatiquement la confirmation du contrat de travail » (art. 43, alinéa 4), et « les délais d'engagement et de route ne sont pas compris dans la durée maximale » (alinéa 5) : OmegaX ne les connaît pas et ne les retranche pas.",
   };
 }

@@ -30,10 +30,17 @@ const jourUtc = (s: string): Date | null => {
 // lu ne l'impose ; l'accord crée le congé par la route ordinaire, avec tous
 // ses refus (absence, solde, bulletin émis).
 //
-// « SIX MOIS APRÈS LA DATE PRÉVUE POUR SON OUVERTURE » N'EST PAS CALCULÉ · le
-// texte ne dit pas si la date prévue est celle de la naissance du droit
-// (al. 3) ou celle que l'accord a fixée · deux lectures, aucune tranchée par
-// le corpus lu, inscrites au suivi ; l'écran le dit dans la bulle.
+// « SIX MOIS APRÈS LA DATE PRÉVUE POUR SON OUVERTURE » (décision par la loi
+// du 2026-10-28) · la seule date que l'article FIXE est celle de l'al. 3, où
+// « le droit au congé naît à l'expiration d'une année de services comptée de
+// date à date » ; l'accord de l'al. 4 fixe la date du congé, et lire « la date
+// prévue » comme cette date même ferait borner l'accord par lui-même. La date
+// d'ouverture est donc la naissance du droit, et c'est aussi la lecture qui
+// protège le travailleur (règle de protection, P5) · le congé se prend dans
+// les six mois de la naissance du droit. C'est la lecture que le compteur des
+// congés acquis sert déjà (`compteurConges`, signal des jours nés non pris six
+// mois après) ; le dépassement est DIT, jamais refusé · refuser un congé
+// tardif priverait le travailleur du congé auquel il ne peut renoncer (al. 2).
 // ──────────────────────────────────────────────────────────────────────────
 
 export type StatutDemandeConge = 'DEMANDEE' | 'ACCORDEE' | 'REFUSEE' | 'RETIREE';
@@ -91,8 +98,16 @@ export const FONDEMENT_TITRE_CONGE =
 // le plafond de l'essai se compte en MOIS de date à date (un essai commencé
 // le 15 mars plafonne le 14 avril inclus), jamais en jours de trente ; la
 // durée STIPULÉE, saisie en jours, se compte en jours. L'échéance retenue est
-// la plus proche des deux. Le contrôle `verdictEssai` convertit encore le
-// plafond à trente jours par mois · l'écart est inscrit au suivi.
+// la plus proche des deux. Le contrôle `verdictEssai` compte de même depuis
+// la décision par la loi du 2026-10-28 (`plafondEssaiEnJours`).
+//
+// LA CONTINUATION DE SERVICE APRÈS LE TERME (décision par la loi du
+// 2026-10-28) · art. 41, al. 3, « la continuation de service en dehors des
+// cas prévus à l'alinéa précédent » (travaux saisonniers, ouvrages bien
+// définis, travaux fixés par arrêté) « constitue[nt] de plein droit
+// l'exécution d'un contrat de travail à durée indéterminée ». Un terme passé
+// sur un contrat qui court est donc dit avec cette formule, sans requalifier
+// en base (règle du registre, P1).
 //
 // L'ÉCHÉANCIER DIT, IL NE TRANCHE RIEN · il ne termine aucun contrat ni ne
 // requalifie en base (règle du registre, P1). L'horizon de soixante jours est
@@ -139,8 +154,8 @@ export function echeancesDuContrat(c: ContratPourEcheancier, aujourdhui: Date, h
   const sorties: EcheanceContrat[] = [];
   // Un essai passé depuis plus que l'horizon ne s'annonce plus · le contrat est
   // confirmé par la loi (art. 43, al. 4), il ne reste rien à décider. Un terme
-  // de CDD passé, lui, reste nommé tant que le contrat court · des services
-  // poursuivis au-delà du terme sont une question ouverte (au suivi).
+  // de CDD passé, lui, reste nommé tant que le contrat court · les services
+  // poursuivis au-delà du terme relèvent de l'art. 41, al. 3.
   const poser = (objet: EcheanceContrat['objet'], echeance: Date, article: string, consequence: string) => {
     const joursRestants = Math.round((echeance.getTime() - aujourdhui.getTime()) / MS_PAR_JOUR);
     if (joursRestants > horizonJours) return;
@@ -148,11 +163,14 @@ export function echeancesDuContrat(c: ContratPourEcheancier, aujourdhui: Date, h
     sorties.push({ contratId: c.id, salarieId: c.salarieId, objet, echeance: iso(echeance), joursRestants, depassee: joursRestants < 0, article, consequence });
   };
   if (c.type === 'DUREE_DETERMINEE' && c.dateFinPrevue) {
+    const termePasse = c.dateFinPrevue.getTime() < aujourdhui.getTime();
     poser(
       'FIN_CDD',
       c.dateFinPrevue,
-      'art. 69',
-      c.emploiPermanent
+      termePasse ? 'art. 69 et 41, al. 3' : 'art. 69',
+      termePasse
+        ? "Le terme fixé est passé et le contrat court encore · hors travaux saisonniers, ouvrages bien définis ou travaux fixés par arrêté (art. 41, al. 2), « la continuation de service » constitue de plein droit l'exécution d'un contrat à durée indéterminée (art. 41, al. 3). Déclarez le renouvellement ou la fin au registre."
+        : c.emploiPermanent
         ? "Le contrat prend fin au terme fixé (art. 69) · mais il est conclu pour un emploi permanent, et l'art. 42 le répute conclu pour une durée indéterminée."
         : 'Le contrat prend fin au terme fixé par les parties (art. 69) · un renouvellement se déclare au registre, dans les limites de l’art. 41.',
     );
