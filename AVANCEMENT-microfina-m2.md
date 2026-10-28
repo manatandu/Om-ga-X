@@ -157,6 +157,57 @@ dépassé dit, à-nouveau 255 000 en N+1, arrêté refusé dans N clos). Il a
 trouvé un défaut · `POST /cheques/numeros/annulation` était pris par
 `:id/annulation` (ordre des routes), corrigé et gelé par `cheques.spec.ts`.
 
+## Seconde relecture (2026-10-28, faite)
+
+Fusion de `origin/main` (sans conflit). Chaque constat vérifié dans le code
+avant correction · tous confirmés.
+
+- **M1** · facture d'un bon barrée · VOIE RETENUE, le refus · la note de
+  crédit d'une facture qui exécute un bon est refusée tant que la part se
+  retire, issue nommée (« retirez-la du bon d'abord »), sous le verrou des
+  bons (`issueNoteDeCreditSurFactureDUnBon`) ; seule la part qui pèse sur un
+  exercice clôturé passe (le bon ne peut plus la rendre), dite, et la facture
+  barrée est nommée sur le bon (`barreePar`). Écarter en lecture aurait laissé
+  au registre un rattachement sans valeur, sommé partout.
+- **M2** · carnet refusé sur un compte en devise (RIB en devise, racine « en
+  devises », ligne en devise au compte), à la création, à l'émission et au
+  rattachement · motif nommé. Porter la devise du chèque reste au suivi.
+- **M3** · pièce corrigée par son négatif lié · état « pièce annulée au
+  journal », jamais encaissé, hors du total en circulation, annulation
+  ouverte ; la pièce corrigée reste liée au chèque annulé (contrainte
+  `cheques_emis_etat` assouplie dans la migration de la ligne, non encore sur
+  `main` · trouvé sur vraie base, 500 sur 23514).
+- **M4** · pièce du brouillard rejugée à chaque lecture (journal, crédit au
+  centime), écart dit (`ecartDeLaPiece`).
+- **M5** · clore un bon exécuté par une facture d'un exercice postérieur est
+  refusé tant que l'exercice du bon est ouvert (un engagement ne se clôt pas
+  en partie) · après sa clôture, le bon se clôt seul.
+- **m1** `jourValide` (`common/echeance.ts`) partout · « 2026-02-31 » et
+  « 2026-13-45 » en 400 ; **m2** brouillon figé dans un exercice clôturé ;
+  **m3** fournisseur relu actif à la création et à la remise ; **m4** le
+  brouillard des exercices antérieurs que le solde remonte compté et dit
+  (`brouillardExercicesAnterieurs`, colonne ajoutée à la migration de la
+  ligne) ; **m5** le plafond se compare au SOLDE partout (fiche du compte 57,
+  le solde est la somme disponible réellement ; l'écart aux espèces est dit à
+  part) ; **m6** annulation d'arrêté sous le verrou de la caisse, refusée en
+  exercice clôturé ; **m7** plafond en double en 409 nommé (P2002 traduit),
+  retrait sous verrou en 409 ; **m8** plafonds et derniers arrêtés lus
+  groupés, le solde reste lu caisse par caisse (même lecture que le refus de
+  la caisse créditrice, une version groupée divergerait) ; **m9** `au` sur
+  `GET /cheques` · émis au plus tard ce jour, ni annulé ni encaissé (date du
+  relevé du rapprochement qui pointe) ni corrigé avant sa fin ; **m10** le
+  RIB retenu par un carnet servi ne promet plus de retrait, nomme le journal
+  en sommeil ; **m11** listes illisibles à `null` (fournisseurs, sections,
+  factures du bon, chéquiers, banques, pièces, situation) ; **m12**
+  `e2e/tests/microfina-m2-cheques.e2e.ts` (émis, pointé, encaissé après la
+  clôture, total à une date d'arrêté).
+
+Rejeu sur vraie base (PostgreSQL 16 jetable, serveur compilé, SYCEBNL
+projets, N = 2025, N+1 = 2026, clôture de N traversée) · 28 constats, 0
+écart, script hors dépôt `scenario-m2-relecture.cjs`. Le chemin API du test
+navigateur rejoué de même sur SYSCOHADA · 5 constats, 0 écart (Playwright non
+lancé ici, aucun navigateur installé).
+
 ## Commandes de vérification
 
 ```bash
