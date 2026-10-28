@@ -97,6 +97,13 @@ idées 1 et 5 du § 4).
    scratchpad (`/var/tmp`) · les droits du scratchpad se refermaient sous
    PostgreSQL en cours de route.
 
+7. Bloc du § 3 (2026-10-28, après la relecture) · serveur `tsc` 0 erreur,
+   `jest` 975 suites · 964 vertes au premier passage (14 071 tests sur
+   14 073), les 11 autres tombées par la machine partagée avec trois autres
+   lignes (SIGKILL de mémoire, délais de 5 s dépassés), rejouées seules
+   vertes (221 tests) ; `npm run build` vert. Client `tsc` 0 erreur,
+   `npm test` 306 fichiers, 2 486 tests verts, `npm run build` vert.
+
 ## Reste
 
 1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
