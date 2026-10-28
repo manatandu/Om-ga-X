@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { Aide } from '../chrome/Aide';
 import { libelleListeBornee } from '../../lib/liste-bornee-personnel';
 import { montant as fc } from '../../lib/montants';
+import { lireNombre } from '../../lib/conditions-bancaires-saisie';
 
 /**
  * LIGNE MICROFINA-M3, IDÉE 3 · L'ONGLET MISSIONS DE LA FENÊTRE PERSONNEL.
@@ -40,6 +41,8 @@ export type MissionLue = {
   annuleLe: string | null;
   motifAnnulation: string | null;
   bulletin: { numero: number; moisDePaie: string } | null;
+  /** Le bulletin qui l'avait portée, depuis annulé · il ne la retient plus. */
+  bulletinAnnule?: { numero: number; moisDePaie: string } | null;
   frais: FraisMissionLu[];
   totaux: { justifieFc: number; forfaitFc: number; regleParEntiteFc: number; totalFc: number };
 };
@@ -57,7 +60,15 @@ const QUALIFICATION: Record<FraisMissionLu['qualification'], string> = {
 };
 
 const nomDe = (s: SalarieMin) => [s.nom, s.postNom, s.prenoms].filter(Boolean).join(' ');
-const nombre = (v: string) => Number(v.replace(/\s/g, '').replace(',', '.'));
+/**
+ * Un montant tapé · lu par la règle de la saisie des conditions bancaires
+ * (`lireNombre`), qui refuse « 500.000 » comme AMBIGU · en RDC le point
+ * sépare les milliers, et le montant partait à 500. Illisible, rien ne part.
+ */
+const montantSaisi = (v: string): number | null => {
+  const lu = lireNombre(v, 'montant');
+  return 'valeur' in lu ? lu.valeur : null;
+};
 const champ = 'border border-border bg-transparent px-1.5 py-0.5';
 
 export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: SalarieMin[]; peutEcrire: boolean }) {
@@ -111,10 +122,15 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
 
   const ajouterFrais = async (m: MissionLue) => {
     const f = fraisDe(m.id);
+    const montantFc = montantSaisi(f.montantFc);
+    if (montantFc === null) {
+      setErreur('Montant du frais illisible · écrivez 500 000 ou 500000,00 (le point ne sépare pas les milliers).');
+      return;
+    }
     const corps = {
       element: f.element,
       qualification: f.qualification,
-      montantFc: nombre(f.montantFc),
+      montantFc,
       ...(f.piece.trim() ? { piece: f.piece } : {}),
     };
     if (await envoyer(() => api.post(`/personnel/missions/${m.id}/frais`, corps))) {
@@ -129,7 +145,7 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
         Ordres de mission
         <Aide
           titre="Missions et frais de mission"
-          texte="Chaque frais se qualifie. Le remboursement d'une dépense effective, sur pièce, n'est ni rémunération ni revenu imposable ; l'indemnité forfaitaire est hors rémunération mais imposable. Les deux se portent au bulletin du mois depuis l'onglet Simulation et se passent au 6384 « Missions ». Une dépense réglée par l'entité elle-même se passe par sa facture et n'est suivie ici que pour le coût de la mission. La taxe qui grève hébergement, restauration et transport n'ouvre pas droit à déduction. Une mission portée par un bulletin émis ne change plus ; l'annulation du bulletin la rend."
+          texte="Chaque frais se qualifie. Le remboursement d'une dépense effective, sur pièce, n'est ni rémunération ni revenu imposable ; l'indemnité forfaitaire est hors rémunération mais imposable. Les deux se portent au bulletin du mois depuis l'onglet Simulation et se passent au 6384 « Missions ». Une dépense réglée par l'entité elle-même se passe par sa facture et n'est suivie ici que pour le coût de la mission. La taxe qui grève hébergement, restauration et transport n'ouvre pas droit à déduction. Une mission portée par un bulletin émis ne change plus ; l'annulation du bulletin la rend. Un frais justifié porté ici ne se passe pas aussi à la main au 6384 · la passation de la paie l'y porte déjà, et la charge compterait deux fois. Un ordre de mission se donne pendant un contrat en vigueur au départ."
           source="Code du travail, art. 7, point 8 · loi n° 23/053, art. 68, 1° · O.-L. n° 10/001, art. 41, 1° · fiche du compte 66 (AUDCIF, SYCEBNL)"
         />
       </div>
@@ -142,7 +158,7 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
         const f = fraisDe(m.id);
         const ouverte = !m.annuleLe && !m.bulletin;
         return (
-          <div key={m.id} className="border border-border px-3 py-2">
+          <div key={m.id} role="group" aria-label={`Mission n° ${m.numero}`} className="border border-border px-3 py-2">
             <div className="flex flex-wrap gap-x-3 items-baseline">
               <span className="font-semibold">n° {m.numero}</span>
               <span>{m.salarie}</span>
@@ -157,6 +173,11 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
               <span>{m.objet}</span>
               {m.accomplieLe && <span className="text-text-dim">accomplie le {m.accomplieLe}</span>}
               {m.bulletin && <span className="text-text-dim">portée par le bulletin n° {m.bulletin.numero} ({m.bulletin.moisDePaie})</span>}
+              {!m.bulletin && m.bulletinAnnule && (
+                <span className="text-text-dim">
+                  portée par le bulletin n° {m.bulletinAnnule.numero} ({m.bulletinAnnule.moisDePaie}), annulé · à porter de nouveau
+                </span>
+              )}
               {m.annuleLe && <span className="text-danger">annulée · {m.motifAnnulation}</span>}
             </div>
             <table className="w-full mt-1">
