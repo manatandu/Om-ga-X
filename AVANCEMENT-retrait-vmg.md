@@ -32,7 +32,17 @@ retirer ». Une demande expresse vaut levée du gel pour elle seule (§ 5).
 
 ## Fait
 
+- Serveur, client, e2e, docs, workflows, installateur, CLAUDE.md · plus
+  aucune mention hors préfixe ancien des factures, migrations et amont.
+- Vérifié · `npx tsc --noEmit` et `npm run build` (serveur), `npx jest`
+  969 suites et 14 171 tests verts (deux suites tuées par la mémoire,
+  relancées vertes) ; client tsc, 2 476 tests, build verts.
+
 ## Reste
+
+- Accord de Manasse pour intégrer sur `main` · le retrait du domaine du
+  CORS coupe l'API à qui ouvrirait encore le site sous ce domaine.
+- Tests navigateur et déploiement relus après l'intégration.
 
 ## Vérification
 
