@@ -1532,8 +1532,8 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
     const prisma = prismaAvec();
     const s = service({ e1: [] }, [], prisma);
     // Note 2 · une seule colonne, de type LIBRE.
-    const texte = await s.enregistrerSaisie('t', 'u', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, 'ASBL VMG, Kinshasa');
-    expect(texte).toMatchObject({ valeurTexte: 'ASBL VMG, Kinshasa' });
+    const texte = await s.enregistrerSaisie('t', 'u', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, 'ASBL Exemple, Kinshasa');
+    expect(texte).toMatchObject({ valeurTexte: 'ASBL Exemple, Kinshasa' });
     const montant = await s.enregistrerSaisie('t', 'u', 'e1', JEU_ASSO, '18B', 'actif-eventuel-litiges', 0, '12 500,50');
     expect(montant).toMatchObject({ valeurNombre: 12500.5 });
   });
@@ -1564,7 +1564,7 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
 
   it('une valeur vide EFFACE la cellule au lieu de l’enregistrer à blanc', async () => {
     const prisma = prismaAvec([], [], [], [], Referentiel.SYCEBNL, [
-      { codeNote: '2', cleRubrique: 'a-identite-organisation', colonne: 0, valeurTexte: 'ASBL VMG' },
+      { codeNote: '2', cleRubrique: 'a-identite-organisation', colonne: 0, valeurTexte: 'ASBL Exemple' },
     ]);
     const s = service({ e1: [] }, [], prisma);
     expect(await s.enregistrerSaisie('t', 'u', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, '   ')).toEqual({ efface: true });
@@ -1574,7 +1574,7 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
   });
 
   describe('F87 · une cellule se retouche par son identifiant, pour que le journal d’audit garde la valeur remplacée', () => {
-    const CELLULE = { codeNote: '2', cleRubrique: 'a-identite-organisation', colonne: 0, valeurTexte: 'ASBL VMG' };
+    const CELLULE = { codeNote: '2', cleRubrique: 'a-identite-organisation', colonne: 0, valeurTexte: 'ASBL Exemple' };
 
     it('l’effacement vise LA cellule par son identifiant, jamais un deleteMany', async () => {
       const prisma = prismaAvec([], [], [], [], Referentiel.SYCEBNL, [CELLULE]);
@@ -1594,14 +1594,14 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
     it('une cellule déjà saisie se MODIFIE par son identifiant, jamais par un upsert sur la clé composée', async () => {
       const prisma = prismaAvec([], [], [], [], Referentiel.SYCEBNL, [CELLULE]);
       const s = service({ e1: [] }, [], prisma);
-      const r = await s.enregistrerSaisie('t', 'u2', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, 'ASBL VMG Kinshasa');
+      const r = await s.enregistrerSaisie('t', 'u2', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, 'ASBL Exemple Kinshasa');
       expect((prisma as any).saisieNote.upsert).not.toHaveBeenCalled();
       expect((prisma as any).saisieNote.create).not.toHaveBeenCalled();
       expect((prisma as any).saisieNote.update).toHaveBeenCalledWith({
         where: { id: 's-2-a-identite-organisation-0' },
-        data: { valeurTexte: 'ASBL VMG Kinshasa', valeurNombre: null, updatedBy: 'u2' },
+        data: { valeurTexte: 'ASBL Exemple Kinshasa', valeurNombre: null, updatedBy: 'u2' },
       });
-      expect(r).toMatchObject({ valeurTexte: 'ASBL VMG Kinshasa' });
+      expect(r).toMatchObject({ valeurTexte: 'ASBL Exemple Kinshasa' });
     });
 
     it('la cellule est retrouvée dans SON exercice et SON dossier', async () => {

@@ -72,7 +72,7 @@ export function accuseReceptionConditions(
     corps: [
       'Bonjour,',
       '',
-      `VMG Consulting accuse réception de l’acceptation des conditions de licence d’OmegaX, version ${acceptation.version} du ${publiee.dateLisible}.`,
+      `L’éditeur d’OmegaX accuse réception de l’acceptation des conditions de licence d’OmegaX, version ${acceptation.version} du ${publiee.dateLisible}.`,
       '',
       `Dossier · ${dossier}`,
       `Acceptées par · ${acceptation.par ?? AUTEUR_NON_ENREGISTRE}`,

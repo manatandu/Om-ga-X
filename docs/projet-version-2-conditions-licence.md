@@ -16,7 +16,7 @@ Texte proposé pour chaque blanc de `conditions-de-licence.ts` (à relire une de
 
 | Blanc (article du contrat) | Texte retenu |
 |---|---|
-| Réclamations, voie et délai (art. 53, 13° et 14°) | Réclamation adressée par courrier électronique à VMG Consulting. Accusé de réception sous trois jours ouvrables, réponse motivée sous quinze jours ouvrables. |
+| Réclamations, voie et délai (art. 53, 13° et 14°) | Réclamation adressée par courrier électronique à l'éditeur. Accusé de réception sous trois jours ouvrables, réponse motivée sous quinze jours ouvrables. |
 | Moyens de paiement (art. 53, 6°) | Virement bancaire et paiement par monnaie mobile, facture en dollars américains. Ne garder que les moyens réellement ouverts au jour de la publication. |
 | Données après la fin du contrat (art. 9) | Dossier conservé en lecture seule cent quatre-vingts jours, archive complète disponible pendant ce délai, puis suppression. |
 | Prévisions d'interruption (art. 11) | Maintenance planifiée annoncée quarante-huit heures à l'avance par courrier électronique et sur la page publique ; interruption urgente annoncée dès que possible (Code du numérique, art. 29, 4°). |
@@ -29,7 +29,7 @@ Deux points à corriger dans les propositions avant publication :
 
 ## Ce qui reste ouvert (réponses attendues)
 
-- Numéro de téléphone de VMG Consulting (art. 53, 13°).
+- Numéro de téléphone de l'éditeur (art. 53, 13°).
 - Identité de l'éditeur : dénomination, forme, capital, siège, RCCM, ID.NAT., NIF (art. 52, 53, 1° ; après immatriculation).
 - Plafond de responsabilité (art. 12), résiliation et préavis de chaque partie (art. 14), juridiction compétente (art. 19) : avis d'un juriste.
 - Droit de rétractation et garanties légales (art. 53, 16° et 20°) : avis d'un juriste ; l'art. 61 ne vise que les contrats entre professionnel et non-professionnel.

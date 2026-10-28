@@ -1,5 +1,5 @@
 /**
- * LA FACTURATION DES ABONNEMENTS DE VMG · moteur PUR, ni base ni horloge.
+ * LA FACTURATION DES ABONNEMENTS DE L'ÉDITEUR · moteur PUR, ni base ni horloge.
  *
  * Ce que Manasse a décidé le 2026-09-26, et rien de plus : un abonnement PAR
  * DOSSIER client, quatre formules (Essentiel, Standard, Cabinet, option
@@ -129,15 +129,29 @@ export function verdictPeriode(a: AbonnementAFacturer, periode: string): Verdict
   return { du: true, lignes, totalUsd };
 }
 
+/** Le préfixe de la série des factures d'abonnement. */
+export const PREFIXE_SERIE_ABONNEMENTS = 'OMX';
+
+/**
+ * Les préfixes qu'a portés la série avant le retrait du nom de l'ancien
+ * éditeur (décision de Manasse du 2026-10-28) · des factures émises sous eux
+ * existent en base, et la série reste CONTINUE par année · le numéro suivant
+ * part du plus grand déjà pris sous l'un OU l'autre préfixe, jamais de 1, sans
+ * quoi deux factures de la même année porteraient le même rang.
+ */
+export const PREFIXES_SERIE_ANTERIEURS: readonly string[] = ['VMG'];
+
 /** Le numéro suivant de la série des factures d'abonnement · continu par année, jamais réutilisé. */
 export function numeroFactureSuivant(annee: string, existants: string[]): string {
-  const prefixe = `VMG-${annee}-`;
+  const prefixes = [PREFIXE_SERIE_ABONNEMENTS, ...PREFIXES_SERIE_ANTERIEURS].map((p) => `${p}-${annee}-`);
   const max = existants
-    .filter((n) => n.startsWith(prefixe))
-    .map((n) => Number.parseInt(n.slice(prefixe.length), 10))
+    .map((n) => {
+      const p = prefixes.find((x) => n.startsWith(x));
+      return p ? Number.parseInt(n.slice(p.length), 10) : Number.NaN;
+    })
     .filter(Number.isInteger)
     .reduce((a, b) => Math.max(a, b), 0);
-  return `${prefixe}${String(max + 1).padStart(4, '0')}`;
+  return `${PREFIXE_SERIE_ABONNEMENTS}-${annee}-${String(max + 1).padStart(4, '0')}`;
 }
 
 /**

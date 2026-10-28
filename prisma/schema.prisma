@@ -230,7 +230,7 @@ enum TypeLicence {
   ABONNEMENT // coupure automatique à échéance
   PERPETUEL_SAAS // payé une fois, hébergé chez nous, sans expiration
   PERPETUEL_ONPREMISE // hérité · une installation sur site tient sa licence d'un fichier signé, jamais de cette table (audit final F171)
-  // L'ÉDITEUR LUI-MÊME · le dossier de VMG Consulting, propriétaire du
+  // L'ÉDITEUR LUI-MÊME · le dossier de l'éditeur, propriétaire du
   // logiciel. Il n'est pas un client : il ne paie rien, n'expire jamais, et
   // NE SE COUPE JAMAIS, pas même par une suspension.
   //
@@ -993,7 +993,7 @@ model Licence {
   @@map("licences")
 }
 
-/// Les licences d'INSTALLATION SUR SITE émises par la console de VMG
+/// Les licences d'INSTALLATION SUR SITE émises par la console de l'éditeur
 /// (src/modules/sur-site/licence-signee.ts). Hors de tout dossier · c'est le
 /// registre de l'éditeur, pas une donnée d'un client. Le fichier signé est
 /// conservé tel qu'il a été remis, pour le renvoyer à l'identique à un client
@@ -6097,7 +6097,7 @@ enum ActionAudit {
 model EvenementAudit {
   id String @id @default(uuid())
 
-  /// Nul pour les actes de la plateforme (console VMG), qui ne relèvent
+  /// Nul pour les actes de la plateforme (console de l'éditeur), qui ne relèvent
   /// d'aucun dossier · ils forment leur propre chaîne.
   tenantId String?
   tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -7047,7 +7047,7 @@ model ReponseQuestionnaire {
   questionnaireId String
   questionnaire   QuestionnaireRevision @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
 
-  /// Le code de l'item au catalogue · « CPCC-CAI-4 », « VMG-CLI-2 ».
+  /// Le code de l'item au catalogue · « CPCC-CAI-4 », « EDI-CLI-2 ».
   code String
 
   /// OUI / NON / SANS_OBJET pour un item fermé. Null pour un item qui appelle

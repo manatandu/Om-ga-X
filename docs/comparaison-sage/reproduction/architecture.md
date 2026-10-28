@@ -93,7 +93,7 @@ journal `build-log.md`.
 - **D9 · Congés acquis chaque mois (ligne 79).** Code du travail, art. 141
   et 142 ; règles de la décision T6 (CLAUDE.md, P4) reprises telles
   quelles.
-- **D10 · Confidentialité (lignes 95, 101, 102).** CLAUDE.md, § 8, « VMG ne
+- **D10 · Confidentialité (lignes 95, 101, 102).** CLAUDE.md, § 8, « L'éditeur ne
   voit jamais les informations d'un client ». L'organisation en niveaux,
   les échanges d'écritures, la messagerie et la liste des utilisateurs
   connectés restent à l'intérieur d'un cabinet client et de ses dossiers ;

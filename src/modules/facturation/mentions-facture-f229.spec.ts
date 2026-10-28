@@ -49,7 +49,7 @@ const MOTS = ['ZÉRO', 'UN', 'DEUX', 'TROIS', 'QUATRE', 'CINQ', 'SIX', 'SEPT', '
 const mot = (n: number) => MOTS[n];
 
 const facture = (sur: Partial<FactureVerifiable> = {}): FactureVerifiable => ({
-  emetteurNom: 'VMG Consulting',
+  emetteurNom: 'Éditeur Exemple SARL',
   emetteurAdresse: '12, avenue de la Justice, Kinshasa/Gombe',
   emetteurNumeroImpot: 'A1234567X',
   contrepartieNom: 'Client SARL',

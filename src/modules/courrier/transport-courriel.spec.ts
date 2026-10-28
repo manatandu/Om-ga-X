@@ -13,11 +13,11 @@ import {
  * l'erreur accuse alors le réseau.
  */
 const COMPLET: NodeJS.ProcessEnv = {
-  SMTP_HOST: 'smtp.vmg-consulting.cd',
+  SMTP_HOST: 'smtp.exemple.cd',
   SMTP_PORT: '587',
-  SMTP_USER: 'omegax@vmg-consulting.cd',
+  SMTP_USER: 'omegax@exemple.cd',
   SMTP_PASS: 'secret-de-boite-aux-lettres',
-  COURRIER_EXPEDITEUR: 'omegax@vmg-consulting.cd',
+  COURRIER_EXPEDITEUR: 'omegax@exemple.cd',
 };
 
 /** Seul l'environnement est remplacé · le reste du transport est le vrai. */
@@ -34,12 +34,12 @@ describe('transport SMTP · tout ou rien', () => {
   it('une configuration complète se lit, et le port 587 reste en STARTTLS', () => {
     expect(manquesDuTransport(COMPLET)).toEqual([]);
     expect(lireConfigurationSmtp(COMPLET)).toEqual({
-      hote: 'smtp.vmg-consulting.cd',
+      hote: 'smtp.exemple.cd',
       port: 587,
       securise: false,
-      identifiant: 'omegax@vmg-consulting.cd',
+      identifiant: 'omegax@exemple.cd',
       motDePasse: 'secret-de-boite-aux-lettres',
-      expediteur: 'omegax@vmg-consulting.cd',
+      expediteur: 'omegax@exemple.cd',
     });
   });
 
@@ -85,8 +85,8 @@ describe('transport SMTP · tout ou rien', () => {
   it('un expéditeur inutilisable est refusé une fois, pas à chaque message', () => {
     // Faux, il ferait refuser TOUS les envois du dossier · cinq tentatives par
     // message pour une faute qui se corrige en une variable.
-    expect(lireConfigurationSmtp({ ...COMPLET, COURRIER_EXPEDITEUR: 'omegax-chez-vmg' })).toBeNull();
-    expect(manquesDuTransport({ ...COMPLET, COURRIER_EXPEDITEUR: 'omegax-chez-vmg' })[0].raison).toContain(
+    expect(lireConfigurationSmtp({ ...COMPLET, COURRIER_EXPEDITEUR: 'omegax-chez-exemple' })).toBeNull();
+    expect(manquesDuTransport({ ...COMPLET, COURRIER_EXPEDITEUR: 'omegax-chez-exemple' })[0].raison).toContain(
       'expéditeur',
     );
   });
@@ -97,8 +97,8 @@ describe('transport SMTP · tout ou rien', () => {
     // Le mot de passe et l'identifiant ne sortent jamais · seul l'expéditeur,
     // qui figure de toute façon en tête de chaque message envoyé.
     expect(JSON.stringify(etat)).not.toContain('secret-de-boite-aux-lettres');
-    expect(JSON.stringify(etat)).not.toContain('smtp.vmg-consulting.cd');
-    expect(etat.expediteur).toBe('omegax@vmg-consulting.cd');
+    expect(JSON.stringify(etat)).not.toContain('smtp.exemple.cd');
+    expect(etat.expediteur).toBe('omegax@exemple.cd');
   });
 
   it('sans rien dans l’environnement, l’état DIT ce qui manque', () => {

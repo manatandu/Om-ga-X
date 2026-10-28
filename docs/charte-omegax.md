@@ -1,6 +1,6 @@
 # Charte graphique OmegaX
 
-**Version 2 · 5 septembre 2026.** Propriété de VMG Consulting.
+**Version 2 · 5 septembre 2026.** Propriété de l'éditeur.
 Elle remplace la note `marque-omegax.md`, dont le signe était tracé au compas
 et le mot composé en texte.
 
@@ -395,8 +395,8 @@ PAGE PUBLIQUE et l'écran de connexion avaient celui d'une page de lancement
 engendrée, et c'est par eux qu'on entre. La page publique empruntait d'ailleurs
 ses effets, nommément, à une bibliothèque de composants de pages de lancement.
 
-**Le registre est celui de l'application, sur toute surface OmegaX**, la
-page publique comprise :
+**Le registre est celui de l'application, sur toute surface OmegaX** (la
+page publique en est sortie le 2026-10-25, § 9 ter) :
 
 - **Densité.** Corps de 15 px sur la page publique, 12 px dans l'application ;
   titre principal à 2,25 rem au plus, titres de section en titres de CADRE
@@ -425,22 +425,73 @@ page publique comprise :
   réelle (les quatre étapes du cycle comptable), jamais en « 01 / 02 / 03 »
   au-dessus de rubriques sans ordre.
 
-Ces règles sont tenues pour la page publique par `vitrine-publique.spec.ts`
-(aucun effet de défilement, nombre écrit en clair, une seule animation de
-300 ms au plus, les deux plans côte à côte).
+Ces règles valent pour l'application et pour l'écran de connexion. Pour la
+PAGE PUBLIQUE, le § 9 ter les remplace depuis le 2026-10-25.
+
+## 9 ter. La page publique · la composition du cabinet, les couleurs d'OmegaX
+
+Décidé par Manasse le 2026-10-25 : « J'aimerai que le site de
+[la page publique] ait le même design que [le site de l'éditeur] avec des
+animations, motifs, esthétique mais avec ses propres couleurs de sa charte. Ne
+copie pas les couleurs du site de l'éditeur », puis, le même jour, « Ne
+mets pas de cachets tournant ». La page publique (`client/public/vitrine/`)
+quitte donc le registre dense du § 9 bis pour la COMPOSITION du site du cabinet
+(retiré du dépôt le 2026-10-28), et garde la charte d'OmegaX pour tout le reste.
+
+- **Repris du cabinet** · bandeau sombre sous un en-tête transparent qui se
+  remplit au défilement, titre d'affiche dont les mots apparaissent un à un,
+  apparitions au défilement, barre de lecture, frise des étapes, accordéon sur
+  l'encre, carte d'appel, bouton de retour en haut.
+- **Jamais repris** · ses couleurs (la nuit `#1b1342`, l'or `#e3a93c` et
+  `#a96f12`, l'orange du retour en haut), ses polices (Bricolage Grotesque,
+  Instrument Sans) et son cachet tournant. Le spec refuse ces couleurs par leur
+  valeur, et toute rotation sans fin.
+- **Les couleurs** · l'encre de cachet et son échelle (`--a-600` violet pour les
+  étiquettes sur blanc, `--a-200` lilas pour ce qui ressort sur l'encre, `--a-100`
+  brume, `--a-400` jamais sous un texte), le blanc, les gris, et le rouge du seul
+  signal d'erreur. Contrastes mesurés par le spec, comme au § 7.4.
+- **Les motifs viennent du métier** · le papier réglé d'un journal (colonnes et
+  lignes) en fond du bandeau, des questions et de la carte d'appel ; le
+  DOUBLE TRAIT qui arrête un total, sous chaque titre de section et sous les
+  totaux ; la CASE COCHÉE du pointage sur la frise du cycle ; au chargement, un
+  journal fictif qui s'inscrit ligne à ligne, puis se totalise, l'écart à 0,00.
+  Le filet de clôture (§ 9) sépare les sections blanches.
+- **Ce qui ne change pas** · la marque en tracés (logo blanc sur l'encre), les
+  polices servies depuis notre origine, aucune ressource externe, aucun style
+  en ligne, les nombres écrits en clair (aucun compteur), la démonstration dans
+  une fenêtre du logiciel, les deux plans côte à côte.
+- **Le mouvement ne cache rien** · les apparitions ne jouent que sous la classe
+  `js` posée par le script ; sans script, sans IntersectionObserver ou sous
+  `prefers-reduced-motion`, tout est visible d'emblée. Aucune durée au-delà de
+  1,2 s ; quatre animations nommées (mots, lignes du journal, accordéon, tampon
+  « Validée » posé une fois).
+
+- **Les trois pages d'information** (contrat de licence, confidentialité,
+  questions fréquentes) portent le même cadre que la page d'accueil · bandeau
+  d'encre et logo blanc, titre sur papier réglé avec le double trait, corps
+  blanc à 15 px, pied d'encre (`CadrePagePublique`, styles `.cadre-public`).
+  Leurs contenus restent ceux des fenêtres de l'espace de travail.
+- **Le ton** · des phrases d'un logiciel de gestion qui décrit ce qu'il fait,
+  sans slogan ni superlatif ; les intertitres nomment la rubrique
+  (« Cycle comptable », « Installation »).
+
+Tenu par `vitrine-publique.spec.ts` et `vitrine-script.spec.ts`.
 
 ---
 
-## 10. Cosignature avec VMG Consulting
+## 10. Cosignature avec l'éditeur
 
-OmegaX est un produit du cabinet VMG Consulting. Trois postures, et il faut
-choisir laquelle avant de composer :
+OmegaX est un produit de l'éditeur. Depuis le 2026-10-28 (décision de
+Manasse), OmegaX s'affiche SEUL · la posture « Produit »
+est la seule servie, et l'éditeur n'y est pas nommé tant qu'il n'a pas arrêté
+sa dénomination. Les deux autres restent décrites pour le jour où il le fera.
+Trois postures, et il faut choisir laquelle avant de composer :
 
 | Posture | Ce qu'elle dit | Composition |
 |---|---|---|
-| **Produit** | OmegaX parle en son nom | marque OmegaX seule ; VMG en mention de pied, en texte |
-| **Cautionnement** | VMG répond du produit | OmegaX à gauche, filet vertical d'un trait, VMG à droite, hauteurs de logotype égales |
-| **Édition** | VMG parle, OmegaX est cité | marque VMG en tête, OmegaX en signature de pied, à la moitié de sa hauteur |
+| **Produit** | OmegaX parle en son nom | marque OmegaX seule ; l'éditeur en mention de pied, en texte |
+| **Cautionnement** | L'éditeur répond du produit | OmegaX à gauche, filet vertical d'un trait, l'éditeur à droite, hauteurs de logotype égales |
+| **Édition** | L'éditeur parle, OmegaX est cité | marque de l'éditeur en tête, OmegaX en signature de pied, à la moitié de sa hauteur |
 
 Dans la posture de cautionnement, les deux marques sont séparées par la somme
 de leurs deux zones de protection, jamais moins. Elles ne se touchent jamais,
@@ -510,8 +561,8 @@ Dit franchement, pour que personne ne l'invente :
 - **Pas de mode sombre.** L'interface n'en a pas aujourd'hui. Le jour où elle
   en aura un, chaque couple du § 7.4 devra être remesuré : un rapport de
   contraste ne se transpose pas d'un fond clair à un fond sombre.
-- **Pas de charte de marque VMG Consulting.** Le § 10 dit comment cosigner ;
-  il ne dit pas comment se dessine la marque VMG, qui n'existe pas ici.
+- **Pas de charte de marque de l'éditeur.** Le § 10 dit comment cosigner ;
+  il ne dit pas comment se dessine la marque de l'éditeur, qui n'existe pas ici.
 - **Pas de photographie, pas d'illustration, pas d'icônographie de marque.**
   L'iconographie de l'interface suit ses propres règles (`icons.tsx`).
 - **Pas de déclinaison animée.** Une marque qui s'anime doit d'abord tenir

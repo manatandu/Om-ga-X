@@ -331,8 +331,8 @@ export function AuthPage() {
         {/* Sur site, la création n'est ouverte qu'au poste neuf (audit final
             F44) · c'est la seule porte vers le premier dossier. Les suivants
             naissent dans la fenêtre Restitution du dossier d'installation. En
-            ligne, aucune phrase · l'ouverture d'un dossier se fait avec VMG
-            Consulting, hors de cet écran (décision de Manasse du 2026-10-09). */}
+            ligne, aucune phrase · l'ouverture d'un dossier se fait avec
+            l'éditeur, hors de cet écran (décision de Manasse du 2026-10-09). */}
         {surSite?.surSite && creationPremierDossierProposee(surSite) && (
           <div className="mt-4 text-[11.5px]">
             <a href="#/inscription" className="underline">

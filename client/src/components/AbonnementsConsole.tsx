@@ -50,7 +50,7 @@ function lirePrix(v: string): number | null {
 /**
  * LES ABONNEMENTS DES CABINETS, dans la console de l'éditeur · la grille et
  * ses prix, l'abonnement de chaque dossier, et la facturation d'une période.
- * Les factures naissent dans le dossier de VMG, par le module de facturation ;
+ * Les factures naissent dans le dossier de l'éditeur, par le module de facturation ;
  * ce cadre n'en garde que le lien.
  */
 export function AbonnementsConsole({ cabinets }: { cabinets: { id: string; nom: string }[] }) {
@@ -188,7 +188,7 @@ export function AbonnementsConsole({ cabinets }: { cabinets: { id: string; nom: 
         </select>
         <span className="text-text-dim">Client facturé</span>
         <select className={champ} value={f.tiersId} onChange={(e) => setF({ ...f, tiersId: e.target.value })} required>
-          <option value="">Tiers client du dossier de VMG…</option>
+          <option value="">Tiers client du dossier de l'éditeur…</option>
           {tiers.map((t) => (
             <option key={t.id} value={t.id}>
               {t.nom}
@@ -306,7 +306,7 @@ export function AbonnementsConsole({ cabinets }: { cabinets: { id: string; nom: 
       <form onSubmit={facturer} className="flex flex-wrap items-center gap-2">
         <input type="month" className={champ} value={fac.periode} onChange={(e) => setFac({ ...fac, periode: e.target.value })} required />
         <input type="date" className={champ} value={fac.dateFacture} onChange={(e) => setFac({ ...fac, dateFacture: e.target.value })} required />
-        <select className={champ} value={fac.tauxTvaId} onChange={(e) => setFac({ ...fac, tauxTvaId: e.target.value })} title="Seulement si le dossier de VMG est assujetti à la TVA">
+        <select className={champ} value={fac.tauxTvaId} onChange={(e) => setFac({ ...fac, tauxTvaId: e.target.value })} title="Seulement si le dossier de l'éditeur est assujetti à la TVA">
           <option value="">Sans TVA (non assujetti)</option>
           {taux.map((t) => (
             <option key={t.id} value={t.id}>

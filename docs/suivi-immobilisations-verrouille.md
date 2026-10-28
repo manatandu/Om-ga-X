@@ -171,7 +171,7 @@ dossiers ; « d'où vient ce chiffre » sur un montant d'état ; espace de
 travail à onglets avec barre de commande ; vue téléphone du dirigeant) ont
 été écartées par Manasse le jour même (« le style typique des sites créés par
 IA »), le style Sage à fenêtres restant en place. Consigne de Manasse du
-2026-10-07 pour leur reprise · le design est PROPRE à VMG, mais il s'inspire
+2026-10-07 pour leur reprise · le design est PROPRE à l'éditeur, mais il s'inspire
 de logiciels et de sites qui existent vraiment, et rien n'est ajouté pour le
 seul effet (ni décor, ni bloc qui encombre). Chaque choix d'écran nomme le
 produit réel dont il s'inspire. Reprise après la liste, sur décision de

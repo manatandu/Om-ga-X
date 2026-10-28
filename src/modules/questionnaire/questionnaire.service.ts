@@ -14,7 +14,7 @@ import { ClorerQuestionnaireDto, CreerQuestionnaireDto, RepondreDto } from './dt
  * Le catalogue porte les vingt-quatre items interrogatifs du CPCC mot pour
  * mot, ses dix-sept impératifs, et vingt-cinq questions de l'éditeur sur les
  * cycles que le séminaire ne couvre pas. Chaque item porte son ORIGINE, et
- * c'est la garantie centrale du module : une question de VMG ne se citera
+ * c'est la garantie centrale du module : une question de l'éditeur ne se citera
  * jamais comme une exigence du CPCC.
  *
  * QUATRE REFUS, chacun contre un défaut qui laisse le questionnaire
@@ -329,7 +329,7 @@ export class QuestionnaireService {
         exceptions: exceptions.length,
         exceptionsSansCommentaire: exceptions.filter((r) => !r.commentaire?.trim()).length,
         itemsCpcc: lignes.filter((l) => l.origine === 'CPCC').length,
-        itemsVmg: lignes.filter((l) => l.origine === 'VMG').length,
+        itemsEditeur: lignes.filter((l) => l.origine === 'EDITEUR').length,
       },
       motifsRefusCloture: QuestionnaireService.motifsRefusCloture(items, q.reponses),
     };

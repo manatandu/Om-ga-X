@@ -1,8 +1,7 @@
 # OmegaX
 
 Logiciel de comptabilité SYCEBNL et SYSCOHADA pour les ASBL, ONG et
-entreprises de RDC. Propriété du cabinet **VMG Consulting**, qui l'exploite et
-le vend.
+entreprises de RDC. Propriété de son éditeur, qui l'exploite et le vend.
 
 > **Réécrit le 2026-09-28 (audit final F204).** Ce fichier décrivait jusque-là
 > le prototype de phase 1 · nom provisoire, licence sur site par vérification

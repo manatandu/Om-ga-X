@@ -1,6 +1,6 @@
 import { AbonnementsService } from './abonnements.service';
 
-const EDITEUR = 'vmg';
+const EDITEUR = 'editeur';
 const F = (code: string, type: 'FORMULE' | 'OPTION', m: number | null, a: number | null = null) => ({
   id: `f-${code}`, code, libelle: code, type, prixMensuelUsd: m === null ? null : { toString: () => String(m), valueOf: () => m }, prixAnnuelUsd: a,
 });
@@ -43,11 +43,11 @@ function monde(o: { assujetti?: boolean; cours?: number | null; dejaFacture?: bo
 
 describe('facturation des abonnements · service', () => {
   it('facture dans le dossier de l’éditeur, en francs au cours du jour, sans TVA tant qu’il n’est pas assujetti', async () => {
-    const m = monde({ numeros: ['VMG-2026-0003'] });
+    const m = monde({ numeros: ['OMX-2026-0003'] });
     const r = await m.s.facturer(EDITEUR, '2026-10', '2026-10-31', null);
     expect(m.facturation.enregistrer).toHaveBeenCalledWith(EDITEUR, expect.anything());
     const f = m.factures[0] as { numeroSerie: string; lignes: { prixUnitaire: number; montantTva: number; imposable: boolean }[] };
-    expect(f.numeroSerie).toBe('VMG-2026-0004');
+    expect(f.numeroSerie).toBe('OMX-2026-0004');
     expect(f.lignes.map((l) => l.prixUnitaire)).toEqual([56000, 28000]);
     expect(f.lignes.every((l) => l.montantTva === 0 && l.imposable === false)).toBe(true);
     expect(m.liens[0]).toMatchObject({ abonnementId: 'a1', periode: '2026-10' });
@@ -194,7 +194,7 @@ describe('facturer puis envoyer', () => {
 
 describe('F173 · le dossier de l’éditeur se lit depuis la console', () => {
   it('hors de ce dossier, le refus est « connectez-vous au dossier de l’éditeur », pas « aucun dossier désigné »', async () => {
-    const plateforme = { dossierEditeurId: jest.fn(async () => 'vmg') };
+    const plateforme = { dossierEditeurId: jest.fn(async () => 'editeur') };
     const s = new AbonnementsService({} as never, {} as never, plateforme as never);
     await expect(s.facturer('autre-dossier', '2026-10', '2026-10-01', null)).rejects.toThrow(/Connectez-vous au dossier de l’éditeur/);
   });

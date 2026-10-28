@@ -106,7 +106,7 @@ describe('console de plateforme · le retrait n’est pas silencieux', () => {
 
   it('la bulle dit la cause, la conséquence et le repli', () => {
     const aide = source.slice(source.indexOf('const AIDE_LICENCE_SUR_SITE'), source.indexOf(';', source.indexOf('const AIDE_LICENCE_SUR_SITE')));
-    expect(aide).toContain('fichier signé par VMG');
+    expect(aide).toContain('fichier signé par l\'éditeur');
     expect(aide).toContain('hors service dès sa première requête');
     expect(aide).toContain('« Perpétuelle (SaaS) »');
   });
@@ -150,7 +150,7 @@ describe('console de plateforme · le type reste LISIBLE, c’est le choix qu’
     // Lisible · sans l'entrée, la colonne LICENCE du dossier de l'éditeur
     // s'afficherait vide, ce qui est exactement le dossier qu'on veut
     // reconnaître d'un coup d'œil.
-    expect(table).toContain("PROPRIETAIRE: 'Éditeur (VMG Consulting)'");
+    expect(table).toContain("PROPRIETAIRE: 'Éditeur d’OmegaX'");
     // Jamais proposé · la seule occurrence dans le `select` est conditionnée
     // au fait que ce SOIT déjà le type, et elle est `disabled`.
     const selecteur = source.slice(source.indexOf('<select value={licType}'), source.indexOf('</select>'));

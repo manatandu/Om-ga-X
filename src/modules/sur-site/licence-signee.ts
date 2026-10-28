@@ -1,7 +1,7 @@
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'crypto';
 
 /**
- * LA LICENCE D'UNE INSTALLATION SUR SITE · un fichier signé par VMG, vérifié
+ * LA LICENCE D'UNE INSTALLATION SUR SITE · un fichier signé par l'éditeur, vérifié
  * sans internet. Moteur PUR · ni disque, ni horloge, ni réseau : le service
  * lui passe tout ce qu'il lit.
  *
@@ -9,7 +9,7 @@ import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'cry
  * 2026-09-26. La connexion d'un bureau congolais tombe des jours entiers ; une
  * licence qui exigerait un contact régulier avec nos serveurs couperait la
  * comptabilité d'un client en pleine clôture pour une panne de son opérateur.
- * Le fichier est signé en Ed25519 par la clé PRIVÉE de VMG, qui ne quitte
+ * Le fichier est signé en Ed25519 par la clé PRIVÉE de l'éditeur, qui ne quitte
  * jamais nos serveurs ; le logiciel ne porte que la clé PUBLIQUE, qui vérifie
  * et ne sait pas signer. Modifier une date ou un plafond dans le fichier casse
  * la signature.
@@ -99,7 +99,7 @@ export function motifRefusContenu(c: Partial<ContenuLicence> | null | undefined)
   return null;
 }
 
-/** Signe un contenu · appelé par la console de VMG, seule à détenir la clé privée. */
+/** Signe un contenu · appelé par la console de l'éditeur, seule à détenir la clé privée. */
 export function signerLicence(contenu: ContenuLicence, clePriveePem: string): FichierLicence {
   const m = motifRefusContenu(contenu);
   if (m) throw new Error(`Licence irrecevable · ${m}.`);
@@ -118,7 +118,7 @@ export function empreinteDe(identifiantSysteme: string): string {
 }
 
 export interface ContexteVerification {
-  /** Clé publique de VMG (PEM), ou `null` tant qu'elle n'est pas posée dans le code. */
+  /** Clé publique de l'éditeur (PEM), ou `null` tant qu'elle n'est pas posée dans le code. */
   clePubliquePem: string | null;
   empreinte: string;
   /** AAAA-MM-JJ, calendrier du poste. */
@@ -145,16 +145,16 @@ function veille(jour: string): string {
 
 export function verifierLicence(texte: string | null, ctx: ContexteVerification): VerdictLicence {
   if (!ctx.clePubliquePem) {
-    return verdict('CLE_EDITEUR_ABSENTE', 'Cette version ne porte pas la clé publique de VMG Consulting · aucune licence ne peut y être vérifiée. Elle ne doit pas être installée chez un client.');
+    return verdict('CLE_EDITEUR_ABSENTE', 'Cette version ne porte pas la clé publique de l’éditeur d’OmegaX · aucune licence ne peut y être vérifiée. Elle ne doit pas être installée chez un client.');
   }
   if (texte === null || !texte.trim()) {
-    return verdict('ABSENTE', 'Aucune licence n’est installée sur ce poste. Communiquez l’empreinte de la machine à VMG Consulting pour recevoir votre fichier de licence.');
+    return verdict('ABSENTE', 'Aucune licence n’est installée sur ce poste. Communiquez l’empreinte de la machine à l’éditeur d’OmegaX pour recevoir votre fichier de licence.');
   }
   let fichier: FichierLicence;
   try {
     fichier = JSON.parse(texte) as FichierLicence;
   } catch {
-    return verdict('ILLISIBLE', 'Le fichier de licence est illisible · ce n’est pas un fichier émis par VMG Consulting.');
+    return verdict('ILLISIBLE', 'Le fichier de licence est illisible · ce n’est pas un fichier émis par l’éditeur d’OmegaX.');
   }
   const m = motifRefusContenu(fichier?.contenu);
   if (m || typeof fichier.signature !== 'string') {
@@ -168,12 +168,12 @@ export function verifierLicence(texte: string | null, ctx: ContexteVerification)
     signatureOk = false;
   }
   if (!signatureOk) {
-    return verdict('SIGNATURE_INVALIDE', 'La signature de la licence est invalide · le fichier a été modifié, ou il n’a pas été émis par VMG Consulting.');
+    return verdict('SIGNATURE_INVALIDE', 'La signature de la licence est invalide · le fichier a été modifié, ou il n’a pas été émis par l’éditeur d’OmegaX.');
   }
   // Tout ce qui suit parle d'une licence AUTHENTIQUE · le contenu est rendu,
   // l'écran peut dire à qui elle a été émise, même quand elle ne vaut pas ici.
   if (c.empreinteMachine !== ctx.empreinte) {
-    return verdict('AUTRE_MACHINE', `Cette licence (n° ${c.numero}) a été émise pour un autre poste. Elle ne se transfère pas · demandez à VMG Consulting une licence pour l’empreinte de ce poste.`, c);
+    return verdict('AUTRE_MACHINE', `Cette licence (n° ${c.numero}) a été émise pour un autre poste. Elle ne se transfère pas · demandez à l’éditeur d’OmegaX une licence pour l’empreinte de ce poste.`, c);
   }
   if (ctx.horlogeMax && ctx.aujourdhui < veille(ctx.horlogeMax)) {
     return verdict('HORLOGE_RECULEE', `L’horloge de ce poste indique le ${ctx.aujourdhui}, alors que l’installation a déjà fonctionné le ${ctx.horlogeMax}. Remettez le poste à la bonne date.`, c);

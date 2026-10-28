@@ -51,12 +51,12 @@ describe('la page publique reste dans la politique de sécurité du site', () =>
       expect(u.startsWith('/polices/')).toBe(true);
       expect(existsSync(join(CLIENT, 'public', u))).toBe(true);
     }
-    for (const f of ['/logo-omegax-mot.svg', '/icone.svg']) {
+    for (const f of ['/logo-omegax-blanc.svg', '/icone.svg']) {
       expect(html).toContain(f);
       expect(existsSync(join(CLIENT, 'public', f))).toBe(true);
     }
     // La marque est un TRACÉ, jamais du texte composé (charte § 9 bis).
-    expect(html).toMatch(/<img src="\/logo-omegax-mot\.svg"[^>]*alt="OmegaX"/);
+    expect(html).toMatch(/<img src="\/logo-omegax-blanc\.svg"[^>]*alt="OmegaX"/);
     expect(css).not.toMatch(/font-family:[^;}]*(Arial|Helvetica|Inter|Roboto|Impact)/i);
   });
 
@@ -135,7 +135,7 @@ describe('les intitulés de comptes cités sont ceux du plan semé', () => {
 
   for (const ref of ['SYCEBNL', 'SYSCOHADA'] as const) {
     it(`les trois lignes du plan ${ref} de la page existent à l’identique dans son semis`, () => {
-      const bloc = html.match(new RegExp(`<article class="plan" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '';
+      const bloc = html.match(new RegExp(`<article class="plan(?: revele)?" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '';
       const lignes = [...bloc.matchAll(/<th scope="row" class="code">(\d+)<\/th><td>([^<]+)<\/td>/g)];
       expect(lignes.length).toBe(3);
       for (const [, numero, libelle] of lignes) {
@@ -146,7 +146,7 @@ describe('les intitulés de comptes cités sont ceux du plan semé', () => {
 
   it('un numéro, deux sens : la page montre bien un numéro commun aux deux plans et un sujet à deux numéros', () => {
     const num = (ref: string) =>
-      [...(html.match(new RegExp(`<article class="plan" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '').matchAll(/class="code">(\d+)</g)].map((m) => m[1]);
+      [...(html.match(new RegExp(`<article class="plan(?: revele)?" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '').matchAll(/class="code">(\d+)</g)].map((m) => m[1]);
     const a = num('SYCEBNL');
     const b = num('SYSCOHADA');
     expect(a.filter((x) => b.includes(x)).sort()).toEqual(['192', '4181']);
@@ -163,7 +163,7 @@ describe('les nombres et les phrases de la page ont leur source dans le dépôt'
     const sycebnl = reglement.match(/professionnels \((\d+) notes\), projets de développement \((\d+)\), SMT \((\d+)\)/);
     expect(sycebnl).not.toBeNull();
     const nb = (ref: string) =>
-      [...(html.match(new RegExp(`<article class="plan" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '').matchAll(/data-vers="(\d+)"/g)].map((m) => m[1]);
+      [...(html.match(new RegExp(`<article class="plan(?: revele)?" data-ref="${ref}"[\\s\\S]*?</article>`))?.[0] ?? '').matchAll(/data-vers="(\d+)"/g)].map((m) => m[1]);
     expect(nb('SYCEBNL')).toEqual([sycebnl![1], sycebnl![2], sycebnl![3]]);
     const normal = reglement.match(/(\d+) notes du ch\. 6/);
     expect(nb('SYSCOHADA')).toEqual([normal![1]]);
@@ -221,14 +221,20 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
     '#fff', //
     '#f6f5fa', // lavis
     '#b52e26', // signal d'erreur, seul rouge de la page
-    '#9a95b4', // curseur de défilement
-      ]);
+    '#4f3ba8', // violet de l'échelle (--a-600) · étiquettes et cases du pointage
+    '#cec6f0', // lilas de l'échelle (--a-200) · ce qui ressort sur l'encre
+    '#8a79d6', // lilas vif (--a-400) · jamais sous un texte
+    '#e6e1f8', // brume (--a-100) · trait de la frise, survol
+  ]);
 
   it('toute couleur de la feuille de style est de la charte, la liste est fermée', () => {
+    // Le site du cabinet porte un or (#e3a93c, #a96f12) et une nuit (#1b1342) · la page
+    // d'OmegaX reprend sa composition, jamais ses couleurs (demande de Manasse du 2026-10-25).
+    for (const h of ['#e3a93c', '#a96f12', '#f0b94d', '#1b1342', '#e8590c']) expect(hexa).not.toContain(h);
     for (const h of new Set(hexa)) expect(ADMISES.has(h)).toBe(true);
     // Les transparences ne sont posées que sur l'encre et sur le blanc.
     for (const m of css.matchAll(/rgba\(([^)]+)\)/g)) {
-      expect(/^(255,255,255|42,31,92),/.test(m[1].replace(/\s/g, ''))).toBe(true);
+      expect(/^(255,255,255|42,31,92|79,59,168),/.test(m[1].replace(/\s/g, ''))).toBe(true);
     }
   });
 
@@ -251,6 +257,9 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
     for (const t of ['texte', 'discret', 'encre', 'signal']) {
       expect(rapport(jeton(t), lavis)).toBeGreaterThanOrEqual(4.5);
     }
+    expect(rapport(jeton('violet'), fond)).toBeGreaterThanOrEqual(4.5);
+    expect(rapport(jeton('violet'), lavis)).toBeGreaterThanOrEqual(4.5);
+    expect(rapport(jeton('lilas'), jeton('encre'))).toBeGreaterThanOrEqual(4.5);
     // Le blanc sur l'encre (bouton plein, bandeau d'appel).
     expect(rapport('#ffffff', jeton('encre'))).toBeGreaterThanOrEqual(4.5);
     expect(rapport(jeton('encre'), lavis)).toBeGreaterThanOrEqual(4.5);
@@ -269,32 +278,72 @@ describe('la charte : encre, blanc, gris, aucune couleur d’accent', () => {
 });
 
 describe('le mouvement sert la lecture et se coupe', () => {
-  it('prefers-reduced-motion coupe animations et transitions', () => {
+  it('prefers-reduced-motion coupe animations et transitions, et rend visible ce que le mouvement cachait', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{[\s\S]*animation:none!important;transition:none!important/);
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{[\s\S]*\.js \.revele,\.js \.mot,\.js \.registre-heros tr\{opacity:1!important/);
+    expect(js).toContain("matchMedia('(prefers-reduced-motion: reduce)')");
   });
 
-  it('aucun effet de défilement : ni révélation, ni compteur, ni mots lus, ni barre de progression (charte § 9 bis)', () => {
-    // Ces effets faisaient de la page un gabarit de page de lancement ; le registre est celui de l'application.
-    for (const t of [html, js]) expect(t).not.toMatch(/data-reveal|IntersectionObserver|requestAnimationFrame/);
-    expect(js).not.toMatch(/addEventListener\('scroll'/);
-    expect(css).not.toMatch(/\.progres|\.mots|\.faisceau|@property/);
-    // Rien n'est caché sans script, sauf les contrôles interactifs (sinon des boutons sans effet).
+  it('sans script, rien n’est caché : seules les règles préfixées par .js masquent, et le script pose .js', () => {
+    // Une apparition sans .js laisserait la page blanche à qui n'exécute pas le script.
+    const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of sansCommentaires.matchAll(/([^{}]+)\{[^{}]*opacity:0[;}]/g)) {
+      const sel = m[1].trim();
+      if (sel.startsWith('from') || sel === '.tampon' || sel.startsWith('.haut')) continue;
+      for (const s of sel.split(',')) expect(s.trim().startsWith('.js ')).toBe(true);
+    }
+    expect(js).toContain("classList.add('js')");
+    // Sans IntersectionObserver, tout est marqué vu d'emblée.
+    expect(js).toMatch(/!\('IntersectionObserver' in window\)/);
+  });
+
+  it('aucun cachet tournant ni rotation sans fin (demande de Manasse du 2026-10-25), aucun compteur', () => {
+    expect(css).not.toMatch(/infinite/);
+    expect(css).not.toMatch(/rotate\(360deg\)/);
+    expect(html).not.toMatch(/textPath/);
+    // Les nombres s'écrivent en clair, jamais animés vers leur valeur.
+    expect(js).not.toMatch(/data-vers/);
+    for (const m of html.matchAll(/data-vers="(\d+)">([^<]*)</g)) expect(m[2]).toBe(m[1]);
+  });
+
+  it('rien n’est caché sans script, sauf les contrôles interactifs (sinon des boutons sans effet)', () => {
     expect(html).toMatch(/id="valider" hidden/);
     expect(html).toMatch(/id="remettre" hidden/);
     expect(html.match(/ readonly>/g)!.length).toBe(2);
     // Les deux plans se montrent côte à côte, sans bascule qui en cacherait un.
     expect(html).not.toMatch(/id="bascule"/);
-    expect(html.match(/<article class="plan" data-ref="(SYCEBNL|SYSCOHADA)"/g)!.length).toBe(2);
+    expect(html.match(/<article class="plan revele" data-ref="(SYCEBNL|SYSCOHADA)"/g)!.length).toBe(2);
+    // Aucun style en ligne · la politique de sécurité du site le refuserait.
+    expect(html).not.toMatch(/\sstyle="/);
   });
 
   it('les champs de montant restent à 16 px au moins sur téléphone (pas de zoom à la saisie)', () => {
     expect(css).toMatch(/\.piece input\{font-size:16px/);
   });
 
-  it('la durée des mouvements reste sobre : rien au-delà de 300 ms, le cachet seul est animé', () => {
-    for (const m of css.matchAll(/animation:[^;}]*?(\d*\.?\d+)s/g)) {
-      expect(Number(m[1])).toBeLessThanOrEqual(0.3);
+  it('la durée des mouvements reste sobre : rien au-delà de 1,2 s, et les animations sont nommées', () => {
+    // Les durées seules · un délai d'entrée (le journal du bandeau qui s'inscrit) n'est pas une durée.
+    for (const m of css.matchAll(/(?:animation|transition)(?!-delay)[^;}]*?(\d*\.?\d+)s/g)) {
+      expect(Number(m[1])).toBeLessThanOrEqual(1.2);
     }
-    expect([...css.matchAll(/@keyframes (\w+)/g)].map((m) => m[1])).toEqual(['poser']);
+    expect([...css.matchAll(/@keyframes (\w+)/g)].map((m) => m[1]).sort()).toEqual(['entre', 'ligne', 'mot', 'poser']);
+  });
+
+  it('le journal du bandeau boucle : ses totaux sont égaux et la somme de ses lignes', () => {
+    const fig = html.match(/<figure class="registre-heros"[\s\S]*?<\/figure>/)?.[0] ?? '';
+    const montant = (t: string) => Number(t.replace(/&#8239;/g, '').replace(',', '.'));
+    const lignes = [...(fig.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] ?? '').matchAll(/<tr><td>[\s\S]*?<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)];
+    expect(lignes.length).toBe(4);
+    const d = lignes.reduce((s, l) => s + (l[1] ? montant(l[1]) : 0), 0);
+    const c = lignes.reduce((s, l) => s + (l[2] ? montant(l[2]) : 0), 0);
+    const totaux = fig.match(/Totaux<\/th><td class="num">([^<]*)<\/td><td class="num">([^<]*)</)!;
+    expect(d).toBe(c);
+    expect(montant(totaux[1])).toBe(d);
+    expect(montant(totaux[2])).toBe(c);
+    // Ses comptes existent dans les deux plans semés (le dossier fictif n'a pas de référentiel dit).
+    const semis = [lire('src/modules/comptes/compte-seed.ts'), lire('src/modules/comptes/compte-seed-syscohada.ts')];
+    for (const n of new Set([...fig.matchAll(/class="code">(\d+)</g)].map((m) => m[1]))) {
+      for (const s of semis) expect(s).toContain(`'${n.padEnd(8, '0')}'`);
+    }
   });
 });

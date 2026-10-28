@@ -7,7 +7,7 @@ import { PrismaService } from '../../common/prisma.service';
 /**
  * LA LICENCE DE L'ÉDITEUR · une panne sans issue, fermée.
  *
- * `evaluerLicence` n'exemptait personne. Le dossier de VMG Consulting,
+ * `evaluerLicence` n'exemptait personne. Le dossier de l'éditeur,
  * propriétaire du logiciel, se coupait comme celui d'un client : à l'échéance
  * d'un abonnement, ou dès qu'une suspension était posée depuis la console.
  *

@@ -87,7 +87,7 @@ facultative perdrait en silence les lignes où elle est nulle.
 Le contrôleur d'exports porte `LicenceGuard`. La restitution a son propre
 contrôleur, sans lui. Une restitution derrière `LicenceGuard` ne serait
 disponible que tant que le client paie, donc pas dans le seul cas où elle sert :
-suspendre, archiver, restituer, purger. **Décision de VMG**, pas règle de droit ·
+suspendre, archiver, restituer, purger. **Décision de l'éditeur**, pas règle de droit ·
 elle se défait en ajoutant le garde à cette ligne.
 
 ## Ce qui reste ouvert

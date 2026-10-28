@@ -66,7 +66,7 @@ vérifiée.
 | 29 | Déverrouillage d'un dossier après une validation interrompue | 30 | DIFFÉRENT, VOULU | Les verrous de geste ont une échéance qui reprend la ligne d'un processus tombé (`VerrouProvisionChange`, `VerrouCreancesDouteuses`). |
 | 30 | Remise à zéro des mouvements d'un dossier de test | 31 | ABSENT | |
 | 31 | Extraction et intégration de données, import d'un dossier, console d'import | 31 à 38 | PARTIEL | Restitution du dossier en archive CSV (M6, ligne 1), sauvegarde chiffrée de la base chaque nuit avec restauration de contrôle, copies avant chaque mise à jour sur site. Pas d'intégration d'un dossier extrait. |
-| 32 | Extraction envoyée à l'assistance pour analyse | 34 | DIFFÉRENT, VOULU | VMG ne voit jamais les données d'un client (CLAUDE.md, § 8). |
+| 32 | Extraction envoyée à l'assistance pour analyse | 34 | DIFFÉRENT, VOULU | L'éditeur ne voit jamais les données d'un client (CLAUDE.md, § 8). |
 | 33 | Architecture : serveurs de données, d'application et de traitements, présentation Windows ou web, impression, documentation, multi-tiers et BI | 39 à 43 | DIFFÉRENT, VOULU | Application web servie par Cloud Run sur une base Neon, ou installée sur un poste serveur Windows ; aucun entrepôt BI. |
 | 34 | Arborescence de la solution (écrans, tables, menus, traces, traitements, publication) | 40, 41 | DIFFÉRENT, VOULU | Sans objet : rien n'est généré sur le serveur par dossier. |
 

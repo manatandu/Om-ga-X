@@ -13,7 +13,7 @@
 #
 # Le regroupement évite une demande de tirage par paquet : une par
 # écosystème et par semaine, ce qui reste lisible pour un cabinet de la
-# taille de VMG Consulting. Les montées de version MAJEURES restent
+# taille de l'éditeur. Les montées de version MAJEURES restent
 # séparées · elles cassent, et elles se relisent une par une.
 version: 2
 updates:

@@ -152,7 +152,7 @@ export class LicenceSurSiteService implements OnModuleInit, OnModuleDestroy {
         empreinte: null,
         dateVersion,
         statut: 'AUTRE_MACHINE',
-        motif: 'L’identifiant de ce poste est illisible · la licence ne peut pas y être rattachée. Contactez VMG Consulting.',
+        motif: 'L’identifiant de ce poste est illisible · la licence ne peut pas y être rattachée. Contactez l’éditeur d’OmegaX.',
         contenu: null,
       };
     }
@@ -218,10 +218,10 @@ export class LicenceSurSiteService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Installe un fichier de licence reçu de VMG. N'importe qui sur le réseau
+   * Installe un fichier de licence reçu de l'éditeur. N'importe qui sur le réseau
    * local peut en déposer un, puisqu'aucun compte n'existe encore à la
    * première installation · ce n'est pas une faille : un fichier ne vaut que
-   * signé par VMG et pour CE poste. La seule malveillance possible serait de
+   * signé par l'éditeur et pour CE poste. La seule malveillance possible serait de
    * remplacer une licence récente par une plus ancienne encore valide, d'où
    * le refus d'une émission antérieure.
    */

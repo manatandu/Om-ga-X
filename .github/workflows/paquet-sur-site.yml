@@ -35,7 +35,7 @@ jobs:
         run: |
           $s = Get-Content src/modules/sur-site/cle-publique-editeur.ts -Raw
           if ($s -notmatch 'BEGIN PUBLIC KEY') {
-            throw "La clé publique de VMG n'est pas posée dans cle-publique-editeur.ts · un paquet sans elle ne peut vérifier aucune licence (voir docs/installation-sur-site.md)."
+            throw "La clé publique de l'éditeur n'est pas posée dans cle-publique-editeur.ts · un paquet sans elle ne peut vérifier aucune licence (voir docs/installation-sur-site.md)."
           }
 
       - uses: actions/setup-node@v4

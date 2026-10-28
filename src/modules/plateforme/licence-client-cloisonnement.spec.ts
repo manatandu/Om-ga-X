@@ -23,7 +23,7 @@ describe('console · licence d’un cabinet client, à travers la garde', () => 
 
   it('l’opérateur, connecté à son dossier, suspend la licence d’un client', async () => {
     const service = new PlateformeService(prisma as never, { get: () => undefined } as never, undefined as never);
-    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
       service.modifierLicence('CLIENT', { statut: 'SUSPENDUE' } as never),
     );
     expect(r).toMatchObject({ statut: 'SUSPENDUE' });
@@ -93,19 +93,19 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
     new PlateformeService(prisma as never, { get: () => undefined } as never, undefined as never, undefined, courrier(configure) as never);
 
   it('l’opérateur, connecté au dossier de l’éditeur, réinitialise l’administrateur du client', async () => {
-    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
       service().reinitialiserAdmin('CLIENT', { email: ' Admin@Client.CD '}),
     );
     expect(r).toEqual({ reinitialise: true, email: 'admin@client.cd', courriel: 'ENVOYE' });
     expect(brut.user.update).toHaveBeenCalledTimes(1);
   });
 
-  // DÉCISION DE MANASSE DU 2026-10-09 · « VMG ne doit pas voir les
+  // DÉCISION DE MANASSE DU 2026-10-09 · « [l'éditeur] ne doit pas voir les
   // informations du client ». Le mot de passe provisoire est tiré au sort,
   // part au seul courriel de l'administrateur, et la console ne le reçoit pas.
   it('le mot de passe provisoire part au seul administrateur, jamais à la console', async () => {
     envoyerUnSecret.mockClear();
-    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+    const r = await dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
       service().reinitialiserAdmin('CLIENT', { email: 'admin@client.cd' }),
     );
     const [dossier, message, corpsGarde] = envoyerUnSecret.mock.calls[0];
@@ -125,7 +125,7 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
     brut.user.update.mockClear();
     envoyerUnSecret.mockRejectedValueOnce(new Error('Le courriel n’est pas parti'));
     await expect(
-      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
         service().reinitialiserAdmin('CLIENT', { email: 'admin@client.cd' }),
       ),
     ).rejects.toThrow(/pas parti/);
@@ -135,7 +135,7 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
   it('sans messagerie, rien n’est touché · le mot de passe n’aurait aucun chemin vers le client', async () => {
     brut.user.update.mockClear();
     await expect(
-      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
         service(false).reinitialiserAdmin('CLIENT', { email: 'admin@client.cd' }),
       ),
     ).rejects.toThrow(/Aucune messagerie/);
@@ -144,7 +144,7 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
 
   it('l’opérateur ne réinitialise que l’administrateur, jamais un autre compte du dossier', async () => {
     await expect(
-      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
         service().reinitialiserAdmin('CLIENT', { email: 'compta@client.cd'}),
       ),
     ).rejects.toThrow(/Aucun administrateur/);
@@ -152,7 +152,7 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
 
   it('un compte qui n’est pas l’administrateur de CE dossier reste introuvable', async () => {
     await expect(
-      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@vmg', tenantId: 'EDITEUR' } as never, () =>
+      dansContexteAudit({ acteurId: 'op', acteurEmail: 'op@editeur', tenantId: 'EDITEUR' } as never, () =>
         service().reinitialiserAdmin('AUTRE', { email: 'admin@client.cd'}),
       ),
     ).rejects.toThrow(/Aucun administrateur/);

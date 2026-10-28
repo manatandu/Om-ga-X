@@ -638,7 +638,7 @@ Aucun développement ne les débloque.
 - ~~**Licence PERPETUEL_ONPREMISE**~~ **TRANCHÉ le 2026-09-26 · le heartbeat
   n'est pas retenu** (vérifié le 2026-09-28, audit final). L'installation
   sur site est LIVRÉE (rang 16 ci-dessus), avec une licence en FICHIER SIGNÉ
-  par VMG et vérifiée sans internet (`src/modules/sur-site/licence-signee.ts`),
+  par l'éditeur et vérifiée sans internet (`src/modules/sur-site/licence-signee.ts`),
   que `LicenceService.evaluerLicence` consulte avant toute autre règle ; sur
   site, tout dossier naît sous ce type, couvert par la licence du poste. En
   ligne, le type reste fermé à l'attribution aux deux portes de la console

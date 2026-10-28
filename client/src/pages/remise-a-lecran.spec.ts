@@ -208,7 +208,7 @@ describe("L'avis d'accès, rendu à l'administrateur qui a agi", () => {
   it("rappelle que le mot de passe n'est PAS dans l'avis, et que c'est lui qui le remet", () => {
     const phrase = phraseAvisAcces({
       avise: true,
-      destinataire: 'jean@vmg.cd',
+      destinataire: 'jean@exemple.cd',
       statut: 'SANS_TRANSPORT',
       motif: null,
     });
