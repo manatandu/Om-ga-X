@@ -133,7 +133,7 @@ export class ConcordanceService {
       this.isolee(tenantId, [PROVISIONS], () => this.familleProvisions(tenantId, exerciceId)),
       this.isolee(tenantId, [CREANCES_DOUTEUSES], () => this.familleCreances(tenantId, exerciceId)),
       this.isolee(tenantId, [ANALYTIQUE], () => this.familleAnalytique(tenantId, exerciceId)),
-      this.isolee(tenantId, [BANQUES], () => this.familleBanques(tenantId)),
+      this.isolee(tenantId, [BANQUES], () => this.familleBanques(tenantId, exercice.dateFin)),
     ]);
 
     const familles: FamilleConcordance[] = [
@@ -269,9 +269,17 @@ export class ConcordanceService {
    * jamais ici. Un compte sans rapprochement n'est pas « concordant » · il se
    * dit non rapproché.
    */
-  private async familleBanques(tenantId: string): Promise<FamilleConcordance[]> {
+  private async familleBanques(tenantId: string, finExercice: Date): Promise<FamilleConcordance[]> {
+    // LE RELEVÉ DE L'EXERCICE CHOISI (relecture de la concordance, mineur) ·
+    // le dernier relevé daté au plus tard de sa clôture, jamais celui d'un
+    // exercice suivant · sans quoi la concordance de N se lisait sur un
+    // relevé de N+1.
     const derniers = await this.prisma.rapprochementBancaire.findMany({
-      where: { tenantId, statut: { in: [StatutRapprochement.EN_COURS, StatutRapprochement.CLOTURE] } },
+      where: {
+        tenantId,
+        statut: { in: [StatutRapprochement.EN_COURS, StatutRapprochement.CLOTURE] },
+        dateReleve: { lte: finExercice },
+      },
       orderBy: [{ compteId: 'asc' }, { dateReleve: 'desc' }, { createdAt: 'desc' }],
       distinct: ['compteId'],
       take: PLAFOND_BANQUES + 1,
@@ -294,6 +302,14 @@ export class ConcordanceService {
     }
     const mentions: string[] = [];
     if (tronque) mentions.push(`Plus de ${PLAFOND_BANQUES} comptes rapprochés · les premiers seulement sont lus.`);
+    // Un rapprochement EN COURS n'est pas fini · son écart n'est pas encore un
+    // constat, et il se dit comme tel.
+    const enCours = derniers.slice(0, PLAFOND_BANQUES).filter((r) => r.statut === StatutRapprochement.EN_COURS);
+    if (enCours.length > 0) {
+      mentions.push(
+        `${enCours.length} rapprochement(s) en cours, non clos (${enCours.map((r) => r.compte.numero).join(', ')}) · leur écart se lit à la clôture du rapprochement.`,
+      );
+    }
     if (lignes.some((l) => l.comptabilite === null)) {
       mentions.push('Un premier rapprochement sans solde de départ déclaré n’a pas de solde pointé · déclarez-le dans le rapprochement.');
     }

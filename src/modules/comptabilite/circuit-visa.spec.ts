@@ -237,10 +237,16 @@ describe('viser une écriture', () => {
 
 describe('le visa d’une facture', () => {
   it('l’auteur de l’enregistrement ne vise pas sa facture · une facture comptabilisée ne se vise plus', () => {
-    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: null }, 'A').motif).toMatch(/enregistré/);
-    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: 'e' }, 'B').motif).toMatch(/comptabilisée/);
-    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: null }, 'B').motif).toBeNull();
-    expect(motifRefusVisaFacture({ saisiePar: null, viseePar: null, viseeLe: null, ecritureId: null }, 'B').avertissement).toMatch(/avant le circuit/);
+    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: null, emiseParLeLogiciel: false }, 'A').motif).toMatch(/enregistré/);
+    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: 'e', emiseParLeLogiciel: false }, 'B').motif).toMatch(/comptabilisée/);
+    expect(motifRefusVisaFacture({ saisiePar: 'A', viseePar: null, viseeLe: null, ecritureId: null, emiseParLeLogiciel: false }, 'B').motif).toBeNull();
+    expect(motifRefusVisaFacture({ saisiePar: null, viseePar: null, viseeLe: null, ecritureId: null, emiseParLeLogiciel: false }, 'B').avertissement).toMatch(/avant le circuit/);
+    // La facture d'abonnement émise par le logiciel n'est pas une pièce
+    // d'avant le circuit · son motif propre (relecture du circuit, mineur).
+    const abonnement = motifRefusVisaFacture({ saisiePar: null, viseePar: null, viseeLe: null, ecritureId: null, emiseParLeLogiciel: true }, 'B');
+    expect(abonnement.motif).toBeNull();
+    expect(abonnement.avertissement).toMatch(/émise par OmegaX/);
+    expect(abonnement.avertissement).not.toMatch(/avant le circuit/);
   });
 
   it('sous le circuit, la comptabilisation d’une facture non visée est refusée ; hors du circuit, rien', () => {

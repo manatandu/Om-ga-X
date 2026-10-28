@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { RoleUtilisateur, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -35,7 +35,24 @@ export const MOTIF_CIRCUIT_INACTIF =
  */
 @Injectable()
 export class CircuitVisaService {
+  private readonly journalServeur = new Logger(CircuitVisaService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * LE REFUS D'UNE PIÈCE N'EMPORTE PAS LE LOT (relecture du circuit, mineur) ·
+   * chaque pièce a sa transaction, et ce qui a été visé ou retiré avant reste
+   * fait. Seul le refus `Forbidden` était rangé · un 409, un 503 (pool saturé)
+   * ou une panne au milieu du lot faisait tomber la requête entière, et
+   * l'écran ne voyait jamais les visas déjà posés. Tout refus HTTP est rangé
+   * avec son motif ; une panne est consignée au journal du serveur et dite
+   * pour sa pièce.
+   */
+  private motifDeLEchec(tenantId: string, geste: string, err: unknown): string {
+    if (err instanceof HttpException) return err.message;
+    this.journalServeur.error(`${geste} du dossier ${tenantId} · une pièce n'a pas pu être traitée`, err instanceof Error ? err.stack : String(err));
+    return 'Rien n’est fait sur cette pièce · l’incident est consigné au journal du serveur, relancez le geste.';
+  }
 
   private async circuitActif(tenantId: string): Promise<void> {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { circuitVisa: true } });
@@ -106,11 +123,7 @@ export class CircuitVisaService {
           if (r.avertissement) avertissements.push({ id: p.id, piece: r.piece, avertissement: r.avertissement });
         }
       } catch (err) {
-        if (err instanceof ForbiddenException) {
-          refusees.push({ id: p.id, piece: '·', motif: err.message });
-          continue;
-        }
-        throw err;
+        refusees.push({ id: p.id, piece: '·', motif: this.motifDeLEchec(tenantId, 'Visa', err) });
       }
     }
     return { visees: visees.length, refusees, avertissements };
@@ -149,11 +162,7 @@ export class CircuitVisaService {
         if (r.motif) refusees.push({ id, piece: r.piece, motif: r.motif });
         else retires.push(id);
       } catch (err) {
-        if (err instanceof ForbiddenException) {
-          refusees.push({ id, piece: '·', motif: err.message });
-          continue;
-        }
-        throw err;
+        refusees.push({ id, piece: '·', motif: this.motifDeLEchec(tenantId, 'Retrait de visa', err) });
       }
     }
     return { retires: retires.length, refusees };
@@ -171,10 +180,18 @@ export class CircuitVisaService {
       await tx.$queryRaw`SELECT "id" FROM "factures" WHERE "id" = ${factureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await tx.facture.findFirst({
         where: { id: factureId, tenantId },
-        select: { id: true, numeroSerie: true, saisiePar: true, viseePar: true, viseeLe: true, ecritureId: true },
+        select: {
+          id: true,
+          numeroSerie: true,
+          saisiePar: true,
+          viseePar: true,
+          viseeLe: true,
+          ecritureId: true,
+          factureAbonnement: { select: { id: true } },
+        },
       });
       if (!f) throw new NotFoundException('Facture introuvable pour ce dossier.');
-      const { motif, avertissement } = motifRefusVisaFacture(f, utilisateurId);
+      const { motif, avertissement } = motifRefusVisaFacture({ ...f, emiseParLeLogiciel: f.factureAbonnement !== null }, utilisateurId);
       if (motif) throw new BadRequestException(motif);
       const maintenant = new Date();
       await tx.facture.update({ where: { id: f.id }, data: { viseePar: utilisateurId, viseeLe: maintenant }, select: { id: true } });

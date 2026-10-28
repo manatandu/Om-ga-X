@@ -400,6 +400,12 @@ export interface FactureAViser {
   viseePar: string | null;
   viseeLe: Date | null;
   ecritureId: string | null;
+  /**
+   * Émise par le logiciel lui-même (facture d'abonnement de la console, liée
+   * à son `FactureAbonnement`) · personne ne l'a saisie, et ce n'est pas une
+   * pièce d'avant le circuit (relecture du circuit, mineur).
+   */
+  emiseParLeLogiciel: boolean;
 }
 
 export function estFactureVisee(f: Pick<FactureAViser, 'viseePar' | 'viseeLe'>): boolean {
@@ -412,12 +418,16 @@ export const MOTIF_FACTURE_PAR_SON_AUTEUR =
 export const AVERTISSEMENT_FACTURE_AUTEUR_INCONNU =
   'Cette facture a été enregistrée avant le circuit de visa · son auteur n’est pas connu d’OmegaX, qui n’a donc pas pu vérifier que vous n’en êtes pas l’auteur.';
 
+export const AVERTISSEMENT_FACTURE_EMISE_PAR_LE_LOGICIEL =
+  'Cette facture a été émise par OmegaX (facture d’abonnement de la console) · aucun utilisateur ne l’a saisie, votre visa est celui d’un second regard sur une pièce du logiciel.';
+
 export function motifRefusVisaFacture(f: FactureAViser, utilisateurId: string): { motif: string | null; avertissement: string | null } {
   if (estFactureVisee(f)) return { motif: 'Cette facture est déjà visée.', avertissement: null };
   if (f.ecritureId !== null) {
     return { motif: 'Cette facture est déjà comptabilisée · son écriture se vise au brouillard.', avertissement: null };
   }
   if (f.saisiePar !== null && f.saisiePar === utilisateurId) return { motif: MOTIF_FACTURE_PAR_SON_AUTEUR, avertissement: null };
+  if (f.saisiePar === null && f.emiseParLeLogiciel) return { motif: null, avertissement: AVERTISSEMENT_FACTURE_EMISE_PAR_LE_LOGICIEL };
   return { motif: null, avertissement: f.saisiePar === null ? AVERTISSEMENT_FACTURE_AUTEUR_INCONNU : null };
 }
 

@@ -48,7 +48,7 @@ function monter(o: {
 } = {}) {
   const prisma = {
     exercice: { findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) => (where.id === 'ex' && where.tenantId === 't' ? { id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' } : null)) },
-    rapprochementBancaire: { findMany: jest.fn(async () => o.rapprochements ?? []) },
+    rapprochementBancaire: { findMany: jest.fn(async (_a: unknown) => o.rapprochements ?? []) },
   };
   const maintenance = {
     maintenance: jest.fn(
@@ -167,6 +167,16 @@ describe('la concordance relit les confrontations des modules', () => {
     expect(f.etat).toBe('NON_CALCULE');
     expect(f.lignes[0]).toMatchObject({ reference: '52110000', ecart: 0 });
     expect(f.lignes[1]).toMatchObject({ reference: '52120000', comptabilite: null, ecart: null });
+    // Le rapprochement en cours est dit (relecture, mineur).
+    expect(f.mentions.join(' ')).toMatch(/1 rapprochement\(s\) en cours, non clos \(52120000\)/);
+  });
+
+  it('la banque se lit au dernier relevé de l’exercice choisi · jamais un relevé postérieur à sa clôture', async () => {
+    const { svc, prisma } = monter();
+    await svc.concordance('t', 'ex');
+    expect(prisma.rapprochementBancaire.findMany.mock.calls[0][0]).toMatchObject({
+      where: { tenantId: 't', dateReleve: { lte: new Date('2026-12-31') } },
+    });
   });
 
   it('ce qu’aucun module ne confronte se dit · jamais tu, jamais concordant', async () => {
