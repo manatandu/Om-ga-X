@@ -8,7 +8,7 @@
  * traitement » ou « le traitement est nécessaire à l'exécution d'une
  * obligation légale ». Le navigateur qui écrit à Sentry et à PostHog leur
  * montre son adresse réseau, une donnée personnelle, et aucune loi n'oblige
- * VMG Consulting à mesurer la fréquentation de son interface · reste le
+ * l'éditeur d'OmegaX à mesurer la fréquentation de son interface · reste le
  * consentement. D'où trois règles.
  *
  *  · RIEN NE PART AVANT LA RÉPONSE · le choix vaut `null` tant que la
@@ -18,7 +18,7 @@
  *    d'ouverture, des pages publiques et de la politique.
  *  · LE CHOIX GARDE SA DATE ET LA VERSION DE LA POLITIQUE (art. 196, al. 1er,
  *    le responsable « est en mesure de démontrer » le consentement) · il vit
- *    dans le stockage local de CET appareil, que VMG Consulting ne lit pas.
+ *    dans le stockage local de CET appareil, que l'éditeur ne lit pas.
  *    Limite écrite · la preuve reste sur l'appareil de la personne.
  *
  * Les erreurs du SERVEUR ne passent pas par ici · elles partent de Cloud Run,

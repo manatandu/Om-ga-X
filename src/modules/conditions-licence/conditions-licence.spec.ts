@@ -42,7 +42,7 @@ import { DELAI_PAIEMENT_JOURS, JOURS_ESSAI } from '../plateforme/abonnements/fac
 
 const SOURCE = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 const IDENTITE_COMPLETE: IdentiteEditeur = {
-  denomination: 'VMG Consulting',
+  denomination: 'Éditeur Exemple SARL',
   siege: '1, avenue Exemple, Kinshasa',
   courriel: 'contact@exemple.cd',
   telephone: '+243 000 000 000',
@@ -79,9 +79,12 @@ const contexte = (c: Partial<ContexteAcceptation> = {}): ContexteAcceptation => 
 
 describe('l’offre dit ce que la loi exige, sinon elle ne s’accepte pas (Code du numérique, art. 52 à 54)', () => {
   it('aujourd’hui, l’identité de l’éditeur et le contact des réclamations ne sont pas arrêtés · rien n’est inventé', () => {
-    // VMG Consulting n'a arrêté ni son siège, ni ses contacts · la politique
-    // de confidentialité le dit déjà. Un contact inventé dirigerait les
-    // réclamations vers le vide.
+    // L'éditeur n'a arrêté ni sa dénomination, ni son siège, ni ses contacts
+    // · la politique de confidentialité le dit déjà. Un contact inventé
+    // dirigerait les réclamations vers le vide, et « OmegaX », nom d'un
+    // logiciel, n'est la dénomination d'aucune personne (art. 52, 1° et 2°,
+    // décision de Manasse du 2026-10-28, « OmegaX seul »).
+    expect(EDITEUR.denomination).toBeNull();
     expect(EDITEUR.siege).toBeNull();
     expect(EDITEUR.courriel).toBeNull();
     expect(EDITEUR.telephone).toBeNull();
@@ -89,7 +92,8 @@ describe('l’offre dit ce que la loi exige, sinon elle ne s’accepte pas (Code
     expect(RECLAMATIONS).toEqual({ courriel: null, telephone: null, modalites: null });
     expect(OFFRE).toEqual({ modalitesPaiement: null, droitRetractation: null, garantiesLegales: null });
     const manque = mentionsAArreter();
-    expect(manque.length).toBe(9);
+    expect(manque.length).toBe(10);
+    expect(manque.join(' ')).toContain('art. 52, 1° et 2°');
     expect(manque.join(' ')).toContain('art. 52, 3°');
     expect(manque.join(' ')).toContain('art. 53, 13°');
     expect(manque.join(' ')).toContain('art. 53, 14°');
@@ -125,7 +129,7 @@ describe('l’offre dit ce que la loi exige, sinon elle ne s’accepte pas (Code
     expect(texte).toContain(`Téléphone · (${A_ARRETER})`);
     const complet = texteBrutDesConditions(IDENTITE_COMPLETE, RECLAMATIONS_COMPLETES);
     expect(complet).toContain('Siège social · 1, avenue Exemple, Kinshasa.');
-    expect(complet).toContain('n’est pas assujettie aux formalités d’inscription au registre du commerce');
+    expect(complet).toContain('n’est pas assujetti aux formalités d’inscription au registre du commerce');
     expect(complet).toContain('Réponse sous trois jours ouvrables.');
   });
 
@@ -156,7 +160,7 @@ describe('qui peut accepter, et quoi', () => {
   it('une licence perpétuelle hébergée n’a pas d’offre dans le contrat · fermée, nommée (relecture M4)', () => {
     const m = motifAcceptationFermee(contexte({ typeLicence: 'PERPETUEL_SAAS' }));
     expect(m).toContain('licence perpétuelle hébergée');
-    expect(m).toContain('à arrêter par VMG Consulting');
+    expect(m).toContain('à arrêter par l’éditeur');
     expect(motifAcceptationFermee(contexte({ typeLicence: 'PERPETUEL_SAAS', surSite: true }))).toBeNull();
   });
 
@@ -358,9 +362,9 @@ describe('le contrat dit ce que le code fait', () => {
     for (const x of a) expect(x.titre).not.toMatch(/\b(art\.|article)\s*\d|§\s*\d/i);
   });
 
-  it('dit la pratique de VMG Consulting sur les données des dossiers et nomme ses accès techniques, jamais une impossibilité (relecture B1)', () => {
+  it('dit la pratique de l’éditeur sur les données des dossiers et nomme ses accès techniques, jamais une impossibilité (relecture B1)', () => {
     const texte = texteBrutDesConditions();
-    expect(texte).toContain('Elle ne consulte pas le contenu des dossiers · ses accès techniques à la base se limitent à la sauvegarde chiffrée');
+    expect(texte).toContain('Il ne consulte pas le contenu des dossiers · ses accès techniques à la base se limitent à la sauvegarde chiffrée');
     expect(texte).toContain('la restauration de contrôle automatique qui l’éprouve');
     expect(texte).toContain('aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres');
   });
@@ -372,16 +376,16 @@ describe('le contrat dit ce que le code fait', () => {
 });
 
 describe('l’accusé de réception (art. 55, al. 2) et la copie du contrat (art. 56, al. 1er)', () => {
-  const acceptation = { version: 1, empreinte: empreinteEnVigueur(), le: '2026-10-15T09:30:00.000Z', par: 'admin@exemple.cd', commande: COMMANDE };
+  const acceptation = { version: 2, empreinte: empreinteEnVigueur(), le: '2026-10-15T09:30:00.000Z', par: 'admin@exemple.cd', commande: COMMANDE };
 
   it('porte la version, le dossier, l’auteur, la date, l’empreinte, et le texte ARCHIVÉ de la version en pièce jointe', () => {
     const a = accuseReceptionConditions(acceptation, 'Association Exemple');
-    expect(a.sujet).toContain('version 1');
+    expect(a.sujet).toContain('version 2');
     expect(a.corps).toContain('Dossier · Association Exemple');
     expect(a.corps).toContain('Acceptées par · admin@exemple.cd');
     expect(a.corps).toContain('(heure de Kinshasa)');
     expect(a.corps).toContain(`Empreinte SHA-256 du texte accepté · ${empreinteEnVigueur()}`);
-    expect(a.pieceJointe).toEqual({ nom: nomPieceJointeConditions(1), texte: versionPubliee(1)!.texte });
+    expect(a.pieceJointe).toEqual({ nom: nomPieceJointeConditions(2), texte: versionPubliee(2)!.texte });
     expect(a.pieceJointe.texte).toBe(texteBrutDesConditions());
   });
 
@@ -487,7 +491,7 @@ describe('le service d’acceptation', () => {
   it('refuse tant que l’offre est incomplète · rien n’est écrit, aucun courriel', async () => {
     const courrier = { mettreEnFile: jest.fn() };
     const m = monde({}, courrier);
-    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE)).rejects.toBeInstanceOf(ConflictException);
+    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE)).rejects.toBeInstanceOf(ConflictException);
     expect(m.tx.tenant.update).not.toHaveBeenCalled();
     expect(courrier.mettreEnFile).not.toHaveBeenCalled();
   });
@@ -496,12 +500,12 @@ describe('le service d’acceptation', () => {
     module.mentionsAArreter.mockReturnValue([]);
     const courrier = { mettreEnFile: jest.fn(async () => ({ id: 'm1', statut: 'SANS_TRANSPORT', erreur: null })) };
     const m = monde({}, courrier);
-    const r = await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE);
+    const r = await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE);
     expect(m.tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(m.tx.tenant.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: {
-        conditionsLicenceVersion: 1,
+        conditionsLicenceVersion: 2,
         conditionsLicenceEmpreinte: empreinteEnVigueur(),
         conditionsLicenceAccepteesLe: expect.any(Date),
         conditionsLicenceAccepteesPar: 'admin@exemple.cd',
@@ -509,13 +513,13 @@ describe('le service d’acceptation', () => {
       },
     });
     expect(r.deja).toBe(false);
-    expect(r.etat).toMatchObject({ aJour: true, aAccepter: false, acceptation: { version: 1, empreinte: empreinteEnVigueur(), par: 'admin@exemple.cd', commande: COMMANDE } });
+    expect(r.etat).toMatchObject({ aJour: true, aAccepter: false, acceptation: { version: 2, empreinte: empreinteEnVigueur(), par: 'admin@exemple.cd', commande: COMMANDE } });
     expect(r.accuse).toEqual({ statut: 'SANS_TRANSPORT' });
     const [tenantId, message] = courrier.mettreEnFile.mock.calls[0] as unknown as [string, { destinataire: string; origine: string; corps: string; pieceJointe: { nom: string } }];
     expect(tenantId).toBe('t1');
     expect(message.destinataire).toBe('admin@exemple.cd');
     expect(message.origine).toBe('CONDITIONS_LICENCE');
-    expect(message.pieceJointe.nom).toBe(nomPieceJointeConditions(1));
+    expect(message.pieceJointe.nom).toBe(nomPieceJointeConditions(2));
     // L'accusé recopie la commande acceptée (art. 55, al. 2).
     expect(message.corps).toContain('Total d’une période · 25,00 USD');
   });
@@ -523,7 +527,7 @@ describe('le service d’acceptation', () => {
   it('le contexte qui décide est relu DANS la transaction, APRÈS le verrou (second tour, M-a)', async () => {
     module.mentionsAArreter.mockReturnValue([]);
     const m = monde({}, { mettreEnFile: jest.fn(async () => ({ id: 'm1', statut: 'SANS_TRANSPORT', erreur: null })) });
-    await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE);
+    await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE);
     const verrou = premierAppel(m.tx.$executeRaw);
     expect(premierAppel(m.tx.tenant.findUnique)).toBeGreaterThan(verrou);
     expect(premierAppel(m.tx.abonnementCabinet.findUnique)).toBeGreaterThan(verrou);
@@ -537,9 +541,9 @@ describe('le service d’acceptation', () => {
     const courrier = { mettreEnFile: jest.fn() };
     // L'écran a affiché 25, la base porte 30 au moment du clic.
     const m = monde({}, courrier, ligneAbonnement(30));
-    const refus = m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE);
+    const refus = m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE);
     await expect(refus).rejects.toBeInstanceOf(ConflictException);
-    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE)).rejects.toThrow(
+    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE)).rejects.toThrow(
       'L’abonnement affiché n’est plus celui du dossier',
     );
     expect(m.tx.tenant.update).not.toHaveBeenCalled();
@@ -548,7 +552,7 @@ describe('le service d’acceptation', () => {
 
   it('la commande gardée se relit avec l’acceptation · une forme qui n’est pas la sienne est rendue nulle, jamais devinée', async () => {
     const le = new Date('2026-10-15T08:00:00Z');
-    const acceptee = { conditionsLicenceVersion: 1, conditionsLicenceEmpreinte: empreinteEnVigueur(), conditionsLicenceAccepteesLe: le, conditionsLicenceAccepteesPar: 'a@exemple.cd' };
+    const acceptee = { conditionsLicenceVersion: 2, conditionsLicenceEmpreinte: empreinteEnVigueur(), conditionsLicenceAccepteesLe: le, conditionsLicenceAccepteesPar: 'a@exemple.cd' };
     const gardee = monde({ ...acceptee, conditionsLicenceCommande: JSON.parse(JSON.stringify(COMMANDE)) });
     expect((await gardee.s.etat('t1')).acceptation?.commande).toEqual(COMMANDE);
     for (const illisible of [[1, 2], 'texte', { formule: 3 }]) {
@@ -563,7 +567,7 @@ describe('le service d’acceptation', () => {
     const le = new Date('2026-10-15T08:00:00Z');
     const m = monde(
       {
-        conditionsLicenceVersion: 1,
+        conditionsLicenceVersion: 2,
         conditionsLicenceEmpreinte: empreinteEnVigueur(),
         conditionsLicenceAccepteesLe: le,
         conditionsLicenceAccepteesPar: 'premier@exemple.cd',
@@ -571,9 +575,9 @@ describe('le service d’acceptation', () => {
       },
       courrier,
     );
-    const r = await m.s.accepter('t1', { userId: 'u2', email: 'second@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE);
+    const r = await m.s.accepter('t1', { userId: 'u2', email: 'second@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE);
     expect(r.deja).toBe(true);
-    expect(r.etat.acceptation).toEqual({ version: 1, empreinte: empreinteEnVigueur(), le: le.toISOString(), par: 'premier@exemple.cd', commande: COMMANDE });
+    expect(r.etat.acceptation).toEqual({ version: 2, empreinte: empreinteEnVigueur(), le: le.toISOString(), par: 'premier@exemple.cd', commande: COMMANDE });
     expect(m.tx.tenant.update).not.toHaveBeenCalled();
     expect(courrier.mettreEnFile).not.toHaveBeenCalled();
   });
@@ -581,7 +585,7 @@ describe('le service d’acceptation', () => {
   it('un texte lu sous une autre empreinte est refusé · rien n’est écrit (relecture M1)', async () => {
     module.mentionsAArreter.mockReturnValue([]);
     const m = monde();
-    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, 'f'.repeat(64), AFFICHEE)).rejects.toThrow('rechargez la page');
+    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, 'f'.repeat(64), AFFICHEE)).rejects.toThrow('rechargez la page');
     expect(m.tx.tenant.update).not.toHaveBeenCalled();
   });
 
@@ -590,17 +594,17 @@ describe('le service d’acceptation', () => {
     const erreur = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const courrier = { mettreEnFile: jest.fn(async () => { throw new Error('Adresse inutilisable'); }) };
     const m = monde({}, courrier);
-    const r = await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), AFFICHEE);
-    expect(m.t.conditionsLicenceVersion).toBe(1);
+    const r = await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), AFFICHEE);
+    expect(m.t.conditionsLicenceVersion).toBe(2);
     expect(r.accuse).toEqual({ statut: 'NON_MIS_EN_FILE' });
-    expect(String(erreur.mock.calls[0][0])).toContain('dossier t1, version 1');
+    expect(String(erreur.mock.calls[0][0])).toContain('dossier t1, version 2');
     // Aucun accusé en file · l'écran offre de le renvoyer.
     expect(r.etat.renvoiAccusePossible).toBe(true);
     erreur.mockRestore();
   });
 
   const ACCEPTEE = {
-    conditionsLicenceVersion: 1,
+    conditionsLicenceVersion: 2,
     conditionsLicenceAccepteesLe: new Date('2026-10-15T08:00:00Z'),
     conditionsLicenceAccepteesPar: 'premier@exemple.cd',
   };
@@ -664,7 +668,7 @@ describe('le service d’acceptation', () => {
     module.mentionsAArreter.mockReturnValue([]);
     const courrier = { mettreEnFile: jest.fn() };
     const m = monde({}, courrier, null);
-    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1, empreinteEnVigueur(), empreinteCommande(null))).rejects.toThrow(
+    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 2, empreinteEnVigueur(), empreinteCommande(null))).rejects.toThrow(
       'Aucun abonnement n’est rattaché',
     );
     expect(m.tx.tenant.update).not.toHaveBeenCalled();
@@ -711,13 +715,13 @@ describe('l’acceptation reçue (DTO)', () => {
   const EC = empreinteCommande(COMMANDE);
 
   it('exige l’empreinte du texte lu, en 64 chiffres hexadécimaux (relecture M1)', () => {
-    expect(erreurs({ version: 1, empreinte: empreinteEnVigueur(), empreinteCommande: EC, lu: true })).toEqual([]);
-    expect(erreurs({ version: 1, empreinteCommande: EC, lu: true })).toEqual(['empreinte']);
-    expect(erreurs({ version: 1, empreinte: 'abc', empreinteCommande: EC, lu: true })).toEqual(['empreinte']);
+    expect(erreurs({ version: 2, empreinte: empreinteEnVigueur(), empreinteCommande: EC, lu: true })).toEqual([]);
+    expect(erreurs({ version: 2, empreinteCommande: EC, lu: true })).toEqual(['empreinte']);
+    expect(erreurs({ version: 2, empreinte: 'abc', empreinteCommande: EC, lu: true })).toEqual(['empreinte']);
   });
 
   it('exige l’empreinte de l’abonnement affiché (second tour, M-a)', () => {
-    expect(erreurs({ version: 1, empreinte: empreinteEnVigueur(), lu: true })).toEqual(['empreinteCommande']);
-    expect(erreurs({ version: 1, empreinte: empreinteEnVigueur(), empreinteCommande: 'xyz', lu: true })).toEqual(['empreinteCommande']);
+    expect(erreurs({ version: 2, empreinte: empreinteEnVigueur(), lu: true })).toEqual(['empreinteCommande']);
+    expect(erreurs({ version: 2, empreinte: empreinteEnVigueur(), empreinteCommande: 'xyz', lu: true })).toEqual(['empreinteCommande']);
   });
 });

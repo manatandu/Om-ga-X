@@ -10,7 +10,7 @@ import { porteInscription, type EtatSurSite, type PorteInscription } from '../li
  * EN LIGNE, c'est une porte de service · aucun bouton de l'écran d'ouverture
  * n'y mène (l'auto-inscription publique est fermée), seul qui détient le lien
  * y accède, et le VRAI verrou reste au serveur : /auth/register refuse tant
- * qu'INSCRIPTION_PUBLIQUE n'est pas posée. VMG ouvre ce verrou le temps d'une
+ * qu'INSCRIPTION_PUBLIQUE n'est pas posée. L'éditeur ouvre ce verrou le temps d'une
  * création accompagnée, puis le referme · l'assistant, lui, reste prêt.
  *
  * SUR SITE, c'est la porte du PREMIER dossier, et l'écran d'ouverture y

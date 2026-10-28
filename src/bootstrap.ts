@@ -84,7 +84,7 @@ export function configurerApplication(app: INestApplication) {
   // Firebase, rattaché par un domaine personnalisé. Le site appelle l'API sous
   // sa propre adresse (relais `/api/**`), sans CORS ; l'origine est admise
   // pour qu'un appel direct au service depuis ce domaine ne soit pas jeté.
-  const ORIGINES_SITE = ['https://oomega.web.app', 'https://oomega.firebaseapp.com', 'https://omegax.vmgconsulting.net'];
+  const ORIGINES_SITE = ['https://oomega.web.app', 'https://oomega.firebaseapp.com'];
   const configurees = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean);
   // En production, l'absence de CORS_ORIGIN ne doit JAMAIS vouloir dire
   // « tout le monde » : le repli est la liste fermée des domaines du site.

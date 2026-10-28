@@ -14,7 +14,7 @@ name: Requêtes de production (lecture seule)
 # qui nommerait un ordre d'écriture est refusé avant toute connexion. La
 # purge de R1 reste un geste de Manasse (docs, étapes 2 et 3).
 #
-# RIEN D'UN CLIENT NE S'AFFICHE (CLAUDE.md § 8, « VMG ne voit jamais les
+# RIEN D'UN CLIENT NE S'AFFICHE (CLAUDE.md § 8, « l'éditeur ne voit jamais les
 # informations d'un client ») · les blocs ne rendent que des identifiants,
 # des dates et des nombres. La chaîne de connexion n'est jamais écrite ·
 # endpoint DIRECT (`API_DATABASE_URL`), passé par l'environnement, masqué par

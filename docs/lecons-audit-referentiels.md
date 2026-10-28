@@ -328,4 +328,4 @@ retenus après vérification adverse, et une dizaine de sessions de correction.
 
 ---
 
-*Écrit pour VMG Consulting, à partir de l'audit du chemin SYSCOHADA d'OmegaX.*
+*Écrit pour l'éditeur, à partir de l'audit du chemin SYSCOHADA d'OmegaX.*

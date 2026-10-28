@@ -71,9 +71,19 @@ export function priseDEffet(enVigueurLe: string): string {
   return enJour(new Date(enDate(finDuDelaiDeResiliation(enVigueurLe)).getTime() + UN_JOUR_MS));
 }
 
-/** Pourquoi une version publiée viole l'art. 34, ou `null`. La première version, offre initiale, n'est pas une modification. */
-export function motifDelaiArticle34(v: Pick<VersionPubliee, 'numero' | 'communiqueeLe' | 'enVigueurLe'>): string | null {
-  if (v.numero === 1) return v.communiqueeLe === null ? null : 'La première version est l’offre initiale · elle n’a pas de communication de l’art. 34.';
+/**
+ * Pourquoi une version publiée viole l'art. 34, ou `null`. La première version,
+ * offre initiale, n'est pas une modification. Une version qui ne suit que des
+ * versions RETIRÉES (`numerosRetires`, jamais acceptables) l'est aussi ·
+ * l'art. 34 vise « les termes d'un contrat en cours », et aucun contrat n'a pu
+ * se former sur elles.
+ */
+export function motifDelaiArticle34(
+  v: Pick<VersionPubliee, 'numero' | 'communiqueeLe' | 'enVigueurLe'>,
+  numerosRetires: readonly number[] = [],
+): string | null {
+  const offreInitiale = Array.from({ length: v.numero - 1 }, (_, i) => i + 1).every((n) => numerosRetires.includes(n));
+  if (offreInitiale) return v.communiqueeLe === null ? null : 'La première version est l’offre initiale · elle n’a pas de communication de l’art. 34.';
   if (v.communiqueeLe === null) {
     return `La version ${v.numero} modifie le contrat · la date de communication de son projet aux utilisateurs est exigée (Code du numérique, art. 34).`;
   }

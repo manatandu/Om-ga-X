@@ -16,7 +16,7 @@ import { LicenceSurSiteService } from '../sur-site/licence-sur-site.service';
  * LE HEARTBEAT N'A PAS ÉTÉ RETENU (2026-09-26) · Manasse a choisi une
  * licence qui marche SANS INTERNET, la connexion d'un bureau congolais
  * tombant des jours entiers. Une installation sur site ne lit donc pas cette
- * table : elle lit un fichier signé par VMG (`sur-site/licence-signee.ts`),
+ * table : elle lit un fichier signé par l'éditeur (`sur-site/licence-signee.ts`),
  * et `evaluerLicence` le consulte AVANT toute autre règle. La branche
  * PERPETUEL_ONPREMISE ci-dessous ne sert plus qu'en ligne, où ce type reste
  * fermé à l'attribution (PlateformeService) · aucun dossier en ligne ne
@@ -44,7 +44,7 @@ export class LicenceService {
     // SUR SITE, UNE SEULE LICENCE POUR TOUTE L'INSTALLATION · le fichier
     // signé décide, avant et à la place de la ligne du dossier. Une ligne
     // PROPRIETAIRE ou ABONNEMENT arrivée par une restauration de sauvegarde
-    // ne doit ni ouvrir ni fermer une installation que VMG n'a pas licenciée.
+    // ne doit ni ouvrir ni fermer une installation que l'éditeur n'a pas licenciée.
     if (this.surSite?.surSite) return this.surSite.autorisation();
     if (!licence) {
       return { autorise: false, motif: 'Aucune licence associée à ce tenant' };

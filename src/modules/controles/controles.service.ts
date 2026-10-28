@@ -71,7 +71,7 @@ import {
   type EtatRapprochementCompte,
   type JournalEcrit,
 } from './banque-et-cloture-informatique';
-import { jourDeKinshasa } from '../../common/echeance';
+import { echeanceDepassee, jourDeKinshasa, jourUtc } from '../../common/echeance';
 import { anomalieInppOnemSousLe433, estCompteAncienInppOnem, RACINES_ANCIENNES_INPP_ONEM } from './inpp-onem-sous-le-433';
 import {
   CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT,
@@ -3550,26 +3550,52 @@ export class ControlesService {
     // balance boucle, et il manque seulement une mention que le texte dit
     // obligatoire. Le défaut ne se découvre qu'au dépôt, ou devant l'auditeur.
     //
-    // AVERTISSEMENT et non BLOQUANT · la date n'existe qu'une fois que les
-    // organes dirigeants ont arrêté les comptes. Bloquer l'analyse d'un
-    // exercice en cours de travaux serait refuser le brouillon parce qu'il
-    // n'est pas encore définitif.
-    if (!ex.dateArreteComptes) {
+    // QUAND LE DIRE (décision par la loi du 2026-10-25, confirmée par Manasse,
+    // « on arrête les comptes avant le 30/04 »). Art. 23 · « Les états
+    // financiers annuels sont arrêtés au plus tard dans les quatre mois qui
+    // suivent la date de clôture de l'exercice. » Avant la clôture, il n'y a
+    // rien à arrêter · le signal d'un exercice en cours FABRIQUAIT une anomalie
+    // (§ 10 bis du règlement), que le cabinet ne pouvait lever qu'en saisissant
+    // une date fausse. Trois temps donc · rien pendant l'exercice ; de la
+    // clôture à la fin du délai, une INFORMATION qui dit la date limite ; le
+    // délai passé sans date, un AVERTISSEMENT qui nomme le délai dépassé.
+    // Jamais BLOQUANT · l'art. 23 fixe un délai, il ne ferme pas la saisie, et
+    // la date n'existe qu'une fois les comptes arrêtés par les organes.
+    //
+    // Les quatre mois se comptent de date à date (`ajouterMois`, jour borné au
+    // dernier du mois) · l'exercice coïncidant avec l'année civile (art. 7,
+    // al. 2), la clôture tombe au 31 décembre et la limite au 30 avril. Une
+    // autre date de clôture ne vient que d'une cessation d'activité (art. 7,
+    // al. 4 · exercice arrêté à la dissolution) ; elle suit la même règle, la
+    // lecture la plus courte (30 juin donne 30 octobre, pas 31), qui avertit
+    // plus tôt. Le jour courant est celui de Kinshasa, et le délai n'est
+    // dépassé qu'au lendemain de sa date (`echeanceDepassee`).
+    const aujourdhuiArrete = jourDeKinshasa(new Date(maintenant));
+    if (!ex.dateArreteComptes && echeanceDepassee(ex.dateFin, aujourdhuiArrete)) {
       const sourceArrete =
         tenant.referentiel === Referentiel.SYCEBNL
           ? "AUDCIF art. 23, rendu applicable aux entités à but non lucratif par l'art. 3 du SYCEBNL, qui ne " +
             "l'exclut pas"
           : 'AUDCIF art. 23 et Titre IX ch. 1 § 2.4';
+      const limiteArrete = ajouterMois(jourUtc(ex.dateFin), 4);
+      const delaiArreteDepasse = echeanceDepassee(limiteArrete, aujourdhuiArrete);
+      const enFrancais = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/');
       anomalies.push({
         code: 'DATE_ARRETE_NON_RENSEIGNEE',
-        gravite: 'AVERTISSEMENT',
-        libelle: 'Date d’arrêté des comptes non renseignée',
+        gravite: delaiArreteDepasse ? 'AVERTISSEMENT' : 'INFORMATION',
+        libelle: delaiArreteDepasse
+          ? 'Date d’arrêté des comptes non renseignée, délai de quatre mois dépassé'
+          : `Date d’arrêté des comptes à renseigner, au plus tard le ${enFrancais(limiteArrete)}`,
         consequence:
           `Le texte (${sourceArrete}) exige que la date d’arrêté figure dans toute publication des états ` +
-          'financiers. Ce n’est pas la date de clôture : l’arrêté par les organes dirigeants lui est postérieur ' +
-          'de plusieurs semaines, dans la limite de quatre mois (Titre VIII ch. 31 § 1.3). Tant qu’elle manque, ' +
-          'les états s’impriment et s’exportent sans elle, avec des totaux justes et une mention obligatoire en ' +
-          'moins · rien ne le signale avant le dépôt.',
+          'financiers. Ce n’est pas la date de clôture : les organes dirigeants arrêtent les comptes après elle, ' +
+          `au plus tard dans les quatre mois qui suivent (art. 23), soit le ${enFrancais(limiteArrete)} pour cet ` +
+          'exercice. ' +
+          (delaiArreteDepasse
+            ? 'Ce délai est passé et aucune date n’est enregistrée. '
+            : '') +
+          'Tant qu’elle manque, les états s’impriment et s’exportent sans elle, avec des totaux justes et une ' +
+          'mention obligatoire en moins · rien ne le signale avant le dépôt.',
         action:
           'Renseignez la date à laquelle les organes dirigeants ont arrêté les comptes, dans la fenêtre ' +
           'Exercices. Elle s’imprimera ensuite sur chaque page des états.',

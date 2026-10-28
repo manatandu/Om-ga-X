@@ -1282,3 +1282,44 @@ summary:focus-visible {
     print-color-adjust: exact;
   }
 }
+
+/* ───────── Pages publiques d'information (charte § 9 ter) ─────────
+   Contrat de licence, confidentialité, questions fréquentes : le même bandeau d'encre,
+   le même double trait et le même pied que la page d'accueil du site. Les contenus sont
+   partagés avec les fenêtres de l'espace de travail (12 px) ; ici, sur une page de lecture,
+   ils passent à 15 px. */
+.cadre-public{font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;background:#fff;color:var(--text,#1d1a2e)}
+.cadre-public-entete{display:flex;align-items:center;gap:24px;padding:10px max(20px,calc((100vw - 880px) / 2));background:var(--a-900);color:#fff}
+.cadre-public-entete nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+.cadre-public-entete nav a{padding:10px 12px;font-size:14px;font-weight:500;color:rgba(255,255,255,.82);text-decoration:none;border-radius:4px}
+.cadre-public-entete nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+.cadre-public-bouton{display:inline-flex;align-items:center;min-height:40px;padding:0 18px;border:1.5px solid rgba(255,255,255,.5);border-radius:999px;color:#fff;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
+.cadre-public-bouton:hover{background:rgba(255,255,255,.1)}
+.cadre-public-tete{position:relative;padding:clamp(36px,6vw,64px) max(20px,calc((100vw - 880px) / 2)) clamp(32px,5vw,52px);background:
+  radial-gradient(640px 320px at 90% 0%,rgba(79,59,168,.55),transparent 70%),
+  repeating-linear-gradient(90deg,transparent 0 159px,rgba(255,255,255,.05) 159px 160px),
+  repeating-linear-gradient(0deg,transparent 0 35px,rgba(255,255,255,.035) 35px 36px),
+  var(--a-900);color:#fff}
+.cadre-public-tete h1{position:relative;max-width:22em;padding-bottom:18px;font-size:clamp(1.7rem,4vw,2.6rem);line-height:1.12;font-weight:600;letter-spacing:-.02em;color:#fff;text-wrap:balance}
+.cadre-public-tete h1::after{content:"";position:absolute;left:0;bottom:0;width:72px;height:5px;border-top:1.5px solid var(--a-200);border-bottom:1.5px solid var(--a-200)}
+.cadre-public-tete p{margin-top:16px;font-size:14px;color:var(--a-200)}
+.cadre-public-colonne{max-width:880px;margin:0 auto}
+.cadre-public-corps{flex:1;width:100%;padding:clamp(28px,5vw,52px) 20px 40px}
+.cadre-public-corps h2{color:var(--a-900);font-size:1.25rem!important;letter-spacing:-.01em}
+.cadre-public-corps [class*="text-[11.5px]"],.cadre-public-corps [class*="text-[11px]"]{font-size:15px}
+.cadre-public-corps [class*="text-[12px]"]{font-size:1.25rem}
+.cadre-public-corps [class*="leading-relaxed"]{line-height:1.7}
+.cadre-public-corps a.text-sel,.cadre-public-corps .underline{color:var(--a-600)}
+.cadre-public-corps table{border-collapse:collapse}
+.cadre-public-corps th{background:var(--a-700);color:#fff;font-weight:500;text-align:left;padding:7px 10px}
+.cadre-public-corps td{padding:7px 10px;border-bottom:1px solid var(--border)}
+.cadre-public-corps summary{min-height:44px;padding:10px 0;font-size:1.05rem;color:var(--a-900)}
+.cadre-public-corps details{border-bottom:1px solid var(--border)}
+.cadre-public-corps input[type=search]{font-size:16px;padding:10px 12px;border-radius:6px}
+.cadre-public-pied-page{display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin-top:40px;padding-top:16px;border-top:3px double var(--a-900);font-size:14px}
+.cadre-public-pied{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:22px max(20px,calc((100vw - 880px) / 2)) 28px;background:var(--a-900);font-size:13.5px;color:rgba(255,255,255,.72)}
+.cadre-public-pied nav{display:flex;flex-wrap:wrap;gap:4px 20px}
+.cadre-public-pied a{color:rgba(255,255,255,.82)}
+.cadre-public-pied a:hover{color:#fff}
+@media (max-width:640px){.cadre-public-entete nav{display:none}.cadre-public-entete{justify-content:space-between}}
+@media print{.cadre-public-tete{background:#fff!important;color:#000;padding:0 0 8mm}.cadre-public-tete h1{color:#000}.cadre-public-tete h1::after{border-color:#000}.cadre-public-tete p{color:#000}.cadre-public-corps{padding:0}}

@@ -1,6 +1,6 @@
 import { texteBrutDesConditions } from './conditions-de-licence';
 import { sha256Hex } from './empreinte';
-import { TEXTE_VERSION_1 } from './versions/version-1';
+import { TEXTE_VERSION_2 } from './versions/version-2';
 
 /**
  * LES VERSIONS PUBLIÉES DES CONDITIONS DE LICENCE · numéro, date, empreinte
@@ -46,15 +46,53 @@ export interface VersionPubliee {
   texte: string;
 }
 
-export const VERSIONS_PUBLIEES: readonly VersionPubliee[] = [
+/**
+ * LES VERSIONS RETIRÉES · publiées puis retirées SANS avoir jamais pu être
+ * acceptées. Leur texte n'est plus servi, seuls leur numéro, leur date et leur
+ * empreinte restent, pour que la suite des numéros garde son sens et qu'un
+ * numéro ne serve jamais deux textes.
+ *
+ * LA VERSION 1 (décision de Manasse du 2026-10-28, « retirer tout ce qui
+ * concerne » l'ancien éditeur, tranchée par la loi) · son offre est restée
+ * INCOMPLÈTE depuis sa publication (identité de l'éditeur, réclamations,
+ * paiement « à arrêter »), si bien que le serveur en a toujours refusé
+ * l'acceptation (`mentionsAArreter`, art. 54, al. 2). Aucun contrat ne s'est
+ * formé sur elle · l'archivage de l'art. 53, 9° vise « le contrat » et
+ * l'art. 34 « un contrat en cours ». La garder accessible ferait au
+ * contraire durer une offre que son auteur ne tient plus (art. 53, al. 2,
+ * « son auteur reste engagé par elle tant qu'elle est accessible »). Son
+ * texte reste dans l'historique du dépôt.
+ *
+ * Une version ACCEPTABLE ne se retire jamais ainsi · elle se remplace par une
+ * version nouvelle, aux délais de l'art. 34 (`versions-publiees.spec.ts`).
+ */
+export interface VersionRetiree {
+  numero: number;
+  date: string;
+  empreinte: string;
+  motif: string;
+}
+
+export const VERSIONS_RETIREES: readonly VersionRetiree[] = [
   {
     numero: 1,
     date: '2026-10-15',
-    dateLisible: '15 octobre 2026',
-    communiqueeLe: null,
-    enVigueurLe: '2026-10-15',
     empreinte: '1a878fe68d79ec76fa40173395750ab68cbf8a1a581c91397e45b30815dac75d',
-    texte: TEXTE_VERSION_1,
+    motif: 'Offre restée incomplète, jamais acceptable · retirée le 2026-10-28 avec le nom de l’ancien éditeur.',
+  },
+];
+
+export const VERSIONS_PUBLIEES: readonly VersionPubliee[] = [
+  {
+    numero: 2,
+    date: '2026-10-28',
+    dateLisible: '28 octobre 2026',
+    // Aucune communication de l'art. 34 · elle ne suit qu'une version
+    // retirée, sur laquelle aucun contrat ne s'est formé.
+    communiqueeLe: null,
+    enVigueurLe: '2026-10-28',
+    empreinte: 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e',
+    texte: TEXTE_VERSION_2,
   },
 ];
 

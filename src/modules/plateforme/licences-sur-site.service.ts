@@ -92,7 +92,7 @@ export class LicencesSurSiteService {
       throw new BadRequestException('La clé privée de signature n’est pas posée sur ce serveur (secret API_CLE_PRIVEE_LICENCE) · aucune licence ne peut être émise.');
     }
     if (!this.clePublique) {
-      throw new BadRequestException('Cette version ne porte pas la clé publique de VMG · une licence émise ne pourrait être vérifiée nulle part.');
+      throw new BadRequestException('Cette version ne porte pas la clé publique de l’éditeur · une licence émise ne pourrait être vérifiée nulle part.');
     }
     const emiseLe = jourKinshasa(maintenant);
     const annee = emiseLe.slice(0, 4);

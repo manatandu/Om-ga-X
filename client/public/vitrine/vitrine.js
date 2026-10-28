@@ -1,7 +1,7 @@
 // Page publique d'OmegaX · aucune donnée du dossier, un seul appel en lecture (l'état de l'essai).
-// Le script ne fait que deux choses : annoncer l'essai quand sa porte est lue ouverte, et rendre
-// la pièce de journal modifiable. Aucun effet de défilement (charte § 9 bis) : sans script,
-// la page est complète et lisible, seuls les deux boutons de la pièce restent cachés.
+// Le script fait trois choses : le mouvement de la page (charte § 9 ter), l'annonce de l'essai
+// quand sa porte est lue ouverte, et la pièce de journal modifiable. Sans script, la page est
+// complète et lisible ; seuls les deux boutons de la pièce restent cachés.
 (function () {
   'use strict';
 
@@ -9,6 +9,48 @@
 
   var an = document.getElementById('annee');
   if (an) an.textContent = String(new Date().getFullYear());
+
+  // ---- Le mouvement · jamais indispensable. La classe `js` arme les apparitions ; sous
+  // prefers-reduced-motion, ou sans IntersectionObserver, tout est marqué vu d'emblée.
+  var racine = document.documentElement;
+  var calme = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (racine && racine.classList) racine.classList.add('js');
+  tous('.mot').forEach(function (m, i) { m.style.setProperty('--i', String(i)); });
+  var entete = document.getElementById('entete');
+  var barre = document.getElementById('progres');
+  var haut = document.getElementById('haut');
+  function defilement() { return window.pageYOffset || (racine && racine.scrollTop) || 0; }
+  function suivre() {
+    var y = defilement();
+    if (entete) entete.classList.toggle('pleine', y > 24);
+    if (haut) haut.classList.toggle('visible', y > 400);
+    if (barre && racine) {
+      var total = (racine.scrollHeight || 0) - (window.innerHeight || 0);
+      barre.style.width = (total > 0 ? Math.min(100, (y / total) * 100) : 0) + '%';
+    }
+  }
+  window.addEventListener('scroll', suivre, { passive: true });
+  suivre();
+  if (haut) {
+    haut.addEventListener('click', function (e) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: calme ? 'auto' : 'smooth' });
+    });
+  }
+  var aReveler = tous('.revele, .chemin');
+  if (calme || !('IntersectionObserver' in window)) {
+    aReveler.forEach(function (el) { el.classList.add('vu'); });
+  } else {
+    var obs = new window.IntersectionObserver(function (entrees) {
+      entrees.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('vu'); obs.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    aReveler.forEach(function (el, k) {
+      el.style.setProperty('--d', ((k % 3) * 0.08) + 's');
+      obs.observe(el);
+    });
+  }
 
   // ---- L'essai · le lien ne s'offre que sur une porte lue ouverte (comme l'écran de connexion).
   // Une lecture qui échoue le tait : le libellé par défaut reste vrai dans les deux cas.
@@ -26,8 +68,9 @@
     tous('[data-sans-essai]').forEach(function (b) { b.hidden = true; });
     var appel = document.querySelector('.appel');
     if (appel) appel.setAttribute('aria-labelledby', 't-appel-essai');
-    var connexion = document.querySelector('.tete .actions [data-connexion]');
-    if (connexion) connexion.classList.remove('bouton-plein');
+    // Sur le bandeau, l'essai devient le bouton plein ; la connexion passe au bouton clair.
+    var connexion = document.querySelector('.heros .actions [data-connexion]');
+    if (connexion) { connexion.classList.remove('bouton-plein'); connexion.classList.add('bouton-clair'); }
   }
   if (window.fetch) {
     fetch('/api/auth/inscription-essai/etat', { method: 'GET', credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/json' } })

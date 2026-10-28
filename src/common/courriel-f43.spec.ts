@@ -23,8 +23,8 @@ import * as bcrypt from 'bcryptjs';
  * services aussi (siège et console appellent `register` sans passer par
  * HTTP), et la base refuse le reste (migration 20261125000000).
  */
-const BRUTE = '  Admin@VMGConsulting.NET ';
-const NETTE = 'admin@vmgconsulting.net';
+const BRUTE = '  Admin@Exemple.CD ';
+const NETTE = 'admin@exemple.cd';
 
 describe('F43 · la règle', () => {
   it('retire les espaces et passe en minuscules', () => {

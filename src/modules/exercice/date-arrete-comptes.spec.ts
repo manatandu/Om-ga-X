@@ -131,27 +131,60 @@ function serviceControles(referentiel: Referentiel, dateArreteComptes: Date | nu
   return new ControlesService(prisma as unknown as PrismaService);
 }
 
-const anomalie = async (referentiel: Referentiel, dateArreteComptes: Date | null) => {
-  const rapport = await serviceControles(referentiel, dateArreteComptes).analyser('t', 'ex');
-  return rapport.anomalies.find((a) => a.code === 'DATE_ARRETE_NON_RENSEIGNEE');
+// Le contrôle lit l'horloge par `Date.now()` · on la fixe, sans quoi le
+// résultat dépendrait du jour où la suite tourne (clôture au 31/12/2026).
+const PENDANT_L_EXERCICE = Date.parse('2026-10-25T10:00:00Z');
+const DANS_LE_DELAI = Date.parse('2027-02-15T10:00:00Z');
+// Le 30 avril à 23 h 30 UTC est déjà le 1er mai à Kinshasa (UTC+1) · le
+// délai, qui court jusqu'au 30 avril inclus, est alors passé.
+const DERNIER_JOUR_A_KINSHASA = Date.parse('2027-04-30T10:00:00Z');
+const LENDEMAIN_A_KINSHASA = Date.parse('2027-04-30T23:30:00Z');
+
+const anomalie = async (referentiel: Referentiel, dateArreteComptes: Date | null, maintenant = DANS_LE_DELAI) => {
+  const horloge = jest.spyOn(Date, 'now').mockReturnValue(maintenant);
+  try {
+    const rapport = await serviceControles(referentiel, dateArreteComptes).analyser('t', 'ex');
+    return rapport.anomalies.find((a) => a.code === 'DATE_ARRETE_NON_RENSEIGNEE');
+  } finally {
+    horloge.mockRestore();
+  }
 };
 
 describe('le contrôle qui signale la mention manquante', () => {
   for (const referentiel of [Referentiel.SYCEBNL, Referentiel.SYSCOHADA] as const) {
-    it(`${referentiel} · signale l’absence de date d’arrêté`, async () => {
-      const a = await anomalie(referentiel, null);
+    it(`${referentiel} · se tait pendant l’exercice · il n’y a encore rien à arrêter`, async () => {
+      // AUDCIF art. 23 · l'arrêté suit la clôture. Le signal d'un exercice en
+      // cours fabriquait une anomalie que seule une date fausse levait.
+      expect(await anomalie(referentiel, null, PENDANT_L_EXERCICE)).toBeUndefined();
+    });
+
+    it(`${referentiel} · informe après la clôture, avec la date limite de l’art. 23`, async () => {
+      const a = await anomalie(referentiel, null, DANS_LE_DELAI);
       expect(a).toBeDefined();
-      // AVERTISSEMENT et non BLOQUANT · la date n'existe qu'une fois les
-      // comptes arrêtés ; bloquer l'analyse d'un exercice en cours de travaux
-      // reviendrait à refuser le brouillon parce qu'il n'est pas définitif.
-      expect(a!.gravite).toBe('AVERTISSEMENT');
+      expect(a!.gravite).toBe('INFORMATION');
+      // Quatre mois de date à date · 31 décembre donne 30 avril.
+      expect(a!.libelle).toContain('au plus tard le 30/04/2027');
+      expect(a!.consequence).toContain('le 30/04/2027');
       // Le message doit dire que ce n'est PAS la clôture · c'est la confusion
       // qui a fait passer le manque inaperçu jusqu'ici.
       expect(a!.consequence).toContain('Ce n’est pas la date de clôture');
     });
 
+    it(`${referentiel} · le dernier jour du délai reste une information`, async () => {
+      expect((await anomalie(referentiel, null, DERNIER_JOUR_A_KINSHASA))!.gravite).toBe('INFORMATION');
+    });
+
+    it(`${referentiel} · avertit le lendemain du délai, au jour de Kinshasa`, async () => {
+      const a = await anomalie(referentiel, null, LENDEMAIN_A_KINSHASA);
+      // AVERTISSEMENT et non BLOQUANT · l'art. 23 fixe un délai, il ne ferme
+      // pas la saisie.
+      expect(a!.gravite).toBe('AVERTISSEMENT');
+      expect(a!.libelle).toContain('délai de quatre mois dépassé');
+      expect(a!.consequence).toContain('Ce délai est passé');
+    });
+
     it(`${referentiel} · se tait dès que la date est renseignée`, async () => {
-      expect(await anomalie(referentiel, new Date('2027-04-28'))).toBeUndefined();
+      expect(await anomalie(referentiel, new Date('2027-04-28'), LENDEMAIN_A_KINSHASA)).toBeUndefined();
     });
   }
 

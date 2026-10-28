@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 
 /**
  * Changer sa propre adresse de connexion · demandé par Manasse le 2026-09-25
- * (admin@vmgconsulting.cd devient .net). Aucun écran ne le permettait, et le
+ * (une adresse du cabinet qui change de domaine). Aucun écran ne le permettait, et le
  * seul chemin restant était une modification à la main dans la base.
  */
 function service(user: Record<string, unknown>, echec?: { code: string }) {
@@ -27,22 +27,22 @@ describe('changer son adresse de connexion', () => {
   beforeAll(async () => {
     hash = await bcrypt.hash('le-bon', 4);
   });
-  const utilisateur = () => ({ id: 'u1', email: 'admin@vmgconsulting.cd', motDePasse: hash });
+  const utilisateur = () => ({ id: 'u1', email: 'admin@ancien.cd', motDePasse: hash });
 
   it('exige le mot de passe actuel, sans rien écrire sinon', async () => {
     const { s, update } = service(utilisateur());
-    await expect(s.changerAdresse('u1', 'faux', 'admin@vmgconsulting.net')).rejects.toThrow(/mot de passe actuel est incorrect/);
+    await expect(s.changerAdresse('u1', 'faux', 'admin@nouveau.cd')).rejects.toThrow(/mot de passe actuel est incorrect/);
     expect(update).not.toHaveBeenCalled();
   });
 
   it('change l’adresse, ferme les sessions et en repose une neuve', async () => {
     const { s, update } = service(utilisateur());
-    const r = await s.changerAdresse('u1', 'le-bon', '  admin@vmgconsulting.net ');
+    const r = await s.changerAdresse('u1', 'le-bon', '  admin@nouveau.cd ');
     const appel = (update.mock.calls[0] as unknown as [{ where: unknown; data: Record<string, unknown> }])[0];
     expect(appel.where).toEqual({ id: 'u1' });
-    expect(appel.data.email).toBe('admin@vmgconsulting.net');
+    expect(appel.data.email).toBe('admin@nouveau.cd');
     expect(appel.data.sessionsInvalidesAvant).toBeInstanceOf(Date);
-    expect(r).toMatchObject({ adresse: 'admin@vmgconsulting.net', accessToken: 'jeton' });
+    expect(r).toMatchObject({ adresse: 'admin@nouveau.cd', accessToken: 'jeton' });
     // Le drapeau d'opérateur et le rôle sont sur le compte · rien ne les touche.
     expect(Object.keys(appel.data).sort()).toEqual(['email', 'sessionsInvalidesAvant']);
   });
@@ -54,7 +54,7 @@ describe('changer son adresse de connexion', () => {
 
   it('refuse l’adresse actuelle', async () => {
     const { s } = service(utilisateur());
-    await expect(s.changerAdresse('u1', 'le-bon', 'admin@vmgconsulting.cd')).rejects.toThrow(/déjà votre adresse/);
+    await expect(s.changerAdresse('u1', 'le-bon', 'admin@ancien.cd')).rejects.toThrow(/déjà votre adresse/);
   });
 
   it('la route n’est PAS une sortie de mot de passe provisoire · on lit la métadonnée, pas le texte', () => {

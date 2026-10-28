@@ -35,12 +35,12 @@ describe('émission des licences sur site', () => {
     const { pub, priv } = paire();
     const p = prismaFactice();
     const s = new LicencesSurSiteService(p as never, { CLE_PRIVEE_LICENCE: priv }, pub);
-    const r = await s.emettre(DEMANDE, 'op@vmg.test', LE);
+    const r = await s.emettre(DEMANDE, 'op@editeur.test', LE);
     expect(r.numero).toBe('OMX-2026-0001');
     const v = verifierLicence(r.fichier, { clePubliquePem: pub, empreinte: EMPREINTE, aujourdhui: '2026-09-27', horlogeMax: null, dateVersion: '2026-09-26' });
     expect(v.statut).toBe('VALIDE');
     expect(v.contenu?.empreinteMachine).toBe(EMPREINTE);
-    expect(p.lignes[0].emisePar).toBe('op@vmg.test');
+    expect(p.lignes[0].emisePar).toBe('op@editeur.test');
   });
 
   it('accepte une clé privée posée sur une seule ligne, retours échappés', async () => {

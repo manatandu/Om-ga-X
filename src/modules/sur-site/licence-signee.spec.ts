@@ -10,7 +10,7 @@ const paire = () => {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   return { prive: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), public: publicKey.export({ type: 'spki', format: 'pem' }).toString() };
 };
-const VMG = paire();
+const EDITEUR_CLES = paire();
 const PIRATE = paire();
 const POSTE = empreinteDe('3f1c2b7a-0000-4b5e-9a1d-poste-du-client');
 const CONTENU: ContenuLicence = {
@@ -23,9 +23,9 @@ const CONTENU: ContenuLicence = {
   expiration: null,
   dossiersMax: 3,
 };
-const texte = (c: ContenuLicence = CONTENU, cle = VMG.prive) => JSON.stringify(signerLicence(c, cle));
+const texte = (c: ContenuLicence = CONTENU, cle = EDITEUR_CLES.prive) => JSON.stringify(signerLicence(c, cle));
 const ctx = (p: Partial<Parameters<typeof verifierLicence>[1]> = {}) => ({
-  clePubliquePem: VMG.public,
+  clePubliquePem: EDITEUR_CLES.public,
   empreinte: POSTE,
   aujourdhui: '2026-10-01',
   horlogeMax: '2026-09-30',
@@ -33,7 +33,7 @@ const ctx = (p: Partial<Parameters<typeof verifierLicence>[1]> = {}) => ({
   ...p,
 });
 
-describe('licence sur site · signée par VMG, vérifiée sans internet', () => {
+describe('licence sur site · signée par l’éditeur, vérifiée sans internet', () => {
   it('une licence authentique, pour ce poste, dans ses dates, vaut', () => {
     const v = verifierLicence(texte(), ctx());
     expect(v).toMatchObject({ statut: 'VALIDE', motif: null });
@@ -96,7 +96,7 @@ describe('licence sur site · signée par VMG, vérifiée sans internet', () => 
   });
 
   it('un contenu irrecevable ne se signe pas', () => {
-    expect(() => signerLicence({ ...CONTENU, dossiersMax: 0 }, VMG.prive)).toThrow(/dossiers/);
+    expect(() => signerLicence({ ...CONTENU, dossiersMax: 0 }, EDITEUR_CLES.prive)).toThrow(/dossiers/);
     expect(motifRefusContenu({ ...CONTENU, empreinteMachine: 'abc' })).toMatch(/empreinte/);
     expect(motifRefusContenu({ ...CONTENU, finMaintenance: '2026-01-01' })).toMatch(/fin de maintenance antérieure/);
     expect(motifRefusContenu({ ...CONTENU, expiration: '2026-01-01' })).toMatch(/expiration antérieure/);

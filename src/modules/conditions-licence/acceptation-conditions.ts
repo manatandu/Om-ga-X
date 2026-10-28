@@ -135,14 +135,14 @@ export function motifAcceptationFermee(c: ContexteAcceptation): string | null {
   if (!c.surSite && c.typeLicence === 'PERPETUEL_SAAS') {
     return (
       'Ce dossier tient une licence perpétuelle hébergée, que les présentes conditions ne décrivent pas · ' +
-      'ses conditions et son prix sont à arrêter par VMG Consulting avant toute acceptation en ligne ' +
+      'ses conditions et son prix sont à arrêter par l’éditeur avant toute acceptation en ligne ' +
       '(Code du numérique, art. 53, 5°, et art. 55, al. 1er).'
     );
   }
   if (!c.surSite && c.commande === null) {
     return (
       'Aucun abonnement n’est rattaché à ce dossier, ni à son siège · l’offre doit dire le prix avant son acceptation ' +
-      '(Code du numérique, art. 53, 5°, et art. 55, al. 1er). VMG Consulting rattache l’abonnement depuis sa console.'
+      '(Code du numérique, art. 53, 5°, et art. 55, al. 1er). L’éditeur rattache l’abonnement depuis sa console.'
     );
   }
   if (c.commande && c.commande.motifPrix) {

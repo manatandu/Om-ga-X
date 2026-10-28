@@ -7,7 +7,7 @@
   les sessions tomberaient.
 
   Tout est journalisé dans %ProgramData%\OmegaX\installation.log · c'est ce
-  fichier que VMG demande quand une installation échoue chez un client.
+  fichier que l'éditeur demande quand une installation échoue chez un client.
 #>
 param([Parameter(Mandatory = $true)][string]$Racine)
 
@@ -101,11 +101,11 @@ try {
     # Une base PostgreSQL ne s'ouvre qu'avec les binaires de SA version
     # majeure. Un paquet qui changerait de version majeure arrêterait la base
     # du client sans rien lui dire · on s'arrête ici, avant de toucher à quoi
-    # que ce soit, et la conversion (pg_upgrade) se fait avec VMG.
+    # que ce soit, et la conversion (pg_upgrade) se fait avec l'éditeur.
     $majeurBase = (Get-Content (Join-Path $PgData 'PG_VERSION') -TotalCount 1).Trim()
     $majeurPaquet = ((& (Join-Path $PgBin 'pg_ctl.exe') --version) -replace '^\D*(\d+).*$', '$1').Trim()
     if ($majeurBase -ne $majeurPaquet) {
-      throw "La base est en PostgreSQL $majeurBase et ce paquet porte PostgreSQL $majeurPaquet · mise à jour arrêtée, contactez VMG Consulting."
+      throw "La base est en PostgreSQL $majeurBase et ce paquet porte PostgreSQL $majeurPaquet · mise à jour arrêtée, contactez l'éditeur d'OmegaX."
     }
     # Une mise à jour peut déplacer le programme · les chemins suivent, le
     # reste (mot de passe, secret) ne bouge jamais.

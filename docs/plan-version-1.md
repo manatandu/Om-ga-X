@@ -84,7 +84,7 @@ physique, provisions, documents obligatoires, registre des donateurs.
 
 ## 5. Le pilote
 
-Un ou deux dossiers réels de VMG Consulting, tenus dans OmegaX en parallèle de
+Un ou deux dossiers réels de l'éditeur, tenus dans OmegaX en parallèle de
 l'outil actuel pendant un à deux mois. À chaque fin de mois, on compare les
 balances et les états. La vente commence après un pilote sans écart.
 

@@ -1,10 +1,10 @@
 /**
- * LA CLÉ PUBLIQUE DE VMG CONSULTING · celle qui VÉRIFIE les licences sur
+ * LA CLÉ PUBLIQUE DE L'ÉDITEUR · celle qui VÉRIFIE les licences sur
  * site. Elle ne sait pas signer, et sa publication ne coûte rien : c'est la
- * clé privée, gardée par VMG seul, qui signe.
+ * clé privée, gardée par l'éditeur seul, qui signe.
  *
  * POSÉE PAR MANASSE LE 2026-10-16 · la paire s'est générée une seule
- * fois (voir docs/installation-sur-site.md, § 2 « Une seule fois chez VMG ·
+ * fois (voir docs/installation-sur-site.md, § 2 « Une seule fois chez l'éditeur ·
  * la paire de clés » · le renvoi nommait une section « Clés de licence » qui
  * n'existe pas, audit final F199), la clé privée va dans le secret de
  * dépôt `API_CLE_PRIVEE_LICENCE`, la clé publique ici. Sans elle,

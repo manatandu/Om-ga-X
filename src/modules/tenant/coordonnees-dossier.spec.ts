@@ -55,8 +55,8 @@ describe('Coordonnées du dossier', () => {
   it('la chaîne vide efface l’adresse mais ne touche ni la raison sociale ni la tenue', async () => {
     const capture: { data?: Record<string, unknown> } = {};
     const s = service(capture, { id: 't1', devise: 'CDF' });
-    await s.modifierCoordonnees('t1', { nom: '  VMG Consulting  ', adresse: '', ville: 'Kinshasa' });
-    expect(capture.data!.nom).toBe('VMG Consulting');
+    await s.modifierCoordonnees('t1', { nom: '  Éditeur Exemple SARL  ', adresse: '', ville: 'Kinshasa' });
+    expect(capture.data!.nom).toBe('Éditeur Exemple SARL');
     expect(capture.data!.adresse).toBeNull();
     expect(capture.data!.ville).toBe('Kinshasa');
     // La monnaie de tenue n'est plus écrite du tout par ce chemin.

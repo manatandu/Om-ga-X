@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
  * MOT DE PASSE PROVISOIRE · deux garanties. Le changement exige le mot de
  * passe ACTUEL (un poste laissé ouvert ne permet pas d'évincer le
  * titulaire), et il efface doitChangerMotDePasse · c'est le geste qui clôt
- * la période où un tiers (console VMG, siège d'un groupe, admin du dossier)
+ * la période où un tiers (console de l'éditeur, siège d'un groupe, admin du dossier)
  * connaissait le mot de passe.
  */
 describe('AuthService · changement de mot de passe', () => {

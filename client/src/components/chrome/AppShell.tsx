@@ -156,7 +156,7 @@ export function AppShell() {
     {
       titre: 'Fichier',
       items: [
-        // La création de dossiers passe par la console VMG (option A :
+        // La création de dossiers passe par la console de l'éditeur (option A :
         // l'auto-inscription publique est fermée) · l'entrée n'existe que
         // pour l'opérateur de la plateforme, et mène à sa console.
         ...(utilisateur?.estOperateurPlateforme
@@ -228,7 +228,7 @@ export function AppShell() {
         // invisible pour tout utilisateur ordinaire, et de toute façon
         // inaccessible : le serveur relit le drapeau en base à chaque requête.
         ...(utilisateur?.estOperateurPlateforme
-          ? [{ label: 'Administration VMG Consulting', separateurAvant: true, chemin: '/plateforme', onClick: () => navigate('/plateforme') }]
+          ? [{ label: 'Console de l’éditeur', separateurAvant: true, chemin: '/plateforme', onClick: () => navigate('/plateforme') }]
           : []),
         // Sage : Fichier → Mise en page / Format d'impression. Ici, une seule
         // commande : la boîte du navigateur, où « Enregistrer au format PDF »

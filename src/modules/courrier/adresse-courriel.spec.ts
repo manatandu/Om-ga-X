@@ -15,9 +15,9 @@ describe('adresse de destinataire · ce qui est refusé à l’écriture', () =>
   });
 
   it('refuse ce qui n’a pas exactement une arobase', () => {
-    expect(adresseAcceptable('comptable.vmg.cd')).toBe(false);
-    expect(adresseAcceptable('a@b@vmg.cd')).toBe(false);
-    expect(adresseAcceptable('@vmg.cd')).toBe(false);
+    expect(adresseAcceptable('comptable.exemple.cd')).toBe(false);
+    expect(adresseAcceptable('a@b@exemple.cd')).toBe(false);
+    expect(adresseAcceptable('@exemple.cd')).toBe(false);
     expect(adresseAcceptable('comptable@')).toBe(false);
   });
 
@@ -26,31 +26,31 @@ describe('adresse de destinataire · ce qui est refusé à l’écriture', () =>
     // refusera toujours, autant ne pas ouvrir cinq tentatives pour l'apprendre.
     expect(adresseAcceptable('comptable@intranet')).toBe(false);
     expect(adresseAcceptable('comptable@.cd')).toBe(false);
-    expect(adresseAcceptable('comptable@vmg.')).toBe(false);
-    expect(adresseAcceptable('comptable@vmg..cd')).toBe(false);
+    expect(adresseAcceptable('comptable@exemple.')).toBe(false);
+    expect(adresseAcceptable('comptable@exemple..cd')).toBe(false);
   });
 
   it('refuse une espace ou un retour à la ligne au milieu', () => {
-    expect(adresseAcceptable('comp table@vmg.cd')).toBe(false);
+    expect(adresseAcceptable('comp table@exemple.cd')).toBe(false);
     // Un retour à la ligne dans un en-tête de courriel est le moyen classique
     // d'y glisser un second destinataire.
-    expect(adresseAcceptable('comptable@vmg.cd\nBcc: ailleurs@ext.cd')).toBe(false);
+    expect(adresseAcceptable('comptable@exemple.cd\nBcc: ailleurs@ext.cd')).toBe(false);
   });
 
   it('refuse une LISTE glissée dans un champ qui n’en attend qu’une', () => {
-    expect(adresseAcceptable('a@vmg.cd,b@vmg.cd')).toBe(false);
-    expect(adresseAcceptable('a@vmg.cd;b@vmg.cd')).toBe(false);
+    expect(adresseAcceptable('a@exemple.cd,b@exemple.cd')).toBe(false);
+    expect(adresseAcceptable('a@exemple.cd;b@exemple.cd')).toBe(false);
   });
 
   it('accepte les formes réelles, y compris celles qu’un filtre trop zélé rejette', () => {
     // Un logiciel qui refuse une adresse valide fait ressaisir une adresse
     // fausse · le plus, le point et le tiret sont d'usage courant.
-    expect(adresseAcceptable('jean-pierre.mukendi+omegax@vmg-consulting.cd')).toBe(true);
+    expect(adresseAcceptable('jean-pierre.mukendi+omegax@exemple.cd')).toBe(true);
     expect(adresseAcceptable('contact@ong.example.org')).toBe(true);
     expect(adresseAcceptable(normaliserAdresse('  contact@ong.cd  '))).toBe(true);
   });
 
   it('refuse au-delà de 254 caractères', () => {
-    expect(adresseAcceptable(`${'a'.repeat(250)}@vmg.cd`)).toBe(false);
+    expect(adresseAcceptable(`${'a'.repeat(250)}@exemple.cd`)).toBe(false);
   });
 });

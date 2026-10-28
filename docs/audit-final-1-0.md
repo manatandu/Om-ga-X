@@ -1307,7 +1307,7 @@ Chaque ligne donne ses références d'origine entre crochets. Quand une ligne fu
 - **Condition :** 5
 - **Constat :** la messagerie SMTP et l'archive GitHub ne sont pas nommées, rien n'est prévu pour le sur site, et aucune RLS n'existe.
 - **Correction :** nommer les prestataires, ajouter une variante sur site, et écrire « au niveau de chaque requête du serveur ».
-- **Fait le 2026-09-27 :** GitHub et la messagerie nommés (le nom du prestataire SMTP reste à arrêter par VMG, et la page le dit) ; variante sur site lue sur `/sur-site/etat` ; « au niveau de chaque requête du serveur ». Test : `confidentialite-code-numerique.spec.ts`.
+- **Fait le 2026-09-27 :** GitHub et la messagerie nommés (le nom du prestataire SMTP reste à arrêter par l'éditeur, et la page le dit) ; variante sur site lue sur `/sur-site/etat` ; « au niveau de chaque requête du serveur ». Test : `confidentialite-code-numerique.spec.ts`.
 
 ### Interface
 

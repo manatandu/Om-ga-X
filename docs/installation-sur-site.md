@@ -2,7 +2,7 @@
 
 Décidé par Manasse le 2026-09-26 : une licence en FICHIER SIGNÉ, vérifiée sans
 internet, et un PC Windows du client comme serveur. Ce document est la fiche
-de VMG pour préparer, poser et entretenir une installation.
+de l'éditeur pour préparer, poser et entretenir une installation.
 
 ## 1. Ce que reçoit le client
 
@@ -24,9 +24,9 @@ d'adresse · pour l'utilisateur, c'est un logiciel installé. Les autres postes
 du bureau ouvrent `http://<nom-du-serveur>:8080` (règle de pare-feu posée sur
 les réseaux privé et de domaine, jamais public).
 
-## 2. Une seule fois chez VMG · la paire de clés
+## 2. Une seule fois chez l'éditeur · la paire de clés
 
-La licence est signée par la clé PRIVÉE de VMG, et le logiciel ne porte que la
+La licence est signée par la clé PRIVÉE de l'éditeur, et le logiciel ne porte que la
 clé PUBLIQUE. Sans elle, le workflow refuse de construire le paquet.
 
 ```bash
@@ -63,8 +63,8 @@ réservée sur le réseau du bureau, et un onduleur (une coupure pendant une
    `C:\ProgramData\OmegaX\installation.log`. C'est ce fichier qu'il faut
    récupérer.
 3. Ouvrir OmegaX. L'écran d'ouverture affiche l'**empreinte du poste**
-   (64 caractères). La transmettre à VMG.
-4. VMG émet la licence depuis la console (Cabinets clients, cadre « Licences
+   (64 caractères). La transmettre à l'éditeur.
+4. L'éditeur émet la licence depuis la console (Cabinets clients, cadre « Licences
    sur site ») pour cette empreinte · titulaire, nombre de dossiers, fin de
    maintenance, expiration ou perpétuelle. Le fichier `licence-OMX-….omegax`
    se télécharge aussitôt, et reste retéléchargeable depuis la liste.
@@ -162,7 +162,7 @@ Lancer le nouvel `.exe` sur le poste serveur. Il arrête les services,
 remplace le programme (jamais les données), puis le service copie la base
 avant d'appliquer les migrations. La version majeure de PostgreSQL est gelée
 (`PG_MAJEUR_ATTENDU` du workflow) · un paquet qui en changerait est refusé
-avant toute copie, la conversion d'une base se faisant avec VMG.
+avant toute copie, la conversion d'une base se faisant avec l'éditeur.
 
 Une mise à jour ne tourne que si sa date de publication est couverte par la
 fin de maintenance de la licence, et c'est vérifié AVANT la copie et les
@@ -171,7 +171,7 @@ Le service ne démarre pas, et le motif est dans son journal
 (`C:\ProgramData\OmegaX\journaux`). Deux sorties, la base étant restée à la
 forme de la version précédente :
 
-1. renouveler la maintenance · VMG émet la licence, qui se dépose À LA MAIN
+1. renouveler la maintenance · l'éditeur émet la licence, qui se dépose À LA MAIN
    dans `C:\ProgramData\OmegaX\licence.omegax` (l'écran d'ouverture n'est pas
    joignable tant que le service est arrêté). Le service la lit au démarrage
    suivant · `net start OmegaX` s'il n'a pas déjà redémarré de lui-même ;
@@ -185,7 +185,7 @@ il s'est interrompu, et le message nomme la copie faite avant lui, seule image
 saine. Réinstaller la version dont la migration avait échoué, ou une autre
 version plus récente que la licence couvre, retente la migration sur la base
 telle qu'elle est, cette copie restant celle de référence ; revenir à la
-version précédente demande de restaurer la copie, avec VMG (voir plus bas).
+version précédente demande de restaurer la copie, avec l'éditeur (voir plus bas).
 
 Ce contrôle ne bloque jamais un poste sans licence lisible · un poste neuf doit
 créer sa base et démarrer, puisque c'est l'écran d'ouverture qui montre
@@ -195,7 +195,7 @@ y être créé.
 Si la migration échoue, le service redémarre et la retente, sans refaire la
 copie · celle d'avant le premier essai reste la copie de référence (§ 5). Pour revenir en arrière · arrêter le service, restaurer la copie avant
 mise à jour nommée dans le journal du service, et réinstaller la version que
-son nom porte, avec VMG.
+son nom porte, avec l'éditeur.
 
 ## 7. Désinstaller
 

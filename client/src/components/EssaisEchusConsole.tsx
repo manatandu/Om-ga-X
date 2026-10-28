@@ -39,7 +39,7 @@ interface Suppression {
  * puis supprimés PAR L'OPÉRATEUR, d'ici (décision de Manasse du 2026-10-17).
  *
  * La liste ne montre que des identifiants, des dates, un état et des nombres ·
- * VMG ne voit jamais les informations d'un client. Le serveur juge tout : le
+ * l'éditeur ne voit jamais les informations d'un client. Le serveur juge tout : le
  * bouton « Supprimer » n'est proposé que pour un dossier lu supprimable, et le
  * serveur le REFUSE de toute façon si le calendrier a changé entre-temps.
  * Une liste part de `null` · « aucun dossier » ne se dit que sur une liste LUE.

@@ -8,7 +8,7 @@ const codeA = (d: Date, decalagePas = 0) => codeHotp(depuisBase32(SECRET), pasDe
 
 async function monde(etat: Record<string, unknown> = {}, courrier: { mettreEnFile: jest.Mock } | undefined = undefined) {
   const u: Record<string, unknown> = {
-    id: 'u1', tenantId: 't1', email: 'admin@vmg.cd', estActif: true, estOperateurPlateforme: true,
+    id: 'u1', tenantId: 't1', email: 'admin@exemple.cd', estActif: true, estOperateurPlateforme: true,
     motDePasse: await bcrypt.hash('bon-mot-de-passe', 4),
     tentativesEchouees: 0, verrouilleJusqua: null, dernierEchecLe: null,
     secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [],
@@ -35,39 +35,39 @@ describe('connexion · le second facteur', () => {
 
   it('sans double authentification, rien ne change', async () => {
     const m = await monde();
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe' })).resolves.toHaveProperty('accessToken');
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe' })).resolves.toHaveProperty('accessToken');
   });
 
   it('active, le mot de passe seul ne rend AUCUNE session, seulement la demande de code', async () => {
     const m = await monde(ACTIVE);
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe' })).resolves.toEqual({ deuxiemeFacteurRequis: true });
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe' })).resolves.toEqual({ deuxiemeFacteurRequis: true });
   });
 
   it('un mot de passe faux ne dit pas qu’un code serait attendu', async () => {
     const m = await monde(ACTIVE);
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'faux' })).rejects.toThrow('Identifiants invalides');
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'faux' })).rejects.toThrow('Identifiants invalides');
   });
 
   it('le bon code ouvre la session et consomme son pas', async () => {
     const m = await monde(ACTIVE);
     const code = codeA(new Date());
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe', code })).resolves.toHaveProperty('accessToken');
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe', code })).resolves.toHaveProperty('accessToken');
     expect(m.u.dernierPasDoubleAuth).toBe(pasDe(Date.now()));
     // Le même code ne resert pas.
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe', code })).rejects.toThrow(/Code de vérification invalide/);
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe', code })).rejects.toThrow(/Code de vérification invalide/);
   });
 
   it('un code faux compte comme un échec et arme le verrou', async () => {
     const m = await monde(ACTIVE);
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe', code: '000000' })).rejects.toThrow(/Code de vérification invalide/);
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe', code: '000000' })).rejects.toThrow(/Code de vérification invalide/);
     expect(m.u.tentativesEchouees).toBe(1);
   });
 
   it('un code de secours ouvre la session une fois', async () => {
     const m = await monde({ ...ACTIVE, codesSecoursDoubleAuth: [empreinteCodeSecours('ABCDE-FGHIJ'), 'autre'] });
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe', code: 'abcde fghij' })).resolves.toHaveProperty('accessToken');
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe', code: 'abcde fghij' })).resolves.toHaveProperty('accessToken');
     expect(m.u.codesSecoursDoubleAuth).toEqual(['autre']);
-    await expect(m.s.login({ email: 'admin@vmg.cd', motDePasse: 'bon-mot-de-passe', code: 'ABCDE-FGHIJ' })).rejects.toThrow(/Code de vérification invalide/);
+    await expect(m.s.login({ email: 'admin@exemple.cd', motDePasse: 'bon-mot-de-passe', code: 'ABCDE-FGHIJ' })).rejects.toThrow(/Code de vérification invalide/);
   });
 });
 
@@ -145,7 +145,7 @@ describe('l’avis hors bande au titulaire (NIST SP 800-63B-4)', () => {
     expect(courrier.mettreEnFile).toHaveBeenCalledTimes(1);
     const [tenantId, message] = courrier.mettreEnFile.mock.calls[0] as unknown as [string, { destinataire: string; sujet: string; corps: string; origine: string }];
     expect(tenantId).toBe('t1');
-    expect(message.destinataire).toBe('admin@vmg.cd');
+    expect(message.destinataire).toBe('admin@exemple.cd');
     expect(message.origine).toBe('DOUBLE_AUTHENTIFICATION');
     expect(message.sujet).toContain('activée');
     expect(message.corps).not.toContain(SECRET);

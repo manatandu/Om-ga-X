@@ -169,7 +169,7 @@ function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS], co
       ),
       findFirst: jest.fn(async ({ where }: { where: { id: string } }) => journaux.find((j) => j.id === where.id) ?? null),
     },
-    user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1', email: 'comptable@vmg.cd' }]) },
+    user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1', email: 'comptable@exemple.cd' }]) },
     // Les collectifs qui portent des individuels · la doublure HONORE le
     // dossier de la requête, un autre dossier n'en voit aucun.
     compte: {
@@ -557,7 +557,7 @@ describe('Journal exporté en flux', () => {
     expect(premiere.getCell(4).value).toBe(1);
     expect(premiere.getCell(7).value).toBe('Validée');
     // L'auteur en COURRIEL · un auditeur ne lit pas un uuid.
-    expect(premiere.getCell(9).value).toBe('comptable@vmg.cd');
+    expect(premiere.getCell(9).value).toBe('comptable@exemple.cd');
     expect(premiere.getCell(12).value).toBe('Annulée par la pièce n° 2');
     expect(seconde.getCell(12).value).toBe('Annule la pièce n° 1');
     expect(seconde.getCell(13).value).toBe('Facture saisie deux fois');

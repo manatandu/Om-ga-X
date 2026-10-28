@@ -9,8 +9,8 @@ import type { Exercice, LigneQuestionnaire, QuestionnaireRevision } from '../lib
  * QUESTIONNAIRE DE RÉVISION PAR CYCLE.
  *
  * L'écran affiche l'ORIGINE de chaque item, et c'est sa garantie centrale :
- * « CPCC » veut dire que le libellé est celui du séminaire, « VMG » qu'il est
- * du cabinet. Les confondre ferait passer une question de l'éditeur pour une
+ * « CPCC » veut dire que le libellé est celui du séminaire, « EDITEUR » qu'il est
+ * de l'éditeur. Les confondre ferait passer une question de l'éditeur pour une
  * exigence, et c'est exactement le défaut que le § 10 bis interdit.
  *
  * Deux chiffres, jamais un seul · le taux de réponse ne compte QUE les
@@ -276,7 +276,7 @@ export function QuestionnaireRevisionPage() {
                   <div>
                     <div className="text-[11.5px] font-bold">{detail.libelle}</div>
                     <div className="text-[11px] text-text-dim">
-                      {s.itemsCpcc} item(s) du CPCC · {s.itemsVmg} du cabinet
+                      {s.itemsCpcc} item(s) du CPCC · {s.itemsEditeur} de l'éditeur
                       {detail.statut === 'CLOS' && ` · clos le ${jour(detail.closLe)}`}
                     </div>
                   </div>
@@ -363,7 +363,7 @@ export function QuestionnaireRevisionPage() {
                           À couvrir un par un · {l.objets.join(', ')}
                         </div>
                       )}
-                      {l.origine === 'VMG' && l.fondement && (
+                      {l.origine === 'EDITEUR' && l.fondement && (
                         <div className="text-[10.5px] text-text-dim mt-0.5">Fondement · {l.fondement}</div>
                       )}
                       {l.reponse?.valeur && <div className="text-[11px] mt-0.5">{l.reponse.valeur}</div>}

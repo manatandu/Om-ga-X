@@ -135,13 +135,14 @@ describe('la politique de confidentialité est PUBLIÉE', () => {
     );
   });
 
-  it("elle ne prétend pas avoir un contact que VMG Consulting n'a pas arrêté", () => {
+  it("elle ne prétend pas avoir un contact que l'éditeur n'a pas arrêté", () => {
     // Une adresse inventée dirigerait les demandes d'exercice des droits vers
-    // le vide, et rendrait le document faux plutôt qu'incomplet.
-    const page = lire('src/pages/ConfidentialitePage.tsx');
-    // Le courriel est arrêté (Manasse, 2026-10-17) · la ville est donnée, aucune rue n'est inventée.
-    expect(page).toContain('l’adresse de la rue n’étant pas encore publiée');
-    expect(page).toContain('mailto:admin@vmgconsulting.net');
+    // le vide, et rendrait le document faux plutôt qu'incomplet. Depuis le
+    // retrait du nom de l'ancien éditeur (2026-10-28), aucun courriel n'est
+    // arrêté · la page le dit, et ne porte aucun lien de courriel.
+    const page = lire('src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ');
+    expect(page).toContain('Son courriel et son adresse postale ne sont pas encore publiés (à arrêter par l’éditeur)');
+    expect(page).not.toContain('mailto:');
   });
 
   it('elle énonce la durée réelle de conservation des sauvegardes', () => {

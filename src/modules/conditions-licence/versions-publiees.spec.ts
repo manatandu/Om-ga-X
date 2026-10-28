@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { texteBrutDesConditions, VERSION_CONDITIONS_LICENCE } from './conditions-de-licence';
 import { sha256Hex } from './empreinte';
-import { empreinteEnVigueur, VERSIONS_PUBLIEES, versionPubliee } from './versions-publiees';
+import { empreinteEnVigueur, VERSIONS_PUBLIEES, VERSIONS_RETIREES, versionPubliee } from './versions-publiees';
 import { entreeEnVigueurAuPlusTot, finDuDelaiDeResiliation, motifDelaiArticle34, nIemeJourOuvrableApres, priseDEffet } from './delais-article-34';
 
 /**
@@ -18,7 +18,7 @@ import { entreeEnVigueurAuPlusTot, finDuDelaiDeResiliation, motifDelaiArticle34,
  * `versions/` ; retoucher le texte d'une version publiée fait tomber ce spec.
  */
 const EMPREINTES_GELEES: Record<number, string> = {
-  1: '1a878fe68d79ec76fa40173395750ab68cbf8a1a581c91397e45b30815dac75d',
+  2: 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e',
 };
 
 describe('l’empreinte SHA-256, écrite pour les deux côtés', () => {
@@ -46,11 +46,25 @@ describe('chaque version publiée garde son texte et son empreinte', () => {
     }
   });
 
-  it('les versions se suivent sans trou, dans l’ordre des dates', () => {
-    VERSIONS_PUBLIEES.forEach((v, i) => {
+  it('les versions, retirées et publiées, se suivent sans trou, dans l’ordre des dates', () => {
+    const toutes = [...VERSIONS_RETIREES, ...VERSIONS_PUBLIEES].sort((a, b) => a.numero - b.numero);
+    toutes.forEach((v, i) => {
       expect(v.numero).toBe(i + 1);
-      if (i > 0) expect(v.date >= VERSIONS_PUBLIEES[i - 1].date).toBe(true);
+      if (i > 0) expect(v.date >= toutes[i - 1].date).toBe(true);
     });
+  });
+
+  it('une version retirée garde son empreinte gelée, ne sert plus de texte, et précède toute version publiée', () => {
+    // La version 1 (2026-10-15), offre jamais acceptable, retirée le
+    // 2026-10-28 avec le nom de l'ancien éditeur · son empreinte ne change
+    // jamais, et son numéro ne sert plus aucun texte.
+    expect(VERSIONS_RETIREES.map((v) => [v.numero, v.empreinte])).toEqual([
+      [1, '1a878fe68d79ec76fa40173395750ab68cbf8a1a581c91397e45b30815dac75d'],
+    ]);
+    for (const r of VERSIONS_RETIREES) {
+      expect(versionPubliee(r.numero)).toBeNull();
+      expect(VERSIONS_PUBLIEES.every((p) => p.numero > r.numero)).toBe(true);
+    }
   });
 
   it('la version en vigueur est la dernière publiée, et le générateur rend EXACTEMENT son texte archivé', () => {
@@ -65,7 +79,7 @@ describe('chaque version publiée garde son texte et son empreinte', () => {
   });
 
   it('une version se retrouve par son numéro, et un numéro inconnu n’a pas de texte', () => {
-    expect(versionPubliee(1)?.texte).toBe(VERSIONS_PUBLIEES[0].texte);
+    expect(versionPubliee(2)?.texte).toBe(VERSIONS_PUBLIEES[0].texte);
     expect(versionPubliee(99)).toBeNull();
   });
 });
@@ -91,19 +105,26 @@ describe('les délais de l’art. 34 (Code du numérique), comptés au plus long
   });
 
   it('chaque version publiée respecte le délai, et la première, offre initiale, n’en porte aucun', () => {
-    for (const v of VERSIONS_PUBLIEES) expect([v.numero, motifDelaiArticle34(v)]).toEqual([v.numero, null]);
+    const retires = VERSIONS_RETIREES.map((r) => r.numero);
+    for (const v of VERSIONS_PUBLIEES) expect([v.numero, motifDelaiArticle34(v, retires)]).toEqual([v.numero, null]);
+    // Après une version retirée, jamais acceptable, la suivante est l'offre initiale.
+    expect(motifDelaiArticle34({ numero: 2, communiqueeLe: null, enVigueurLe: '2027-01-01' }, [1])).toBeNull();
+    // Après une version acceptable, la suivante est une modification.
     expect(motifDelaiArticle34({ numero: 2, communiqueeLe: null, enVigueurLe: '2027-01-01' })).toContain('date de communication');
-    expect(motifDelaiArticle34({ numero: 2, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-26' })).toContain('ne peut entrer en vigueur avant le 2026-11-27');
-    expect(motifDelaiArticle34({ numero: 2, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-27' })).toBeNull();
+    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: null, enVigueurLe: '2027-01-01' }, retires)).toContain('date de communication');
+    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-26' }, retires)).toContain('ne peut entrer en vigueur avant le 2026-11-27');
+    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-27' }, retires)).toBeNull();
   });
 
   it('UNE SEULE VERSION tant que la bascule de N à N+1 n’est pas servie', () => {
-    // Une version 2 exige plus qu'une ligne ici · l'acceptation de la version 1
-    // vaut jusqu'à la prise d'effet de la 2 (art. 34, « ne prend effet qu'à
-    // l'issue de ce délai »), le client peut résilier sans pénalité pendant
-    // soixante jours ouvrables, et le serveur ne sert aujourd'hui que la
-    // dernière version. Ce test tombe le jour où une version 2 est ajoutée,
-    // pour qu'on code cette bascule avec elle.
+    // Une version qui suit une version ACCEPTABLE exige plus qu'une ligne ici ·
+    // l'acceptation de N vaut jusqu'à la prise d'effet de N+1 (art. 34, « ne
+    // prend effet qu'à l'issue de ce délai »), le client peut résilier sans
+    // pénalité pendant soixante jours ouvrables, et le serveur ne sert
+    // aujourd'hui que la dernière version. Ce test tombe le jour où une
+    // seconde version publiée est ajoutée, pour qu'on code cette bascule avec
+    // elle. La version 1, retirée sans avoir jamais été acceptable, n'en
+    // demandait aucune.
     expect(VERSIONS_PUBLIEES).toHaveLength(1);
   });
 });

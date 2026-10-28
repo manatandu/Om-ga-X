@@ -296,7 +296,7 @@ L'entrée « Balance agrégée du groupe » n'apparaît que si
 `nombreCellules > 0` (`AppShell.tsx:475-477`, champ servi par
 `auth.service.ts:480`). Or la fenêtre `/groupe` est aussi celle qui crée les
 cellules (`GroupePage.tsx:253`, `POST /groupe/cellules`), et le serveur
-autorise la création dès que VMG a posé un plafond
+autorise la création dès que l'éditeur a posé un plafond
 (`groupe.service.ts:227`, `peutCreerCellule`). Un dossier mère au plafond
 posé et à zéro cellule n'a donc aucune porte vers le seul écran qui lui
 permettrait d'en avoir une. CLAUDE.md § 8 prévoit pourtant qu'un dossier
@@ -580,7 +580,7 @@ hors celles déjà traitées en B1 à B4, F2 et F3.
 | `PATCH /ribs-banque/:id` | `banques.controller.ts:50` | « Modifier » sur un RIB de banque (`BanquesPage.tsx:235` ne propose que la suppression) |
 | `PATCH /immobilisations/familles/:id` | `immobilisation.controller.ts:66` | Modifier une famille dans `ImmobilisationsPage.tsx` |
 | `PATCH /modeles-reglement/:id` | `tiers.controller.ts:136` | Modifier un modèle de règlement dans `TiersPage.tsx` |
-| `POST /plateforme/cabinets/:tenantId/dossier-editeur` | `plateforme.controller.ts:144` | Geste ponctuel dans la console VMG (`PlateformePage.tsx`), confirmation forte |
+| `POST /plateforme/cabinets/:tenantId/dossier-editeur` | `plateforme.controller.ts:144` | Geste ponctuel dans la console de l'éditeur (`PlateformePage.tsx`), confirmation forte |
 
 **Doublons voulus** (une autre commande couvre le besoin) :
 
@@ -656,7 +656,7 @@ même donnée (par exemple `src/modules/comptabilite/ecriture.controller.ts:305`
 ### C1 · Deux entrées du menu Fichier ouvrent la même console
 
 « Nouveau fichier comptable… » (`AppShell.tsx:135-137`) et « Administration
-VMG Consulting » (`:192-194`) naviguent toutes deux vers `/plateforme`.
+[de l'éditeur] » (`:192-194`) naviguent toutes deux vers `/plateforme`.
 `PlateformePage.tsx` ne lit aucune adresse ; la création s'y ouvre par le
 bouton « Nouveau cabinet client » (`:298`, état `nouveauOuvert`, `:117`).
 
@@ -680,7 +680,7 @@ adresse passée par le registre (`client/src/lib/registre-fenetres.tsx:498`),
 | « Provisions pour risques et charges » (`:454`) | « Registre des provisions pour risques et charges » (`:396`) |
 | « Balance agrégée du groupe » (`:476`) | « Groupe · balance agrégée » (`:504`) |
 | « Restituer le dossier complet… » (`:161`) | « Restitution du dossier » (`:472`) |
-| « Administration VMG Consulting » (`:193`) | « VMG Consulting · administration de la plateforme » (`:495`) |
+| « Administration [de l'éditeur] » (`:193`) | « [L'éditeur] · administration de la plateforme » (`:495`) |
 | « Autorisations d'accès (utilisateurs) » (`:151`) | « Autorisations d'accès » (`:486`) |
 | Accueil « Tableaux des immobilisations » (`AccueilPage.tsx:129`) | « Immobilisations et amortissements » (`:295`) |
 | Accueil « Régularisations » (`:130`) | « Régularisations et abonnements » (`:540`) |

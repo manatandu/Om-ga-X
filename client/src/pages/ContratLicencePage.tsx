@@ -26,7 +26,7 @@ import { telechargerTexteDeVersion } from '../components/telechargerContrat';
 
 const LIGNE_VERSION = `Version ${VERSION_CONDITIONS_LICENCE.numero} du ${VERSION_CONDITIONS_LICENCE.dateLisible} · langue du contrat · ${LANGUE_DU_CONTRAT}`;
 
-/** Ce qui reste à arrêter par VMG Consulting se voit · jamais un blanc qu'on lirait comme une réponse. */
+/** Ce qui reste à arrêter par l'éditeur se voit · jamais un blanc qu'on lirait comme une réponse. */
 function AvecMentionsAArreter({ texte }: { texte: string }) {
   const morceaux = texte.split(`(${A_ARRETER})`);
   return (
