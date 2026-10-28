@@ -6,14 +6,18 @@ import { TraitementsImmobilisation } from './TraitementsImmobilisation';
 import { FicheImmobilisationGeneral, type PropositionDuplication } from './FicheImmobilisationGeneral';
 import { VoletPiecesJointes } from './PiecesJointes';
 import { useAuth } from '../lib/auth';
+import { DetenteurImmobilisation } from './DetentionsBiens';
+import { detentionsLisiblesPar } from '../lib/detention-bien';
 
-export type OngletFiche = 'general' | 'traitements' | 'documents';
+export type OngletFiche = 'general' | 'traitements' | 'documents' | 'detenteur';
 
 const ONGLETS_FICHE: readonly { cle: OngletFiche; libelle: string }[] = [
   { cle: 'general', libelle: 'Général' },
   { cle: 'traitements', libelle: 'Traitements' },
   // Ligne sage-l6, fonction n° 22 · le volet Documents de la fiche du bien (Sage i7).
   { cle: 'documents', libelle: 'Documents' },
+  // Ligne Microfina M4 · le salarié qui détient le bien, et l'historique.
+  { cle: 'detenteur', libelle: 'Détenteur' },
 ];
 
 /**
@@ -35,7 +39,9 @@ export function FicheImmobilisation({
   onSupprime: (message: string) => void;
 }) {
   const [onglet, setOnglet] = useState<OngletFiche>('general');
-  const { peutEcrire } = useAuth();
+  const { peutEcrire, utilisateur } = useAuth();
+  // Le volet ne se montre qu'à qui le serveur l'ouvre (detention-bien.controller.ts).
+  const detentionsLisibles = detentionsLisiblesPar(utilisateur?.role);
   const fermer = useRef<HTMLButtonElement>(null);
   // LA FERMETURE SE GARDE (relecture de la ligne · CLAUDE.md, Échap et la
   // fermeture, F177) · un envoi en cours la tient ; une saisie non
@@ -96,7 +102,7 @@ export function FicheImmobilisation({
             </button>
           </div>
           <div role="tablist" className="flex gap-1 px-3.5 pt-2 border-b border-border">
-            {ONGLETS_FICHE.map((o) => (
+            {ONGLETS_FICHE.filter((o) => o.cle !== 'detenteur' || detentionsLisibles).map((o) => (
               <button
                 key={o.cle}
                 type="button"
@@ -114,6 +120,9 @@ export function FicheImmobilisation({
               <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} onEtatTravail={setTravail} />
             )}
             {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />}
+            {onglet === 'detenteur' && detentionsLisibles && (
+              <DetenteurImmobilisation bien={bien} onFait={onFait} onOccupe={(occupe) => setTravail({ occupe, nonEnregistre: false })} />
+            )}
             {onglet === 'documents' && (
               <VoletPiecesJointes
                 objet="IMMOBILISATION"

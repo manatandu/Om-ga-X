@@ -963,6 +963,8 @@ model Tenant {
   piecesJointesSections                PieceJointeSection[]
   piecesJointesImmobilisations         PieceJointeImmobilisation[]
   piecesJointesSalaries                PieceJointeSalarie[]
+  detentionsBiens                      DetentionBien[]
+  recusDetentionBiens                  RecuDetentionBien[]
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures                     ExportEcritures[]
   ecrituresExportees                   EcritureExportee[]
@@ -5058,6 +5060,8 @@ model Immobilisation {
   transfertsGroupe           TransfertImmobilisationGroupe[]
   // Ligne sage-l6 · fonction 22 · les documents de la fiche du bien.
   piecesJointes              PieceJointeImmobilisation[]
+  detentions                 DetentionBien[]
+  recusDetention             RecuDetentionBien[]
 
   @@index([immobilisationPrincipaleId])
   // AUDIT FINAL F261 · le registre, les dotations, les contrôles et
@@ -8109,6 +8113,8 @@ model Salarie {
   repartitionsAnalytiques RepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la fiche du personnel.
   piecesJointes           PieceJointeSalarie[]
+  /// Ligne Microfina M4 · les biens que ce salarié a détenus (RESTRICT).
+  detentionsBiens         DetentionBien[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -9555,6 +9561,8 @@ model LieuBien {
   intitule        String
   createdAt       DateTime         @default(now())
   immobilisations Immobilisation[]
+  /// Ligne Microfina M4 · le lieu où un détenteur a reçu le bien (RESTRICT).
+  detentions      DetentionBien[]
 
   @@unique([tenantId, code])
   @@map("lieux_biens")
@@ -12526,4 +12534,74 @@ model EvaluationTitre {
   @@unique([titreId, exerciceId, annuleLe])
   @@index([tenantId, titreId])
   @@map("evaluations_titre")
+}
+
+/// LIGNE MICROFINA M4 · LE DÉTENTEUR D'UN BIEN (idée 4 de la comparaison avec
+/// Microfina++, manuel p. 284 à 289). Qui détient quel bien, depuis quand,
+/// jusqu'à quand. AUCUN TEXTE NE L'IMPOSE et AUCUNE ÉCRITURE n'en naît · c'est
+/// la gestion matérielle du bien, une convention d'OmegaX
+/// (`immobilisations/detention-bien.ts`). Une détention à la fois par bien
+/// (`dateFin` nulle = en cours), dans l'ordre des dates, jamais supprimée.
+model DetentionBien {
+  id               String             @id @default(uuid())
+  tenantId         String
+  tenant           Tenant             @relation(fields: [tenantId], references: [id])
+  immobilisationId String
+  immobilisation   Immobilisation     @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  salarieId        String
+  salarie          Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  /// Le lieu où le bien est remis, s'il est dit · nul sinon.
+  lieuId           String?
+  lieu             LieuBien?          @relation(fields: [lieuId], references: [id], onDelete: Restrict)
+  dateDebut        DateTime           @db.Date
+  /// Le jour où le bien est rendu ou transféré · nul tant qu'il est détenu.
+  dateFin          DateTime?          @db.Date
+  observation      String?            @db.VarChar(300)
+  /// Le reçu de la remise (affectation ou transfert).
+  recuDebutId      String             @unique
+  recuDebut        RecuDetentionBien  @relation("RecuDebutDetention", fields: [recuDebutId], references: [id], onDelete: Restrict)
+  /// Le reçu de la fin (libération ou transfert) · nul tant qu'il est détenu.
+  recuFinId        String?            @unique
+  recuFin          RecuDetentionBien? @relation("RecuFinDetention", fields: [recuFinId], references: [id], onDelete: Restrict)
+  createdAt        DateTime           @default(now())
+  createdBy        String
+
+  @@index([tenantId, immobilisationId, dateDebut])
+  @@index([tenantId, salarieId])
+  @@index([tenantId, dateDebut])
+  @@map("detentions_biens")
+}
+
+/// LIGNE MICROFINA M4 · le reçu d'un acte de détention, NUMÉROTÉ par dossier
+/// (suite continue, jamais réutilisée, jamais supprimé) · son texte est figé à
+/// l'acte. La signature se DÉCLARE (qui a signé, quel jour), une fois, jamais
+/// présumée · le reçu ne vaut que par elle, et il le dit.
+model RecuDetentionBien {
+  id                   String              @id @default(uuid())
+  tenantId             String
+  tenant               Tenant              @relation(fields: [tenantId], references: [id])
+  numero               Int
+  nature               NatureRecuDetention
+  dateActe             DateTime            @db.Date
+  immobilisationId     String
+  immobilisation       Immobilisation      @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  texte                String
+  etabliLe             DateTime            @default(now())
+  etabliPar            String
+  signataires          String?             @db.VarChar(300)
+  dateSignature        DateTime?           @db.Date
+  signatureDeclareeLe  DateTime?
+  signatureDeclareePar String?
+  detentionOuverte     DetentionBien?      @relation("RecuDebutDetention")
+  detentionClose       DetentionBien?      @relation("RecuFinDetention")
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, immobilisationId])
+  @@map("recus_detention_biens")
+}
+
+enum NatureRecuDetention {
+  AFFECTATION
+  TRANSFERT
+  LIBERATION
 }

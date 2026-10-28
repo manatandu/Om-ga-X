@@ -131,6 +131,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   JourFeuilleTemps: "Heures d'un jour de la feuille de temps",
   CompteurHeures: "Compteur libre d'heures",
   TransfertImmobilisationGroupe: "Transfert d'un bien dans le groupe",
+  DetentionBien: "Détention d'un bien par un salarié",
+  RecuDetentionBien: "Reçu de détention d'un bien",
   HeuresCompteurJour: "Heures portées à un compteur libre",
   RibSalarie: "Coordonnées bancaires d'un salarié",
   PaiementSalaires: 'Paiement des salaires',

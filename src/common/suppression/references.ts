@@ -53,6 +53,11 @@ const LIBELLES: Record<string, string> = {
   'PieceJointeSection.sectionId': 'documents joints (volet Documents de la section)',
   'PieceJointeImmobilisation.immobilisationId': 'documents joints (volet Documents de la fiche)',
   'PieceJointeSalarie.salarieId': 'documents joints (volet Documents de la fiche)',
+  // Ligne Microfina M4 · le registre des détenteurs garde qui a détenu quoi.
+  'DetentionBien.immobilisationId': 'détentions par un salarié (volet Détenteur de la fiche)',
+  'DetentionBien.salarieId': 'biens détenus (volet Détenteur des immobilisations)',
+  'DetentionBien.lieuId': 'détentions remises à ce lieu',
+  'RecuDetentionBien.immobilisationId': 'reçus de détention',
   'AmortissementDerogatoire.exerciceId': 'amortissements dérogatoires',
   'AvanceSalaire.salarieId': 'avances et prêts au personnel',
   'RibTiers.tiersId': 'coordonnées bancaires (volet de la fiche)',

@@ -184,6 +184,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'JourFeuilleTemps',
   'CompteurHeures',
   'TransfertImmobilisationGroupe',
+  'DetentionBien',
+  'RecuDetentionBien',
   'HeuresCompteurJour',
   // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
   'RibSalarie',

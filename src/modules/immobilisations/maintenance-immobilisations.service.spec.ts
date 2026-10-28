@@ -13,7 +13,7 @@ const jour = (s: string) => new Date(`${s}T00:00:00Z`);
 const P = { prefixe: 'IMM-', premierNumero: 1, largeur: 4, ordre: 'ACQUISITION' as const, perimetre: 'EN_SERVICE' as const };
 
 function fabrique(
-  options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[]; campagnes?: unknown[] } = {},
+  options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[]; campagnes?: unknown[]; detenusSortis?: unknown[] } = {},
 ) {
   const fiches = options.fiches ?? [
     {
@@ -54,6 +54,11 @@ function fabrique(
     compte: { findMany: jest.fn().mockResolvedValue(options.comptes ?? []) },
     // La doublure rend les campagnes non clôturées que le cas pose.
     campagneInventaire: { findMany: jest.fn().mockResolvedValue(options.campagnes ?? []) },
+    // Ligne Microfina M4 · les détentions en cours sur un bien sorti.
+    detentionBien: {
+      findMany: jest.fn().mockResolvedValue(options.detenusSortis ?? []),
+      count: jest.fn().mockResolvedValue((options.detenusSortis ?? []).length),
+    },
     $executeRaw: jest.fn(async () => {
       ordre.push('verrou');
       return 1;
@@ -185,5 +190,19 @@ describe('la maintenance', () => {
     const r = await service.maintenance('t-1', 'ex-n');
     expect(r.numerosEnDouble).toEqual([{ numero: 'V-01', fiches: [{ id: 'a', designation: 'Camion' }, { id: 'b', designation: 'Moto' }] }]);
     expect(r.reclassesApresLaCloture).toEqual([{ designation: 'Camion', date: '2027-02-01', ancienCompte: '24520000', compteActuel: '24510000' }]);
+  });
+  it('nomme le bien sorti encore détenu par un salarié, sans le nom du salarié (ligne Microfina M4)', async () => {
+    const { service, prisma } = fabrique({
+      tableau: { groupes: [] },
+      balance: [],
+      detenusSortis: [{ immobilisation: { id: 'z', designation: 'Moto', numeroInventaire: 'IMM-0009', dateSortie: jour('2026-04-30') } }],
+    });
+    const r = await service.maintenance('t-1', 'ex-n');
+    expect(r.biensSortisEncoreDetenus).toEqual([{ id: 'z', designation: 'Moto', numeroInventaire: 'IMM-0009', dateSortie: '2026-04-30' }]);
+    expect(r.biensSortisEncoreDetenusTotal).toBe(1);
+    expect(prisma.detentionBien.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't-1', dateFin: null, immobilisation: { statut: { not: 'EN_SERVICE' } } } }),
+    );
+    expect(JSON.stringify(prisma.detentionBien.findMany.mock.calls[0][0].select)).not.toContain('salarie');
   });
 });

@@ -850,9 +850,16 @@ export class ImmobilisationService {
   async supprimerLieu(tenantId: string, id: string) {
     const lieu = await this.prisma.lieuBien.findFirst({
       where: { id, tenantId },
-      select: { id: true, code: true, _count: { select: { immobilisations: true } } },
+      select: { id: true, code: true, _count: { select: { immobilisations: true, detentions: true } } },
     });
     if (!lieu) throw new NotFoundException('Lieu introuvable');
+    // Ligne Microfina M4 · une détention remise à ce lieu le retient (RESTRICT)
+    // · sans ce décompte, la clé étrangère répondait par une erreur 500.
+    if (lieu._count.detentions > 0) {
+      throw new BadRequestException(
+        `Le lieu ${lieu.code} est inscrit sur ${lieu._count.detentions} détention(s) de biens par un salarié · il reste au registre des détenteurs et ne se supprime pas.`,
+      );
+    }
     if (lieu._count.immobilisations > 0) {
       throw new BadRequestException(
         `Le lieu ${lieu.code} porte ${lieu._count.immobilisations} bien(s) · déplacez-les avant de le supprimer.`,

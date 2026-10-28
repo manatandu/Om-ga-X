@@ -68,6 +68,8 @@ const LIBELLES_USAGES: Record<string, string> = {
   'Immobilisation.immobilisationPrincipaleId': 'composants rattachés',
   'Immobilisation.composantRemplaceId': 'composant qui le remplace',
   'AnnulationTraitementImmobilisation.immobilisationId': 'annulations de traitements',
+  'DetentionBien.immobilisationId': 'détentions par un salarié',
+  'RecuDetentionBien.immobilisationId': 'reçus de détention',
 };
 
 export interface UsageDuBien {
@@ -124,6 +126,14 @@ export interface EtatDeLaFiche {
    * seulement sa SUPPRESSION, qui les perdrait. Absent = aucun.
    */
   documents?: number;
+  /**
+   * Ligne Microfina M4 · les détentions du bien par un salarié et leurs reçus
+   * numérotés. Pas des traitements (aucun montant, aucune écriture) · ils ne
+   * figent ni la valeur ni le plan ; ils retiennent la SUPPRESSION, le
+   * registre des détenteurs gardant qui a eu le bien en main, et la suite
+   * des reçus ne se troue pas.
+   */
+  detentions?: number;
 }
 
 /**
@@ -264,6 +274,12 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
   }
   // Ligne sage-l6, fonction n° 22 · un document ne se perd jamais avec la
   // fiche, en silence · on le retire d'abord, de l'onglet Documents.
+  if ((e.detentions ?? 0) > 0) {
+    return (
+      `La fiche porte l’historique de ${e.detentions} détention(s) par un salarié, avec leurs reçus numérotés · elle ne se ` +
+      'supprime plus. Un bien qui n’existe plus se sort (mise au rebut, destruction, vol).'
+    );
+  }
   if ((e.documents ?? 0) > 0) {
     return `La fiche porte ${e.documents} document(s) joint(s) · retirez-les d’abord, depuis l’onglet Documents de la fiche.`;
   }

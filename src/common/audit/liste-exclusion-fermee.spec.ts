@@ -165,6 +165,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       // Ligne sage-l6 · fonction 22 · les documents du salarié, la relation seule
       // (nom, commentaire et binaire exclus de leur propre table).
       'piecesJointes',
+      // Ligne Microfina M4 · les biens qu'il a détenus, la relation seule.
+      'detentionsBiens',
       'createdAt',
       'createdBy',
       'updatedAt',

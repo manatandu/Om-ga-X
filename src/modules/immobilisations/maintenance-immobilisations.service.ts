@@ -194,6 +194,21 @@ export class MaintenanceImmobilisationsService {
       lignesSansFiche.set(numero, { nombre: s._count._all, montant: Number(s._sum.debit ?? 0) });
     }
 
+    // LIGNE MICROFINA M4 · un bien SORTI du registre encore détenu par un
+    // salarié · nommé par sa désignation (jamais le nom du salarié, la
+    // maintenance n'étant pas le registre du personnel), rien n'est libéré
+    // d'office · la date du retour se déclare.
+    const filtreDetenusSortis = { tenantId, dateFin: null, immobilisation: { statut: { not: StatutImmobilisation.EN_SERVICE } } };
+    const [detenusSortis, detenusSortisTotal] = await Promise.all([
+      this.prisma.detentionBien.findMany({
+        where: { ...filtreDetenusSortis, tenantId },
+        orderBy: { dateDebut: 'asc' },
+        take: PLAFOND_NOMMES,
+        select: { immobilisation: { select: { id: true, designation: true, numeroInventaire: true, dateSortie: true } } },
+      }),
+      this.prisma.detentionBien.count({ where: { ...filtreDetenusSortis, tenantId } }),
+    ]);
+
     const doubles = numerosEnDouble(fiches);
     const enService = fiches.filter((f) => f.statut === StatutImmobilisation.EN_SERVICE);
     return {
@@ -209,6 +224,13 @@ export class MaintenanceImmobilisationsService {
       numerosEnDouble: doubles.slice(0, PLAFOND_NOMMES),
       numerosEnDoubleTotal: doubles.length,
       biensEnServiceSansNumero: enService.filter((f) => !(f.numeroInventaire ?? '').trim()).length,
+      biensSortisEncoreDetenus: detenusSortis.map((d) => ({
+        id: d.immobilisation.id,
+        designation: d.immobilisation.designation,
+        numeroInventaire: d.immobilisation.numeroInventaire,
+        dateSortie: d.immobilisation.dateSortie ? d.immobilisation.dateSortie.toISOString().slice(0, 10) : null,
+      })),
+      biensSortisEncoreDetenusTotal: detenusSortisTotal,
     };
   }
 

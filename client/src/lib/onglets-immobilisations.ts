@@ -12,12 +12,12 @@
  * d'exercice et l'onglet de l'accueil) · `localStorage` jette en fenêtre
  * privée, d'où le `try/catch` des deux côtés.
  */
-export type OngletImmobilisations = 'biens' | 'tableaux' | 'financements' | 'operations' | 'lieux';
+export type OngletImmobilisations = 'biens' | 'tableaux' | 'financements' | 'operations' | 'lieux' | 'detenteurs';
 export type TableauImmobilisations = 'immobilisations' | 'amortissements';
 
 export const CLE_ONGLET_IMMOBILISATIONS = 'omegax.immobilisations.onglet';
 
-const CLES: readonly OngletImmobilisations[] = ['biens', 'tableaux', 'financements', 'operations', 'lieux'];
+const CLES: readonly OngletImmobilisations[] = ['biens', 'tableaux', 'financements', 'operations', 'lieux', 'detenteurs'];
 
 /**
  * L'onglet à ouvrir. Une vue demandée par le menu (un tableau) prime sur la
@@ -35,9 +35,14 @@ export function ongletAOuvrir(
   return ongletPermis(lu, estAdmin);
 }
 
-/** « Lieux » n'est servi qu'à l'administrateur · ailleurs, Biens. */
-export function ongletPermis(onglet: OngletImmobilisations, estAdmin: boolean): OngletImmobilisations {
-  return onglet === 'lieux' && !estAdmin ? 'biens' : onglet;
+/**
+ * « Lieux » n'est servi qu'à l'administrateur ; « Détenteurs » (ligne
+ * Microfina M4) qu'à qui lit le registre des détenteurs · ailleurs, Biens.
+ */
+export function ongletPermis(onglet: OngletImmobilisations, estAdmin: boolean, detentionsLisibles = true): OngletImmobilisations {
+  if (onglet === 'lieux' && !estAdmin) return 'biens';
+  if (onglet === 'detenteurs' && !detentionsLisibles) return 'biens';
+  return onglet;
 }
 
 export function lireOngletMemorise(): string | null {

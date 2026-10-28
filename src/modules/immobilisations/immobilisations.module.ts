@@ -28,11 +28,13 @@ import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.
 import { PiecesJointesImmobilisationController } from './pieces-jointes-immobilisation.controller';
 import { TransfertGroupeController } from './transfert-groupe.controller';
 import { TransfertGroupeService } from './transfert-groupe.service';
+import { DetentionBienController } from './detention-bien.controller';
+import { DetentionBienService } from './detention-bien.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, PiecesJointesModule],
-  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController, FicheImmobilisationController, CreationDepuisEcrituresController, MaintenanceImmobilisationsController, PiecesJointesImmobilisationController, TransfertGroupeController],
-  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService, AnnulationTraitementService, FicheImmobilisationService, CreationDepuisEcrituresService, MaintenanceImmobilisationsService, TransfertGroupeService],
+  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController, FicheImmobilisationController, CreationDepuisEcrituresController, MaintenanceImmobilisationsController, PiecesJointesImmobilisationController, TransfertGroupeController, DetentionBienController],
+  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService, AnnulationTraitementService, FicheImmobilisationService, CreationDepuisEcrituresService, MaintenanceImmobilisationsService, TransfertGroupeService, DetentionBienService],
   exports: [ImmobilisationService],
 })
 export class ImmobilisationsModule {}

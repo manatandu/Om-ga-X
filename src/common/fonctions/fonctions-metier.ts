@@ -111,6 +111,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   CreationDepuisEcrituresController: FonctionMetier.IMMOBILISATIONS,
   MaintenanceImmobilisationsController: FonctionMetier.IMMOBILISATIONS,
   TransfertGroupeController: FonctionMetier.IMMOBILISATIONS,
+  // Ligne Microfina M4 · le détenteur d'un bien.
+  DetentionBienController: FonctionMetier.IMMOBILISATIONS,
   // Reclassement, dépréciation, perte · des régularisations du compte client.
   CreancesDouteusesController: FonctionMetier.SAISIE,
   StockController: FonctionMetier.STOCKS,

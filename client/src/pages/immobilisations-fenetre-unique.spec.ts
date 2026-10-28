@@ -46,11 +46,11 @@ function panneau(cle: string): string {
 }
 
 describe('une seule fenêtre, rangée en onglets (ligne A1)', () => {
-  it('cinq onglets, dans l’ordre · Biens, Tableaux, Financements, Opérations, Lieux', () => {
+  it('six onglets, dans l’ordre · Biens, Tableaux, Financements, Opérations, Lieux, Détenteurs (ligne Microfina M4)', () => {
     const debut = page.indexOf('const ONGLETS_IMMOBILISATIONS');
     const table = page.slice(debut, page.indexOf('];', debut));
     const libelles = [...table.matchAll(/libelle: '([^']+)'/g)].map((m) => m[1]);
-    expect(libelles).toEqual(['Biens', 'Tableaux', 'Financements', 'Opérations', 'Lieux']);
+    expect(libelles).toEqual(['Biens', 'Tableaux', 'Financements', 'Opérations', 'Lieux', 'Détenteurs']);
   });
 
   it('les tableaux gardent leurs deux vues, sans redessiner leurs onglets', () => {
@@ -88,8 +88,13 @@ describe('une seule fenêtre, rangée en onglets (ligne A1)', () => {
 
   it('Lieux reste réservé à l’administrateur, comme le bouton qu’il remplace', () => {
     expect(page).toContain("{estAdmin && visites.has('lieux') && (");
-    expect(page).toContain(".filter((o) => o.cle !== 'lieux' || estAdmin)");
+    expect(page).toContain(".filter((o) => (o.cle !== 'lieux' || estAdmin) && (o.cle !== 'detenteurs' || detentionsLisibles))");
     expect(panneau('lieux')).toContain('creerLieu');
+  });
+
+  it('Détenteurs ne se montre qu’à qui le serveur l’ouvre (ligne Microfina M4)', () => {
+    expect(page).toContain("{detentionsLisibles && visites.has('detenteurs') && (");
+    expect(page).toContain('const detentionsLisibles = detentionsLisiblesPar(utilisateur?.role);');
   });
 
   it('un panneau visité reste monté, caché · une saisie ouverte ne se perd pas en changeant d’onglet', () => {

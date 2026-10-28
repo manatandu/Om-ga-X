@@ -1,3 +1,5 @@
+import { SuiviDetentions } from '../components/DetentionsBiens';
+import { detentionsLisiblesPar } from '../lib/detention-bien';
 import { TableauxImmobilisationsPage } from './TableauxImmobilisationsPage';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
@@ -132,6 +134,7 @@ const ONGLETS_IMMOBILISATIONS: readonly { cle: OngletImmobilisations; libelle: s
   { cle: 'financements', libelle: 'Financements' },
   { cle: 'operations', libelle: 'Opérations' },
   { cle: 'lieux', libelle: 'Lieux' },
+  { cle: 'detenteurs', libelle: 'Détenteurs' },
 ];
 
 const ONGLETS_TABLEAUX: readonly { cle: TableauImmobilisations; libelle: string }[] = [
@@ -150,7 +153,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   // fois l'utilisateur connu.
   const [ongletChoisi, setOngletChoisi] = useState<OngletImmobilisations>(() => ongletAOuvrir(lireOngletMemorise(), vueInitiale, true));
   // Un onglet réservé ne s'affiche jamais à qui n'y a pas droit, même mémorisé.
-  const onglet = ongletPermis(ongletChoisi, estAdmin);
+  const detentionsLisibles = detentionsLisiblesPar(utilisateur?.role);
+  const onglet = ongletPermis(ongletChoisi, estAdmin, detentionsLisibles);
   const [tableau, setTableau] = useState<TableauImmobilisations>(vueInitiale === 'biens' ? 'immobilisations' : vueInitiale);
   // UNE SAISIE NE SE PERD PAS EN CHANGEANT D'ONGLET · un panneau visité reste
   // monté, caché (`hidden`), avec ses formulaires ouverts. Seuls les tableaux
@@ -1074,7 +1078,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
 
   const barreOnglets = (
     <div role="tablist" className="flex gap-1 mb-2 border-b border-border">
-      {ONGLETS_IMMOBILISATIONS.filter((o) => o.cle !== 'lieux' || estAdmin).map((o) => (
+      {ONGLETS_IMMOBILISATIONS.filter((o) => (o.cle !== 'lieux' || estAdmin) && (o.cle !== 'detenteurs' || detentionsLisibles)).map((o) => (
         <button
           key={o.cle}
           type="button"
@@ -2826,6 +2830,12 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               void charger();
             }}
           />
+        </div>
+      )}
+
+      {detentionsLisibles && visites.has('detenteurs') && (
+        <div role="tabpanel" hidden={onglet !== 'detenteurs'}>
+          <SuiviDetentions />
         </div>
       )}
 
