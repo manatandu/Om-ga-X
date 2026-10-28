@@ -143,7 +143,7 @@ export class PlateformeService implements OnModuleInit {
 
   /**
    * UNE INSTALLATION SUR SITE NE TIENT PAS SA LICENCE D'UNE LIGNE DE CETTE
-   * TABLE (audit final F171). Elle lit un fichier signé par VMG
+   * TABLE (audit final F171). Elle lit un fichier signé par l'éditeur
    * (`sur-site/licence-signee.ts`), émis dans le cadre « Licences sur site »
    * de la console, et vérifié sans internet · le heartbeat que ce type
    * supposait n'a pas été retenu (2026-09-26).
@@ -288,7 +288,7 @@ export class PlateformeService implements OnModuleInit {
       // désordre qu'aucun écran ne signalerait.
       if (dto.type === TypeLicence.PROPRIETAIRE) {
         throw new BadRequestException(
-          'La licence « Éditeur » désigne le dossier de VMG Consulting, propriétaire du logiciel · elle ne ' +
+          'La licence « Éditeur » désigne le dossier de l’éditeur, propriétaire du logiciel · elle ne ' +
             's’attribue pas depuis la console. Un second dossier incoupable ne se verrait nulle part, et rien ' +
             'ne pourrait le refermer.',
         );
@@ -547,7 +547,7 @@ export class PlateformeService implements OnModuleInit {
       );
     }
     // LA CONSOLE NE CONNAÎT JAMAIS LE MOT DE PASSE (décision de Manasse du
-    // 2026-10-09 · « VMG ne doit pas voir les informations du client, c'est
+    // 2026-10-09 · « [l'éditeur] ne doit pas voir les informations du client, c'est
     // confidentiel et non discutable »). L'opérateur choisissait le mot de
     // passe provisoire · il pouvait ouvrir le dossier du client avant lui et
     // tout y lire. Il est désormais tiré au sort et part au SEUL courriel de

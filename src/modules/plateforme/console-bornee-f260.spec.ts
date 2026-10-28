@@ -131,7 +131,7 @@ describe('F260 · le registre des licences sur site dit sa tranche', () => {
 });
 
 describe('F260 · la facturation lit la série une fois, et le parc par tranches', () => {
-  const EDITEUR = 'vmg';
+  const EDITEUR = 'editeur';
   const F = (prix: number | null) => ({
     id: 'f', code: 'ESSENTIEL', libelle: 'Essentiel', type: 'FORMULE',
     prixMensuelUsd: prix === null ? null : { toString: () => String(prix), valueOf: () => prix },
@@ -155,7 +155,7 @@ describe('F260 · la facturation lit la série une fois, et le parc par tranches
 
   function monde() {
     const parc = table(abonnements);
-    const serie = jest.fn(async () => [{ numeroSerie: 'VMG-2026-0003' }]);
+    const serie = jest.fn(async () => [{ numeroSerie: 'OMX-2026-0003' }]);
     const numeros: string[] = [];
     const prisma = {
       tenant: { findUniqueOrThrow: jest.fn(async () => ({ assujettiTva: false })) },
@@ -179,19 +179,19 @@ describe('F260 · la facturation lit la série une fois, et le parc par tranches
     const m = monde();
     const r = await m.s.facturer(EDITEUR, '2026-10', '2026-10-31', null);
     expect(m.serie).toHaveBeenCalledTimes(1);
-    expect(m.numeros).toEqual(['VMG-2026-0004', 'VMG-2026-0005']);
-    expect(r.resultats.filter((x) => x.statut === 'FACTURE').map((x) => x.numero)).toEqual(['VMG-2026-0004', 'VMG-2026-0005']);
+    expect(m.numeros).toEqual(['OMX-2026-0004', 'OMX-2026-0005']);
+    expect(r.resultats.filter((x) => x.statut === 'FACTURE').map((x) => x.numero)).toEqual(['OMX-2026-0004', 'OMX-2026-0005']);
   });
 
   it('un numéro pris entre-temps fait relire la série UNE fois, et la pièce se refait sous le numéro libre', async () => {
     // Une autre facturation, ou une facture saisie à la main dans le dossier
-    // de l'éditeur, a pris VMG-2026-0004 après la lecture de la série. La
+    // de l'éditeur, a pris OMX-2026-0004 après la lecture de la série. La
     // relecture à chaque abonnement couvrait ce cas · le numéro calculé une
     // fois doit le couvrir aussi, sans quoi la facturation entière tombe.
     const m = monde();
-    m.serie.mockResolvedValueOnce([{ numeroSerie: 'VMG-2026-0003' }]).mockResolvedValueOnce([
-      { numeroSerie: 'VMG-2026-0003' },
-      { numeroSerie: 'VMG-2026-0004' },
+    m.serie.mockResolvedValueOnce([{ numeroSerie: 'OMX-2026-0003' }]).mockResolvedValueOnce([
+      { numeroSerie: 'OMX-2026-0003' },
+      { numeroSerie: 'OMX-2026-0004' },
     ]);
     const enregistrer = m.facturation.enregistrer.getMockImplementation()!;
     m.facturation.enregistrer.mockImplementationOnce(async (_t: string, dto: { numeroSerie: string }) => {
@@ -201,8 +201,8 @@ describe('F260 · la facturation lit la série une fois, et le parc par tranches
     m.facturation.enregistrer.mockImplementation(enregistrer);
     const r = await m.s.facturer(EDITEUR, '2026-10', '2026-10-31', null);
     expect(m.serie).toHaveBeenCalledTimes(2);
-    expect(m.numeros).toEqual(['refusé VMG-2026-0004', 'VMG-2026-0005', 'VMG-2026-0006']);
-    expect(r.resultats.filter((x) => x.statut === 'FACTURE').map((x) => x.numero)).toEqual(['VMG-2026-0005', 'VMG-2026-0006']);
+    expect(m.numeros).toEqual(['refusé OMX-2026-0004', 'OMX-2026-0005', 'OMX-2026-0006']);
+    expect(r.resultats.filter((x) => x.statut === 'FACTURE').map((x) => x.numero)).toEqual(['OMX-2026-0005', 'OMX-2026-0006']);
   });
 
   it('un refus qui ne tient pas au numéro remonte tel quel · la série relue n’a pas bougé', async () => {

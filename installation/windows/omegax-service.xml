@@ -14,7 +14,7 @@
 <service>
   <id>OmegaX</id>
   <name>OmegaX</name>
-  <description>Serveur de comptabilité OmegaX (VMG Consulting)</description>
+  <description>Serveur de comptabilité OmegaX</description>
   <executable>%BASE%\node\node.exe</executable>
   <arguments>"%BASE%\serveur\demarrer.cjs"</arguments>
   <workingdirectory>%BASE%\serveur</workingdirectory>

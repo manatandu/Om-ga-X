@@ -454,7 +454,7 @@ export function AccueilPage() {
                   <IconFolderOpen width={13} height={13} />
                   Ouvrir un autre dossier
                 </button>
-                {/* La création de dossiers passe par la console VMG (option A :
+                {/* La création de dossiers passe par la console de l'éditeur (option A :
                     l'auto-inscription est fermée) · le bouton ne s'affiche que
                     pour l'opérateur de la plateforme, et y mène. */}
                 {utilisateur?.estOperateurPlateforme && (

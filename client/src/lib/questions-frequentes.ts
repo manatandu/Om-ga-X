@@ -50,7 +50,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-omegax',
         question: 'Qu’est-ce qu’OmegaX ?',
         reponse: [
-          'Un logiciel de comptabilité pour les entités de la République démocratique du Congo, édité par VMG Consulting. Il tient chaque dossier dans l’un des deux référentiels de l’OHADA et en produit les livres, la balance, les états financiers et les notes annexes.',
+          'Un logiciel de comptabilité pour les entités de la République démocratique du Congo. Il tient chaque dossier dans l’un des deux référentiels de l’OHADA et en produit les livres, la balance, les états financiers et les notes annexes.',
         ],
       },
       {
@@ -93,7 +93,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-acces',
         question: 'Comment obtenir un accès ?',
         reponse: [
-          'En ligne, un dossier s’ouvre avec VMG Consulting, qui le crée avec son administrateur ; l’inscription libre n’est pas ouverte. L’administrateur ajoute ensuite les autres utilisateurs et leur rôle dans Fichier > Autorisations d’accès.',
+          'En ligne, un dossier s’ouvre avec l’éditeur d’OmegaX, qui le crée avec son administrateur ; l’inscription libre n’est pas ouverte. L’administrateur ajoute ensuite les autres utilisateurs et leur rôle dans Fichier > Autorisations d’accès.',
           'Sur une installation sur site, le premier dossier se crée depuis l’écran d’ouverture du poste neuf.',
         ],
       },
@@ -102,7 +102,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         question: 'J’ai oublié mon mot de passe.',
         reponse: [
           'L’administrateur de votre dossier le réinitialise dans Fichier > Autorisations d’accès. Vous recevez un mot de passe provisoire, à changer à la première connexion · rien d’autre ne s’ouvre avant.',
-          'Si c’est l’administrateur du dossier qui l’a oublié, VMG Consulting le réinitialise · le mot de passe provisoire, tiré au sort, part directement à son adresse électronique, et la réinitialisation est refusée tant qu’aucune messagerie n’est configurée.',
+          'Si c’est l’administrateur du dossier qui l’a oublié, l’éditeur d’OmegaX le réinitialise · le mot de passe provisoire, tiré au sort, part directement à son adresse électronique, et la réinitialisation est refusée tant qu’aucune messagerie n’est configurée.',
         ],
       },
       {
@@ -118,7 +118,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         question: 'Comment activer la double authentification ?',
         reponse: [
           'Dans Fichier > Mon compte, avec votre mot de passe et une application d’authentification, qui donne un code de six chiffres renouvelé toutes les trente secondes. Huit codes de secours vous sont montrés une seule fois · gardez-les hors de l’ordinateur.',
-          'Elle est offerte à tous les utilisateurs, et exigée pour la console de VMG Consulting.',
+          'Elle est offerte à tous les utilisateurs, et exigée pour la console de l’éditeur.',
         ],
       },
       {
@@ -237,7 +237,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-licence-sur-site',
         question: 'Comment fonctionne la licence d’une installation sur site ?',
         reponse: [
-          'C’est un fichier signé par VMG Consulting, vérifié sans Internet. Il nomme le titulaire, l’empreinte du poste serveur, le nombre de dossiers que l’installation peut ouvrir, la date de fin de maintenance et, s’il y a lieu, la date d’expiration. Copié sur un autre poste, il ne vaut rien.',
+          'C’est un fichier signé par l’éditeur d’OmegaX, vérifié sans Internet. Il nomme le titulaire, l’empreinte du poste serveur, le nombre de dossiers que l’installation peut ouvrir, la date de fin de maintenance et, s’il y a lieu, la date d’expiration. Copié sur un autre poste, il ne vaut rien.',
           'La fin de maintenance borne les versions · la version installée continue de tourner, mais une version publiée après cette date refuse de démarrer. Sans date d’expiration, la licence est perpétuelle.',
         ],
       },
@@ -245,7 +245,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-mise-a-jour-sur-site',
         question: 'Comment mettre à jour une installation sur site ?',
         reponse: [
-          'En installant le nouveau programme d’installation Windows remis par VMG Consulting. Avant de transformer la base, l’installation en prend une copie, gardée sur le poste ; si la licence ne couvre pas la nouvelle version, la mise à jour est refusée avant toute transformation.',
+          'En installant le nouveau programme d’installation Windows remis par l’éditeur d’OmegaX. Avant de transformer la base, l’installation en prend une copie, gardée sur le poste ; si la licence ne couvre pas la nouvelle version, la mise à jour est refusée avant toute transformation.',
         ],
       },
       {
@@ -269,11 +269,11 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         ],
       },
       {
-        id: 'q-vmg-voit',
-        question: 'VMG Consulting voit-il les données de mon dossier ?',
+        id: 'q-editeur-voit',
+        question: 'L’éditeur d’OmegaX voit-il les données de mon dossier ?',
         reponse: [
-          'VMG Consulting ne consulte pas le contenu de vos dossiers. Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres. Sa console ne montre d’un dossier que sa fiche commerciale et sa licence.',
-          'Sur une installation sur site, la base reste sur l’ordinateur de l’entité, et VMG Consulting n’y a pas accès.',
+          'L’éditeur d’OmegaX ne consulte pas le contenu de vos dossiers. Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont il détient la clé, à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres. Sa console ne montre d’un dossier que sa fiche commerciale et sa licence.',
+          'Sur une installation sur site, la base reste sur l’ordinateur de l’entité, et l’éditeur d’OmegaX n’y a pas accès.',
         ],
       },
       {
@@ -316,9 +316,9 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
       },
       {
         id: 'q-joindre',
-        question: 'Comment joindre VMG Consulting ?',
+        question: 'Comment joindre l’éditeur d’OmegaX ?',
         reponse: [
-          'L’adresse et le téléphone de l’assistance et des réclamations doivent être arrêtés par VMG Consulting et portés ici · ils ne sont pas inscrits d’office, une adresse inventée dirigerait vos demandes vers le vide.',
+          'L’adresse et le téléphone de l’assistance et des réclamations doivent être arrêtés par l’éditeur et portés ici · ils ne sont pas inscrits d’office, une adresse inventée dirigerait vos demandes vers le vide.',
         ],
       },
     ],

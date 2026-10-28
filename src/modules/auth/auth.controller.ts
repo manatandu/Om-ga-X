@@ -22,7 +22,7 @@ import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonn
 
 /** Le refus d'une licence choisie à la porte publique d'inscription (relevé de sécurité du 2026-10-23). */
 export const MOTIF_LICENCE_A_L_INSCRIPTION =
-  "La licence d'un dossier ne se choisit pas à l'inscription · elle est posée par VMG Consulting depuis la console.";
+  "La licence d'un dossier ne se choisit pas à l'inscription · elle est posée par l'éditeur depuis sa console.";
 
 @Controller('auth')
 export class AuthController {
@@ -58,7 +58,7 @@ export class AuthController {
   @Post('register')
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
     // AUTO-INSCRIPTION FERMÉE (option A) · un dossier OmegaX naît depuis la
-    // console VMG Consulting (ou par le siège d'un groupe), avec un contrat
+    // console de l'éditeur (ou par le siège d'un groupe), avec un contrat
     // derrière : un dossier auto-créé recevait une licence sans échéance,
     // c'est-à-dire le produit gratuit à vie à côté du produit vendu. Le
     // POINT D'ENTRÉE HTTP seul est fermé : AuthService.register reste le
@@ -78,7 +78,7 @@ export class AuthController {
       }
     } else if (this.config.get<string>('INSCRIPTION_PUBLIQUE') !== 'true') {
       throw new ForbiddenException(
-        "L'ouverture d'un dossier OmegaX se fait avec VMG Consulting · écrivez à admin@vmgconsulting.net pour démarrer.",
+        "L'ouverture d'un dossier OmegaX se fait par l'éditeur, depuis sa console · adressez-vous à lui pour démarrer.",
       );
     }
     // LA PORTE PUBLIQUE NE CHOISIT PAS LA LICENCE (relevé de sécurité du
@@ -99,7 +99,7 @@ export class AuthController {
   /**
    * L'INSCRIPTION EN LIBRE-SERVICE AVEC ESSAI · fermée à clé tant que
    * `INSCRIPTION_ESSAI` n'est pas posée (variable du workflow, jamais la
-   * console Google), pour que VMG l'ouvre en connaissance de cause. Ne rouvre
+   * console Google), pour que l'éditeur l'ouvre en connaissance de cause. Ne rouvre
    * PAS `POST /auth/register`, dont le dossier sans échéance reste refusé.
    * Sur site, jamais (le premier dossier se crée par `register`, les suivants
    * par le dossier d'installation).
@@ -122,7 +122,7 @@ export class AuthController {
   async inscrireEnEssai(@Body() dto: InscriptionEssaiDto) {
     if (!this.inscriptionEssaiOuverte()) {
       throw new ForbiddenException(
-        "L'ouverture d'un dossier OmegaX se fait avec VMG Consulting · écrivez à admin@vmgconsulting.net pour démarrer.",
+        "L'ouverture d'un dossier OmegaX se fait par l'éditeur, depuis sa console · adressez-vous à lui pour démarrer.",
       );
     }
     return this.authService.inscrireEnEssai(dto);

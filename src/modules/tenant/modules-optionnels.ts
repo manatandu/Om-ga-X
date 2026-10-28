@@ -35,7 +35,7 @@ export function normaliserModules(modules: readonly ModuleOptionnel[]): ModuleOp
 }
 
 /**
- * LE DOSSIER DE L'ÉDITEUR VOIT TOUT (décision de Manasse du 2026-10-09 · VMG
+ * LE DOSSIER DE L'ÉDITEUR VOIT TOUT (décision de Manasse du 2026-10-09 · l'éditeur
  * Consulting « a accès à toutes les fonctionnalités du logiciel »). Ce sont
  * les FONCTIONNALITÉS, jamais les données d'un client · rien d'ici n'ouvre un
  * autre dossier. Servi à la lecture plutôt qu'écrit en base · le dossier

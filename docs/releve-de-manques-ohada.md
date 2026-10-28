@@ -108,7 +108,7 @@ défaut) dont 2 FAUX, tous traités**.
 | B1, C1 | FAUX (commentaire) | Le tableau des engagements financiers disait que « hypothèques, nantissements, gages » « n'a que des hypothèques en 9023/9063 ». | Réécrit · 9028 et 9068 portent le gage et le nantissement, la classe 9 est facultative, la réserve de propriété est aux 9043 et 9083 ; la ligne reste en saisie. |
 | B2 | INCOMPLET | Le ch. 9 § 3 (AUDCIF Titre VIII) veut en Notes annexes quatre montants frappés de réserve de propriété ; seul le montant clients était servi. La passe 9 avait conclu « rien ne manque ». | Contrôle `RESERVE_PROPRIETE_A_MENTIONNER` (information, SYSCOHADA Système normal) sur les soldes des 4016, 4116, 4816, 9043 et 9083 ; conclusion de la passe 9 rectifiée. |
 | B4 | INCOMPLET | Au SYCEBNL, un bien corporel crédité au 48161 (réserve de propriété, incorporelles) était admis et proposé. | Listes par référentiel · 48161/48181 incorporels, 48162/48182 corporels ; le SYSCOHADA garde 4816/4818, non subdivisés au semis. |
-| C4, D5 | CONFORT | VMG-ENG-1 ignorait les sûretés réelles ; la classe 9 du SYSCOHADA était dite « celle de la comptabilité analytique ». | Objet ajouté (fiche du compte 16, NOTE 1) ; engagements hors bilan (90-91) et analytique (92-99) nommés, au code et à CLAUDE.md. |
+| C4, D5 | CONFORT | EDI-ENG-1 ignorait les sûretés réelles ; la classe 9 du SYSCOHADA était dite « celle de la comptabilité analytique ». | Objet ajouté (fiche du compte 16, NOTE 1) ; engagements hors bilan (90-91) et analytique (92-99) nommés, au code et à CLAUDE.md. |
 | B6 | CONFORT | Le plan disait que le logiciel « ne tient rien » de la réserve de propriété. | État exact écrit. |
 
 ### Lus et sans objet comptable (B8)

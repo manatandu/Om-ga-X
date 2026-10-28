@@ -61,8 +61,8 @@ describe('secret et adresse', () => {
   });
 
   it('l’URI nomme l’émetteur et le compte', () => {
-    expect(uriOtpauth('ABC', 'admin@vmg.cd')).toBe(
-      'otpauth://totp/OmegaX%3Aadmin%40vmg.cd?secret=ABC&issuer=OmegaX&algorithm=SHA1&digits=6&period=30',
+    expect(uriOtpauth('ABC', 'admin@exemple.cd')).toBe(
+      'otpauth://totp/OmegaX%3Aadmin%40exemple.cd?secret=ABC&issuer=OmegaX&algorithm=SHA1&digits=6&period=30',
     );
   });
 });

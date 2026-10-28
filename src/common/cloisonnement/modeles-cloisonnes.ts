@@ -276,7 +276,7 @@ export const MODELES_PORTES_PAR_LEUR_PARENT = new Set<string>([
  * sortir une table de tout contrôle.
  */
 export const MODELES_HORS_DOSSIER: Record<string, string> = {
-  LicenceSurSiteEmise: 'registre des licences sur site émises par VMG, lu par la console de l’opérateur',
+  LicenceSurSiteEmise: 'registre des licences sur site émises par l’éditeur, lu par la console de l’opérateur',
   FormuleAbonnement: 'grille des formules et prix de l’abonnement OmegaX, tenue par l’éditeur',
   AbonnementCabinet:
     'abonnement d’un dossier client, donnée de l’éditeur sur son client · le dossier lit le sien, sur sa clé, ou une cellule celui de son siège, avant d’accepter les conditions de licence (formule, options et dates, jamais le tiers facturé)',

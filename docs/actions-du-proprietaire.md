@@ -46,7 +46,7 @@ L'A PAS POSÉE ». Trois conséquences, chacune lue dans le code :
   `.exe` ne sort, et rien d'autre dans le workflow n'attend un geste du
   propriétaire ;
 - **la console refuse d'émettre une licence** · « Cette version ne porte pas la
-  clé publique de VMG · une licence émise ne pourrait être vérifiée nulle part »
+  clé publique de l'éditeur · une licence émise ne pourrait être vérifiée nulle part »
   (`src/modules/plateforme/licences-sur-site.service.ts:84-86`) ;
 - **une version sans clé ne s'ouvrirait jamais chez un client** · le poste rend
   `CLE_EDITEUR_ABSENTE` avant même d'examiner le fichier de licence
@@ -64,8 +64,8 @@ L'installation elle-même est livrée depuis le 2026-09-26
 (`docs/installation-sur-site.md`) ; c'est le seul geste du propriétaire que le
 code attend encore pour elle.
 
-**Ce qui est attendu de vous.** Une seule fois, chez VMG et jamais dans la CI,
-la marche de `docs/installation-sur-site.md` § 2 « Une seule fois chez VMG · la
+**Ce qui est attendu de vous.** Une seule fois, chez l'éditeur et jamais dans la CI,
+la marche de `docs/installation-sur-site.md` § 2 « Une seule fois chez l'éditeur · la
 paire de clés » (le commentaire du code renvoie à ce titre depuis le
 2026-09-28, audit final F199 ; il nommait une section « Clés de licence »
 qui n'existe pas). Les
@@ -185,17 +185,17 @@ Relevé : docs/releve-de-manques-referentiels.md, passe 15, écart 15.1.
   posée ne se vérifie pas d'ici. La politique de confidentialité est écrite
   (`client/src/pages/ConfidentialitePage.tsx`) : elle cite les art. 201, 202
   et 244 sans affirmer aucune conformité, et ne dit pas que l'autorisation de
-  l'art. 201 n'a été ni demandée ni obtenue, décision laissée à VMG après
+  l'art. 201 n'a été ni demandée ni obtenue, décision laissée à l'éditeur après
   l'avis du juriste. La question est concrète : l'art. 201 veut les données
   personnelles « stockées et/ou hébergées en République Démocratique du
   Congo », et la version en ligne d'OmegaX est hébergée hors de RDC (rang 17
   du plan ordonné, `docs/hebergement-en-rdc.md`). Depuis la passe D4
   (2026-09-30), la page ne fonde plus le transfert sur l'art. 202, 2° · ce 2°
   vise un contrat « entre la personne concernée et le responsable du
-  traitement », que le contrat de VMG avec un cabinet ne remplit pas, et
+  traitement », que le contrat de l'éditeur avec un cabinet ne remplit pas, et
   l'art. 229 réserve au responsable l'instruction des transferts · elle dit la
   base « en cours de qualification ».
-- **Code du numérique, Livre I · le régime de VMG lui-même** (passe D4,
+- **Code du numérique, Livre I · le régime de l'éditeur lui-même** (passe D4,
   D4-A5). Ordonnance-loi n° 23/10 du 13 mars 2023, art. 13 · « nul ne peut
   exercer une activité dans le secteur du numérique en République
   Démocratique du Congo, sans se soumettre à l'un des régimes juridiques
@@ -203,7 +203,7 @@ Relevé : docs/releve-de-manques-referentiels.md, passe 15, écart 15.1.
   services exercés « à partir ou à destination » de la RDC, par toute
   personne quel que soit son statut (art. 3). Deux hypothèses à qualifier,
   aucune tranchée · l'autorisation de l'art. 15, 4° (« les fournisseurs des
-  services d'hébergement d'applications »), alors que VMG exploite sa propre
+  services d'hébergement d'applications »), alors que l'éditeur exploite sa propre
   application hébergée chez Google ; et l'homologation de l'art. 19 (« les
   fournisseurs des services numériques à l'État ou à toute autre entité
   publique »), situation concrète dès qu'un dossier de forme ENTITE_PUBLIQUE
@@ -238,9 +238,9 @@ Relevé : docs/releve-de-manques-referentiels.md, passe 15, écart 15.1.
   vulnérabilité », et « d'informer les consommateurs de toutes les
   vulnérabilités décelées […] ainsi que des solutions déployées pour y
   remédier » ; art. 295, systèmes qualifiés de détection ; art. 296,
-  contrôles de l'ANCY aux frais du fournisseur. VMG vend un paquet sur site et
+  contrôles de l'ANCY aux frais du fournisseur. L'éditeur vend un paquet sur site et
   un abonnement en ligne, et l'audit final a corrigé des failles réelles
-  (F160, F238, F240). À qualifier · la soumission de VMG à ces articles, et la
+  (F160, F238, F240). À qualifier · la soumission de l'éditeur à ces articles, et la
   procédure du certificat, dont l'agrément des experts n'est pas au corpus.
   Si elle est retenue, l'information de l'al. 2 se sert sans règle inventée ·
   une note des corrections de sécurité par version, rattachée à la version

@@ -35,7 +35,7 @@ import { purgerDossier } from './purger-dossier';
  * service lit, envoie les rappels que l'opérateur demande, et supprime ce que
  * l'opérateur désigne, après avoir relu tout le calendrier sous verrou.
  *
- * VMG NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT (CLAUDE.md § 8) · la liste rend
+ * L'ÉDITEUR NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT (CLAUDE.md § 8) · la liste rend
  * des identifiants, des dates, un état et des NOMBRES. Ni le nom de l'entité, ni
  * l'adresse de l'administrateur, ni un compte, ni un montant ne quittent le
  * serveur. L'adresse n'est lue que pour envoyer le rappel, et part dans le
@@ -70,7 +70,7 @@ export interface LigneEssaiEchu {
   rappelDepuisLe: string | null;
   /**
    * `causeEchec` est une CATÉGORIE, jamais le texte de l'erreur · celui-ci cite
-   * l'adresse du client, que VMG ne voit pas (CLAUDE.md § 8).
+   * l'adresse du client, que l'éditeur ne voit pas (CLAUDE.md § 8).
    */
   rappel: { misEnFileLe: string; envoyeLe: string | null; statutCourrier: StatutMessage | null; causeEchec: CauseEchecEnvoi | null } | null;
   nombreUtilisateurs: number;

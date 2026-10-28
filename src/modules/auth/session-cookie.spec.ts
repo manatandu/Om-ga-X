@@ -150,7 +150,7 @@ describe('AuthController · le jeton de session ne sort que par le cookie', () =
 describe('AuthController · auto-inscription fermée (option A)', () => {
   const res = { cookie: () => undefined, clearCookie: () => undefined } as never;
 
-  it('refuse /auth/register par défaut · un dossier naît depuis la console VMG, pas tout seul', async () => {
+  it('refuse /auth/register par défaut · un dossier naît depuis la console de l’éditeur, pas tout seul', async () => {
     let registerAppele = false;
     const controleur = new AuthController(
       {
@@ -161,7 +161,7 @@ describe('AuthController · auto-inscription fermée (option A)', () => {
       } as never,
       { get: () => undefined } as never,
     );
-    await expect(controleur.register({} as never, res)).rejects.toThrow(/VMG Consulting/);
+    await expect(controleur.register({} as never, res)).rejects.toThrow(/par l'éditeur/);
     expect(registerAppele).toBe(false);
   });
 

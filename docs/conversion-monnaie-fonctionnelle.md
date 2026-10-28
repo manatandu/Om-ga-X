@@ -207,7 +207,7 @@ C'est cette section qui pose « **capitaux propres (capital, réserves) : cours
 historique** », et c'est bien ce que décrivait le praticien : le capital est
 converti au taux auquel il est inscrit au bilan et y reste.
 
-### Décisions de VMG, du 2026-09-05
+### Décisions de l'éditeur, du 2026-09-05
 
 **Le cours de clôture qui fait foi**, par ordre de disponibilité :
 
@@ -236,4 +236,4 @@ Reste une seule question, et elle est en cours d'instruction sur les textes :
   seuil. Sur une monnaie qui a fortement bougé dans l'année, la moyenne simple
   ne l'est plus. La recherche en cours doit dire si un seuil chiffré existe
   quelque part · et si aucune source n'en donne, ce sera la réponse, et il
-  faudra alors que VMG en fixe un et que l'état dise lequel.
+  faudra alors que l'éditeur en fixe un et que l'état dise lequel.

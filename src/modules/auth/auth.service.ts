@@ -292,7 +292,7 @@ export class AuthService {
   async inscrireEnEssai(dto: InscriptionEssaiDto) {
     if (!this.courrier || !this.courrier.etatDuTransport().configure) {
       throw new ServiceUnavailableException(
-        "L'ouverture d'un dossier d'essai est momentanément indisponible · écrivez à admin@vmgconsulting.net pour démarrer.",
+        "L'ouverture d'un dossier d'essai est momentanément indisponible · réessayez plus tard.",
       );
     }
     const courrier = this.courrier;
@@ -302,7 +302,7 @@ export class AuthService {
       message:
         "Si l'adresse est valide, un courriel part dans quelques instants avec votre mot de passe provisoire. " +
         "Pensez à regarder le dossier des courriers indésirables. Si cette adresse a déjà un dossier, connectez-vous avec votre mot de passe. " +
-        "Rien après un quart d'heure · écrivez à admin@vmgconsulting.net.",
+        "Rien après un quart d'heure · redemandez l'envoi plus tard.",
       joursEssai: JOURS_ESSAI,
     };
 

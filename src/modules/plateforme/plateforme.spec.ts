@@ -550,14 +550,14 @@ describe('PlateformeService · le dossier de l’éditeur se lit hors du dossier
         licence: {
           findFirst: async ({ where }: { where: { type: TypeLicence } }) => {
             raison = raisonHorsCloisonnement();
-            return where.type === TypeLicence.PROPRIETAIRE ? { tenantId: 'vmg' } : null;
+            return where.type === TypeLicence.PROPRIETAIRE ? { tenantId: 'editeur' } : null;
           },
         },
       } as never,
       { get: () => undefined } as never,
       undefined as never,
     );
-    expect(await s.dossierEditeurId()).toBe('vmg');
+    expect(await s.dossierEditeurId()).toBe('editeur');
     expect(raison).toContain("le dossier de l'éditeur");
   });
 });

@@ -16,7 +16,7 @@ import { CycleQuestionnaire, Referentiel } from '@prisma/client';
  * D'OÙ LA RÈGLE DE CE FICHIER, et c'est la seule qui compte : CHAQUE ITEM
  * PORTE SON ORIGINE. « CPCC » veut dire que le libellé est celui du
  * séminaire, à la virgule près, et il ne se réécrit pas · un test relit ce
- * fichier et fige les vingt-quatre libellés. « VMG » veut dire que la question
+ * fichier et fige les vingt-quatre libellés. « EDI » veut dire que la question
  * est de l'éditeur, construite sur la logique des items du CPCC, et rattachée
  * à un fondement nommé. La confondre avec l'autre produirait exactement le
  * défaut du § 10 bis de CLAUDE.md : un signalement plausible, sourcé en
@@ -47,7 +47,7 @@ import { CycleQuestionnaire, Referentiel } from '@prisma/client';
  * opposable. Ne pas le « corriger ».
  */
 
-export type OrigineItem = 'CPCC' | 'VMG';
+export type OrigineItem = 'CPCC' | 'EDITEUR';
 
 /**
  * Quatre formes, et elles ne se répondent pas de la même façon.
@@ -83,7 +83,7 @@ export interface ItemQuestionnaire {
   objets?: string[];
   /** Pour un item CPCC · où il se lit dans le compagnon du séminaire. */
   source?: string;
-  /** Pour un item VMG · le texte ou l'item du CPCC dont il tire sa logique. */
+  /** Pour un item de l'éditeur · le texte ou l'item du CPCC dont il tire sa logique. */
   fondement?: string;
   /** Rare · un item qui n'a de sens que dans un référentiel. */
   referentiel?: Referentiel;
@@ -497,37 +497,37 @@ const CREANCES: ItemQuestionnaire[] = [
 
 const VENTES_CLIENTS: ItemQuestionnaire[] = [
   {
-    code: 'VMG-CLI-1',
+    code: 'EDI-CLI-1',
     cycle: CycleQuestionnaire.VENTES_CLIENTS,
     libelle: 'Obtenir la balance auxiliaire des clients et adhérents, par ancienneté.',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'TRAVAIL',
     fondement: "Transposition de CPCC-DET-1, qui demande la même balance du côté des fournisseurs.",
   },
   {
-    code: 'VMG-CLI-2',
+    code: 'EDI-CLI-2',
     cycle: CycleQuestionnaire.VENTES_CLIENTS,
     libelle:
       "La séparation des exercices a-t-elle été vérifiée sur les dernières livraisons et les dernières factures de vente de l'exercice ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement:
       "AUDCIF, postulat de spécialisation des exercices. Même objet que le cut-off que CPCC-STO-6 demande côté magasin, porté ici sur les produits.",
   },
   {
-    code: 'VMG-CLI-3',
+    code: 'EDI-CLI-3',
     cycle: CycleQuestionnaire.VENTES_CLIENTS,
     libelle: "Si non, comment s'est-on assuré que les produits de l'exercice sont complets ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'TEXTE_LIBRE',
-    ouvertPar: { code: 'VMG-CLI-2', reponse: 'NON' },
+    ouvertPar: { code: 'EDI-CLI-2', reponse: 'NON' },
     fondement: "Même chaîne « Non → suite » que CPCC-DET-3, la seule que le séminaire écrive.",
   },
   {
-    code: 'VMG-CLI-4',
+    code: 'EDI-CLI-4',
     cycle: CycleQuestionnaire.VENTES_CLIENTS,
     libelle: "Des avoirs ont-ils été émis après la clôture sur des ventes de l'exercice ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     // Polarité inversée, comme CPCC-CAI-4 · « Oui » est le fait à examiner.
     polariteException: 'OUI',
@@ -535,10 +535,10 @@ const VENTES_CLIENTS: ItemQuestionnaire[] = [
       "AUDCIF Titre VIII ch. 31, événements postérieurs à la clôture. Polarité inversée sur le modèle de CPCC-CAI-4.",
   },
   {
-    code: 'VMG-CLI-5',
+    code: 'EDI-CLI-5',
     cycle: CycleQuestionnaire.VENTES_CLIENTS,
     libelle: "Les produits constatés d'avance ont-ils été identifiés et rattachés à l'exercice suivant ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement: "AUDCIF, spécialisation des exercices · comptes 477.",
   },
@@ -546,37 +546,37 @@ const VENTES_CLIENTS: ItemQuestionnaire[] = [
 
 const ACHATS: ItemQuestionnaire[] = [
   {
-    code: 'VMG-ACH-1',
+    code: 'EDI-ACH-1',
     cycle: CycleQuestionnaire.ACHATS,
     libelle:
       "La séparation des exercices a-t-elle été vérifiée sur les derniers bons de réception et les dernières factures d'achat ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
-    fondement: "AUDCIF, spécialisation des exercices. Pendant de VMG-CLI-2 du côté des charges.",
+    fondement: "AUDCIF, spécialisation des exercices. Pendant de EDI-CLI-2 du côté des charges.",
   },
   {
-    code: 'VMG-ACH-2',
+    code: 'EDI-ACH-2',
     cycle: CycleQuestionnaire.ACHATS,
     libelle: "Si non, comment s'est-on assuré que les charges de l'exercice sont complètes ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'TEXTE_LIBRE',
-    ouvertPar: { code: 'VMG-ACH-1', reponse: 'NON' },
+    ouvertPar: { code: 'EDI-ACH-1', reponse: 'NON' },
     fondement: 'Même chaîne « Non → suite » que CPCC-DET-3.',
   },
   {
-    code: 'VMG-ACH-3',
+    code: 'EDI-ACH-3',
     cycle: CycleQuestionnaire.ACHATS,
     libelle: 'Les factures non parvenues ont-elles été rattachées par une charge à payer ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement: "AUDCIF Titre VIII, rattachement des charges · comptes 408 et 4081.",
   },
   {
-    code: 'VMG-ACH-4',
+    code: 'EDI-ACH-4',
     cycle: CycleQuestionnaire.ACHATS,
     libelle:
       'Le rapprochement entre la commande, le bon de réception et la facture est-il pratiqué sur les achats significatifs ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     objets: ['Commande', 'Bon de réception', 'Facture'],
     fondement:
@@ -586,38 +586,38 @@ const ACHATS: ItemQuestionnaire[] = [
 
 const PAIE: ItemQuestionnaire[] = [
   {
-    code: 'VMG-PAI-1',
+    code: 'EDI-PAI-1',
     cycle: CycleQuestionnaire.PAIE_ET_CHARGES_SOCIALES,
     libelle: "Existe-t-il un état récapitulatif de la paie de l'exercice, rapproché des comptes de charges de personnel ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement: 'AUDCIF art. 17, justification des soldes par un document probant.',
   },
   {
-    code: 'VMG-PAI-2',
+    code: 'EDI-PAI-2',
     cycle: CycleQuestionnaire.PAIE_ET_CHARGES_SOCIALES,
     libelle: 'Si oui, les écarts entre cet état et la comptabilité ont-ils été expliqués ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'TEXTE_LIBRE',
-    ouvertPar: { code: 'VMG-PAI-1', reponse: 'OUI' },
+    ouvertPar: { code: 'EDI-PAI-1', reponse: 'OUI' },
     fondement: "Chaîne « Si oui → suite », sur le modèle de CPCC-CAI-2 et CPCC-CRE-3.",
   },
   {
-    code: 'VMG-PAI-3',
+    code: 'EDI-PAI-3',
     cycle: CycleQuestionnaire.PAIE_ET_CHARGES_SOCIALES,
     libelle:
       "A-t-on tenu compte des congés dus, des gratifications et des indemnités de fin de carrière à la clôture ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     objets: ['Congés dus', 'Gratifications', 'Indemnités de fin de carrière'],
     fondement:
       "AUDCIF Titre VIII ch. 21 pour les avantages postérieurs à l'emploi. Item composite sur le modèle de CPCC-CAI-3.",
   },
   {
-    code: 'VMG-PAI-4',
+    code: 'EDI-PAI-4',
     cycle: CycleQuestionnaire.PAIE_ET_CHARGES_SOCIALES,
     libelle: 'Des rémunérations ont-elles été payées en espèces sans pièce signée par le bénéficiaire ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     polariteException: 'OUI',
     fondement: "AUDCIF art. 17, toute écriture s'appuie sur une pièce justificative datée. Polarité inversée.",
@@ -626,28 +626,28 @@ const PAIE: ItemQuestionnaire[] = [
 
 const ETAT: ItemQuestionnaire[] = [
   {
-    code: 'VMG-ETA-1',
+    code: 'EDI-ETA-1',
     cycle: CycleQuestionnaire.ETAT_ET_COLLECTIVITES,
     libelle: 'Les soldes des comptes « État et collectivités publiques » ont-ils été rapprochés des déclarations déposées ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement:
       "Transposition de CPCC-BAN-3, « analyser les états de réconciliation de chaque banque », au tiers État.",
   },
   {
-    code: 'VMG-ETA-2',
+    code: 'EDI-ETA-2',
     cycle: CycleQuestionnaire.ETAT_ET_COLLECTIVITES,
     libelle: 'Si non, comment le solde de chaque sous-compte a-t-il été justifié ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'TEXTE_LIBRE',
-    ouvertPar: { code: 'VMG-ETA-1', reponse: 'NON' },
+    ouvertPar: { code: 'EDI-ETA-1', reponse: 'NON' },
     fondement: 'Même chaîne « Non → suite » que CPCC-DET-3.',
   },
   {
-    code: 'VMG-ETA-3',
+    code: 'EDI-ETA-3',
     cycle: CycleQuestionnaire.ETAT_ET_COLLECTIVITES,
     libelle: "Des pénalités ou amendes figurent-elles parmi les charges de l'exercice ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     polariteException: 'OUI',
     fondement:
@@ -657,33 +657,33 @@ const ETAT: ItemQuestionnaire[] = [
 
 const CAPITAUX_PROPRES: ItemQuestionnaire[] = [
   {
-    code: 'VMG-CAP-1',
+    code: 'EDI-CAP-1',
     cycle: CycleQuestionnaire.CAPITAUX_PROPRES,
     libelle:
       "L'affectation du résultat de l'exercice précédent a-t-elle été décidée par l'organe compétent, et le procès-verbal est-il au dossier ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     objets: ["Décision de l'organe compétent", 'Procès-verbal au dossier'],
     fondement:
       "Même exigence de procès-verbal que CPCC-IMM-4 pour les biens disparus, portée sur l'affectation du résultat.",
   },
   {
-    code: 'VMG-CAP-2',
+    code: 'EDI-CAP-2',
     cycle: CycleQuestionnaire.CAPITAUX_PROPRES,
     libelle:
       "Le report à nouveau a-t-il varié d'un montant autre que celui de l'affectation décidée ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     polariteException: 'OUI',
     fondement:
       "AUDCIF art. 34, correspondance du bilan de clôture et du bilan d'ouverture. Même objet que CPCC-CAI-4, qui interroge le solde d'ouverture de la caisse. Polarité inversée.",
   },
   {
-    code: 'VMG-CAP-3',
+    code: 'EDI-CAP-3',
     cycle: CycleQuestionnaire.CAPITAUX_PROPRES,
     libelle:
       "Les subventions d'investissement ont-elles fait l'objet d'une reprise au rythme de l'amortissement du bien financé ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement: "AUDCIF Titre VIII, subventions d'investissement · comptes 14 et 79.",
   },
@@ -691,27 +691,27 @@ const CAPITAUX_PROPRES: ItemQuestionnaire[] = [
 
 const REGULARISATIONS: ItemQuestionnaire[] = [
   {
-    code: 'VMG-REG-1',
+    code: 'EDI-REG-1',
     cycle: CycleQuestionnaire.REGULARISATIONS,
     libelle: "Les charges constatées d'avance et les produits constatés d'avance ont-ils été recensés à la clôture ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     objets: ["Charges constatées d'avance", "Produits constatés d'avance"],
     fondement: 'AUDCIF, spécialisation des exercices · comptes 476 et 477.',
   },
   {
-    code: 'VMG-REG-2',
+    code: 'EDI-REG-2',
     cycle: CycleQuestionnaire.REGULARISATIONS,
     libelle: "Les écritures d'abonnement ont-elles été soldées à la clôture ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     fondement: "AUDCIF, spécialisation des exercices · un abonnement non soldé laisse une charge répartie à cheval.",
   },
   {
-    code: 'VMG-REG-3',
+    code: 'EDI-REG-3',
     cycle: CycleQuestionnaire.REGULARISATIONS,
     libelle: "Des écritures ont-elles été passées après la date d'arrêté des comptes ?",
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     polariteException: 'OUI',
     fondement:
@@ -721,10 +721,10 @@ const REGULARISATIONS: ItemQuestionnaire[] = [
 
 const ENGAGEMENTS: ItemQuestionnaire[] = [
   {
-    code: 'VMG-ENG-1',
+    code: 'EDI-ENG-1',
     cycle: CycleQuestionnaire.ENGAGEMENTS_HORS_BILAN,
     libelle: 'Les cautions, avals et garanties donnés ont-ils été recensés ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     // Les sûretés réelles sont un objet à part · la fiche du compte 16 veut en
     // Notes annexes « le montant et la portée de la caution, de la garantie ou
@@ -743,19 +743,19 @@ const ENGAGEMENTS: ItemQuestionnaire[] = [
       "Pour les sûretés réelles · AUDCIF, Titre VII, compte 16 (« Pour les emprunts assortis d'une caution, d'une garantie ou d'un gage, le montant et la portée de la caution, de la garantie ou du gage doivent être indiqués dans les Notes annexes »), et les deux tableaux de la NOTE 1 du Système normal (Titre IX ch. 6) · « Dettes garanties par des sûretés réelles » et, aux engagements financiers, la ligne « hypothèques, nantissements, gages, autres ».",
   },
   {
-    code: 'VMG-ENG-2',
+    code: 'EDI-ENG-2',
     cycle: CycleQuestionnaire.ENGAGEMENTS_HORS_BILAN,
     libelle: 'Si oui, sont-ils mentionnés en Notes annexes ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
-    ouvertPar: { code: 'VMG-ENG-1', reponse: 'OUI' },
+    ouvertPar: { code: 'EDI-ENG-1', reponse: 'OUI' },
     fondement: "Chaîne « Si oui → suite » sur le modèle de CPCC-CAI-2.",
   },
   {
-    code: 'VMG-ENG-3',
+    code: 'EDI-ENG-3',
     cycle: CycleQuestionnaire.ENGAGEMENTS_HORS_BILAN,
     libelle: 'Les contributions volontaires en nature ont-elles été suivies en classe 9 ?',
-    origine: 'VMG',
+    origine: 'EDITEUR',
     forme: 'OUI_NON',
     // SYCEBNL seulement · les contributions volontaires en nature n'existent
     // que là. Au SYSCOHADA la classe 9 porte les engagements hors bilan (90 et

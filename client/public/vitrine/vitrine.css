@@ -1,14 +1,15 @@
 /*
  * Page publique d'OmegaX · /vitrine/.
- * Charte : docs/charte-omegax.md, § 9 bis (le registre de la page publique). Encre de
- * cachet, blanc, échelle des gris, AUCUNE couleur d'accent ; le seul rouge est celui du
- * signal d'erreur (écart de la pièce d'essai).
- * La page a le registre de l'application, pas celui d'une page de lancement : barre de titre
- * à l'encre, grilles à en-tête plein, lignes à filet, titres de cadre, chiffres en chasse
- * fixe. AUCUN effet de défilement (révélation, compteur, mots lus, barre de progression,
- * faisceaux) · ils faisaient de la page un gabarit, et ils sont refusés par
- * vitrine-publique.spec.ts. Le seul mouvement est le cachet posé à la validation de la pièce.
- * Polices servies depuis /polices/ (CSP : font-src 'self').
+ * Charte : docs/charte-omegax.md, § 9 ter (la page publique, décision de Manasse du
+ * 2026-10-25). La composition (bandeau sombre, mots qui apparaissent, apparitions au
+ * défilement, frise, accordéon, carte d'appel, barre de lecture) ne prend que les
+ * couleurs d'OmegaX · l'encre de cachet et son échelle de lilas, le blanc, les gris,
+ * le rouge du seul signal d'erreur. Aucun or ni laiton.
+ * Les motifs viennent du métier, pas d'un gabarit : le papier réglé d'un journal (colonnes
+ * et lignes), le double trait qui arrête un total, la case qu'on coche au pointage. Aucun
+ * cachet tournant (demande de Manasse du même jour).
+ * Le mouvement ne cache rien sans script (classe `js` posée par vitrine.js) et se coupe
+ * sous prefers-reduced-motion. Polices servies depuis /polices/ (CSP : font-src 'self').
  */
 @font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url('/polices/ibm-plex-sans-latin-400-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url('/polices/ibm-plex-sans-latin-ext-400-normal.woff2') format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
@@ -24,6 +25,10 @@
 :root{
   --encre:#2a1f5c;
   --encre-douce:#4a4078;
+  --violet:#4f3ba8;
+  --lilas:#cec6f0;
+  --lilas-vif:#8a79d6;
+  --brume:#e6e1f8;
   --texte:#1d1a2e;
   --discret:#5b5670;
   --attente:#75718e;
@@ -32,15 +37,15 @@
   --fond:#fff;
   --lavis:#f6f5fa;
   --signal:#b52e26;
-  --rayon:4px;
-  --colonne:1180px;
-  --gouttiere:max(16px,calc((100vw - var(--colonne)) / 2));
+  --rayon:6px;
+  --colonne:1120px;
+  --g:max(20px,calc((100vw - var(--colonne)) / 2));
   color-scheme:light;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:64px;scrollbar-width:thin;scrollbar-color:#9a95b4 var(--lavis)}
-body{margin:0;overflow-x:hidden;background:var(--fond);color:var(--texte);font:400 15px/1.55 'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;caret-color:var(--encre)}
-::selection{background:var(--encre);color:#fff}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{margin:0;overflow-x:hidden;background:var(--fond);color:var(--texte);font:400 16px/1.6 'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;caret-color:var(--encre)}
+::selection{background:var(--lilas);color:var(--encre)}
 img{max-width:100%;display:block}
 a{color:inherit;text-underline-offset:3px}
 h1,h2,h3{margin:0;font-weight:600;color:var(--encre)}
@@ -49,50 +54,99 @@ ul,ol{padding:0;list-style:none}
 table{border-collapse:collapse;font-variant-numeric:tabular-nums}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 [hidden]{display:none!important}
-
-.evitement{position:absolute;left:-999px;top:8px;background:var(--encre);color:#fff;padding:8px 12px;border-radius:var(--rayon);z-index:30}
+.evitement{position:absolute;left:-999px;top:8px;background:#fff;color:var(--encre);padding:8px 14px;border-radius:var(--rayon);z-index:60}
 .evitement:focus{left:8px}
-:focus-visible{outline:2px solid var(--encre);outline-offset:2px;border-radius:2px}
+:focus-visible{outline:2px solid var(--violet);outline-offset:3px;border-radius:2px}
+.bloc-encre :focus-visible,.heros :focus-visible,.entete :focus-visible,.carte :focus-visible{outline-color:var(--lilas)}
 
-/* En-tête · une barre d'application, pas une bannière : la marque, les rubriques, l'accès */
-.entete{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:28px;padding:6px var(--gouttiere);background:#fff;border-bottom:1px solid var(--regle)}
+/* Barre de lecture · un trait lilas en haut de page */
+.progres{position:fixed;inset:0 0 auto 0;height:3px;z-index:50;pointer-events:none}
+.progres i{display:block;height:100%;width:0;background:var(--lilas)}
+
+/* En-tête · transparent sur le bandeau, plein à l'encre dès qu'on descend */
+.entete{position:fixed;inset:0 0 auto 0;z-index:40;display:flex;align-items:center;gap:28px;padding:10px var(--g);color:#fff;transition:background-color .25s ease,box-shadow .25s ease}
+.entete.pleine{background:rgba(42,31,92,.96);box-shadow:0 1px 0 rgba(255,255,255,.1)}
 .marque{display:flex;align-items:center;min-height:44px}
-.entete nav{display:flex;gap:0;flex:1 1 auto}
-.entete nav a{padding:12px 10px;text-decoration:none;font-size:14px;color:var(--discret);border-bottom:2px solid transparent;transition:color .15s ease,border-color .15s ease}
-.entete nav a:hover{color:var(--encre);border-bottom-color:var(--encre)}
+.entete nav{display:flex;gap:2px;flex:1}
+.entete nav a{padding:10px 12px;font-size:14px;font-weight:500;color:rgba(255,255,255,.82);text-decoration:none;border-radius:4px;transition:color .15s ease,background-color .15s ease}
+.entete nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
 
-/* Boutons · la pilule du bouton principal est celle de l'application (charte § 9 ter) */
-.bouton{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 18px;border:1px solid var(--encre);border-radius:999px;color:var(--encre);background:#fff;text-decoration:none;font:500 14px/1 'IBM Plex Sans',sans-serif;cursor:pointer;transition:background-color .15s ease,color .15s ease}
-.bouton:hover{background:var(--lavis)}
-.bouton[disabled]{cursor:not-allowed;color:var(--discret);border-color:var(--regle);background:#fff}
+/* Boutons · la pilule de l'application */
+.bouton{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 22px;border:1.5px solid var(--encre);border-radius:999px;color:var(--encre);background:#fff;text-decoration:none;font:600 15px/1 'IBM Plex Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:transform .18s ease,background-color .18s ease,color .18s ease,box-shadow .18s ease}
+.bouton:hover{transform:translateY(-2px);background:var(--lavis)}
+.bouton[disabled]{cursor:not-allowed;transform:none;color:var(--discret);border-color:var(--regle);background:#fff}
 .bouton-plein{background:var(--encre);color:#fff}
 .bouton-plein:hover{background:var(--encre-douce)}
 .bouton-plein[disabled]{background:var(--lavis);color:var(--discret)}
+.heros .bouton-plein,.carte .bouton-plein{background:#fff;color:var(--encre);border-color:#fff}
+.heros .bouton-plein:hover,.carte .bouton-plein:hover{background:var(--brume);box-shadow:0 10px 24px -10px rgba(42,31,92,.6)}
+.bouton-clair{background:transparent;border-color:rgba(255,255,255,.5);color:#fff}
+.bouton-clair:hover{background:rgba(255,255,255,.1)}
 
-main>section,main>.filet{margin-left:var(--gouttiere);margin-right:var(--gouttiere)}
+/* Bandeau · la page d'un registre : colonnes et lignes réglées, comme le papier d'un journal */
+.heros{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);align-items:center;gap:40px 56px;background:var(--encre);color:#fff;padding:clamp(116px,15vw,156px) var(--g) 0}
+.heros-fond{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(760px 420px at 88% 0%,rgba(79,59,168,.6),transparent 70%),
+  repeating-linear-gradient(90deg,transparent 0 159px,rgba(255,255,255,.05) 159px 160px),
+  repeating-linear-gradient(0deg,transparent 0 35px,rgba(255,255,255,.035) 35px 36px)}
+.heros>*{position:relative;min-width:0}
+.heros>.heros-fond{position:absolute}
+.surtitre{font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--lilas)}
+h1{margin-top:16px;font-size:clamp(2.1rem,5.4vw,4rem);line-height:1.06;font-weight:600;letter-spacing:-.025em;color:#fff;text-wrap:balance}
+.mot{display:inline-block}
+.mot.vif{color:var(--lilas)}
+.chapeau{margin-top:22px;max-width:36em;font-size:clamp(16px,1.8vw,18px);color:rgba(255,255,255,.84)}
+.actions{margin-top:28px;display:flex;flex-wrap:wrap;gap:12px}
 
-/* Première vue · ce qu'est le logiciel, sa fiche, et une pièce de journal à essayer */
-.tete{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:28px 48px;padding-top:40px;padding-bottom:36px}
-.tete>*{min-width:0}
-.surtitre{font-size:13px;color:var(--discret);margin-bottom:10px}
-h1{font-size:clamp(1.65rem,3vw,2.25rem);line-height:1.15;letter-spacing:-.012em;max-width:22em;text-wrap:balance}
-.chapeau{margin-top:14px;max-width:38em;font-size:15.5px}
-.actions{margin-top:20px;display:flex;flex-wrap:wrap;gap:10px}
+/* Le registre du bandeau · un journal qui s'inscrit ligne à ligne, puis se totalise */
+.registre-heros{align-self:end;justify-self:end;width:100%;max-width:460px;margin-bottom:8px;border:1px solid rgba(255,255,255,.22);border-radius:var(--rayon);background:rgba(255,255,255,.05);font-size:14px}
+.registre-heros figcaption{padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.22);font-size:12.5px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--lilas)}
+.registre-heros table{width:100%}
+.registre-heros th,.registre-heros td{padding:8px 14px;text-align:left;font-weight:400}
+.registre-heros thead th{font-size:12.5px;color:rgba(255,255,255,.7);border-bottom:1px solid rgba(255,255,255,.22)}
+.registre-heros tbody td{border-bottom:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
+.registre-heros .num{text-align:right;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.registre-heros .code{font-family:'IBM Plex Mono',monospace;font-weight:500;color:#fff;margin-right:8px}
+.registre-heros tfoot th,.registre-heros tfoot td{font:500 14px/1.2 'IBM Plex Mono',monospace;color:#fff}
+.registre-heros tfoot th{font-family:'IBM Plex Sans',sans-serif}
+.registre-heros tfoot tr:first-child>*{border-top:1px solid rgba(255,255,255,.75);border-bottom:3px double rgba(255,255,255,.75)}
+.registre-heros .solde th,.registre-heros .solde td{color:var(--lilas)}
 
-/* La fiche · une définition par ligne, comme la fiche d'un dossier dans l'application */
-.fiche{align-self:start;border-top:2px solid var(--encre);font-size:14px}
-.fiche>div{display:grid;grid-template-columns:9.5em minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid var(--filet)}
-.fiche dt{color:var(--discret)}
-.fiche dd{color:var(--texte)}
+/* Repères · les trois refus du logiciel, en pied de bandeau */
+.reperes{grid-column:1 / -1;margin-top:clamp(36px,6vw,64px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid rgba(255,255,255,.2)}
+.reperes li{padding:20px 20px 26px 0;display:grid;gap:4px}
+.reperes li+li{padding-left:20px;border-left:1px solid rgba(255,255,255,.2)}
+.reperes b{font-size:clamp(1.05rem,2vw,1.3rem);font-weight:600;color:#fff}
+.reperes span{font-size:14.5px;color:rgba(255,255,255,.72)}
 
-/* La pièce · la fenêtre de saisie de l'application, sa barre de titre et sa grille */
-.feuille{grid-column:1 / -1;border:1px solid var(--encre);border-radius:var(--rayon);background:#fff;overflow:hidden}
-.feuille-haut{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 24px;padding:7px 12px;background:var(--encre);color:#fff;font:500 12.5px/1.3 'IBM Plex Sans',sans-serif}
+/* Blocs */
+.bloc{padding:clamp(64px,9vw,112px) var(--g)}
+.bloc-lavis{background:var(--lavis)}
+.bloc-encre{position:relative;background:var(--encre);color:#fff;overflow:hidden}
+.bloc-encre::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 159px,rgba(255,255,255,.04) 159px 160px)}
+.bloc-encre>*{position:relative}
+.colonne{max-width:var(--colonne)}
+.etroite{max-width:780px}
+.etiquette{font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--violet)}
+.bloc-encre .etiquette{color:var(--lilas)}
+/* Le titre de section porte le double trait des totaux, celui qui arrête un compte */
+h2{position:relative;margin-top:12px;padding-bottom:18px;max-width:22em;font-size:clamp(1.75rem,3.8vw,2.7rem);line-height:1.12;font-weight:600;letter-spacing:-.02em;text-wrap:balance}
+h2::after{content:"";position:absolute;left:0;bottom:0;width:72px;height:5px;border-top:1.5px solid var(--violet);border-bottom:1.5px solid var(--violet);transform-origin:left}
+.bloc-encre h2{color:#fff}
+.bloc-encre h2::after{border-color:var(--lilas)}
+.intro{margin-top:18px;max-width:42em;color:var(--discret)}
+.bloc-encre .intro{color:rgba(255,255,255,.74)}
+
+/* La pièce à essayer · la fenêtre de saisie de l'application, sa barre de titre et sa grille */
+.essai-grille{margin-top:36px;display:grid;grid-template-columns:minmax(0,1fr);gap:32px}
+.essai-grille>*{min-width:0}
+.feuille{border:1px solid var(--encre);border-radius:var(--rayon);background:#fff;overflow:hidden;box-shadow:0 24px 48px -32px rgba(42,31,92,.55)}
+.feuille-haut{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 24px;padding:8px 12px;background:var(--encre);color:#fff;font:500 12.5px/1.3 'IBM Plex Sans',sans-serif}
 .feuille-haut span+span{font-weight:400;color:rgba(255,255,255,.82)}
-.feuille-corps{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);margin:0}
+.feuille-corps{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);margin:0}
 .piece{position:relative}
 .piece table{width:100%;font-size:14px}
-.piece th,.piece td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--filet);vertical-align:middle}
+.piece th,.piece td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--filet);vertical-align:middle}
 .piece thead th{background:var(--encre-douce);color:#fff;font:500 12.5px/1.2 'IBM Plex Sans',sans-serif;border-bottom:0}
 .piece .num{text-align:right;white-space:nowrap}
 .piece .partage{border-left:1px solid var(--filet)}
@@ -105,16 +159,14 @@ h1{font-size:clamp(1.65rem,3vw,2.25rem);line-height:1.15;letter-spacing:-.012em;
 .piece input:not([readonly]):hover{border-color:var(--encre)}
 .piece input:focus-visible{outline:2px solid var(--encre);outline-offset:0;border-color:var(--encre)}
 .piece input[readonly]{cursor:default}
-.piece tfoot th,.piece tfoot td{background:var(--lavis);border-top:1px solid var(--encre);border-bottom:0;font:500 14px/1.2 'IBM Plex Mono',monospace;color:var(--encre)}
+.piece tfoot th,.piece tfoot td{background:var(--lavis);border-top:1px solid var(--encre);border-bottom:3px double var(--encre);font:500 14px/1.2 'IBM Plex Mono',monospace;color:var(--encre)}
 .piece tfoot th{font-family:'IBM Plex Sans',sans-serif}
 .piece tfoot td{padding-right:18px}
-
-/* Le cachet de validation · l'encre de la charte, posé une fois */
-.cachet{position:absolute;right:22px;bottom:52px;transform:rotate(-6deg);pointer-events:none;opacity:0}
-.cachet span{display:inline-block;border:2px solid var(--encre);border-radius:3px;padding:5px 12px;font:600 13px/1 'IBM Plex Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--encre);background:rgba(255,255,255,.75)}
-.valide .cachet{animation:poser .22s cubic-bezier(.2,.8,.3,1) forwards}
+/* Le tampon « Validée » · posé une fois, à la validation, jamais en boucle */
+.tampon{position:absolute;right:22px;bottom:56px;transform:rotate(-6deg);pointer-events:none;opacity:0}
+.tampon span{display:inline-block;border:2px solid var(--encre);border-radius:3px;padding:5px 12px;font:600 13px/1 'IBM Plex Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--encre);background:rgba(255,255,255,.8)}
+.valide .tampon{animation:poser .22s cubic-bezier(.2,.8,.3,1) forwards}
 @keyframes poser{from{opacity:0;transform:rotate(-6deg) scale(1.3)}to{opacity:.92;transform:rotate(-6deg) scale(1)}}
-
 .controle{padding:12px 14px 14px;border-left:1px solid var(--regle);display:flex;flex-direction:column;gap:10px;background:var(--lavis)}
 .controle-titre{font:500 12.5px/1.2 'IBM Plex Sans',sans-serif;color:var(--discret)}
 .ecart{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--regle);color:var(--encre)}
@@ -123,8 +175,8 @@ h1{font-size:clamp(1.65rem,3vw,2.25rem);line-height:1.15;letter-spacing:-.012em;
 .etat{display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--texte);min-height:3em}
 .etat svg{flex:0 0 auto;margin-top:3px;color:var(--encre)}
 .gestes{display:flex;flex-wrap:wrap;gap:8px}
-/* La barre d'état · en pied de fenêtre, comme dans l'application */
-.feuille-pied{padding:6px 12px;border-top:1px solid var(--regle);background:var(--lavis);font-size:12.5px;color:var(--discret)}
+.gestes .bouton{min-height:40px;padding:0 16px;font-size:14px}
+.feuille-pied{padding:7px 12px;border-top:1px solid var(--regle);background:var(--lavis);font-size:12.5px;color:var(--discret)}
 .feuille.desequilibre .ecart b{color:var(--signal)}
 .etat .i-ko{display:none}
 .feuille.desequilibre .etat svg{color:var(--signal)}
@@ -133,116 +185,155 @@ h1{font-size:clamp(1.65rem,3vw,2.25rem);line-height:1.15;letter-spacing:-.012em;
 .feuille.desequilibre .piece tfoot td{color:var(--signal)}
 .feuille.valide .piece input{border-color:transparent;background:transparent}
 
-/* Trois règles que le logiciel tient, en une bande à filets · pas un slogan */
-.regles ul{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--regle);border-bottom:1px solid var(--regle)}
-.regles li{padding:12px 16px 12px 0;font-size:14px}
-.regles li+li{padding-left:16px;border-left:1px solid var(--filet)}
-.regles b{display:block;font-weight:600;color:var(--encre);font-size:13px}
-.regles{margin-bottom:40px}
+/* La fiche · une définition par ligne, comme la fiche d'un dossier */
+.fiche{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:40px;border-top:3px double var(--encre);font-size:14.5px}
+.fiche>div{display:grid;grid-template-columns:9em minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--filet)}
+.fiche dt{color:var(--discret)}
+
+/* Le cycle · une frise de pointage : chaque étape se coche, le trait se tire de l'une à l'autre */
+.chemin{margin-top:44px;position:relative}
+.chemin::before{content:"";position:absolute;left:10px;top:6px;bottom:6px;width:2px;background:var(--brume);transform-origin:top}
+.chemin>li{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 40px;padding:0 0 40px 52px}
+.chemin>li:last-child{padding-bottom:0}
+.chemin>li::before{content:"";position:absolute;left:0;top:2px;width:22px;height:22px;border:2px solid var(--violet);border-radius:4px;background:#fff}
+.chemin>li::after{content:"";position:absolute;left:6px;top:7px;width:10px;height:6px;border-left:2px solid var(--violet);border-bottom:2px solid var(--violet);transform:rotate(-45deg)}
+.etape{font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--violet)}
+.chemin h3{margin-top:4px;font-size:1.25rem;letter-spacing:-.01em}
+.chemin-texte p:last-child{margin-top:8px;max-width:36em;color:var(--discret);font-size:15px}
+.fig{width:100%;align-self:start;font-size:13.5px;border:1px solid var(--regle);background:#fff;border-radius:var(--rayon);overflow:hidden}
+.fig th,.fig td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--filet)}
+.fig thead th{background:var(--encre-douce);color:#fff;font-weight:500}
+.fig .num{text-align:right;white-space:nowrap}
+.fig td.num{font-family:'IBM Plex Mono',monospace}
+.fig tfoot td{background:var(--lavis);font-weight:500;color:var(--encre);border-top:1px solid var(--encre);border-bottom:3px double var(--encre)}
+.fig .sans td{color:var(--discret);font-style:italic}
+.puce{display:inline-block;padding:1px 8px;border-radius:999px;font:500 12px/1.6 'IBM Plex Sans',sans-serif;font-style:normal;background:var(--encre);color:#fff}
+.puce.brouillard{background:#fff;color:var(--encre);box-shadow:inset 0 0 0 1px var(--encre)}
+
+/* Les modules · des fiches à liseré d'encre */
+.trois{margin-top:44px;display:grid;gap:22px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.trois li{position:relative;padding:22px 22px 24px;border:1px solid var(--filet);border-radius:var(--rayon);background:#fff;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
+.trois li::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:3px;border-radius:var(--rayon) var(--rayon) 0 0;background:var(--encre);transform-origin:left}
+.trois li:hover{transform:translateY(-4px);border-color:var(--regle);box-shadow:0 18px 36px -22px rgba(42,31,92,.45)}
+.trois h3{font-size:1.1rem;letter-spacing:-.005em}
+.trois p{margin-top:8px;color:var(--discret);font-size:15px}
+
+/* Les deux plans · côte à côte, la même ligne de numéro face à face */
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:40px}
+.plan{padding:22px 24px;border:1px solid var(--filet);border-radius:var(--rayon);background:#fff}
+.plan h3{font-size:1.15rem}
+.plan h3 small{margin-left:6px;font:400 14px/1.4 'IBM Plex Sans',sans-serif;color:var(--discret)}
+.extrait{width:100%;margin-top:14px;font-size:14px;border:1px solid var(--regle)}
+.extrait th,.extrait td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--filet)}
+.extrait thead th{background:var(--encre-douce);color:#fff;font-weight:500;font-size:12.5px}
+.extrait tbody th{width:5.5em}
+.plan dl{margin-top:14px;font-size:14.5px}
+.plan dl>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid var(--filet)}
+.plan dt{color:var(--discret)}
+.plan dd{text-align:right}
+.nb{font:500 15px/1 'IBM Plex Mono',monospace;color:var(--encre)}
+.propre{margin-top:12px;font-size:14px;color:var(--discret)}
+
+/* Installation */
+.partage-deux{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:40px}
+.partage-deux article{padding-top:18px;border-top:3px double var(--encre)}
+.partage-deux h3{font-size:1.15rem}
+.partage-deux p{margin-top:8px;max-width:34em;color:var(--discret)}
 
 /* Filet de clôture · charte § 9 : un trait dont le vide vaut 13,3 % de la longueur, plafonné à 24 px */
-.filet{--vide:min(24px,13.3%);display:grid;grid-template-columns:1fr var(--vide) 1fr;height:1px}
+.filet{--vide:min(24px,13.3%);display:grid;grid-template-columns:1fr var(--vide) 1fr;height:1px;margin:0 var(--g)}
 .filet::before,.filet::after{content:"";height:1px;background:var(--encre);opacity:.55}
 .filet::before{grid-column:1}
 .filet::after{grid-column:3}
 
-/* Sections · titre de cadre, puis contenu en lignes */
-.bloc{padding-top:44px;padding-bottom:48px}
-.bloc>h2{font-size:1.35rem;line-height:1.2;letter-spacing:-.005em}
-.intro{margin-top:8px;max-width:46em;color:var(--discret)}
-
-/* Le cycle · quatre étapes dans leur ordre ; chacune, son texte et un extrait de grille */
-.cycle{margin-top:20px;counter-reset:etape;border-top:1px solid var(--encre)}
-.cycle>li{counter-increment:etape;display:grid;grid-template-columns:2.2em minmax(0,1fr) minmax(0,1fr);gap:20px;padding:18px 0;border-bottom:1px solid var(--filet)}
-.cycle>li::before{content:counter(etape);font:500 14px/1.5 'IBM Plex Mono',monospace;color:var(--encre)}
-.cycle h3{font-size:1rem}
-.cycle-texte p{margin-top:4px;max-width:36em;font-size:14.5px}
-.fig{width:100%;align-self:start;font-size:13px;border:1px solid var(--regle)}
-.fig th,.fig td{padding:5px 8px;text-align:left;border-bottom:1px solid var(--filet)}
-.fig thead th{background:var(--encre-douce);color:#fff;font-weight:500}
-.fig .num{text-align:right;white-space:nowrap}
-.fig td.num{text-align:right;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
-.fig tfoot td{background:var(--lavis);font-weight:500;color:var(--encre);border-bottom:0;border-top:1px solid var(--encre)}
-.fig .sans td{color:var(--discret);font-style:italic}
-.puce{display:inline-block;padding:1px 7px;border-radius:2px;font:500 12px/1.5 'IBM Plex Sans',sans-serif;font-style:normal;background:var(--encre);color:#fff}
-.puce.brouillard{background:#fff;color:var(--encre);box-shadow:inset 0 0 0 1px var(--encre)}
-
-/* Les modules · un registre à deux colonnes, intitulé puis contenu */
-.registre{margin-top:20px;border-top:1px solid var(--encre)}
-.registre li{display:grid;grid-template-columns:15em minmax(0,1fr);gap:24px;padding:10px 0;border-bottom:1px solid var(--filet)}
-.registre h3{font-size:14.5px;font-weight:600}
-.registre p{max-width:52em;font-size:14.5px}
-
-/* Les deux plans · côte à côte, la même ligne de numéro face à face */
-.plans{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:20px;border-top:1px solid var(--encre)}
-.plan{padding:14px 24px 4px 0}
-.plan+.plan{padding:14px 0 4px 24px;border-left:1px solid var(--regle)}
-.plan h3{font-size:1.05rem}
-.plan h3 small{margin-left:6px;font:400 14px/1.4 'IBM Plex Sans',sans-serif;color:var(--discret)}
-.extrait{width:100%;margin-top:10px;font-size:14px;border:1px solid var(--regle)}
-.extrait th,.extrait td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--filet)}
-.extrait thead th{background:var(--encre-douce);color:#fff;font-weight:500;font-size:12.5px}
-.extrait tbody th{width:5.5em}
-.plan dl{margin-top:12px;font-size:14px}
-.plan dl>div{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid var(--filet)}
-.plan dt{color:var(--discret)}
-.plan dd{text-align:right}
-.nb{font:500 14px/1 'IBM Plex Mono',monospace;color:var(--encre)}
-.propre{margin-top:10px;font-size:13.5px;color:var(--discret)}
-
-/* Installation */
-.partage-deux{display:grid;grid-template-columns:1fr 1fr;margin-top:20px;border-top:1px solid var(--encre)}
-.partage-deux article{padding:14px 24px 0 0}
-.partage-deux article+article{padding:14px 0 0 24px;border-left:1px solid var(--regle)}
-.partage-deux h3{font-size:1rem}
-.partage-deux p{margin-top:4px;max-width:34em;font-size:14.5px}
-
-/* Questions */
-.questions{margin-top:20px;border-top:1px solid var(--encre)}
-.questions details{border-bottom:1px solid var(--filet)}
-.questions summary{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:44px;padding:8px 0;cursor:pointer;font-weight:500;color:var(--encre);list-style:none}
+/* Questions · un accordéon sur l'encre */
+.questions{margin-top:36px;border-top:1px solid rgba(255,255,255,.2)}
+.questions details{border-bottom:1px solid rgba(255,255,255,.2)}
+.questions summary{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px;padding:20px 0;cursor:pointer;list-style:none;font-size:clamp(1.1rem,2.4vw,1.4rem);font-weight:600;letter-spacing:-.01em;transition:color .18s ease,padding-left .18s ease}
 .questions summary::-webkit-details-marker{display:none}
-.questions summary::after{content:"+";font:400 18px/1 'IBM Plex Mono',monospace;color:var(--discret)}
-.questions details[open] summary::after{content:"\2212"}
-.questions details>div{padding:0 0 14px;max-width:52em;font-size:14.5px}
+.questions summary::after{content:"+";flex:none;display:grid;place-items:center;width:34px;height:34px;border:1.5px solid rgba(255,255,255,.45);border-radius:4px;font:400 20px/1 'IBM Plex Mono',monospace;transition:transform .25s ease,background-color .18s ease,color .18s ease}
+.questions summary:hover{color:var(--lilas);padding-left:6px}
+.questions details[open] summary{color:var(--lilas)}
+.questions details[open] summary::after{transform:rotate(45deg);background:var(--lilas);color:var(--encre);border-color:var(--lilas)}
+.questions details>div{padding:0 52px 24px 0;max-width:46em;color:rgba(255,255,255,.8);animation:entre .3s ease both}
+@keyframes entre{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-/* L'appel · un cadre du même registre, jamais une bande pleine */
-main>section.appel{margin-top:8px;margin-bottom:48px;padding:20px 24px;border:1px solid var(--regle);border-left:3px solid var(--encre);background:var(--lavis)}
-.appel h2{font-size:1.1rem}
-.appel p{margin-top:6px;max-width:44em;font-size:14.5px}
-.appel .actions{margin-top:14px}
+/* L'appel · une carte à l'encre, réglée comme le bandeau */
+.appel{padding-top:clamp(56px,8vw,96px)}
+.carte{position:relative;overflow:hidden;max-width:var(--colonne);padding:clamp(28px,5vw,48px);border-radius:12px;background:var(--encre);color:#fff}
+.carte::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(520px 260px at 100% 0%,rgba(79,59,168,.65),transparent 70%),
+  repeating-linear-gradient(0deg,transparent 0 35px,rgba(255,255,255,.04) 35px 36px)}
+.carte>*{position:relative}
+.carte h2{color:#fff;padding-bottom:16px}
+.carte h2::after{border-color:var(--lilas)}
+.carte p{margin-top:14px;max-width:44em;color:rgba(255,255,255,.84)}
+.carte a:not(.bouton){color:#fff}
 
-.pied{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:16px var(--gouttiere) 24px;border-top:1px solid var(--regle);font-size:13px;color:var(--discret)}
-.pied nav{display:flex;flex-wrap:wrap;gap:4px 18px}
-.pied a{color:var(--discret)}
-.pied a:hover{color:var(--encre)}
+.pied{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:22px var(--g) 30px;margin-top:clamp(56px,8vw,96px);background:var(--encre);font-size:13.5px;color:rgba(255,255,255,.72)}
+.pied nav{display:flex;flex-wrap:wrap;gap:4px 20px}
+.pied a{color:rgba(255,255,255,.8)}
+.pied a:hover{color:#fff}
+
+/* Retour en haut */
+.haut{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:45;display:grid;place-items:center;width:46px;height:46px;border-radius:8px;background:var(--encre);color:#fff;box-shadow:0 10px 22px -8px rgba(42,31,92,.6);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .25s ease,transform .25s ease,background-color .18s ease}
+.haut.visible{opacity:1;transform:none;pointer-events:auto}
+.haut:hover{background:var(--encre-douce)}
+
+/* Mouvement · seulement si le script tourne (classe js) ; sans script, tout est visible */
+.js .revele{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d,0s)}
+.js .revele.vu{opacity:1;transform:none}
+.js h2.revele::after{transform:scaleX(0);transition:transform .6s ease .25s}
+.js h2.revele.vu::after{transform:scaleX(1)}
+.js .trois li.revele::before{transform:scaleX(0);transition:transform .6s ease .2s}
+.js .trois li.revele.vu::before{transform:scaleX(1)}
+.js .mot{opacity:0;transform:translateY(.45em);animation:mot .65s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:calc(var(--i,0) * 60ms + .1s)}
+@keyframes mot{to{opacity:1;transform:none}}
+.js .chemin::before{transform:scaleY(0);transition:transform 1.2s ease}
+.js .chemin.vu::before{transform:scaleY(1)}
+.js .registre-heros tbody tr,.js .registre-heros tfoot tr{opacity:0;animation:ligne .45s ease forwards}
+.js .registre-heros tbody tr:nth-child(1){animation-delay:.55s}
+.js .registre-heros tbody tr:nth-child(2){animation-delay:.75s}
+.js .registre-heros tbody tr:nth-child(3){animation-delay:.95s}
+.js .registre-heros tbody tr:nth-child(4){animation-delay:1.15s}
+.js .registre-heros tfoot tr:first-child{animation-delay:1.45s}
+.js .registre-heros tfoot tr.solde{animation-delay:1.75s}
+@keyframes ligne{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 
 @media (max-width:980px){
-  .tete{grid-template-columns:minmax(0,1fr)}
+  .heros{grid-template-columns:minmax(0,1fr)}
+  .registre-heros{justify-self:start}
+  .essai-grille{grid-template-columns:minmax(0,1fr)}
   .feuille-corps{grid-template-columns:minmax(0,1fr)}
   .controle{border-left:0;border-top:1px solid var(--regle)}
-  .cycle>li{grid-template-columns:2.2em minmax(0,1fr)}
-  .cycle>li .fig{grid-column:2}
+  .trois{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chemin>li{grid-template-columns:minmax(0,1fr)}
   .entete nav{display:none}
   .entete{justify-content:space-between}
 }
 @media (max-width:640px){
-  .regles ul{grid-template-columns:minmax(0,1fr)}
-  .regles li+li{padding-left:0;border-left:0;border-top:1px solid var(--filet)}
-  .registre li{grid-template-columns:minmax(0,1fr);gap:2px}
-  .plans,.partage-deux{grid-template-columns:minmax(0,1fr)}
-  .plan+.plan,.partage-deux article+article{padding-left:0;border-left:0;border-top:1px solid var(--regle)}
+  .reperes{grid-template-columns:minmax(0,1fr)}
+  .reperes li+li{padding-left:0;border-left:0;border-top:1px solid rgba(255,255,255,.2)}
+  .trois,.plans,.partage-deux{grid-template-columns:minmax(0,1fr)}
+  .fiche{grid-template-columns:minmax(0,1fr)}
   .fiche>div{grid-template-columns:minmax(0,1fr);gap:0}
+  .registre-heros .intitule{display:none}
   .piece th,.piece td{padding:7px 8px}
   .lib{display:none}
-  .cycle>li .fig{grid-column:1 / -1}
+  .chemin>li{padding-left:40px}
+  .questions details>div{padding-right:0}
+  .entete .bouton{padding:0 16px;min-height:42px;font-size:14px}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none!important;transition:none!important}
-  .valide .cachet{opacity:.92}
+  .js .revele,.js .mot,.js .registre-heros tr{opacity:1!important;transform:none!important}
+  .js h2.revele::after,.js .trois li.revele::before{transform:none!important}
+  .js .chemin::before{transform:none!important}
+  .valide .tampon{opacity:.92}
 }
 @media print{
-  .entete{position:static}
-  .gestes,.evitement{display:none}
+  .entete,.haut,.progres{position:static}
+  .gestes,.evitement,.haut,.progres{display:none}
+  .js .revele,.js .mot,.js .registre-heros tr{opacity:1;transform:none}
 }

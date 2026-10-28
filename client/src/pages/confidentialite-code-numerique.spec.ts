@@ -13,7 +13,7 @@ import { join } from 'node:path';
  *    BASE, ce qui laissait le lecteur devant un fait sans règle.
  *  · art. 202 · les cas où le transfert reste possible. La page invoquait le
  *    2° (« un contrat entre la personne concernée et le responsable du
- *    traitement »), que le contrat de VMG avec un cabinet ne remplit pas ·
+ *    traitement »), que le contrat de l'éditeur avec un cabinet ne remplit pas ·
  *    passe D4 (D4-C1), la base est dite en cours de qualification.
  *  · art. 244 · deux obligations · le RESPONSABLE notifie l'Autorité et la
  *    personne (al. 1er), le SOUS-TRAITANT avertit le responsable (al. 2).
@@ -21,7 +21,7 @@ import { join } from 'node:path';
  *
  * Ce que la page NE DIT PAS, et c'est délibéré · que l'autorisation préalable
  * de l'art. 201 n'a pas été obtenue. Publier un aveu de non-conformité est une
- * décision de VMG, pas un geste de développement. Voir
+ * décision de l'éditeur, pas un geste de développement. Voir
  * docs/code-du-numerique-et-omegax.md, qui l'écrit en interne.
  */
 
@@ -36,7 +36,7 @@ describe('la politique cite le Code du numérique', () => {
 
   it('dit la règle de localisation, et la base du transfert comme une question ouverte', () => {
     // Passe D4 (D4-C1) · le 2° de l'art. 202 vise un contrat entre la
-    // personne concernée et le responsable ; le contrat de VMG lie un cabinet.
+    // personne concernée et le responsable ; le contrat de l'éditeur lie un cabinet.
     // Pour les dossiers, l'instruction du transfert revient à l'entité
     // responsable (art. 229). Rien n'est tranché avant le juriste.
     expect(deplie).toContain('hébergées hors de la République démocratique du Congo');
@@ -44,15 +44,15 @@ describe('la politique cite le Code du numérique', () => {
     expect(deplie).toContain('article 202');
     expect(deplie).toContain('l’autorisation préalable de l’Autorité de protection des données');
     expect(deplie).toContain('La base juridique du transfert opéré ici est en cours de qualification.');
-    expect(deplie).toContain('VMG Consulting agissant pour son compte (article 229)');
+    expect(deplie).toContain('l’éditeur agissant pour son compte (article 229)');
   });
 
   it('distingue les deux obligations de l’article 244 · responsable et sous-traitant', () => {
     // Passe D4 (D4-C2) · al. 1er au responsable (Autorité ET personne),
     // al. 2 au sous-traitant (avertir le responsable).
     expect(deplie).toContain('article 244');
-    expect(deplie).toContain('dont VMG Consulting est responsable, nous notifierons <strong>sans délai</strong>, à l’Autorité de protection des données et à vous-même');
-    expect(deplie).toContain('VMG Consulting, sous-traitant, vous avertira <strong>sans délai</strong>');
+    expect(deplie).toContain('dont l’éditeur est responsable, nous notifierons <strong>sans délai</strong>, à l’Autorité de protection des données et à vous-même');
+    expect(deplie).toContain('l’éditeur, sous-traitant, vous avertira <strong>sans délai</strong>');
     expect(deplie).toContain('il revient alors à votre entité de notifier l’Autorité et les personnes concernées');
   });
 
@@ -67,12 +67,19 @@ describe('la politique cite le Code du numérique', () => {
     expect(page).not.toMatch(/conforme au Code du numérique|autorisation de l’Autorité a été/i);
   });
 
-  it('donne le courriel et la ville que VMG a arrêtés, sans inventer une adresse de rue', () => {
-    // Donnés par Manasse le 2026-10-17 · « Mets juste Kinshasa/RDC » · aucune rue n'est publiée.
-    expect(deplie).toContain('href="mailto:admin@vmgconsulting.net"');
-    expect(deplie).toContain('Le cabinet est établi à Kinshasa, en République démocratique du Congo');
-    expect(deplie).toContain('l’adresse de la rue n’étant pas encore publiée');
-    // Aucune rue n'est publiée · l'inventer dirigerait les demandes vers le vide.
+  it('dit l’identité et les coordonnées du responsable à arrêter, sans en inventer aucune', () => {
+    // Retrait du nom de l'ancien éditeur (2026-10-28) · « OmegaX » est un
+    // logiciel, pas une personne (Code du numérique, art. 52) · dénomination,
+    // courriel et adresse sont dits à arrêter, par la formule même du contrat
+    // de licence, jamais remplacés par un nom ou une adresse de fantaisie.
+    const formule = serveur('src/modules/conditions-licence/conditions-de-licence.ts').match(/export const A_ARRETER = '([^']+)';/)?.[1];
+    expect(formule).toBe('à arrêter par l’éditeur');
+    expect(deplie).toContain(`<p className="mt-1">Dénomination · (${formule})</p>`);
+    expect(deplie).toContain(`<p>Courriel · (${formule})</p>`);
+    expect(deplie).toContain(`<p>Adresse · (${formule})</p>`);
+    expect(deplie).toContain(`<strong>l’éditeur d’OmegaX</strong> (dénomination ${formule}), qui est le responsable du traitement`);
+    // Aucun courriel ni aucune rue · les inventer dirigerait les demandes vers le vide.
+    expect(page).not.toMatch(/mailto:/);
     expect(deplie).not.toMatch(/\b(avenue|boulevard|quartier)\b/i);
   });
 
@@ -89,7 +96,7 @@ describe('la politique nomme tous ceux qui reçoivent des données, et dit l’i
   it('nomme l’archive des sauvegardes et la messagerie, sans inventer le nom du prestataire SMTP', () => {
     expect(deplie).toContain('<strong>GitHub</strong> (service GitHub Actions) produit chaque nuit la sauvegarde');
     expect(deplie).toContain('<strong>Le prestataire de messagerie</strong> (SMTP)');
-    expect(deplie).toContain('Son nom doit être arrêté par VMG Consulting et porté ici avant toute publication');
+    expect(deplie).toContain('Son nom doit être arrêté par l’éditeur et porté ici avant toute publication');
   });
 
   it('écrit le cloisonnement là où il vit · aucune règle de la base ne le porte', () => {
@@ -151,14 +158,14 @@ describe('la politique décrit le logiciel tel qu’il est (passe D4)', () => {
     expect(deplie).toContain('conservé quatre-vingt-dix jours par GitHub');
     expect(deplie).toContain('Une copie de ce fichier chiffré est déposée chaque nuit dans');
     expect(deplie).toContain('<strong>europe-west1</strong> (Belgique)');
-    expect(deplie).toContain('La durée de conservation de cette copie doit être arrêtée par VMG Consulting');
+    expect(deplie).toContain('La durée de conservation de cette copie doit être arrêtée par l’éditeur');
   });
 
   it('nomme l’adresse IP et le second facteur, et dit leur conservation (D4-B5, C8)', () => {
     expect(deplie).toContain('<strong>adresse réseau (adresse IP)</strong> d’où chaque acte a été fait');
     expect(deplie).toContain('le secret de l’application d’authentification et l’empreinte des codes de secours');
     expect(deplie).toContain('ne sont soumis à aucune purge');
-    expect(deplie).toContain('Leur durée de conservation doit être arrêtée par VMG Consulting');
+    expect(deplie).toContain('Leur durée de conservation doit être arrêtée par l’éditeur');
     // Et la limite de l'effacement, art. 216, al. 4, 2°.
     expect(deplie).toContain('L’effacement cède devant une obligation légale qui impose de conserver les données (article 216)');
   });
@@ -201,18 +208,18 @@ describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', ()
     expect(deplie).toContain('la liste des cinq dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date)');
   });
 
-  it('dit la PRATIQUE de VMG Consulting et nomme chacun de ses accès techniques que les workflows ouvrent vraiment, et l’article 37', () => {
+  it('dit la PRATIQUE de l’éditeur et nomme chacun de ses accès techniques que les workflows ouvrent vraiment, et l’article 37', () => {
     // Relecture « échecs silencieux » de la ligne pages-legales, B1 · la page
-    // disait que VMG « n'accède pas » aux données, quand la sauvegarde de
+    // disait que l'éditeur « n'accède pas » aux données, quand la sauvegarde de
     // chaque nuit lit toute la base et la restaure pour contrôle, et qu'une
     // requête de production la lit aussi. Une impossibilité technique
-    // affirmée à tort est opposable · la page dit ce que VMG fait, et chaque
+    // affirmée à tort est opposable · la page dit ce que l'éditeur fait, et chaque
     // accès que le dépôt ouvre est nommé à côté de son workflow.
-    expect(deplie).toContain('VMG Consulting ne consulte pas le contenu de vos dossiers.');
+    expect(deplie).toContain('L’éditeur d’OmegaX ne consulte pas le contenu de vos dossiers.');
     const sauvegarde = serveur('.github/workflows/sauvegarde-base.yml');
     expect(sauvegarde).toContain('pg_dump');
     expect(sauvegarde).toContain('pg_restore');
-    expect(deplie).toContain('Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de contrôle automatique');
+    expect(deplie).toContain('Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont il détient la clé, à la restauration de contrôle automatique');
     expect(serveur('.github/workflows/requetes-production.yml')).toContain('docs/requetes-production-paquet-1.md');
     expect(deplie).toContain('aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres');
     expect(deplie).toContain('sauf réquisition judiciaire (Code du numérique, article 37)');
@@ -280,13 +287,14 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
     expect(deplie).toContain('<strong>cent quatre-vingts jours après le terme</strong> de l’essai, puis le supprime');
     expect(deplie).toContain('<strong>au moins trente jours avant</strong> la suppression');
     expect(deplie).toContain('(Fichier &gt; Restituer le dossier complet)');
-    expect(deplie).toContain('faite par VMG Consulting depuis sa console, après vérification de ces délais, et non par une tâche automatique');
+    expect(deplie).toContain('faite par l’éditeur depuis sa console, après vérification de ces délais, et non par une tâche automatique');
     expect(deplie).toContain('Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre terme');
     expect(deplie).not.toContain('quatre-vingt-dix jours après le terme');
-    // Le fond a changé · la politique porte la date de cette modification (le
-    // bandeau de consentement se rouvre une fois, c'est voulu).
+    // Le fond a changé · la politique porte la date de sa dernière modification
+    // (le 28 octobre 2026, le responsable n'est plus nommé), et le bandeau de
+    // consentement se rouvre une fois, c'est voulu.
     const date = readFileSync(join(__dirname, '../lib/date-politique-confidentialite.ts'), 'utf8');
-    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '21 octobre 2026';");
+    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '28 octobre 2026';");
     expect(page).toContain('Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}');
     expect(deplie).not.toContain('n’est pas encore en service');
     // Les deux nombres de la page sont ceux du calendrier du serveur.
@@ -301,6 +309,6 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
 
   it('rouvre le choix des témoins depuis la page, et finit par les coordonnées, sans en inventer', () => {
     expect(deplie).toContain('<LienPreferencesMesure className="text-sel underline" />');
-    expect(deplie).toContain('Adresse · Kinshasa, République démocratique du Congo');
+    expect(deplie).toContain('<p>Adresse · (à arrêter par l’éditeur)</p>');
   });
 });

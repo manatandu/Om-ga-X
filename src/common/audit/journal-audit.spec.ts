@@ -904,7 +904,7 @@ describe('la création d’un dossier se journalise DANS sa transaction', () => 
 
   it('la création du dossier ouvre SA chaîne, pas celle de l’acteur', async () => {
     const { tx, base, maillons } = transactionFactice(null);
-    await dansContexteAudit({ acteurEmail: 'operateur@vmg.cd', tenantId: 'editeur' }, () =>
+    await dansContexteAudit({ acteurEmail: 'operateur@exemple.cd', tenantId: 'editeur' }, () =>
       journaliserDansTransaction(tx, () =>
         intercepterEcriture(base, {
           model: 'Tenant',

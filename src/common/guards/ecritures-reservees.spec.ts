@@ -104,7 +104,7 @@ function routesOuvertes(): RouteOuverte[] {
 const ROUTES_PUBLIQUES: Record<string, string> = {
   "sur-site/sur-site.controller.ts @Post('licence')":
     "Dépôt du fichier de licence d'une installation sur site · à la première installation, aucun compte n'existe encore. " +
-    'Le fichier ne vaut que signé par VMG et pour ce poste, et une licence plus ancienne ne remplace jamais une plus récente.',
+    'Le fichier ne vaut que signé par l’éditeur et pour ce poste, et une licence plus ancienne ne remplace jamais une plus récente.',
 };
 
 describe('Routes d’écriture · réservées à un rôle', () => {

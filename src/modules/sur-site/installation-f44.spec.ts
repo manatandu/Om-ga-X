@@ -131,7 +131,7 @@ describe('F44 · l’inscription publique sur site ne sert qu’au premier dossi
 
   it('en ligne, la règle d’INSCRIPTION_PUBLIQUE ne change pas', async () => {
     const { c, register } = controleur(true);
-    await expect(c.register({} as never, res)).rejects.toThrow(/VMG Consulting/);
+    await expect(c.register({} as never, res)).rejects.toThrow(/par l'éditeur/);
     expect(register).not.toHaveBeenCalled();
   });
 });

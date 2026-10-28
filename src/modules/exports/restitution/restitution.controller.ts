@@ -15,7 +15,7 @@ import { RestitutionService } from './restitution.service';
  * paie · c'est-à-dire pas dans le seul cas où elle sert, la sortie d'un
  * client (suspendre, archiver, restituer, purger). Ce sont ses données ; les
  * retenir comme moyen de pression est ce qu'une garantie de réversibilité
- * doit exclure. DÉCISION DE VMG, pas règle de droit · aucun texte lu ne
+ * doit exclure. DÉCISION DE L'ÉDITEUR, pas règle de droit · aucun texte lu ne
  * tranche, c'est une clause de contrat de licence, et elle se défait en
  * ajoutant le garde à cette ligne.
  *

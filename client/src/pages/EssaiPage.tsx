@@ -59,7 +59,7 @@ export function EssaiPage() {
     } catch (err) {
       setErreur(
         statutDe(err) === 429
-          ? 'Trop de demandes depuis cette connexion. Réessayez dans une heure, ou écrivez à admin@vmgconsulting.net.'
+          ? 'Trop de demandes depuis cette connexion. Réessayez dans une heure, ou adressez-vous à l’éditeur d’OmegaX.'
           : messageOuDefaut(err, "La demande n'a pas pu être envoyée. Réessayez dans un instant."),
       );
     } finally {
@@ -82,7 +82,7 @@ export function EssaiPage() {
           {etat === null && <p role="status" className="text-[12px] text-text-dim">Chargement…</p>}
           {etat === 'fermee' && (
             <p role="status" className="text-[12px]">
-              L'essai en libre-service n'est pas ouvert. Écrivez à admin@vmgconsulting.net pour démarrer.
+              L'essai en libre-service n'est pas ouvert. Adressez-vous à l'éditeur d'OmegaX pour démarrer.
             </p>
           )}
           {etat === 'indisponible' && (

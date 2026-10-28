@@ -1,7 +1,7 @@
 # Guide du siège · gérer un groupe de cellules dans OmegaX
 
 *Pour le service comptable du siège (la « maison mère »). À utiliser avec la
-formation VMG Consulting. Le guide du trésorier de cellule est un document
+formation de l'éditeur. Le guide du trésorier de cellule est un document
 séparé, à distribuer.*
 
 ## Le principe en trois phrases
@@ -31,7 +31,7 @@ Menu **État → Balance agrégée du groupe**, bouton **Nouvelle cellule**.
 
 Le dossier naît complet (plan de comptes, journaux, exercice) et déjà
 rattaché au groupe. Le nombre de cellules que vous pouvez créer est borné
-par votre licence · au-delà, contactez VMG Consulting.
+par votre licence · au-delà, contactez l'éditeur.
 
 ## 2 · La règle d'or : le compte 58
 
@@ -105,7 +105,7 @@ sait toujours qui a écrit quoi).
    aussi dans un dossier ordinaire (Fichier → Importer, type Balance) · le
    chemin de secours si vous voulez refaire la liasse à la main.
 
-## 6 · Ce qui reste chez VMG Consulting
+## 6 · Ce qui reste chez l'éditeur
 
 Votre licence (et celle de toutes vos cellules, alignées sur la vôtre), le
 plafond de cellules, la création du dossier de combinaison, et l'assistance.

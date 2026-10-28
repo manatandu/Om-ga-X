@@ -241,7 +241,7 @@ Ordre voulu, dans cette ligne et sans rien coder avant l'étape 1 :
    la ligne, PlanComptesPage.tsx l. 323), retrait du filtre « Comptes
    personnalisés seulement » qui garde tous les TOTAL (l. 194) et n'existe pas
    chez Sage ; « Gérer » conservé (il existe chez Sage). Vérifier pourquoi le
-   bouton manque à l'administrateur VMG (estAdmin = role ADMIN_CABINET,
+   bouton manque à l'administrateur de l'éditeur (estAdmin = role ADMIN_CABINET,
    auth.tsx l. 248). La règle « seuls les comptes personnalisés se saisissent »
    n'est pas de Sage : la garder telle quelle, à montrer à Manasse avant de
    fusionner.
@@ -260,7 +260,7 @@ télémétrie (dont le refus de conserver l'adresse IP).
 ## Ajouts du 2026-10-09 (soir), à traiter à la reprise
 
 - MESSAGERIE : DÉJÀ POSÉE ET EN SERVICE (fenêtre « Courriers sortants » :
-  « Messagerie posée · le courrier part sous l'adresse admin@vmgconsulting.net »,
+  « Messagerie posée · le courrier part sous l'adresse [de l'éditeur] »,
   avis de double authentification ENVOYÉ et reçu). Les secrets API_SMTP_*,
   API_COURRIER_EXPEDITEUR, télémétrie existent depuis deux jours. NE RIEN
   ÉCRASER. Le mot de passe d'application Gmail demandé à Manasse ne sert pas.
@@ -278,7 +278,7 @@ télémétrie (dont le refus de conserver l'adresse IP).
   vérifiée, paiement jamais compté deux fois, montant et monnaie confrontés à
   la facture, journal d'audit. À étudier avec Manasse (choix du prestataire :
   décision commerciale, non régie par un texte).
-- Parcours client actuel : inscription publique fermée, dossier créé par VMG
+- Parcours client actuel : inscription publique fermée, dossier créé par l'éditeur
   depuis la console, mot de passe provisoire tiré au sort par le serveur et
   envoyé au seul courriel de l'administrateur, changement forcé à la première
   connexion. Vérifier comment démarre l'essai de 30 jours à la création.
@@ -305,7 +305,7 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
 2. Rouvrir l'inscription publique est un RENVERSEMENT d'une décision
    (INSCRIPTION_PUBLIQUE fermée) · le dire dans le plan et le CLAUDE.md.
    Garde-fous à prévoir : courriel vérifié, limitation de débit, dossier d'essai
-   isolé, aucune donnée d'autrui visible (règle VMG).
+   isolé, aucune donnée d'autrui visible (règle de confidentialité de l'éditeur).
 3. Choix du prestataire de paiement utilisable en RDC, des monnaies (CDF et USD) et
    des frais : décision commerciale de Manasse, frais à vérifier auprès des
    opérateurs (les sources lues ne concordent pas).
@@ -326,18 +326,18 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
 - Politique de confidentialité (client/src/pages/ConfidentialitePage.tsx, 8 sections,
   mise à jour du 7 octobre 2026) : comparer à la pratique des autres logiciels
   (Zoho : résumé d'abord, deux parties, contact du délégué). Écarts à examiner :
-  adresse postale et courriel de contact non arrêtés par VMG (dits dans le texte),
+  adresse postale et courriel de contact non arrêtés par l'éditeur (dits dans le texte),
   pas de résumé en tête. LE CONTENU SE TRANCHE PAR LA LOI, pas par le RGPD :
   lire la compétence droit-numerique-ua-rdc-corpus (ordonnance-loi n° 23/10 du
   13 mars 2023) avant toute modification.
 
 ## Ajout du 2026-10-14
 
-- LOGO DE VMG CONSULTING reçu de Manasse (« garde ça pour plus tard »), rangé
-  tel quel dans docs/marque-vmg/logo-vmg-consulting.png (PNG 1024 x 1024, fond
-  blanc). Aucun usage décidé. Ne pas le confondre avec la marque OmegaX, dont le
+- LOGO DE L'ÉDITEUR reçu de Manasse (« garde ça pour plus tard »), rangé
+  tel quel dans le dépôt (PNG 1024 x 1024, fond blanc), RETIRÉ le 2026-10-28
+  (OmegaX seul). Aucun usage décidé. Ne pas le confondre avec la marque OmegaX, dont le
   signe et le logotype sont des tracés engendrés (§ 9 bis). Usage possible plus
-  tard, sur décision de Manasse : site vitrine, pièces émises par VMG (factures
+  tard, sur décision de Manasse : site vitrine, pièces émises par l'éditeur (factures
   d'abonnement), console de l'éditeur.
 
 ## Questions à Manasse · éditions et exports, ligne sage-l7
@@ -398,7 +398,7 @@ fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
     des art. 33 à 36 (art. 36, 4°, la part de 10 %).
 15. Art. 229 « instruction documentée » face à l'autorisation de l'art. 201 ·
     à faire qualifier par un juriste.
-16. Les factures d'abonnement de VMG viennent d'un système de facturation non
+16. Les factures d'abonnement de l'éditeur viennent d'un système de facturation non
     homologué (décret n° 23/10, art. 22) · effet sur la facture de l'art. 56,
     al. 3.
 17. Le programme d'installation sur site doit-il faire accepter le contrat
@@ -422,7 +422,7 @@ fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
     la bascule de la version 1 à la 2 (acceptation de la 1 maintenue jusqu'à
     la prise d'effet de la 2), que `versions-publiees.spec.ts` exige.
 25. Relevé · l'art. 53, 7° (modalités et délais de fourniture du service)
-    n'est pas dans la garde · à relire avec VMG (accès ouvert à la création du
+    n'est pas dans la garde · à relire avec l'éditeur (accès ouvert à la création du
     dossier, essai).
 26. Abonnement modifié APRÈS l'acceptation (formule, option, prix) · la
     commande acceptée reste celle gardée avec l'acte, et rien ne redemande

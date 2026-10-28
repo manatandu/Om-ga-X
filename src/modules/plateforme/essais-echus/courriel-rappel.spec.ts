@@ -21,7 +21,10 @@ describe('le courriel de rappel avant suppression', () => {
 
   it('rappelle comment exporter (l’écran existe) et comment souscrire', () => {
     expect(avis.corps).toContain('Fichier > Restituer le dossier complet');
-    expect(avis.corps).toContain('admin@vmgconsulting.net');
+    expect(avis.corps).toContain("souscrivez un abonnement auprès de l'éditeur d'OmegaX");
+    // Aucune adresse · l'éditeur n'en a pas arrêté (2026-10-28), et une
+    // adresse inventée dirigerait le client vers le vide.
+    expect(avis.corps).not.toMatch(/@/);
   });
 
   it('dit que la suppression est irréversible et que les sauvegardes gardent une trace jusqu’à leur terme', () => {

@@ -2,7 +2,7 @@ import { randomInt } from 'crypto';
 
 /**
  * LE MOT DE PASSE PROVISOIRE D'UN ADMINISTRATEUR DE CABINET, REMIS AU SEUL
- * CLIENT (décision de Manasse du 2026-10-09 · « VMG ne doit pas voir les
+ * CLIENT (décision de Manasse du 2026-10-09 · « [l'éditeur] ne doit pas voir les
  * informations du client, c'est confidentiel et non discutable »).
  *
  * La console le faisait choisir par l'opérateur, qui pouvait alors ouvrir le
@@ -52,7 +52,7 @@ export function avisReinitialisationAdmin(motDePasseProvisoire: string): {
     "À votre demande, l'accès administrateur de votre dossier OmegaX a été réinitialisé.\n\n" +
     `Mot de passe provisoire · ${mot}\n\n` +
     'Il vous sera demandé de le changer à votre première connexion. Vos sessions ouvertes ont été fermées, et la ' +
-    "double authentification devra être réactivée.\n\nVMG Consulting n'a pas connaissance de ce mot de passe.\n";
+    "double authentification devra être réactivée.\n\nL'éditeur d'OmegaX n'a pas connaissance de ce mot de passe.\n";
   return {
     sujet: 'OmegaX · votre mot de passe provisoire',
     corps: texte(motDePasseProvisoire),

@@ -22,7 +22,7 @@ manuel 1. Statuts lus dans le code le même jour.
 
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
-| 1 | Assistant de création d'un fichier : raison sociale, coordonnées, dates du premier exercice, longueur des comptes | 4, 5 | DIFFÉRENT, VOULU | Un dossier naît depuis la console VMG ; inscription publique fermée (CLAUDE.md § 8). |
+| 1 | Assistant de création d'un fichier : raison sociale, coordonnées, dates du premier exercice, longueur des comptes | 4, 5 | DIFFÉRENT, VOULU | Un dossier naît depuis la console de l'éditeur ; inscription publique fermée (CLAUDE.md § 8). |
 | 2 | Natures de compte et leurs fourchettes, adaptées au SYSCOHADA (banque 52, caisse 57, résultat 13) | 8, 9 | FIDÈLE | Sept natures à fourchettes, défauts repris des deux plans semés. |
 | 3 | Numérotation automatique des tiers par type : longueur, racine (411, 401, 421) | 9, 10 | DIFFÉRENT, VOULU | Numéro proposé sous la racine du collectif, modifiable à la création (décision du 2026-10-09). |
 | 4 | Compte collectif choisi par type de tiers dans les paramètres | 10 | DIFFÉRENT, VOULU | Collectifs fixés par référentiel (`collectifs-tiers.ts`, décision de Manasse). |

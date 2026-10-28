@@ -6,7 +6,7 @@ import { Aide } from './chrome/Aide';
 /**
  * LA LICENCE D'UNE INSTALLATION SUR SITE, à l'écran d'ouverture · c'est le
  * seul écran qu'on voit avant qu'un compte existe, et c'est ici que le
- * client lit l'empreinte de son poste puis dépose le fichier reçu de VMG.
+ * client lit l'empreinte de son poste puis dépose le fichier reçu de l'éditeur.
  * En ligne, le panneau ne rend rien.
  */
 export function PanneauSurSite({ onEtat }: { onEtat?: (e: EtatSurSite) => void }) {
@@ -69,7 +69,7 @@ export function PanneauSurSite({ onEtat }: { onEtat?: (e: EtatSurSite) => void }
         <span>Licence de cette installation</span>
         <Aide
           titre="Licence sur site"
-          texte="Un fichier signé par VMG Consulting, vérifié sur ce poste sans connexion à internet. Il ne vaut que pour l'empreinte du poste serveur, et borne le nombre de dossiers et les mises à jour couvertes."
+          texte="Un fichier signé par l'éditeur d'OmegaX, vérifié sur ce poste sans connexion à internet. Il ne vaut que pour l'empreinte du poste serveur, et borne le nombre de dossiers et les mises à jour couvertes."
           source="OmegaX · installation sur site"
         />
       </div>

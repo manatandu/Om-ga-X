@@ -49,7 +49,7 @@ function service(options: { existant?: unknown; garnissage?: unknown; valideesEx
   };
 }
 
-const DTO = { email: 'demonstration@vmgconsulting.cd', motDePasse: 'DemoOmegaX2026' };
+const DTO = { email: 'demonstration@exemple.cd', motDePasse: 'DemoOmegaX2026' };
 
 describe("l'ouverture du dossier de démonstration", () => {
   it('marque le dossier, plutôt que de compter sur son intitulé', async () => {
@@ -95,10 +95,10 @@ describe("l'ouverture du dossier de démonstration", () => {
     // Deux vitrines divergent, et c'est toujours la mauvaise qu'on donne au
     // magasin.
     const { service: s } = service({
-      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@exemple.cd' }] },
     });
     await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/existe déjà/i);
-    await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/demo@vmgconsulting.cd/);
+    await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/demo@exemple.cd/);
   });
 
   it('cherche la vitrine existante SUR SON DRAPEAU et dans SON référentiel · une ASBL et une SARL ne se gênent pas', async () => {
@@ -125,21 +125,21 @@ describe("l'ouverture du dossier de démonstration", () => {
   it('une vitrine interrompue (aucune écriture validée) se complète au lieu de bloquer (audit final F174)', async () => {
     const garnissage = { garnir: jest.fn().mockResolvedValue({ tiers: 4, ecritures: 9, crees: 7 }) };
     const { service: s, authService } = service({
-      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@exemple.cd' }] },
       garnissage,
       valideesExistant: 0,
     });
     const r = await s.preparerDossierDemonstration(DTO);
     expect(garnissage.garnir).toHaveBeenCalledWith('t1', 'u-demo');
     expect(authService.register).not.toHaveBeenCalled();
-    expect(r).toMatchObject({ tenantId: 't1', repris: true, email: 'demo@vmgconsulting.cd', garni: { tiers: 4, ecritures: 9 } });
+    expect(r).toMatchObject({ tenantId: 't1', repris: true, email: 'demo@exemple.cd', garni: { tiers: 4, ecritures: 9 } });
     expect(r.rappel).toContain('ceux saisis maintenant ne sont pas repris');
   });
 
   it('une vitrine garnie (écritures validées) n’est pas regarnie · la seconde reste refusée', async () => {
     const garnissage = { garnir: jest.fn() };
     const { service: s } = service({
-      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@vmgconsulting.cd' }] },
+      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@exemple.cd' }] },
       garnissage,
       valideesExistant: 9,
     });

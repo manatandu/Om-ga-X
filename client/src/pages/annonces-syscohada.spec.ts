@@ -7,7 +7,7 @@ import { join } from 'node:path';
  * défaut que rien ne détecte : une mention « en construction » restée en
  * place après la construction ne casse aucun test, ne lève aucun type, et se
  * lit comme une promesse non tenue par le premier client qui ouvre l'assistant
- * de création de dossier ou la console VMG.
+ * de création de dossier ou la console de l'éditeur.
  *
  * Le cas est vécu : les états financiers SYSCOHADA (Système normal du Titre IX
  * et Système minimal de trésorerie du Titre X, AUDCIF art. 11) ont été écrits,
@@ -75,7 +75,7 @@ describe("l'assistant de création de dossier n'annonce plus le SYSCOHADA comme 
   });
 });
 
-describe('la console VMG propose le SYSCOHADA sans réserve', () => {
+describe('la console de l\'éditeur propose le SYSCOHADA sans réserve', () => {
   const plateforme = lireClient('pages/PlateformePage.tsx');
   const option = /<option value="SYSCOHADA">[\s\S]*?<\/option>/.exec(plateforme)?.[0];
 
