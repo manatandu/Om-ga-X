@@ -8,6 +8,17 @@ import {
   SEUIL_VERROUILLAGE,
 } from './verrouillage';
 
+// La connexion relit la ligne du compte sous verrou, dans une transaction
+// (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
+// elle-même et rend, à la relecture, ce que `findUnique` rend.
+const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
+  Object.assign(p, {
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [await p.user.findUnique({})],
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(p),
+  });
+
+
 /**
  * LE DÉLAI D'OUBLI (verrouillage.ts). Jusqu'au 2026-09-28, le compteur
  * d'échecs repartait de zéro dès que le verrou précédent était échu · un
@@ -84,13 +95,23 @@ describe('la connexion, rejouée contre le compte en base', () => {
       },
     };
     const s = new AuthService(
-      prisma as never,
+      sousVerrou(prisma) as never,
       { sign: () => 'jeton' } as never,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
     const essayer = (motDePasse: string) => s.login({ email: 'comptable@cabinet.cd', motDePasse } as never).catch((e: Error) => e);
     return { u, essayer };
   }
+
+  it('PISTE 10 · une RAFALE simultanée compte chaque échec, et arme le verrou', async () => {
+    // Lu une fois puis écrit en valeur absolue, le compteur ne montait que
+    // d'un pour toute la rafale · il se relit désormais sous verrou, au
+    // moment d'écrire.
+    const { u, essayer } = await compte();
+    await Promise.all([1, 2, 3, 4, 5].map(() => essayer('faux')));
+    expect(u.tentativesEchouees).toBe(5);
+    expect(u.verrouilleJusqua).toBeInstanceOf(Date);
+  });
 
   it('l’attaquant PATIENT voit le verrou croître jusqu’à une heure, et y rester', async () => {
     // Il essaie tant que le compte est ouvert, attend l'échéance de chaque

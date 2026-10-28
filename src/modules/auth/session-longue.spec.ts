@@ -27,6 +27,17 @@ import { CLE_SORTIE_MOT_DE_PASSE } from '../../common/decorators/sortie-mot-de-p
 import { CLE_ACCES_ROLES_CANTONNES } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { base32, codeHotp, depuisBase32, pasDe } from './double-authentification';
 
+// La connexion relit la ligne du compte sous verrou, dans une transaction
+// (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
+// elle-même et rend, à la relecture, ce que `findUnique` rend.
+const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
+  Object.assign(p, {
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [await p.user.findUnique({})],
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(p),
+  });
+
+
 /**
  * « RESTER CONNECTÉ SUR CET APPAREIL » · audit final F270, décision de
  * Manasse. Chaque garantie ici casserait en silence · une session trop
@@ -222,7 +233,7 @@ describe('2 bis · la prolongation par la stratégie et la garde', () => {
 describe('3 · la console de l’éditeur, session longue admise, connexion complète exigée', () => {
   const service = (user: Record<string, unknown>) =>
     new AuthService(
-      { user: { findUnique: async () => user, update: async () => ({}) } } as never,
+      sousVerrou({ user: { findUnique: async () => user, update: async () => ({}) } }) as never,
       jwt,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
@@ -347,7 +358,7 @@ describe('la case voyage avec le code du second facteur · aucun état n’est g
     const hash = await bcrypt.hash('le-bon', 4);
     const service = () =>
       new AuthService(
-        {
+        sousVerrou({
           user: {
             findUnique: async () => ({
               id: 'u1',
@@ -363,7 +374,7 @@ describe('la case voyage avec le code du second facteur · aucun état n’est g
             }),
             update: async () => ({}),
           },
-        } as never,
+        }) as never,
         jwt,
         ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
       );
@@ -381,7 +392,7 @@ describe('la case voyage avec le code du second facteur · aucun état n’est g
 describe('4 · déconnecter mes autres appareils', () => {
   const service = (capture: { data?: Record<string, unknown> }, hash: string) =>
     new AuthService(
-      {
+      sousVerrou({
         user: {
           findUnique: async () => ({ id: 'u1', motDePasse: hash, estOperateurPlateforme: false }),
           update: async ({ data }: { data: Record<string, unknown> }) => {
@@ -389,7 +400,7 @@ describe('4 · déconnecter mes autres appareils', () => {
             return {};
           },
         },
-      } as never,
+      }) as never,
       jwt,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );

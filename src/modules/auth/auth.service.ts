@@ -463,12 +463,34 @@ export class AuthService {
     // patient au palier d'une minute pour toujours. Un code de vérification
     // faux compte comme un mot de passe faux · sans quoi six chiffres se
     // devineraient à l'infini derrière un mot de passe volé.
-    const compterEchec = () =>
-      horsCloisonnement('connexion · décompte des échecs sur un compte non encore identifié', () =>
-        this.prisma.user.update({
-          where: { id: user.id },
-          data: decompteApresEchec(user, maintenant),
+    // LE DÉCOMPTE ET LE SECOND FACTEUR SE RELISENT SOUS VERROU (audit de
+    // sécurité du 2026-10-25, piste 10). Lus une fois au début de la requête,
+    // puis écrits en valeur absolue, des essais SIMULTANÉS repartaient tous du
+    // même compteur · une rafale ne comptait qu'un échec, et le verrou ne
+    // venait jamais ; deux connexions avec le même code de vérification le
+    // consommaient chacune. La ligne du compte se relit `FOR UPDATE` dans une
+    // transaction courte, après le verrou de SON dossier (ordre de tout acte
+    // audité, `extension-audit.ts`), et l'écriture part de ce qui y est.
+    type EtatFrais = {
+      tentativesEchouees: number;
+      dernierEchecLe: Date | null;
+      secretDoubleAuth: string | null;
+      dernierPasDoubleAuth: number | null;
+      codesSecoursDoubleAuth: string[];
+    };
+    const sousVerrouDuCompte = <T>(raison: string, geste: (tx: Prisma.TransactionClient, frais: EtatFrais) => Promise<T>) =>
+      horsCloisonnement(raison, () =>
+        transactionJournalisee(this.prisma, async (tx) => {
+          await prendreLeVerrouDuDossier(tx, user.tenantId);
+          const lignes = await tx.$queryRaw<EtatFrais[]>`
+            SELECT "tentativesEchouees", "dernierEchecLe", "secretDoubleAuth", "dernierPasDoubleAuth", "codesSecoursDoubleAuth"
+            FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
+          return geste(tx, lignes[0] ?? user);
         }),
+      );
+    const compterEchec = () =>
+      sousVerrouDuCompte('connexion · décompte des échecs sur un compte non encore identifié', (tx, frais) =>
+        tx.user.update({ where: { id: user.id }, data: decompteApresEchec(frais, maintenant) }),
       );
 
     if (!motDePasseValide) {
@@ -486,27 +508,30 @@ export class AuthService {
     // et aucune session n'est posée. Le mot de passe est redemandé avec le
     // code : aucun état intermédiaire n'est gardé entre les deux appels. La
     // case « Rester connecté » voyage de même avec le code, relue au second
-    // appel comme le mot de passe (audit final F270).
-    let consomme: Record<string, unknown> = {};
+    // appel comme le mot de passe (audit final F270). Le code se juge sur la
+    // ligne relue sous verrou, et sa consommation s'écrit dans la même
+    // transaction · un code qui vient de servir n'y passe plus.
     if (user.doubleAuthActiveDepuis) {
       if (!dto.code?.trim()) return { deuxiemeFacteurRequis: true as const };
-      const r = secondFacteurAccepte(user, dto.code, maintenant.getTime());
-      if (!r) {
-        await compterEchec();
-        throw new UnauthorizedException('Code de vérification invalide');
-      }
-      consomme = r;
-    }
-
-    // Connexion réussie · le compteur d'échecs et le verrou tombent.
-    // `> 0` et non `!== 0` · le compteur vaut 0 par défaut en base, mais
-    // écrire l'inégalité stricte ferait tourner une écriture inutile à chaque
-    // connexion sur tout compte dont le champ n'est pas encore servi.
-    if (user.tentativesEchouees > 0 || user.verrouilleJusqua || user.dernierEchecLe || Object.keys(consomme).length > 0) {
+      const code = dto.code;
+      const accepte = await sousVerrouDuCompte('connexion · second facteur jugé sous verrou du compte', async (tx, frais) => {
+        const r = secondFacteurAccepte(frais, code, maintenant.getTime());
+        await tx.user.update({
+          where: { id: user.id },
+          data: r ? { ...DECOMPTE_REMIS_A_ZERO, ...r } : decompteApresEchec(frais, maintenant),
+        });
+        return r !== null;
+      });
+      if (!accepte) throw new UnauthorizedException('Code de vérification invalide');
+    } else if (user.tentativesEchouees > 0 || user.verrouilleJusqua || user.dernierEchecLe) {
+      // Connexion réussie · le compteur d'échecs et le verrou tombent.
+      // `> 0` et non `!== 0` · le compteur vaut 0 par défaut en base, mais
+      // écrire l'inégalité stricte ferait tourner une écriture inutile à chaque
+      // connexion sur tout compte dont le champ n'est pas encore servi.
       await horsCloisonnement('connexion · remise à zéro du décompte', () =>
         this.prisma.user.update({
           where: { id: user.id },
-          data: { ...DECOMPTE_REMIS_A_ZERO, ...consomme },
+          data: { ...DECOMPTE_REMIS_A_ZERO },
         }),
       );
     }

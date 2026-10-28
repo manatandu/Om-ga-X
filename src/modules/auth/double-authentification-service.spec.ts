@@ -2,6 +2,17 @@ import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { base32, codeHotp, depuisBase32, empreinteCodeSecours, pasDe } from './double-authentification';
 
+// La connexion relit la ligne du compte sous verrou, dans une transaction
+// (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
+// elle-même et rend, à la relecture, ce que `findUnique` rend.
+const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
+  Object.assign(p, {
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [await p.user.findUnique({})],
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(p),
+  });
+
+
 const SECRET = base32(Buffer.from('12345678901234567890'));
 const MAINTENANT = new Date('2026-09-26T10:00:00Z');
 const codeA = (d: Date, decalagePas = 0) => codeHotp(depuisBase32(SECRET), pasDe(d.getTime()) + decalagePas);
@@ -26,7 +37,7 @@ async function monde(etat: Record<string, unknown> = {}, courrier: { mettreEnFil
     },
   };
   const none = undefined as never;
-  const s = new AuthService(prisma as never, { sign: () => 'jeton' } as never, none, none, none, none, none, none, none, none, none, courrier as never);
+  const s = new AuthService(sousVerrou(prisma) as never, { sign: () => 'jeton' } as never, none, none, none, none, none, none, none, none, none, courrier as never);
   return { s, u, ecritures };
 }
 

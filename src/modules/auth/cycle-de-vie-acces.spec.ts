@@ -9,6 +9,17 @@ import { MotDePasseAChangerGuard } from '../../common/guards/mot-de-passe-a-chan
 import { CLE_SORTIE_MOT_DE_PASSE } from '../../common/decorators/sortie-mot-de-passe.decorator';
 import { UtilisateurService } from '../utilisateurs/utilisateur.service';
 
+// La connexion relit la ligne du compte sous verrou, dans une transaction
+// (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
+// elle-même et rend, à la relecture, ce que `findUnique` rend.
+const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
+  Object.assign(p, {
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [await p.user.findUnique({})],
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(p),
+  });
+
+
 /**
  * CYCLE DE VIE DES ACCÈS · les quatre garanties de B5, chacune capable de
  * tomber en silence.
@@ -151,7 +162,7 @@ describe('3 · le verrouillage par compte', () => {
 
   const authService = (user: Record<string, unknown>, capture: { data?: Record<string, unknown> }) =>
     new AuthService(
-      {
+      sousVerrou({
         user: {
           findUnique: async () => user,
           update: async ({ data }: { data: Record<string, unknown> }) => {
@@ -159,7 +170,7 @@ describe('3 · le verrouillage par compte', () => {
             return {};
           },
         },
-      } as never,
+      }) as never,
       { sign: () => 'jeton' } as never,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
@@ -256,7 +267,7 @@ describe('3 · le verrouillage par compte', () => {
     const capture: { data?: Record<string, unknown> } = {};
     const hash = await bcrypt.hash('le-bon', 4);
     const inconnu = new AuthService(
-      { user: { findUnique: async () => null } } as never,
+      sousVerrou({ user: { findUnique: async () => null } }) as never,
       { sign: () => 'j' } as never,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
@@ -277,7 +288,7 @@ describe('3 · le verrouillage par compte', () => {
   it('une adresse inconnue fait tourner bcrypt comme une adresse connue · la durée ne trahit rien (F238)', async () => {
     const compare = jest.spyOn(bcrypt, 'compare');
     const inconnu = new AuthService(
-      { user: { findUnique: async () => null } } as never,
+      sousVerrou({ user: { findUnique: async () => null } }) as never,
       { sign: () => 'j' } as never,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
@@ -296,7 +307,7 @@ describe('3 · le verrouillage par compte', () => {
     // Et quand bien même elle dirait oui · une adresse inconnue est refusée
     // quel que soit le résultat, que le service jette.
     const inconnu = new AuthService(
-      { user: { findUnique: async () => null } } as never,
+      sousVerrou({ user: { findUnique: async () => null } }) as never,
       { sign: () => 'j' } as never,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
