@@ -426,6 +426,17 @@ describe('les demandes · en préparation, une par compte, jamais oubliées (aud
     expect(prisma.demandeConfirmation.create).not.toHaveBeenCalled();
   });
 
+  it('PISTE 6 · refuse le tiers d’un autre dossier, sans rien écrire (audit de sécurité du 2026-10-25)', async () => {
+    const { svc, prisma } = service({ campagne: campagne(StatutCampagneCircularisation.PREPARATION) });
+    const tiers = jest.fn().mockResolvedValue(null);
+    Object.assign(prisma as unknown as Record<string, unknown>, { tiers: { findFirst: tiers } });
+    await expect(
+      svc.creerDemande('t1', 'camp1', { compteId: 'c1', tiersId: 'tiers-voisin', destinataire: 'X' } as never),
+    ).rejects.toThrow('Tiers introuvable dans ce dossier.');
+    expect(tiers).toHaveBeenCalledWith({ where: { id: 'tiers-voisin', tenantId: 't1' }, select: { id: true } });
+    expect(prisma.demandeConfirmation.create).not.toHaveBeenCalled();
+  });
+
   it('la lettre fige le solde à la date d’arrêté', async () => {
     const { svc, prisma } = service({
       campagne: campagne(StatutCampagneCircularisation.PREPARATION, { dateArrete: new Date('2026-06-30') }),

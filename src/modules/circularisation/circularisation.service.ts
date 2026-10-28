@@ -255,6 +255,14 @@ export class CircularisationService {
     const campagne = await this.campagne(tenantId, campagneId, [StatutCampagneCircularisation.PREPARATION]);
     const compte = await this.prisma.compte.findFirst({ where: { id: dto.compteId, tenantId } });
     if (!compte) throw new NotFoundException('Compte introuvable.');
+    // LE TIERS SE JUGE DANS LE DOSSIER (audit de sécurité du 2026-10-25,
+    // piste 6) · la garde de cloisonnement ne relit pas une clé étrangère
+    // scalaire, et la consultation de la campagne rendait le code et le nom
+    // du tiers d'un autre dossier dont l'identifiant avait été envoyé.
+    if (dto.tiersId) {
+      const tiers = await this.prisma.tiers.findFirst({ where: { id: dto.tiersId, tenantId }, select: { id: true } });
+      if (!tiers) throw new NotFoundException('Tiers introuvable dans ce dossier.');
+    }
     const deja = await this.prisma.demandeConfirmation.findFirst({
       where: { tenantId, campagneId, compteId: dto.compteId },
       select: { destinataire: true },
