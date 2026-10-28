@@ -101,4 +101,18 @@ describe('la validation lit l’auteur et le visa sous verrou', () => {
     // Plus aucune comparaison au seul créateur.
     expect(corps).not.toMatch(/\.createdBy === valideeBy/);
   });
+
+  // RELECTURE M2 · la ventilation analytique est du contenu (convention C2) ·
+  // toute méthode de l'analytique qui écrit les ventilations d'une ligne nomme
+  // l'auteur sur la tête au brouillard.
+  it('toute méthode qui écrit les ventilations d’une ligne nomme son auteur', () => {
+    const analytique = methodes(readFileSync(join(__dirname, '..', 'analytique', 'analytique.service.ts'), 'utf8'));
+    const ecrivent = [...analytique.entries()]
+      .filter(([, c]) => /ventilationAnalytique\.(create|createMany|deleteMany|update|updateMany|delete|upsert)\(/.test(c))
+      .map(([n]) => n)
+      .sort();
+    expect(ecrivent).toEqual(['effacerVentilation', 'ventilerLigne']);
+    for (const nom of ecrivent) expect(analytique.get(nom)).toContain('poserAuteurDeLaVentilation(tx');
+    expect(analytique.get('poserAuteurDeLaVentilation')).toMatch(/FOR UPDATE[\s\S]*contenuChange\(userId/);
+  });
 });

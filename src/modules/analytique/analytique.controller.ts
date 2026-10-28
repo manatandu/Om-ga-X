@@ -197,13 +197,13 @@ export class AnalytiqueController {
     @Param('ligneId') ligneId: string,
     @Body() dto: VentilerLigneDto,
   ) {
-    return this.analytique.ventilerLigne(user.tenantId, ligneId, dto.ventilations);
+    return this.analytique.ventilerLigne(user.tenantId, ligneId, dto.ventilations, user.userId);
   }
 
   @Delete('lignes/:ligneId/ventilations')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   async effacer(@CurrentUser() user: AuthenticatedUser, @Param('ligneId') ligneId: string) {
-    return this.analytique.effacerVentilation(user.tenantId, ligneId);
+    return this.analytique.effacerVentilation(user.tenantId, ligneId, user.userId);
   }
 
   // --- États ---------------------------------------------------------------
