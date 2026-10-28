@@ -1,3 +1,4 @@
+import { MOTIF_REINITIALISATION_OPERATEUR_SANS_SECOND_FACTEUR } from './double-authentification';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import * as bcrypt from 'bcryptjs';
@@ -340,6 +341,37 @@ describe('4 · la réinitialisation par l’administrateur du dossier', () => {
     // Jamais en clair.
     expect(capture.data!.motDePasse).not.toBe('provisoire-tres-long');
     expect(await bcrypt.compare('provisoire-tres-long', capture.data!.motDePasse as string)).toBe(true);
+  });
+
+  // PISTE 1 de l'audit de sécurité du 2026-10-25 · un co-administrateur du
+  // dossier de l'opérateur effaçait son second facteur et passait la garde de
+  // la console avec un facteur qu'il venait d'enrôler.
+  const operateur = (doubleAuthActiveDepuis: Date | null, capture: { data?: Record<string, unknown> }) =>
+    ({
+      user: {
+        findFirst: async () => ({ id: 'op', email: 'op@editeur.cd', tenantId: 'd-1', estOperateurPlateforme: true, doubleAuthActiveDepuis }),
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          capture.data = data;
+          return { id: 'op' };
+        },
+      },
+    }) as never;
+
+  it('PISTE 1 · le mot de passe d’un opérateur se réinitialise, son second facteur RESTE', async () => {
+    const capture: { data?: Record<string, unknown> } = {};
+    await new UtilisateurService(operateur(new Date('2026-10-01'), capture)).reinitialiserMotDePasse('d-1', 'op', 'provisoire-tres-long');
+    expect(capture.data!.doitChangerMotDePasse).toBe(true);
+    for (const champ of ['secretDoubleAuth', 'doubleAuthActiveDepuis', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth']) {
+      expect(capture.data).not.toHaveProperty(champ);
+    }
+  });
+
+  it('PISTE 1 · un opérateur sans second facteur actif ne se réinitialise pas, et rien n’est écrit', async () => {
+    const capture: { data?: Record<string, unknown> } = {};
+    await expect(
+      new UtilisateurService(operateur(null, capture)).reinitialiserMotDePasse('d-1', 'op', 'provisoire-tres-long'),
+    ).rejects.toThrow(MOTIF_REINITIALISATION_OPERATEUR_SANS_SECOND_FACTEUR);
+    expect(capture.data).toBeUndefined();
   });
 
   it('rétrograder un rôle ferme les sessions du compte', async () => {

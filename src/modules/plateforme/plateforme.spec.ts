@@ -6,7 +6,7 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { Referentiel, StatutLicence, TypeLicence } from '@prisma/client';
 import { MOTIF_CONSOLE_SANS_DOUBLE_AUTH, OperateurPlateformeGuard } from './operateur-plateforme.guard';
-import { MOTIF_SUR_SITE_NON_ATTRIBUABLE, PlateformeService } from './plateforme.service';
+import { MOTIF_RATTACHEMENT_PAR_LA_CONSOLE, MOTIF_SUR_SITE_NON_ATTRIBUABLE, PlateformeService } from './plateforme.service';
 import { ModifierLicenceDto } from './dto/plateforme.dto';
 import { raisonHorsCloisonnement } from '../../common/cloisonnement/contexte-cloisonnement';
 
@@ -105,8 +105,10 @@ describe('PlateformeService · bootstrap des opérateurs', () => {
     // PAR ÉGALITÉ EXACTE, sur l'adresse normalisée (audit final F43) · la
     // recherche insensible à la casse promouvait tout compte « ADMIN@… » de
     // n'importe quel dossier.
+    // PISTE 2 de l'audit du 2026-10-25 · dans le seul dossier de l'éditeur,
+    // jamais un compte qui s'est approprié une adresse listée ailleurs.
     expect(appels[0]).toEqual({
-      where: { email: 'cabinet@exemple.cd', estOperateurPlateforme: false },
+      where: { email: 'cabinet@exemple.cd', estOperateurPlateforme: false, tenant: { licence: { type: 'PROPRIETAIRE' } } },
       data: { estOperateurPlateforme: true },
     });
     expect((appels[1] as { where: { email: string } }).where.email).toBe('associe@exemple.cd');
@@ -114,6 +116,25 @@ describe('PlateformeService · bootstrap des opérateurs', () => {
     for (const a of appels) {
       expect((a as { data: Record<string, unknown> }).data).toEqual({ estOperateurPlateforme: true });
     }
+  });
+
+  it('PISTE 2 · une adresse listée tenue hors du dossier de l’éditeur n’est pas promue, et c’est dit', async () => {
+    const promotions: unknown[] = [];
+    const prisma = {
+      user: {
+        updateMany: async (args: unknown) => {
+          promotions.push(args);
+          return { count: 0 };
+        },
+        count: async () => 1,
+      },
+    } as never;
+    const service = new PlateformeService(prisma, { get: () => 'libre@exemple.cd' } as never, undefined as never);
+    const avertis: string[] = [];
+    (service as unknown as { logger: { warn: (m: string) => void; log: () => void } }).logger = { warn: (m) => avertis.push(m), log: () => undefined };
+    await service.onModuleInit();
+    expect(promotions).toHaveLength(1);
+    expect(avertis.join(' ')).toMatch(/hors du dossier de l'éditeur · non promue/);
   });
 
   it('variable absente : aucun appel en base (et surtout aucune destitution)', async () => {
@@ -285,12 +306,24 @@ describe('PlateformeService · groupe d’établissements', () => {
     libre: { id: 'libre', dossierMereId: null, cellules: 0 },
   };
 
-  it('rattache un dossier libre à une mère, et le détache avec null', async () => {
+  it('rattache à la création, et détache avec null', async () => {
     const { s, maj } = service(TENANTS);
-    await s.modifierGroupe('libre', { dossierMereId: 'mere' });
+    await s.modifierGroupe('libre', { dossierMereId: 'mere' }, { aLaCreation: true });
     expect(maj[0]).toEqual({ where: { id: 'libre' }, data: { dossierMereId: 'mere' } });
     await s.modifierGroupe('cellule', { dossierMereId: null });
     expect(maj[1]).toEqual({ where: { id: 'cellule' }, data: { dossierMereId: null } });
+  });
+
+  it('PISTE 4 · la console ne rattache pas un dossier qui existe, et n’écrit rien', async () => {
+    // Le dossier mère lirait la balance du client sans aucun geste de lui
+    // (audit de sécurité du 2026-10-25 ; l'éditeur ne voit jamais les
+    // informations d'un client).
+    const { s, maj } = service(TENANTS);
+    await expect(s.modifierGroupe('libre', { dossierMereId: 'mere' })).rejects.toThrow(ForbiddenException);
+    await expect(s.modifierGroupe('libre', { dossierMereId: 'mere' })).rejects.toThrow(MOTIF_RATTACHEMENT_PAR_LA_CONSOLE);
+    expect(maj).toEqual([]);
+    // Le dossier déjà rattaché à cette mère se relit sans refus.
+    await s.modifierGroupe('cellule', { dossierMereId: 'mere' });
   });
 
   it('un seul niveau, dans un seul sens : ni sa propre mère, ni une mère qui est cellule, ni une mère rétrogradée en cellule', async () => {
@@ -338,7 +371,7 @@ describe('PlateformeService · groupe d’établissements', () => {
 
   it('rattache une succursale SYSCOHADA à un siège SYSCOHADA', async () => {
     const { s, maj } = service(AVEC_SYSCOHADA);
-    await s.modifierGroupe('celluleEntreprise', { dossierMereId: 'mereEntreprise' });
+    await s.modifierGroupe('celluleEntreprise', { dossierMereId: 'mereEntreprise' }, { aLaCreation: true });
     expect(maj[0]).toEqual({ where: { id: 'celluleEntreprise' }, data: { dossierMereId: 'mereEntreprise' } });
   });
 

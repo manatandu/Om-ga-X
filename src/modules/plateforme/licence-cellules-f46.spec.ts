@@ -153,7 +153,7 @@ describe('F46 · le dossier rattaché par la console', () => {
 
   it('prend la licence de sa mère au rattachement', async () => {
     const { s, traces } = rattacher({ type: 'ABONNEMENT' }, { type: 'ABONNEMENT', statut: 'ACTIVE', dateExpiration: fin('2027-03-31') });
-    await s.modifierGroupe('fille', { dossierMereId: 'mere' } as never);
+    await s.modifierGroupe('fille', { dossierMereId: 'mere' } as never, { aLaCreation: true });
     expect(traces.tenant).toEqual([{ where: { id: 'fille' }, data: { dossierMereId: 'mere' } }]);
     expect(traces.licence).toEqual([
       { where: { tenantId: 'fille' }, data: { type: 'ABONNEMENT', statut: 'ACTIVE', dateExpiration: fin('2027-03-31') } },

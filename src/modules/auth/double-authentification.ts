@@ -171,3 +171,33 @@ export const SANS_DOUBLE_AUTH = {
   dernierPasDoubleAuth: null,
   codesSecoursDoubleAuth: [] as string[],
 };
+
+/**
+ * SAUF POUR UN OPÉRATEUR DE LA CONSOLE (audit de sécurité du 2026-10-25,
+ * piste 1 ; décision de Manasse du 2026-10-28). Le raisonnement ci-dessus vaut
+ * à l'étage d'UN dossier · celui qui réinitialise y a déjà les droits du
+ * compte. Il tombe pour l'opérateur · un autre administrateur de son dossier
+ * posait un mot de passe, effaçait le second facteur, enrôlait le sien et
+ * passait la garde de la console (`OperateurPlateformeGuard`), qui exige le
+ * second facteur justement pour qu'un mot de passe ne suffise pas à ouvrir
+ * tous les cabinets. Le mot de passe se réinitialise, le second facteur
+ * RESTE · le titulaire se reconnecte avec son application ou un code de
+ * secours ; s'il a perdu les deux, la remise se fait en base, geste manuel
+ * hors de toute session.
+ */
+export function secondFacteurLeveParReinitialisation(cible: { estOperateurPlateforme: boolean }) {
+  return cible.estOperateurPlateforme ? {} : SANS_DOUBLE_AUTH;
+}
+
+/**
+ * L'OPÉRATEUR SANS SECOND FACTEUR NE SE RÉINITIALISE PAS · celui qui pose le
+ * mot de passe enrôlerait ensuite sa propre application et passerait la garde
+ * de la console. Refus nommé ; le titulaire active d'abord son second facteur,
+ * ou la remise se fait en base.
+ */
+export const MOTIF_REINITIALISATION_OPERATEUR_SANS_SECOND_FACTEUR =
+  "Ce compte est celui d'un opérateur de la console et n'a pas de second facteur actif · le réinitialiser donnerait la console à celui qui choisit le mot de passe. Le titulaire active sa double authentification d'abord ; à défaut, la remise se fait en base.";
+
+export function motifRefusReinitialisationOperateur(cible: { estOperateurPlateforme: boolean; doubleAuthActiveDepuis: Date | null }): string | null {
+  return cible.estOperateurPlateforme && cible.doubleAuthActiveDepuis === null ? MOTIF_REINITIALISATION_OPERATEUR_SANS_SECOND_FACTEUR : null;
+}

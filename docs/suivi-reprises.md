@@ -722,8 +722,42 @@ Demande de Manasse · « Réfère-toi à la loi et tranche ce que tu peux ».
   à l'ouverture par un tableur et la façon d'ouvrir les CSV.
 
 Restent à Manasse, que nul texte ne régit · fermer Cloud Run au seul trafic
-du site (réglage de la console Google) ; retirer de l'index Git les fichiers
-engendrés (`node_modules/`, `dist/`) ; le cadrage du logiciel d'audit ;
-l'identité de l'éditeur pour la version 3 du contrat de licence (Code du
-numérique, art. 52) ; l'anomalie n° 9 de la NOTE 3A (corpus muet) ; l'arrêté
-de l'art. 219 (texte à fournir) ; la demande de mise à jour Dependabot.
+du site (réglage de la console Google ; vérifier d'abord que `surveillance.yml`
+et le contrôle `/health` du déploiement passent encore) ; le cadrage du
+logiciel d'audit ; l'identité de l'éditeur pour la version 3 du contrat de
+licence (Code du numérique, art. 52) ; l'anomalie n° 9 de la NOTE 3A
+(proposée · éliminer le transfert dans la liasse combinée, comme les 184 à
+187) ; l'arrêté de l'art. 219 (texte à fournir). Les fichiers engendrés
+étaient déjà retirés de l'index (`3bff15bca`).
+
+## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
+
+Rapport · branche `travail/audit-securite`, `docs/audits/securite-2026-10-25/`.
+Décision de Manasse (« Go », sur la recommandation · la console ne donne
+aucun accès aux données d'un dossier, décision du 2026-10-09).
+
+- **Piste 1** · un co-administrateur du dossier de l'opérateur réinitialisait
+  son mot de passe, effaçait son second facteur, enrôlait le sien et passait
+  la garde de la console. La réinitialisation d'un compte opérateur GARDE son
+  second facteur (`secondFacteurLeveParReinitialisation`), et un opérateur
+  sans second facteur actif ne se réinitialise pas (403 nommé), au dossier
+  comme à la console.
+- **Piste 2** · le drapeau d'opérateur s'accordait au démarrage à tout compte
+  portant une adresse listée, sans preuve de possession. La promotion ne vise
+  plus que les comptes du dossier de l'éditeur (licence PROPRIETAIRE) ; une
+  adresse listée tenue ailleurs est dite au journal, non promue. Un drapeau
+  déjà accordé n'est jamais retiré.
+- **Piste 4** · la console rattachait un dossier existant à un groupe dont la
+  mère lisait sa balance. Elle ne rattache plus qu'à la CRÉATION ; elle
+  détache toujours (`MOTIF_RATTACHEMENT_PAR_LA_CONSOLE`). Un rattachement
+  d'un dossier existant, s'il en faut un, se fera par un geste du cabinet
+  client lui-même · fonction nouvelle, au suivi.
+- **Relevé lié, non corrigé** · `creerCabinet` rend encore à l'opérateur le
+  mot de passe provisoire de l'administrateur du dossier créé ; l'envoyer au
+  seul courriel de l'administrateur, comme la réinitialisation depuis le
+  2026-10-09, fermerait la même porte à la naissance du dossier. Les pistes 3
+  et 5 à 11 restent à valider, comme le rapport les décrit.
+- **Dependabot** · la mise à jour groupée du serveur (n° 25) est intégrée,
+  ts-node déclaré ; les mises à jour MAJEURES (Vite 8, React Router 7,
+  TypeScript 7, Tailwind 4, NestJS 12, actions GitHub) restent ouvertes, une
+  ligne chacune.

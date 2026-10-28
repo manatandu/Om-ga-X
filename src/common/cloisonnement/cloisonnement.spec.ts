@@ -270,6 +270,10 @@ describe('balayage du code · toute collection porte sa borne', () => {
   /** Sorties de cloisonnement déclarées · voir contexte-cloisonnement.ts. */
   const SORTIES_DECLAREES = new Set([
     'src/modules/plateforme/plateforme.service.ts:User.updateMany',
+    // Piste 2 de l'audit du 2026-10-25 · au démarrage, une adresse listée
+    // tenue HORS du dossier de l'éditeur est comptée pour être dite, jamais
+    // promue · même sortie que la promotion, bornée par l'adresse.
+    'src/modules/plateforme/plateforme.service.ts:User.count',
     // La cascade de l'échéance d'une mère sur ses cellules (audit final F46),
     // dans `horsCloisonnement`, bornée par `dossierMereId`.
     'src/modules/plateforme/plateforme.service.ts:Licence.updateMany',

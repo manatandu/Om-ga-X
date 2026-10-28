@@ -1,6 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { normaliserCourriel } from '../../common/courriel';
-import { SANS_DOUBLE_AUTH } from '../auth/double-authentification';
+import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma.service';
@@ -274,6 +274,8 @@ export class UtilisateurService {
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable pour ce tenant');
     }
+    const refusOperateur = motifRefusReinitialisationOperateur(user);
+    if (refusOperateur) throw new ForbiddenException(refusOperateur);
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -281,7 +283,7 @@ export class UtilisateurService {
         doitChangerMotDePasse: true,
         sessionsInvalidesAvant: new Date(),
         ...DECOMPTE_REMIS_A_ZERO,
-        ...SANS_DOUBLE_AUTH,
+        ...secondFacteurLeveParReinitialisation(user),
       },
     });
     return { reinitialise: true, email: user.email };

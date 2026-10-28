@@ -619,20 +619,16 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
                       <label className="text-[11.5px] text-right flex items-center justify-end gap-1.5">
                         <Aide
                           titre="Rattachement à un groupe"
-                          texte="Rattacher ce dossier comme cellule autorise le dossier mère à lire sa balance pour la balance agrégée du groupe (une même personne morale en plusieurs dossiers). Un groupe n'a qu'un niveau."
+                          texte="Une cellule lit sa balance dans le dossier mère, pour la balance agrégée du groupe (une même personne morale en plusieurs dossiers). La console ne rattache pas un dossier qui existe déjà : l'éditeur ne voit jamais les informations d'un client. Une cellule se crée rattachée, à la création du cabinet ou par le siège ; ici, un rattachement se détache."
                           source="OmegaX"
                         />
                         Dossier mère :
                       </label>
+                      {/* Piste 4 de l'audit de sécurité · la console ne rattache plus un
+                          dossier qui existe (le serveur le refuse) · elle détache seulement. */}
                       <select value={groupeMereId} onChange={(e) => setGroupeMereId(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[11.5px]">
                         <option value="">Aucun (dossier indépendant)</option>
-                        {meresPossibles(liste ?? [], {
-                          saufId: groupeEnCours.id,
-                          referentiel: groupeEnCours.referentiel,
-                          systemeComptableSyscohada: groupeEnCours.systemeComptableSyscohada,
-                        }).map((m) => (
-                          <option key={m.id} value={m.id}>{m.nom}</option>
-                        ))}
+                        {groupeEnCours.dossierMere && <option value={groupeEnCours.dossierMere.id}>{groupeEnCours.dossierMere.nom}</option>}
                       </select>
                     </div>
                   </>

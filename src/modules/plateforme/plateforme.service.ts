@@ -1,8 +1,8 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { CourrierService } from '../courrier/courrier.service';
 import { ORIGINE_REINITIALISATION_ADMIN, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
 import { normaliserCourriel } from '../../common/courriel';
-import { SANS_DOUBLE_AUTH } from '../auth/double-authentification';
+import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
@@ -32,6 +32,10 @@ export const MOTIF_SUR_SITE_NON_ATTRIBUABLE =
  * Toutes les méthodes sont protégées par OperateurPlateformeGuard au niveau
  * du contrôleur · aucune n'est atteignable par un ADMIN_CABINET ordinaire.
  */
+
+export const MOTIF_RATTACHEMENT_PAR_LA_CONSOLE =
+  "La console ne rattache pas à un groupe un dossier qui existe déjà · le dossier mère lirait sa balance sans aucun geste du cabinet client, et l'éditeur ne voit jamais les informations d'un client. Une cellule se crée rattachée (création du cabinet, ou « Nouvelle cellule » du siège) ; un rattachement se détache toujours."
+
 @Injectable()
 export class PlateformeService implements OnModuleInit {
   private readonly logger = new Logger(PlateformeService.name);
@@ -52,6 +56,18 @@ export class PlateformeService implements OnModuleInit {
    * tous les opérateurs en silence · la révocation est un geste manuel (SQL).
    * Une adresse encore inconnue n'est pas une erreur : le compte sera promu
    * au premier redémarrage qui suit sa création.
+   *
+   * DANS LE SEUL DOSSIER DE L'ÉDITEUR (audit de sécurité du 2026-10-25,
+   * piste 2 ; décision de Manasse du 2026-10-28). Aucune porte qui écrit une
+   * adresse n'en prouve la possession (`changerAdresse`, création d'un
+   * collaborateur, cellule du siège, essai en libre-service) · une adresse
+   * listée encore libre (associé inscrit d'avance, ancienne adresse quittée,
+   * faute de frappe dans le secret) se prenait depuis n'importe quel dossier,
+   * et le redémarrage suivant donnait la console. La promotion ne vise plus que
+   * les comptes du dossier qui porte la licence PROPRIETAIRE, dont les
+   * administrateurs sont ceux de l'éditeur. Un drapeau déjà accordé n'est
+   * jamais retiré (règle ci-dessus) ; une adresse listée tenue HORS de ce
+   * dossier est dite au journal, sans promotion.
    */
   async onModuleInit() {
     const brut = this.config.get<string>('OPERATEURS_PLATEFORME');
@@ -74,12 +90,23 @@ export class PlateformeService implements OnModuleInit {
       // l'ensemble de la plateforme.
       const { count } = await horsCloisonnement('démarrage · promotion des opérateurs de la plateforme', () =>
         this.prisma.user.updateMany({
-          where: { email, estOperateurPlateforme: false },
+          where: { email, estOperateurPlateforme: false, tenant: { licence: { type: TypeLicence.PROPRIETAIRE } } },
           data: { estOperateurPlateforme: true },
         }),
       );
       if (count > 0) {
         this.logger.log(`Opérateur de plateforme accordé : ${email}`);
+        continue;
+      }
+      const horsEditeur = await horsCloisonnement('démarrage · adresse d’opérateur tenue hors du dossier de l’éditeur', () =>
+        this.prisma.user.count({
+          where: { email, estOperateurPlateforme: false, NOT: { tenant: { licence: { type: TypeLicence.PROPRIETAIRE } } } },
+        }),
+      );
+      if (horsEditeur > 0) {
+        this.logger.warn(
+          `Adresse d'opérateur listée tenue par un compte hors du dossier de l'éditeur · non promue (${email}). Retirez-la de OPERATEURS_PLATEFORME ou créez le compte dans le dossier de l'éditeur.`,
+        );
       }
     }
   }
@@ -309,14 +336,28 @@ export class PlateformeService implements OnModuleInit {
    * hiérarchies imbriquées rendraient l'agrégation ambiguë (qui agrège
    * qui ?) sans répondre à aucun cas réel · une église et ses cellules,
    * un siège et ses antennes, c'est toujours un étage.
+   *
+   * LA CONSOLE NE RATTACHE PAS UN DOSSIER QUI EXISTE (audit de sécurité du
+   * 2026-10-25, piste 4 ; décision de Manasse du 2026-10-28, appliquant celle
+   * du 2026-10-09, « l'éditeur ne voit jamais les informations d'un client »).
+   * Le rattachement ouvre au dossier mère la balance de la cellule et, au
+   * SYCEBNL, l'import de son canevas · posé par l'opérateur seul, sans geste du
+   * client, il faisait lire le grand livre d'un cabinet par une mère que
+   * l'opérateur peut tenir (`creerCabinet` lui rend le mot de passe d'un
+   * dossier qu'il crée). Restent permis · le DÉTACHEMENT, qui ne fait que
+   * retirer un accès ; le plafond de cellules ; et le rattachement À LA
+   * CRÉATION (`aLaCreation`), où le dossier naît vide, cellule de son groupe
+   * dès l'origine. Le refus tombe APRÈS les contrôles de structure, pour
+   * qu'une demande mal formée dise d'abord ce qui ne va pas.
    */
-  async modifierGroupe(tenantId: string, dto: ModifierGroupeDto) {
+  async modifierGroupe(tenantId: string, dto: ModifierGroupeDto, options: { aLaCreation?: boolean } = {}) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: {
         id: true,
         referentiel: true,
         systemeComptableSyscohada: true,
+        dossierMereId: true,
         licence: { select: { type: true } },
         _count: { select: { cellules: true } },
       },
@@ -348,6 +389,9 @@ export class PlateformeService implements OnModuleInit {
       // ne se coupait jamais. Vérifié avant toute écriture.
       refuserCelluleEditeur(tenant.licence?.type);
       const licence = await this.verifierMere(dossierMereId, tenant);
+      if (!options.aLaCreation && tenant.dossierMereId !== dossierMereId) {
+        throw new ForbiddenException(MOTIF_RATTACHEMENT_PAR_LA_CONSOLE);
+      }
       await this.prisma.tenant.update({ where: { id: tenantId }, data: { dossierMereId } });
       if (licence) {
         // SORTIE DE CLOISONNEMENT · la licence est celle d'un AUTRE dossier que
@@ -489,7 +533,7 @@ export class PlateformeService implements OnModuleInit {
     }
     // Rattachement au groupe à la création · mêmes validations que le PATCH.
     if (dto.dossierMereId) {
-      await this.modifierGroupe(resultat.tenant.id, { dossierMereId: dto.dossierMereId });
+      await this.modifierGroupe(resultat.tenant.id, { dossierMereId: dto.dossierMereId }, { aLaCreation: true });
     }
     // Le mot de passe a transité par l'opérateur · le client devra le
     // remplacer à sa première connexion (voir schema.prisma, User).
@@ -546,6 +590,8 @@ export class PlateformeService implements OnModuleInit {
         "Aucun administrateur avec cette adresse dans ce dossier · l'opérateur ne réinitialise que les administrateurs.",
       );
     }
+    const refusOperateur = motifRefusReinitialisationOperateur(admin);
+    if (refusOperateur) throw new ForbiddenException(refusOperateur);
     // LA CONSOLE NE CONNAÎT JAMAIS LE MOT DE PASSE (décision de Manasse du
     // 2026-10-09 · « [l'éditeur] ne doit pas voir les informations du client, c'est
     // confidentiel et non discutable »). L'opérateur choisissait le mot de
@@ -588,7 +634,7 @@ export class PlateformeService implements OnModuleInit {
           doitChangerMotDePasse: true,
           sessionsInvalidesAvant: new Date(),
           ...DECOMPTE_REMIS_A_ZERO,
-          ...SANS_DOUBLE_AUTH,
+          ...secondFacteurLeveParReinitialisation(admin),
         },
       }),
     );
