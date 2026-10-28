@@ -30,7 +30,7 @@ type Etat = {
   jeuEtatsFinanciersSycebnl?: JeuEtatsFinanciersSycebnl;
   systemeComptableSyscohada?: SystemeComptableSyscohada;
   lignes?: Record<string, unknown>[];
-  balance?: { numero: string; solde: number }[];
+  balance?: { numero: string; solde: number; intitule?: string }[];
   /** Le plan · la doublure honore dossier et identifiant (audit final F138). */
   comptes?: { id: string; tenantId: string; numero: string }[];
 };
@@ -62,7 +62,7 @@ function service(etat: Etat = {}) {
     },
   } as unknown as PrismaService;
   const balance = jest.fn().mockResolvedValue({
-    lignes: (etat.balance ?? []).map((l) => ({ ...l, compteId: l.numero, intitule: '', classe: 'CLASSE_1' })),
+    lignes: (etat.balance ?? []).map((l) => ({ intitule: '', ...l, compteId: l.numero, classe: 'CLASSE_1' })),
     totaux: {},
   });
   const ecritures = { balance } as unknown as EcritureService;
@@ -374,6 +374,27 @@ describe('Registre des provisions · le tableau de variation', () => {
     });
     const t = await svc.tableauDeVariation('t1', 'ex1');
     expect(t.rapprochement[0].ecart).toBe(-400000);
+  });
+
+  // RELECTURE DE LA CONCORDANCE, M4 · un compte du registre chargé sans
+  // aucune de ses lignes n'était confronté à rien · il est nommé, ses comptes
+  // pris dans les natures et le court terme du module.
+  it('nomme le solde d’un compte du registre qu’aucune ligne ne porte, court terme compris', async () => {
+    const { svc } = service({
+      lignes: [],
+      balance: [
+        { numero: '19880000', intitule: 'Provisions pour divers risques et charges', solde: -150000 },
+        { numero: '49910000', intitule: 'Provisions à court terme', solde: -40000 },
+        { numero: '41110000', intitule: 'Clients', solde: 900000 },
+        { numero: '19100000', intitule: 'Provisions pour litiges', solde: 0 },
+      ],
+    });
+    const t = await svc.tableauDeVariation('t1', 'ex1');
+    expect(t.rapprochement).toEqual([]);
+    expect(t.horsRegistre).toEqual([
+      { numero: '19880000', intitule: 'Provisions pour divers risques et charges', soldeComptable: 150000 },
+      { numero: '49910000', intitule: 'Provisions à court terme', soldeComptable: 40000 },
+    ]);
   });
 
   it('ne cherche AUCUN solde pour un passif éventuel · il n’est dans aucun compte, par définition', async () => {

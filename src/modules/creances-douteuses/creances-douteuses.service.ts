@@ -629,7 +629,7 @@ export class CreancesDouteusesService {
       .filter((g) => g.solde > 0.005);
     const ou416 = { tenantId, numero: { startsWith: COMPTES_CREANCES_DOUTEUSES.creances416 }, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true };
     // m5 · les 491 de détail, que l'écran filtre par la racine de la nature.
-    const ou491 = { tenantId, numero: { startsWith: '491' }, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true };
+    const ou491 = { tenantId, numero: { startsWith: COMPTES_CREANCES_DOUTEUSES.depreciations491 }, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true };
     const [comptesCreances, comptes416, comptes491, total416, total491] = await Promise.all([
       this.prisma.compte.findMany({
         where: { tenantId, id: { in: debiteurs.map((d) => d.compteId) } },
@@ -826,13 +826,24 @@ export class CreancesDouteusesService {
     const { ids, provisoire } = chaine;
     const comptes416 = par416.map((g) => g.compte416Id);
     const comptes491 = par491.map((g) => g.compte491Id);
-    const [solde416, solde491, horsModule491, reportProvisoire] = await Promise.all([
+    // LES 416 ET 491 QU'AUCUNE CRÉANCE DU MODULE NE PORTE (relecture de la
+    // concordance, M4) · un reclassement ou une dépréciation passés à la main
+    // n'étaient lus nulle part, et le rapprochement concordait, ou se disait
+    // sans objet, sur un 416 chargé. Même chaîne, même date, même exclusion du
+    // report provisoire que les soldes du module.
+    const horsDuModule = (racine: string, ids: string[]): Prisma.CompteWhereInput => ({
+      numero: { startsWith: racine },
+      ...(ids.length > 0 ? { id: { notIn: ids } } : {}),
+    });
+    const [solde416, solde491, horsModule491, reportProvisoire, solde416SansCreance, solde491SansCreance] = await Promise.all([
       comptes416.length > 0 ? this.solde(tenantId, { id: { in: comptes416 } }, ids, ex.dateFin) : Promise.resolve(0),
       comptes491.length > 0 ? this.solde(tenantId, { id: { in: comptes491 } }, ids, ex.dateFin) : Promise.resolve(0),
       comptes491.length > 0 ? this.horsModule491(tenantId, comptes491, ex) : Promise.resolve(0),
       // B1 · l'écran dit pourquoi les soldes sont provisoires · à-nouveau
       // absent, ou report provisoire, que le module ne lit jamais.
       provisoire ? this.aUnReportProvisoire(tenantId, ex.id) : Promise.resolve(false),
+      this.solde(tenantId, horsDuModule(COMPTES_CREANCES_DOUTEUSES.creances416, comptes416), ids, ex.dateFin),
+      this.solde(tenantId, horsDuModule(COMPTES_CREANCES_DOUTEUSES.depreciations491, comptes491), ids, ex.dateFin),
     ]);
     return {
       // Lu sur le report reconstitué de l'exercice précédent tant que
@@ -847,6 +858,10 @@ export class CreancesDouteusesService {
       depreciationModule: centimes(n(declarees._sum.depreciationOuverture) + n(ecarts._sum.ecart)),
       // m8 · la part du 491 passée HORS du module dans la chaîne, en positif.
       horsModule491,
+      // M4 · les soldes des 416 (débiteur) et 491 (créditeur, rendu en positif)
+      // qu'aucune créance du module ne porte.
+      solde416SansCreance,
+      solde491SansCreance: centimes(-solde491SansCreance),
     };
   }
 

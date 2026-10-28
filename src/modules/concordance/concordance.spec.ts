@@ -61,8 +61,8 @@ function monter(o: {
         })),
     ),
   };
-  const provisions = { tableauDeVariation: jest.fn(o.provisions ?? (async () => ({ rapprochement: [], passifsEventuels: [] }))) };
-  const creances = { lister: jest.fn(o.creances ?? (async () => ({ total: 0, rapprochement: null }))) };
+  const provisions = { tableauDeVariation: jest.fn(o.provisions ?? (async () => ({ rapprochement: [], horsRegistre: [], passifsEventuels: [] }))) };
+  const creances = { lister: jest.fn(o.creances ?? (async () => ({ total: 0, rapprochement: { solde416SansCreance: 0, solde491SansCreance: 0 } }))) };
   const analytique = { controleCumuls: jest.fn(o.analytique ?? (async () => [])) };
   const rapprochements = { obtenir: jest.fn(o.obtenir ?? (async () => ({}))) };
   const svc = new ConcordanceService(prisma as never, maintenance as never, provisions as never, creances as never, analytique as never, rapprochements as never);
@@ -110,7 +110,7 @@ describe('la concordance relit les confrontations des modules', () => {
     const { svc } = monter({
       creances: async () => ({
         total: 1,
-        rapprochement: { provisoire: true, reportProvisoire: false, solde416: 1_160_000, resteModule: 1_160_000, solde491: 400_000, depreciationModule: 500_000, horsModule491: 0 },
+        rapprochement: { provisoire: true, reportProvisoire: false, solde416: 1_160_000, resteModule: 1_160_000, solde491: 400_000, depreciationModule: 500_000, horsModule491: 0, solde416SansCreance: 0, solde491SansCreance: 0 },
       }),
     });
     const f = (await svc.concordance('t', 'ex')).familles.find((x) => x.cle === 'CREANCES_DOUTEUSES')!;
@@ -120,6 +120,37 @@ describe('la concordance relit les confrontations des modules', () => {
       ['491', -100_000],
     ]);
     expect(f.mentions.join(' ')).toMatch(/provisoires/);
+  });
+
+  // RELECTURE M4 · un solde passé à la main hors du registre ou hors du module
+  // rendait « Concorde » ou « Sans objet » · il se confronte à zéro.
+  it('un solde des comptes du registre qu’aucune provision ne porte est un ÉCART, jamais une absence', async () => {
+    const { svc } = monter({
+      provisions: async () => ({
+        rapprochement: [{ numero: '19110000', montantRegistre: 300_000, soldeComptable: 300_000 }],
+        horsRegistre: [{ numero: '19880000', intitule: 'Provisions pour divers risques et charges', soldeComptable: 150_000 }],
+        passifsEventuels: [],
+      }),
+    });
+    const f = (await svc.concordance('t', 'ex')).familles.find((x) => x.cle === 'PROVISIONS')!;
+    expect(f.etat).toBe('ECART');
+    expect(f.lignes.map((l) => [l.reference, l.module, l.comptabilite, l.ecart])).toEqual([
+      ['19110000', 300_000, 300_000, 0],
+      ['19880000', 0, 150_000, 150_000],
+    ]);
+    expect(f.lignes[1].intitule).toMatch(/hors registre/);
+  });
+
+  it('un 416 chargé sans créance au module · la famille est en ÉCART, pas sans objet', async () => {
+    const { svc } = monter({
+      creances: async () => ({ total: 0, rapprochement: { solde416SansCreance: 800_000, solde491SansCreance: 200_000 } }),
+    });
+    const f = (await svc.concordance('t', 'ex')).familles.find((x) => x.cle === 'CREANCES_DOUTEUSES')!;
+    expect(f.etat).toBe('ECART');
+    expect(f.lignes.map((l) => [l.reference, l.module, l.comptabilite])).toEqual([
+      ['416', 0, 800_000],
+      ['491', 0, 200_000],
+    ]);
   });
 
   it('la banque · relevé face au solde pointé du module ; sans solde de départ, non calculé', async () => {

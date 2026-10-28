@@ -127,6 +127,8 @@ export const COMPTES_CREANCES_DOUTEUSES = {
   reprise: '7594',
   /** Racine du reclassement. */
   creances416: '416',
+  /** Racine des dépréciations des créances (fiche du compte 49 des deux plans · 4911, 4912). */
+  depreciations491: '491',
   /** Racine des pertes sur créances. */
   pertes651: '651',
 } as const;

@@ -201,9 +201,15 @@ export class ConcordanceService {
     return [
       famille(
         PROVISIONS,
-        t.rapprochement.map((r) => ligne(r.numero, '', r.montantRegistre, r.soldeComptable)),
+        [
+          ...t.rapprochement.map((r) => ligne(r.numero, '', r.montantRegistre, r.soldeComptable)),
+          // M4 · un solde des comptes du registre qu'aucune de ses lignes ne
+          // porte est un écart, jamais une absence · sans quoi la famille
+          // concordait sur une dotation passée hors du registre.
+          ...t.horsRegistre.map((h) => ligne(h.numero, `${h.intitule} · solde hors registre`.replace(/^ · /, ''), 0, h.soldeComptable)),
+        ],
         mentions,
-        'Aucune provision comptabilisée au registre.',
+        'Aucune provision comptabilisée au registre, et aucun solde sur ses comptes.',
       ),
     ];
   }
@@ -211,8 +217,17 @@ export class ConcordanceService {
   /** Le module des créances douteuses face au 416 et au 491 de ses créances (A7, rapprochement du module). */
   private async familleCreances(tenantId: string, exerciceId: string): Promise<FamilleConcordance[]> {
     const l = await this.creances.lister(tenantId, exerciceId);
-    if (l.total === 0) return [famille(CREANCES_DOUTEUSES, [], [], 'Aucune créance reclassée au plus tard à la clôture.')];
     const r = l.rapprochement;
+    // M4 · les 416 et 491 qu'aucune créance du module ne porte se confrontent
+    // à zéro · un reclassement ou une dépréciation passés à la main rendaient
+    // la famille « sans objet » ou concordante.
+    const sansCreance = [
+      ...(r.solde416SansCreance !== 0 ? [ligne('416', 'Solde hors du module (aucune créance reclassée ne le porte)', 0, r.solde416SansCreance)] : []),
+      ...(r.solde491SansCreance !== 0 ? [ligne('491', 'Solde hors du module (aucune créance reclassée ne le porte)', 0, r.solde491SansCreance)] : []),
+    ];
+    if (l.total === 0) {
+      return [famille(CREANCES_DOUTEUSES, sansCreance, [], 'Aucune créance reclassée au plus tard à la clôture, et aucun solde au 416 ni au 491.')];
+    }
     const mentions: string[] = [];
     if (r.provisoire) {
       mentions.push(
@@ -225,7 +240,11 @@ export class ConcordanceService {
     return [
       famille(
         CREANCES_DOUTEUSES,
-        [ligne('416', 'Créances reclassées · reste', r.resteModule, r.solde416), ligne('491', 'Dépréciation en place', r.depreciationModule, r.solde491)],
+        [
+          ligne('416', 'Créances reclassées · reste', r.resteModule, r.solde416),
+          ligne('491', 'Dépréciation en place', r.depreciationModule, r.solde491),
+          ...sansCreance,
+        ],
         mentions,
       ),
     ];

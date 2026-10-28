@@ -2425,6 +2425,27 @@ describe('créances douteuses · service', () => {
     expect(acces).toEqual({ aideComptable: false, gestionnairePaie: false });
   });
 
+  // RELECTURE DE LA CONCORDANCE, M4 · un 416 ou un 491 chargé à la main, sur
+  // un compte qu'aucune créance du module ne porte, n'était lu nulle part ·
+  // le rapprochement le rend, lu sur les racines du module, hors de ses comptes.
+  it('M4 · les 416 et 491 qu’aucune créance ne porte sont rendus, sur les racines du module hors de ses comptes', async () => {
+    const { service, prisma } = monter({ creance: null });
+    servirListe(prisma, [creance([revue26])]);
+    prisma.ligneEcriture.aggregate.mockImplementation(({ where }: any) => {
+      const hors = where.compte?.id?.notIn;
+      if (hors && where.compte.numero?.startsWith === '416') return Promise.resolve({ _sum: { debit: 800_000, credit: 0 } });
+      if (hors && where.compte.numero?.startsWith === '491') return Promise.resolve({ _sum: { debit: 0, credit: 200_000 } });
+      return Promise.resolve({ _sum: { debit: 0, credit: 0 } });
+    });
+    const l = await service.lister('t', 'ex-26');
+    expect(l.rapprochement).toMatchObject({ solde416SansCreance: 800_000, solde491SansCreance: 200_000 });
+    const lectures = prisma.ligneEcriture.aggregate.mock.calls.map((c: any[]) => c[0].where.compte).filter((c: any) => c?.id?.notIn);
+    expect(lectures.map((c: any) => [c.numero.startsWith, c.id.notIn.length > 0])).toEqual([
+      ['416', true],
+      ['491', true],
+    ]);
+  });
+
   it('m8 · la part du 491 passée HORS du module se dit · ni à-nouveau, ni revue du module, ni son négatif', async () => {
     const { service, prisma } = monter({ creance: null });
     servirListe(prisma, [creance([revue26])]);
