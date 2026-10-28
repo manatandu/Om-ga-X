@@ -33,6 +33,15 @@ export interface AvanceSalaire {
   dateFin?: string | null;
   retenues: { montantFc: number; numero: number; moisDePaie: string; bulletinAnnule: boolean }[];
   soldeFc: number;
+  /** Ligne microfina-m3, idée 6 · le plan d'étalement déclaré, null sans plan. */
+  plan?: {
+    premierMois: string;
+    nombreEcheances: number | null;
+    retenueMensuelleFc: number | null;
+    echeancier: { mois: string; montantFc: number }[];
+  } | null;
+  /** La retenue que le plan propose pour le mois demandé · null hors demande. */
+  proposition?: { montantFc: number | null; motif: string; rang: number | null; auDelaDuPlan: boolean } | null;
 }
 
 /** Une liste du serveur et ce qu'elle dit d'elle-même (audit final F259). */
@@ -86,6 +95,8 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
     dateOctroi: new Date().toISOString().slice(0, 10),
     montantFc: '',
     retenueMensuelleFc: '',
+    premierMoisRetenue: '',
+    nombreEcheances: '',
     objet: '',
     pieceJustificative: '',
     referenceActe: '',
@@ -141,6 +152,8 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
       dateOctroi: avance.dateOctroi,
       montantFc: nombre(avance.montantFc),
       ...(avance.retenueMensuelleFc.trim() ? { retenueMensuelleFc: nombre(avance.retenueMensuelleFc) } : {}),
+      ...(avance.premierMoisRetenue ? { premierMoisRetenue: avance.premierMoisRetenue } : {}),
+      ...(avance.premierMoisRetenue && avance.nombreEcheances.trim() ? { nombreEcheances: nombre(avance.nombreEcheances) } : {}),
       objet: avance.objet,
       pieceJustificative: avance.pieceJustificative,
       ...(avance.type === 'SAISIE_ARRET'
@@ -148,7 +161,7 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
         : {}),
     };
     if (await envoyer(() => api.post(`/personnel/salaries/${avance.salarieId}/avances`, corps))) {
-      setAvance((a) => ({ ...a, montantFc: '', retenueMensuelleFc: '', objet: '', pieceJustificative: '', referenceActe: '', greffe: '', destinataire: '' }));
+      setAvance((a) => ({ ...a, montantFc: '', retenueMensuelleFc: '', premierMoisRetenue: '', nombreEcheances: '', objet: '', pieceJustificative: '', referenceActe: '', greffe: '', destinataire: '' }));
     }
   };
 
@@ -275,6 +288,15 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
                 </td>
                 <td className="px-2 py-1">
                   {a.objet} <span className="text-text-dim">· {a.pieceJustificative}</span>
+                  {a.plan && (
+                    <div className="text-[11px] text-text-dim">
+                      Étalée dès {a.plan.premierMois} ·{' '}
+                      {a.plan.nombreEcheances
+                        ? `${a.plan.nombreEcheances} échéances`
+                        : `${fc(a.plan.retenueMensuelleFc ?? 0)} par mois`}{' '}
+                      (fin prévue {a.plan.echeancier[a.plan.echeancier.length - 1]?.mois ?? '·'})
+                    </div>
+                  )}
                   {a.retenues.length > 0 && (
                     <div className="text-[11px] text-text-dim">
                       {a.retenues
@@ -357,6 +379,17 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
             <input aria-label={avance.type === 'SAISIE_ARRET' ? 'Date de notification' : "Date d'octroi"} type="date" value={avance.dateOctroi} onChange={(e) => setAvance({ ...avance, dateOctroi: e.target.value })} className={champ} />
             <input aria-label="Montant consenti" placeholder="Montant FC" value={avance.montantFc} onChange={(e) => setAvance({ ...avance, montantFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
             <input aria-label="Retenue mensuelle proposée" placeholder="Retenue / mois" value={avance.retenueMensuelleFc} onChange={(e) => setAvance({ ...avance, retenueMensuelleFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
+            {avance.type !== 'SAISIE_ARRET' && (
+              <>
+                <input aria-label="Premier mois de retenue" type="month" value={avance.premierMoisRetenue} onChange={(e) => setAvance({ ...avance, premierMoisRetenue: e.target.value })} className={champ} />
+                <input aria-label="Durée du prélèvement en mois" placeholder="Durée (mois)" value={avance.nombreEcheances} onChange={(e) => setAvance({ ...avance, nombreEcheances: e.target.value })} className={`${champ} w-[90px] text-right`} />
+                <Aide
+                  titre="Retenue étalée"
+                  texte="Un premier mois et, au choix, la durée du prélèvement (l'échéance en découle, la dernière prend le reste) ou la retenue mensuelle (la durée en découle). Chaque bulletin du salarié propose alors la retenue du mois, préremplie ; le bulletin retient ce que la saisie porte, et la simulation dit l'échéance non portée. Un mois sauté n'est pas rattrapé en doublant une échéance. Une saisie-arrêt ne s'étale pas : son acte en fixe les modalités."
+                  source="Code du travail, art. 112, c) et f) · AUPSRVE, art. 184, 3°"
+                />
+              </>
+            )}
             <input aria-label="Objet" placeholder="Objet" value={avance.objet} onChange={(e) => setAvance({ ...avance, objet: e.target.value })} className={`${champ} w-[160px]`} />
             <input
               aria-label="Pièce justificative"

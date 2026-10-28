@@ -765,6 +765,11 @@ model Tenant {
   bulletinsPaie              BulletinPaie[]
   rubriquesPaie              RubriquePaie[]
   avancesSalaire             AvanceSalaire[]
+  missionsSalarie            MissionSalarie[]
+  fraisMission               FraisMission[]
+  demandesConge              DemandeCongeSalarie[]
+  formationsPersonnel        FormationPersonnel[]
+  participantsFormation      ParticipantFormation[]
   retenuesAvance             RetenueAvanceBulletin[]
   versionsBaremesPaie        VersionBaremePaie[]
   simulationsBudgetaires     SimulationBudgetaire[]
@@ -8387,6 +8392,9 @@ model Salarie {
   enfants                 EnfantACharge[]
   bulletins               BulletinPaie[]
   avances                 AvanceSalaire[]
+  missions                MissionSalarie[]
+  demandesConge           DemandeCongeSalarie[]
+  formations              ParticipantFormation[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   repriseConges           RepriseCongesSalarie?
   absences                AbsenceSalarie[]
@@ -8730,6 +8738,7 @@ model BulletinPaie {
   retenuesAvance   RetenueAvanceBulletin[]
   // Ligne sage-l5 · les congés dont ce bulletin porte l'allocation (art. 142, 145).
   allocationsConge CongeSalarie[]
+  missionsPortees  MissionSalarie[]
   // Ligne sage-l5 · les paiements qui ont versé son net (fonction 75).
   lignesPaiement   LignePaiementSalaire[]
 
@@ -8838,6 +8847,12 @@ model AvanceSalaire {
   montantFc          Decimal                 @db.Decimal(18, 2)
   /// Retenue proposée chaque mois · le bulletin peut en retenir moins.
   retenueMensuelleFc Decimal?                @db.Decimal(18, 2)
+  /// LIGNE MICROFINA-M3, IDÉE 6 · le plan d'étalement déclaré · le premier
+  /// mois de paie qui retient (AAAA-MM) et, au choix, la durée en mois (null
+  /// quand le plan se déclare par la retenue mensuelle). Null = aucun plan ·
+  /// la retenue mensuelle reste alors une simple indication.
+  premierMoisRetenue String?                 @db.VarChar(7)
+  nombreEcheances    Int?
   objet              String
   /// Reconnaissance de dette ou contrat de prêt · « éléments de contrôle » du
   /// compte 42 dans les deux plans.
@@ -11307,6 +11322,8 @@ model CongeSalarie {
   motifAnnulation            String?       @db.VarChar(500)
   creePar                    String
   createdAt                  DateTime      @default(now())
+  /// Ligne microfina-m3, idée 7 · la demande accordée qui l'a fait naître.
+  demande                    DemandeCongeSalarie?
 
   @@index([tenantId, salarieId, du])
   @@index([tenantId, bulletinId])
@@ -12999,4 +13016,166 @@ enum NatureRecuDetention {
   AFFECTATION
   TRANSFERT
   LIBERATION
+}
+
+/// LIGNE MICROFINA-M3, IDÉE 3 · L'ORDRE DE MISSION et ses frais. Aucun texte
+/// lu n'impose l'ordre · numéro continu par dossier, convention d'OmegaX.
+/// Le SORT des frais se lit à leur qualification (`missions-salarie.ts`) ·
+/// remboursement d'une dépense effective, indemnité forfaitaire, ou dépense
+/// réglée par l'entité elle-même. Le bulletin qui porte la mission la retient
+/// (`bulletinId`) · annulé, il la rend. Une mission ne se supprime pas, elle
+/// s'annule avec son motif.
+model MissionSalarie {
+  id              String         @id @default(uuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  salarieId       String
+  salarie         Salarie        @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  numero          Int
+  objet           String
+  lieuDepart      String?
+  destination     String
+  dateDepart      DateTime       @db.Date
+  dateRetour      DateTime       @db.Date
+  moyenTransport  String?
+  /// La fin de mission constatée · une date, jamais présumée du retour prévu.
+  accomplieLe     DateTime?      @db.Date
+  annuleLe        DateTime?
+  motifAnnulation String?
+  bulletinId      String?
+  bulletin        BulletinPaie?  @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
+  creePar         String
+  createdAt       DateTime       @default(now())
+  frais           FraisMission[]
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, salarieId])
+  @@index([tenantId, bulletinId])
+  @@map("missions_salarie")
+}
+
+enum ElementFraisMission {
+  HEBERGEMENT
+  RESTAURATION
+  TRANSPORT
+  DIVERS
+}
+
+/// JUSTIFIE · remboursement d'une dépense effective, sur pièce (loi n° 23/053,
+/// art. 68, 1°) ; FORFAIT · indemnité qui ne représente pas une dépense
+/// effective, imposable ; REGLE_PAR_ENTITE · dépense payée directement par
+/// l'entité (facture au journal), suivie ici, jamais portée au bulletin.
+enum QualificationFraisMission {
+  JUSTIFIE
+  FORFAIT
+  REGLE_PAR_ENTITE
+}
+
+model FraisMission {
+  id            String                    @id @default(uuid())
+  tenantId      String
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id])
+  missionId     String
+  mission       MissionSalarie            @relation(fields: [missionId], references: [id], onDelete: Restrict)
+  element       ElementFraisMission
+  qualification QualificationFraisMission
+  montantFc     Decimal                   @db.Decimal(18, 2)
+  piece         String?
+  libelle       String?
+  creePar       String
+  createdAt     DateTime                  @default(now())
+
+  @@index([tenantId, missionId])
+  @@map("frais_mission")
+}
+
+/// LIGNE MICROFINA-M3, IDÉE 7 · LA DEMANDE DE CONGÉ. « La date du congé est
+/// fixée de commun accord » (Code du travail, art. 140, al. 4) · la demande
+/// du travailleur, datée, et l'accord de l'employeur, daté et nommé, par un
+/// autre utilisateur que celui qui l'a saisie. L'accord crée le congé par la
+/// route ordinaire (`congeId`). Circuit facultatif, jamais supprimé.
+model DemandeCongeSalarie {
+  id            String             @id @default(uuid())
+  tenantId      String
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+  salarieId     String
+  salarie       Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  du            DateTime           @db.Date
+  au            DateTime           @db.Date
+  joursVoyage   Int                @default(0)
+  /// AAAA-MM · le bulletin qui portera l'allocation (art. 145).
+  moisDePaie    String             @db.VarChar(7)
+  /// La date de la demande du travailleur, déclarée.
+  demandeLe     DateTime           @db.Date
+  observation   String?            @db.VarChar(500)
+  statut        StatutDemandeConge @default(DEMANDEE)
+  saisiePar     String
+  createdAt     DateTime           @default(now())
+  decisionPar   String?
+  decisionLe    DateTime?
+  motifDecision String?            @db.VarChar(500)
+  congeId       String?            @unique
+  conge         CongeSalarie?      @relation(fields: [congeId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, salarieId])
+  @@index([tenantId, statut])
+  @@map("demandes_conge_salarie")
+}
+
+enum StatutDemandeConge {
+  DEMANDEE
+  ACCORDEE
+  REFUSEE
+  RETIREE
+}
+
+/// LIGNE MICROFINA-M3, IDÉE 8 · LE PLAN ET LE SUIVI DE LA FORMATION (Code du
+/// travail, art. 8). Prévu et réalisé, aucune écriture · le coût se passe par
+/// la facture au 633. Une formation ne se supprime pas, elle s'annule.
+model FormationPersonnel {
+  id              String                 @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  intitule        String
+  organisme       String?
+  /// Assurée par l'employeur lui-même · ordonnance n° 84/186, art. 1er, al. 2.
+  interne         Boolean                @default(false)
+  lieu            String?
+  financement     String?
+  prevueDu        DateTime               @db.Date
+  prevueAu        DateTime               @db.Date
+  coutPrevuFc     Decimal?               @db.Decimal(18, 2)
+  statut          StatutFormation        @default(PREVUE)
+  realiseeDu      DateTime?              @db.Date
+  realiseeAu      DateTime?              @db.Date
+  coutReelFc      Decimal?               @db.Decimal(18, 2)
+  motifAnnulation String?                @db.VarChar(500)
+  creePar         String
+  createdAt       DateTime               @default(now())
+  participants    ParticipantFormation[]
+
+  @@index([tenantId, prevueDu])
+  @@map("formations_personnel")
+}
+
+enum StatutFormation {
+  PREVUE
+  REALISEE
+  ANNULEE
+}
+
+model ParticipantFormation {
+  id          String             @id @default(uuid())
+  tenantId    String
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  formationId String
+  formation   FormationPersonnel @relation(fields: [formationId], references: [id], onDelete: Restrict)
+  salarieId   String
+  salarie     Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  /// Null tant que la formation n'est pas réalisée · jamais présumé présent.
+  present     Boolean?
+
+  @@unique([formationId, salarieId])
+  @@index([tenantId, salarieId])
+  @@map("participants_formation")
 }

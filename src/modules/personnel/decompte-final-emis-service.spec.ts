@@ -68,7 +68,9 @@ function service(opts: { salarie?: unknown; actif?: unknown; avances?: AvanceDou
     (where.tenantId === undefined || a.tenantId === where.tenantId) &&
     (where.salarieId === undefined || a.salarieId === where.salarieId) &&
     (where.id === undefined ||
-      (typeof where.id === 'string' ? a.id === where.id : ((where.id as { in: string[] }).in ?? []).includes(a.id)));
+      (typeof where.id === 'string' ? a.id === where.id : ((where.id as { in: string[] }).in ?? []).includes(a.id))) &&
+    // Ligne microfina-m3 · la lecture des plans d'étalement · ces avances n'en ont aucun.
+    (where.premierMoisRetenue === undefined || (a as { premierMoisRetenue?: string | null }).premierMoisRetenue != null);
   const retenuesCreees: { avanceId: string; montantFc: number }[] = [];
   const bulletinFindFirst = jest.fn().mockImplementation(({ where }) => {
     if (where.statut) return Promise.resolve(opts.actif ?? null);

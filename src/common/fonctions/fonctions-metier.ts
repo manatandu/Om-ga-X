@@ -140,6 +140,10 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   AbsencesController: FonctionMetier.PAIE,
   MajorationsHeuresController: FonctionMetier.PAIE,
   FeuillesTempsController: FonctionMetier.PAIE,
+  // Ligne microfina-m3, idée 3 · ordres et frais de mission, du registre du personnel.
+  MissionsController: FonctionMetier.PAIE,
+  // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
+  SuiviPersonnelController: FonctionMetier.PAIE,
   // Ligne sage-l5 · le paiement du salarié et des salaires, de la fenêtre Personnel.
   PaiementSalairesController: FonctionMetier.PAIE,
   RepartitionsAnalytiquesPaieController: FonctionMetier.PAIE,

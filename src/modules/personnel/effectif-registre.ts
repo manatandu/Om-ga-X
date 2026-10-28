@@ -44,6 +44,14 @@ import { PrismaService } from '../../common/prisma.service';
  * titulaire d'un CDD et d'un CDI simultanés tantôt permanente, tantôt non.
  * C'est une convention d'OmegaX, et elle est écrite ici.
  */
+/**
+ * LA NATIONALITÉ CONGOLAISE, LUE AVEC LA TOLÉRANCE D'ÉCRITURE DU REGISTRE ·
+ * une seule lecture pour l'effectif et la déclaration annuelle de la
+ * main-d'œuvre (art. 218, `suivi-personnel.ts`).
+ */
+export const estNationaliteCongolaise = (n: string | null) =>
+  ['congolaise', 'congolais', 'rdc', 'rd congo'].includes((n ?? '').trim().toLowerCase());
+
 export async function effectifDuRegistre(prisma: PrismaService, tenantId: string, ala: Date) {
   const enVigueur = {
     tenantId,
@@ -62,8 +70,7 @@ export async function effectifDuRegistre(prisma: PrismaService, tenantId: string
   ]);
 
   const nationalite = (n: string | null) => (n ?? '').trim().toLowerCase();
-  const estCongolaise = (n: string | null) =>
-    ['congolaise', 'congolais', 'rdc', 'rd congo'].includes(nationalite(n));
+  const estCongolaise = estNationaliteCongolaise;
   const somme = (garder: (g: (typeof groupes)[number]) => boolean) =>
     groupes.filter(garder).reduce((total, g) => total + g._count._all, 0);
 

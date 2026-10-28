@@ -7,7 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { AvancesRubriquesService } from './avances-rubriques.service';
-import { AvanceSalaireDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
+import { AvanceSalaireDto, EtalementAvanceDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
 
 /**
  * Rubriques de paie du cabinet et registre des avances · mêmes droits que le
@@ -58,8 +58,19 @@ export class AvancesRubriquesController {
 
   @Get('avances')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
-  listerAvances(@CurrentUser() user: AuthenticatedUser, @Query('salarieId') salarieId?: string) {
-    return this.service.listerAvances(user.tenantId, salarieId || undefined);
+  listerAvances(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('salarieId') salarieId?: string,
+    @Query('moisDePaie') moisDePaie?: string,
+  ) {
+    return this.service.listerAvances(user.tenantId, salarieId || undefined, moisDePaie || undefined);
+  }
+
+  /** Ligne microfina-m3, idée 6 · le plan d'étalement, déclaré ou retiré. */
+  @Patch('avances/:id/etalement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  modifierEtalement(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: EtalementAvanceDto) {
+    return this.service.modifierEtalement(user.tenantId, id, dto);
   }
 
   @Post('salaries/:salarieId/avances')

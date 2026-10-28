@@ -159,6 +159,11 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'modePaiement',
       'ribs',
       'lignesPaiement',
+      // Ligne microfina-m3, idée 3 · la relation vers les missions (aucune colonne).
+      'missions',
+      // Ligne microfina-m3, lot 2 · demandes de congé et formations, les relations seules.
+      'demandesConge',
+      'formations',
       'ordresVirement',
       // Ligne sage-l5 · fonction 88 · la répartition analytique, la relation seule.
       'repartitionsAnalytiques',
@@ -261,6 +266,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'allocationsConge',
       // Ligne sage-l5 · les paiements qui ont versé son net · la relation seule.
       'lignesPaiement',
+      // Ligne microfina-m3, idée 3 · les missions qu'il porte · la relation seule.
+      'missionsPortees',
     ],
     // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
     // rattachement à un bulletin, sa prise au-delà du solde et son
@@ -286,6 +293,30 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'motifAnnulation',
       'creePar',
       'createdAt',
+      // Ligne microfina-m3, idée 7 · la demande accordée qui l'a fait naître, la relation seule.
+      'demande',
+    ],
+    // LIGNE MICROFINA-M3, IDÉE 7 · LA DEMANDE DE CONGÉ · le journal dit ses
+    // dates, son statut, qui l'a saisie et qui l'a décidée ; l'observation et
+    // le motif de la décision, qui peuvent dire la raison du congé, sont masqués.
+    DemandeCongeSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'du',
+      'au',
+      'joursVoyage',
+      'moisDePaie',
+      'demandeLe',
+      'statut',
+      'saisiePar',
+      'createdAt',
+      'decisionPar',
+      'decisionLe',
+      'congeId',
+      'conge',
     ],
     // LIGNE SAGE-L5 · L'ABSENCE DU SALARIÉ · le journal dit ses dates et son
     // annulation ; la nature (relecture, mineur 4), la pièce (certificat
@@ -363,9 +394,52 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'greffe',
       'destinataire',
       'dateFin',
+      // Ligne microfina-m3, idée 6 · le plan d'étalement · un mois et un
+      // nombre de mois, aucun montant (la retenue mensuelle reste masquée).
+      'premierMoisRetenue',
+      'nombreEcheances',
       'creePar',
       'createdAt',
       'retenues',
+    ],
+    // LIGNE MICROFINA-M3, IDÉE 3 · L'ORDRE DE MISSION · qui, où, quand, et son
+    // sort (fin, annulation, bulletin qui le porte) ; aucun montant ici.
+    MissionSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'numero',
+      'objet',
+      'lieuDepart',
+      'destination',
+      'dateDepart',
+      'dateRetour',
+      'moyenTransport',
+      'accomplieLe',
+      'annuleLe',
+      'motifAnnulation',
+      'bulletinId',
+      'bulletin',
+      'creePar',
+      'createdAt',
+      'frais',
+    ],
+    // Le frais · élément, qualification et pièce restent ; le montant, qui
+    // entre au net du salarié, est masqué comme la rémunération.
+    FraisMission: [
+      'id',
+      'tenantId',
+      'tenant',
+      'missionId',
+      'mission',
+      'element',
+      'qualification',
+      'piece',
+      'libelle',
+      'creePar',
+      'createdAt',
     ],
     // LIGNE SAGE-L5, FONCTION 75 · LE RIB D'UN SALARIÉ · le journal dit qu'il
     // a changé, qui l'a changé et quand, la banque et la devise ; les

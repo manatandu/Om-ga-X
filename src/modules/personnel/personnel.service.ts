@@ -31,8 +31,10 @@ import {
   LITTERA_ARTICLE_112,
   RESERVE_QUOTITE_AVANCES,
   motifRefusMoisSaisie,
+  ecartsAuPlan,
   motifRefusRetenue,
   reserveQuotiteSaisies,
+  retenueProposee,
   soldeAvance,
   type CategoriePret,
   type TypeAvance,
@@ -159,6 +161,8 @@ import {
   type AllocationPortee,
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
+import { lierMissionsAuBulletin, missionsAPorter, type MissionPortee } from './missions.service';
+import { libelleForfaitMission, libelleRemboursementMission } from './missions-salarie';
 import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
 
 /**
@@ -167,7 +171,12 @@ import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salair
  * déclaré) · les allocations de congé et les heures majorées rejouées (ligne
  * sage-l5).
  */
-type SaisieRelue = SimulationPaieDto & { allocationsCongePortees?: AllocationPortee[]; heuresPortees?: HeuresPortee[] };
+type SaisieRelue = SimulationPaieDto & {
+  allocationsCongePortees?: AllocationPortee[];
+  heuresPortees?: HeuresPortee[];
+  /** Ligne microfina-m3, idée 3 · les missions rejouées, hors de tout DTO. */
+  missionsLiees?: MissionPortee[];
+};
 
 /**
  * LES BORNES DES LISTES DE TRAVAIL DU REGISTRE (audit final F259, § 8 bis).
@@ -1117,6 +1126,48 @@ export class PersonnelService {
       ];
     }
 
+    // LIGNE MICROFINA-M3, IDÉE 3 · LES FRAIS DE MISSION que ce bulletin porte,
+    // relus dans le dossier (`missionsAPorter`) · le FORFAIT, imposable (loi
+    // n° 23/053, art. 68, 1°), et le REMBOURSEMENT SUR PIÈCES, marqué comme
+    // tel, que le moteur des assiettes sort de l'impôt · tous deux sous la
+    // nature des frais de voyage (Code du travail, art. 7, point 8, hors
+    // rémunération), avec la mission qui leur donne leur compte (6384,
+    // `passation-paie.ts`). Même garde que les congés · relue une seconde
+    // fois, la saisie ne les ajoute pas deux fois. Les frais de mission sont
+    // tenus en francs · un bulletin stipulé en dollars les refuse, avec
+    // l'issue.
+    const demandeesMissions = dto.missionsPortees ?? [];
+    let missionsLiees: MissionPortee[] = (dto as SaisieRelue).missionsLiees ?? [];
+    if (demandeesMissions.length) {
+      if (!salarieId) throw new BadRequestException('Une mission se rapporte à un salarié · choisissez-le.');
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      if ((dto.deviseStipulation ?? 'CDF') === 'USD') {
+        throw new BadRequestException(
+          "Les frais de mission sont tenus en francs · un bulletin stipulé en dollars ne les porte pas. Remboursez-les par une écriture au 6384 « Missions » au journal de trésorerie.",
+        );
+      }
+      missionsLiees = await missionsAPorter(this.prisma, tenantId, salarieId, dto.moisDePaie, demandeesMissions.map((m) => m.missionId));
+      elements = [
+        ...elements,
+        ...missionsLiees.flatMap((m) => [
+          ...(m.forfaitFc > 0
+            ? [{ nature: 'FRAIS_DE_VOYAGE_OU_AVANTAGE_DE_FONCTION', libelle: libelleForfaitMission(m.numero, m.destination), montantFc: m.forfaitFc, missionId: m.missionId }]
+            : []),
+          ...(m.justifieFc > 0
+            ? [
+                {
+                  nature: 'FRAIS_DE_VOYAGE_OU_AVANTAGE_DE_FONCTION',
+                  libelle: libelleRemboursementMission(m.numero, m.destination),
+                  montantFc: m.justifieFc,
+                  remboursementDeDepenseProfessionnelleEffective: true,
+                  missionId: m.missionId,
+                },
+              ]
+            : []),
+        ]),
+      ];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1180,7 +1231,16 @@ export class PersonnelService {
       );
     }
     return {
-      dto: { ...dto, elements, allocationsConge: undefined, allocationsCongePortees, heuresMajorees: undefined, heuresPortees } as SaisieRelue,
+      dto: {
+        ...dto,
+        elements,
+        allocationsConge: undefined,
+        allocationsCongePortees,
+        heuresMajorees: undefined,
+        heuresPortees,
+        missionsPortees: undefined,
+        missionsLiees,
+      } as SaisieRelue,
       retenuesAvances,
     };
   }
@@ -1409,6 +1469,8 @@ export class PersonnelService {
         libelle: e.libelle,
         montantFc: e.montantFc,
         enNature: e.enNature === true,
+        // Posé par le serveur seul (`resoudreSaisie`) · le client n'en envoie aucun.
+        ...((e as { missionId?: string }).missionId ? { missionId: (e as { missionId?: string }).missionId } : {}),
       })),
       cotisations: lesCotisations.lignes.map((l) => ({
         cle: l.cle,
@@ -1474,7 +1536,14 @@ export class PersonnelService {
       // LIGNE SAGE-L5 · les congés dont ce bulletin porte l'allocation, figés
       // avec lui ; l'émission les lie au bulletin dans sa transaction.
       allocationsConge: (dtoStipule as SaisieRelue).allocationsCongePortees ?? [],
+      // LIGNE MICROFINA-M3, IDÉE 3 · les missions que ce bulletin porte,
+      // liées à lui par l'émission, dans sa transaction.
+      missionsPortees: (dtoStipule as SaisieRelue).missionsLiees ?? [],
       reserveRetenuesAvances: retenuesAvances.length ? RESERVE_QUOTITE_AVANCES : null,
+      // LIGNE MICROFINA-M3, IDÉE 6 · les retenues que les plans d'étalement
+      // proposent ce mois-ci, et ce que le bulletin en porte · un oubli se
+      // DIT, il ne se retient pas à la place du cabinet (avances-salaire.ts).
+      ...(await this.retenuesPlanifiees(tenantId, salarieId, dto.moisDePaie, retenuesAvances)),
       // « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée,
       // jamais refusée (passe O4-C2). La plus large des quotités chiffrées ·
       // l'alimentaire et le cumul de l'alinéa 3 ne jouent que si déclarés.
@@ -1528,6 +1597,58 @@ export class PersonnelService {
     };
   }
 
+
+  /**
+   * LIGNE MICROFINA-M3, IDÉE 6 · LES RETENUES PLANIFIÉES DU MOIS · chaque
+   * avance du salarié qui porte un plan d'étalement, son solde au moment du
+   * calcul (bulletins émis seulement), la retenue que le plan propose, et les
+   * écarts avec la saisie. Lue bornée au salarié et au dossier ; sans salarié,
+   * rien (une simulation libre ne vise aucune avance).
+   */
+  private async retenuesPlanifiees(
+    tenantId: string,
+    salarieId: string | null,
+    moisDePaie: string,
+    portees: readonly { avanceId: string; montantFc: number }[],
+  ): Promise<{
+    retenuesPlanifiees: { avanceId: string; libelle: string; montantFc: number; motif: string }[];
+    avertissementsRetenuesPlanifiees: string[];
+  }> {
+    if (!salarieId) return { retenuesPlanifiees: [], avertissementsRetenuesPlanifiees: [] };
+    const avances = await this.prisma.avanceSalaire.findMany({
+      where: { tenantId, salarieId, premierMoisRetenue: { not: null }, type: { not: 'SAISIE_ARRET' } },
+      orderBy: [{ dateOctroi: 'asc' }, { id: 'asc' }],
+      take: 200,
+      include: { retenues: { select: { montantFc: true, bulletin: { select: { statut: true, moisDePaie: true } } } } },
+    });
+    const proposees: { avanceId: string; libelle: string; montantFc: number; motif: string }[] = [];
+    for (const a of avances) {
+      // Le solde au moment du calcul, sur les bulletins ÉMIS seulement · un
+      // bulletin annulé (à réémettre) rend sa retenue.
+      const solde = soldeAvance(
+        Number(a.montantFc),
+        a.retenues.map((x) => ({ montantFc: Number(x.montantFc), bulletinAnnule: x.bulletin.statut !== StatutBulletinPaie.EMIS })),
+      );
+      const p = retenueProposee(
+        {
+          montantFc: Number(a.montantFc),
+          premierMois: a.premierMoisRetenue!,
+          nombreEcheances: a.nombreEcheances,
+          retenueMensuelleFc: a.retenueMensuelleFc === null ? null : Number(a.retenueMensuelleFc),
+        },
+        moisDePaie,
+        solde,
+      );
+      if (p.montantFc === null || !(p.montantFc > 0)) continue;
+      const libelle = `${a.type === 'PRET' ? 'Prêt' : a.type === 'ACOMPTE' ? 'Acompte' : 'Avance'} du ${a.dateOctroi.toISOString().slice(0, 10)} · ${a.objet}`;
+      proposees.push({ avanceId: a.id, libelle, montantFc: p.montantFc, motif: p.motif });
+    }
+    const avertissements = ecartsAuPlan(proposees, portees);
+    // Au-delà de deux cents avances planifiées pour un salarié, la lecture se
+    // coupe · elle le DIT, jamais un plan oublié en silence.
+    if (avances.length >= 200) avertissements.push("Plus de deux cents avances étalées pour ce salarié · seules les deux cents plus anciennes sont confrontées au bulletin.");
+    return { retenuesPlanifiees: proposees, avertissementsRetenuesPlanifiees: avertissements };
+  }
 
   /**
    * LE DÉCOMPTE FINAL · P4. LE CALCUL SEUL NE STOCKE RIEN · c'est
@@ -1954,6 +2075,10 @@ export class PersonnelService {
         // sous le même verrou · un congé porté entre-temps refuse l'émission.
         if (simulation.allocationsConge.length) {
           await lierCongesAuBulletin(tx, tenantId, cree.id, simulation.allocationsConge);
+        }
+        // Ligne microfina-m3, idée 3 · les missions, liées sous le même verrou.
+        if (simulation.missionsPortees.length) {
+          await lierMissionsAuBulletin(tx, tenantId, cree.id, simulation.missionsPortees);
         }
         return cree;
       });

@@ -29,6 +29,8 @@ function service(salarie?: unknown, referentiel?: 'SYSCOHADA' | 'SYCEBNL') {
     // Une version par barème, la plus récente du mois (audit final F259,
     // suite) · aucune ici, le dossier n'en a pas saisi.
     versionBaremePaie: { findFirst: jest.fn().mockResolvedValue(null) },
+    // Ligne microfina-m3, idée 6 · les plans d'étalement du salarié · aucun ici.
+    avanceSalaire: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return { svc: new PersonnelService(prisma), findFirst, tenantFind };
 }

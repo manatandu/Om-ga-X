@@ -17,6 +17,13 @@ export const ONGLETS_PERSONNEL = [
   'absences',
   // Ligne sage-l5, fonction 78, reste · les feuilles de temps et les compteurs libres.
   'temps',
+  // Ligne microfina-m3, idée 3 · ordres et frais de mission.
+  'missions',
+  // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
+  'demandes',
+  'echeances',
+  'formation',
+  'declaration',
   'rubriques',
   'baremes',
   'decompte',

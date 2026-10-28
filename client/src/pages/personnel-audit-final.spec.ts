@@ -216,10 +216,14 @@ describe('F259 · les listes bornées se lisent et se disent', () => {
     // Relecture adverse · avalé, l'échec laissait « aucune avance » et une
     // simulation passée sans la retenue d'une avance qui existe.
     const effet = bloc(page, "if (onglet !== 'simulation') return;", '}, [onglet, selection]);');
+    // Une réponse périmée se jette d'abord (ligne microfina-m3) · la garde
+    // `if (!actuel) return;` peut ouvrir le gestionnaire, jamais remplacer
+    // l'erreur dite.
+    const sansGarde = effet.split('\n').filter((l) => l.trim() !== 'if (!actuel) return;').join('\n');
     for (const liste of ['setRubriques([]);', 'setModeles([]);', 'setAvancesSalarie([]);']) {
-      const i = effet.indexOf(`(e: ApiError) => {\n        ${liste}`);
+      const i = sansGarde.indexOf(`(e: ApiError) => {\n        ${liste}`);
       expect(i).toBeGreaterThan(0);
-      expect(effet.slice(i).split('\n')[2].trim()).toBe('setErreur(e.message);');
+      expect(sansGarde.slice(i).split('\n')[2].trim()).toBe('setErreur(e.message);');
     }
   });
 

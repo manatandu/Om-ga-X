@@ -629,3 +629,46 @@ une commande rangée dans plusieurs tuiles (paramètres du dossier, journal
 d'écritures exportées, contrôles) doit être autorisée si l'une des tuiles
 l'est. Aucune fonction n'est marquée « bientôt disponible ».
 
+
+## Questions et relevés · personnel, ligne microfina-m3 (2026-10-28)
+
+Ce que le corpus lu ne tranche pas, codé en abstention. Textes lus · Code du
+travail (compétence `droit-travail-congolais`, `texte-loi-verbatim/`), art. 7,
+point 8 ; 8 ; 41 ; 42 ; 43 ; 69 ; 112 ; 140 ; 141 ; 218 ; 219 · loi
+n° 23/053, art. 68 et 69 (`fiscalite-rdc`, `code-general-2026/references/05`)
+· O.-L. n° 10/001, art. 41 (`10-tva-ol10-001`) · ordonnance n° 84/186,
+art. 1er (`smig-cotisations-textes-application/`) · fiche du compte 66 des
+deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · AUPSRVE, art. 184.
+
+- **Délai de six mois de l'art. 140, al. 4** (« sans toutefois que la prise
+  effective du congé puisse dépasser de six mois la date prévue pour son
+  ouverture ») · « la date prévue pour son ouverture » se lit soit la date où
+  le droit naît (al. 3, expiration de l'année de services), soit la date que
+  l'accord a fixée. Aucun texte lu ne départage · aucun refus ni avertissement
+  n'est codé (`suivi-personnel.ts`). Question à Manasse.
+- **Poursuite des services après le terme d'un CDD** · l'art. 69 dit que le
+  contrat prend fin au terme ; l'art. 41, al. 3 requalifie « la continuation
+  de service en dehors des cas prévus à l'alinéa précédent » (renouvellements)
+  ; aucun article lu ne dit expressément le sort d'un CDD dont le travailleur
+  reste en service au-delà du terme sans renouvellement. L'échéancier dit le
+  terme passé, sans requalifier.
+- **Deux conventions pour le plafond de l'essai** · `verdictEssai`
+  (`regles-contrat-travail.ts`) convertit « un mois » et « six mois » en 30 et
+  180 jours ; l'échéancier de la ligne les compte de date à date, comme le
+  plafond de l'art. 41. À aligner (date à date, lecture la plus proche du
+  texte) dans une ligne qui touche le contrôle des contrats.
+- **Frais de mission sur un bulletin stipulé en dollars** · refusés, avec
+  l'issue (écriture au 6384 au journal de trésorerie) ; le cours qui
+  convertirait un frais en francs vers la stipulation n'est fixé par aucun
+  texte. Relevé, non bloquant.
+- **Avance de mission** (somme remise avant le départ, régularisée au retour)
+  et **ventilation analytique** des frais de mission par projet ou bailleur ·
+  non servies ; l'avance relève du 4211 et de l'art. 112, c), sa
+  régularisation par les frais justifiés reste à concevoir.
+- **Visa d'un plan d'étalement par un second utilisateur** (idée 2 de la
+  partie C de l'audit Microfina++) · non servi ; le plan n'est qu'une
+  proposition, la retenue reste celle que le bulletin porte.
+- **Déclaration de la main-d'œuvre (art. 218)** · formulaire, date limite et
+  dérogations relèvent de l'arrêté du Ministre de l'art. 219, absent du
+  corpus ; le bilan social de l'art. 218, al. 2 n'est pas servi. Texte à
+  fournir.

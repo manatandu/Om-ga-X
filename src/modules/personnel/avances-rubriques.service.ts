@@ -1,16 +1,20 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutBulletinPaie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { AvanceSalaireDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
+import { AvanceSalaireDto, EtalementAvanceDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
 import { motifRefusModele, normaliserLignes } from './modeles-bulletin';
 import { NATURES_DES_RUBRIQUES, motifRefusRubrique } from './rubriques-paie';
 import {
   LITTERA_ARTICLE_112,
   compteDeLAvance,
+  echeancierAvance,
   motifRefusAvance,
+  motifRefusEtalement,
+  retenueProposee,
   motifRefusFinSaisie,
   soldeAvance,
   type CategoriePret,
+  type PlanEtalement,
   type TypeAvance,
 } from './avances-salaire';
 
@@ -135,7 +139,7 @@ export class AvancesRubriquesService {
    * avances du même jour pour que la frontière d'une tranche pleine ne change
    * pas d'un appel à l'autre.
    */
-  async listerAvances(tenantId: string, salarieId?: string) {
+  async listerAvances(tenantId: string, salarieId?: string, moisDePaie?: string) {
     const [avances, total] = await Promise.all([
       this.prisma.avanceSalaire.findMany({
         where: { tenantId, ...(salarieId ? { salarieId } : {}) },
@@ -175,6 +179,7 @@ export class AvancesRubriquesService {
         dateFin: a.dateFin,
         retenues,
         soldeFc: soldeAvance(Number(a.montantFc), retenues),
+        ...etalementDeLAvance(a, soldeAvance(Number(a.montantFc), retenues), moisDePaie),
       };
     });
     return { avances: lignes, total, plafond: PLAFOND_LISTES_PAIE, tronque: total > lignes.length };
@@ -189,7 +194,7 @@ export class AvancesRubriquesService {
   async creerAvance(tenantId: string, email: string, salarieId: string, dto: AvanceSalaireDto) {
     const salarie = await this.prisma.salarie.findFirst({ where: { id: salarieId, tenantId }, select: { id: true } });
     if (!salarie) throw new NotFoundException('Salarié introuvable dans ce dossier.');
-    const refus = motifRefusAvance(dto);
+    const refus = motifRefusAvance(dto) ?? motifRefusEtalement(dto);
     if (refus) throw new BadRequestException(refus);
     return this.prisma.avanceSalaire.create({
       data: {
@@ -200,6 +205,8 @@ export class AvancesRubriquesService {
         dateOctroi: new Date(dto.dateOctroi),
         montantFc: dto.montantFc,
         retenueMensuelleFc: dto.retenueMensuelleFc ?? null,
+        premierMoisRetenue: dto.premierMoisRetenue?.trim() || null,
+        nombreEcheances: dto.premierMoisRetenue?.trim() ? (dto.nombreEcheances ?? null) : null,
         objet: dto.objet.trim(),
         pieceJustificative: dto.pieceJustificative.trim(),
         // La saisie-arrêt seule les porte · `motifRefusAvance` les refuse
@@ -230,6 +237,52 @@ export class AvancesRubriquesService {
     return this.prisma.avanceSalaire.update({ where: { id: a.id }, data: { dateFin } });
   }
 
+  /**
+   * LIGNE MICROFINA-M3, IDÉE 6 · DÉCLARER, CHANGER OU RETIRER LE PLAN
+   * D'ÉTALEMENT d'une avance déjà inscrite. Le plan n'est qu'une PROPOSITION
+   * (avances-salaire.ts) · il se change même après des retenues, qui restent
+   * celles des bulletins émis, et il se juge sur le montant consenti, borné
+   * à chaque mois par le solde. Une opération unitaire, que le journal
+   * d'audit garde avec l'état antérieur.
+   */
+  async modifierEtalement(tenantId: string, id: string, dto: EtalementAvanceDto) {
+    const a = await this.prisma.avanceSalaire.findFirst({
+      where: { id, tenantId },
+      select: { id: true, type: true, montantFc: true, dateOctroi: true, retenueMensuelleFc: true },
+    });
+    if (!a) throw new NotFoundException('Avance introuvable dans ce dossier.');
+    const premier = dto.premierMoisRetenue?.trim() || null;
+    // La retenue mensuelle n'est touchée que si le corps la nomme · un plan
+    // déclaré par sa durée la remet à null, faute de quoi les deux formes se
+    // contrediraient (motifRefusEtalement).
+    const retenue =
+      dto.retenueMensuelleFc !== undefined
+        ? dto.retenueMensuelleFc
+        : dto.nombreEcheances != null
+          ? null
+          : a.retenueMensuelleFc === null
+            ? null
+            : Number(a.retenueMensuelleFc);
+    const plan = {
+      type: a.type as TypeAvance,
+      montantFc: Number(a.montantFc),
+      dateOctroi: a.dateOctroi,
+      premierMoisRetenue: premier,
+      nombreEcheances: premier ? (dto.nombreEcheances ?? null) : null,
+      retenueMensuelleFc: retenue,
+    };
+    const refus =
+      motifRefusEtalement(plan) ??
+      (retenue !== null && Math.round(retenue * 100) > Math.round(Number(a.montantFc) * 100)
+        ? 'La retenue mensuelle ne peut dépasser le montant consenti.'
+        : null);
+    if (refus) throw new BadRequestException(refus);
+    return this.prisma.avanceSalaire.update({
+      where: { id: a.id },
+      data: { premierMoisRetenue: premier, nombreEcheances: plan.nombreEcheances, retenueMensuelleFc: retenue },
+    });
+  }
+
   /** Une avance saisie par erreur se retire tant qu'aucun bulletin n'y a retenu · après, elle est l'histoire des bulletins. */
   async supprimerAvance(tenantId: string, id: string) {
     const a = await this.prisma.avanceSalaire.findFirst({ where: { id, tenantId }, include: { _count: { select: { retenues: true } } } });
@@ -242,4 +295,34 @@ export class AvancesRubriquesService {
     await this.prisma.avanceSalaire.delete({ where: { id: a.id } });
     return { supprime: true };
   }
+}
+
+/**
+ * Le plan d'étalement d'une ligne du registre et, pour un mois de paie
+ * demandé, la retenue qu'il propose · rien quand l'avance n'a pas de plan.
+ */
+export function etalementDeLAvance(
+  a: { montantFc: Prisma.Decimal | number; premierMoisRetenue: string | null; nombreEcheances: number | null; retenueMensuelleFc: Prisma.Decimal | number | null },
+  soldeFc: number,
+  moisDePaie?: string,
+): {
+  plan: { premierMois: string; nombreEcheances: number | null; retenueMensuelleFc: number | null; echeancier: { mois: string; montantFc: number }[] } | null;
+  proposition: ReturnType<typeof retenueProposee> | null;
+} {
+  if (!a.premierMoisRetenue) return { plan: null, proposition: null };
+  const plan: PlanEtalement = {
+    montantFc: Number(a.montantFc),
+    premierMois: a.premierMoisRetenue,
+    nombreEcheances: a.nombreEcheances,
+    retenueMensuelleFc: a.retenueMensuelleFc === null ? null : Number(a.retenueMensuelleFc),
+  };
+  return {
+    plan: {
+      premierMois: plan.premierMois,
+      nombreEcheances: plan.nombreEcheances,
+      retenueMensuelleFc: plan.retenueMensuelleFc,
+      echeancier: echeancierAvance(plan),
+    },
+    proposition: moisDePaie ? retenueProposee(plan, moisDePaie, soldeFc) : null,
+  };
 }

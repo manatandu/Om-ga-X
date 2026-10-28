@@ -197,6 +197,13 @@ export const MODELES_CLOISONNES = new Set<string>([
   'DetentionBien',
   'RecuDetentionBien',
   'HeuresCompteurJour',
+  // Ligne microfina-m3, idée 3 · ordres et frais de mission.
+  'MissionSalarie',
+  'FraisMission',
+  // Ligne microfina-m3, lot 2 · demandes de congé et formations.
+  'DemandeCongeSalarie',
+  'FormationPersonnel',
+  'ParticipantFormation',
   // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
   'RibSalarie',
   'PaiementSalaires',
