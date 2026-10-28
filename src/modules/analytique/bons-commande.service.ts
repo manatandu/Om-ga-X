@@ -23,6 +23,7 @@ import {
   montantHTEnCentimes,
   motifRefusParts,
   referenceEngagement,
+  jourValide,
   resteParSection,
 } from './bon-commande';
 import {
@@ -120,7 +121,7 @@ export class BonsCommandeService {
         executions: {
           orderBy: { createdAt: 'asc' },
           include: {
-            facture: { select: { id: true, numeroSerie: true, dateFacture: true, ecriture: { select: { id: true, exerciceId: true, numeroPiece: true } } } },
+            facture: { select: { id: true, numeroSerie: true, dateFacture: true, noteDeCredit: { select: { numeroSerie: true } }, ecriture: { select: { id: true, exerciceId: true, numeroPiece: true } } } },
             section: { select: { code: true } },
           },
         },
@@ -207,6 +208,7 @@ export class BonsCommandeService {
     const t = await db.tiers.findFirst({ where: { id: tiersId, tenantId }, select: { id: true, nom: true, type: true, estActif: true } });
     if (!t) throw new NotFoundException('Fournisseur introuvable dans ce dossier.');
     if (t.type !== TypeTiers.FOURNISSEUR) throw new BadRequestException(`« ${t.nom} » n'est pas un fournisseur · un bon de commande s'adresse à un fournisseur.`);
+    if (!t.estActif) throw new BadRequestException(`Le fournisseur « ${t.nom} » est en sommeil · réactivez-le (Structure > Plan des tiers) avant de lui adresser une commande.`);
     return t;
   }
 
@@ -234,11 +236,14 @@ export class BonsCommandeService {
     const lignes = await this.preparerLignes(tenantId, dto.lignes, this.prisma);
     return transactionJournalisee(this.prisma, async (tx) => {
       await this.verrou(tx, tenantId);
-      const bon = await tx.bonCommandeFournisseur.findFirst({ where: { id, tenantId }, select: { id: true, statut: true } });
+      const bon = await tx.bonCommandeFournisseur.findFirst({ where: { id, tenantId }, select: { id: true, statut: true, exercice: { select: { statut: true } } } });
       if (!bon) throw new NotFoundException('Bon de commande introuvable dans ce dossier.');
       if (bon.statut !== StatutBonCommande.BROUILLON) {
         throw new BadRequestException('Ce bon a été remis au fournisseur · il ne se modifie plus. Clôturez-le avec son motif et établissez-en un autre.');
       }
+      // UN BROUILLON D'UN EXERCICE CLÔTURÉ NE SE RETOUCHE PLUS (relecture m2) ·
+      // il ne se remettra jamais (la remise y est refusée) ; il se supprime.
+      if (bon.exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException(`${MOTIF_EXERCICE_BUDGETAIRE_CLOS} Ce brouillon ne se remettra plus · supprimez-le, et établissez le bon dans l'exercice ouvert.`);
       await tx.bonCommandeFournisseur.update({ where: { id }, data: { tiersId: dto.tiersId, objet: dto.objet.trim() } });
       // LES LIGNES SE RETIRENT UNE À UNE · par identifiant, pour que le journal
       // d'audit garde chacune (un `deleteMany` n'y laisse que son filtre).
@@ -273,7 +278,10 @@ export class BonsCommandeService {
    * fournisseur et fait naître un engagement par ligne budgétaire, TTC prévu.
    */
   async remettre(tenantId: string, userId: string, id: string, dto: RemettreBonCommandeDto) {
-    const dateRemise = dto.dateRemise;
+    // UN JOUR QUI EXISTE (relecture m1) · « 2026-02-31 » passait la forme et
+    // devenait le 3 mars, engagé sur un jour que personne n'a écrit.
+    const dateRemise = jourValide(dto.dateRemise);
+    if (!dateRemise) throw new BadRequestException(`La date de remise « ${dto.dateRemise} » n'est pas un jour du calendrier (AAAA-MM-JJ).`);
     if (dateRemise > jourDeKinshasaIso(new Date())) {
       throw new BadRequestException('La date de remise ne peut pas être future · un bon engage le jour où il est remis au fournisseur.');
     }
@@ -284,11 +292,17 @@ export class BonsCommandeService {
         include: {
           exercice: { select: { id: true, statut: true, dateDebut: true, dateFin: true } },
           lignes: { include: { section: { select: { code: true, type: true, estActive: true, plan: { select: { gererBudgets: true, estActif: true } } } } } },
-          tiers: { select: { nom: true, type: true } },
+          tiers: { select: { nom: true, type: true, estActif: true } },
         },
       });
       if (!bon) throw new NotFoundException('Bon de commande introuvable dans ce dossier.');
       if (bon.statut !== StatutBonCommande.BROUILLON) throw new ConflictException('Ce bon a déjà été remis · rechargez le registre.');
+      // LE FOURNISSEUR EST RELU À LA REMISE (relecture m3) · mis en sommeil
+      // depuis le brouillon, il recevrait une commande que le dossier a cessé
+      // de lui passer.
+      if (bon.tiers.type !== TypeTiers.FOURNISSEUR || !bon.tiers.estActif) {
+        throw new BadRequestException(`Le fournisseur « ${bon.tiers.nom} » est en sommeil ou n'est plus un fournisseur · réactivez-le (Structure > Plan des tiers) ou choisissez-en un autre sur le brouillon.`);
+      }
       if (bon.exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException(MOTIF_EXERCICE_BUDGETAIRE_CLOS);
       if (dateRemise < jour(bon.exercice.dateDebut) || dateRemise > jour(bon.exercice.dateFin)) {
         throw new BadRequestException(
@@ -591,11 +605,32 @@ export class BonsCommandeService {
       await this.verrou(tx, tenantId);
       const bon = await tx.bonCommandeFournisseur.findFirst({
         where: { id, tenantId },
-        select: { id: true, statut: true, exercice: { select: { statut: true } }, engagements: { select: { id: true, statut: true } } },
+        select: {
+          id: true,
+          statut: true,
+          exercice: { select: { statut: true } },
+          engagements: { select: { id: true, statut: true } },
+          executions: { where: { executionEngagementId: null }, select: { facture: { select: { numeroSerie: true } } } },
+        },
       });
       if (!bon) throw new NotFoundException('Bon de commande introuvable dans ce dossier.');
       if (bon.statut !== StatutBonCommande.REMIS) {
         throw new BadRequestException(bon.statut === StatutBonCommande.CLOS ? 'Ce bon est déjà clos.' : 'Un brouillon ne se clôt pas · il se supprime.');
+      }
+      // UNE FACTURE D'UN EXERCICE POSTÉRIEUR, EXERCICE DU BON ENCORE OUVERT
+      // (relecture M5) · la part qu'elle couvre était commandée et non
+      // exécutée à la clôture de l'exercice du bon, et doit peser sur son
+      // tableau (règle (d) de l'Application 22) ; clore les engagements
+      // l'effacerait avec le reste. Un engagement ne se clôt pas en partie ·
+      // le geste attend la clôture de l'exercice du bon, après laquelle le bon
+      // se clôt seul et ses engagements restent ce que le tableau arrêté a lu.
+      if (bon.exercice.statut !== StatutExercice.CLOTURE && bon.executions.length > 0) {
+        const nums = [...new Set(bon.executions.map((e) => e.facture.numeroSerie))].join(', ');
+        throw new BadRequestException(
+          `Le bon est exécuté en partie par la facture ${nums} d'un exercice postérieur, alors que l'exercice du bon est encore ouvert · ` +
+            "le clore fermerait aussi la part que cette facture couvre, qui doit peser sur le tableau de l'exercice du bon. " +
+            "Clôturez d'abord l'exercice du bon (le bon se clôt alors seul, sans toucher ses engagements), ou retirez cette facture du bon.",
+        );
       }
       await tx.bonCommandeFournisseur.update({ where: { id }, data: { statut: StatutBonCommande.CLOS, motifCloture: motif, closLe: new Date(), closPar: userId } });
       const exerciceOuvert = bon.exercice.statut !== StatutExercice.CLOTURE;
@@ -642,10 +677,10 @@ function regrouperParFacture(
     montant: Prisma.Decimal;
     executionEngagementId: string | null;
     section: { code: string };
-    facture: { id: string; numeroSerie: string; dateFacture: Date; ecriture: { id: string; exerciceId: string; numeroPiece: number | null } | null };
+    facture: { id: string; numeroSerie: string; dateFacture: Date; noteDeCredit: { numeroSerie: string } | null; ecriture: { id: string; exerciceId: string; numeroPiece: number | null } | null };
   }[],
 ) {
-  const parFacture = new Map<string, { factureId: string; numeroSerie: string; dateFacture: string; numeroPiece: number | null; engagementExecute: boolean; parts: { section: string; montant: number }[] }>();
+  const parFacture = new Map<string, { factureId: string; numeroSerie: string; dateFacture: string; numeroPiece: number | null; engagementExecute: boolean; barreePar: string | null; parts: { section: string; montant: number }[] }>();
   for (const e of executions) {
     const f = parFacture.get(e.factureId) ?? {
       factureId: e.factureId,
@@ -653,6 +688,10 @@ function regrouperParFacture(
       dateFacture: jour(e.facture.dateFacture),
       numeroPiece: e.facture.ecriture?.numeroPiece ?? null,
       engagementExecute: false,
+      // UNE FACTURE BARRÉE SE DIT SUR LE BON (relecture M1) · la note de crédit
+      // est refusée tant que la part se retire ; seule celle d'un exercice
+      // clôturé, que le bon ne peut plus rendre, reste ici, nommée.
+      barreePar: e.facture.noteDeCredit?.numeroSerie ?? null,
       parts: [],
     };
     f.parts.push({ section: e.section.code, montant: Number(e.montant) });

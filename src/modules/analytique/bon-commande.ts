@@ -119,3 +119,43 @@ export function jourValide(iso: unknown): string | null {
   const d = new Date(`${iso}T00:00:00.000Z`);
   return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
 }
+
+/**
+ * UNE FACTURE QUI EXÉCUTE UN BON NE SE BARRE PAS EN SILENCE (relecture M1).
+ * La note de crédit annule la facture « annulant et remplaçant » (décret
+ * n° 011/42, art. 127) · la dépense sort du 40, mais la part déclarée sur le
+ * bon resterait posée, et l'engagement de la commande, tenu pour exécuté,
+ * sortirait lui aussi de la colonne Engagement (règle (d) de l'Application 22) ·
+ * la commande disparaîtrait du tableau sans que rien ne bouge ailleurs.
+ *
+ * VOIE RETENUE · le refus, avec son issue (retirer la facture du bon, puis
+ * barrer), plutôt que des factures barrées écartées en lecture · un rattachement
+ * qui ne vaudrait plus rien mais resterait au registre se lirait de travers
+ * partout où l'exécution est sommée (registre des engagements, plafond de la
+ * pièce, reste du bon).
+ *
+ * SEULE EXCEPTION, pour ne pas enfermer le dossier · une part que le bon ne
+ * peut plus rendre parce que l'exercice où elle pèse est CLÔTURÉ (le tableau
+ * arrêté ne change plus, `retirerFacture` la refuse) · la note passe alors, et
+ * c'est dit. Rend le refus, ou les bons à nommer en avertissement.
+ */
+export function issueNoteDeCreditSurFactureDUnBon(
+  numeroSerie: string,
+  parts: readonly { numeroBon: number | null; pesePourUnExerciceClos: boolean }[],
+): { motif: string } | { avertissements: string[] } {
+  if (parts.length === 0) return { avertissements: [] };
+  const retirables = [...new Set(parts.filter((p) => !p.pesePourUnExerciceClos).map((p) => p.numeroBon ?? 0))];
+  if (retirables.length > 0) {
+    return {
+      motif:
+        `La facture ${numeroSerie} exécute le(s) bon(s) de commande n° ${retirables.join(', ')} · barrée, elle laisserait la commande tenue pour exécutée ` +
+        "et la ferait sortir du tableau d'exécution budgétaire sans un mot. Retirez-la du bon d'abord (Traitement > Achats > Bons de commande fournisseur, « Retirer »), puis émettez la note de crédit.",
+    };
+  }
+  const clos = [...new Set(parts.map((p) => p.numeroBon ?? 0))];
+  return {
+    avertissements: [
+      `La facture exécutait le(s) bon(s) n° ${clos.join(', ')} dans un exercice clôturé · le tableau arrêté ne change plus, et le bon garde la part que cette facture lui a portée.`,
+    ],
+  };
+}

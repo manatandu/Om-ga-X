@@ -17,6 +17,8 @@ import { identiteSociete, mentionsRecopiees, SELECT_IDENTITE_SOCIETE, type Menti
 import { lirePeriodeDeListe } from '../../common/periode-de-liste';
 import { motifRefusDateReception } from './date-reception';
 import { jourDeKinshasa } from '../../common/echeance';
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { issueNoteDeCreditSurFactureDUnBon } from '../analytique/bon-commande';
 
 const nombre = (d: Prisma.Decimal | number | null): number | null =>
   d === null || d === undefined ? null : Number(d);
@@ -465,43 +467,63 @@ export class FacturationService {
       }
     }
 
-    const note = await this.prisma.facture.create({
-      data: {
-        tenantId,
-        sens: initiale.sens,
-        nature: NatureFacture.NOTE_DE_CREDIT,
-        factureAnnuleeId: initiale.id,
-        numeroSerie,
-        dateFacture: dateNote,
-        dateReception: dateReceptionNote,
-        tiersId: initiale.tiersId,
-        emetteurNom: initiale.emetteurNom,
-        emetteurAdresse: initiale.emetteurAdresse,
-        emetteurNumeroImpot: initiale.emetteurNumeroImpot,
-        contrepartieNom: initiale.contrepartieNom,
-        contrepartieAdresse: initiale.contrepartieAdresse,
-        contrepartieNumeroImpot: initiale.contrepartieNumeroImpot,
-        mentionTvaDebits: initiale.mentionTvaDebits,
-        // Recopiée de la facture annulée, comme les identités · la note la
-        // remplace, elle ne réécrit pas qui l'a émise.
-        mentionsSocieteEmetteur: (initiale.mentionsSocieteEmetteur ?? Prisma.DbNull) as Prisma.InputJsonValue,
-        autresImpotsEtTaxes: initiale.autresImpotsEtTaxes,
-        ecritureId: dto.ecritureId ?? null,
-        lignes: {
-          create: initiale.lignes.map((l) => ({
-            ordre: l.ordre,
-            designation: l.designation,
-            quantite: l.quantite,
-            prixUnitaire: l.prixUnitaire,
-            montantHT: l.montantHT,
-            imposable: l.imposable,
-            tauxTvaId: l.tauxTvaId,
-            tauxApplique: l.tauxApplique,
-            montantTva: l.montantTva,
-          })),
+    // LA FACTURE D'UN BON SE RETIRE DU BON AVANT D'ÊTRE BARRÉE (relecture M1,
+    // `issueNoteDeCreditSurFactureDUnBon`) · jugé SOUS LE VERROU DES BONS du
+    // dossier, celui que prend `BonsCommandeService.executer`, qui relit la
+    // note de crédit sous lui · sans quoi un rattachement et une note posés en
+    // même temps passeraient chacun le contrôle de l'autre.
+    const { note, avertissements } = await transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`bons-commande:${tenantId}`}))`;
+      const executions = await tx.executionBonCommande.findMany({
+        where: { tenantId, factureId: initiale.id },
+        select: { executionEngagementId: true, bon: { select: { numero: true, exercice: { select: { statut: true } } } } },
+      });
+      const issue = issueNoteDeCreditSurFactureDUnBon(
+        initiale.numeroSerie,
+        executions.map((e) => ({ numeroBon: e.bon.numero, pesePourUnExerciceClos: e.executionEngagementId !== null && e.bon.exercice.statut === 'CLOTURE' })),
+      );
+      if ('motif' in issue) throw new BadRequestException(issue.motif);
+      const dejaBarree = await tx.facture.findFirst({ where: { tenantId, factureAnnuleeId: initiale.id }, select: { numeroSerie: true } });
+      if (dejaBarree) throw new BadRequestException(`Cette facture est déjà annulée par la note de crédit « ${dejaBarree.numeroSerie} ».`);
+      const creee = await tx.facture.create({
+        data: {
+          tenantId,
+          sens: initiale.sens,
+          nature: NatureFacture.NOTE_DE_CREDIT,
+          factureAnnuleeId: initiale.id,
+          numeroSerie,
+          dateFacture: dateNote,
+          dateReception: dateReceptionNote,
+          tiersId: initiale.tiersId,
+          emetteurNom: initiale.emetteurNom,
+          emetteurAdresse: initiale.emetteurAdresse,
+          emetteurNumeroImpot: initiale.emetteurNumeroImpot,
+          contrepartieNom: initiale.contrepartieNom,
+          contrepartieAdresse: initiale.contrepartieAdresse,
+          contrepartieNumeroImpot: initiale.contrepartieNumeroImpot,
+          mentionTvaDebits: initiale.mentionTvaDebits,
+          // Recopiée de la facture annulée, comme les identités · la note la
+          // remplace, elle ne réécrit pas qui l'a émise.
+          mentionsSocieteEmetteur: (initiale.mentionsSocieteEmetteur ?? Prisma.DbNull) as Prisma.InputJsonValue,
+          autresImpotsEtTaxes: initiale.autresImpotsEtTaxes,
+          ecritureId: dto.ecritureId ?? null,
+          lignes: {
+            create: initiale.lignes.map((l) => ({
+              ordre: l.ordre,
+              designation: l.designation,
+              quantite: l.quantite,
+              prixUnitaire: l.prixUnitaire,
+              montantHT: l.montantHT,
+              imposable: l.imposable,
+              tauxTvaId: l.tauxTvaId,
+              tauxApplique: l.tauxApplique,
+              montantTva: l.montantTva,
+            })),
+          },
         },
-      },
-      include: { lignes: { orderBy: { ordre: 'asc' } } },
+        include: { lignes: { orderBy: { ordre: 'asc' } } },
+      });
+      return { note: creee, avertissements: issue.avertissements };
     });
 
     return {
@@ -509,6 +531,7 @@ export class FacturationService {
       nature: note.nature,
       factureAnnulee: { id: initiale.id, numeroSerie: initiale.numeroSerie },
       totaux: totauxFacture(this.verifiable(note)),
+      avertissements,
     };
   }
 

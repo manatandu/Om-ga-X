@@ -138,7 +138,7 @@ function bonBrouillon() {
     exerciceId: 'ex1',
     objet: 'Fournitures de formation',
     tiersId: 'f1',
-    tiers: { nom: 'Papeterie du Centre', type: 'FOURNISSEUR' },
+    tiers: { nom: 'Papeterie du Centre', type: 'FOURNISSEUR', estActif: true },
     exercice: EXERCICE,
     lignes: [
       { sectionId: 'sA', designation: 'Cahiers', montantHT: 100_000, montantTva: 16_000, section: { code: 'A1', type: 'DETAIL', estActive: true, plan: { gererBudgets: true, estActif: true } } },
@@ -261,5 +261,50 @@ describe("la facture d'achat exécute le bon", () => {
   it('refuse un bon au brouillon · il n’engage rien', async () => {
     const { service } = faux({ bon: { ...bonRemis(), statut: 'BROUILLON' }, facture: factureAchat() });
     await expect(service.executer('t1', 'u1', 'bc1', { factureId: 'fa1', parts: [{ sectionId: 'sA', montant: 1 }] })).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('relecture · remise, brouillon et clôture du bon', () => {
+  it("m1 · refuse un jour qui n'existe pas (« 2026-02-31 » devenait le 3 mars)", async () => {
+    const { service, crees } = faux({ bon: bonBrouillon() });
+    await expect(service.remettre('t1', 'u1', 'bc1', { dateRemise: '2026-02-31' })).rejects.toThrow(/pas un jour du calendrier/);
+    await expect(service.remettre('t1', 'u1', 'bc1', { dateRemise: '2026-13-45' })).rejects.toThrow(/pas un jour du calendrier/);
+    expect(crees.engagementDepense).toHaveLength(0);
+  });
+
+  it('m3 · relit le fournisseur à la remise · en sommeil depuis le brouillon, refusé', async () => {
+    const bon = bonBrouillon();
+    bon.tiers.estActif = false;
+    const { service, crees } = faux({ bon });
+    await expect(service.remettre('t1', 'u1', 'bc1', { dateRemise: '2026-03-10' })).rejects.toThrow(/en sommeil/);
+    expect(crees.engagementDepense).toHaveLength(0);
+  });
+
+  it("m2 · un brouillon d'un exercice clôturé ne se modifie plus", async () => {
+    const { service } = faux({ bon: { id: 'bc1', statut: 'BROUILLON', exercice: { statut: 'CLOTURE' } } });
+    const p = (service as unknown as { prisma: Record<string, unknown> }).prisma;
+    p.tiers = { findFirst: jest.fn().mockResolvedValue({ id: 'f1', nom: 'Papeterie', type: 'FOURNISSEUR', estActif: true }) };
+    p.sectionAnalytique = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'sA', code: 'A1', type: 'DETAIL', estActive: true, plan: { code: 'P', gererBudgets: true, estActif: true } }]),
+    };
+    await expect(
+      service.modifier('t1', 'bc1', { tiersId: 'f1', objet: 'Fournitures', lignes: [{ sectionId: 'sA', designation: 'Cahiers', quantite: 1, prixUnitaire: 100, montantTva: 0 }] }),
+    ).rejects.toThrow(/supprimez-le/);
+  });
+
+  it("M5 · refuse de clore un bon qu'une facture d'un exercice postérieur exécute, tant que l'exercice du bon est ouvert", async () => {
+    const bon = { id: 'bc1', statut: 'REMIS', exercice: { statut: 'OUVERT' }, engagements: [{ id: 'eA', statut: 'OUVERT' }], executions: [{ facture: { numeroSerie: 'F-2027-1' } }] };
+    const { service } = faux({ bon });
+    const update = (service as unknown as { prisma: { engagementDepense: { update: jest.Mock } } }).prisma.engagementDepense.update;
+    await expect(service.clore('t1', 'u1', 'bc1', { motif: 'Solde de la commande' })).rejects.toThrow(/F-2027-1.*Clôturez d'abord l'exercice du bon/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("M5 · l'exercice du bon clôturé, le bon se clôt seul et ses engagements restent", async () => {
+    const bon = { id: 'bc1', statut: 'REMIS', exercice: { statut: 'CLOTURE' }, engagements: [{ id: 'eA', statut: 'OUVERT' }], executions: [{ facture: { numeroSerie: 'F-2027-1' } }] };
+    const { service } = faux({ bon });
+    const update = (service as unknown as { prisma: { engagementDepense: { update: jest.Mock } } }).prisma.engagementDepense.update;
+    await expect(service.clore('t1', 'u1', 'bc1', { motif: 'Solde de la commande' })).resolves.toEqual({ clos: true, engagementsClos: false });
+    expect(update).not.toHaveBeenCalled();
   });
 });

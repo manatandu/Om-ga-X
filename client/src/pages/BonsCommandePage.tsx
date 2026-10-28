@@ -103,8 +103,9 @@ export function BonsCommandePage() {
         const listes = await Promise.all(budgetaires.map((p) => api.get<SectionAnalytique[]>(`/analytique/plans/${p.id}/sections`)));
         setSections(listes.flat().filter((s) => s.estActive && s.type === 'DETAIL'));
       } catch (e) {
-        setFournisseurs([]);
-        setSections([]);
+        // UNE LISTE ILLISIBLE N'EST PAS VIDE (relecture m11) · null, et le motif dit.
+        setFournisseurs(null);
+        setSections(null);
         setErreurListes(e instanceof ApiError ? e.message : 'Fournisseurs ou lignes budgétaires illisibles.');
       }
     })();
@@ -186,6 +187,9 @@ export function BonsCommandePage() {
       const r = await api.get<{ factures: FactureExecutable[]; total: number; tronque: boolean }>(`/bons-commande/${detail.id}/factures-executables`);
       setFactures(r);
     } catch (e) {
+      // L'ancienne liste ne reste pas affichée sous un échec (relecture m11).
+      setFactures(null);
+      setFactureId('');
       setErreur(e instanceof ApiError ? e.message : 'Factures illisibles.');
     }
   }
@@ -462,6 +466,7 @@ export function BonsCommandePage() {
                   </span>
                   <span className="text-text-dim">{f.parts.map((p) => `${p.section} ${montant(p.montant)}`).join(' · ')}</span>
                   {!f.engagementExecute && <span className="text-text-dim">exercice suivant · engagement inchangé</span>}
+                  {f.barreePar && <span className="text-danger">barrée par la note de crédit {f.barreePar} · exercice clôturé, la part reste</span>}
                   {modifiable && (
                     <button
                       type="button"

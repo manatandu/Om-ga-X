@@ -5176,6 +5176,7 @@ export interface BonCommandeDetail {
     dateFacture: string;
     numeroPiece: number | null;
     engagementExecute: boolean;
+    barreePar: string | null;
     parts: { section: string; montant: number }[];
   }[];
 }

@@ -48,7 +48,7 @@ const INITIALE = {
   ],
 };
 
-function service(opts: { initiale?: Faux | null; doublon?: boolean } = {}) {
+function service(opts: { initiale?: Faux | null; doublon?: boolean; executions?: Faux[] } = {}) {
   const initiale = opts.initiale === undefined ? INITIALE : opts.initiale;
   const create = jest.fn().mockImplementation(({ data }: Faux) => {
     const x = data as Faux;
@@ -74,7 +74,10 @@ function service(opts: { initiale?: Faux | null; doublon?: boolean } = {}) {
     },
     ecriture: { findFirst: jest.fn().mockResolvedValue({ id: 'e-avoir' }) },
     facture: { findFirst, findMany, count, create, delete: jest.fn().mockResolvedValue({}) },
+    executionBonCommande: { findMany: jest.fn().mockResolvedValue(opts.executions ?? []) },
+    $executeRaw: jest.fn().mockResolvedValue(0),
   } as Faux;
+  prisma.$transaction = (fn: (tx: Faux) => Promise<unknown>) => fn(prisma);
   return { svc: new FacturationService(prisma as unknown as PrismaService), prisma, create };
 }
 
@@ -161,6 +164,37 @@ describe('Émettre une note de crédit · elle ANNULE la facture initiale, enti�
     const appels = ((prisma.facture as Faux).findFirst as jest.Mock).mock.calls.map((c) => c[0].where);
     expect(appels).toContainEqual({ tenantId: 't', sens: SensFacture.VENTE, numeroSerie: 'NC-0001' });
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('Relecture M1 · la facture d’un bon de commande ne se barre pas en silence', () => {
+  const part = (numero: number, statut: 'OUVERT' | 'CLOTURE', engagement: boolean) => ({
+    executionEngagementId: engagement ? 'ee1' : null,
+    bon: { numero, exercice: { statut } },
+  });
+
+  it('refuse la note tant que la facture exécute un bon, et nomme l’issue (retirer la facture du bon)', async () => {
+    const { svc, create } = service({ executions: [part(7, 'OUVERT', true)] });
+    await expect(svc.emettreNoteDeCredit('t', 'fv1', NOTE)).rejects.toThrow(/bon\(s\) de commande n° 7.*Retirez-la du bon d'abord/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('refuse aussi quand la part est d’un exercice postérieur au bon · le retrait reste ouvert', async () => {
+    const { svc } = service({ executions: [part(3, 'CLOTURE', false)] });
+    await expect(svc.emettreNoteDeCredit('t', 'fv1', NOTE)).rejects.toThrow(/n° 3/);
+  });
+
+  it('laisse passer, et le dit, la part qui pèse sur un exercice clôturé · le bon ne peut plus la rendre', async () => {
+    const { svc, create } = service({ executions: [part(5, 'CLOTURE', true)] });
+    const r = await svc.emettreNoteDeCredit('t', 'fv1', NOTE);
+    expect(create).toHaveBeenCalled();
+    expect(r.avertissements.join(' ')).toMatch(/n° 5 dans un exercice clôturé/);
+  });
+
+  it('sans bon, aucun avertissement', async () => {
+    const { svc } = service();
+    const r = await svc.emettreNoteDeCredit('t', 'fv1', NOTE);
+    expect(r.avertissements).toEqual([]);
   });
 });
 
