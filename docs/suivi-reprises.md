@@ -173,6 +173,13 @@ de produit.
   servie.
 - Relevé de la ligne · la création admet une valeur résiduelle supérieure à
   la valeur d'origine · la borner dans `preparerFiche`.
+- Question ouverte (2026-10-28) · NOTE 3A du SYSCOHADA, le transfert d'un
+  bien entre établissements paraît en « Acquisitions » chez celui qui reçoit
+  et en « Cessions » chez celui qui cède. Lu · le ch. 6 du Titre IX ne
+  définit pas ses colonnes, la fiche du compte 18 ne parle pas du tableau des
+  immobilisations ; aucun texte ne range ce mouvement en « Virements de
+  poste à poste ». Écart écrit en tête de `correspondance-notes-syscohada-1.ts`
+  (anomalie n° 9) ; le porter aux virements serait une lecture d'OmegaX.
 
 ## Relevés en attente · virement de fonds (second tour non bloquant)
 

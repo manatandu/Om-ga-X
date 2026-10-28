@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Aide } from '../chrome/Aide';
+import { jourFr } from '../../lib/jour-fr';
 import * as montants from '../../lib/montants';
 import { BoutonsPaie, CHAMP_PAIE, ChampPaie, ModalePaie, useEnvoiPaie } from '../paie/ModalePaie';
 import {
+  cleApercu,
   journalPropose,
   liaisonProposee,
+  receveurPreselectionne,
   receveursPossibles,
   type BienTransferable,
   type ContexteTransfert,
@@ -107,7 +110,7 @@ export function TransfertsBiensGroupe() {
             )}
             {liste?.transferts.map((t) => (
               <tr key={t.transfertId}>
-                <td className="px-2 py-1">{new Date(t.date).toLocaleDateString('fr-FR')}</td>
+                <td className="px-2 py-1">{jourFr(t.date)}</td>
                 <td className="px-2 py-1">{t.designation}</td>
                 <td className="px-2 py-1">{t.dossierCedant}</td>
                 <td className="px-2 py-1">{t.dossierReceveur}</td>
@@ -159,17 +162,27 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
   const siege = contexte.dossiers.find((d) => d.siege);
   const [cedantId, setCedantId] = useState(siege?.id ?? '');
   const receveurs = receveursPossibles(contexte.dossiers, cedantId);
-  const [receveurId, setReceveurId] = useState(receveurs.length === 1 ? receveurs[0].id : '');
+  const [receveurId, setReceveurId] = useState(receveurPreselectionne(contexte.dossiers, siege?.id ?? ''));
   const cedant = contexte.dossiers.find((d) => d.id === cedantId);
   const receveur = contexte.dossiers.find((d) => d.id === receveurId);
   const [biens, setBiens] = useState<{ biens: BienTransferable[]; tronque: boolean } | null>(null);
   const [erreurBiens, setErreurBiens] = useState<string | null>(null);
   const [f, setF] = useState({ immobilisationId: '', date: '', referencePiece: '', datePiece: '', journalCedantId: '', journalReceveurId: '', compteLiaisonCedantId: '', compteLiaisonReceveurId: '' });
   const [apercu, setApercu] = useState<MontantsTransfert | null>(null);
+  const [enApercu, setEnApercu] = useState(false);
   const { envoi, erreur, setErreur, envoyer } = useEnvoiPaie(onFait);
   const jetonBiens = useRef(0);
+  // La clé du formulaire tel qu'il est · relue au retour de l'aperçu, et
+  // l'aperçu montré porte la sienne · le transfert n'envoie que ce qui a été
+  // montré.
+  const cleCourante = useRef('');
+  const [cleMontree, setCleMontree] = useState<string | null>(null);
 
-  // Le dossier qui cède change · ses biens, son journal et sa liaison se relisent.
+  // Le dossier qui cède change · ses biens, son journal et sa liaison se
+  // relisent. L'effet ne dépend que de `cedantId` · `cedant` en est tiré au
+  // même rendu, et `journalPropose`, `liaisonProposee` sont des fonctions
+  // pures du module ; les ajouter relancerait la lecture des biens à chaque
+  // rendu.
   useEffect(() => {
     setBiens(null);
     setErreurBiens(null);
@@ -188,6 +201,7 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cedantId]);
 
+  // Même raison · `receveur` est tiré de `receveurId` au même rendu.
   useEffect(() => {
     setApercu(null);
     setF((x) => ({ ...x, journalReceveurId: journalPropose(receveur), compteLiaisonReceveurId: liaisonProposee(receveur) }));
@@ -199,6 +213,7 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
     setF((x) => ({ ...x, [cle]: valeur }));
   };
   const corps = () => ({ dossierCedantId: cedantId, dossierReceveurId: receveurId, ...f, referencePiece: f.referencePiece.trim() });
+  cleCourante.current = cleApercu(corps());
   const complet = !!(cedantId && receveurId && f.immobilisationId && f.date && f.referencePiece.trim() && f.datePiece && f.journalCedantId && f.journalReceveurId && f.compteLiaisonCedantId && f.compteLiaisonReceveurId);
 
   const valider = () => {
@@ -206,14 +221,24 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
       setErreur('Tous les champs se renseignent · les deux dossiers, le bien, la date, la pièce, les deux journaux et les deux comptes de liaison.');
       return;
     }
-    if (!apercu) {
+    if (enApercu) return;
+    if (!apercu || cleMontree !== cleCourante.current) {
+      const envoye = corps();
+      const cleEnvoyee = cleApercu(envoye);
       void (async () => {
         setErreur(null);
+        setApercu(null);
+        setEnApercu(true);
         try {
-          const r = await api.post<{ montants: MontantsTransfert }>('/immobilisations/transferts-groupe/apercu', corps());
+          const r = await api.post<{ montants: MontantsTransfert }>('/immobilisations/transferts-groupe/apercu', envoye);
+          if (cleEnvoyee !== cleCourante.current) return;
           setApercu(r.montants);
+          setCleMontree(cleEnvoyee);
         } catch (e) {
+          if (cleEnvoyee !== cleCourante.current) return;
           setErreur(e instanceof ApiError ? e.message : 'Aperçu refusé.');
+        } finally {
+          setEnApercu(false);
         }
       })();
       return;
@@ -224,14 +249,21 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
   return (
     <ModalePaie
       titre="Transférer un bien dans le groupe"
-      envoi={envoi}
+      envoi={envoi || enApercu}
       erreur={erreur}
       onFermer={onFermer}
       onValider={valider}
-      pied={<BoutonsPaie envoi={envoi} onFermer={onFermer} valider={apercu ? 'Transférer' : 'Aperçu'} />}
+      pied={<BoutonsPaie envoi={envoi || enApercu} onFermer={onFermer} valider={apercu && cleMontree === cleCourante.current ? 'Transférer' : 'Aperçu'} />}
     >
       <ChampPaie libelle="Dossier qui cède">
-        <select value={cedantId} onChange={(e) => { setCedantId(e.target.value); setReceveurId(''); }} className={CHAMP_PAIE}>
+        <select
+          value={cedantId}
+          onChange={(e) => {
+            setCedantId(e.target.value);
+            setReceveurId(receveurPreselectionne(contexte.dossiers, e.target.value));
+          }}
+          className={CHAMP_PAIE}
+        >
           {contexte.dossiers.map((d) => (
             <option key={d.id} value={d.id}>{d.nom}{d.siege ? ' (siège)' : ''}</option>
           ))}
@@ -288,8 +320,8 @@ function ModaleTransfert({ contexte, onFermer, onFait }: { contexte: ContexteTra
           {receveur?.comptesLiaison.map((c) => <option key={c.id} value={c.id}>{c.numero} · {c.intitule}</option>)}
         </select>
       </ChampPaie>
-      {apercu && (
-        <div className="border border-border">
+      {apercu && cleMontree === cleCourante.current && (
+        <div role="status" aria-live="polite" className="border border-border">
           <div className="grid grid-cols-2 gap-x-3 px-2 py-1">
             <span className="text-text-dim">Valeur d'entrée</span>
             <span className="text-right tabular-nums">{montants.montant(apercu.valeurOrigine)}</span>

@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureMouvementDepreciation, Prisma, SensDepreciation, SensTransfertGroupe, StatutEcriture, StatutExercice, StatutImmobilisation, TypeJournal } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { perimetreDeGroupe } from '../../common/cloisonnement/contexte-cloisonnement';
+import { acteurCourant } from '../../common/audit/contexte-audit';
+import { journalHorsPerimetre } from '../../common/perimetre/extension-perimetre-journaux';
 import { libelleReference, referencesVers } from '../../common/suppression/references';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
@@ -75,8 +77,11 @@ export class TransfertGroupeService {
   ) {}
 
   /** Le siège et ses cellules · refus nommé si la session n'est pas un siège. */
-  private async groupeDuSiege(tenantId: string): Promise<{ siege: { id: string; referentiel: string }; membres: Array<DossierDuGroupe & { nom: string }> }> {
-    const siege = await this.prisma.tenant.findUnique({
+  private async groupeDuSiege(
+    tenantId: string,
+    db: Db = this.prisma,
+  ): Promise<{ siege: { id: string; referentiel: string }; membres: Array<DossierDuGroupe & { nom: string }> }> {
+    const siege = await db.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, nom: true, dossierMereId: true, referentiel: true, systemeComptableSyscohada: true },
     });
@@ -84,7 +89,7 @@ export class TransfertGroupeService {
     if (siege.dossierMereId !== null) {
       throw new BadRequestException("Le transfert d'un bien dans le groupe se demande depuis le siège · c'est lui qui tient les deux comptabilités en vue.");
     }
-    const cellules = await this.prisma.tenant.findMany({
+    const cellules = await db.tenant.findMany({
       where: { dossierMereId: tenantId },
       select: { id: true, nom: true, dossierMereId: true, referentiel: true, systemeComptableSyscohada: true },
       orderBy: { nom: 'asc' },
@@ -183,8 +188,8 @@ export class TransfertGroupeService {
    * reçoit, et les contrôles d'entrée des deux pièces (périodes closes,
    * comptes Total, journal en sommeil).
    */
-  private async preparer(tenantId: string, dto: TransfertGroupeDto): Promise<Preparation> {
-    const { siege, membres } = await this.groupeDuSiege(tenantId);
+  private async preparer(tenantId: string, dto: TransfertGroupeDto, db: Db = this.prisma): Promise<Preparation> {
+    const { siege, membres } = await this.groupeDuSiege(tenantId, db);
     const groupe = membres.map((m) => m.id);
     const trouve = (id: string) => membres.find((m) => m.id === id) ?? null;
     const cedant = trouve(dto.dossierCedantId);
@@ -201,7 +206,7 @@ export class TransfertGroupeService {
 
     return perimetreDeGroupe(groupe, async () => {
       const exerciceDe = async (dossierId: string, nom: string) => {
-        const e = await this.prisma.exercice.findFirst({
+        const e = await db.exercice.findFirst({
           where: { tenantId: dossierId, dateDebut: { lte: date }, dateFin: { gte: date } },
           select: { id: true, dateDebut: true, dateFin: true, statut: true },
         });
@@ -214,12 +219,12 @@ export class TransfertGroupeService {
       const exerciceCedant = await exerciceDe(cedant!.id, cedant!.nom);
       const exerciceReceveur = await exerciceDe(receveur!.id, receveur!.nom);
 
-      const s = await this.immobilisations.situationAuTransfert(cedant!.id, dto.immobilisationId, exerciceCedant, date);
+      const s = await this.immobilisations.situationAuTransfert(cedant!.id, dto.immobilisationId, exerciceCedant, date, db);
       const refusBien = motifRefusBien(s.faits, date);
       if (refusBien) throw new BadRequestException(refusBien);
 
       const journalDe = async (dossierId: string, id: string, nom: string) => {
-        const j = await this.prisma.journal.findFirst({
+        const j = await db.journal.findFirst({
           where: { id, tenantId: dossierId },
           select: { id: true, numerotation: true, type: true, estActif: true, code: true },
         });
@@ -229,9 +234,21 @@ export class TransfertGroupeService {
       };
       const journalCedant = await journalDe(cedant!.id, dto.journalCedantId, cedant!.nom);
       const journalReceveur = await journalDe(receveur!.id, dto.journalReceveurId, receveur!.nom);
+      // LES JOURNAUX AUTORISÉS DE CELUI QUI TRANSFÈRE · la garde du client
+      // Prisma refuserait l'écriture plus tard, en 403, après que l'aperçu
+      // a tout admis. Le refus est dit ici, journal nommé, à l'aperçu comme
+      // au transfert (extension-perimetre-journaux.ts, même règle).
+      const autorises = acteurCourant()?.journauxAutorises;
+      for (const [j, nom] of [[journalCedant, cedant!.nom], [journalReceveur, receveur!.nom]] as const) {
+        if (journalHorsPerimetre(j.id, autorises)) {
+          throw new ForbiddenException(
+            `Le journal ${j.code} de « ${nom} » n'est pas dans votre périmètre de saisie · l'administrateur a restreint vos écritures aux journaux cochés dans la fenêtre Utilisateurs. Le transfert passe une pièce dans chacun des deux journaux.`,
+          );
+        }
+      }
 
       const liaisonDe = async (dossierId: string, id: string, cote: 'cède' | 'reçoit') => {
-        const c = await this.prisma.compte.findFirst({ where: { id, tenantId: dossierId }, select: { id: true, numero: true, typeCompte: true, estActif: true } });
+        const c = await db.compte.findFirst({ where: { id, tenantId: dossierId }, select: { id: true, numero: true, typeCompte: true, estActif: true } });
         const refus = motifRefusCompteLiaison(c, cote);
         if (refus) throw new BadRequestException(refus);
         return c!;
@@ -244,19 +261,19 @@ export class TransfertGroupeService {
       // portent d'ordinaire ; un sous-compte ouvert chez l'un seul est nommé.
       const numeros = [
         s.immo.compteImmobilisation.numero,
-        ...(await this.prisma.compte.findMany({
+        ...(await db.compte.findMany({
           where: { tenantId: cedant!.id, id: { in: [s.immo.compteAmortissementId, s.immo.compteDotationId] } },
           select: { id: true, numero: true },
         })).map((c) => c.numero),
       ];
-      const numeroAmortissement = (await this.prisma.compte.findFirst({ where: { tenantId: cedant!.id, id: s.immo.compteAmortissementId }, select: { numero: true } }))!.numero;
-      const numeroDotation = (await this.prisma.compte.findFirst({ where: { tenantId: cedant!.id, id: s.immo.compteDotationId }, select: { numero: true } }))!.numero;
+      const numeroAmortissement = (await db.compte.findFirst({ where: { tenantId: cedant!.id, id: s.immo.compteAmortissementId }, select: { numero: true } }))!.numero;
+      const numeroDotation = (await db.compte.findFirst({ where: { tenantId: cedant!.id, id: s.immo.compteDotationId }, select: { numero: true } }))!.numero;
       const avecDepreciation = s.depreciations > EPSILON;
       if (avecDepreciation && (!s.porteur?.numeroDepreciation || !s.porteur.numeroContrepartieDotation)) {
         throw new BadRequestException("La dépréciation du bien n'a pas de compte 29 lisible dans le dossier qui le cède · corrigez-la d'abord.");
       }
       const cherches = [...new Set([...numeros, ...(avecDepreciation ? [s.porteur!.numeroDepreciation!, s.porteur!.numeroContrepartieDotation!] : [])])];
-      const comptesReceveur = await this.prisma.compte.findMany({
+      const comptesReceveur = await db.compte.findMany({
         where: { tenantId: receveur!.id, numero: { in: cherches } },
         select: { id: true, numero: true, typeCompte: true, estActif: true },
       });
@@ -279,14 +296,14 @@ export class TransfertGroupeService {
         contrepartieDepreciation: avecDepreciation ? compteReceveur(s.porteur!.numeroContrepartieDotation!) : null,
       };
       const famille =
-        (await this.prisma.familleImmobilisation.findFirst({ where: { tenantId: receveur!.id, code: s.immo.famille.code }, select: { id: true } })) ??
-        (await this.prisma.familleImmobilisation.findFirst({ where: { tenantId: receveur!.id, compteImmobilisationId: comptes.bien }, select: { id: true } }));
+        (await db.familleImmobilisation.findFirst({ where: { tenantId: receveur!.id, code: s.immo.famille.code }, select: { id: true } })) ??
+        (await db.familleImmobilisation.findFirst({ where: { tenantId: receveur!.id, compteImmobilisationId: comptes.bien }, select: { id: true } }));
       if (!famille) {
         throw new BadRequestException(`Aucune famille de biens du compte ${s.immo.compteImmobilisation.numero} dans « ${receveur!.nom} » · créez-la avant le transfert.`);
       }
       const numeroInventaireLibre =
         !!s.immo.numeroInventaire &&
-        !(await this.prisma.immobilisation.findFirst({ where: { tenantId: receveur!.id, numeroInventaire: s.immo.numeroInventaire }, select: { id: true } }));
+        !(await db.immobilisation.findFirst({ where: { tenantId: receveur!.id, numeroInventaire: s.immo.numeroInventaire }, select: { id: true } }));
 
       const montants = montantsDuTransfert({
         valeurOrigine: Number(s.immo.valeurOrigine),
@@ -310,8 +327,8 @@ export class TransfertGroupeService {
       // son dossier · période close, compte Total, journal en sommeil. Aucune
       // section analytique n'est portée · la dotation complémentaire suit le
       // bien, que le dossier qui cède ventile s'il le veut.
-      await this.ecritures.controlesDEntree(cedant!.id, { exerciceId: exerciceCedant.id, journalId: journalCedant.id, date, lignes: pieces.cedant, exigerVentilationObligatoire: false });
-      await this.ecritures.controlesDEntree(receveur!.id, { exerciceId: exerciceReceveur.id, journalId: journalReceveur.id, date, lignes: pieces.receveur, exigerVentilationObligatoire: false });
+      await this.ecritures.controlesDEntree(cedant!.id, { exerciceId: exerciceCedant.id, journalId: journalCedant.id, date, lignes: pieces.cedant, exigerVentilationObligatoire: false }, db);
+      await this.ecritures.controlesDEntree(receveur!.id, { exerciceId: exerciceReceveur.id, journalId: journalReceveur.id, date, lignes: pieces.receveur, exigerVentilationObligatoire: false }, db);
 
       return {
         groupe,
@@ -339,23 +356,29 @@ export class TransfertGroupeService {
 
   /** TRANSFÉRER · les deux pièces, les deux fiches, les deux côtés, ensemble. */
   async transferer(tenantId: string, userId: string, userEmail: string, dto: TransfertGroupeDto) {
-    const p = await this.preparer(tenantId, dto);
+    // Une première lecture hors transaction · elle refuse vite, et elle donne
+    // les deux dossiers à verrouiller. Elle ne fait jamais foi · tout est
+    // rejoué sous les verrous.
+    const avant = await this.preparer(tenantId, dto);
     const transfertId = randomUUID();
-    const libelle = `Transfert dans le groupe · ${p.immo.designation}`.slice(0, 250);
-    const i = p.immo;
-    return perimetreDeGroupe(p.groupe, () =>
+    return perimetreDeGroupe(avant.groupe, () =>
       transactionJournalisee(this.prisma, async (tx) => {
         // Les deux dossiers, dans un ordre FIXE · deux transferts croisés
         // s'attendraient sinon l'un l'autre.
-        for (const d of [p.cedant.id, p.receveur.id].sort()) await prendreLeVerrouDuDossier(tx, d);
-        // Le bien relu sous verrou · une sortie ou une dotation passée entre
-        // l'aperçu et l'écriture refuse ici, jamais un second transfert.
-        await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${i.id} AND "tenantId" = ${p.cedant.id} FOR UPDATE`;
-        const relu = await tx.immobilisation.findFirst({ where: { id: i.id, tenantId: p.cedant.id }, select: { statut: true } });
-        const doteEntretemps = await tx.dotationAmortissement.findFirst({ where: { immobilisationId: i.id, exerciceId: p.exerciceCedant.id }, select: { id: true } });
-        if (relu?.statut !== StatutImmobilisation.EN_SERVICE || doteEntretemps) {
-          throw new ConflictException("Le bien vient d'être sorti ou doté par une autre opération · relisez-le avant de le transférer.");
+        for (const d of [avant.cedant.id, avant.receveur.id].sort()) await prendreLeVerrouDuDossier(tx, d);
+        await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${avant.immo.id} AND "tenantId" = ${avant.cedant.id} FOR UPDATE`;
+        // LA PRÉPARATION REJOUÉE SOUS VERROU · exercices et statuts, situation
+        // du bien (dotations et dépréciations de tous les exercices, B1),
+        // comptes, contrôles d'entrée. Une dotation, une dépréciation, une
+        // clôture ou une sortie passées entre l'aperçu et l'écriture refusent
+        // ici par leur motif ; des montants qui ont bougé sans refus rendent
+        // un 409 · on ne passe jamais autre chose que ce qui a été lu.
+        const p = await this.preparer(tenantId, dto, tx);
+        if (JSON.stringify(p.montants) !== JSON.stringify(avant.montants) || JSON.stringify(p.pieces) !== JSON.stringify(avant.pieces)) {
+          throw new ConflictException("Le bien a changé pendant la préparation du transfert (montants ou comptes) · relancez l'aperçu, puis transférez.");
         }
+        const libelle = `Transfert dans le groupe · ${p.immo.designation}`.slice(0, 250);
+        const i = p.immo;
 
         const creerPiece = async (dossierId: string, journal: Preparation['journalCedant'], exerciceId: string, lignes: Array<{ compteId: string; debit: number; credit: number }>) => {
           const numeroPiece = await prochainNumeroPiece(tx, dossierId, journal, exerciceId, p.date);
@@ -368,6 +391,12 @@ export class TransfertGroupeService {
               date: p.date,
               libelle,
               reference: p.referencePiece,
+              // LE DOUBLE REGARD NE VOIT QUE L'IDENTITÉ (CLAUDE.md § 10 ter,
+              // point aveugle) · la pièce née dans la cellule porte un
+              // utilisateur du SIÈGE, si bien que, l'option activée, tout
+              // utilisateur de la cellule la valide sans qu'aucun n'en soit
+              // l'auteur · personne dans la cellule ne l'a pourtant relue. Le
+              // logiciel ne contrôle pas l'indépendance.
               createdBy: userId,
               lignes: { create: lignes.map((l) => ({ compteId: l.compteId, libelle, debit: l.debit, credit: l.credit })) },
             },
@@ -551,37 +580,66 @@ export class TransfertGroupeService {
       if (!entree.immobilisationId || !sortie.immobilisationId || !sortie.ecritureId || !entree.ecritureId) {
         throw new BadRequestException('Ce transfert ne porte plus ses deux fiches et ses deux pièces · il ne se défait plus ici.');
       }
-      // LE DOSSIER QUI A REÇU N'A RIEN FAIT DU BIEN · sinon ces actes ont été
-      // calculés sur un bien qui n'y serait plus.
-      const fiche = await this.prisma.immobilisation.findFirst({
-        where: { id: entree.immobilisationId, tenantId: entree.tenantId },
-        select: { id: true, statut: true },
-      });
-      if (!fiche) throw new NotFoundException('La fiche du bien reçu est introuvable.');
-      if (fiche.statut !== StatutImmobilisation.EN_SERVICE) throw new BadRequestException('Le bien est sorti du dossier qui l’a reçu · annulez d’abord cette sortie.');
-      const refs = await referencesVers(this.prisma, 'Immobilisation', fiche.id, entree.tenantId, ['TransfertImmobilisationGroupe.immobilisationId']);
-      const heritees = await this.prisma.depreciationImmobilisation.count({ where: { immobilisationId: fiche.id, nature: NatureMouvementDepreciation.TRANSFERT_GROUPE } });
-      const usages = refs.filter((r) => !(r.modele === 'DepreciationImmobilisation' && r.nombre === heritees) && r.modele !== 'PieceJointeImmobilisation');
-      if (usages.length > 0) {
-        throw new BadRequestException(
-          `Le dossier qui a reçu le bien l'a déjà traité (${usages.map(libelleReference).join(', ')}) · annulez d'abord ces actes, du plus récent au plus ancien, puis le transfert.`,
-        );
-      }
-      const documents = refs.find((r) => r.modele === 'PieceJointeImmobilisation');
-      if (documents) throw new BadRequestException(`La fiche du bien reçu porte ${documents.nombre} document(s) joint(s) · retirez-les d'abord.`);
-
-      const pieces = await this.prisma.ecriture.findMany({
-        where: { id: { in: [sortie.ecritureId, entree.ecritureId] }, tenantId: { in: [sortie.tenantId, entree.tenantId] }, statut: { not: StatutEcriture.SITUATION } },
-        select: { id: true, tenantId: true, statut: true, numeroPiece: true, lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
-      });
-      for (const e of pieces) {
-        const tenues = motifLignesTenues(e.lignes, `la pièce n° ${e.numeroPiece ?? '·'} du transfert`, 'annuler le transfert');
-        if (tenues) throw new BadRequestException(tenues);
-      }
       const motifPropre = motif.trim();
 
       return transactionJournalisee(this.prisma, async (tx) => {
         for (const d of [sortie.tenantId, entree.tenantId].sort()) await prendreLeVerrouDuDossier(tx, d);
+        // LA FICHE REÇUE SOUS VERROU, PUIS TOUT CE QUI REFUSE · relu dans la
+        // transaction, une dotation, une pièce jointe ou un lettrage posés
+        // entre la lecture et l'écriture refusent par leur motif, jamais par
+        // un 500 sur la clé RESTRICT au retrait de la fiche.
+        await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${entree.immobilisationId} AND "tenantId" = ${entree.tenantId} FOR UPDATE`;
+        const fiche = await tx.immobilisation.findFirst({
+          where: { id: entree.immobilisationId!, tenantId: entree.tenantId },
+          select: { id: true, statut: true },
+        });
+        if (!fiche) throw new NotFoundException('La fiche du bien reçu est introuvable.');
+        if (fiche.statut !== StatutImmobilisation.EN_SERVICE) {
+          // Re-transféré, il est sorti par un AUTRE transfert · celui-là
+          // s'annule d'abord, depuis la même fenêtre.
+          const suivant = await tx.transfertImmobilisationGroupe.findFirst({
+            where: { tenantId: entree.tenantId, immobilisationId: fiche.id, sens: SensTransfertGroupe.SORTIE, annuleLe: null },
+            select: { dateTransfert: true, referencePiece: true },
+          });
+          if (suivant) {
+            throw new BadRequestException(
+              `Le bien a été transféré de nouveau depuis le dossier qui l'a reçu (le ${jour(suivant.dateTransfert)}, pièce ${suivant.referencePiece}) · annulez d'abord le transfert suivant, puis celui-ci.`,
+            );
+          }
+          throw new BadRequestException('Le bien est sorti du dossier qui l’a reçu · annulez d’abord cette sortie.');
+        }
+        // LE DOSSIER QUI A REÇU N'A RIEN FAIT DU BIEN · sinon ces actes ont été
+        // calculés sur un bien qui n'y serait plus. Un traitement passé PUIS
+        // ANNULÉ ne compte pas · son historique (`AnnulationTraitementImmobilisation`)
+        // garde l'acte en entier dans `acte` et se détache de la fiche avant
+        // qu'elle parte (colonne nullable, prévue pour un acte sans bien).
+        const refs = await referencesVers(tx, 'Immobilisation', fiche.id, entree.tenantId, [
+          'TransfertImmobilisationGroupe.immobilisationId',
+          'AnnulationTraitementImmobilisation.immobilisationId',
+        ]);
+        const heritees = await tx.depreciationImmobilisation.count({ where: { immobilisationId: fiche.id, nature: NatureMouvementDepreciation.TRANSFERT_GROUPE, immobilisation: { tenantId: entree.tenantId } } });
+        const usages = refs.filter((r) => !(r.modele === 'DepreciationImmobilisation' && r.nombre === heritees) && r.modele !== 'PieceJointeImmobilisation');
+        if (usages.length > 0) {
+          throw new BadRequestException(
+            `Le dossier qui a reçu le bien l'a déjà traité (${usages.map(libelleReference).join(', ')}) · annulez d'abord ces actes, du plus récent au plus ancien, puis le transfert.`,
+          );
+        }
+        const documents = refs.find((r) => r.modele === 'PieceJointeImmobilisation');
+        if (documents) throw new BadRequestException(`La fiche du bien reçu porte ${documents.nombre} document(s) joint(s) · retirez-les d'abord.`);
+
+        const pieces = await tx.ecriture.findMany({
+          where: { id: { in: [sortie.ecritureId!, entree.ecritureId!] }, tenantId: { in: [sortie.tenantId, entree.tenantId] }, statut: { not: StatutEcriture.SITUATION } },
+          select: { id: true, tenantId: true, statut: true, numeroPiece: true, lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
+        });
+        for (const e of pieces) {
+          const tenues = motifLignesTenues(e.lignes, `la pièce n° ${e.numeroPiece ?? '·'} du transfert`, 'annuler le transfert');
+          if (tenues) throw new BadRequestException(tenues);
+        }
+        // Une mise à jour UNITAIRE par acte d'historique · au journal d'audit,
+        // un `updateMany` ne laisserait que son filtre et son compte.
+        const historique = await tx.annulationTraitementImmobilisation.findMany({ where: { tenantId: entree.tenantId, immobilisationId: fiche.id }, select: { id: true }, take: 1_000 });
+        for (const h of historique) await tx.annulationTraitementImmobilisation.update({ where: { id: h.id }, data: { immobilisationId: null } });
+
         const maintenant = new Date();
         const negatifs = new Map<string, string>();
         // Les validées d'abord · l'inscription en négatif refuse un exercice

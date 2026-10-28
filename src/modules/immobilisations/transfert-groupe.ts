@@ -91,14 +91,22 @@ export type FaitsDuBien = {
   composantsEnService: number;
   degressifFiscal: boolean;
   reevaluations: number;
-  subventionsNonSoldees: number;
+  /** Rattachements moins réductions moins reprises · zéro, la subvention ne retient plus le bien. */
+  soldeSubventionNonRepris: number;
   detteAleatoireNonSoldee: boolean;
   demantelement: boolean;
   locationAcquisition: boolean;
   unitesOeuvreDeprecie: boolean;
   dotationDeLExercicePassee: boolean;
+  /** Les traitements d'un exercice qui finit après la date du transfert, du plus récent au plus ancien. */
+  traitementsPosterieurs: string[];
+  /** La fin d'un exercice antérieur encore ouvert sans sa dotation sur ce bien, ou null. */
+  exerciceAnterieurNonDote: Date | null;
   dateEntreeGroupe: Date | null;
 };
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const montant = (x: number) => x.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\u202f|\u00a0/g, ' ');
 
 /** Pourquoi ce bien ne se transfère pas, ou null · chaque refus dit son issue. */
 export function motifRefusBien(b: FaitsDuBien, date: Date): string | null {
@@ -118,8 +126,11 @@ export function motifRefusBien(b: FaitsDuBien, date: Date): string | null {
   if (b.reevaluations > 0) {
     return "Le bien a été réévalué (AUDCIF Titre VIII ch. 28) · l'écart au 106 ou la provision spéciale au 154 restent dans le dossier qui l'a réévalué et se reprennent avec le bien · le transfert d'un bien réévalué n'est pas servi.";
   }
-  if (b.subventionsNonSoldees > 0) {
-    return "Une subvention d'investissement est rattachée au bien et se reprend au rythme de son amortissement (fiche du compte 14) · elle reste dans le dossier qui l'a reçue, le transfert n'est pas servi tant qu'elle n'est pas soldée.";
+  if (b.soldeSubventionNonRepris > EPSILON) {
+    return (
+      `Une subvention d'investissement rattachée au bien reste à reprendre (${montant(b.soldeSubventionNonRepris)} non repris) · elle se reprend au rythme de ` +
+      "l'amortissement (fiche du compte 14) et reste dans le dossier qui l'a reçue. Le transfert n'est pas servi tant qu'elle n'est pas soldée par ses reprises."
+    );
   }
   if (b.detteAleatoireNonSoldee) return "Le bien porte une dette à prix aléatoire non soldée (rente, redevances) · elle reste au dossier qui l'a contractée ; soldez-la d'abord.";
   if (b.demantelement) return "Le bien porte un composant de démantèlement actualisé (AUDCIF Titre VIII ch. 6) · la provision reste au dossier qui l'a constituée ; le transfert n'est pas servi.";
@@ -129,6 +140,19 @@ export function motifRefusBien(b: FaitsDuBien, date: Date): string | null {
   }
   if (b.dotationDeLExercicePassee) {
     return "La dotation de l'exercice du transfert est déjà passée sur ce bien · l'annuité se partage entre les deux dossiers au mois du transfert. Annulez d'abord cette dotation (onglet Traitements de la fiche), puis transférez.";
+  }
+  if (b.traitementsPosterieurs.length > 0) {
+    const liste = b.traitementsPosterieurs.slice(0, 5).join(' ; ') + (b.traitementsPosterieurs.length > 5 ? ` et ${b.traitementsPosterieurs.length - 5} autre(s)` : '');
+    return (
+      `Un traitement d'un exercice qui finit après le ${iso(date)} est déjà passé sur ce bien (${liste}) · il compterait dans ce qui suit le bien, ` +
+      `alors que le bien quitte le dossier avant lui. Annulez d'abord ${b.traitementsPosterieurs[0]} (onglet Traitements de la fiche), du plus récent au plus ancien, puis transférez.`
+    );
+  }
+  if (b.exerciceAnterieurNonDote) {
+    return (
+      `L'exercice qui finit le ${iso(b.exerciceAnterieurNonDote)}, encore ouvert, n'a pas sa dotation sur ce bien · une fois le bien sorti, elle ne se passerait plus ` +
+      "et son annuité serait perdue des deux côtés. Passez d'abord cette dotation, puis transférez."
+    );
   }
   if (date.getTime() < b.dateAcquisition.getTime()) return "Le transfert ne précède pas l'acquisition du bien.";
   if (b.dateMiseEnService && date.getTime() < b.dateMiseEnService.getTime()) return 'Le transfert ne précède pas la mise en service du bien.';

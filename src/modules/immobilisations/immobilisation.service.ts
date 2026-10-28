@@ -705,8 +705,8 @@ export class ImmobilisationService {
    * Le module ignorait entièrement le second · `grep systemeComptableSyscohada`
    * n'y rendait aucune ligne, alors que le Titre X le contraint.
    */
-  private async regimeComptable(tenantId: string) {
-    return this.prisma.tenant.findUniqueOrThrow({
+  private async regimeComptable(tenantId: string, db: PrismaService | Prisma.TransactionClient = this.prisma) {
+    return db.tenant.findUniqueOrThrow({
       where: { id: tenantId },
       select: { referentiel: true, systemeComptableSyscohada: true, jeuEtatsFinanciersSycebnl: true },
     });
@@ -1605,8 +1605,8 @@ export class ImmobilisationService {
     };
   }
 
-  private async trouver(tenantId: string, id: string) {
-    const immo = await this.prisma.immobilisation.findFirst({
+  private async trouver(tenantId: string, id: string, db: PrismaService | Prisma.TransactionClient = this.prisma) {
+    const immo = await db.immobilisation.findFirst({
       where: { id, tenantId },
       // `compteImmobilisation` est chargé pour sa NATURE : c'est son numéro
       // qui décide du compte de classe 8 à servir à la sortie (811 / 812 / 816).
@@ -3820,12 +3820,13 @@ export class ImmobilisationService {
     immo: { id: string; modeAmortissement: ModeAmortissement; unitesOeuvrePrevues: unknown },
     exerciceId: string,
     exerciceDateFin: Date,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ): Promise<{ prevues: number; consommees: number; consommeesAnterieures: number } | null> {
     if (immo.modeAmortissement !== ModeAmortissement.UNITES_DOEUVRE) return null;
     // La borne de tenant est portée ICI et non déduite du bien déjà lu · la
     // règle du cloisonnement est absolue et une lecture non bornée reste une
     // lecture non bornée, même quand son parent l'était.
-    const toutes = await this.prisma.consommationUniteOeuvre.findMany({
+    const toutes = await db.consommationUniteOeuvre.findMany({
       where: { tenantId, immobilisationId: immo.id },
       include: { exercice: { select: { dateFin: true } } },
     });
@@ -4858,17 +4859,25 @@ export class ImmobilisationService {
    * compte 29 qui les porte, et les faits qui refusent le transfert. Rien
    * n'est écrit.
    */
-  async situationAuTransfert(tenantId: string, id: string, exercice: { id: string; dateDebut: Date; dateFin: Date }, date: Date) {
-    const immo = await this.trouver(tenantId, id);
-    const regime = await this.regimeComptable(tenantId);
+  async situationAuTransfert(
+    tenantId: string,
+    id: string,
+    exercice: { id: string; dateDebut: Date; dateFin: Date },
+    date: Date,
+    // Le client de la transaction du transfert · la préparation se REJOUE
+    // sous les verrous des deux dossiers, sans quoi une dotation passée entre
+    // l'aperçu et l'écriture échappait à la lecture.
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ) {
+    const immo = await this.trouver(tenantId, id, db);
+    const regime = await this.regimeComptable(tenantId, db);
     const dotationDeLExercicePassee = immo.dotations.some((d) => d.exerciceId === exercice.id);
-    const sansComplement =
-      dotationDeLExercicePassee ||
-      immo.statut !== StatutImmobilisation.EN_SERVICE ||
+    const nonAmortissable =
       !immo.dateMiseEnService ||
       !!motifNonAmortissable(immo.compteImmobilisation.numero, regime.referentiel) ||
       !!motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl) ||
       immo.dureeNonLimitee;
+    const sansComplement = dotationDeLExercicePassee || immo.statut !== StatutImmobilisation.EN_SERVICE || nonAmortissable;
     const complement = sansComplement
       ? 0
       : Math.round(
@@ -4884,7 +4893,7 @@ export class ImmobilisationService {
               immo.depreciations.filter((d) => estDepreciationAnterieure(d, exercice)).map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
             ),
             this.sansProrataTemporis(regime),
-            await this.unitesOeuvreDe(tenantId, immo, exercice.id, date),
+            await this.unitesOeuvreDe(tenantId, immo, exercice.id, date, db),
             planDuBien(immo),
             debutDeDetention(immo.dateEntreeGroupe),
           ) * 100,
@@ -4894,15 +4903,79 @@ export class ImmobilisationService {
     const porteur = porteurDeLaDepreciation(
       immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant), compteDepreciationId: d.compteDepreciationId, compteContrepartieId: d.compteContrepartieId })),
     );
-    const [composantsEnService, reevaluations, subventions, mouvementsDemantelement, contrat] = await Promise.all([
-      this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
-      this.prisma.ligneReevaluationBilan.count({ where: { tenantId, immobilisationId: id } }),
-      this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
-      this.prisma.mouvementDemantelement.count({ where: { tenantId, immobilisationId: id } }),
-      this.prisma.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
+    const [composantsEnService, reevaluations, subventions, mouvementsDemantelement, contrat, revisions, exercicesAnterieursOuverts] = await Promise.all([
+      db.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
+      db.ligneReevaluationBilan.count({ where: { tenantId, immobilisationId: id } }),
+      db.subventionImmobilisation.findMany({
+        where: { tenantId, immobilisationId: id },
+        select: { montant: true, reductions: { select: { montant: true } } },
+      }),
+      db.mouvementDemantelement.count({ where: { tenantId, immobilisationId: id } }),
+      db.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
+      db.revisionPlanAmortissement.findMany({ where: { tenantId, immobilisationId: id, dateDecision: { gt: date } }, select: { dateDecision: true }, orderBy: { dateDecision: 'desc' }, take: 20 }),
+      db.exercice.findMany({
+        where: { tenantId, statut: { not: StatutExercice.CLOTURE }, dateFin: { lt: exercice.dateDebut } },
+        select: { id: true, dateFin: true },
+        orderBy: { dateFin: 'asc' },
+        take: 50,
+      }),
     ]);
+    // LA SUBVENTION QUI RESTE À REPRENDRE · seule elle retient le bien (fiche
+    // du compte 14 · reprise au rythme de l'amortissement). Soldée, elle n'a
+    // plus rien à suivre · le même solde que la réduction
+    // (`SubventionRattacheeService.reduire`), rattachements moins réductions
+    // moins reprises.
+    const reprisesSubvention =
+      subventions.length === 0
+        ? 0
+        : (await db.repriseSubventionImmobilisation.aggregate({ where: { tenantId, immobilisationId: id }, _sum: { montant: true } }))._sum.montant;
+    const soldeSubventionNonRepris =
+      Math.round(
+        (subventions.reduce((t, sub) => t + Number(sub.montant) - sub.reductions.reduce((u, r) => u + Number(r.montant), 0), 0) - Number(reprisesSubvention ?? 0)) * 100,
+      ) / 100;
+    // B1 · LES TRAITEMENTS D'UN EXERCICE QUI FINIT APRÈS LA DATE DU TRANSFERT ·
+    // N+1 s'ouvre avant la clôture de N (AUDCIF art. 23), et une dotation de
+    // N+1 déjà passée serait emportée dans le cumul qui suit le bien alors que
+    // son annuité court après qu'il a quitté le dossier · le dossier qui reçoit
+    // la doterait une seconde fois. La dépréciation constatée à la clôture
+    // (nature CLOTURE) et la révision décidée après la date de même. Celle qui
+    // a suivi le bien à son entrée (TRANSFERT_GROUPE) est antérieure par
+    // nature.
+    const fin = (d: Date) => d.toISOString().slice(0, 10);
+    const traitementsPosterieurs = [
+      ...immo.dotations
+        .filter((d) => d.exerciceId !== exercice.id && d.exercice.dateFin.getTime() > date.getTime())
+        .map((d) => ({ quand: d.exercice.dateFin, libelle: `la dotation de l'exercice clos le ${fin(d.exercice.dateFin)}` })),
+      ...immo.depreciations
+        .filter((d) => d.nature === NatureMouvementDepreciation.CLOTURE && d.exercice.dateFin.getTime() > date.getTime())
+        .map((d) => ({
+          quand: d.exercice.dateFin,
+          libelle: `${d.sens === SensDepreciation.DOTATION ? 'la dépréciation' : 'la reprise de dépréciation'} de l'exercice clos le ${fin(d.exercice.dateFin)}`,
+        })),
+      ...revisions.map((r) => ({ quand: r.dateDecision, libelle: `la révision du plan du ${fin(r.dateDecision)}` })),
+    ]
+      .sort((a, b) => b.quand.getTime() - a.quand.getTime())
+      .map((t) => t.libelle);
+    // M · UN EXERCICE ANTÉRIEUR ENCORE OUVERT SANS SA DOTATION SUR CE BIEN ·
+    // une fois le bien sorti, elle ne se passe plus (le module ne dote qu'un
+    // bien en service), et l'annuité de cet exercice serait perdue des deux
+    // côtés · même règle que « on réévalue dans l'ordre ». Seulement s'il
+    // restait à amortir et que le bien était en service et détenu dans
+    // l'exercice.
+    const detention = debutDeDetention(immo.dateEntreeGroupe);
+    const resteAAmortir =
+      Number(immo.valeurOrigine) - Number(immo.valeurResiduelle) - cumulAmortiAvant - depreciations > EPSILON;
+    const exerciceAnterieurNonDote =
+      nonAmortissable || !resteAAmortir
+        ? null
+        : (exercicesAnterieursOuverts.find(
+            (e) =>
+              immo.dateMiseEnService!.getTime() <= e.dateFin.getTime() &&
+              (!detention || detention.getTime() <= e.dateFin.getTime()) &&
+              !immo.dotations.some((d) => d.exerciceId === e.id),
+          )?.dateFin ?? null);
     const comptes = porteur
-      ? await this.prisma.compte.findMany({
+      ? await db.compte.findMany({
           where: { tenantId, id: { in: [porteur.compteDepreciationId, porteur.compteContrepartieDotationId].filter((x): x is string => !!x) } },
           select: { id: true, numero: true },
         })
@@ -4928,12 +5001,14 @@ export class ImmobilisationService {
         composantsEnService,
         degressifFiscal: !!immo.degressifFiscal,
         reevaluations,
-        subventionsNonSoldees: subventions,
+        soldeSubventionNonRepris,
         detteAleatoireNonSoldee: !!immo.natureAcquisitionAleatoire && !immo.ecritureSoldeDetteAleatoireId,
         demantelement: immo.coutFuturDemantelement !== null || mouvementsDemantelement > 0,
         locationAcquisition: !!contrat,
         unitesOeuvreDeprecie: immo.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE && depreciations > EPSILON,
         dotationDeLExercicePassee,
+        traitementsPosterieurs,
+        exerciceAnterieurNonDote,
         dateEntreeGroupe: immo.dateEntreeGroupe,
       },
     };

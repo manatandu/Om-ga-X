@@ -42,12 +42,14 @@ function bien(p: Partial<FaitsDuBien> = {}): FaitsDuBien {
     composantsEnService: 0,
     degressifFiscal: false,
     reevaluations: 0,
-    subventionsNonSoldees: 0,
+    soldeSubventionNonRepris: 0,
     detteAleatoireNonSoldee: false,
     demantelement: false,
     locationAcquisition: false,
     unitesOeuvreDeprecie: false,
     dotationDeLExercicePassee: false,
+    traitementsPosterieurs: [],
+    exerciceAnterieurNonDote: null,
     dateEntreeGroupe: null,
     ...p,
   };
@@ -69,7 +71,7 @@ describe('transfert d’un bien dans le groupe · SYCEBNL refusé (gelé)', () =
     const b = { ...cellule, referentiel: 'SYCEBNL', systemeComptableSyscohada: null };
     expect(motifRefusDossiers({ siegeId: 'S', cedant: a, receveur: b })).toBe(MOTIF_REFUS_SYCEBNL);
     expect(MOTIF_REFUS_SYCEBNL).toContain('fiche du compte 58');
-    expect(MOTIF_REFUS_SYCEBNL).toContain('question est posée');
+    expect(MOTIF_REFUS_SYCEBNL).toContain('La question reste ouverte au suivi.');
   });
 });
 
@@ -105,11 +107,31 @@ describe('transfert d’un bien dans le groupe · les refus du bien', () => {
     ['principal à composants', { composantsEnService: 2 }, /composant/],
     ['dérogatoire', { degressifFiscal: true }, /dérogatoire/],
     ['réévalué', { reevaluations: 1 }, /réévalué/],
-    ['subvention', { subventionsNonSoldees: 1 }, /subvention/],
+    ['subvention à reprendre', { soldeSubventionNonRepris: 150_000 }, /150 000,00 non repris/],
     ['dotation de l’exercice déjà passée', { dotationDeLExercicePassee: true }, /Annulez d'abord/],
   ] as Array<[string, Partial<FaitsDuBien>, RegExp]>)('%s · refus nommé', (_n, faits, motif) => {
     expect(motifRefusBien(bien(faits), date)).toMatch(motif);
   });
+  it('une subvention soldée par ses reprises ne retient plus le bien', () => {
+    expect(motifRefusBien(bien({ soldeSubventionNonRepris: 0 }), date)).toBeNull();
+    expect(motifRefusBien(bien({ soldeSubventionNonRepris: 0.004 }), date)).toBeNull();
+  });
+
+  it('B1 · un traitement d’un exercice qui finit après la date (N+1 ouvert avant la clôture de N) refuse, le plus récent nommé', () => {
+    const m = motifRefusBien(
+      bien({ traitementsPosterieurs: ["la dotation de l'exercice clos le 2028-12-31", "la dépréciation de l'exercice clos le 2027-12-31"] }),
+      date,
+    );
+    expect(m).toMatch(/finit après le 2027-06-15/);
+    expect(m).toContain("Annulez d'abord la dotation de l'exercice clos le 2028-12-31");
+  });
+
+  it('un exercice antérieur encore ouvert sans sa dotation refuse · elle ne se passerait plus', () => {
+    const m = motifRefusBien(bien({ exerciceAnterieurNonDote: D('2026-12-31') }), date);
+    expect(m).toMatch(/finit le 2026-12-31, encore ouvert/);
+    expect(m).toMatch(/Passez d'abord cette dotation/);
+  });
+
   it('un transfert ne précède ni la mise en service ni une entrée antérieure par transfert', () => {
     expect(motifRefusBien(bien({ dateMiseEnService: D('2027-07-01') }), date)).toMatch(/mise en service/);
     expect(motifRefusBien(bien({ dateEntreeGroupe: D('2027-06-15') }), date)).toMatch(/postérieur/);
@@ -222,7 +244,7 @@ describe('transfert d’un bien dans le groupe · l’annuité de l’année du 
     expect(bloc).toContain('transfertGroupeNegatif: null');
     // L'annulation ne compte pas le transfert lui-même parmi les actes du
     // dossier qui a reçu · la clé d'exclusion est « Modèle.colonne ».
-    expect(readFileSync(join(__dirname, 'transfert-groupe.service.ts'), 'utf8')).toContain("['TransfertImmobilisationGroupe.immobilisationId']");
+    expect(readFileSync(join(__dirname, 'transfert-groupe.service.ts'), 'utf8')).toContain("'TransfertImmobilisationGroupe.immobilisationId',");
   });
 
   it('la dépréciation qui a suivi le bien compte dès l’exercice d’entrée · le plan se ré-étale', () => {
@@ -231,5 +253,54 @@ describe('transfert d’un bien dans le groupe · l’annuité de l’année du 
     expect(estDepreciationAnterieure(suivie, ex2027)).toBe(true);
     expect(estDepreciationAnterieure(ordinaire, ex2027)).toBe(false);
     expect(estDepreciationAnterieure({ ...suivie, sens: 'REPRISE' }, ex2027)).toBe(false);
+  });
+});
+
+describe('transfert d’un bien dans le groupe · la préparation se rejoue sous verrou (gelé)', () => {
+  const source = readFileSync(join(__dirname, 'transfert-groupe.service.ts'), 'utf8');
+  const corps = (nom: string) => {
+    const debut = source.indexOf(`async ${nom}(`);
+    const suivant = source.indexOf('\n  async ', debut + 1);
+    return source.slice(debut, suivant === -1 ? undefined : suivant);
+  };
+
+  it('transférer · les deux verrous, puis la préparation rejouée avec le client de la transaction, puis la comparaison', () => {
+    const t = corps('transferer');
+    const verrou = t.indexOf('prendreLeVerrouDuDossier(tx');
+    const rejeu = t.indexOf('this.preparer(tenantId, dto, tx)');
+    const comparaison = t.indexOf('JSON.stringify(p.montants) !== JSON.stringify(avant.montants)');
+    const premiereEcriture = t.indexOf('tx.ecriture.create');
+    expect(verrou).toBeGreaterThan(0);
+    expect(rejeu).toBeGreaterThan(verrou);
+    expect(comparaison).toBeGreaterThan(rejeu);
+    expect(premiereEcriture).toBeGreaterThan(comparaison);
+  });
+
+  it('la situation du bien et les contrôles d’entrée lisent par le client reçu, jamais par this.prisma', () => {
+    const p = corps('preparer');
+    expect(p).toContain('situationAuTransfert(cedant!.id, dto.immobilisationId, exerciceCedant, date, db)');
+    expect(p.match(/controlesDEntree\([^;]*, db\);/g)?.length).toBe(2);
+    expect(p).not.toContain('this.prisma.');
+    const immo = readFileSync(join(__dirname, 'immobilisation.service.ts'), 'utf8');
+    const s = immo.slice(immo.indexOf('async situationAuTransfert('), immo.indexOf('async sortir('));
+    expect(s).not.toContain('this.prisma.');
+  });
+
+  it('annuler · usages, lettrage et pointage relus dans la transaction, après le verrou de la fiche reçue', () => {
+    const a = corps('annuler');
+    const tx = a.indexOf('transactionJournalisee(');
+    expect(a.indexOf('FOR UPDATE')).toBeGreaterThan(tx);
+    expect(a.indexOf('referencesVers(tx')).toBeGreaterThan(a.indexOf('FOR UPDATE'));
+    expect(a.indexOf('motifLignesTenues(')).toBeGreaterThan(tx);
+    // L'historique d'un traitement annulé ne retient pas la fiche · il se
+    // détache, sans quoi le retrait tombait en 500 sur la clé RESTRICT.
+    expect(a).toContain("'AnnulationTraitementImmobilisation.immobilisationId'");
+    expect(a.indexOf('annulationTraitementImmobilisation.update(')).toBeLessThan(a.indexOf('tx.immobilisation.delete('));
+    expect(a).toContain('annulez d\'abord le transfert suivant');
+  });
+
+  it('les journaux autorisés de l’utilisateur se jugent à la préparation · refus nommé, jamais un 403 tardif', () => {
+    const p = corps('preparer');
+    expect(p).toContain('journalHorsPerimetre(j.id, autorises)');
   });
 });

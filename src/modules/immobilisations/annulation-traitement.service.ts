@@ -17,6 +17,7 @@ import {
   ActeDuBien,
   actesQuiEnDependent,
   etatDuPlanApres,
+  ISSUE_TRANSFERT_GROUPE,
   motifRefusAnnulation,
   motifRefusMotifAnnulation,
   NatureTraitement,
@@ -63,6 +64,7 @@ interface Cible {
   soldeDerogatoire?: boolean;
   repriseALaSortie?: boolean;
   transfertMiseEnService?: boolean;
+  transfertGroupe?: boolean;
   revisionDeReevaluation?: boolean;
 }
 
@@ -306,6 +308,7 @@ export class AnnulationTraitementService {
     return motifRefusAnnulation({
       exerciceClos: c.exercice.statut === StatutExercice.CLOTURE,
       transfertMiseEnService: c.transfertMiseEnService,
+      transfertGroupe: c.transfertGroupe,
       revisionDeReevaluation: c.revisionDeReevaluation,
       dependants,
     });
@@ -325,6 +328,12 @@ export class AnnulationTraitementService {
           include: { exercice: true, immobilisation: { select: { designation: true } } },
         });
         if (!d) throw introuvable();
+        // La dotation complémentaire d'un transfert dans le groupe porte la
+        // pièce du transfert · l'annuler seule retirerait la pièce de sortie
+        // du bien, et la liaison du siège resterait sans son reflet.
+        const duTransfert = d.ecritureId
+          ? !!(await db.transfertImmobilisationGroupe.findFirst({ where: { tenantId, ecritureId: d.ecritureId }, select: { id: true } }))
+          : false;
         return {
           nature,
           acteId,
@@ -334,6 +343,7 @@ export class AnnulationTraitementService {
           creeLe: d.createdAt,
           montant: n(d.montant),
           ecritureId: d.ecritureId,
+          transfertGroupe: duTransfert,
           libelle: `Dotation de l'exercice clos le ${jour(d.exercice.dateFin)}`,
           acte: { id: d.id, immobilisationId: d.immobilisationId, exerciceId: d.exerciceId, montant: n(d.montant), ecritureId: d.ecritureId, createdAt: d.createdAt },
         };
@@ -354,7 +364,8 @@ export class AnnulationTraitementService {
           montant: n(d.montant),
           ecritureId: d.ecritureId,
           libelle: `${d.sens === 'DOTATION' ? 'Dépréciation' : 'Reprise de dépréciation'} de l'exercice clos le ${jour(d.exercice.dateFin)}`,
-          transfertMiseEnService: d.nature !== NatureMouvementDepreciation.CLOTURE,
+          transfertMiseEnService: d.nature !== NatureMouvementDepreciation.CLOTURE && d.nature !== NatureMouvementDepreciation.TRANSFERT_GROUPE,
+          transfertGroupe: d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE,
           acte: {
             id: d.id,
             immobilisationId: d.immobilisationId,
@@ -591,6 +602,20 @@ export class AnnulationTraitementService {
         db.exercice.findMany({ where: { tenantId }, select: { dateDebut: true, dateFin: true }, take: PLAFOND_ACTES }),
       ]);
     const nom = new Map(biens.map((b) => [b.id, b.designation]));
+    // Ligne sage-l4, n° 73 · un bien sorti par un transfert dans le groupe se
+    // reprend en annulant le transfert, depuis le siège · le refus le dit.
+    const sortis = biens.filter((b) => b.statut !== StatutImmobilisation.EN_SERVICE).map((b) => b.id);
+    const transferes = new Set(
+      sortis.length === 0
+        ? []
+        : (
+            await db.transfertImmobilisationGroupe.findMany({
+              where: { tenantId, immobilisationId: { in: sortis }, sens: 'SORTIE', annuleLe: null },
+              select: { immobilisationId: true },
+              take: PLAFOND_ACTES,
+            })
+          ).map((t) => t.immobilisationId),
+    );
     const finALaDate = (d: Date) => exercices.find((e) => e.dateDebut <= d && e.dateFin >= d)?.dateFin ?? d;
     const actes: ActeDuBien[] = [
       ...dotations.map((d) => ({ nature: 'DOTATION' as const, id: d.id, exerciceFin: d.exercice.dateFin, creeLe: d.createdAt, libelle: `la dotation de l'exercice clos le ${jour(d.exercice.dateFin)}`, bien: nom.get(d.immobilisationId) })),
@@ -605,9 +630,10 @@ export class AnnulationTraitementService {
             : d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE
               ? // Ligne sage-l4, n° 73 · la dépréciation qui a suivi le bien,
                 // défaite seulement avec le transfert (fenêtre Groupe).
-                'le transfert du bien dans le groupe (annulez le transfert depuis le siège)'
+                'la dépréciation reçue avec le bien par le transfert dans le groupe'
               : 'le transfert de la dépréciation à la mise en service',
         bien: nom.get(d.immobilisationId),
+        ...(d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE ? { issue: ISSUE_TRANSFERT_GROUPE } : {}),
       })),
       ...revisions.map((r) => ({ nature: 'REVISION_PLAN' as const, id: r.id, exerciceFin: r.exercice.dateFin, creeLe: r.createdAt, libelle: `la révision du plan du ${jour(r.dateDecision)}`, bien: nom.get(r.immobilisationId) })),
       ...derogatoires.map((d) => ({
@@ -657,8 +683,11 @@ export class AnnulationTraitementService {
           id: b.id,
           exerciceFin: b.dateSortie ? finALaDate(b.dateSortie) : new Date(8.64e15),
           creeLe: b.dateSortie ?? new Date(8.64e15),
-          libelle: `la sortie du bien${b.dateSortie ? ` le ${jour(b.dateSortie)}` : ''}`,
+          libelle: transferes.has(b.id)
+            ? `le transfert du bien dans le groupe${b.dateSortie ? ` le ${jour(b.dateSortie)}` : ''}`
+            : `la sortie du bien${b.dateSortie ? ` le ${jour(b.dateSortie)}` : ''}`,
           bien: b.designation,
+          ...(transferes.has(b.id) ? { issue: ISSUE_TRANSFERT_GROUPE } : {}),
         })),
     ];
     return actes;

@@ -1,4 +1,6 @@
-import { journalPropose, liaisonProposee, receveursPossibles, type DossierDuContexte } from './transfert-groupe';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { cleApercu, journalPropose, liaisonProposee, receveurPreselectionne, receveursPossibles, type DossierDuContexte } from './transfert-groupe';
 
 const dossier = (p: Partial<DossierDuContexte>): DossierDuContexte => ({
   id: 'x',
@@ -33,4 +35,37 @@ describe('transfert d’un bien dans le groupe · les choix proposés à l’éc
       liaisonProposee(dossier({ comptesLiaison: [{ id: 'a', numero: '18400000', intitule: '' }, { id: 'b', numero: '18500000', intitule: '' }] })),
     ).toBe('');
   });
+
+  it('une cellule qui cède a un seul receveur, le siège · présélectionné à chaque changement de cédant', () => {
+    expect(receveurPreselectionne([siege, c1, c2], 'C1')).toBe('S');
+    expect(receveurPreselectionne([siege, c1, c2], 'C2')).toBe('S');
+    expect(receveurPreselectionne([siege, c1, c2], 'S')).toBe('');
+    expect(receveurPreselectionne([siege, c1], 'S')).toBe('C1');
+  });
+
+  it('la clé d’un aperçu change avec le moindre champ · une réponse périmée se reconnaît', () => {
+    const a = { date: '2027-06-15', immobilisationId: 'b1' };
+    expect(cleApercu(a)).toBe(cleApercu({ immobilisationId: 'b1', date: '2027-06-15' }));
+    expect(cleApercu(a)).not.toBe(cleApercu({ ...a, date: '2027-06-16' }));
+  });
 });
+
+describe('transfert d’un bien dans le groupe · l’écran (gelé)', () => {
+  const ecran = readFileSync(join(__dirname, '..', 'components', 'groupe', 'TransfertsBiensGroupe.tsx'), 'utf8');
+
+  it('l’aperçu jette une réponse périmée, désactive le bouton pendant sa lecture et s’annonce', () => {
+    expect(ecran).toContain('if (cleEnvoyee !== cleCourante.current) return;');
+    expect(ecran).toContain('envoi={envoi || enApercu}');
+    expect(ecran).toContain('role="status"');
+  });
+
+  it('la date de la liste se lit sur la chaîne AAAA-MM-JJ, jamais par new Date (fuseau)', () => {
+    expect(ecran).toContain('jourFr(t.date)');
+    expect(ecran).not.toContain('new Date(t.date)');
+  });
+
+  it('le changement de cédant présélectionne le receveur unique', () => {
+    expect(ecran).toContain('setReceveurId(receveurPreselectionne(contexte.dossiers, e.target.value))');
+  });
+});
+

@@ -78,3 +78,24 @@ export function receveursPossibles(dossiers: DossierDuContexte[], cedantId: stri
   if (!cedant) return [];
   return dossiers.filter((d) => d.id !== cedantId && (cedant.siege || d.siege));
 }
+
+/**
+ * Le dossier qui reçoit, présélectionné quand il n'y en a qu'un · une cellule
+ * qui cède n'a qu'un receveur possible, le siège. Rejoué à CHAQUE changement
+ * du dossier qui cède, sans quoi la cellule choisie en second laissait le
+ * receveur vide alors qu'un seul choix existe.
+ */
+export function receveurPreselectionne(dossiers: DossierDuContexte[], cedantId: string): string {
+  const r = receveursPossibles(dossiers, cedantId);
+  return r.length === 1 ? r[0].id : '';
+}
+
+/**
+ * La clé d'un aperçu · le corps exact envoyé. Une réponse dont la clé n'est
+ * plus celle du formulaire est PÉRIMÉE (un champ a changé pendant la lecture)
+ * et se jette, sans quoi le bouton « Transférer » passerait un transfert que
+ * l'écran n'a jamais montré.
+ */
+export function cleApercu(corps: Record<string, string>): string {
+  return JSON.stringify(Object.keys(corps).sort().map((k) => [k, corps[k]]));
+}
