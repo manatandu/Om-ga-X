@@ -6,10 +6,13 @@ import { appelApi, creerDossier, MOT_DE_PASSE, seConnecter, surveiller } from '.
  * « MÉTHODE chemin · statut · corps ») · jamais un « 409 » cherché n'importe
  * où dans le texte, qu'un montant ou un numéro pourrait contenir.
  */
+// Le code se lit SANS ANCRE · Playwright préfixe le message d'une erreur levée
+// dans la page (« page.evaluate: Error: … »), et l'ancre rendait -1 sur un
+// vrai 409 (même lecture que sage-parite-bords.e2e.ts).
 const statutDuRefus = (p: Promise<unknown>) =>
   p.then(
     () => 0,
-    (e: unknown) => Number(/^[A-Z]+ \S+ · (\d{3}) · /.exec(String(e instanceof Error ? e.message : e))?.[1] ?? -1),
+    (e: unknown) => Number(/· (\d{3}) ·/.exec(String(e instanceof Error ? e.message : e))?.[1] ?? -1),
   );
 
 /**
