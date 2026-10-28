@@ -249,7 +249,9 @@ export function reserveQuotiteSaisies(saisiesFc: number, quotiteFc: number | nul
 // centime perdu ni ajouté) ; au-delà du plan, tant qu'un solde reste dû (un
 // mois sauté, un bulletin annulé), la retenue proposée reste l'échéance
 // courante bornée par le solde · un mois sauté n'est JAMAIS rattrapé en
-// doublant une échéance ; la durée est bornée à 120 mois.
+// doublant une échéance ; à la dernière échéance et au-delà, le reliquat
+// qu'elle laisse est dit, avec l'issue (porter le solde entier) ; la durée
+// est bornée à 120 mois.
 // ──────────────────────────────────────────────────────────────────────────
 
 export const ECHEANCES_AU_PLUS = 120;
@@ -356,12 +358,25 @@ export function retenueProposee(
   // Au-delà du plan · l'échéance courante (la première, que toutes égalent
   // sauf la dernière), jamais une somme rattrapée.
   const echeance = auDela ? echeances[0]?.montantFc ?? 0 : echeances[rang].montantFc;
+  // LE RELIQUAT DE FIN DE PLAN (relecture de la ligne) · un bulletin qui a
+  // retenu un centime de moins laissait, après la dernière échéance, une
+  // proposition d'un centime le mois suivant, sans un mot. La proposition
+  // reste l'échéance (un rattrapage partiel est la règle qu'on refuse), mais
+  // à la dernière échéance et au-delà, le reliquat qu'elle laissera est DIT,
+  // avec l'issue · retenir le solde entier pour clore l'avance.
   const montant = Math.min(c(echeance), c(soldeFc)) / 100;
+  const derniere = auDela || rang === echeances.length - 1;
+  const resteApres = c(soldeFc) - c(montant);
+  const reliquat =
+    derniere && resteApres > 0
+      ? ` Un reliquat de ${(resteApres / 100).toFixed(2)} FC restera dû après cette retenue · portez le solde entier (${soldeFc.toFixed(2)} FC) pour clore l'avance.`
+      : '';
   return {
     montantFc: montant,
-    motif: auDela
-      ? `Échéance au-delà du plan (${echeances.length} mois) · un solde de ${soldeFc.toFixed(2)} FC reste dû, la retenue proposée est bornée par lui.`
-      : `Échéance ${rang + 1} sur ${echeances.length} du plan.`,
+    motif:
+      (auDela
+        ? `Échéance au-delà du plan (${echeances.length} mois) · un solde de ${soldeFc.toFixed(2)} FC reste dû, la retenue proposée est bornée par lui.`
+        : `Échéance ${rang + 1} sur ${echeances.length} du plan.`) + reliquat,
     rang: auDela ? null : rang + 1,
     auDelaDuPlan: auDela,
   };

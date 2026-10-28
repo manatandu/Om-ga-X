@@ -89,6 +89,15 @@ describe('Retenue étalée · la proposition du mois', () => {
     expect(q.montantFc).toBe(33_333.33);
   });
 
+  it("le reliquat d'un centime à la dernière échéance est dit, avec l'issue", () => {
+    // Un bulletin a retenu 33 333,32 au lieu de 33 333,33 · il reste 33 333,35 à la dernière.
+    const p = retenueProposee(plan, '2027-02', 33_333.35);
+    expect(p.montantFc).toBe(33_333.34);
+    expect(p.motif).toMatch(/reliquat de 0\.01 FC restera dû/);
+    expect(p.motif).toMatch(/solde entier \(33333\.35 FC\)/);
+    expect(retenueProposee(plan, '2027-02', 33_333.34).motif).not.toMatch(/reliquat/);
+  });
+
   it('soldée, rien à proposer', () => {
     expect(retenueProposee(plan, '2027-01', 0).montantFc).toBeNull();
   });
