@@ -27,8 +27,8 @@ test('SYCEBNL · aucun onglet des transferts, et la route est refusée au serveu
   const dossier = await creerDossier(page, { referentiel: 'SYCEBNL', nom: 'Transfert groupe asbl e2e', montant: 10_000 });
   await seConnecter(page, dossier.email);
   await page.goto('/#/groupe');
-  await expect(page.getByRole('button', { name: 'Supervision' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Transferts de biens' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Supervision', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Transferts de biens', exact: true })).toHaveCount(0);
   await expect(appelApi(page, 'GET', '/immobilisations/transferts-groupe/contexte')).rejects.toThrow(/403|SYSCOHADA|référentiel/i);
   expect(pannes).toEqual([]);
 });
