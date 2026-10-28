@@ -59,13 +59,23 @@ Branche de sauvegarde · `travail/microfina-m3`. Copie · `/home/user/wt-microfi
   reste un acte déclaré au bulletin, jamais déduite du plan.
 - Idée 11 · art. 218 et 219 · chiffres seuls, formulaire absent du corpus, dit.
 
+- **Rejeu lot 2 sur vraie base** (`scratchpad/rejeu/rejeu-lot2.mjs`) · demande
+  refusée à son auteur (403), accordée par un autre (congé de 11 jours posé),
+  seconde décision 409, titre servi, congé refusé qui laisse la demande en
+  attente ; fin de CDD avec l'art. 42 ; essai passé depuis plus que l'horizon
+  retiré de l'échéancier (contrat confirmé, art. 43 al. 4) ; formation
+  réalisée sans présent refusée, prévu contre réel ; déclaration de
+  main-d'œuvre par sexe et nationalité, nationalité absente non calculée ·
+  SANS ÉCART.
+- Relecture « échecs silencieux » · lien demande / congé manqué consigné avec
+  les deux identifiants ; réponse périmée des avances jetée à l'écran (sinon
+  la retenue d'un autre mois se préremplissait).
+- Questions au suivi · `docs/suivi-reprises.md`, section microfina-m3.
+
 ## Reste
 
-- Lot 2 · rejeu par l'API sur la base jetable, bloc § 3 complet.
 - Test navigateur `e2e/tests/microfina-m3-personnel.e2e.ts` (écrit, non joué
-  ici · aucun navigateur dans le conteneur).
-- Relecture « échecs silencieux » du diff.
-- Questions au suivi · `docs/suivi-reprises.md`, section microfina-m3.
+  ici · aucun navigateur dans le conteneur), à jouer par `tests-navigateur.yml`.
 
 ## Commandes
 

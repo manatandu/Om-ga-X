@@ -838,8 +838,12 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     // demande · le serveur rend la retenue que chaque plan d'étalement
     // propose, que la saisie préremplit sans écraser ce qui a été tapé.
     const moisLisible = /^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie) ? `&moisDePaie=${moisDePaie}` : '';
+    // Une réponse d'un mois précédent arrivée après celle du mois courant
+    // préremplirait la retenue d'un autre mois · elle est jetée.
+    let actuel = true;
     api.get<{ avances: AvanceSalaire[]; total: number; tronque: boolean }>(`/personnel/avances?salarieId=${selection}${moisLisible}`).then(
       (r) => {
+        if (!actuel) return;
         setAvancesSalarie(r.avances);
         setRetenuesAvances((prec) => {
           const suivant: Record<string, string> = {};
@@ -863,10 +867,14 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         setListesTronquees((l) => ({ ...l, avances: libelleListeBornee(r, r.avances.length, 'avances du salarié') }));
       },
       (e: ApiError) => {
+        if (!actuel) return;
         setAvancesSalarie([]);
         setErreur(e.message);
       },
     );
+    return () => {
+      actuel = false;
+    };
   }, [onglet, selection, moisDePaie]);
 
   useEffect(() => {

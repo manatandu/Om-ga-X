@@ -65,6 +65,12 @@ describe('Échéancier des contrats (art. 42, 43 al. 4, 69)', () => {
     expect(e[0].consequence).toMatch(/confirmation du contrat/);
     expect(echeancesDuContrat({ ...base, essaiDureeJours: 30 }, d('2027-04-20'))[0].depassee).toBe(true);
     expect(echeancesDuContrat({ ...base, essaiDureeJours: 30 }, d('2026-12-01'))).toEqual([]);
+    // Passé depuis plus que l'horizon · le contrat est confirmé (art. 43, al. 4), rien à annoncer.
+    expect(echeancesDuContrat({ ...base, essaiDureeJours: 30 }, d('2027-07-01'))).toEqual([]);
+  });
+  it('un terme de CDD passé reste nommé tant que le contrat court', () => {
+    const cdd = { ...base, type: 'DUREE_DETERMINEE', clauseEssai: false, dateFinPrevue: d('2027-05-31'), emploiPermanent: false };
+    expect(echeancesDuContrat(cdd, d('2028-01-01'))[0]).toMatchObject({ objet: 'FIN_CDD', depassee: true });
   });
   it("le CDD pour emploi permanent rappelle l'art. 42 · un contrat terminé ne figure plus", () => {
     const cdd = { ...base, type: 'DUREE_DETERMINEE', clauseEssai: false, dateFinPrevue: d('2027-05-31'), emploiPermanent: true };

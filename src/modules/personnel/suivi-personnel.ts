@@ -137,9 +137,14 @@ export function finEssaiOpposable(c: ContratPourEcheancier): { echeance: Date; p
 export function echeancesDuContrat(c: ContratPourEcheancier, aujourdhui: Date, horizonJours = HORIZON_ECHEANCIER_JOURS): EcheanceContrat[] {
   if (c.dateFin !== null) return [];
   const sorties: EcheanceContrat[] = [];
+  // Un essai passé depuis plus que l'horizon ne s'annonce plus · le contrat est
+  // confirmé par la loi (art. 43, al. 4), il ne reste rien à décider. Un terme
+  // de CDD passé, lui, reste nommé tant que le contrat court · des services
+  // poursuivis au-delà du terme sont une question ouverte (au suivi).
   const poser = (objet: EcheanceContrat['objet'], echeance: Date, article: string, consequence: string) => {
     const joursRestants = Math.round((echeance.getTime() - aujourdhui.getTime()) / MS_PAR_JOUR);
     if (joursRestants > horizonJours) return;
+    if (objet === 'FIN_ESSAI' && joursRestants < -horizonJours) return;
     sorties.push({ contratId: c.id, salarieId: c.salarieId, objet, echeance: iso(echeance), joursRestants, depassee: joursRestants < 0, article, consequence });
   };
   if (c.type === 'DUREE_DETERMINEE' && c.dateFinPrevue) {

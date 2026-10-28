@@ -153,7 +153,15 @@ export class SuiviPersonnelService {
       }
       throw e;
     }
-    await this.prisma.demandeCongeSalarie.update({ where: { id: d.id }, data: { congeId: conge.id } });
+    try {
+      await this.prisma.demandeCongeSalarie.update({ where: { id: d.id }, data: { congeId: conge.id } });
+    } catch (e) {
+      // Le congé est posé et la demande accordée, seul le lien manque · le
+      // titre la refuserait sans dire pourquoi. Consigné avec les deux
+      // identifiants, et l'erreur remonte.
+      this.journal.error(`Demande de congé ${d.id} accordée, congé ${conge.id} posé, lien NON écrit`, e instanceof Error ? e.stack : String(e));
+      throw e;
+    }
     return { demandeId: d.id, congeId: conge.id, jours: conge.jours, avertissements: conge.avertissements };
   }
 
