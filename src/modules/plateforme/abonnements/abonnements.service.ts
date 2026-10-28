@@ -14,7 +14,6 @@ import {
   FormulePrix,
   numeroFactureSuivant,
   PREFIXE_SERIE_ABONNEMENTS,
-  PREFIXES_SERIE_ANTERIEURS,
   verdictPeriode,
 } from './facturation-abonnements';
 import { jourDeKinshasaIso } from '../../../common/echeance';
@@ -288,7 +287,12 @@ export class AbonnementsService {
             where: {
               tenantId: editeur,
               sens: SensFacture.VENTE,
-              OR: [PREFIXE_SERIE_ABONNEMENTS, ...PREFIXES_SERIE_ANTERIEURS].map((p) => ({ numeroSerie: { startsWith: `${p}-${annee}-` } })),
+              // La série courante, et toute facture reliée à un abonnement
+              // · celles de l'ancien préfixe comprises, sans le nommer.
+              OR: [
+                { numeroSerie: { startsWith: `${PREFIXE_SERIE_ABONNEMENTS}-${annee}-` } },
+                { factureAbonnement: { isNot: null }, numeroSerie: { contains: `-${annee}-` } },
+              ],
             },
             select: { numeroSerie: true },
           })

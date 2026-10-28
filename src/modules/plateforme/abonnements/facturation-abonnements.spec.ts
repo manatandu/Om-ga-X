@@ -73,8 +73,8 @@ describe('facturation des abonnements', () => {
     expect(numeroFactureSuivant('2026', ['OMX-2026-0004', 'OMX-2025-0009', 'F-12'])).toBe('OMX-2026-0005');
     // La série reste CONTINUE à travers le changement de préfixe du 2026-10-28 ·
     // les factures émises sous l'ancien préfixe comptent, jamais un retour à 1.
-    expect(numeroFactureSuivant('2026', ['VMG-2026-0007', 'VMG-2025-0009'])).toBe('OMX-2026-0008');
-    expect(numeroFactureSuivant('2026', ['VMG-2026-0007', 'OMX-2026-0008'])).toBe('OMX-2026-0009');
+    expect(numeroFactureSuivant('2026', ['ANC-2026-0007', 'ANC-2025-0009'])).toBe('OMX-2026-0008');
+    expect(numeroFactureSuivant('2026', ['ANC-2026-0007', 'OMX-2026-0008'])).toBe('OMX-2026-0009');
   });
 });
 

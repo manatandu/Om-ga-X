@@ -133,22 +133,19 @@ export function verdictPeriode(a: AbonnementAFacturer, periode: string): Verdict
 export const PREFIXE_SERIE_ABONNEMENTS = 'OMX';
 
 /**
- * Les préfixes qu'a portés la série avant le retrait du nom de l'ancien
- * éditeur (décision de Manasse du 2026-10-28) · des factures émises sous eux
- * existent en base, et la série reste CONTINUE par année · le numéro suivant
- * part du plus grand déjà pris sous l'un OU l'autre préfixe, jamais de 1, sans
- * quoi deux factures de la même année porteraient le même rang.
+ * Le numéro suivant de la série des factures d'abonnement · continu par année,
+ * jamais réutilisé. La série a changé de préfixe le 2026-10-28 (décision de
+ * Manasse) · des factures émises sous l'ancien existent en base, et le numéro
+ * suivant part du plus grand déjà pris cette année SOUS QUELQUE PRÉFIXE QUE CE
+ * SOIT, jamais de 1, sans quoi deux factures de la même année porteraient le
+ * même rang. L'appelant ne passe que des numéros de la série des abonnements
+ * (préfixe courant, ou facture reliée à un abonnement), si bien qu'aucune
+ * autre série du dossier de l'éditeur ne pousse celle-ci.
  */
-export const PREFIXES_SERIE_ANTERIEURS: readonly string[] = ['VMG'];
-
-/** Le numéro suivant de la série des factures d'abonnement · continu par année, jamais réutilisé. */
 export function numeroFactureSuivant(annee: string, existants: string[]): string {
-  const prefixes = [PREFIXE_SERIE_ABONNEMENTS, ...PREFIXES_SERIE_ANTERIEURS].map((p) => `${p}-${annee}-`);
+  const motif = new RegExp(`^[A-Z]+-${annee}-(\\d+)$`);
   const max = existants
-    .map((n) => {
-      const p = prefixes.find((x) => n.startsWith(x));
-      return p ? Number.parseInt(n.slice(p.length), 10) : Number.NaN;
-    })
+    .map((n) => Number.parseInt(motif.exec(n)?.[1] ?? '', 10))
     .filter(Number.isInteger)
     .reduce((a, b) => Math.max(a, b), 0);
   return `${PREFIXE_SERIE_ABONNEMENTS}-${annee}-${String(max + 1).padStart(4, '0')}`;

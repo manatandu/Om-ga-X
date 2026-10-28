@@ -38,7 +38,7 @@ function monde(o: { assujetti?: boolean; cours?: number | null; dejaFacture?: bo
   };
   // Le dossier de l'éditeur se lit par la console, hors cloisonnement (audit final F173).
   const plateforme = { dossierEditeurId: jest.fn(async () => EDITEUR) };
-  return { s: new AbonnementsService(prisma as never, facturation as never, plateforme as never, o.courriels as never), factures, liens, facturation };
+  return { s: new AbonnementsService(prisma as never, facturation as never, plateforme as never, o.courriels as never), factures, liens, facturation, prisma };
 }
 
 describe('facturation des abonnements · service', () => {
@@ -52,6 +52,17 @@ describe('facturation des abonnements · service', () => {
     expect(f.lignes.every((l) => l.montantTva === 0 && l.imposable === false)).toBe(true);
     expect(m.liens[0]).toMatchObject({ abonnementId: 'a1', periode: '2026-10' });
     expect(r.resultats.find((x) => x.cabinet === 'ASBL Deux')).toMatchObject({ statut: 'NON_DU' });
+  });
+
+  it('la série continue après une facture d’abonnement de l’ancien préfixe, lue par son lien et non par son nom', async () => {
+    const m = monde({ numeros: ['ANC-2026-0011', 'OMX-2026-0003'] });
+    await m.s.facturer(EDITEUR, '2026-10', '2026-10-31', null);
+    expect((m.factures[0] as { numeroSerie: string }).numeroSerie).toBe('OMX-2026-0012');
+    const appel = (m.prisma.facture.findMany as jest.Mock).mock.calls[0][0] as { where: { OR: unknown[] } };
+    expect(appel.where.OR).toEqual([
+      { numeroSerie: { startsWith: 'OMX-2026-' } },
+      { factureAbonnement: { isNot: null }, numeroSerie: { contains: '-2026-' } },
+    ]);
   });
 
   it('assujetti, la TVA du taux choisi porte sur chaque ligne, et sans taux la facturation est refusée', async () => {
