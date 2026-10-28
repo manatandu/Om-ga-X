@@ -12,7 +12,7 @@ import { AnnulationTraitementService } from './annulation-traitement.service';
 const EX_N = { id: 'ex-n', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' };
 const EX_N1 = { id: 'ex-n1', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'), statut: 'OUVERT' };
 
-function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivantes?: boolean; exerciceClos?: boolean }) {
+function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivantes?: boolean; exerciceClos?: boolean; duTransfert?: boolean }) {
   const exN = { ...EX_N, statut: options.exerciceClos ? 'CLOTURE' : 'OUVERT' };
   const dotation = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -56,6 +56,10 @@ function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivante
     },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     annulationTraitementImmobilisation: { create: jest.fn().mockResolvedValue({ id: 'ann-1' }) },
+    transfertImmobilisationGroupe: {
+      findFirst: jest.fn().mockResolvedValue(options.duTransfert ? { id: 'tr-1' } : null),
+      findMany: vide(),
+    },
   };
   prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
@@ -94,6 +98,13 @@ describe("l'annulation d'une dotation", () => {
     const { service, prisma } = fabrique({ statut: 'BROUILLARD', dotationsSuivantes: true });
     await expect(service.annuler('t-1', 'u-1', DTO)).rejects.toThrow(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.dotationAmortissement.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('la dotation complémentaire d’un transfert dans le groupe renvoie au siège · rien n’est écrit', async () => {
+    const { service, prisma } = fabrique({ statut: 'VALIDEE', duTransfert: true });
+    await expect(service.annuler('t-1', 'u-1', DTO)).rejects.toThrow(/annulez le transfert depuis le siège/);
+    expect(prisma.transfertImmobilisationGroupe.findFirst).toHaveBeenCalledWith({ where: { tenantId: 't-1', ecritureId: 'ecr-1' }, select: { id: true } });
     expect(prisma.dotationAmortissement.deleteMany).not.toHaveBeenCalled();
   });
 

@@ -345,7 +345,11 @@ describe('balayage du code · toute collection porte sa borne', () => {
     const utilisatrices = fichiers('src')
       .filter((f) => !f.startsWith('src/common/cloisonnement/'))
       .filter((f) => readFileSync(join(RACINE, f), 'utf8').includes('perimetreDeGroupe('));
-    expect(utilisatrices.sort()).toEqual(['src/modules/groupe/groupe.service.ts']);
+    // Ligne sage-l4, n° 73 · le transfert d'un bien entre le siège et une de
+    // ses cellules écrit dans les DEUX dossiers dans une transaction · même
+    // périmètre que la liasse du groupe, construit sur le seul dossier de la
+    // session (le siège et ses cellules, `groupeDuSiege`), jamais reçu.
+    expect(utilisatrices.sort()).toEqual(['src/modules/groupe/groupe.service.ts', 'src/modules/immobilisations/transfert-groupe.service.ts']);
   });
 
   it('le client Prisma NU n’est nommé que par l’écrivain de maillon', () => {

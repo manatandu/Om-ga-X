@@ -181,6 +181,7 @@ function doublure(avecPrecedent = false, avecAvantPrecedent = false, balancesPro
     }),
     // Lot 14 · aucune écriture de réévaluation dans ces dossiers.
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
+    mouvementsDeTransfertGroupe: jest.fn().mockResolvedValue(new Map()),
   };
   // Le VRAI service des états SYSCOHADA · c'est sa correspondance du bilan qui
   // donne les capitaux propres publiés, et une doublure ferait passer un

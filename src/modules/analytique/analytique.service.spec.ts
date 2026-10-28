@@ -124,6 +124,7 @@ describe('budget · répartition sur les mois couverts par la convention', () =>
 describe('ventilation · équilibre par plan', () => {
   const ligne = {
     id: 'l1',
+    ecritureId: 'e1',
     debit: 1000,
     credit: 0,
     compte: { numero: '60410000', classe: 'CLASSE_6' },
@@ -154,19 +155,55 @@ describe('ventilation · équilibre par plan', () => {
       },
       ventilationAnalytique: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(async (fn: (tx: Faux) => Promise<void>) => {
-        await fn({
-          ventilationAnalytique: { deleteMany: jest.fn(), createMany: jest.fn() },
-        });
+        await fn(tx);
       }),
+      tx,
     } as Faux;
   }
+  // La transaction relit la tête sous verrou (relecture M2) · le statut rendu
+  // par la doublure décide si l'auteur de la ventilation est posé.
+  let statutTete = 'BROUILLARD';
+  const tx = {
+    $queryRaw: jest.fn(async () => [{ statut: statutTete }]),
+    ecriture: { update: jest.fn().mockResolvedValue({}) },
+    ventilationAnalytique: { deleteMany: jest.fn(), createMany: jest.fn() },
+  };
+  beforeEach(() => {
+    statutTete = 'BROUILLARD';
+    jest.clearAllMocks();
+  });
+
+  // RELECTURE DU CIRCUIT DE VISA, M2 · la ventilation changeait le contenu
+  // visé sans nommer son auteur · le collègue qui ventilait un brouillard le
+  // validait ensuite sous le double regard au nom de celui qui l'avait saisi.
+  it('au brouillard, ventiler nomme l’auteur du dernier contenu et fait tomber le visa, sous verrou de la tête', async () => {
+    await service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'uB');
+    expect(String((tx.$queryRaw.mock.calls[0] as unknown[])[0])).toMatch(/FOR UPDATE/);
+    expect(tx.ecriture.update).toHaveBeenCalledWith({
+      where: { id: 'e1' },
+      data: expect.objectContaining({ contenuPar: 'uB', viseePar: null, viseeEmpreinte: null }),
+    });
+  });
+
+  it('effacer la ventilation au brouillard nomme aussi son auteur, dans la même transaction', async () => {
+    await service(prisma()).effacerVentilation('t1', 'l1', 'uB');
+    expect(tx.ecriture.update).toHaveBeenCalledWith({ where: { id: 'e1' }, data: expect.objectContaining({ contenuPar: 'uB' }) });
+    expect(tx.ventilationAnalytique.deleteMany).toHaveBeenCalledWith({ where: { ligneEcritureId: 'l1' } });
+  });
+
+  it('une écriture validée garde son auteur · la ventilation ne réécrit pas sa tête', async () => {
+    statutTete = 'VALIDEE';
+    await service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'uB');
+    expect(tx.ecriture.update).not.toHaveBeenCalled();
+    expect(tx.ventilationAnalytique.createMany).toHaveBeenCalled();
+  });
 
   it('accepte une dépense partagée entre deux projets du même plan', async () => {
     await expect(
       service(prisma()).ventilerLigne('t1', 'l1', [
         { sectionId: 'sA', debit: 600 },
         { sectionId: 'sB', debit: 400 },
-      ]),
+      ], 'u'),
     ).resolves.toBeDefined();
   });
 
@@ -175,20 +212,20 @@ describe('ventilation · équilibre par plan', () => {
       service(prisma()).ventilerLigne('t1', 'l1', [
         { sectionId: 'sA', debit: 1000 },
         { sectionId: 'sC', debit: 1000 },
-      ]),
+      ], 'u'),
     ).resolves.toBeDefined();
   });
 
   it('refuse une ligne à moitié ventilée sur un plan', async () => {
     await expect(
-      service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 600 }]),
+      service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 600 }], 'u'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('refuse une section Total', async () => {
     const totales = [{ ...sections[0], type: 'TOTAL' }];
     await expect(
-      service(prisma(totales)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }]),
+      service(prisma(totales)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'u'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -196,8 +233,8 @@ describe('ventilation · équilibre par plan', () => {
     const totale = [{ granularite: 'TOTALE', journalId: 'jACH', dateLimite: new Date('2026-12-31') }];
     const p = prisma(sections, totale) as { ventilationAnalytique: { deleteMany?: jest.Mock }; $transaction: jest.Mock };
     p.ventilationAnalytique.deleteMany = jest.fn();
-    await expect(service(p as Faux).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }])).rejects.toThrow(/ventiler.*clôturé totalement/);
-    await expect(service(p as Faux).effacerVentilation('t1', 'l1')).rejects.toThrow(/Impossible d'effacer la ventilation/);
+    await expect(service(p as Faux).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'u')).rejects.toThrow(/ventiler.*clôturé totalement/);
+    await expect(service(p as Faux).effacerVentilation('t1', 'l1', 'u')).rejects.toThrow(/Impossible d'effacer la ventilation/);
     expect(p.ventilationAnalytique.deleteMany).not.toHaveBeenCalled();
     expect(p.$transaction).not.toHaveBeenCalled();
   });
@@ -206,13 +243,13 @@ describe('ventilation · équilibre par plan', () => {
     // La requête écarte la partielle (`granularite: { not }`) ; la doublure
     // la renvoie quand même, pour prouver que la RÈGLE ne la retient pas non plus.
     const partielle = [{ granularite: 'PARTIELLE', journalId: 'jACH', dateLimite: new Date('2026-12-31') }];
-    await expect(service(prisma(sections, partielle)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }])).resolves.toBeDefined();
+    await expect(service(prisma(sections, partielle)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'u')).resolves.toBeDefined();
   });
 
   it('refuse une section en sommeil', async () => {
     const dormantes = [{ ...sections[0], estActive: false }];
     await expect(
-      service(prisma(dormantes)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }]),
+      service(prisma(dormantes)).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'u'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -224,7 +261,7 @@ describe('ventilation · équilibre par plan', () => {
     const p = prisma(plansDeCharges) as { ligneEcriture: { findFirst: jest.Mock } };
     p.ligneEcriture.findFirst.mockResolvedValue({ ...ligne, compte: { numero: '24410000', classe: 'CLASSE_2' } });
     await expect(
-      service(p as Faux).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }]),
+      service(p as Faux).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000 }], 'u'),
     ).rejects.toThrow(/Plan PROJ/);
   });
 
@@ -233,13 +270,13 @@ describe('ventilation · équilibre par plan', () => {
       service(prisma()).ventilerLigne('t1', 'l1', [
         { sectionId: 'sA', debit: 1500 },
         { sectionId: 'sB', debit: -500 },
-      ]),
+      ], 'u'),
     ).rejects.toThrow(/négatif/);
   });
 
   it('F141 · refuse une ventilation portée au débit ET au crédit', async () => {
     await expect(
-      service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000, credit: 1000 }]),
+      service(prisma()).ventilerLigne('t1', 'l1', [{ sectionId: 'sA', debit: 1000, credit: 1000 }], 'u'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

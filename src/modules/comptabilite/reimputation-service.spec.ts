@@ -44,7 +44,7 @@ const MODELES_DETENTEURS = [
   'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation', 'regularisation',
   'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
   'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
-  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation',
+  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe',
 ];
 
 function service(
@@ -53,7 +53,9 @@ function service(
 ) {
   const tx = {
     ligneEcriture: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }) },
+    // `update` · la tête de chaque pièce du brouillard réimputée nomme son
+    // auteur (ligne microfina-m1).
+    ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }), update: jest.fn().mockResolvedValue({ id: 'e' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
   };
   const prisma = {
     compte: {
@@ -79,8 +81,20 @@ describe('Réimputation · le service', () => {
   it('change le compte au brouillard, et passe négatif + exact pour une ligne validée, analytique comprise', async () => {
     const { s, tx } = service([ligne('b', StatutEcriture.BROUILLARD), ligne('v', StatutEcriture.VALIDEE)]);
     const r = await s.reimputer('t', 'u', { ligneIds: ['b', 'v'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' });
-    expect(tx.ligneEcriture.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['b'] } }, data: { compteId: 'c604' } });
+    expect(tx.ligneEcriture.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['b'] }, ecriture: { tenantId: 't', statut: { not: StatutEcriture.VALIDEE } } },
+      data: { compteId: 'c604' },
+    });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledTimes(1);
+    // LA FAILLE DE L'AUDIT DE SÉCURITÉ (ligne microfina-m1) · l'auteur de la
+    // réimputation au brouillard devient l'auteur du dernier contenu de la
+    // pièce, et son visa tombe · sans quoi il la validait ensuite sous le
+    // double regard, au nom de celui qui l'avait saisie.
+    expect(tx.ecriture.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.ecriture.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: { in: ['e-b'] }, tenantId: 't', statut: StatutEcriture.BROUILLARD },
+      data: { contenuPar: 'u', viseePar: null, viseeEmpreinte: null },
+    });
     const data = tx.ecriture.create.mock.calls[0][0].data;
     expect(data.motifCorrection).toBe('Mauvais compte');
     expect(data.journalId).toBe('j');
@@ -90,6 +104,28 @@ describe('Réimputation · le service', () => {
     expect(neg.ventilations.create[0]).toMatchObject({ sectionId: 's1', debit: -1000 });
     expect(exact.ventilations.create[0]).toMatchObject({ sectionId: 's1', debit: 1000 });
     expect(r).toEqual({ auBrouillard: 1, validees: 1, ecrituresPassees: [{ numeroPiece: 7, journal: 'ACH' }] });
+  });
+
+  // LA COURSE DE LA RELECTURE (circuit de visa, M1) · la pièce lue au
+  // brouillard est validée par un collègue avant la transaction · la mise à
+  // jour, filtrée sur le statut, n'en touche aucune ligne, et le geste
+  // s'arrête en 409 au lieu de changer le compte d'une ligne du livre-journal.
+  it('une ligne validée pendant la réimputation · 409 nommé, aucun auteur posé, aucune pièce passée', async () => {
+    const { s, tx } = service([ligne('b', StatutEcriture.BROUILLARD)]);
+    tx.ligneEcriture.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      s.reimputer('t', 'u', { ligneIds: ['b'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' }),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/validées pendant la réimputation/) });
+    expect(tx.ecriture.updateMany).not.toHaveBeenCalled();
+    expect(tx.ecriture.create).not.toHaveBeenCalled();
+  });
+
+  it('la tête validée pendant la réimputation · 409, l’auteur n’est pas laissé à moitié', async () => {
+    const { s, tx } = service([ligne('b', StatutEcriture.BROUILLARD)]);
+    tx.ecriture.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      s.reimputer('t', 'u', { ligneIds: ['b'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it('une pièce VALIDÉE avant la règle dans un journal de situation · refus nommé avec l’issue, rien d’écrit (ligne sage-l1, relecture m5)', async () => {

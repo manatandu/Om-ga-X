@@ -41,6 +41,11 @@ function ecriture(id: string, createdBy: string, options: { cloture?: boolean } 
   return {
     id,
     createdBy,
+    contenuPar: null,
+    contenuLe: null,
+    viseePar: null,
+    viseeLe: null,
+    viseeEmpreinte: null,
     statut: 'BROUILLARD',
     numeroPiece: 1,
     estGenereeParCloture: options.cloture ?? false,
@@ -53,19 +58,22 @@ function ecriture(id: string, createdBy: string, options: { cloture?: boolean } 
   };
 }
 
-function prismaAvec(ecritures: unknown[], doubleRegard: boolean, referentiel = 'SYCEBNL') {
+function prismaAvec(ecritures: unknown[], doubleRegard: boolean, referentiel = 'SYCEBNL', circuitVisa = false) {
   const updateMany = jest.fn().mockResolvedValue({ count: 0 });
-  return {
-    prisma: {
-      ecriture: { findMany: jest.fn().mockResolvedValue(ecritures), updateMany },
-      tenant: {
-        findUniqueOrThrow: jest
-          .fn()
-          .mockResolvedValue({ doubleRegardValidation: doubleRegard, referentiel }),
-      },
-    } as Faux,
-    updateMany,
+  const queryRaw = jest.fn().mockResolvedValue([]);
+  const prisma: Faux = {
+    ecriture: { findMany: jest.fn().mockResolvedValue(ecritures), updateMany },
+    tenant: {
+      findUniqueOrThrow: jest
+        .fn()
+        .mockResolvedValue({ doubleRegardValidation: doubleRegard, circuitVisa, referentiel }),
+    },
+    // Sous le double regard, la partition se rejoue SOUS VERROU (ligne
+    // microfina-m1) · la doublure sert la transaction et le verrou.
+    $queryRaw: queryRaw,
   };
+  prisma.$transaction = jest.fn(async (fn: (tx: Faux) => Promise<unknown>) => fn(prisma));
+  return { prisma, updateMany, queryRaw };
 }
 
 describe('le double regard écarte, il ne jette pas', () => {
@@ -82,8 +90,37 @@ describe('le double regard écarte, il ne jette pas', () => {
     // le pire des deux mondes : l'écran dirait « écartée », la base dirait
     // « validée », et personne ne comparerait.
     expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ['autre'] }, tenantId: 't1' } }),
+      expect.objectContaining({ where: { id: { in: ['autre'] }, tenantId: 't1', statut: 'BROUILLARD' } }),
     );
+  });
+
+  it('relit sous verrou · la ligne de chaque pièce est verrouillée avant la partition', async () => {
+    const { prisma, queryRaw } = prismaAvec([ecriture('autre', 'toi')], true);
+    await service(prisma).valider('t1', 'moi', ['autre']);
+    expect(queryRaw).toHaveBeenCalled();
+    expect(String((queryRaw.mock.calls[0][0] as string[]).join('?'))).toMatch(/FOR UPDATE/);
+  });
+
+  it("compare l'auteur du DERNIER contenu · le collègue qui a réécrit le brouillard ne le valide pas (audit de sécurité)", async () => {
+    // A a saisi, B a réécrit (PATCH ou réimputation au brouillard), B valide.
+    const reecrite = { ...ecriture('reecrite', 'A'), contenuPar: 'B', contenuLe: new Date() };
+    const { prisma, updateMany } = prismaAvec([reecrite], true);
+    const r = await service(prisma).valider('t1', 'B', ['reecrite']);
+    expect(r.validees).toBe(0);
+    expect(r.refuseesSecondRegard).toBe(1);
+    expect(updateMany).not.toHaveBeenCalled();
+    // A, qui n'a pas écrit ce contenu, le valide.
+    const autre = prismaAvec([reecrite], true);
+    expect((await service(autre.prisma).valider('t1', 'A', ['reecrite'])).validees).toBe(1);
+  });
+
+  it('un contenu réécrit par un chemin qui ne s’est pas nommé ne passe pas le double regard', async () => {
+    const inconnue = { ...ecriture('inconnue', 'A'), contenuPar: null, contenuLe: new Date() };
+    const { prisma } = prismaAvec([inconnue], true);
+    const r = await service(prisma).valider('t1', 'C', ['inconnue']);
+    expect(r.validees).toBe(0);
+    expect(r.refuseesAuteurInconnu).toBe(1);
+    expect(r.motifAuteurInconnu).toMatch(/n’a pas nommé son auteur/);
   });
 
   it('ne jette aucune exception quand tout le lot est écarté', async () => {
@@ -195,7 +232,7 @@ describe('le message est aiguillé, et ne transpose pas', () => {
 });
 
 describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
-  it('le retour anticipé porte les sept champs', async () => {
+  it('le retour anticipé porte les onze champs', async () => {
     // C'EST LE CAS QUI CASSE EN SILENCE. À quatre champs, l'écran lit
     // `undefined` sur le compteur des écartées, n'affiche rien, et annonce
     // « Rien à valider » sur un brouillard qui vient d'être refusé en entier.
@@ -213,8 +250,12 @@ describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
       validees: 0,
       dejaValidees: 0,
       refuseesSecondRegard: 0,
+      refuseesAuteurInconnu: 0,
+      refuseesVisa: 0,
       sousDerogation: 0,
       motifRefus: null,
+      motifAuteurInconnu: null,
+      motifVisa: null,
       ecarteesJournalDeSituation: 0,
       motifEcarteesJournalDeSituation: null,
     });

@@ -307,7 +307,7 @@ describe('les portes qui paient', () => {
   it('la saisie et la modification se jugent au contrôleur, par leur option', () => {
     const source = lire('comptabilite/ecriture.controller.ts');
     expect(source).toContain("creer(user.tenantId, user.userId, dto, { saisie: true, jugerLaCaisse: true })");
-    expect(source).toContain('modifier(user.tenantId, id, dto, { jugerLaCaisse: true })');
+    expect(source).toContain('modifier(user.tenantId, id, dto, { jugerLaCaisse: true, auteur: user.userId })');
     const service = lire('comptabilite/ecriture.service.ts');
     // Après les contrôles d'entrée, à la date INSCRITE.
     const creer = service.slice(service.indexOf('  async creerPlusieursAvec<T>('));

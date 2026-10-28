@@ -79,12 +79,24 @@ de produit.
   un mois qui contient un jour de mise à pied ou d'absence non rémunérée
   n'acquiert rien, nommé à l'écran avec le jour en cause. Le texte ne dit
   pas s'il faut plutôt compter les jours et les convertir.
-- Q2 · la maternité, Caisse qui paie la salariée sans subrogation · le Code
-  (art. 130, art. 59) fait devoir les deux tiers à l'employeur, l'arrêté
-  n° 146/2018 (art. 63) fait payer par la Caisse l'intégralité de la
-  rémunération journalière moyenne. Aucun texte lu ne dit le cumul ni
-  l'imputation (l'art. 106, al. 2 ne vise que l'accident du travail).
-  OmegaX propose les deux tiers et ne déduit rien.
+- Q2 · CLOSE, TRANCHÉE PAR LA LOI LE 2026-10-25, aucun code · la maternité,
+  Caisse qui paie la salariée sans subrogation. Code du travail, art. 130,
+  al. 2 (« la femme salariée a droit aux deux tiers de sa rémunération ») et
+  art. 59 (l'obligation de l'art. 130 survit à la suspension), art. 131
+  (« Toute convention contraire aux dispositions des articles 129 et 130
+  ci-dessus est nulle de plein droit ») ; loi n° 16/009, art. 48, et arrêté
+  n° 146/2018, art. 63 (l'indemnité de la Caisse, « intégralité de la
+  rémunération journalière moyenne ») et art. 139, al. 2 et 3 (subrogation de
+  plein droit de l'employeur en règle, totale s'il paie toute la
+  rémunération, « à la limite de la partie versée » s'il n'en paie qu'une
+  partie). Sans subrogation, l'employeur doit les deux tiers et ne déduit
+  rien · aucun texte n'autorise l'imputation (l'art. 106, al. 2 ne vise que
+  l'accident du travail), et une règle de protection ne se tranche pas
+  contre celle qu'elle protège (CLAUDE.md, P5). C'est ce que fait déjà
+  `personnel/absences.ts` (régime des deux tiers, déduction réservée à
+  `DEDUITE` sur l'accident du travail, subrogation partielle bornée à la
+  partie versée) ; aucun message ni aucune bulle ne disait la question
+  ouverte.
 - Q3 · nature de l'employeur pour l'INPP, régime de la retenue, classe et
   personnes à charge se ressaisissent chaque mois (champs de la simulation,
   figés par le bulletin émis). Les garder au dossier et au salarié pour
@@ -116,10 +128,58 @@ de produit.
   lire que les fiches qui existaient à la clôture.
 - Questions de la ligne pour Manasse (fiche de la ligne) · « Corriger
   l'entrée » d'une valeur d'acquisition validée ; retrait d'une fiche née
-  d'une écriture déjà passée (lecture de D7) ; transfert d'un bien entre
-  deux dossiers du groupe par les comptes de liaison (n° 73).
+  d'une écriture déjà passée (lecture de D7).
+- N° 73 · TRANCHÉ PAR LA LOI LE 2026-10-25, construit (SYSCOHADA) · le
+  transfert d'un bien entre le siège et une cellule passe par les comptes
+  permanents de liaison 184 et 185 (AUDCIF, Titre VII, fiche du compte 18 ·
+  « égaux et de sens contraire dans les deux comptabilités », opérations
+  « traitées comme s'il s'agissait d'un tiers », mêmes pièces, même
+  période), à sa valeur d'entrée avec ses amortissements et ses
+  dépréciations, plan inchangé, sans 81 ni 82 (AUDCIF art. 35 et 36) ;
+  « comme un tiers » régit la tenue du compte de liaison, jamais la valeur.
+  Deux pièces nées ensemble ; annulation motivée des deux côtés (art. 20,
+  al. 2) ; neutralisé au tableau des flux (Titre IX ch. 5 § 1.3, aucune
+  trésorerie). Lecture d'OmegaX à confirmer · à la NOTE 3A, l'entrée se lit
+  en « Acquisitions, apports, créations » chez celui qui reçoit et en
+  « Cessions, scissions, hors service » chez celui qui cède (le 184 porte
+  la dotation de l'établissement, un apport) ; rien n'est reclassé en
+  virement de poste à poste.
+- N° 73, limites écrites · deux cellules ne se transfèrent pas un bien
+  directement (fiche du compte 18, siège et établissement), refusé avec
+  l'issue (deux transferts par le siège) ; bien réévalué, à dérogatoire, en
+  cours, composant ou principal à composants, à subvention non soldée, à
+  dette aléatoire, à démantèlement, en location-acquisition, aux unités
+  d'œuvre déprécié · refus nommés, non servis ; le numéro d'inventaire déjà
+  pris chez celui qui reçoit n'est pas repris (fiche sans numéro, que la
+  maintenance du registre nomme).
+
+### Question à Manasse (ligne sage-l4, n° 73, SYCEBNL)
+
+- Le transfert d'un bien entre deux dossiers d'un groupe SYCEBNL est REFUSÉ
+  et ce refus est gelé par un test (`transfert-groupe.spec.ts`). Lu · la
+  fiche du compte 58 du SYCEBNL (Partie 2 ch. 3) ne fait passer par le 58 que
+  la trésorerie (« par le crédit : des comptes de trésorerie », le 585
+  « Virements de fonds », le 588 « Autres virements internes »), et le
+  compte 18 du SYCEBNL porte des emprunts (son 185 est « Dépôts et
+  cautionnements reçus ») ;
+  aucun texte lu n'y fait passer un bien. TRANCHÉ PAR LA LOI (2026-10-25,
+  relu par la session) · la fiche SYCEBNL du compte 58 dit son contenu,
+  « les mouvements de virement entre les comptes de trésorerie », le fait
+  fonctionner « par le crédit » et « par le débit » des seuls « comptes de
+  trésorerie », et exige qu'il soit « soldé à la fin de l'exercice » · un
+  bien passé par le 588 n'est pas un virement de trésorerie et laisserait
+  le 588 de chaque dossier ouvert à la clôture. Voie (a) retenue, le refus
+  reste ; la voie (b) irait contre la lettre de la fiche et n'est pas
+  servie.
 - Relevé de la ligne · la création admet une valeur résiduelle supérieure à
   la valeur d'origine · la borner dans `preparerFiche`.
+- Question ouverte (2026-10-28) · NOTE 3A du SYSCOHADA, le transfert d'un
+  bien entre établissements paraît en « Acquisitions » chez celui qui reçoit
+  et en « Cessions » chez celui qui cède. Lu · le ch. 6 du Titre IX ne
+  définit pas ses colonnes, la fiche du compte 18 ne parle pas du tableau des
+  immobilisations ; aucun texte ne range ce mouvement en « Virements de
+  poste à poste ». Écart écrit en tête de `correspondance-notes-syscohada-1.ts`
+  (anomalie n° 9) ; le porter aux virements serait une lecture d'OmegaX.
 
 ## Relevés en attente · virement de fonds (second tour non bloquant)
 

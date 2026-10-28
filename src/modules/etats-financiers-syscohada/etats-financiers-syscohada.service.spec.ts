@@ -80,6 +80,8 @@ function serviceAvecExercices(
   // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
   // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
   ouverturesParExercice: Record<string, LigneBalance[]> = {},
+  // Ligne sage-l4, n° 73 · les pièces de transfert de bien dans le groupe, par exercice.
+  transfertsParExercice: Record<string, Map<string, { debit: number; credit: number }>> = {},
 ) {
   const ecritureService = {
     balance: jest.fn().mockImplementation((
@@ -106,6 +108,9 @@ function serviceAvecExercices(
     nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && reevaluationsParExercice[exerciceId]) || new Map()),
+    ),
+    mouvementsDeTransfertGroupe: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
+      Promise.resolve((exerciceId && transfertsParExercice[exerciceId]) || new Map()),
     ),
   } as unknown as EcritureService;
   const exerciceService = {
@@ -1063,6 +1068,46 @@ describe('EtatsFinanciersSyscohadaService', () => {
       // Le compte détaillé que le tableau lit n'est pas signalé.
       expect(parNumero.has('48120000')).toBe(false);
       expect(parNumero.has('52110000')).toBe(false);
+    });
+
+    // LIGNE SAGE-L4, N° 73 · le transfert d'un bien dans le groupe passe par le
+    // compte de liaison, sans trésorerie (ch. 5 § 1.3). Bien de 1 200 000
+    // amorti de 360 000, VNC 840 000 · chez celui qui reçoit D 2451 / C 2845 /
+    // C 185 ; chez celui qui cède l'inverse. FG doit valoir zéro des deux côtés.
+    describe('ligne sage-l4, n° 73 · le transfert d’un bien dans le groupe', () => {
+      const lie = (...l: Array<[string, number, number]>) => new Map(l.map(([numero, debit, credit]) => [`id-${numero}`, { debit, credit }]));
+      it('chez celui qui reçoit · aucune fausse acquisition, et 1 200 000 de décaissement inventé sans la liaison', async () => {
+        const e1 = [ligne('10130000', C1, 0, 5000), ligne('52110000', C5, 5000, 0)];
+        const e2 = [
+          ligne('10130000', C1, 0, 0, { credit: 5000 }),
+          ligne('52110000', C5, 0, 0, { debit: 5000 }),
+          ligne('24510000', C2, 1_200_000, 0),
+          ligne('28450000', C2, 0, 360_000),
+          ligne('18500000', C1, 0, 840_000),
+        ];
+        const pieces = lie(['24510000', 1_200_000, 0], ['28450000', 0, 360_000], ['18500000', 0, 840_000]);
+        const tft = await serviceAvecExercices({ e1, e2 }, EXERCICES, {}, {}, { e2: pieces }).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(tft, 'FG').montant).toBe(0);
+        expect(montant(tft, 'ZC').montant).toBe(0);
+        const sansLiaison = await serviceAvecExercices({ e1, e2 }, EXERCICES).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(sansLiaison, 'FG').montant).toBe(-1_200_000);
+      });
+
+      it('chez celui qui cède · aucune fausse cession', async () => {
+        const e1 = [ligne('10130000', C1, 0, 840_000), ligne('24510000', C2, 1_200_000, 0), ligne('28450000', C2, 0, 360_000)];
+        const e2 = [
+          ligne('10130000', C1, 0, 0, { credit: 840_000 }),
+          ligne('24510000', C2, 0, 1_200_000, { debit: 1_200_000 }),
+          ligne('28450000', C2, 360_000, 0, { credit: 360_000 }),
+          ligne('18500000', C1, 840_000, 0),
+        ];
+        const pieces = lie(['24510000', 0, 1_200_000], ['28450000', 360_000, 0], ['18500000', 840_000, 0]);
+        const tft = await serviceAvecExercices({ e1, e2 }, EXERCICES, {}, {}, { e2: pieces }).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(tft, 'FG').montant).toBe(0);
+        expect(montant(tft, 'FI').montant).toBe(0);
+        const sansLiaison = await serviceAvecExercices({ e1, e2 }, EXERCICES).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(sansLiaison, 'FG').montant).toBe(840_000);
+      });
     });
 
     // LOT 14 · « – Écart et provision spéciale de réévaluation de l'exercice

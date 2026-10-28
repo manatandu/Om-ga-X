@@ -689,6 +689,17 @@ model Tenant {
   // (`tiers/visa-rib.ts`). Un RIB modifié en silence détourne un paiement ·
   // le visa met un second regard entre la saisie et l'argent qui part.
   visaRibs                      Boolean  @default(false)
+  // CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1 · Microfina++,
+  // « visa puis validation », M p. 130 à 133). Une OPTION, désactivée par
+  // défaut, comme le double regard · aucun texte lu ne l'impose. AUDCIF
+  // art. 22, 2° impose la validation et ne nomme personne ; l'art. 69 laisse
+  // les procédures à l'entité (SYSCOHADA), le SYCEBNL les demande par son
+  // art. 16, 2), l'art. 69 lui étant exclu par son art. 3. Activée, une
+  // écriture n'entre au livre-journal qu'une fois VISÉE, sur son contenu
+  // présent, par un autre utilisateur que l'auteur de son dernier contenu, et
+  // une facture ne se comptabilise qu'une fois visée (approbation, CPCC
+  // ch. 3, § 3.1.1) · `comptabilite/circuit-visa.ts`.
+  circuitVisa                   Boolean  @default(false)
   // SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36 · Sage, « écart
   // de règlement » sous un montant paramétré) · le reste qu'un règlement peut
   // passer en charge en soldant le tiers (`reglements/ecart-escompte.ts` ·
@@ -940,6 +951,10 @@ model Tenant {
   absencesSalaries                     AbsenceSalarie[]
   majorationsHeures                    MajorationHeures[]
   indemnitesCaisseAbsences             IndemniteCaisseAbsence[]
+  feuillesTemps                        FeuilleTemps[]
+  joursFeuillesTemps                   JourFeuilleTemps[]
+  compteursHeures                      CompteurHeures[]
+  heuresCompteursJours                 HeuresCompteurJour[]
   // Ligne sage-l5 · fonction 75, banques du salarié et paiement des salaires.
   ribsSalaries                         RibSalarie[]
   paiementsSalaires                    PaiementSalaires[]
@@ -948,6 +963,8 @@ model Tenant {
   repartitionsAnalytiquesPaie          RepartitionAnalytiquePaie[]
   lignesRepartitionsAnalytiquesPaie    LigneRepartitionAnalytiquePaie[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
+  // Ligne sage-l4, n° 73 · les transferts de biens entre dossiers du groupe.
+  transfertsImmobilisationsGroupe      TransfertImmobilisationGroupe[]
   // Ligne sage-l6 · fonction 22, pièces jointes aux écritures, aux sections,
   // aux biens et aux salariés (`common/pieces-jointes/`).
   piecesJointesEcritures               PieceJointeEcriture[]
@@ -1500,20 +1517,22 @@ model Compte {
   lignesLotVirement LigneLotVirement[]
 
   /// Compte de passage (585) d'un sens de virement de fonds · virement-fonds/.
-  virementFonds                 CompteVirementFonds?
-  typesRemiseReception          TypeRemise[]          @relation("TypeRemiseCompteReception")
-  typesRemiseTransit            TypeRemise[]          @relation("TypeRemiseCompteTransit")
-  typesRemiseCommission         TypeRemise[]          @relation("TypeRemiseCompteCommission")
-  valeursRecues                 ValeurRecue[]
-  effetsTiers                   EffetCommerce[]       @relation("EffetCommerceCompteTiers")
-  effetsPortefeuille            EffetCommerce[]       @relation("EffetCommerceCompteEffet")
-  actesEffet                    ActeEffet[]           @relation("ActeEffetCompte")
-  operationsTresoreriePrincipal OperationTresorerie[] @relation("OperationTresoreriePrincipal")
-  operationsTresorerieInterets  OperationTresorerie[] @relation("OperationTresorerieInterets")
-  operationsTresorerieCourus    OperationTresorerie[] @relation("OperationTresorerieCourus")
-  operationsTresorerieFrais     OperationTresorerie[] @relation("OperationTresorerieFrais")
-  titresPlacement               TitrePlacement[]      @relation("TitrePlacementCompte")
-  titresPlacementFrais          TitrePlacement[]      @relation("TitrePlacementFrais")
+  virementFonds                   CompteVirementFonds?
+  /// Ligne sage-l4, n° 73 · compte de liaison (184, 185) d'un transfert de bien.
+  transfertsImmobilisationsGroupe TransfertImmobilisationGroupe[]
+  typesRemiseReception            TypeRemise[]                    @relation("TypeRemiseCompteReception")
+  typesRemiseTransit              TypeRemise[]                    @relation("TypeRemiseCompteTransit")
+  typesRemiseCommission           TypeRemise[]                    @relation("TypeRemiseCompteCommission")
+  valeursRecues                   ValeurRecue[]
+  effetsTiers                     EffetCommerce[]                 @relation("EffetCommerceCompteTiers")
+  effetsPortefeuille              EffetCommerce[]                 @relation("EffetCommerceCompteEffet")
+  actesEffet                      ActeEffet[]                     @relation("ActeEffetCompte")
+  operationsTresoreriePrincipal   OperationTresorerie[]           @relation("OperationTresoreriePrincipal")
+  operationsTresorerieInterets    OperationTresorerie[]           @relation("OperationTresorerieInterets")
+  operationsTresorerieCourus      OperationTresorerie[]           @relation("OperationTresorerieCourus")
+  operationsTresorerieFrais       OperationTresorerie[]           @relation("OperationTresorerieFrais")
+  titresPlacement                 TitrePlacement[]                @relation("TitrePlacementCompte")
+  titresPlacementFrais            TitrePlacement[]                @relation("TitrePlacementFrais")
 
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
@@ -2037,6 +2056,30 @@ model Ecriture {
   secondRegardNom   String?
   secondRegardMotif String?
 
+  /// L'AUTEUR DU DERNIER CONTENU (ligne microfina-m1, idée 1 · constat de
+  /// l'audit de sécurité du 2026-10-25). `createdBy` dit qui a SAISI la pièce,
+  /// jamais qui l'a réécrite ensuite au brouillard · le double regard
+  /// comparait le validateur au seul `createdBy`, et un comptable qui
+  /// réécrivait le brouillard d'un collègue puis le validait passait sans
+  /// trace. `contenuLe` est posé par tout changement du contenu après la
+  /// création (modification, réimputation, transfert, retouche d'un module),
+  /// `contenuPar` nomme son auteur · `contenuLe` sans `contenuPar` dit un
+  /// chemin qui n'a pas nommé le sien (auteur INCONNU, `circuit-visa.ts`).
+  /// Les deux nuls · le contenu est celui de la création, son auteur est
+  /// `createdBy`.
+  contenuPar String?
+  contenuLe  DateTime?
+
+  /// LE VISA AVANT VALIDATION (`Tenant.circuitVisa`) · qui, quand, et
+  /// l'EMPREINTE du contenu visé. Toute saisie du contenu le fait tomber (les
+  /// trois remis à nul, comme le visa d'un RIB), et la validation rejoue
+  /// l'empreinte · un contenu changé par un chemin qui n'aurait pas remis le
+  /// visa à nul n'entre pas pour autant au livre-journal sous un visa qui ne
+  /// le couvre plus.
+  viseePar       String?
+  viseeLe        DateTime?
+  viseeEmpreinte String?
+
   // Régularisations et abonnements dont cette écriture est l'aboutissement.
   regularisationConstatee             Regularisation?             @relation("RegulConstatation")
   regularisationReprise               Regularisation?             @relation("RegulReprise")
@@ -2216,6 +2259,9 @@ model Ecriture {
   paiementSalairesNegatif         PaiementSalaires?                   @relation("PaiementSalairesNegatif")
   annulationTraitementOrigine     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementOrigine")
   annulationTraitementNegatif     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementNegatif")
+  /// Ligne sage-l4, n° 73 · la pièce d'un transfert de bien dans le groupe, et son négatif.
+  transfertGroupe                 TransfertImmobilisationGroupe?      @relation("TransfertGroupeEcriture")
+  transfertGroupeNegatif          TransfertImmobilisationGroupe?      @relation("TransfertGroupeNegatif")
   /// Ligne sage-l6 · les pièces justificatives jointes à l'écriture.
   // Ligne microfina-m2, idée 9 · le chèque émis qui paie cette pièce (SET NULL, il reste au registre).
   chequeEmis                      ChequeEmis?
@@ -4903,6 +4949,13 @@ model Immobilisation {
   // fois (`ImmobilisationService.mettreEnService`), jamais avant l'acquisition.
   dateAcquisition   DateTime
   dateMiseEnService DateTime?
+  /// LIGNE SAGE-L4, N° 73 · le jour où le bien est ENTRÉ dans ce dossier par un
+  /// transfert d'un autre dossier du groupe (AUDCIF, Titre VII, fiche du compte
+  /// 18). Null pour tout autre bien. Le plan est celui du bien, inchangé ; la
+  /// dotation de l'exercice d'entrée ne court qu'à partir du mois qui suit,
+  /// le dossier qui l'a cédé ayant compté le mois du transfert
+  /// (`transfert-groupe.ts`, `debutDeDetention`).
+  dateEntreeGroupe  DateTime? @db.Date
 
   /// NATURE DU BIEN AU BARÈME FISCAL · clé d'une ligne de l'arrêté
   /// n° 013/CAB/MIN/FINANCES/2025, art. 2 (`bareme-amortissement-013-2025.ts`,
@@ -5171,6 +5224,8 @@ model Immobilisation {
   reprisesSubvention         RepriseSubventionImmobilisation[]
   subventions                SubventionImmobilisation[]
   annulationsTraitements     AnnulationTraitementImmobilisation[]
+  // Ligne sage-l4, n° 73 · les transferts dans le groupe qui l'ont fait sortir ou entrer.
+  transfertsGroupe           TransfertImmobilisationGroupe[]
   // Ligne sage-l6 · fonction 22 · les documents de la fiche du bien.
   piecesJointes              PieceJointeImmobilisation[]
 
@@ -5410,6 +5465,10 @@ enum NatureMouvementDepreciation {
   CLOTURE
   TRANSFERT_REPRISE
   TRANSFERT_DOTATION
+  /// Ligne sage-l4, n° 73 · la dépréciation qui suit le bien d'un dossier du
+  /// groupe à l'autre · reprise chez celui qui cède, constatée chez celui qui
+  /// reçoit, par le compte de liaison et jamais par le résultat.
+  TRANSFERT_GROUPE
 }
 
 //
@@ -7286,19 +7345,19 @@ model ArreteCaisse {
   /// FIGÉ à l'arrêté · le solde de tout ce qui est saisi à la fin du jour
   /// (brouillard compris, situation et à-nouveau provisoire exclus), lu par le
   /// serveur, jamais saisi.
-  soldeTheorique        Decimal @db.Decimal(18, 2)
+  soldeTheorique                Decimal @db.Decimal(18, 2)
   /// Combien d'écritures au brouillard ce solde comprend · un arrêté du jour
   /// lit d'ordinaire des pièces que la validation mensuelle (AUDCIF art. 22,
   /// 2°) n'a pas encore portées au livre-journal, et c'est dit.
-  ecrituresAuBrouillard Int
+  ecrituresAuBrouillard         Int
   /// Dont celles d'un exercice ANTÉRIEUR non clôturé que le solde remonte
   /// faute d'ouverture (relecture m4) · elles comptent dans le solde, et
   /// l'arrêté le dit.
-  brouillardExercicesAnterieurs Int @default(0)
+  brouillardExercicesAnterieurs Int     @default(0)
   /// La somme des coupures, calculée par le serveur.
-  especesComptees       Decimal @db.Decimal(18, 2)
+  especesComptees               Decimal @db.Decimal(18, 2)
   /// especesComptees − soldeTheorique · positif, excédent ; négatif, manquant.
-  ecart                 Decimal @db.Decimal(18, 2)
+  ecart                         Decimal @db.Decimal(18, 2)
 
   /// Le plafond d'encaisse EN VIGUEUR au jour, recopié · nul sans plafond, ou
   /// quand son unité n'est pas celle de l'arrêté (`plafondNonCompare` le dit).
@@ -7741,6 +7800,18 @@ model Facture {
   /// dupliquée. Un pour un : deux factures ne partagent pas une écriture.
   ecritureId String?   @unique
   ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: SetNull)
+
+  /// L'AUTEUR DE L'ENREGISTREMENT ET LE VISA DE LA FACTURE (ligne
+  /// microfina-m1, idée 1 · CPCC ch. 3, § 3.1.1, « suit l'approbation des
+  /// factures […] et réceptionne celles approuvées »). Sous le circuit de visa
+  /// (`Tenant.circuitVisa`), une facture ne se comptabilise qu'une fois visée
+  /// par un autre utilisateur que celui qui l'a enregistrée. Une facture ne se
+  /// modifie pas (elle se supprime ou s'annule par une note de crédit) · son
+  /// visa ne tombe donc jamais. `saisiePar` nul · facture d'avant la règle,
+  /// auteur inconnu, et l'écran le dit.
+  saisiePar String?
+  viseePar  String?
+  viseeLe   DateTime?
 
   lignes                LigneFacture[]
   createdAt             DateTime               @default(now())
@@ -8315,6 +8386,8 @@ model Salarie {
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   repriseConges           RepriseCongesSalarie?
   absences                AbsenceSalarie[]
+  /// Ligne sage-l5, fonction 78 · les feuilles de temps du salarié.
+  feuillesTemps           FeuilleTemps[]
   conges                  CongeSalarie[]
   // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU (Code du
   // travail, art. 98, al. 2, « au temps et au lieu convenus »), déclaré,
@@ -11366,6 +11439,159 @@ model IndemniteCaisseAbsence {
   @@unique([absenceId, mois, annuleLe])
   @@index([tenantId, absenceId, mois])
   @@map("indemnites_caisse_absences")
+}
+
+// Ligne sage-l5 · fonction 78, reste · feuilles de temps et compteurs libres.
+
+/// UNE FEUILLE DE TEMPS · un salarié, une période de trente et un jours au
+/// plus, les heures de chaque jour SAISIES, jamais un montant. Aucun texte ne
+/// régit la feuille (choix d'organisation) ; ce qu'elle fait des heures se lit
+/// au Code du travail (art. 119, 121, 124), dans `personnel/feuilles-temps.ts`.
+/// Deux feuilles non annulées d'un même salarié ne se chevauchent pas. Une
+/// feuille ne se supprime pas · elle s'annule avec son motif, au journal
+/// d'audit, puisqu'elle propose des heures au bulletin.
+model FeuilleTemps {
+  id              String             @id @default(uuid())
+  tenantId        String
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  salarieId       String
+  salarie         Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  du              DateTime           @db.Date
+  au              DateTime           @db.Date
+  observation     String?            @db.VarChar(500)
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?            @db.VarChar(500)
+  creePar         String
+  createdAt       DateTime           @default(now())
+  jours           JourFeuilleTemps[]
+
+  @@index([tenantId, salarieId, du])
+  @@map("feuilles_temps")
+}
+
+/// LES HEURES D'UN JOUR de la feuille · les heures travaillées et, parmi
+/// elles, celles de nuit (art. 124, de 19 h à 5 h). Un jour de la période sans
+/// ligne vaut zéro · la feuille le couvre. Retouchée par identifiant, jamais
+/// supprimée (journal d'audit).
+model JourFeuilleTemps {
+  id              String               @id @default(uuid())
+  tenantId        String
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  feuilleId       String
+  feuille         FeuilleTemps         @relation(fields: [feuilleId], references: [id], onDelete: Restrict)
+  jour            DateTime             @db.Date
+  heures          Decimal              @db.Decimal(5, 2)
+  heuresNuit      Decimal              @default(0) @db.Decimal(5, 2)
+  modifiePar      String
+  modifieLe       DateTime             @default(now())
+  heuresCompteurs HeuresCompteurJour[]
+
+  @@unique([feuilleId, jour])
+  @@index([tenantId, feuilleId])
+  @@map("jours_feuilles_temps")
+}
+
+/// UN COMPTEUR LIBRE D'HEURES (Sage, compteurs libres) · nommé par le
+/// dossier, alimenté par les feuilles de temps, SANS EFFET DE PAIE tant que
+/// rien ne le relie à une rubrique. Il ne se supprime pas · il se désactive.
+model CompteurHeures {
+  id           String               @id @default(uuid())
+  tenantId     String
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  code         String               @db.VarChar(10)
+  libelle      String               @db.VarChar(60)
+  actif        Boolean              @default(true)
+  desactiveLe  DateTime?
+  desactivePar String?
+  creePar      String
+  createdAt    DateTime             @default(now())
+  heures       HeuresCompteurJour[]
+
+  @@unique([tenantId, code])
+  @@map("compteurs_heures")
+}
+
+/// Les heures d'un jour portées à un compteur libre · indépendantes des heures
+/// travaillées (une astreinte, une délégation ne sont pas forcément du travail).
+model HeuresCompteurJour {
+  id         String           @id @default(uuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  jourId     String
+  jour       JourFeuilleTemps @relation(fields: [jourId], references: [id], onDelete: Restrict)
+  compteurId String
+  compteur   CompteurHeures   @relation(fields: [compteurId], references: [id], onDelete: Restrict)
+  heures     Decimal          @db.Decimal(5, 2)
+
+  @@unique([jourId, compteurId])
+  @@index([tenantId, compteurId])
+  @@map("heures_compteurs_jours")
+}
+
+// Ligne sage-l4, n° 73 · le transfert d'un bien entre deux dossiers du groupe.
+
+enum SensTransfertGroupe {
+  SORTIE
+  ENTREE
+}
+
+/// UN CÔTÉ D'UN TRANSFERT DE BIEN ENTRE DEUX DOSSIERS DU GROUPE (SYSCOHADA
+/// seul) · une ligne dans le dossier qui cède (SORTIE), une dans celui qui
+/// reçoit (ENTREE), nées ensemble et liées par `transfertId`. AUDCIF, Titre
+/// VII, fiche du compte 18 · les opérations siège / établissement passent par
+/// les 184 à 187, « de manière symétrique, dans la même période comptable et
+/// sur la base des mêmes pièces justificatives », les comptes de liaison
+/// « égaux et de sens contraire ». Une seule entité · le bien passe à sa valeur
+/// d'entrée, avec ses amortissements et ses dépréciations (AUDCIF art. 35 et
+/// 36), sans 81 ni 82. Chaque côté RETIENT sa pièce (et son négatif) ; le
+/// dossier de l'autre côté n'est nommé que par son identifiant, sans clé
+/// étrangère · une ligne ne lie jamais deux dossiers en base. Il s'annule avec
+/// son motif, les deux côtés ensemble (AUDCIF art. 20, al. 2).
+model TransfertImmobilisationGroupe {
+  id                    String              @id @default(uuid())
+  tenantId              String
+  tenant                Tenant              @relation(fields: [tenantId], references: [id])
+  /// Commun aux deux côtés du même transfert.
+  transfertId           String
+  sens                  SensTransfertGroupe
+  /// Le dossier de l'autre côté · son identifiant seul, jamais une relation.
+  dossierContrepartieId String
+  /// La fiche du bien dans CE dossier · celle qui sort, ou celle qui naît.
+  /// Nulle une fois la fiche née retirée par l'annulation (le bien n'est
+  /// jamais entré) · la désignation reste.
+  immobilisationId      String?
+  immobilisation        Immobilisation?     @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  designation           String              @db.VarChar(300)
+  /// La pièce de CE côté · nulle une fois retirée du brouillard par
+  /// l'annulation (AUDCIF art. 22, 2°), gardée et inscrite en négatif si
+  /// elle était validée (art. 20, al. 2).
+  ecritureId            String?             @unique
+  ecriture              Ecriture?           @relation("TransfertGroupeEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId     String?             @unique
+  ecritureNegatif       Ecriture?           @relation("TransfertGroupeNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  compteLiaisonId       String
+  compteLiaison         Compte              @relation(fields: [compteLiaisonId], references: [id], onDelete: Restrict)
+  dateTransfert         DateTime            @db.Date
+  referencePiece        String              @db.VarChar(60)
+  datePiece             DateTime            @db.Date
+  valeurOrigine         Decimal             @db.Decimal(18, 2)
+  /// Le cumul des amortissements qui suit le bien, dotation complémentaire comprise.
+  amortissements        Decimal             @db.Decimal(18, 2)
+  /// La part de l'exercice dotée chez celui qui cède jusqu'au mois du transfert.
+  complementDotation    Decimal             @default(0) @db.Decimal(18, 2)
+  depreciations         Decimal             @default(0) @db.Decimal(18, 2)
+  /// Le solde porté au compte de liaison · valeur d'entrée moins amortissements et dépréciations.
+  valeurNette           Decimal             @db.Decimal(18, 2)
+  annuleLe              DateTime?
+  annulePar             String?
+  motifAnnulation       String?             @db.VarChar(500)
+  creePar               String
+  createdAt             DateTime            @default(now())
+
+  @@unique([tenantId, transfertId])
+  @@index([tenantId, immobilisationId])
+  @@map("transferts_immobilisations_groupe")
 }
 
 // Ligne sage-l5 · fonction 75 · banques du salarié et paiement des salaires.

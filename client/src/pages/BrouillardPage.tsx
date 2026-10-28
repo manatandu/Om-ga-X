@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
-import type { Compte, EtatBrouillard, Journal, LigneBrouillard, ResultatValidation } from '../lib/types';
+import type { Compte, EtatBrouillard, Journal, LigneBrouillard, NaturePiece, ResultatValidation, ResultatVisa } from '../lib/types';
+import { FicheImputation } from '../components/FicheImputation';
+import { LIBELLES_ETAT_VISA, LIBELLES_NATURE_PIECE, phraseDuVisa } from '../lib/circuit-visa';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { PortailModale } from '../components/PortailModale';
 import { montantOuVide as montant } from '../lib/montants';
@@ -134,6 +136,17 @@ export function BrouillardPage() {
   const [comptes, setComptes] = useState<Compte[] | null>(null);
   const [transfert, setTransfert] = useState<Transfert | null>(null);
   const [erreurTransfert, setErreurTransfert] = useState<string | null>(null);
+  // Ligne microfina-m1 · la fiche d'imputation ouverte, et le filtre « objet par objet ».
+  const [ficheId, setFicheId] = useState<string | null>(null);
+  const [nature, setNature] = useState<NaturePiece | ''>('');
+  // LA DÉROGATION NOMINATIVE (relecture du circuit de visa, M3) · le motif de
+  // l'auteur inconnu et celui du double regard la nomment comme issue, et le
+  // serveur l'accepte (`secondRegardNom`, `secondRegardMotif`), mais aucun
+  // écran ne l'envoyait · l'issue écrite était impossible. Offerte après un
+  // refus de ce type seulement, jamais d'office.
+  const [derogationOfferte, setDerogationOfferte] = useState(false);
+  const [secondRegardNom, setSecondRegardNom] = useState('');
+  const [secondRegardMotif, setSecondRegardMotif] = useState('');
 
   const charger = async () => {
     if (!exerciceCourant) return;
@@ -172,7 +185,11 @@ export function BrouillardPage() {
 
   // Le brouillard resté dans un journal de situation ne se valide pas sur
   // place · il se transfère d'abord (le serveur le refuse en le nommant).
-  const selectionnables = useMemo(() => (etat?.lignes ?? []).filter((l) => l.equilibree && !l.journalDeSituation), [etat]);
+  // Le filtre par nature (ligne microfina-m1) ne retire rien du brouillard ·
+  // les totaux restent ceux du serveur, la liste seule se restreint.
+  const lignesVues = useMemo(() => (etat?.lignes ?? []).filter((l) => !nature || l.nature === nature), [etat, nature]);
+  const selectionnables = useMemo(() => lignesVues.filter((l) => l.equilibree && !l.journalDeSituation), [lignesVues]);
+  const circuit = etat?.circuitVisa === true;
   const heritees = useMemo(() => (etat?.lignes ?? []).filter((l) => l.journalDeSituation).length, [etat]);
   // Les journaux où la pièce peut aller · ordinaires et actifs.
   const journauxDArrivee = useMemo(() => journaux.filter((j) => j.type !== 'SITUATION' && j.estActif), [journaux]);
@@ -197,16 +214,49 @@ export function BrouillardPage() {
     // la validation par période · dit après le reste, jamais tu (la période
     // ne passerait pas pour centralisée).
     const situation =
-      (r.ecarteesJournalDeSituation ?? 0) > 0 ? ` ${r.motifEcarteesJournalDeSituation ?? ''}`.trimEnd() : '';
-    if (r.refuseesSecondRegard > 0) {
+      ((r.ecarteesJournalDeSituation ?? 0) > 0 ? ` ${r.motifEcarteesJournalDeSituation ?? ''}`.trimEnd() : '') +
+      // Une pièce retirée pendant la validation n'est pas entrée au
+      // livre-journal · dite, jamais lue comme déjà validée (relecture M5).
+      ((r.retireesEntreTemps ?? 0) > 0
+        ? ` ${r.retireesEntreTemps} pièce(s) retirée(s) du brouillard pendant la validation, non validée(s).`
+        : '');
+    // LE VISA ET L'AUTEUR INCONNU (ligne microfina-m1) · comptés comme le
+    // double regard, AVANT le cas vide · un lot écarté faute de visa n'est pas
+    // un brouillard vide.
+    const ecarteesVisa = r.refuseesVisa ?? 0;
+    const ecarteesInconnu = r.refuseesAuteurInconnu ?? 0;
+    if (r.refuseesSecondRegard > 0 || ecarteesVisa > 0 || ecarteesInconnu > 0) {
+      const motifs = [
+        r.refuseesSecondRegard > 0 ? r.motifRefus : null,
+        ecarteesInconnu > 0 ? r.motifAuteurInconnu : null,
+        ecarteesVisa > 0 ? r.motifVisa : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
       return (
         `${r.validees} écriture(s) entrée(s) au livre-journal, ` +
-        `${r.refuseesSecondRegard} écartée(s). ${r.motifRefus ?? ''}${situation}`
+        `${r.refuseesSecondRegard + ecarteesVisa + ecarteesInconnu} écartée(s). ${motifs}${situation}`
       );
     }
     if (r.validees === 0 && siRienAFaire && !situation) return siRienAFaire;
     const visa = r.sousDerogation > 0 ? ' Second regard nominatif porté au journal.' : '';
     return `${r.validees} écriture(s) entrée(s) au livre-journal.${visa}${situation}`;
+  };
+
+  /** Les deux champs vont ensemble · le serveur refuse l'un sans l'autre, en le disant. */
+  const derogation = () =>
+    derogationOfferte && (secondRegardNom.trim() || secondRegardMotif.trim())
+      ? { secondRegardNom: secondRegardNom.trim(), secondRegardMotif: secondRegardMotif.trim() }
+      : {};
+
+  const apresValidation = (r: ResultatValidation, siRienAFaire?: string) => {
+    setInfo(phraseValidation(r, siRienAFaire));
+    if (r.refuseesSecondRegard > 0 || (r.refuseesAuteurInconnu ?? 0) > 0) setDerogationOfferte(true);
+    else if (r.sousDerogation > 0) {
+      setSecondRegardNom('');
+      setSecondRegardMotif('');
+      setDerogationOfferte(false);
+    }
   };
 
   const validerSelection = async () => {
@@ -216,8 +266,9 @@ export function BrouillardPage() {
     try {
       const r = await api.post<ResultatValidation>('/ecritures/valider', {
         ecritureIds: [...selection],
+        ...derogation(),
       });
-      setInfo(phraseValidation(r));
+      apresValidation(r);
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Validation impossible');
@@ -235,11 +286,52 @@ export function BrouillardPage() {
         exerciceId: exerciceCourant.id,
         dateLimite,
         journalId: journalId || undefined,
+        ...derogation(),
       });
-      setInfo(phraseValidation(r, 'Rien à valider jusqu’à cette date.'));
+      apresValidation(r, 'Rien à valider jusqu’à cette date.');
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Validation impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  /**
+   * VISER LA SÉLECTION (ligne microfina-m1, idée 1) · chaque pièce part avec
+   * l'empreinte du contenu que la liste a montré · le serveur refuse un
+   * contenu changé depuis, et rend chaque refus nommé.
+   */
+  const viserSelection = async () => {
+    if (!etat || selection.size === 0) return;
+    const pieces = etat.lignes.filter((l) => selection.has(l.id) && l.empreinte).map((l) => ({ id: l.id, empreinte: l.empreinte as string }));
+    if (pieces.length === 0) return;
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      const r = await api.post<ResultatVisa>('/circuit-visa/ecritures', { pieces });
+      setInfo(phraseDuVisa(r));
+      await charger();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Visa impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  const retirerVisaSelection = async () => {
+    if (selection.size === 0) return;
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      const r = await api.post<{ retires: number; refusees: { piece: string; motif: string }[] }>('/circuit-visa/ecritures/retrait', {
+        ecritureIds: [...selection],
+      });
+      const refus = r.refusees.map((x) => `${x.piece} · ${x.motif}`).join(' ');
+      setInfo(`${r.retires} visa(s) retiré(s).${refus ? ` ${r.refusees.length} refusé(s) · ${refus}` : ''}`);
+      await charger();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Retrait impossible');
     } finally {
       setEnvoi(false);
     }
@@ -361,6 +453,8 @@ export function BrouillardPage() {
     }
   };
 
+  const fermerFiche = useCallback(() => setFicheId(null), []);
+
   const supprimer = async (id: string) => {
     setErreur(null);
     try {
@@ -399,6 +493,25 @@ export function BrouillardPage() {
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-text-dim">Nature</span>
+            <select
+              value={nature}
+              onChange={(e) => {
+                setNature(e.target.value as NaturePiece | '');
+                // Une pièce masquée par le filtre ne se vise ni ne se valide à l'aveugle.
+                setSelection(new Set());
+              }}
+              className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px] min-w-[150px]"
+            >
+              <option value="">Toutes les pièces</option>
+              {(Object.keys(LIBELLES_NATURE_PIECE) as NaturePiece[]).map((n) => (
+                <option key={n} value={n}>
+                  {LIBELLES_NATURE_PIECE[n]}
+                </option>
+              ))}
+            </select>
+          </label>
           {peutValider && (
             <>
               <label className="flex flex-col gap-1">
@@ -417,6 +530,24 @@ export function BrouillardPage() {
               >
                 Valider la période
               </button>
+              {circuit && (
+                <>
+                  <button
+                    onClick={viserSelection}
+                    disabled={envoi || selection.size === 0}
+                    className="border border-border rounded-[3px] bg-surface px-3 py-1.5 text-[11.5px] font-semibold hover:bg-chrome-alt disabled:opacity-50"
+                  >
+                    Viser la sélection ({selection.size})
+                  </button>
+                  <button
+                    onClick={retirerVisaSelection}
+                    disabled={envoi || selection.size === 0}
+                    className="border border-border rounded-[3px] bg-surface px-3 py-1.5 text-[11.5px] hover:bg-chrome-alt disabled:opacity-50"
+                  >
+                    Retirer le visa
+                  </button>
+                </>
+              )}
               <button
                 onClick={validerSelection}
                 disabled={envoi || selection.size === 0}
@@ -428,6 +559,13 @@ export function BrouillardPage() {
           )}
           <span className="flex items-center gap-1.5 pb-1.5">
             <Aide sujet="brouillard" />
+            {circuit && (
+              <Aide
+                titre="Circuit de visa"
+                texte="Ce dossier exige qu'une pièce soit visée avant sa validation, par un administrateur ou un comptable autre que l'auteur de son dernier contenu. Le visa porte sur le contenu affiché · une modification, une réimputation ou une ventilation changée le fait tomber, et la pièce se revise. La validation écarte, en les comptant, les pièces non visées et celles dont le visa est tombé. La fiche d'imputation imprime la saisie, le visa et la validation."
+                source="AUDCIF art. 22, 2° · option du dossier"
+              />
+            )}
             <Aide
               titre="Brouillard et clôture"
               texte="La clôture de l'exercice refuse de s'exécuter tant qu'il reste quoi que ce soit au brouillard."
@@ -449,6 +587,34 @@ export function BrouillardPage() {
             Fermer
           </button>
         </div>
+      )}
+      {peutValider && derogationOfferte && (
+        <fieldset className="mb-2.5 flex flex-wrap items-end gap-2 border border-border rounded-[3px] bg-surface px-2.5 py-1.5">
+          <legend className="text-[11px] font-bold text-text-dim px-1">Second regard porté hors du logiciel</legend>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-text-dim">Nom</span>
+            <input
+              value={secondRegardNom}
+              onChange={(e) => setSecondRegardNom(e.target.value)}
+              maxLength={120}
+              className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px] min-w-[180px]"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-[220px]">
+            <span className="text-[11px] font-bold text-text-dim">Ce qui a été relu</span>
+            <input
+              value={secondRegardMotif}
+              onChange={(e) => setSecondRegardMotif(e.target.value)}
+              maxLength={300}
+              className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px]"
+            />
+          </label>
+          <Aide
+            titre="Second regard porté hors du logiciel"
+            texte="Renseignés, le nom et le motif accompagnent la prochaine validation · ils lèvent le double regard, jamais le visa, et sont portés sur chaque pièce validée et sur sa fiche d'imputation."
+            source="Double regard · option du dossier"
+          />
+        </fieldset>
       )}
 
       {etat && etat.totaux.enRetard > 0 && (
@@ -518,7 +684,7 @@ export function BrouillardPage() {
         </div>
 
         {!etat && <div className="px-3 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
-        {etat?.lignes.map((l) => (
+        {etat && lignesVues.map((l) => (
           <div key={l.id}>
             <div
               className={`${grille} px-3 py-1 text-[11.5px] items-center border-b border-border/40 ${
@@ -533,21 +699,47 @@ export function BrouillardPage() {
               <span className="font-mono">{l.date}</span>
               <span className="font-mono">{l.journal}</span>
               <span className="font-mono text-text-dim">{l.numeroPiece ?? '·'}</span>
-              <button
-                onClick={() =>
-                  setDeplie((prev) => {
-                    const s = new Set(prev);
-                    if (s.has(l.id)) s.delete(l.id);
-                    else s.add(l.id);
-                    return s;
-                  })
-                }
-                className="text-left truncate hover:underline"
-                title="Voir le détail des lignes"
-              >
-                {l.libelle}
-                {l.reference && <span className="text-text-dim"> · {l.reference}</span>}
-              </button>
+              <span className="flex items-center gap-1.5 min-w-0">
+                {/* L'ÉTAT DU VISA (ligne microfina-m1), en tête du libellé ·
+                    sous le circuit seulement, son auteur et le refus que le
+                    lecteur recevrait en bulle. */}
+                {circuit && l.visa && (
+                  <span
+                    className={`shrink-0 text-[10.5px] font-bold rounded-[3px] px-1 border ${
+                      l.visa.etat === 'VISEE'
+                        ? 'text-positive bg-positive-soft border-positive/40'
+                        : l.visa.etat === 'VISA_TOMBE'
+                          ? 'text-danger bg-danger-soft border-danger/40'
+                          : 'text-text-dim border-border'
+                    }`}
+                    title={[
+                      l.visa.visePar ? `Visée par ${l.visa.visePar}` : null,
+                      l.saisiePar ? `Saisie par ${l.saisiePar}` : null,
+                      l.dernierContenuLe ? `Dernier contenu par ${l.dernierContenuConnu ? l.dernierContenuPar : 'un auteur non connu'}` : null,
+                      l.motifRefusVisa ?? null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  >
+                    {LIBELLES_ETAT_VISA[l.visa.etat]}
+                  </span>
+                )}
+                <button
+                  onClick={() =>
+                    setDeplie((prev) => {
+                      const s = new Set(prev);
+                      if (s.has(l.id)) s.delete(l.id);
+                      else s.add(l.id);
+                      return s;
+                    })
+                  }
+                  className="text-left truncate hover:underline"
+                  title="Voir le détail des lignes"
+                >
+                  {l.libelle}
+                  {l.reference && <span className="text-text-dim"> · {l.reference}</span>}
+                </button>
+              </span>
               <span className="text-right font-mono">{montant(l.debit)}</span>
               <span className="text-right font-mono">{montant(l.credit)}</span>
               <span
@@ -558,6 +750,13 @@ export function BrouillardPage() {
                 {l.ancienneteJours} j
               </span>
               <span className="text-right whitespace-nowrap">
+                <button
+                  onClick={() => setFicheId(l.id)}
+                  title="Fiche d'imputation · saisie, visa et validation"
+                  className="text-[11.5px] text-sel hover:underline mr-2"
+                >
+                  Fiche
+                </button>
                 {peutEcrire && l.journalDeSituation && (
                   <button
                     onClick={() => ouvrirTransfert(l)}
@@ -607,6 +806,11 @@ export function BrouillardPage() {
           </div>
         ))}
 
+        {etat && etat.lignes.length > 0 && lignesVues.length === 0 && (
+          <div className="px-3 py-3 text-[11.5px] text-text-dim italic">
+            Aucune pièce de cette nature dans la liste lue · choisissez « Toutes les pièces » pour revoir le brouillard.
+          </div>
+        )}
         {etat && etat.lignes.length === 0 && (
           <div className="px-3 py-5 text-[11.5px] text-text-dim italic">
             Le brouillard est vide : toutes les écritures de cet exercice sont entrées au livre-journal.
@@ -634,6 +838,8 @@ export function BrouillardPage() {
           </div>
         )}
       </div>
+
+      {ficheId && <FicheImputation ecritureId={ficheId} onFermer={fermerFiche} />}
 
       {transfert && (
         <PortailModale>

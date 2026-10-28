@@ -49,7 +49,7 @@ export class FacturationController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post()
   enregistrer(@CurrentUser() user: AuthenticatedUser, @Body() dto: EnregistrerFactureDto) {
-    return this.facturation.enregistrer(user.tenantId, dto);
+    return this.facturation.enregistrer(user.tenantId, dto, user.userId);
   }
 
   /** Décret n° 011/42, art. 127 · la note qui annule et remplace la facture. */
@@ -60,7 +60,7 @@ export class FacturationController {
     @Param('id') id: string,
     @Body() dto: EmettreNoteDeCreditDto,
   ) {
-    return this.facturation.emettreNoteDeCredit(user.tenantId, id, dto);
+    return this.facturation.emettreNoteDeCredit(user.tenantId, id, dto, user.userId);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)

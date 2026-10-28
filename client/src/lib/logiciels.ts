@@ -139,9 +139,10 @@ export const LOGICIELS: readonly LogicielDef[] = [
   {
     cle: 'REVISION_AUDIT',
     libelle: 'Révision et audit',
-    aide: 'Analyse et contrôles, dossier de révision, inventaire physique, circularisation, provisions, questionnaire et faiblesses du contrôle interne.',
+    aide: 'Analyse et contrôles, concordance des modules, dossier de révision, inventaire physique, circularisation, provisions, questionnaire et faiblesses du contrôle interne.',
     chemins: [
       '/controles',
+      '/concordance',
       '/dossier-revision',
       '/inventaire',
       '/circularisation',

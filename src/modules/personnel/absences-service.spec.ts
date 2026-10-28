@@ -26,3 +26,14 @@ describe('mineur 3 · l’index unique de l’indemnité de la Caisse', () => {
     expect(bloc).toContain('@@unique([absenceId, mois, annuleLe])');
   });
 });
+
+describe('la pose d’une absence sur des jours qui portent des heures (relecture du 2026-10-28)', () => {
+  it('nomme les heures de la feuille de temps, demi-journées comprises, sans les retirer', () => {
+    const { readFileSync } = jest.requireActual<typeof import('node:fs')>('node:fs');
+    const source = readFileSync(`${__dirname}/absences.service.ts`, 'utf8');
+    const creer = source.slice(source.indexOf('async creer('), source.indexOf('async annuler('));
+    expect(creer).toContain('joursQuiPortentDesHeures(this.prisma, tenantId, salarieId, { du, au, demiJourneeDebut: absence.demiJourneeDebut, demiJourneeFin: absence.demiJourneeFin })');
+    expect(creer).toContain("avertissements: avertissement ? [avertissement] : []");
+    expect(creer).not.toContain('jourFeuilleTemps.delete');
+  });
+});

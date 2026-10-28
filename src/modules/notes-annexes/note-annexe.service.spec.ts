@@ -200,6 +200,7 @@ function service(
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
     // Second tour, B1 · aucune ouverture au premier jour, donc aucun négatif tardif.
     positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
+    mouvementsDeTransfertGroupe: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, e: string | null) =>
       Promise.resolve((e && reevaluationsParExercice[e]) || new Map())),
   } as unknown as EcritureService;
@@ -2440,6 +2441,7 @@ describe('passe R2 · B3, la NOTE 34 SYSCOHADA est calculée depuis les trois é
       // Second tour, B1 · aucune ouverture au premier jour, donc aucun négatif tardif.
       positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
       mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
+      mouvementsDeTransfertGroupe: jest.fn().mockResolvedValue(new Map()),
     } as unknown as EcritureService;
     const exercice = {
       lister: jest.fn().mockResolvedValue([{ id: 'e1', dateDebut: new Date('2026-01-01') }]),

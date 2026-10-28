@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { avertissementHeuresSaisies, joursQuiPortentDesHeures } from './feuilles-temps.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { contratCouvrantLeMois, moisValide } from './bulletin-paie';
 import {
@@ -170,7 +171,13 @@ export class AbsencesService {
       },
       select: { id: true },
     });
-    return { id: cree.id };
+    // Les heures déjà saisies sur les jours de l'absence · nommées, jamais
+    // retirées d'office (`joursQuiPortentDesHeures`).
+    const avertissement = avertissementHeuresSaisies(
+      await joursQuiPortentDesHeures(this.prisma, tenantId, salarieId, { du, au, demiJourneeDebut: absence.demiJourneeDebut, demiJourneeFin: absence.demiJourneeFin }),
+      'absence',
+    );
+    return { id: cree.id, avertissements: avertissement ? [avertissement] : [] };
   }
 
   /** Annuler une absence · jamais supprimée, marquée avec son motif (journal d'audit). */

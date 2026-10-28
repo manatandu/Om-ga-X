@@ -213,6 +213,8 @@ function base(p: { emis: BulletinFige[]; conges?: CongeEnBase[] }) {
       }),
     },
     repriseCongesSalarie: { findFirst: jest.fn().mockResolvedValue(null) },
+    // Aucune heure saisie sur une feuille de temps · `joursQuiPortentDesHeures`.
+    jourFeuilleTemps: { findMany: jest.fn().mockResolvedValue([]) },
     congeSalarie: {
       findMany: jest.fn().mockImplementation(({ where }: { where: { id?: { in: string[] }; annuleLe?: null; du?: { lte: Date }; au?: { gte: Date } } }) => {
         let r = conges;

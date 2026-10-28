@@ -1,3 +1,4 @@
+import { auteurDuDernierContenu, type TracesDuContenu } from '../comptabilite/circuit-visa';
 import { HORS_SITUATION, ISSUE_TRANSFERT, filtreDuStatut } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { STOCK_PROVENANT_D_IMMOBILISATIONS } from '../stocks/nomenclature-stocks';
@@ -353,6 +354,10 @@ const SELECT_ECRITURE_CONTROLEE = {
   // Le double regard compare ces trois-là · ils sont pris dans la même
   // lecture que le reste plutôt que dans une seconde requête.
   createdBy: true,
+  // L'auteur du DERNIER contenu (ligne microfina-m1) · le contrôle 26 compare
+  // le validateur à lui, jamais au seul `createdBy`.
+  contenuPar: true,
+  contenuLe: true,
   valideeBy: true,
   secondRegardNom: true,
   estGenereeParCloture: true,
@@ -412,6 +417,12 @@ const SELECT_ECRITURE_CONTROLEE = {
 } satisfies Prisma.EcritureSelect;
 
 type EcritureControlee = Prisma.EcritureGetPayload<{ select: typeof SELECT_ECRITURE_CONTROLEE }>;
+
+/** Le validateur est-il l'auteur CONNU du dernier contenu ? (`circuit-visa.ts`, règle 3). */
+function auteurValideSonContenu(e: TracesDuContenu, valideeBy: string): boolean {
+  const auteur = auteurDuDernierContenu(e);
+  return auteur.connu && auteur.id === valideeBy;
+}
 
 /**
  * L'écriture porte-t-elle une CONVERSION de change, et non une opération de
@@ -1785,8 +1796,14 @@ export class ControlesService {
 
         if (
           e.statut === StatutEcriture.VALIDEE &&
-          e.valideeBy !== null &&
-          e.createdBy === e.valideeBy &&
+          typeof e.valideeBy === 'string' &&
+          // L'AUTEUR DU DERNIER CONTENU (ligne microfina-m1, constat de
+          // l'audit de sécurité du 2026-10-25) · le comptable qui réécrivait
+          // le brouillard d'un collègue puis le validait échappait au
+          // contrôle, qui ne lisait que `createdBy`. Un auteur inconnu n'est
+          // pas une coïncidence d'identité constatée · il n'est pas signalé
+          // ici (le double regard le refuse à la validation).
+          auteurValideSonContenu(e, e.valideeBy) &&
           // Personne ne « saisit » un report à nouveau calculé à partir de soldes
           // déjà validés · les textes raisonnent sur des données « entrée[s] »
           // par une personne (art. 22, 1°).
@@ -3005,6 +3022,16 @@ export class ControlesService {
             // faisait contre-passer une seconde fois.
             annulationTraitementOrigine: null,
             annulationTraitementNegatif: null,
+            // LIGNE SAGE-L4, N° 73 · la pièce d'un transfert de bien dans le
+            // groupe et son négatif, reconnues par leur LIAISON · le cumul qui
+            // suit le bien (C 28 chez celui qui reçoit) et la dotation du mois
+            // du transfert (C 28 chez celui qui cède) sont des actes du module.
+            // Après une annulation, ni la fiche née (retirée) ni la sortie
+            // (défaite) ne retiennent plus la pièce, et le contrôle aurait dit
+            // « que le module ne connaît pas » d'un amortissement soldé par son
+            // négatif.
+            transfertGroupe: null,
+            transfertGroupeNegatif: null,
           },
         },
         select: { credit: true, compte: { select: { numero: true, intitule: true } } },
@@ -4112,9 +4139,10 @@ export class ControlesService {
       anomalies.push({
         code: 'VALIDATION_PAR_SON_AUTEUR',
         gravite: 'INFORMATION',
-        libelle: 'Écritures validées par la personne qui les a saisies',
+        libelle: 'Écritures validées par l’auteur de leur dernier contenu',
         consequence:
-          'Ces écritures sont entrées au livre-journal sur la seule décision de leur auteur. ' +
+          'Ces écritures sont entrées au livre-journal sur la seule décision de celui qui les a saisies ou en a ' +
+          'réécrit le contenu en dernier. ' +
           (tenant.referentiel === Referentiel.SYCEBNL
             ? 'Le SYCEBNL, art. 16, 2), demande « la mise en place de procédures nécessaires à une organisation ' +
               'comptable permettant un contrôle interne fiable et le contrôle externe […] ». L’art. 69 de ' +

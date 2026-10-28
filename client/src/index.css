@@ -1175,6 +1175,24 @@ summary:focus-visible {
     display: none !important;
   }
 
+  /* LA FICHE D'IMPUTATION s'imprime seule (ligne microfina-m1) · l'espace de
+     travail se retire, la modale quitte son voile pour la page. */
+  body.imprime-fiche > :not([data-modale]) {
+    display: none !important;
+  }
+  body.imprime-fiche .voile-fiche {
+    position: static !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  body.imprime-fiche .voile-fiche [role='dialog'] {
+    max-width: none !important;
+    max-height: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
   /* Les bulles d'aide « ? » n'ont aucun sens sur du papier : on ne clique pas
      une feuille imprimée. */
   button[aria-label^='Aide'] {

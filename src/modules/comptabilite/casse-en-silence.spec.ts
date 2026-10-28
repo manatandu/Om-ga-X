@@ -103,6 +103,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     mouvementDemantelement: { count: compteur('mouvementDemantelement') },
     // Ligne sage-l4 · l'annulation d'un traitement retient l'origine et le négatif.
     annulationTraitementImmobilisation: { count: compteur('annulationTraitementImmobilisation') },
+    transfertImmobilisationGroupe: { count: compteur('transfertImmobilisationGroupe') },
     creanceDouteuse: { count: compteur('creanceDouteuse') },
     ajustementCreanceDouteuse: { count: compteur('ajustementCreanceDouteuse') },
     mouvementCreanceDouteuse: { count: compteur('mouvementCreanceDouteuse') },
@@ -466,7 +467,7 @@ describe('3 bis · une écriture qu’un module tient ne se retouche pas non plu
     'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
     'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
     'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires',
-    'annulationTraitementImmobilisation',
+    'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe',
   ];
   const gestes: Array<[string, string, (s: EcritureService) => Promise<unknown>]> = [
     ['supprimer', 'BROUILLARD', (s) => s.supprimer('t1', 'e1')],
@@ -694,6 +695,10 @@ describe('5 · les imports passent par les contrôles d’entrée de la saisie',
         join('modules', 'devises', 'declaration-devise-a-nouveau.service.ts'),
         join('modules', 'exercice', 'exercice.service.ts'),
         join('modules', 'groupe', 'groupe.service.ts'),
+        // Les deux pièces du transfert d'un bien dans le groupe (ligne
+        // sage-l4, n° 73), une par dossier · chacune rejoue les contrôles
+        // d'entrée dans son dossier avant la transaction.
+        join('modules', 'immobilisations', 'transfert-groupe.service.ts'),
         join('modules', 'import', 'import.service.ts'),
       ].sort(),
     );

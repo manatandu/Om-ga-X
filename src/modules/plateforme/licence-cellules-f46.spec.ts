@@ -1,6 +1,7 @@
 import { PlateformeService } from './plateforme.service';
 import { GroupeService } from '../groupe/groupe.service';
 import { licenceDeCellule } from '../licence/licence-de-cellule';
+import { perimetreCourant } from '../../common/cloisonnement/contexte-cloisonnement';
 
 /**
  * AUDIT FINAL F46 · la licence d'une cellule est le reflet de celle de sa
@@ -79,7 +80,7 @@ describe('F46 · le reflet', () => {
 
 describe('F46 · la cellule créée par le siège', () => {
   const creer = (licence: { type: string; statut: string; dateExpiration: Date | null }) => {
-    const traces = { register: [] as unknown[], licence: [] as unknown[] };
+    const traces = { register: [] as unknown[], licence: [] as unknown[], perimetreDuRattachement: [] as Array<string[] | null> };
     const s = new GroupeService(
       {
         tenant: {
@@ -91,7 +92,11 @@ describe('F46 · la cellule créée par le siège', () => {
             licence,
             _count: { cellules: 0 },
           }),
-          update: async () => ({}),
+          update: async () => {
+            const p = perimetreCourant();
+            traces.perimetreDuRattachement.push(p ? [...p] : null);
+            return {};
+          },
         },
         licence: { update: async (a: unknown) => void traces.licence.push(a) },
         user: { update: async () => ({}) },
@@ -113,6 +118,14 @@ describe('F46 · la cellule créée par le siège', () => {
     await s.creerCellule('mere', { nom: 'C', emailAdmin: 'c@c.cd' } as never);
     expect(traces.register).toEqual([expect.objectContaining({ typeLicence: 'PERPETUEL_SAAS' })]);
     expect(traces.licence).toEqual([{ where: { tenantId: 'cellule' }, data: { statut: 'SUSPENDUE', dateExpiration: null } }]);
+  });
+
+  it('le rattachement à la mère s’écrit dans le périmètre de la cellule · son maillon d’audit va dans sa chaîne', async () => {
+    // Vu sur vraie base le 2026-10-25 · hors de ce périmètre, la garde
+    // refusait le maillon de Tenant.update et la création tombait en 500.
+    const { s, traces } = creer({ type: 'ABONNEMENT', statut: 'ACTIVE', dateExpiration: null });
+    await s.creerCellule('mere', { nom: 'C', emailAdmin: 'c@c.cd' } as never);
+    expect(traces.perimetreDuRattachement).toEqual([['cellule']]);
   });
 
   it('sous le dossier de l’éditeur, refusée avant toute création', async () => {

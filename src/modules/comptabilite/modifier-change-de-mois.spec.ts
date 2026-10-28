@@ -16,7 +16,7 @@ type Faux = Record<string, unknown>;
 const DETENTEURS = [
   'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation',
   'regularisation', 'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
-  'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation', 'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation',
+  'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation', 'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe',
 ];
 
 const exerciceOuvert = { statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
@@ -27,7 +27,7 @@ function monde(numerotation: string, exercice = exerciceOuvert) {
   // relecture de la dissolution) · la doublure les rend.
   const tx = {
     ligneEcriture: { deleteMany: jest.fn() },
-    ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+    ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
     // Aucune pièce jointe (ligne sage-l6) · leur description n'a rien à suivre.
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
     exercice: { findFirst: jest.fn().mockResolvedValue(exercice) },

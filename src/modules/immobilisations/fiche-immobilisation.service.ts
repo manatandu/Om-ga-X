@@ -204,11 +204,16 @@ export class FicheImmobilisationService {
           },
         });
         if (enPlace && relu.acquisition) {
-          const fait = await this.ecritures.modifierPieceDuModule(tx, tenantId, relu.acquisition.id, {
-            date: fusion.dateAcquisition,
-            libelle: libelleAcquisition,
-            lignes: lignesAcquisition,
-          });
+          // L'AUTEUR DE LA RETOUCHE EST CONNU (relecture du circuit de visa,
+          // M3) · sans lui, la pièce était dite d'auteur INCONNU, refusée au
+          // double regard, alors que le geste vient d'un utilisateur nommé.
+          const fait = await this.ecritures.modifierPieceDuModule(
+            tx,
+            tenantId,
+            relu.acquisition.id,
+            { date: fusion.dateAcquisition, libelle: libelleAcquisition, lignes: lignesAcquisition },
+            userId,
+          );
           if (!fait) throw new ConflictException("La pièce d'acquisition a changé pendant la modification · relancez-la.");
         } else if (relu.acquisition) {
           // LA NEUVE EMPORTE LES PIÈCES DE L'ANCIENNE, avant que celle-ci ne

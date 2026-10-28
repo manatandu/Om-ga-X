@@ -67,6 +67,15 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       '378 au SYCEBNL (fiche du compte 37), seule racine admise par le serveur · la reprise en est presque toujours le ' +
       'premier mouvement, la règle viderait la liste.',
   },
+  // Ligne sage-l4, n° 73 · les comptes de liaison du transfert d'un bien
+  // dans le groupe, servis avec les dossiers, journaux et exercices.
+  '/immobilisations/transferts-groupe/contexte': {
+    regime: 'texte',
+    motif:
+      "Le transfert d'un bien entre le siège et un établissement passe par les comptes permanents de liaison 184 et 185 " +
+      '(AUDCIF, Titre VII, fiche du compte 18), seules racines admises par le serveur · le transfert en est souvent le premier ' +
+      'mouvement, la règle viderait la liste.',
+  },
   '/creances-douteuses/comptes': {
     regime: 'texte',
     motif:
@@ -134,6 +143,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/personnel/compteurs-heures':
+    "compteurs libres d'heures de la paie (ligne sage-l5, fonction 78), des heures nommées par le dossier, aucun compte comptable",
   '/comptes/:id/sous-compte-propose':
     "numéro proposé pour un sous-compte à ouvrir sous le compte du plan choisi, un seul numéro et jamais une liste",
   '/comptes/en-saisie/proposition':
@@ -196,6 +207,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/fiscalite/exercices/:exerciceId/propositions-retraitements': 'retraitements fiscaux proposés sur les comptes mouvementés',
   '/simulations-budgetaires/:id/calcul': 'simulation lue sur le réalisé des classes 6 et 7, tout le plan',
   '/stocks/variation/:exerciceId': 'variation de stocks, comptes lus dans le plan (« les comptes viennent du plan, pas de la balance »)',
+  '/circuit-visa/ecritures/:id/fiche':
+    "fiche d'imputation d'une pièce déjà passée (ligne microfina-m1), les comptes de ses lignes nommés, aucun compte à choisir",
   '/immobilisations/maintenance':
     "rapprochement du registre des immobilisations et de la balance (ligne sage-l4, n° 73), comptes de biens et d'amortissement mouvementés, aucun compte à choisir",
 };

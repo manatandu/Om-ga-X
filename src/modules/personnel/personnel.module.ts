@@ -15,6 +15,8 @@ import { AbsencesController } from './absences.controller';
 import { AbsencesService } from './absences.service';
 import { MajorationsHeuresController } from './majorations-heures.controller';
 import { MajorationsHeuresService } from './majorations-heures.service';
+import { FeuillesTempsController } from './feuilles-temps.controller';
+import { FeuillesTempsService } from './feuilles-temps.service';
 import { ReglementsModule } from '../reglements/reglements.module';
 import { PaiementSalairesController } from './paiement-salaires.controller';
 import { PaiementSalairesService } from './paiement-salaires.service';
@@ -36,6 +38,8 @@ import { PiecesJointesSalarieController } from './pieces-jointes-salarie.control
     CongesController,
     AbsencesController,
     MajorationsHeuresController,
+    // Ligne sage-l5, fonction 78, reste · feuilles de temps et compteurs libres.
+    FeuillesTempsController,
     PaiementSalairesController,
     RepartitionsAnalytiquesPaieController,
     QuestionnairePaieController,
@@ -50,6 +54,7 @@ import { PiecesJointesSalarieController } from './pieces-jointes-salarie.control
     CongesService,
     AbsencesService,
     MajorationsHeuresService,
+    FeuillesTempsService,
     PaiementSalairesService,
     RibsSalariesService,
     RepartitionsAnalytiquesPaieService,

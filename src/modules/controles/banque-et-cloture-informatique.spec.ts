@@ -300,6 +300,8 @@ function ecriture(
     statut: autres.statut ?? 'VALIDEE',
     createdAt: D('2026-05-10'),
     createdBy: 'u1',
+    contenuPar: null,
+    contenuLe: null,
     valideeBy: 'u2',
     secondRegardNom: null,
     estGenereeParCloture: false,

@@ -37,6 +37,9 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
   const [liste, setListe] = useState<{ absences: AbsenceLue[]; total: number; tronque: boolean } | null>(null);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState('');
+  // Ce que le serveur dit de la pose · les heures de la feuille de temps sur
+  // des jours de l'absence, qui ne se comptent plus (un jour n'a qu'une cause).
+  const [avis, setAvis] = useState<string[]>([]);
   const [modale, setModale] = useState<Modale | null>(null);
   const jeton = useRef(0);
 
@@ -72,6 +75,8 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
     );
   }, [salarieId]);
   useEffect(charger, [charger]);
+  // L'avis d'une pose ne survit pas au changement de salarié.
+  useEffect(() => setAvis([]), [salarieId]);
 
   const evenement = (cle: string | null) => catalogue?.evenements.find((e) => e.cle === cle)?.libelle ?? cle;
 
@@ -108,6 +113,11 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
           {erreur}
         </div>
       )}
+      {avis.map((a) => (
+        <div key={a} role="status" className="border border-warning/30 bg-warning-soft px-3 py-2">
+          {a}
+        </div>
+      ))}
       {!salarieId &&
         (salaries.length === 0 ? (
           <div className="text-text-dim">Aucun salarié au registre · inscrivez-le d'abord dans l'onglet Registre.</div>
@@ -207,8 +217,9 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
           salarieId={salarieId}
           catalogue={catalogue}
           onFermer={() => setModale(null)}
-          onFait={() => {
+          onFait={(avertissements) => {
             setModale(null);
+            setAvis(avertissements);
             charger();
           }}
         />
@@ -249,17 +260,30 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
   );
 }
 
-function ModaleDeclarer({ salarieId, catalogue, onFermer, onFait }: { salarieId: string; catalogue: Catalogue; onFermer: () => void; onFait: () => void }) {
+function ModaleDeclarer({
+  salarieId,
+  catalogue,
+  onFermer,
+  onFait,
+}: {
+  salarieId: string;
+  catalogue: Catalogue;
+  onFermer: () => void;
+  onFait: (avertissements: string[]) => void;
+}) {
   const [f, setF] = useState({ nature: '', du: '', au: '', demiDebut: false, demiFin: false, evenement: '', piece: '', observation: '' });
-  const { envoi, erreur, setErreur, envoyer } = useEnvoi(onFait);
+  // La réponse se lit avant que `useEnvoi` n'appelle la suite · un état React
+  // n'y serait pas encore posé.
+  const avertissements = useRef<string[]>([]);
+  const { envoi, erreur, setErreur, envoyer } = useEnvoi(() => onFait(avertissements.current));
   const def = catalogue.natures.find((n) => n.cle === f.nature) ?? null;
   const valider = () => {
     if (!f.nature || !f.du || !f.au) {
       setErreur("La cause et les deux dates de l'absence se déclarent.");
       return;
     }
-    void envoyer(() =>
-      api.post(`/personnel/salaries/${salarieId}/absences`, {
+    void envoyer(async () => {
+      const r = await api.post<{ avertissements?: unknown }>(`/personnel/salaries/${salarieId}/absences`, {
         nature: f.nature,
         du: f.du,
         au: f.au,
@@ -268,8 +292,9 @@ function ModaleDeclarer({ salarieId, catalogue, onFermer, onFait }: { salarieId:
         ...(f.nature === 'CONGE_DE_CIRCONSTANCE' && f.evenement ? { evenement: f.evenement } : {}),
         ...(f.piece.trim() ? { piece: f.piece.trim() } : {}),
         ...(f.observation.trim() ? { observation: f.observation.trim() } : {}),
-      }),
-    );
+      });
+      avertissements.current = Array.isArray(r?.avertissements) ? r.avertissements.filter((x): x is string => typeof x === 'string') : [];
+    });
   };
   return (
     <ModalePaie

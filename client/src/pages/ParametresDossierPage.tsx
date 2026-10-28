@@ -528,6 +528,23 @@ export function ParametresDossierPage() {
     }
   };
 
+  const changerCircuitVisa = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/circuit-visa', { circuitVisa: actif }));
+      setInfo(
+        actif
+          ? 'Circuit de visa activé · une écriture n’entre plus au livre-journal sans visa, ni une facture en comptabilité.'
+          : 'Circuit de visa retiré.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const changerDoubleRegard = async (actif: boolean) => {
     setEnvoi(true);
     setErreur(null);
@@ -535,7 +552,7 @@ export function ParametresDossierPage() {
       setParams(await api.patch<ParametresDossier>('/dossier/double-regard', { doubleRegardValidation: actif }));
       setInfo(
         actif
-          ? 'Double regard activé · une écriture n’est plus validable par la personne qui l’a saisie.'
+          ? 'Double regard activé · une écriture n’est plus validable par l’auteur de son dernier contenu.'
           : 'Double regard désactivé.',
       );
     } catch (err) {
@@ -1855,7 +1872,7 @@ export function ParametresDossierPage() {
                     Double regard à la validation{' '}
                     <Aide
                       titre="Double regard"
-                      texte={`Une écriture n’est validée que par un autre utilisateur que celui qui l’a saisie. La validation est le franchissement : c’est elle qui fait entrer la pièce au livre-journal, et l’AUDCIF art. 22, 2° pose que « l’irréversibilité des traitements interdise toute suppression, addition ou modification ultérieure ». Le même art. 22, 2° impose la validation et ne nomme personne. ${
+                      texte={`Une écriture n’est validée que par un autre utilisateur que l’auteur de son dernier contenu · celui qui l’a saisie, ou celui qui l’a modifiée ou réimputée au brouillard en dernier. La validation est le franchissement : c’est elle qui fait entrer la pièce au livre-journal, et l’AUDCIF art. 22, 2° pose que « l’irréversibilité des traitements interdise toute suppression, addition ou modification ultérieure ». Le même art. 22, 2° impose la validation et ne nomme personne. ${
                         params.referentiel === 'SYCEBNL'
                           ? 'Le SYCEBNL art. 16, 2) demande « la mise en place de procédures nécessaires à une organisation comptable permettant un contrôle interne fiable et le contrôle externe ».'
                           : 'Art. 69 : « L’entité détermine, SOUS SA RESPONSABILITÉ, les procédures nécessaires à la mise en place d’une organisation comptable permettant aussi bien un contrôle interne fiable que le contrôle externe. »'
@@ -1885,6 +1902,25 @@ export function ParametresDossierPage() {
                         params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
                       }). L’activer ne vise rien d’office.`}
                       source={params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2) · option d’OmegaX' : 'AUDCIF art. 69 · option d’OmegaX'}
+                    />
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.circuitVisa === true}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerCircuitVisa(e.target.checked)}
+                  />
+                  <span>
+                    Circuit de visa avant validation{' '}
+                    <Aide
+                      titre="Circuit de visa"
+                      texte={`Une écriture du brouillard (saisie, opération diverse, règlement, écriture d’une facture) n’entre au livre-journal qu’une fois visée par un administrateur ou un comptable autre que l’auteur de son dernier contenu, et une facture ne se comptabilise qu’une fois visée par un autre que celui qui l’a enregistrée. Le visa porte sur le contenu présent · toute modification, réimputation ou ventilation changée le fait tomber, et la validation le vérifie. Le visa se pose au Brouillard et dans la fenêtre Facturation ; la fiche d’imputation imprime la saisie, le visa et la validation. Aucun texte n’impose ce visa · procédure que l’entité se donne (${
+                        params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
+                      }). L’activer ne vise rien d’office, le retirer ne dévalide rien.`}
+                      source={params.referentiel === 'SYCEBNL' ? 'AUDCIF art. 22, 2° · SYCEBNL art. 16, 2) · option d’OmegaX' : 'AUDCIF art. 22, 2° et 69 · option d’OmegaX'}
                     />
                   </span>
                 </label>

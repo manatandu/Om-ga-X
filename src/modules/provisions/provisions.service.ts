@@ -651,6 +651,25 @@ export class ProvisionsService {
       };
     });
 
+    // LES SOLDES QU'AUCUNE LIGNE DU REGISTRE NE PORTE (relecture de la
+    // concordance, M4) · une dotation passée à la main au 1911 sans ligne au
+    // registre n'était confrontée à rien, et le tableau concordait, ou se
+    // disait sans objet, sur un 19 chargé. Les comptes sont ceux que le
+    // registre lui-même ouvre · ses natures (fiche du compte 19 des deux plans)
+    // et le court terme de la ligne A16 (fiche du compte 49 ; 499 et 599),
+    // jamais une liste écrite ici.
+    const referentiel = await this.referentielDu(tenantId);
+    const racinesDuRegistre = [
+      ...new Set([
+        ...ProvisionsService.naturesDuReferentiel(referentiel).map((n) => n.compte),
+        ...comptesCourtTerme(referentiel).map((c) => c.compte),
+      ]),
+    ];
+    const horsRegistre = balance.lignes
+      .filter((l) => !parCompte.has(l.numero) && racinesDuRegistre.some((r) => l.numero.startsWith(r)))
+      .map((l) => ({ numero: l.numero, intitule: l.intitule ?? '', soldeComptable: soldeParNumero.get(l.numero) ?? 0 }))
+      .filter((l) => Math.round(l.soldeComptable * 100) !== 0);
+
     const somme = (cle: keyof (typeof detail)[number]) =>
       Number(detail.reduce((t, l) => t + Number(l[cle] ?? 0), 0).toFixed(2));
 
@@ -665,11 +684,12 @@ export class ProvisionsService {
         montantCloture: somme('montantCloture'),
       },
       rapprochement,
+      horsRegistre,
       passifsEventuels: detail.filter((l) => l.statut === StatutProvision.PASSIF_EVENTUEL),
-      natures: ProvisionsService.naturesDuReferentiel(await this.referentielDu(tenantId)),
+      natures: ProvisionsService.naturesDuReferentiel(referentiel),
       // Ligne A16 · comptes du court terme, avec dotation et reprise, et
       // conditions propres par nature · servis, jamais recopiés à l'écran.
-      comptesCourtTerme: comptesCourtTerme(await this.referentielDu(tenantId)),
+      comptesCourtTerme: comptesCourtTerme(referentiel),
       conditionsPropres: CONDITIONS_PROPRES,
     };
   }

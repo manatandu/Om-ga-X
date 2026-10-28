@@ -39,7 +39,7 @@ const MODELES_DETENTEURS = [
   'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation', 'regularisation',
   'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
   'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
-  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation',
+  'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'effetCommerce', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires', 'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe',
 ];
 function detenteurs(tenus: Record<string, number> = {}): Faux {
   return {
@@ -139,7 +139,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     // relecture de la dissolution) · la doublure les rend.
     const tx = {
       ligneEcriture: { deleteMany },
-      ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+      ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
       pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
     };
@@ -221,7 +221,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
   it('la description des pièces jointes suit la date et le libellé, dans la transaction', async () => {
     const { svc, tx } = monde();
     tx.ecriture.findFirst
-      .mockResolvedValueOnce({ exerciceId: 'ex1' })
+      .mockResolvedValueOnce({ exerciceId: 'ex1', statut: 'BROUILLARD' })
       .mockResolvedValueOnce({
         statut: 'BROUILLARD', estANouveauProvisoire: false, numeroPiece: 3, date: new Date('2026-03-15'),
         libelle: 'Loyer de mars', journalId: 'j1', journal: { code: 'ACH' },
@@ -425,21 +425,30 @@ describe('validation', () => {
           referentiel: 'SYCEBNL',
         }),
       },
+      // La validation se fait par tranches, chacune dans sa transaction sous
+      // verrou (relecture M5).
+      $queryRaw: jest.fn().mockResolvedValue([]),
     } as Faux;
+    prisma.$transaction = jest.fn((f: (t: Faux) => unknown) => f(prisma));
     const resultat = await service(prisma).valider('t1', 'u1', ['e1', 'e2']);
     expect(resultat).toEqual({
       validees: 1,
       dejaValidees: 1,
       refuseesSecondRegard: 0,
+      refuseesAuteurInconnu: 0,
+      refuseesVisa: 0,
       sousDerogation: 0,
       motifRefus: null,
+      motifAuteurInconnu: null,
+      motifVisa: null,
       ecarteesJournalDeSituation: 0,
+      retireesEntreTemps: 0,
     });
     // La borne de dossier est exigée dans le filtre, pas seulement supposée
     // depuis la sélection qui précède · c'est ce que vérifie la garde de
     // cloisonnement au moteur (src/common/cloisonnement).
     expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ['e1'] }, tenantId: 't1' } }),
+      expect.objectContaining({ where: { id: { in: ['e1'] }, tenantId: 't1', statut: 'BROUILLARD' } }),
     );
   });
 });
