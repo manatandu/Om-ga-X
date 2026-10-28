@@ -863,10 +863,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   }, [onglet, selection, moisDePaie]);
 
   useEffect(() => {
-    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
-      setHeuresDuMois(null);
-      return;
-    }
+    // Les heures d'un autre salarié ou d'un autre mois ne restent jamais à
+    // l'écran pendant la lecture des nouvelles · « Reprendre les heures »
+    // reprendrait sinon celles du mois précédent.
+    setHeuresDuMois(null);
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) return;
     let actuel = true;
     api.get<HeuresDuMois>(`/personnel/salaries/${selection}/feuilles-temps/mois/${moisDePaie}`).then(
       (r) => actuel && setHeuresDuMois(r),
@@ -3023,6 +3024,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               {heuresDuMois.joursHorsContrat.length > 0 && (
                 <div role="status" className="text-warning">
                   Heures saisies hors contrat, non comptées · {heuresDuMois.joursHorsContrat.join(', ')}.
+                </div>
+              )}
+              {(heuresDuMois.joursOccupes ?? []).length > 0 && (
+                <div role="status" className="text-warning">
+                  Heures saisies sur un jour d'absence ou de congé, non comptées ·{' '}
+                  {(heuresDuMois.joursOccupes ?? []).map((o) => `${o.jour} (${o.motif})`).join(', ')}. Retirez-les de la feuille si le salarié n'a pas
+                  travaillé.
                 </div>
               )}
               {heuresDuMois.compteurs.length > 0 && (

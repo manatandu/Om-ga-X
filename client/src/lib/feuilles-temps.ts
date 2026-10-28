@@ -90,6 +90,8 @@ export interface HeuresDuMois {
   bulletinEmis: { numero: number } | null;
   /** Des heures saisies sur un jour qu'aucun contrat ne couvre plus · non comptées, nommées. */
   joursHorsContrat: string[];
+  /** Des heures saisies sur un jour devenu absence ou congé · non comptées, nommées avec leur cause. */
+  joursOccupes?: { jour: string; motif: string }[];
 }
 
 /** Un nombre tapé à la française · « 7,5 », « 7.5 », espaces tolérés ; illisible, `null`. */
@@ -109,13 +111,22 @@ export function heuresAffichees(n: number): string {
  * LES LIGNES QUI PARTENT À LA SIMULATION · la majoration présélectionnée
  * quand elle est seule, sinon laissée au choix ; le taux horaire jamais
  * deviné (le Code ne le fixe pas), les heures recopiées. Ajoutées à ce que le
- * cabinet a déjà tapé, jamais à sa place.
+ * cabinet a déjà tapé, jamais à sa place · et les lignes d'une reprise
+ * précédente (`origine`) sont REMPLACÉES, sans quoi chaque clic ajoutait une
+ * seconde fois les mêmes heures au bulletin. Le taux horaire tapé sur une
+ * ligne reprise se garde quand la nouvelle reprise porte la même majoration.
  */
 export function lignesPourLaSimulation(proposees: readonly LigneProposee[], deja: readonly LigneHeures[]): LigneHeures[] {
   const vides = (l: LigneHeures) => !l.majorationId && !l.heures.trim() && !l.tauxHoraire.trim();
+  const reprises = deja.filter((l) => l.origine === 'feuilles');
   return [
-    ...deja.filter((l) => !vides(l)),
-    ...proposees.map((p) => ({ majorationId: p.majorationId ?? '', heures: String(p.heures).replace('.', ','), tauxHoraire: '' })),
+    ...deja.filter((l) => !vides(l) && l.origine !== 'feuilles'),
+    ...proposees.map((p) => ({
+      majorationId: p.majorationId ?? '',
+      heures: String(p.heures).replace('.', ','),
+      tauxHoraire: (p.majorationId && reprises.find((r) => r.majorationId === p.majorationId && r.tauxHoraire.trim())?.tauxHoraire) || '',
+      origine: 'feuilles' as const,
+    })),
   ];
 }
 

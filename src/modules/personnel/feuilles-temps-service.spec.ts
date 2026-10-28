@@ -1,4 +1,4 @@
-import { FeuillesTempsService } from './feuilles-temps.service';
+import { FeuillesTempsService, avertissementHeuresSaisies, joursQuiPortentDesHeures } from './feuilles-temps.service';
 import { PrismaService } from '../../common/prisma.service';
 
 /**
@@ -44,7 +44,8 @@ function doublure(p: {
       ),
       findFirst: jest.fn().mockResolvedValue(null),
     },
-    compteurHeures: { findMany: jest.fn().mockResolvedValue([]) },
+    compteurHeures: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'c-n' }) },
+    $executeRaw: jest.fn().mockResolvedValue(0),
     jourFeuilleTemps: {
       update: jest.fn().mockImplementation(() => {
         ecrits.push('update');
@@ -90,6 +91,12 @@ describe('la saisie des jours', () => {
     const { svc, ecrits } = doublure({ absences: [{ du: J('2026-07-06'), au: J('2026-07-08'), demiJourneeDebut: false, demiJourneeFin: true }] });
     await svc.enregistrerJours('t', 'u@x.cd', 'f-1', { jours: [{ jour: '2026-07-08', heures: 4 }] });
     expect(ecrits).toEqual(['create']);
+  });
+
+  it('un jour qui n’existe pas (30 février) est refusé nommé, jamais un 500', async () => {
+    const { svc, ecrits } = doublure({});
+    await expect(svc.enregistrerJours('t', 'u@x.cd', 'f-1', { jours: [{ jour: '2026-02-30', heures: 8 }] })).rejects.toThrow(/« 2026-02-30 » n'existe pas/);
+    expect(ecrits).toEqual([]);
   });
 
   it('les heures de nuit au-delà de dix heures sont refusées avant toute écriture', async () => {
@@ -157,5 +164,51 @@ describe('la proposition du mois', () => {
     const r = await svc.duMois('t', 's-1', '2026-07');
     expect(r.joursHorsContrat).toEqual(['2026-07-20']);
     expect(r.totaux.heures).toBe(0);
+  });
+});
+
+describe('un jour devenu absence ou congé après la saisie', () => {
+  it('ses heures ne se comptent plus au mois, et sont nommées avec leur cause', async () => {
+    const { svc } = doublure({
+      feuillesDuMois: [{ id: 'f-1', du: J('2026-07-01'), au: J('2026-07-31') }],
+      joursDuMois: [
+        { jour: J('2026-07-06'), heures: 10, heuresNuit: 0 },
+        { jour: J('2026-07-07'), heures: 10, heuresNuit: 0 },
+      ],
+      // L'absence du 7 posée après la saisie de ses dix heures.
+      absences: [{ du: J('2026-07-07'), au: J('2026-07-07'), demiJourneeDebut: false, demiJourneeFin: false }],
+    });
+    const r = await svc.duMois('t', 's-1', '2026-07');
+    expect(r.joursOccupes).toEqual([{ jour: '2026-07-07', motif: 'une absence déclarée du 2026-07-07 au 2026-07-07' }]);
+    expect(r.totaux.heures).toBe(10);
+  });
+
+  it('la pose nomme les jours qui portent des heures, la demi-journée de bord écartée', async () => {
+    const db = {
+      jourFeuilleTemps: {
+        findMany: jest.fn().mockResolvedValue([
+          { jour: J('2026-07-06'), heures: 8 },
+          { jour: J('2026-07-08'), heures: 4 },
+        ]),
+      },
+    };
+    const jours = await joursQuiPortentDesHeures(db as never, 't', 's-1', { du: J('2026-07-06'), au: J('2026-07-08'), demiJourneeFin: true });
+    expect(jours).toEqual([{ jour: '2026-07-06', heures: 8 }]);
+    expect(db.jourFeuilleTemps.findMany.mock.calls[0][0].where).toMatchObject({ tenantId: 't', heures: { gt: 0 }, feuille: { salarieId: 's-1', annuleLe: null } });
+    expect(avertissementHeuresSaisies(jours, 'absence')).toMatch(/2026-07-06 \(8 h\)/);
+    expect(avertissementHeuresSaisies([], 'congé')).toBeNull();
+  });
+});
+
+describe('les compteurs libres', () => {
+  it('le plafond se compte sur les seuls ACTIFS, sous le verrou du dossier', async () => {
+    const { svc } = doublure({});
+    const prisma = (svc as unknown as { prisma: Record<string, any> }).prisma;
+    prisma.compteurHeures.count.mockResolvedValue(30);
+    await expect(svc.creerCompteur('t', 'u@x.cd', { code: 'GARDE', libelle: 'Gardes' })).rejects.toThrow(/30 compteurs libres actifs/);
+    expect(prisma.compteurHeures.count).toHaveBeenCalledWith({ where: { tenantId: 't', actif: true } });
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    prisma.compteurHeures.count.mockResolvedValue(29);
+    await expect(svc.creerCompteur('t', 'u@x.cd', { code: 'GARDE', libelle: 'Gardes' })).resolves.toEqual({ id: 'c-n' });
   });
 });

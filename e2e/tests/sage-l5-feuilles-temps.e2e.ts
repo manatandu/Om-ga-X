@@ -61,7 +61,14 @@ test('SYSCOHADA · feuille de temps saisie à l’écran, heures supplémentaire
   // Le dimanche 12 juillet se nomme.
   await expect(page.getByRole('row').filter({ hasText: 'Dimanche' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(page.getByRole('status')).toContainText('Feuille enregistrée.');
+  const feuille = page.getByRole('region', { name: 'Feuille du 01/07/2026 au 31/07/2026' });
+  await expect(page.getByRole('status').filter({ hasText: 'Feuille enregistrée.' })).toBeVisible();
+  // La feuille se RELIT après l'enregistrement · on attend la valeur relue et
+  // le bouton revenu à l'état « rien à enregistrer » avant de retaper, sans
+  // quoi la relecture écrasait la saisie suivante.
+  await expect(page.getByLabel('Heures du 2026-07-06')).toHaveValue('10');
+  await expect(feuille.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  await expect(page.getByLabel('Heures du 2026-07-13')).toBeEnabled();
 
   // La nuit au-delà de dix heures est refusée par le serveur, dite telle quelle.
   await page.getByLabel('Heures du 2026-07-13').fill('12');
@@ -71,7 +78,9 @@ test('SYSCOHADA · feuille de temps saisie à l’écran, heures supplémentaire
   await page.getByLabel('Heures du 2026-07-13').fill('');
   await page.getByLabel('Heures de nuit du 2026-07-13').fill('');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(page.getByRole('status')).toBeVisible();
+  // Le refus n'a rien écrit (tout ou rien) · la feuille vidée du 13 est celle
+  // déjà enregistrée, et c'est ce que le serveur répond.
+  await expect(page.getByRole('status').filter({ hasText: 'Rien à enregistrer · la feuille était à jour.' })).toBeVisible();
 
   // À l'onglet Simulation · cinq heures supplémentaires, un minimum (la
   // semaine du 29 juin n'est couverte qu'à partir du 1er juillet).
@@ -90,6 +99,11 @@ test('SYSCOHADA · feuille de temps saisie à l’écran, heures supplémentaire
   await page.getByRole('button', { name: 'Reprendre les heures' }).click();
   await expect(page.getByLabel('Heures de la ligne 1')).toHaveValue('5');
   await expect(page.getByLabel('Taux horaire de la ligne 1')).toHaveValue('');
+  // Une seconde reprise remplace la première, jamais ne double les heures.
+  const lignes = mois.lignes.length;
+  await page.getByRole('button', { name: 'Reprendre les heures' }).click();
+  await expect(page.getByLabel(`Heures de la ligne ${lignes}`)).toBeVisible();
+  await expect(page.getByLabel(`Heures de la ligne ${lignes + 1}`)).toHaveCount(0);
 
   // Le bulletin de juillet émis, le 7 juillet ne se corrige plus.
   await appelApi(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, {

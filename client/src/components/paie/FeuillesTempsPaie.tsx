@@ -42,6 +42,11 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
   const [modifiee, setModifiee] = useState(false);
   const [chargement, setChargement] = useState(false);
   const [envoi, setEnvoi] = useState(false);
+  // La feuille relue après un enregistrement · ses champs restent fermés
+  // jusqu'au retour, sans quoi une heure retapée pendant la relecture était
+  // écrasée en silence par la valeur relue.
+  const [relecture, setRelecture] = useState(false);
+  const [desactivation, setDesactivation] = useState<string | null>(null);
   const [erreur, setErreur] = useState('');
   const [succes, setSucces] = useState('');
   const [modale, setModale] = useState<Modale | null>(null);
@@ -49,6 +54,10 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
   // doit pas jeter la feuille ouverte au même instant, ni l'inverse.
   const jetonListe = useRef(0);
   const jetonDetail = useRef(0);
+  // Le salarié affiché À L'INSTANT · la réponse d'un enregistrement relit la
+  // feuille et la liste seulement s'il n'a pas changé entre-temps.
+  const salarieCourant = useRef(salarieId);
+  salarieCourant.current = salarieId;
 
   useGardeFermeture(modifiee ? 'Des heures de la feuille ne sont pas enregistrées · elles seraient perdues.' : null);
 
@@ -95,11 +104,15 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
     );
   }, [salarieId]);
   useEffect(charger, [charger]);
+  // `charger` par référence · la réponse d'un enregistrement appelle celui du
+  // rendu COURANT, jamais celui, figé, du salarié de l'envoi.
+  const chargerRef = useRef(charger);
+  chargerRef.current = charger;
 
   const ouvrir = useCallback((id: string) => {
     const j = ++jetonDetail.current;
     setErreur('');
-    api.get<DetailFeuille>(`/personnel/feuilles-temps/${id}`).then(
+    return api.get<DetailFeuille>(`/personnel/feuilles-temps/${id}`).then(
       (d) => {
         if (j !== jetonDetail.current) return;
         setDetail(d);
@@ -123,10 +136,50 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
 
   // Les compteurs qui ont une colonne · les actifs, et les désactivés que la
   // feuille ouverte porte déjà (leurs heures restent lisibles).
+  // UN COMPTEUR DÉSACTIVÉ PENDANT LA SAISIE garde sa colonne tant qu'elle
+  // porte une valeur tapée · sa disparition perdait la valeur sans un mot. Le
+  // serveur refuse des heures nouvelles sur lui, et l'écran le dit
+  // (`compteursFermesTapes`).
   const colonnes: CompteurLu[] = useMemo(() => {
     const portes = new Set(detail?.jours.flatMap((j) => j.compteurs.filter((c) => c.heures > 0).map((c) => c.compteurId)) ?? []);
-    return (compteurs?.compteurs ?? []).filter((c) => c.actif || portes.has(c.id));
-  }, [compteurs, detail]);
+    const tapes = new Set(Object.values(saisie).flatMap((x) => Object.entries(x.compteurs).filter(([, v]) => (lireHeures(v) ?? 1) !== 0).map(([id]) => id)));
+    return (compteurs?.compteurs ?? []).filter((c) => c.actif || portes.has(c.id) || tapes.has(c.id));
+  }, [compteurs, detail, saisie]);
+  const compteursFermesTapes = useMemo(() => {
+    if (!detail) return [];
+    return colonnes.filter(
+      (c) =>
+        !c.actif &&
+        detail.jours.some((j) => {
+          const tape = lireHeures(saisie[j.jour]?.compteurs[c.id] ?? '');
+          const lu = j.compteurs.find((x) => x.compteurId === c.id)?.heures ?? 0;
+          return tape !== null && Math.round(tape * 100) !== Math.round(lu * 100);
+        }),
+    );
+  }, [colonnes, detail, saisie]);
+
+  /** Changer de salarié · une saisie non enregistrée se confirme, jamais perdue en silence. */
+  const changerDeSalarie = (id: string) => {
+    if (id === salarieId) return;
+    if (modifiee && !window.confirm('Des heures de la feuille ouverte ne sont pas enregistrées · elles seront perdues. Changer de salarié ?')) return;
+    setSalarieId(id);
+  };
+
+  const desactiverCompteur = (c: CompteurLu) => {
+    if (desactivation) return;
+    if (!window.confirm(`Désactiver le compteur ${c.code} ? Il ne reçoit plus d'heures ; celles déjà saisies restent lisibles.`)) return;
+    setDesactivation(c.id);
+    api.post(`/personnel/compteurs-heures/${c.id}/desactivation`, {}).then(
+      () => {
+        setDesactivation(null);
+        chargerCompteurs();
+      },
+      (e: ApiError) => {
+        setDesactivation(null);
+        setErreur(e.message);
+      },
+    );
+  };
 
   const modifier = (jour: string, p: Partial<Saisie>) => {
     setSaisie((s) => ({ ...s, [jour]: { ...(s[jour] ?? { heures: '', nuit: '', compteurs: {} }), ...p } }));
@@ -165,12 +218,19 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
     }
     setEnvoi(true);
     setErreur('');
-    api.put<{ enregistre: boolean; gestes: number }>(`/personnel/feuilles-temps/${detail.id}/jours`, { jours }).then(
+    const salarieDeLEnvoi = salarieId;
+    const feuille = detail.id;
+    api.put<{ enregistre: boolean; gestes: number }>(`/personnel/feuilles-temps/${feuille}/jours`, { jours }).then(
       (r) => {
         setEnvoi(false);
+        // Enregistré · la garde de fermeture tombe dès la réponse, la relecture
+        // ne fait que rafraîchir l'affichage.
+        setModifiee(false);
         setSucces(r.gestes === 0 ? 'Rien à enregistrer · la feuille était à jour.' : 'Feuille enregistrée.');
-        ouvrir(detail.id);
-        charger();
+        if (salarieCourant.current !== salarieDeLEnvoi) return;
+        setRelecture(true);
+        void Promise.resolve(ouvrir(feuille)).finally(() => setRelecture(false));
+        chargerRef.current();
       },
       (e: ApiError) => {
         setEnvoi(false);
@@ -179,14 +239,20 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
     );
   };
 
-  const ecrire = peutEcrire && !!detail && !detail.annuleLe;
+  const ecrire = peutEcrire && !!detail && !detail.annuleLe && !relecture;
 
   return (
     <div className="ecran-seul max-w-[1240px] text-[11.5px] space-y-3">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-0.5">
           <span className="text-text-dim">Salarié</span>
-          <select aria-label="Salarié" value={salarieId} onChange={(e) => setSalarieId(e.target.value)} className={`${CHAMP_PAIE} min-w-[220px]`}>
+          <select
+            aria-label="Salarié"
+            value={salarieId}
+            disabled={envoi}
+            onChange={(e) => changerDeSalarie(e.target.value)}
+            className={`${CHAMP_PAIE} min-w-[220px]`}
+          >
             <option value="">Choisir…</option>
             {salaries.map((s) => (
               <option key={s.id} value={s.id}>
@@ -231,13 +297,12 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
               {peutEcrire && c.actif && (
                 <button
                   type="button"
-                  className="ml-2 text-danger hover:underline"
+                  className="ml-2 text-danger hover:underline disabled:opacity-50"
                   aria-label={`Désactiver le compteur ${c.code}`}
-                  onClick={() =>
-                    api.post(`/personnel/compteurs-heures/${c.id}/desactivation`, {}).then(chargerCompteurs, (e: ApiError) => setErreur(e.message))
-                  }
+                  disabled={desactivation !== null}
+                  onClick={() => desactiverCompteur(c)}
                 >
-                  Désactiver
+                  {desactivation === c.id ? 'Désactivation…' : 'Désactiver'}
                 </button>
               )}
             </span>
@@ -327,6 +392,12 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
               </button>
             )}
           </div>
+          {compteursFermesTapes.length > 0 && (
+            <div role="status" className="text-warning mb-1">
+              {compteursFermesTapes.map((c) => c.code).join(', ')} · désactivé depuis la saisie · ses heures nouvelles seront refusées à l'enregistrement ; videz-les ou
+              gardez celles déjà enregistrées.
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px]">
               <thead>
@@ -349,7 +420,12 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
                   // Les heures d'un jour ne se tapent que là où le serveur les
                   // admet · sous contrat, sans absence ni congé, sans bulletin
                   // émis. Les compteurs, sans effet de paie, restent ouverts.
-                  const fermeHeures = !ecrire || !j.sousContrat || !!j.occupation || !!j.bulletinEmis;
+                  // UN JOUR DEVENU ABSENCE OU CONGÉ APRÈS LA SAISIE garde son
+                  // champ ouvert tant qu'il porte des heures enregistrées · le
+                  // cabinet les VIDE (le serveur admet le zéro), jamais il n'en
+                  // ajoute.
+                  const aVider = !!j.occupation && (j.heures > 0 || j.heuresNuit > 0);
+                  const fermeHeures = !ecrire || !j.sousContrat || (!!j.occupation && !aVider) || !!j.bulletinEmis;
                   const motif = !j.sousContrat
                     ? 'Aucun contrat ne couvre ce jour.'
                     : j.occupation
@@ -393,7 +469,7 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
                           <input
                             aria-label={`Compteur ${c.code} du ${j.jour}`}
                             inputMode="decimal"
-                            disabled={!ecrire || !c.actif}
+                            disabled={!ecrire || (!c.actif && !(lireHeures(s.compteurs[c.id] ?? '') ?? 1))}
                             value={s.compteurs[c.id] ?? ''}
                             onChange={(e) => modifier(j.jour, { compteurs: { ...s.compteurs, [c.id]: e.target.value } })}
                             className="border border-border bg-transparent px-1.5 py-0.5 w-[60px] text-right disabled:opacity-60"
@@ -439,8 +515,12 @@ export function OngletFeuillesTempsPaie({ salaries, peutEcrire }: { salaries: Sa
           feuille={modale.feuille}
           onFermer={() => setModale(null)}
           onFait={() => {
+            const annulee = modale.feuille.id;
             setModale(null);
             charger();
+            // La feuille ouverte annulée se relit · « Enregistrer » disparaît,
+            // l'annulation s'affiche.
+            if (detail?.id === annulee) void ouvrir(annulee);
           }}
         />
       )}

@@ -631,7 +631,11 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Ligne sage-l5, fonction 78, reste · l'observation d'une feuille de temps
   // peut dire pourquoi un jour est vide (une maladie, une garde d'enfant),
   // même raison que l'absence · les dates, les heures et l'annulation restent.
-  FeuilleTemps: ['observation'],
+  // LE MOTIF DE L'ANNULATION AUSSI (relecture du 2026-10-28) · il dit
+  // pourquoi la feuille était fausse, et c'est souvent la même raison
+  // (« saisie pendant l'arrêt maladie ») · que l'annulation ait eu lieu, par
+  // qui et quand reste au journal.
+  FeuilleTemps: ['observation', 'motifAnnulation'],
   // Ligne sage-l5 · les coordonnées d'un salarié sont une donnée de la
   // personne, que l'aide-comptable ne lit pas · la trace dit qu'un RIB a
   // changé, qui l'a changé et quand, et la banque ; les numéros sont masqués.

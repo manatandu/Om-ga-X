@@ -47,7 +47,7 @@ const congeDeSeptembre = {
   bulletin: null,
 };
 
-function service(p: { conges?: unknown[]; absences?: unknown[] } = {}) {
+function service(p: { conges?: unknown[]; absences?: unknown[]; joursSaisis?: unknown[] } = {}) {
   const create = jest.fn().mockResolvedValue({ id: 'c-neuf' });
   const prisma = {
     salarie: {
@@ -64,6 +64,7 @@ function service(p: { conges?: unknown[]; absences?: unknown[] } = {}) {
     },
     repriseCongesSalarie: { findFirst: jest.fn().mockResolvedValue(null) },
     congeSalarie: { findMany: jest.fn().mockResolvedValue(p.conges ?? []), create },
+    jourFeuilleTemps: { findMany: jest.fn().mockResolvedValue(p.joursSaisis ?? []) },
     absenceSalarie: { findMany: jest.fn().mockResolvedValue(p.absences ?? []) },
     contratTravail: { findMany: jest.fn().mockResolvedValue([CONTRAT]) },
   } as unknown as PrismaService;
@@ -101,6 +102,13 @@ describe('mineur 5 · le solde au départ compte les congés déjà posés plus 
     const { svc, create } = service();
     await svc.creerConge('t', 'u@x.cd', 's-1', aout);
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('UN JOUR N’A QU’UNE CAUSE · le congé posé sur des jours qui portent des heures les nomme, sans les retirer', async () => {
+    const { svc, create } = service({ joursSaisis: [{ jour: new Date('2026-08-04T00:00:00Z'), heures: 8 }] });
+    const r = (await svc.creerConge('t', 'u@x.cd', 's-1', aout)) as { avertissements: string[] };
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(r.avertissements.join(' ')).toMatch(/2026-08-04 \(8 h\).*ne sont plus comptées/);
   });
 
   it('avec dix jours déjà posés en septembre, il n’en reste que deux · quatre sont refusés, le congé de septembre nommé', async () => {

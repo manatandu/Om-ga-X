@@ -325,7 +325,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'createdAt',
     ],
     // LIGNE SAGE-L5, FONCTION 78, RESTE · LA FEUILLE DE TEMPS · le journal dit
-    // son salarié, sa période et son annulation ; l'observation est masquée.
+    // son salarié, sa période et son annulation ; l'observation et le motif
+    // de l'annulation sont masqués.
     FeuilleTemps: [
       'id',
       'tenantId',
@@ -336,7 +337,6 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'au',
       'annuleLe',
       'annulePar',
-      'motifAnnulation',
       'creePar',
       'createdAt',
       'jours',

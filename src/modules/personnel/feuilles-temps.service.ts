@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma, StatutBulletinPaie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { moisValide } from './bulletin-paie';
 import { natureDuJour } from './jours-du-code-du-travail';
 import {
@@ -44,6 +45,12 @@ const PLAFOND_FEUILLES_DU_MOIS = 60;
 const PLAFOND_JOURS_DU_MOIS = 400;
 const PLAFOND_CONTRATS = 500;
 const PLAFOND_ABSENCES = 2_000;
+/**
+ * Les compteurs LUS, actifs et désactivés · le plafond de trente ne vise que
+ * les ACTIFS (`creerCompteur`), si bien qu'un dossier peut en avoir désactivé
+ * davantage, et leurs heures passées se lisent encore.
+ */
+const COMPTEURS_LUS_AU_PLUS = 500;
 
 const plusJours = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 
@@ -60,24 +67,30 @@ export class FeuillesTempsService {
     const compteurs = await this.prisma.compteurHeures.findMany({
       where: { tenantId },
       orderBy: [{ actif: 'desc' }, { code: 'asc' }],
-      take: COMPTEURS_DU_DOSSIER_AU_PLUS + 1,
+      take: COMPTEURS_LUS_AU_PLUS + 1,
       select: { id: true, code: true, libelle: true, actif: true, desactiveLe: true, creePar: true },
     });
-    return { compteurs: compteurs.slice(0, COMPTEURS_DU_DOSSIER_AU_PLUS), tronque: compteurs.length > COMPTEURS_DU_DOSSIER_AU_PLUS };
+    return { compteurs: compteurs.slice(0, COMPTEURS_LUS_AU_PLUS), tronque: compteurs.length > COMPTEURS_LUS_AU_PLUS };
   }
 
   async creerCompteur(tenantId: string, userEmail: string, dto: CompteurHeuresDto) {
     const code = dto.code.trim().toUpperCase();
     const refus = motifRefusCompteur({ code, libelle: dto.libelle });
     if (refus) throw new BadRequestException(refus);
-    const nombre = await this.prisma.compteurHeures.count({ where: { tenantId } });
-    if (nombre >= COMPTEURS_DU_DOSSIER_AU_PLUS) {
-      throw new BadRequestException(`Un dossier tient au plus ${COMPTEURS_DU_DOSSIER_AU_PLUS} compteurs libres · désactivez-en un plutôt que d'en créer un nouveau.`);
-    }
     try {
-      return await this.prisma.compteurHeures.create({
-        data: { tenantId, code, libelle: dto.libelle.trim(), creePar: userEmail },
-        select: { id: true },
+      return await transactionJournalisee(this.prisma, async (tx) => {
+        // LE PLAFOND COMPTÉ SOUS LE VERROU DU DOSSIER, SUR LES SEULS ACTIFS ·
+        // deux créations simultanées liraient sinon toutes deux vingt-neuf, et
+        // le message promet qu'un compteur désactivé libère sa place.
+        await prendreLeVerrouDuDossier(tx, `compteurs-heures:${tenantId}`);
+        const actifs = await tx.compteurHeures.count({ where: { tenantId, actif: true } });
+        if (actifs >= COMPTEURS_DU_DOSSIER_AU_PLUS) {
+          throw new BadRequestException(`Un dossier tient au plus ${COMPTEURS_DU_DOSSIER_AU_PLUS} compteurs libres actifs · désactivez-en un plutôt que d'en créer un nouveau.`);
+        }
+        return tx.compteurHeures.create({
+          data: { tenantId, code, libelle: dto.libelle.trim(), creePar: userEmail },
+          select: { id: true },
+        });
       });
     } catch (e) {
       // L'index unique (dossier, code) tient ce qu'aucune lecture préalable ne
@@ -167,7 +180,7 @@ export class FeuillesTempsService {
         jours: {
           orderBy: { jour: 'asc' },
           take: 31,
-          include: { heuresCompteurs: { select: { compteurId: true, heures: true }, take: COMPTEURS_DU_DOSSIER_AU_PLUS } },
+          include: { heuresCompteurs: { select: { compteurId: true, heures: true }, take: COMPTEURS_LUS_AU_PLUS } },
         },
       },
     });
@@ -213,6 +226,10 @@ export class FeuillesTempsService {
   async enregistrerJours(tenantId: string, userEmail: string, feuilleId: string, dto: JoursFeuilleTempsDto) {
     const vus = new Set<string>();
     for (const j of dto.jours) {
+      // UN JOUR QUI N'EXISTE PAS (2026-02-30) · refusé nommé ici, avant
+      // toute lecture qui le convertirait (le lundi de sa semaine), sans quoi
+      // la saisie tombait en 500.
+      if (!jourUtc(j.jour)) throw new BadRequestException(`Le jour « ${j.jour} » n'existe pas · une date se lit AAAA-MM-JJ, jour du calendrier.`);
       if (vus.has(j.jour)) throw new BadRequestException(`Le ${j.jour} figure deux fois dans la saisie.`);
       vus.add(j.jour);
       const refus = motifRefusHeuresDuJour({ jour: j.jour, heures: j.heures, heuresNuit: j.heuresNuit ?? 0 });
@@ -229,7 +246,7 @@ export class FeuillesTempsService {
       const f = await tx.feuilleTemps.findFirst({
         where: { id: feuilleId, tenantId },
         include: {
-          jours: { take: 31, include: { heuresCompteurs: { select: { id: true, compteurId: true, heures: true }, take: COMPTEURS_DU_DOSSIER_AU_PLUS } } },
+          jours: { take: 31, include: { heuresCompteurs: { select: { id: true, compteurId: true, heures: true }, take: COMPTEURS_LUS_AU_PLUS } } },
         },
       });
       if (!f) throw new NotFoundException('Feuille de temps introuvable dans ce dossier.');
@@ -362,7 +379,13 @@ export class FeuillesTempsService {
     // posée après la saisie laisse des heures que le compte ne lit pas (le
     // jour hors contrat est connu, à zéro) · elles sont nommées, jamais tues.
     const joursHorsContrat: string[] = [];
+    // UNE HEURE SAISIE SUR UN JOUR DEVENU ABSENCE OU CONGÉ · la feuille refuse
+    // la saisie sur un jour occupé, mais une absence ou un congé posés APRÈS
+    // la saisie laissent les heures en place. « Un jour n'a qu'une cause » ·
+    // elles ne se comptent pas, et sont nommées, comme les jours hors contrat.
+    const joursOccupes: Array<{ jour: string; motif: string }> = [];
     if (bornes) {
+      const occupations = await this.occupations(this.prisma, tenantId, salarieId, bornes.du, bornes.au);
       const feuilles = await this.prisma.feuilleTemps.findMany({
         where: { tenantId, salarieId, annuleLe: null, du: { lte: bornes.au }, au: { gte: bornes.du } },
         select: { id: true, du: true, au: true },
@@ -387,6 +410,12 @@ export class FeuillesTempsService {
             if ((saisis.get(j)?.heures ?? 0) > 0) joursHorsContrat.push(j);
             continue;
           }
+          // Occupé · connu, à zéro, comme le jour hors contrat.
+          const occupe = occupations.get(j);
+          if (occupe) {
+            if ((saisis.get(j)?.heures ?? 0) > 0) joursOccupes.push({ jour: j, motif: occupe });
+            continue;
+          }
           const couvert = feuilles.some((f) => f.du.getTime() <= d.getTime() && f.au.getTime() >= d.getTime());
           lus[j] = couvert ? (saisis.get(j) ?? { heures: 0, heuresNuit: 0 }) : null;
         }
@@ -406,7 +435,7 @@ export class FeuillesTempsService {
     const candidates = (nature: NatureMajorationHeures) => majorations.filter((x) => x.nature === nature);
 
     const [compteurs, cumuls, bulletin] = await Promise.all([
-      this.prisma.compteurHeures.findMany({ where: { tenantId }, select: { id: true, code: true, libelle: true, actif: true }, take: COMPTEURS_DU_DOSSIER_AU_PLUS }),
+      this.prisma.compteurHeures.findMany({ where: { tenantId }, select: { id: true, code: true, libelle: true, actif: true }, take: COMPTEURS_LUS_AU_PLUS }),
       this.prisma.heuresCompteurJour.groupBy({
         by: ['compteurId'],
         where: { tenantId, jour: { jour: { gte: premierDuMois, lte: dernierDuMois }, feuille: { salarieId, annuleLe: null } } },
@@ -439,6 +468,7 @@ export class FeuillesTempsService {
         .sort((x, y) => x.code.localeCompare(y.code)),
       bulletinEmis: bulletin ? { numero: bulletin.numero } : null,
       joursHorsContrat,
+      joursOccupes,
     };
   }
 
@@ -503,4 +533,46 @@ export class FeuillesTempsService {
     if (!s) throw new NotFoundException('Salarié introuvable dans ce dossier.');
     return s;
   }
+}
+
+/**
+ * UN JOUR N'A QU'UNE CAUSE, DANS LES DEUX ORDRES DE SAISIE · la feuille refuse
+ * des heures sur un jour d'absence ou de congé (`enregistrerJours`) ; une
+ * absence ou un congé posés APRÈS la saisie d'heures laissent ces heures sur
+ * la feuille. Elles ne sont plus comptées ni proposées au bulletin (`duMois`
+ * les écarte et les nomme), et la pose les NOMME, pour que le cabinet les
+ * retire de la feuille si le salarié n'a pas travaillé · jamais retirées
+ * d'office, une feuille ne se réécrit que par son geste. La demi-journée au
+ * premier ou au dernier jour laisse l'autre moitié travaillée, comme à la
+ * feuille.
+ */
+export async function joursQuiPortentDesHeures(
+  db: Db,
+  tenantId: string,
+  salarieId: string,
+  periode: { du: Date; au: Date; demiJourneeDebut?: boolean; demiJourneeFin?: boolean },
+): Promise<Array<{ jour: string; heures: number }>> {
+  const jours = await db.jourFeuilleTemps.findMany({
+    where: { tenantId, jour: { gte: periode.du, lte: periode.au }, heures: { gt: 0 }, feuille: { salarieId, annuleLe: null } },
+    select: { jour: true, heures: true },
+    orderBy: { jour: 'asc' },
+    take: PLAFOND_JOURS_DU_MOIS,
+  });
+  return jours
+    .map((j) => ({ jour: iso(j.jour), heures: Number(j.heures) }))
+    .filter((j) => !(j.jour === iso(periode.du) && periode.demiJourneeDebut) && !(j.jour === iso(periode.au) && periode.demiJourneeFin));
+}
+
+/** Le texte servi à la pose · les jours nommés, dix au plus, le reste compté. */
+export function avertissementHeuresSaisies(jours: ReadonlyArray<{ jour: string; heures: number }>, geste: 'absence' | 'congé'): string | null {
+  if (jours.length === 0) return null;
+  const liste = jours
+    .slice(0, 10)
+    .map((j) => `${j.jour} (${j.heures} h)`)
+    .join(', ');
+  const reste = jours.length > 10 ? ` et ${jours.length - 10} autre(s) jour(s)` : '';
+  return (
+    `La feuille de temps porte des heures sur des jours de ${geste === 'absence' ? "l'absence" : 'congé'} · ${liste}${reste}. ` +
+    "Un jour n'a qu'une cause · ces heures ne sont plus comptées ni proposées au bulletin. Retirez-les de la feuille si le salarié n'a pas travaillé, ou annulez la pose."
+  );
 }

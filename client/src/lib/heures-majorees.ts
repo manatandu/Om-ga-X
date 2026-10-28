@@ -21,7 +21,13 @@ export interface ListeMajorations {
 }
 
 /** Une ligne saisie à l'onglet Simulation · trois champs, tels que tapés. */
-export type LigneHeures = { majorationId: string; heures: string; tauxHoraire: string };
+/**
+ * `origine` · une ligne reprise des feuilles de temps (« Reprendre les
+ * heures ») le porte, pour qu'une seconde reprise la REMPLACE au lieu de
+ * doubler les heures. Jamais envoyé au serveur (`heuresPourLeBulletin` ne
+ * recopie que les trois champs).
+ */
+export type LigneHeures = { majorationId: string; heures: string; tauxHoraire: string; origine?: 'feuilles' };
 
 export const LIGNE_HEURES_VIERGE: LigneHeures = { majorationId: '', heures: '', tauxHoraire: '' };
 
