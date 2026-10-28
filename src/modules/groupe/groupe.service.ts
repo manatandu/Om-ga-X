@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { verifierClasseurBorne } from '../../common/borne-classeur';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { fondementEliminationGroupe } from './fondement-elimination';
 import { normaliserCourriel } from '../../common/courriel';
@@ -1685,6 +1686,8 @@ export class GroupeService {
     const exercice = await this.exerciceOuvert(celluleId);
 
     const contenu = Buffer.from(dto.contenuBase64, 'base64');
+    // Déplié sous plafond avant ExcelJS (piste 8 de l'audit du 2026-10-25).
+    verifierClasseurBorne(contenu);
     const wb = new Workbook();
     try {
       await wb.xlsx.load(contenu as never);

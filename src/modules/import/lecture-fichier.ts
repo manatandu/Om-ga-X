@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { verifierClasseurBorne } from '../../common/borne-classeur';
 import * as ExcelJS from 'exceljs';
 import { FEUILLE_SUPPRIMEES } from '../exports/modifications/export-modifications';
 
@@ -161,6 +162,7 @@ function lireCsv(texte: string, separateurImpose?: string): Tableau {
 }
 
 async function lireXlsx(contenu: Buffer): Promise<Tableau> {
+  verifierClasseurBorne(contenu);
   const classeur = new ExcelJS.Workbook();
   await classeur.xlsx.load(contenu as unknown as ArrayBuffer);
   const feuille = classeur.worksheets[0];

@@ -755,8 +755,20 @@ aucun accès aux données d'un dossier, décision du 2026-10-09).
 - **Relevé lié, non corrigé** · `creerCabinet` rend encore à l'opérateur le
   mot de passe provisoire de l'administrateur du dossier créé ; l'envoyer au
   seul courriel de l'administrateur, comme la réinitialisation depuis le
-  2026-10-09, fermerait la même porte à la naissance du dossier. Les pistes 3
-  et 5 à 11 restent à valider, comme le rapport les décrit.
+  2026-10-09, fermerait la même porte à la naissance du dossier.
+- **Pistes 5, 6, 8, 9 et 10** (2026-10-28) · 5 était déjà fermée par la ligne
+  M1 (le double regard compare le validateur à l'auteur du DERNIER contenu,
+  `contenuPar`) ; 6 · le tiers d'une demande de circularisation se juge dans
+  le dossier ; 8 · un classeur importé (import d'écritures, balance de
+  consolidation, canevas du groupe) se déplie sous plafond avant ExcelJS
+  (`common/borne-classeur.ts`, 150 Mo, taille réelle et non annoncée) ; 9 ·
+  la connexion ne se fait qu'en JSON, un formulaire d'un autre site est
+  refusé avant tout essai ; 10 · le décompte des échecs et le second facteur
+  se relisent sous verrou du compte. Restent · 3 (portée des secrets GitHub,
+  réglage du dépôt), 7 (entrée de Cloud Run, réglage de la console Google),
+  11 (copie externe sur site vers un chemin réseau, voulue par sa nature) ;
+  et la zone différée 1 du rapport · les identifiants de relation portés par
+  les DTO, dont la piste 6 n'était qu'un échantillon, à balayer.
 - **Dependabot** · la mise à jour groupée du serveur (n° 25) est intégrée,
   ts-node déclaré ; les mises à jour MAJEURES (Vite 8, React Router 7,
   TypeScript 7, Tailwind 4, NestJS 12, actions GitHub) restent ouvertes, une
