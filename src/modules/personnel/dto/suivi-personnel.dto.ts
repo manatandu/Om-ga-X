@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -32,6 +33,17 @@ export class DemandeCongeDto {
 export class AccordDemandeCongeDto extends AllocationCongeDto {
   @IsOptional() @IsBoolean() auDelaDuSolde?: boolean;
   @IsOptional() @IsString() @MaxLength(500) motifAuDelaDuSolde?: string;
+}
+
+/**
+ * L'issue d'une demande ACCORDÉE sans congé lié (héritée de l'accord en trois
+ * écritures) · la relier au congé qui a bien été posé, ou la remettre en
+ * attente, avec son motif.
+ */
+export class ReparationDemandeCongeDto {
+  @IsIn(['RELIER', 'REMETTRE_EN_ATTENTE']) action!: 'RELIER' | 'REMETTRE_EN_ATTENTE';
+  @IsOptional() @IsUUID('4') congeId?: string;
+  @IsString() @MinLength(3) @MaxLength(500) motif!: string;
 }
 
 export class RefusDemandeCongeDto {

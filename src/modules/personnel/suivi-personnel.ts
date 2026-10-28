@@ -258,3 +258,12 @@ export function suiviFormation(
 
 export const RESERVE_DECLARATION_MAIN_OEUVRE =
   "Chiffres seuls · le formulaire, la date limite et les modalités de la déclaration relèvent de l'arrêté du Ministre prévu à l'art. 219 du Code du travail, que le corpus d'OmegaX ne porte pas. Le bilan social de l'art. 218, al. 2 n'est pas servi.";
+
+/**
+ * La règle des mouvements, dite à l'écran avec les chiffres · l'art. 218 ne
+ * nomme ni entrée ni sortie, l'art. 217 déclare l'ENGAGEMENT et le DÉPART de
+ * l'entreprise · un renouvellement ou un contrat qui en suit un autre sans
+ * interruption n'est ni l'un ni l'autre.
+ */
+export const REGLE_MOUVEMENTS_MAIN_OEUVRE =
+  "Entrées et sorties au sens de l'art. 217 du Code du travail (engagement, départ de l'entreprise) · une entrée est un contrat pris d'effet dans l'année sans autre contrat du salarié en vigueur la veille ; une sortie, un contrat fini dans l'année sans autre contrat en vigueur le lendemain. Un CDD renouvelé, ou suivi d'un CDI, ne compte ni l'une ni l'autre ; un salarié parti puis réengagé compte deux mouvements.";

@@ -16,6 +16,7 @@ import {
   ParticipantsFormationDto,
   RealisationFormationDto,
   RefusDemandeCongeDto,
+  ReparationDemandeCongeDto,
 } from './dto/suivi-personnel.dto';
 
 /**
@@ -46,6 +47,12 @@ export class SuiviPersonnelController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   accorder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AccordDemandeCongeDto) {
     return this.service.accorder(user.tenantId, user.email, id, dto);
+  }
+
+  @Post('demandes-conge/:id/reparation')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  reparer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ReparationDemandeCongeDto) {
+    return this.service.reparerDemandeSansConge(user.tenantId, user.email, id, dto);
   }
 
   @Post('demandes-conge/:id/refus')

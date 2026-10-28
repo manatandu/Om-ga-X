@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
 import { CongesService } from './conges.service';
 import { estNationaliteCongolaise } from './effectif-registre';
@@ -12,10 +13,12 @@ import {
   ParticipantsFormationDto,
   RealisationFormationDto,
   RefusDemandeCongeDto,
+  ReparationDemandeCongeDto,
 } from './dto/suivi-personnel.dto';
 import {
   FONDEMENT_TITRE_CONGE,
   HORIZON_ECHEANCIER_JOURS,
+  REGLE_MOUVEMENTS_MAIN_OEUVRE,
   RESERVE_DECLARATION_MAIN_OEUVRE,
   echeancesDuContrat,
   libelleStatut,
@@ -92,23 +95,44 @@ export class SuiviPersonnelService {
     };
   }
 
+  /**
+   * Une demande qui CHEVAUCHE une demande encore en attente du même salarié
+   * est refusée, et le double envoi avec elle · lecture et création se font
+   * dans une transaction, sous un verrou par salarié, sans quoi deux clics
+   * rapprochés faisaient deux demandes, et l'accord de l'une laissait l'autre
+   * en attente sur des jours déjà pris.
+   */
   async creerDemande(tenantId: string, email: string, salarieId: string, dto: DemandeCongeDto) {
     const s = await this.prisma.salarie.findFirst({ where: { id: salarieId, tenantId }, select: { id: true } });
     if (!s) throw new NotFoundException('Salarié introuvable dans ce dossier.');
     const refus = motifRefusDemandeConge(dto);
     if (refus) throw new BadRequestException(refus);
-    return this.prisma.demandeCongeSalarie.create({
-      data: {
-        tenantId,
-        salarieId,
-        du: jourUtc(dto.du),
-        au: jourUtc(dto.au),
-        joursVoyage: dto.joursVoyage ?? 0,
-        moisDePaie: dto.moisDePaie,
-        demandeLe: jourUtc(dto.demandeLe),
-        observation: dto.observation?.trim() || null,
-        saisiePar: email,
-      },
+    const du = jourUtc(dto.du);
+    const au = jourUtc(dto.au);
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const enAttente = await tx.demandeCongeSalarie.findFirst({
+        where: { tenantId, salarieId, statut: 'DEMANDEE', du: { lte: au }, au: { gte: du } },
+        select: { du: true, au: true, demandeLe: true },
+      });
+      if (enAttente) {
+        throw new ConflictException(
+          `Une demande du même salarié, du ${iso(enAttente.du)} au ${iso(enAttente.au)}, attend déjà sa décision sur ces jours · décidez-la ou retirez-la d'abord.`,
+        );
+      }
+      return tx.demandeCongeSalarie.create({
+        data: {
+          tenantId,
+          salarieId,
+          du,
+          au,
+          joursVoyage: dto.joursVoyage ?? 0,
+          moisDePaie: dto.moisDePaie,
+          demandeLe: jourUtc(dto.demandeLe),
+          observation: dto.observation?.trim() || null,
+          saisiePar: email,
+        },
+      });
     });
   }
 
@@ -121,48 +145,74 @@ export class SuiviPersonnelService {
   }
 
   /**
-   * L'ACCORD · la demande est prise (une seule décision, `updateMany` filtré
-   * sur le statut), puis le congé naît par la route ordinaire, avec tous ses
-   * refus. Refusé, la prise est rendue · la demande reste en attente, avec le
-   * motif du refus à l'utilisateur ; jamais un accord sans congé.
+   * L'ACCORD · M2 DE LA RELECTURE. Il se faisait en trois écritures hors
+   * transaction (prise de la demande, congé, lien) · le lien manqué laissait
+   * une demande ACCORDÉE sans congé, que le titre refusait et qu'aucune
+   * décision ne pouvait plus toucher. Le congé naît D'ABORD, par la route
+   * ordinaire et tous ses refus ; puis la demande est prise en UNE écriture
+   * conditionnelle (en attente vers accordée, avec le lien du congé). Si elle
+   * a été décidée entre-temps, le congé qui vient de naître est annulé avec
+   * son motif · jamais deux congés pour une demande, jamais un accord sans
+   * congé. Un retour manqué est consigné avec les deux identifiants.
    */
   async accorder(tenantId: string, email: string, id: string, dto: AccordDemandeCongeDto) {
     const d = await this.decidable(tenantId, id, email);
-    const prise = await this.prisma.demandeCongeSalarie.updateMany({
-      where: { id: d.id, tenantId, statut: 'DEMANDEE' },
-      data: { statut: 'ACCORDEE', decisionPar: email, decisionLe: new Date() },
+    const conge = await this.conges.creerConge(tenantId, email, d.salarieId, {
+      ...dto,
+      du: iso(d.du),
+      au: iso(d.au),
+      joursVoyage: d.joursVoyage,
+      moisDePaie: d.moisDePaie,
     });
-    if (prise.count !== 1) throw new ConflictException('La demande a été décidée entre-temps · relisez-la.');
-    let conge: Awaited<ReturnType<CongesService['creerConge']>>;
-    try {
-      conge = await this.conges.creerConge(tenantId, email, d.salarieId, {
-        ...dto,
-        du: iso(d.du),
-        au: iso(d.au),
-        joursVoyage: d.joursVoyage,
-        moisDePaie: d.moisDePaie,
-      });
-    } catch (e) {
-      // La prise se rend · un échec du retour est CONSIGNÉ, et l'erreur
-      // d'origine remonte quand même (la demande se dirait accordée sans
-      // congé · le titre la refuse, faute de congé lié).
+    const prise = await this.prisma.demandeCongeSalarie.updateMany({
+      where: { id: d.id, tenantId, statut: 'DEMANDEE', congeId: null },
+      data: { statut: 'ACCORDEE', decisionPar: email, decisionLe: new Date(), congeId: conge.id },
+    });
+    if (prise.count !== 1) {
       try {
-        await this.prisma.demandeCongeSalarie.update({ where: { id: d.id }, data: { statut: 'DEMANDEE', decisionPar: null, decisionLe: null } });
+        await this.conges.annulerConge(tenantId, email, conge.id, "Accord d'une demande de congé décidée entre-temps · le congé posé par cet accord est retiré.");
       } catch (retour) {
-        this.journal.error(`Demande de congé ${d.id} · la prise n'a pas pu être rendue après le refus du congé`, retour instanceof Error ? retour.stack : String(retour));
+        this.journal.error(
+          `Demande de congé ${d.id} décidée entre-temps · le congé ${conge.id} posé par l'accord n'a pas pu être annulé`,
+          retour instanceof Error ? retour.stack : String(retour),
+        );
       }
-      throw e;
-    }
-    try {
-      await this.prisma.demandeCongeSalarie.update({ where: { id: d.id }, data: { congeId: conge.id } });
-    } catch (e) {
-      // Le congé est posé et la demande accordée, seul le lien manque · le
-      // titre la refuserait sans dire pourquoi. Consigné avec les deux
-      // identifiants, et l'erreur remonte.
-      this.journal.error(`Demande de congé ${d.id} accordée, congé ${conge.id} posé, lien NON écrit`, e instanceof Error ? e.stack : String(e));
-      throw e;
+      throw new ConflictException('La demande a été décidée entre-temps · relisez-la. Le congé posé par cet accord a été annulé.');
     }
     return { demandeId: d.id, congeId: conge.id, jours: conge.jours, avertissements: conge.avertissements };
+  }
+
+  /**
+   * L'ISSUE D'UNE DEMANDE ACCORDÉE SANS CONGÉ LIÉ, héritée de l'accord en
+   * trois écritures · la RELIER au congé qui a bien été posé (même salarié,
+   * mêmes dates, non annulé, lié à aucune autre demande), ou la REMETTRE EN
+   * ATTENTE, pour la décider à nouveau. Motif exigé, au journal d'audit, par
+   * une mise à jour unitaire sous le verrou de la demande.
+   */
+  async reparerDemandeSansConge(tenantId: string, email: string, id: string, dto: ReparationDemandeCongeDto) {
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "demandes_conge_salarie" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const d = await tx.demandeCongeSalarie.findFirst({ where: { id, tenantId } });
+      if (!d) throw new NotFoundException('Demande introuvable dans ce dossier.');
+      if (d.statut !== 'ACCORDEE' || d.congeId) throw new ConflictException('Seule une demande accordée sans congé lié se répare ainsi.');
+      const motif = `${dto.motif.trim()} (réparation par ${email})`.slice(0, 500);
+      if (dto.action === 'REMETTRE_EN_ATTENTE') {
+        await tx.demandeCongeSalarie.update({ where: { id: d.id }, data: { statut: 'DEMANDEE', decisionPar: null, decisionLe: null, motifDecision: motif } });
+        return { demandeId: d.id, statut: 'DEMANDEE' as const };
+      }
+      if (!dto.congeId) throw new BadRequestException('Relier la demande exige le congé posé pour elle.');
+      const c = await tx.congeSalarie.findFirst({ where: { id: dto.congeId, tenantId }, select: { id: true, salarieId: true, du: true, au: true, annuleLe: true } });
+      if (!c) throw new NotFoundException('Congé introuvable dans ce dossier.');
+      if (c.salarieId !== d.salarieId) throw new BadRequestException("Ce congé est celui d'un autre salarié.");
+      if (c.annuleLe) throw new BadRequestException('Ce congé est annulé · remettez plutôt la demande en attente.');
+      if (c.du.getTime() !== d.du.getTime() || c.au.getTime() !== d.au.getTime()) {
+        throw new BadRequestException(`Le congé va du ${iso(c.du)} au ${iso(c.au)}, la demande du ${iso(d.du)} au ${iso(d.au)} · ils ne se relient pas.`);
+      }
+      const autre = await tx.demandeCongeSalarie.findFirst({ where: { tenantId, congeId: c.id }, select: { id: true } });
+      if (autre) throw new ConflictException('Ce congé est déjà lié à une autre demande.');
+      await tx.demandeCongeSalarie.update({ where: { id: d.id }, data: { congeId: c.id, motifDecision: motif } });
+      return { demandeId: d.id, statut: 'ACCORDEE' as const, congeId: c.id };
+    });
   }
 
   async refuser(tenantId: string, email: string, id: string, dto: RefusDemandeCongeDto) {
@@ -224,15 +274,28 @@ export class SuiviPersonnelService {
   async echeancier(tenantId: string, horizon?: number) {
     const aujourdhui = jourDeKinshasa(new Date());
     const h = horizon ?? HORIZON_ECHEANCIER_JOURS;
+    // L'HORIZON SE FILTRE EN BASE, AVANT LA BORNE · filtrée après, la tranche
+    // des 500 premiers contrats (les plus anciens) taisait l'échéance proche
+    // d'un contrat récent. Terme de CDD au plus tard à l'horizon (un terme
+    // passé reste nommé tant que le contrat court) ; essai d'un contrat entré
+    // en vigueur dans la fenêtre où sa fin peut tomber (au plus six mois de
+    // date à date, art. 43, d'où 186 jours de marge), le reste trié par le
+    // moteur (`echeancesDuContrat`).
+    const jour = 24 * 3600 * 1000;
+    const limite = new Date(aujourdhui.getTime() + h * jour);
+    const plusAncienEssai = new Date(aujourdhui.getTime() - (h + 186) * jour);
     const where: Prisma.ContratTravailWhereInput = {
       tenantId,
       dateFin: null,
-      OR: [{ type: 'DUREE_DETERMINEE', dateFinPrevue: { not: null } }, { clauseEssai: true }],
+      OR: [
+        { type: 'DUREE_DETERMINEE', dateFinPrevue: { not: null, lte: limite } },
+        { clauseEssai: true, dateEntreeEnVigueur: { gte: plusAncienEssai, lte: limite } },
+      ],
     };
     const [contrats, total] = await Promise.all([
       this.prisma.contratTravail.findMany({
         where: { ...where, tenantId },
-        orderBy: [{ dateEntreeEnVigueur: 'asc' }, { id: 'asc' }],
+        orderBy: [{ dateFinPrevue: { sort: 'asc', nulls: 'last' } }, { dateEntreeEnVigueur: 'asc' }, { id: 'asc' }],
         take: PLAFOND_SUIVI,
         select: {
           id: true,
@@ -336,27 +399,31 @@ export class SuiviPersonnelService {
     });
   }
 
-  private async formationPrevue(tenantId: string, id: string) {
-    const f = await this.prisma.formationPersonnel.findFirst({ where: { id, tenantId }, select: { id: true, statut: true } });
+  private async formationPrevue(db: PrismaService | Prisma.TransactionClient, tenantId: string, id: string) {
+    const f = await db.formationPersonnel.findFirst({ where: { id, tenantId }, select: { id: true, statut: true } });
     if (!f) throw new NotFoundException('Formation introuvable dans ce dossier.');
     if (f.statut !== 'PREVUE') throw new ConflictException(`Cette formation est ${f.statut === 'REALISEE' ? 'réalisée' : 'annulée'} · ses inscrits ne changent plus.`);
     return f;
   }
 
+  /** Le plafond des inscrits se juge SOUS LE VERROU de la formation · deux inscriptions simultanées le dépassaient. */
   async inscrire(tenantId: string, id: string, dto: ParticipantsFormationDto) {
-    const f = await this.formationPrevue(tenantId, id);
     await this.salariesDuDossier(tenantId, dto.salarieIds);
-    const deja = await this.prisma.participantFormation.findMany({ where: { tenantId, formationId: f.id }, select: { salarieId: true }, take: PARTICIPANTS_PAR_FORMATION });
-    const nouveaux = dto.salarieIds.filter((s) => !deja.some((d) => d.salarieId === s));
-    if (deja.length + nouveaux.length > PARTICIPANTS_PAR_FORMATION) {
-      throw new BadRequestException(`Une formation inscrit au plus ${PARTICIPANTS_PAR_FORMATION} participants (convention d'OmegaX) · prévoyez une seconde session.`);
-    }
-    for (const salarieId of nouveaux) await this.prisma.participantFormation.create({ data: { tenantId, formationId: f.id, salarieId } });
-    return { inscrits: deja.length + nouveaux.length };
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "formations_personnel" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const f = await this.formationPrevue(tx, tenantId, id);
+      const deja = await tx.participantFormation.findMany({ where: { tenantId, formationId: f.id }, select: { salarieId: true }, take: PARTICIPANTS_PAR_FORMATION + 1 });
+      const nouveaux = dto.salarieIds.filter((s) => !deja.some((d) => d.salarieId === s));
+      if (deja.length + nouveaux.length > PARTICIPANTS_PAR_FORMATION) {
+        throw new BadRequestException(`Une formation inscrit au plus ${PARTICIPANTS_PAR_FORMATION} participants (convention d'OmegaX) · prévoyez une seconde session.`);
+      }
+      for (const salarieId of nouveaux) await tx.participantFormation.create({ data: { tenantId, formationId: f.id, salarieId } });
+      return { inscrits: deja.length + nouveaux.length };
+    });
   }
 
   async desinscrire(tenantId: string, id: string, salarieId: string) {
-    const f = await this.formationPrevue(tenantId, id);
+    const f = await this.formationPrevue(this.prisma, tenantId, id);
     const p = await this.prisma.participantFormation.findFirst({ where: { tenantId, formationId: f.id, salarieId }, select: { id: true } });
     if (!p) throw new NotFoundException("Ce salarié n'est pas inscrit à la formation.");
     await this.prisma.participantFormation.delete({ where: { id: p.id } });
@@ -365,24 +432,29 @@ export class SuiviPersonnelService {
 
   /** La réalisation · dates et coût réels, présents nommés · un inscrit non nommé est absent, jamais présumé présent. */
   async realiser(tenantId: string, id: string, dto: RealisationFormationDto) {
-    const f = await this.prisma.formationPersonnel.findFirst({
-      where: { id, tenantId },
-      select: { id: true, statut: true, participants: { select: { id: true, salarieId: true }, take: PARTICIPANTS_PAR_FORMATION } },
+    // UNE SEULE TRANSACTION, sous le verrou de la formation · réalisée puis
+    // interrompue en route, elle gardait des présences à moitié écrites, et
+    // un inscrit ajouté entre la lecture et l'écriture restait sans présence.
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "formations_personnel" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const f = await tx.formationPersonnel.findFirst({
+        where: { id, tenantId },
+        select: { id: true, statut: true, participants: { select: { id: true, salarieId: true }, take: PARTICIPANTS_PAR_FORMATION } },
+      });
+      if (!f) throw new NotFoundException('Formation introuvable dans ce dossier.');
+      const inconnus = dto.presents.filter((s) => !f.participants.some((p) => p.salarieId === s));
+      if (inconnus.length) throw new BadRequestException("Un présent n'est pas inscrit à la formation · inscrivez-le d'abord.");
+      const refus = motifRefusRealisation({ statut: f.statut as StatutFormation }, { ...dto, presents: dto.presents.length });
+      if (refus) throw new BadRequestException(refus);
+      await tx.formationPersonnel.update({
+        where: { id: f.id },
+        data: { statut: 'REALISEE', realiseeDu: jourUtc(dto.realiseeDu), realiseeAu: jourUtc(dto.realiseeAu), coutReelFc: dto.coutReelFc ?? null },
+      });
+      for (const p of f.participants) {
+        await tx.participantFormation.update({ where: { id: p.id }, data: { present: dto.presents.includes(p.salarieId) } });
+      }
+      return { realisee: true };
     });
-    if (!f) throw new NotFoundException('Formation introuvable dans ce dossier.');
-    const inconnus = dto.presents.filter((s) => !f.participants.some((p) => p.salarieId === s));
-    if (inconnus.length) throw new BadRequestException("Un présent n'est pas inscrit à la formation · inscrivez-le d'abord.");
-    const refus = motifRefusRealisation({ statut: f.statut as StatutFormation }, { ...dto, presents: dto.presents.length });
-    if (refus) throw new BadRequestException(refus);
-    const r = await this.prisma.formationPersonnel.updateMany({
-      where: { id: f.id, tenantId, statut: 'PREVUE' },
-      data: { statut: 'REALISEE', realiseeDu: jourUtc(dto.realiseeDu), realiseeAu: jourUtc(dto.realiseeAu), coutReelFc: dto.coutReelFc ?? null },
-    });
-    if (r.count !== 1) throw new ConflictException('La formation a changé entre-temps · relisez-la.');
-    for (const p of f.participants) {
-      await this.prisma.participantFormation.update({ where: { id: p.id }, data: { present: dto.presents.includes(p.salarieId) } });
-    }
-    return { realisee: true };
   }
 
   async annulerFormation(tenantId: string, id: string, dto: AnnulationFormationDto) {
@@ -407,14 +479,52 @@ export class SuiviPersonnelService {
     const debut = new Date(Date.UTC(annee, 0, 1));
     const fin = new Date(Date.UTC(annee, 11, 31));
     const enVigueurAu = (d: Date) => ({ tenantId, dateEntreeEnVigueur: { lte: d }, OR: [{ dateFin: null }, { dateFin: { gte: d } }] });
-    const [groupes, entrees, sorties] = await Promise.all([
+    // M3 DE LA RELECTURE · ENTRÉES ET SORTIES SE LISENT COMME L'ART. 217 LES
+    // DÉCLARE · « à l'occasion de son ENGAGEMENT » et « tout travailleur
+    // QUITTANT L'EMPLOYEUR […] la date du départ de l'entreprise ». Un CDD
+    // renouvelé, ou suivi d'un CDI sans interruption, n'est ni un engagement
+    // ni un départ · il comptait jusque-là une entrée ET une sortie. Une
+    // ENTRÉE est donc un contrat pris d'effet dans l'année sans qu'aucun autre
+    // contrat du salarié soit en vigueur la VEILLE ; une SORTIE, un contrat
+    // fini dans l'année sans qu'aucun autre soit en vigueur le LENDEMAIN. Deux
+    // contrats nés (ou finis) le même jour comptent une fois. On compte des
+    // MOUVEMENTS · un salarié parti puis réengagé dans l'année compte deux
+    // fois, comme il fait deux déclarations de l'art. 217.
+    const debutIso = iso(debut);
+    const finIso = iso(fin);
+    const [groupes, [entrees], [sorties]] = await Promise.all([
       this.prisma.salarie.groupBy({
         by: ['sexe', 'nationalite'],
         where: { tenantId, contrats: { some: enVigueurAu(fin) } },
         _count: { _all: true },
       }),
-      this.prisma.salarie.count({ where: { tenantId, contrats: { some: { tenantId, dateEntreeEnVigueur: { gte: debut, lte: fin } } } } }),
-      this.prisma.salarie.count({ where: { tenantId, contrats: { some: { tenantId, dateFin: { gte: debut, lte: fin } } } } }),
+      this.prisma.$queryRaw<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM "contrats_travail" c
+        WHERE c."tenantId" = ${tenantId}
+          AND c."dateEntreeEnVigueur"::date BETWEEN ${debutIso}::date AND ${finIso}::date
+          AND NOT EXISTS (
+            SELECT 1 FROM "contrats_travail" p
+            WHERE p."tenantId" = ${tenantId} AND p."salarieId" = c."salarieId" AND p.id <> c.id
+              AND (
+                (p."dateEntreeEnVigueur"::date < c."dateEntreeEnVigueur"::date
+                  AND (p."dateFin" IS NULL OR p."dateFin"::date >= c."dateEntreeEnVigueur"::date - 1))
+                OR (p."dateEntreeEnVigueur"::date = c."dateEntreeEnVigueur"::date AND p.id < c.id)
+              )
+          )`,
+      this.prisma.$queryRaw<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM "contrats_travail" c
+        WHERE c."tenantId" = ${tenantId}
+          AND c."dateFin" IS NOT NULL
+          AND c."dateFin"::date BETWEEN ${debutIso}::date AND ${finIso}::date
+          AND NOT EXISTS (
+            SELECT 1 FROM "contrats_travail" n
+            WHERE n."tenantId" = ${tenantId} AND n."salarieId" = c."salarieId" AND n.id <> c.id
+              AND (
+                (n."dateEntreeEnVigueur"::date <= c."dateFin"::date + 1
+                  AND (n."dateFin" IS NULL OR n."dateFin"::date >= c."dateFin"::date + 1))
+                OR (n."dateFin"::date = c."dateFin"::date AND n.id > c.id)
+              )
+          )`,
     ]);
     const somme = (garder: (g: (typeof groupes)[number]) => boolean) => groupes.filter(garder).reduce((t, g) => t + g._count._all, 0);
     const sansNationalite = somme((g) => !(g.nationalite ?? '').trim());
@@ -431,9 +541,10 @@ export class SuiviPersonnelService {
       femmes: ventile('FEMININ'),
       sexeNonRenseigne: somme((g) => g.sexe !== 'MASCULIN' && g.sexe !== 'FEMININ'),
       sansNationalite,
-      // Salariés dont un contrat est entré en vigueur, ou a pris fin, dans l'année.
-      entrees,
-      sorties,
+      // Engagements et départs de l'année, au sens de l'art. 217 (voir plus haut).
+      entrees: entrees?.n ?? 0,
+      sorties: sorties?.n ?? 0,
+      regleMouvements: REGLE_MOUVEMENTS_MAIN_OEUVRE,
       destinataires:
         "au service compétent du ministère ayant l'emploi, le travail et la prévoyance sociale dans ses attributions et à l'Office national de l'emploi (art. 218)",
       reserve: RESERVE_DECLARATION_MAIN_OEUVRE,

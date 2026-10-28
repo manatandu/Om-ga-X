@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { Aide } from '../chrome/Aide';
 import { libelleListeBornee } from '../../lib/liste-bornee-personnel';
 import { montant as fc } from '../../lib/montants';
+import { lireNombre } from '../../lib/conditions-bancaires-saisie';
 
 /**
  * LIGNE MICROFINA-M3, LOT 2 · QUATRE ONGLETS DE LA FENÊTRE PERSONNEL ·
@@ -16,6 +17,18 @@ type SalarieMin = { id: string; nom: string; postNom?: string | null; prenoms?: 
 const nomDe = (s: SalarieMin) => [s.nom, s.postNom, s.prenoms].filter(Boolean).join(' ');
 const champ = 'border border-border bg-transparent px-1.5 py-0.5';
 const nombre = (v: string) => Number(v.replace(/\s/g, '').replace(',', '.'));
+
+/**
+ * Un coût tapé · lu par la règle de la saisie des conditions bancaires
+ * (`lireNombre`) · « 500.000 » est AMBIGU et refusé (en RDC le point sépare
+ * les milliers, et le coût partait à 500). Vide, rien ; illisible, refus nommé.
+ */
+function coutSaisi(v: string, objet: string): { valeur?: number } | { refus: string } {
+  const lu = lireNombre(v, 'montant');
+  if ('vide' in lu) return {};
+  if ('illisible' in lu) return { refus: `${objet} illisible · écrivez 500 000 ou 500000,00 (le point ne sépare pas les milliers).` };
+  return { valeur: lu.valeur };
+}
 
 /**
  * La lecture d'un onglet · `lire` porte son adresse écrite en clair (chaque
@@ -73,6 +86,7 @@ type Demande = {
   demandeLe: string;
   observation: string | null;
   statut: 'DEMANDEE' | 'ACCORDEE' | 'REFUSEE' | 'RETIREE';
+  congeId: string | null;
   libelleStatut: string;
   saisiePar: string;
   decisionPar: string | null;
@@ -119,7 +133,7 @@ export function OngletDemandesConge({ salaries, peutEcrire }: { salaries: Salari
       {donnees && donnees.demandes.length === 0 && <div className="text-text-dim">Aucune demande.</div>}
       {donnees && libelleListeBornee(donnees, donnees.demandes.length, 'demandes') && <div className="text-warning">{libelleListeBornee(donnees, donnees.demandes.length, 'demandes')}</div>}
       {donnees && donnees.demandes.length > 0 && (
-        <table className="w-full">
+        <table className="w-full" aria-label="Demandes de congé">
           <thead>
             <tr>
               <th className="text-left px-2 py-1">Salarié</th>
@@ -173,7 +187,35 @@ export function OngletDemandesConge({ salaries, peutEcrire }: { salaries: Salari
                       </button>
                     </>
                   )}
-                  {d.statut === 'ACCORDEE' && (
+                  {peutEcrire && d.statut === 'ACCORDEE' && !d.congeId && (
+                    <>
+                      <span className="text-danger">accordée sans congé lié</span>
+                      <button
+                        type="button"
+                        className="hover:underline"
+                        disabled={envoi}
+                        onClick={() => {
+                          const congeId = window.prompt('Identifiant du congé posé pour cette demande (onglet Congés)');
+                          const m = congeId ? motif('Motif du rattachement') : null;
+                          if (congeId && m) void envoyer(() => api.post(`/personnel/demandes-conge/${d.id}/reparation`, { action: 'RELIER', congeId: congeId.trim(), motif: m }));
+                        }}
+                      >
+                        Relier au congé
+                      </button>
+                      <button
+                        type="button"
+                        className="hover:underline"
+                        disabled={envoi}
+                        onClick={() => {
+                          const m = motif('Motif de la remise en attente');
+                          if (m) void envoyer(() => api.post(`/personnel/demandes-conge/${d.id}/reparation`, { action: 'REMETTRE_EN_ATTENTE', motif: m }));
+                        }}
+                      >
+                        Remettre en attente
+                      </button>
+                    </>
+                  )}
+                  {d.statut === 'ACCORDEE' && d.congeId && (
                     <button
                       type="button"
                       className="hover:underline"
@@ -409,16 +451,18 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
                   type="button"
                   className="hover:underline"
                   disabled={envoi}
-                  onClick={() =>
-                    envoyer(() =>
+                  onClick={() => {
+                    const cout = coutSaisi(r.cout, 'Coût réel');
+                    if ('refus' in cout) return setErreur(cout.refus);
+                    void envoyer(() =>
                       api.post(`/personnel/formations/${x.id}/realisation`, {
                         realiseeDu: r.du,
                         realiseeAu: r.au,
                         presents: r.presents,
-                        ...(r.cout.trim() ? { coutReelFc: nombre(r.cout) } : {}),
+                        ...(cout.valeur !== undefined ? { coutReelFc: cout.valeur } : {}),
                       }),
-                    )
-                  }
+                    );
+                  }}
                 >
                   Constater la réalisation
                 </button>
@@ -468,6 +512,8 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
             className="bg-sel text-white font-semibold px-3 py-1"
             disabled={envoi || !f.intitule.trim()}
             onClick={async () => {
+              const cout = coutSaisi(f.coutPrevuFc, 'Coût prévu');
+              if ('refus' in cout) return setErreur(cout.refus);
               const ok = await envoyer(() =>
                 api.post('/personnel/formations', {
                   intitule: f.intitule,
@@ -477,7 +523,7 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
                   participants: f.participants,
                   ...(f.organisme.trim() ? { organisme: f.organisme } : {}),
                   ...(f.financement.trim() ? { financement: f.financement } : {}),
-                  ...(f.coutPrevuFc.trim() ? { coutPrevuFc: nombre(f.coutPrevuFc) } : {}),
+                  ...(cout.valeur !== undefined ? { coutPrevuFc: cout.valeur } : {}),
                 }),
               );
               if (ok) setF({ intitule: '', organisme: '', interne: false, prevueDu: '', prevueAu: '', coutPrevuFc: '', financement: '', participants: [] });
@@ -503,6 +549,7 @@ type Declaration = {
   sansNationalite: number;
   entrees: number;
   sorties: number;
+  regleMouvements?: string;
   destinataires: string;
   reserve: string;
   reserveNationalite: string | null;
@@ -561,6 +608,12 @@ export function OngletDeclarationMainOeuvre() {
           </table>
           <div>
             Entrées de l&apos;année {donnees.entrees} · sorties {donnees.sorties}
+            {donnees.regleMouvements && (
+              <>
+                {' '}
+                <Aide titre="Entrées et sorties" texte={donnees.regleMouvements} source="Code du travail, art. 217 et 218" />
+              </>
+            )}
             {donnees.sexeNonRenseigne ? ` · ${donnees.sexeNonRenseigne} salarié(s) sans sexe renseigné` : ''}
           </div>
           <div className="text-text-dim">À adresser {donnees.destinataires}.</div>
