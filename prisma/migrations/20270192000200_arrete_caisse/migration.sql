@@ -16,6 +16,7 @@ CREATE TABLE "arretes_caisse" (
     "deviseId" TEXT,
     "soldeTheorique" DECIMAL(18,2) NOT NULL,
     "ecrituresAuBrouillard" INTEGER NOT NULL,
+    "brouillardExercicesAnterieurs" INTEGER NOT NULL DEFAULT 0,
     "especesComptees" DECIMAL(18,2) NOT NULL,
     "ecart" DECIMAL(18,2) NOT NULL,
     "plafondFige" DECIMAL(18,2),
@@ -118,7 +119,7 @@ ALTER TABLE "plafonds_encaisse" ADD CONSTRAINT "plafonds_encaisse_deviseId_fkey"
 ALTER TABLE "arretes_caisse" ADD CONSTRAINT "arretes_caisse_motif_si_annule"
   CHECK ("annuleLe" IS NULL OR ("motifAnnulation" IS NOT NULL AND length(btrim("motifAnnulation")) > 0));
 ALTER TABLE "arretes_caisse" ADD CONSTRAINT "arretes_caisse_brouillard_positif"
-  CHECK ("ecrituresAuBrouillard" >= 0 AND "especesComptees" >= 0);
+  CHECK ("ecrituresAuBrouillard" >= 0 AND "brouillardExercicesAnterieurs" >= 0 AND "brouillardExercicesAnterieurs" <= "ecrituresAuBrouillard" AND "especesComptees" >= 0);
 ALTER TABLE "coupures_arrete_caisse" ADD CONSTRAINT "coupures_arrete_caisse_valeurs"
   CHECK ("valeurUnitaire" > 0 AND "nombre" >= 0);
 ALTER TABLE "plafonds_encaisse" ADD CONSTRAINT "plafonds_encaisse_montant_positif"

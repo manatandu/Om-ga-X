@@ -33,6 +33,7 @@ interface Apercu {
   codeUnite: string | null;
   soldeTheorique: number;
   ecrituresAuBrouillard: number;
+  brouillardExercicesAnterieurs: number;
   plafond: number | null;
   soldeAuDelaDuPlafond: boolean | null;
   plafondNonCompare: string | null;
@@ -105,7 +106,10 @@ export function ArreteCaissePage() {
       // Une seule caisse · elle se présélectionne.
       if (s.caisses.length === 1) setCompteId((c) => c || s.caisses[0].caisse.id);
     } catch (e) {
-      if (j === jeton.current) setErreurSituation(e instanceof ApiError ? e.message : 'Situation des caisses illisible.');
+      if (j !== jeton.current) return;
+      // Une situation illisible n'est pas une situation vide (relecture m11).
+      setSituation(null);
+      setErreurSituation(e instanceof ApiError ? e.message : 'Situation des caisses illisible.');
     }
   }, [jour]);
 
@@ -224,7 +228,7 @@ export function ArreteCaissePage() {
           titre="L'arrêté de caisse"
           texte={
             "L'arrêté compte la caisse au jour, par coupures, et la compare au solde de tout ce qui est saisi à la fin de ce jour, brouillard compris. " +
-            "Les coupures font les espèces comptées. L'écart, le solde créditeur et le dépassement du plafond sont dits, rien n'est passé au journal. " +
+            "Les coupures font les espèces comptées. L'écart, le solde créditeur et le dépassement du plafond sont dits, rien n'est passé au journal. Le plafond se compare au solde de la caisse, à l'aperçu comme à l'arrêté (fiche du compte 57 · le solde est la somme disponible réellement). " +
             "Un arrêté faux s'annule avec son motif. Le plafond d'encaisse est fixé par le dossier · aucun texte n'en fixe, il avertit et ne refuse rien. " +
             "La caisse comptée pour la clôture relève du procès-verbal de comptage de l'inventaire."
           }
@@ -292,6 +296,9 @@ export function ArreteCaissePage() {
               {unite}
             </span>
             {apercu.ecrituresAuBrouillard > 0 && <span className="text-text-dim">dont {apercu.ecrituresAuBrouillard} écriture(s) au brouillard</span>}
+            {apercu.brouillardExercicesAnterieurs > 0 && (
+              <span className="text-warning">dont {apercu.brouillardExercicesAnterieurs} d'un exercice antérieur non clôturé, que le solde remonte</span>
+            )}
             {apercu.plafond !== null && (
               <span>
                 Plafond {montant(apercu.plafond)}

@@ -7291,6 +7291,10 @@ model ArreteCaisse {
   /// lit d'ordinaire des pièces que la validation mensuelle (AUDCIF art. 22,
   /// 2°) n'a pas encore portées au livre-journal, et c'est dit.
   ecrituresAuBrouillard Int
+  /// Dont celles d'un exercice ANTÉRIEUR non clôturé que le solde remonte
+  /// faute d'ouverture (relecture m4) · elles comptent dans le solde, et
+  /// l'arrêté le dit.
+  brouillardExercicesAnterieurs Int @default(0)
   /// La somme des coupures, calculée par le serveur.
   especesComptees       Decimal @db.Decimal(18, 2)
   /// especesComptees − soldeTheorique · positif, excédent ; négatif, manquant.

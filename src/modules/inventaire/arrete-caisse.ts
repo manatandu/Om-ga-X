@@ -14,6 +14,14 @@
  * fixe (Microfina++ le nomme « maximum autorisé en caisse »). Il AVERTIT,
  * jamais ne refuse · une règle sans texte ne bloque pas une opération.
  *
+ * IL SE COMPARE AU SOLDE DE LA CAISSE, PARTOUT (relecture m5) · l'aperçu le
+ * comparait au solde, l'arrêté aux espèces comptées, et les deux pouvaient se
+ * contredire le même jour. La fiche du compte 57 veut que « le solde du compte
+ * caisse [corresponde] toujours exactement à la somme disponible réellement »
+ * · le solde EST l'encaisse que les livres tiennent, la seule que l'aperçu, la
+ * situation des caisses et l'arrêté lisent tous trois ; l'écart entre ce
+ * solde et les espèces comptées est dit à part (excédent ou manquant).
+ *
  * En centimes entiers partout (CLAUDE.md · « un seuil se juge en centimes
  * entiers »).
  */
@@ -81,6 +89,7 @@ export function mentionsDeLArrete(a: {
   soldeCentimes: number;
   especesCentimes: number;
   ecrituresAuBrouillard: number;
+  brouillardExercicesAnterieurs?: number;
   depassePlafond: boolean | null;
   plafondCentimes: number | null;
   nonCompare: string | null;
@@ -99,8 +108,13 @@ export function mentionsDeLArrete(a: {
   if (a.ecrituresAuBrouillard > 0) {
     m.push(`Le solde comprend ${a.ecrituresAuBrouillard} écriture(s) au brouillard, que la validation n'a pas encore portées au livre-journal.`);
   }
+  if ((a.brouillardExercicesAnterieurs ?? 0) > 0) {
+    m.push(
+      `Dont ${a.brouillardExercicesAnterieurs} d'un exercice antérieur non clôturé, que le solde remonte faute d'ouverture de la caisse · elles changeront le report si elles changent avant la clôture.`,
+    );
+  }
   if (a.depassePlafond && a.plafondCentimes !== null) {
-    m.push(`Les espèces comptées dépassent le plafond d'encaisse de ${fr(a.plafondCentimes)} fixé par le dossier · un avertissement, aucun texte n'en fixe.`);
+    m.push(`Le solde de la caisse dépasse le plafond d'encaisse de ${fr(a.plafondCentimes)} fixé par le dossier · un avertissement, aucun texte n'en fixe.`);
   }
   if (a.nonCompare) m.push(a.nonCompare);
   return m;

@@ -55,17 +55,51 @@ export function prochainNumeroLibre(carnet: { numeroDebut: number; numeroFin: nu
   return candidat <= carnet.numeroFin ? candidat : null;
 }
 
-export type EtatLu = 'EMIS_SANS_PIECE' | 'EN_CIRCULATION' | 'ENCAISSE' | 'ANNULE';
+export type EtatLu = 'EMIS_SANS_PIECE' | 'EN_CIRCULATION' | 'ENCAISSE' | 'PIECE_ANNULEE' | 'ANNULE';
 
 /**
  * L'ÉTAT D'UN CHÈQUE SE LIT, IL NE SE SAISIT PAS · annulé s'il l'est ; émis
- * sans pièce tant qu'aucune pièce de la banque ne le porte ; ENCAISSÉ quand
- * toutes les lignes de la pièce au compte de la banque sont pointées au
- * rapprochement face au relevé ; sinon EN CIRCULATION (le chèque est parti,
- * la banque ne l'a pas encore débité).
+ * sans pièce tant qu'aucune pièce de la banque ne le porte ; PIÈCE ANNULÉE
+ * quand la pièce est corrigée par son négatif lié (relecture M3 · AUDCIF
+ * art. 20, al. 2) ; ENCAISSÉ quand toutes les lignes de la pièce au compte de
+ * la banque sont pointées au rapprochement face au relevé ; sinon EN
+ * CIRCULATION (le chèque est parti, la banque ne l'a pas encore débité).
+ *
+ * LA PIÈCE CORRIGÉE PASSE AVANT LE POINTAGE · l'original et son négatif se
+ * pointent ensemble au rapprochement (leur somme est nulle, aucune ligne du
+ * relevé ne leur répond), et les lire « encaissé » faisait d'un chèque dont
+ * la pièce est annulée au journal un chèque payé par la banque, que plus rien
+ * ne laissait annuler.
  */
-export function etatDuCheque(c: { etat: 'EMIS' | 'ANNULE'; aUnePiece: boolean; lignesBanque: number; lignesPointees: number }): EtatLu {
+export function etatDuCheque(c: {
+  etat: 'EMIS' | 'ANNULE';
+  aUnePiece: boolean;
+  pieceCorrigee?: boolean;
+  lignesBanque: number;
+  lignesPointees: number;
+}): EtatLu {
   if (c.etat === 'ANNULE') return 'ANNULE';
   if (!c.aUnePiece) return 'EMIS_SANS_PIECE';
+  if (c.pieceCorrigee) return 'PIECE_ANNULEE';
   return c.lignesBanque > 0 && c.lignesPointees === c.lignesBanque ? 'ENCAISSE' : 'EN_CIRCULATION';
+}
+
+/**
+ * LA PIÈCE RELIÉE, REJUGÉE AU REGISTRE (relecture M4) · une pièce du
+ * brouillard se retouche après le lien (montant, journal, compte), et rien ne
+ * la rejugeait · le registre montrait payé par une pièce de 80 000 un chèque
+ * de 100 000. Rend l'écart à dire, ou null.
+ */
+export function ecartDeLaPiece(p: { journalAttenduId: string | null; journalId: string; creditCentimes: number; montantCentimes: number }): string | null {
+  if (p.journalAttenduId !== null && p.journalId !== p.journalAttenduId) {
+    return "La pièce n'est plus au journal de ce compte bancaire depuis son rattachement · reliez le chèque à la bonne pièce.";
+  }
+  if (p.creditCentimes !== p.montantCentimes) {
+    return `La pièce crédite désormais la banque de ${fr(p.creditCentimes)} pour un chèque de ${fr(p.montantCentimes)} · retouchée depuis son rattachement, elle ne paie plus ce chèque au centime.`;
+  }
+  return null;
+}
+
+function fr(c: number) {
+  return (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

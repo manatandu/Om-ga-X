@@ -39,8 +39,8 @@ export class ChequesController {
   }
 
   @Get()
-  lister(@CurrentUser() user: AuthenticatedUser, @Query('chequierId') chequierId?: string) {
-    return this.cheques.lister(user.tenantId, chequierId || undefined);
+  lister(@CurrentUser() user: AuthenticatedUser, @Query('chequierId') chequierId?: string, @Query('au') au?: string) {
+    return this.cheques.lister(user.tenantId, chequierId || undefined, au || undefined);
   }
 
   @Get('chequiers/:id/pieces-proposees')

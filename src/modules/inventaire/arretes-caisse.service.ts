@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma, StatutEcriture, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { jourDeKinshasaIso } from '../../common/echeance';
+import { jourDeKinshasaIso, jourValide } from '../../common/echeance';
 import { RACINE_CAISSE, soldeDeCaisseAuJour } from '../comptabilite/caisse-provisionnee';
 import { comparaisonAuPlafond, especesDesCoupures, heureValide, mentionsDeLArrete, plafondEnVigueur } from './arrete-caisse';
 import { AnnulerArreteCaisseDto, CreerPlafondEncaisseDto, EtablirArreteCaisseDto } from './dto/arrete-caisse.dto';
@@ -18,7 +18,8 @@ const jour = (d: Date) => d.toISOString().slice(0, 10);
 const aMinuit = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const enCentimes = (d: Prisma.Decimal | number) => Math.round(Number(d) * 100);
 const decimal = (c: number) => new Prisma.Decimal(c).div(100);
-const valide = (iso: string) => /^\d{4}-\d{2}-\d{2}$/.test(iso) && jour(aMinuit(iso)) === iso;
+// Un jour qui existe au calendrier (relecture m1) · `2026-13-45` levait en 500.
+const valide = (iso: string) => jourValide(iso) !== null;
 
 /**
  * ARRÊTÉ DE CAISSE QUOTIDIEN ET PLAFOND D'ENCAISSE (ligne microfina-m2, idée 5).
@@ -58,18 +59,14 @@ export class ArretesCaisseService {
   private async lecture(tenantId: string, compteId: string, iso: string, db: Db) {
     const caisse = await this.caisse(tenantId, compteId, db);
     const exercice = await this.exerciceDuJour(tenantId, iso, db);
-    const { devise, soldeCentimes } = await soldeDeCaisseAuJour(db as Tx, tenantId, compteId, exercice, iso);
-    const [brouillard, versions, deviseLue] = await Promise.all([
-      db.ecriture.count({
-        where: {
-          tenantId,
-          exerciceId: exercice.id,
-          statut: StatutEcriture.BROUILLARD,
-          estANouveauProvisoire: false,
-          date: { lte: aMinuit(iso) },
-          lignes: { some: { compteId } },
-        },
-      }),
+    const { devise, soldeCentimes, exercicesRemontes } = await soldeDeCaisseAuJour(db as Tx, tenantId, compteId, exercice, iso);
+    const auBrouillard = (where: Prisma.EcritureWhereInput) =>
+      db.ecriture.count({ where: { tenantId, statut: StatutEcriture.BROUILLARD, estANouveauProvisoire: false, lignes: { some: { compteId } }, ...where } });
+    const [brouillardDuJour, brouillardAnterieur, versions, deviseLue] = await Promise.all([
+      auBrouillard({ exerciceId: exercice.id, date: { lte: aMinuit(iso) } }),
+      // LE BROUILLARD QUE LE SOLDE REMONTE SE COMPTE AUSSI (relecture m4) ·
+      // l'exercice antérieur non clôturé entre dans le solde en entier.
+      exercicesRemontes.length ? auBrouillard({ exerciceId: { in: exercicesRemontes } }) : Promise.resolve(0),
       db.plafondEncaisse.findMany({ where: { tenantId, compteId }, select: { dateEffet: true, montant: true, deviseId: true } }),
       devise ? db.devise.findFirst({ where: { id: devise, tenantId }, select: { code: true } }) : Promise.resolve(null),
     ]);
@@ -77,7 +74,7 @@ export class ArretesCaisseService {
       versions.map((v) => ({ dateEffet: jour(v.dateEffet), montantCentimes: enCentimes(v.montant), deviseId: v.deviseId })),
       iso,
     );
-    return { caisse, exercice, devise, codeDevise: deviseLue?.code ?? null, soldeCentimes, brouillard, plafond };
+    return { caisse, exercice, devise, codeDevise: deviseLue?.code ?? null, soldeCentimes, brouillard: brouillardDuJour + brouillardAnterieur, brouillardAnterieur, plafond };
   }
 
   /** L'aperçu · ce que l'arrêté figerait maintenant, et l'arrêté du jour s'il existe. */
@@ -99,6 +96,7 @@ export class ArretesCaisseService {
       codeUnite: l.codeDevise,
       soldeTheorique: l.soldeCentimes / 100,
       ecrituresAuBrouillard: l.brouillard,
+      brouillardExercicesAnterieurs: l.brouillardAnterieur,
       plafond: cmp.plafondCentimes === null ? null : cmp.plafondCentimes / 100,
       soldeAuDelaDuPlafond: cmp.depasse,
       plafondNonCompare: cmp.nonCompare,
@@ -134,7 +132,8 @@ export class ArretesCaisseService {
       }
       const existant = await tx.arreteCaisse.findFirst({ where: { tenantId, compteId: dto.compteId, jour: aMinuit(dto.jour), annuleLe: null }, select: { id: true } });
       if (existant) throw new ConflictException('Cette caisse a déjà son arrêté pour ce jour · annulez-le avec son motif pour en établir un autre.');
-      const cmp = comparaisonAuPlafond(especes.centimes, l.devise, l.plafond);
+      // Le SOLDE se compare au plafond, comme à l'aperçu (relecture m5).
+      const cmp = comparaisonAuPlafond(l.soldeCentimes, l.devise, l.plafond);
       const arrete = await tx.arreteCaisse.create({
         data: {
           tenantId,
@@ -145,6 +144,7 @@ export class ArretesCaisseService {
           deviseId: l.devise,
           soldeTheorique: decimal(l.soldeCentimes),
           ecrituresAuBrouillard: l.brouillard,
+          brouillardExercicesAnterieurs: l.brouillardAnterieur,
           especesComptees: decimal(especes.centimes),
           ecart: decimal(especes.centimes - l.soldeCentimes),
           plafondFige: cmp.plafondCentimes === null ? null : decimal(cmp.plafondCentimes),
@@ -164,6 +164,7 @@ export class ArretesCaisseService {
           soldeCentimes: l.soldeCentimes,
           especesCentimes: especes.centimes,
           ecrituresAuBrouillard: l.brouillard,
+          brouillardExercicesAnterieurs: l.brouillardAnterieur,
           depassePlafond: cmp.depasse,
           plafondCentimes: cmp.plafondCentimes,
           nonCompare: cmp.nonCompare,
@@ -197,6 +198,7 @@ export class ArretesCaisseService {
         unite: a.devise?.code ?? null,
         soldeTheorique: Number(a.soldeTheorique),
         ecrituresAuBrouillard: a.ecrituresAuBrouillard,
+        brouillardExercicesAnterieurs: a.brouillardExercicesAnterieurs,
         especesComptees: Number(a.especesComptees),
         ecart: Number(a.ecart),
         plafond: a.plafondFige === null ? null : Number(a.plafondFige),
@@ -213,7 +215,8 @@ export class ArretesCaisseService {
               soldeCentimes: enCentimes(a.soldeTheorique),
               especesCentimes: enCentimes(a.especesComptees),
               ecrituresAuBrouillard: a.ecrituresAuBrouillard,
-              depassePlafond: a.plafondFige === null ? null : enCentimes(a.especesComptees) > enCentimes(a.plafondFige),
+              brouillardExercicesAnterieurs: a.brouillardExercicesAnterieurs,
+              depassePlafond: a.plafondFige === null ? null : enCentimes(a.soldeTheorique) > enCentimes(a.plafondFige),
               plafondCentimes: a.plafondFige === null ? null : enCentimes(a.plafondFige),
               nonCompare: a.plafondNonCompare,
             }),
@@ -228,9 +231,21 @@ export class ArretesCaisseService {
     const motif = dto.motif.trim();
     if (motif.length < 3) throw new BadRequestException("Le motif d'annulation est exigé.");
     return transactionJournalisee(this.prisma, async (tx) => {
-      const a = await tx.arreteCaisse.findFirst({ where: { id, tenantId }, select: { id: true, annuleLe: true } });
+      const lu = await tx.arreteCaisse.findFirst({ where: { id, tenantId }, select: { compteId: true } });
+      if (!lu) throw new NotFoundException('Arrêté introuvable dans ce dossier.');
+      // SOUS LE VERROU DE LA CAISSE, RELU APRÈS LUI (relecture m6) · le même que
+      // l'établissement · une annulation et un nouvel arrêté du même jour ne
+      // se croisent pas, et deux annulations ne passent pas toutes deux.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`arretes-caisse:${tenantId}:${lu.compteId}`}))`;
+      const a = await tx.arreteCaisse.findFirst({ where: { id, tenantId }, select: { id: true, annuleLe: true, exercice: { select: { statut: true } } } });
       if (!a) throw new NotFoundException('Arrêté introuvable dans ce dossier.');
       if (a.annuleLe) throw new ConflictException('Cet arrêté est déjà annulé.');
+      // UN EXERCICE CLÔTURÉ NE BOUGE PLUS (relecture m6) · l'arrêté y est une
+      // pièce de contrôle de la caisse de cet exercice (fiche du compte 57,
+      // « bordereaux de situation journalière »), conservée telle qu'arrêtée.
+      if (a.exercice.statut === StatutExercice.CLOTURE) {
+        throw new BadRequestException("L'exercice de cet arrêté est clôturé · l'arrêté reste tel qu'il a été établi, pièce de contrôle de la caisse de cet exercice.");
+      }
       await tx.arreteCaisse.update({ where: { id }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif } });
       return { annule: true };
     });
@@ -251,12 +266,27 @@ export class ArretesCaisseService {
       where: { tenantId, dateDebut: { lte: aMinuit(iso) }, dateFin: { gte: aMinuit(iso) } },
       select: { id: true, dateDebut: true },
     });
+    // PLAFONDS ET DERNIERS ARRÊTÉS LUS EN UNE FOIS pour la tranche (relecture
+    // m8) · jamais deux requêtes par caisse. Le SOLDE, lui, reste lu caisse par
+    // caisse · c'est la lecture du refus de la caisse créditrice
+    // (`soldeDeCaisseAuJour`, ouverture remontée compte par compte), qu'une
+    // seconde écriture groupée ferait diverger d'elle.
+    const ids = caisses.map((c) => c.id);
+    const [toutesVersions, derniers] = ids.length
+      ? await Promise.all([
+          this.prisma.plafondEncaisse.findMany({ where: { tenantId, compteId: { in: ids } }, select: { compteId: true, dateEffet: true, montant: true, deviseId: true } }),
+          this.prisma.arreteCaisse.findMany({
+            where: { tenantId, compteId: { in: ids }, annuleLe: null },
+            orderBy: [{ compteId: 'asc' }, { jour: 'desc' }],
+            distinct: ['compteId'],
+            select: { compteId: true, jour: true, ecart: true },
+          }),
+        ])
+      : [[], []];
     const lignes = [];
     for (const c of caisses) {
-      const [versions, dernier] = await Promise.all([
-        this.prisma.plafondEncaisse.findMany({ where: { tenantId, compteId: c.id }, select: { dateEffet: true, montant: true, deviseId: true } }),
-        this.prisma.arreteCaisse.findFirst({ where: { tenantId, compteId: c.id, annuleLe: null }, orderBy: { jour: 'desc' }, select: { jour: true, ecart: true } }),
-      ]);
+      const versions = toutesVersions.filter((v) => v.compteId === c.id);
+      const dernier = derniers.find((d) => d.compteId === c.id) ?? null;
       // SANS EXERCICE, AUCUN SOLDE · « non calculé », jamais zéro.
       const lu = exercice ? await soldeDeCaisseAuJour(this.prisma as unknown as Tx, tenantId, c.id, exercice, iso) : null;
       const plafond = plafondEnVigueur(versions.map((v) => ({ dateEffet: jour(v.dateEffet), montantCentimes: enCentimes(v.montant), deviseId: v.deviseId })), iso);
@@ -299,19 +329,38 @@ export class ArretesCaisseService {
       const d = await this.prisma.devise.findFirst({ where: { id: dto.deviseId, tenantId }, select: { id: true } });
       if (!d) throw new NotFoundException('Devise introuvable dans ce dossier.');
     }
-    const doublon = await this.prisma.plafondEncaisse.findFirst({ where: { tenantId, compteId: dto.compteId, dateEffet: aMinuit(dto.dateEffet) }, select: { id: true } });
-    if (doublon) throw new ConflictException('Cette caisse a déjà un plafond à cette date d’effet · retirez-le ou choisissez une autre date.');
-    return this.prisma.plafondEncaisse.create({
-      data: { tenantId, compteId: dto.compteId, dateEffet: aMinuit(dto.dateEffet), montant: new Prisma.Decimal(dto.montant), deviseId: dto.deviseId ?? null, motif, createdBy: userId },
-      select: { id: true },
-    });
+    // SOUS LE VERROU DE LA CAISSE, ET LA CLÉ UNIQUE TRADUITE (relecture m7) ·
+    // deux envois du même plafond passaient tous deux la lecture, et le
+    // second tombait sur la clé en 500 anonyme.
+    const DOUBLON = 'Cette caisse a déjà un plafond à cette date d’effet · retirez-le ou choisissez une autre date.';
+    try {
+      return await transactionJournalisee(this.prisma, async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`arretes-caisse:${tenantId}:${dto.compteId}`}))`;
+        const doublon = await tx.plafondEncaisse.findFirst({ where: { tenantId, compteId: dto.compteId, dateEffet: aMinuit(dto.dateEffet) }, select: { id: true } });
+        if (doublon) throw new ConflictException(DOUBLON);
+        return tx.plafondEncaisse.create({
+          data: { tenantId, compteId: dto.compteId, dateEffet: aMinuit(dto.dateEffet), montant: new Prisma.Decimal(dto.montant), deviseId: dto.deviseId ?? null, motif, createdBy: userId },
+          select: { id: true },
+        });
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(DOUBLON);
+      throw e;
+    }
   }
 
   /** Un plafond se retire · les arrêtés ont recopié celui qu'ils ont lu, rien ne se dénoue. */
   async retirerPlafond(tenantId: string, id: string) {
-    const v = await this.prisma.plafondEncaisse.findFirst({ where: { id, tenantId }, select: { id: true } });
-    if (!v) throw new NotFoundException('Plafond introuvable dans ce dossier.');
-    await this.prisma.plafondEncaisse.delete({ where: { id } });
-    return { retire: true };
+    // Sous le verrou de la caisse et relu après lui (relecture m7) · deux
+    // retraits du même plafond ne font plus un 500 sur la ligne déjà partie.
+    return transactionJournalisee(this.prisma, async (tx) => {
+      const lu = await tx.plafondEncaisse.findFirst({ where: { id, tenantId }, select: { compteId: true } });
+      if (!lu) throw new NotFoundException('Plafond introuvable dans ce dossier.');
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`arretes-caisse:${tenantId}:${lu.compteId}`}))`;
+      const v = await tx.plafondEncaisse.findFirst({ where: { id, tenantId }, select: { id: true } });
+      if (!v) throw new ConflictException('Ce plafond vient d’être retiré · rechargez la liste.');
+      await tx.plafondEncaisse.delete({ where: { id } });
+      return { retire: true };
+    });
   }
 }

@@ -113,12 +113,8 @@ export function francs(centimes: number): string {
   return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Un jour AAAA-MM-JJ valide, ou null. */
-export function jourValide(iso: unknown): string | null {
-  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const d = new Date(`${iso}T00:00:00.000Z`);
-  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
-}
+// Le jour valide vit avec les autres lectures de jours (`common/echeance.ts`).
+export { jourValide } from '../../common/echeance';
 
 /**
  * UNE FACTURE QUI EXÉCUTE UN BON NE SE BARRE PAS EN SILENCE (relecture M1).

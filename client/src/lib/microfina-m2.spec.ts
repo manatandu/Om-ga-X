@@ -40,6 +40,6 @@ describe('arrêté de caisse · coupures', () => {
 
 describe('chèques émis · états', () => {
   it("chaque état lu a son libellé · « encaissé » n'est jamais un choix", () => {
-    expect(Object.keys(LIBELLES_ETAT_CHEQUE).sort()).toEqual(['ANNULE', 'EMIS_SANS_PIECE', 'ENCAISSE', 'EN_CIRCULATION']);
+    expect(Object.keys(LIBELLES_ETAT_CHEQUE).sort()).toEqual(['ANNULE', 'EMIS_SANS_PIECE', 'ENCAISSE', 'EN_CIRCULATION', 'PIECE_ANNULEE']);
   });
 });

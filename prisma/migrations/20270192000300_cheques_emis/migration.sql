@@ -75,11 +75,14 @@ ALTER TABLE "cheques_emis" ADD CONSTRAINT "cheques_emis_ecritureId_fkey" FOREIGN
 
 -- LA BASE TIENT CE QUE LE SERVICE DIT · une plage croissante et positive ; un
 -- chèque émis porte sa date, son bénéficiaire et un montant positif ; un
--- chèque annulé porte son motif et son instant.
+-- chèque annulé porte son motif et son instant. Il peut garder sa pièce quand
+-- elle est corrigée par son négatif (relecture M3 et m9 · la pièce ne paie
+-- plus rien, et le lien date l'annulation au journal pour le total en
+-- circulation à une date passée) · le service seul en décide.
 ALTER TABLE "chequiers" ADD CONSTRAINT "chequiers_plage"
   CHECK ("numeroDebut" > 0 AND "numeroFin" >= "numeroDebut" AND "largeur" BETWEEN 1 AND 12);
 ALTER TABLE "cheques_emis" ADD CONSTRAINT "cheques_emis_etat"
   CHECK (
     ("etat" = 'EMIS' AND "dateEmission" IS NOT NULL AND "beneficiaire" IS NOT NULL AND "montant" > 0 AND "annuleLe" IS NULL)
-    OR ("etat" = 'ANNULE' AND "annuleLe" IS NOT NULL AND "motifAnnulation" IS NOT NULL AND length(btrim("motifAnnulation")) > 0 AND "ecritureId" IS NULL)
+    OR ("etat" = 'ANNULE' AND "annuleLe" IS NOT NULL AND "motifAnnulation" IS NOT NULL AND length(btrim("motifAnnulation")) > 0)
   );

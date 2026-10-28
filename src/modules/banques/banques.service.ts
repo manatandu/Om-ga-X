@@ -159,7 +159,7 @@ export class BanquesService {
       const retenu = await motifRibRetenu(this.prisma, tenantId, [ribId]);
       if (retenu) {
         throw new ConflictException(
-          `${deviseChange ? 'La devise' : 'Le journal'} de ce RIB ne change pas tant qu'il porte des déclarations · ${retenu.replace(/^Le RIB porte /, 'il porte ')}`,
+          `${deviseChange ? 'La devise' : 'Le journal'} de ce RIB ne change pas tant qu'il porte des déclarations · ${retenu.replace(/^Le RIB est retenu · /, '')}`,
         );
       }
     }

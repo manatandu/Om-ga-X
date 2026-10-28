@@ -51,6 +51,7 @@ interface ChequeLu {
   pieceDecrite: string | null;
   pieceAuBrouillard: boolean;
   pieceRetiree: boolean;
+  ecartPiece: string | null;
   encaisseLe: string | null;
   motifAnnulation: string | null;
 }
@@ -63,6 +64,19 @@ interface PieceProposee {
   montant: number;
 }
 
+interface RegistreLu {
+  cheques: ChequeLu[];
+  total: number;
+  tronque: boolean;
+  enCirculation: { nombre: number; montant: number; au: string | null };
+}
+
+/** Les paramètres non vides, rien d'autre · une date vide est « aujourd'hui », jamais `au=`. */
+function requete(p: Record<string, string>): string {
+  const q = Object.entries(p).filter(([, v]) => v !== '');
+  return q.length ? `?${q.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}` : '';
+}
+
 const jourFr = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '·');
 const aujourdhui = () => new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
 
@@ -70,7 +84,9 @@ export function ChequesEmisPage() {
   const { peutEcrire, peutValider } = useAuth();
   const [banques, setBanques] = useState<BanqueLue[] | null>(null);
   const [chequiers, setChequiers] = useState<{ chequiers: Chequier[]; total: number; tronque: boolean } | null>(null);
-  const [registre, setRegistre] = useState<{ cheques: ChequeLu[]; total: number; tronque: boolean; enCirculation: { nombre: number; montant: number } } | null>(null);
+  const [registre, setRegistre] = useState<RegistreLu | null>(null);
+  // La date d'arrêté du total en circulation (relecture m9) · vide, aujourd'hui.
+  const [arreteAu, setArreteAu] = useState('');
   const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [carnetId, setCarnetId] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
@@ -90,7 +106,7 @@ export function ChequesEmisPage() {
       const [b, c, r] = await Promise.all([
         api.get<BanqueLue[]>('/banques'),
         api.get<{ chequiers: Chequier[]; total: number; tronque: boolean }>('/cheques/chequiers'),
-        api.get<{ cheques: ChequeLu[]; total: number; tronque: boolean; enCirculation: { nombre: number; montant: number } }>(`/cheques${carnetId ? `?chequierId=${carnetId}` : ''}`),
+        api.get<RegistreLu>(`/cheques${requete({ chequierId: carnetId, au: arreteAu })}`),
       ]);
       if (j !== jeton.current) return;
       setBanques(b);
@@ -99,10 +115,14 @@ export function ChequesEmisPage() {
       setErreurLecture(null);
     } catch (e) {
       if (j !== jeton.current) return;
+      // TOUTES LES LISTES REPASSENT À NULL (relecture m11) · un registre
+      // illisible ne laisse ni l'ancien carnet ni les anciennes banques.
       setRegistre(null);
+      setChequiers(null);
+      setBanques(null);
       setErreurLecture(e instanceof ApiError ? e.message : 'Registre illisible.');
     }
-  }, [carnetId]);
+  }, [carnetId, arreteAu]);
 
   useEffect(() => {
     void charger();
@@ -137,6 +157,7 @@ export function ChequesEmisPage() {
     try {
       setPieces(await api.get<{ pieces: PieceProposee[]; total: number; tronque: boolean; motif: string | null }>(`/cheques/chequiers/${carnetId}/pieces-proposees`));
     } catch (e) {
+      setPieces(null);
       setErreur(e instanceof ApiError ? e.message : 'Pièces illisibles.');
     }
   }
@@ -373,8 +394,14 @@ export function ChequesEmisPage() {
 
       {registre && (
         <div className="overflow-x-auto">
-          <div className="text-[11.5px] font-semibold">
-            En circulation · {registre.enCirculation.nombre} chèque(s) · {montant(registre.enCirculation.montant)}
+          <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+            <span className="font-semibold">
+              En circulation{registre.enCirculation.au ? ` au ${jourFr(registre.enCirculation.au)}` : ''} · {registre.enCirculation.nombre} chèque(s) · {montant(registre.enCirculation.montant)}
+            </span>
+            <label className="ecran-seul flex items-center gap-1">
+              Arrêté au
+              <input type="date" value={arreteAu} onChange={(e) => setArreteAu(e.target.value)} className="border border-border px-1" />
+            </label>
           </div>
           <table className="w-full min-w-[900px] text-[11.5px]">
             <thead>
@@ -406,14 +433,15 @@ export function ChequesEmisPage() {
                     {c.pieceDecrite ?? '·'}
                     {c.pieceAuBrouillard ? ' (brouillard)' : ''}
                     {c.pieceRetiree ? ' (retirée du journal)' : ''}
+                    {c.ecartPiece && <div className="whitespace-normal text-danger">{c.ecartPiece}</div>}
                   </td>
                   <td className="ecran-seul flex gap-1">
                     {peutEcrire && c.etat === 'EMIS_SANS_PIECE' && (
-                      <button type="button" onClick={() => { setCarnetId(c.chequierId); setRelierPour(c.id); void api.get<{ pieces: PieceProposee[]; total: number; tronque: boolean; motif: string | null }>(`/cheques/chequiers/${c.chequierId}/pieces-proposees`).then(setPieces, (e) => setErreur(e instanceof ApiError ? e.message : 'Pièces illisibles.')); }} className="border border-border px-1">
+                      <button type="button" onClick={() => { setCarnetId(c.chequierId); setRelierPour(c.id); void api.get<{ pieces: PieceProposee[]; total: number; tronque: boolean; motif: string | null }>(`/cheques/chequiers/${c.chequierId}/pieces-proposees`).then(setPieces, (e) => { setPieces(null); setErreur(e instanceof ApiError ? e.message : 'Pièces illisibles.'); }); }} className="border border-border px-1">
                         Relier
                       </button>
                     )}
-                    {peutValider && (c.etat === 'EN_CIRCULATION' || c.etat === 'EMIS_SANS_PIECE') && (
+                    {peutValider && (c.etat === 'EN_CIRCULATION' || c.etat === 'EMIS_SANS_PIECE' || c.etat === 'PIECE_ANNULEE') && (
                       <button type="button" onClick={() => void onAnnuler(c)} className="border border-border px-1">
                         Annuler
                       </button>
