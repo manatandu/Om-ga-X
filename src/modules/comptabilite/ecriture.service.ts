@@ -2899,7 +2899,24 @@ export class EcritureService {
         // Une requête pour tout le brouillard, jamais une par ligne (audit
         // final F2) · la fusion d'un compte chargé en faisait des milliers.
         if (auBrouillard.length) {
-          await tx.ligneEcriture.updateMany({ where: { id: { in: auBrouillard.map((l) => l.id) } }, data: { compteId: cible.id } });
+          // LE STATUT LU PLUS HAUT L'A ÉTÉ HORS DE CETTE TRANSACTION (relecture
+          // du circuit de visa, M1) · une pièce validée entre-temps par un
+          // collègue changeait de compte EN PLACE, sur le livre-journal, que
+          // l'art. 22, 2° de l'AUDCIF rend irréversible. Le filtre relit le
+          // statut ici (la transaction sérialisable fait tomber l'une des deux
+          // si elles se croisent), et un nombre qui manque arrête tout · la
+          // ligne validée se réimpute par l'inscription en négatif, au geste
+          // suivant.
+          const deplacees = await tx.ligneEcriture.updateMany({
+            where: { id: { in: auBrouillard.map((l) => l.id) }, ecriture: { tenantId, statut: { not: StatutEcriture.VALIDEE } } },
+            data: { compteId: cible.id },
+          });
+          if (deplacees.count !== auBrouillard.length) {
+            throw new ConflictException(
+              `${auBrouillard.length - deplacees.count} ligne(s) au brouillard ont été validées pendant la réimputation · rien n'est ` +
+                'réimputé. Relancez le geste · une ligne validée se réimpute par une inscription en négatif (AUDCIF art. 20, al. 2).',
+            );
+          }
           // L'IMPUTATION EST DU CONTENU (AUDCIF art. 22, 1°) · l'auteur de la
           // réimputation devient l'auteur du dernier contenu de chaque pièce,
           // et son visa tombe (ligne microfina-m1, constat de l'audit de
@@ -2908,10 +2925,22 @@ export class EcritureService {
           // comme les lignes (F2 · la fusion d'un compte chargé en touche des
           // milliers) · le journal d'audit en garde le filtre, qui nomme les
           // pièces, et les données, qui nomment l'auteur.
-          await tx.ecriture.updateMany({
-            where: { id: { in: [...new Set(auBrouillard.map((l) => l.ecritureId))] }, tenantId, statut: StatutEcriture.BROUILLARD },
-            data: contenuChange(createdBy, new Date()),
-          });
+          const piecesAuBrouillard = [
+            ...new Set(auBrouillard.filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD).map((l) => l.ecritureId)),
+          ];
+          if (piecesAuBrouillard.length) {
+            const auteurPose = await tx.ecriture.updateMany({
+              where: { id: { in: piecesAuBrouillard }, tenantId, statut: StatutEcriture.BROUILLARD },
+              data: contenuChange(createdBy, new Date()),
+            });
+            // Même relecture que les lignes · une tête qui n'est plus au
+            // brouillard garderait l'ancien auteur sur un contenu changé.
+            if (auteurPose.count !== piecesAuBrouillard.length) {
+              throw new ConflictException(
+                "Une pièce au brouillard a été validée pendant la réimputation · rien n'est réimputé. Relancez le geste.",
+              );
+            }
+          }
         }
         const passees: { numeroPiece: number | null; journal: string }[] = [];
         for (const groupe of parEcriture.values()) {
