@@ -206,6 +206,8 @@ const ROUTES_A_COMPTE_EN_FILTRE = [
   // Ligne sage-l3, n° 45 · les extraits bancaires d'UN compte, ou de tous.
   'modules/rapprochement/rapprochement.controller.ts listerExtraits',
   'modules/relances/relances.controller.ts historique',
+  // Ligne microfina-m2, idée 5 · les arrêtés d'UNE caisse, ou de toutes.
+  'modules/inventaire/arretes-caisse.controller.ts lister',
 ];
 
 /**
@@ -215,6 +217,11 @@ const ROUTES_A_COMPTE_EN_FILTRE = [
 const ROUTES_A_COMPTE_JUGE_PAR_LE_SERVICE: Record<string, string> = {
   'modules/inventaire/inventaire.controller.ts apercuPvCaisse':
     "la caisse du procès-verbal est requise · InventaireService.apercuPvCaisse la lit bornée au dossier et rend 404 « Compte introuvable pour ce dossier. »",
+  // Ligne microfina-m2, idée 5.
+  'modules/inventaire/arretes-caisse.controller.ts apercu':
+    "la caisse de l'arrêté est requise · ArretesCaisseService.caisse la lit bornée au dossier et rend 404 « Caisse introuvable dans ce dossier. » avant toute lecture",
+  'modules/inventaire/arretes-caisse.controller.ts plafonds':
+    "la caisse du plafond est requise · ArretesCaisseService.listerPlafonds la lit bornée au dossier (`caisse`) et rend 404 avant toute lecture",
 };
 
 /**

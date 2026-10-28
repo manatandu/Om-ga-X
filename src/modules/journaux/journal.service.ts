@@ -349,7 +349,7 @@ export class JournalService {
       const retenu = rib ? await motifRibRetenu(this.prisma, tenantId, [rib.id]) : null;
       if (retenu) {
         throw new ConflictException(
-          `Le compte du journal ${journal.code} ne change pas tant que son RIB ${rib!.abrege} porte des déclarations · ${retenu.replace(/^Le RIB porte /, 'il porte ')}`,
+          `Le compte du journal ${journal.code} ne change pas tant que son RIB ${rib!.abrege} porte des déclarations · ${retenu.replace(/^Le RIB est retenu · /, '')}`,
         );
       }
     }

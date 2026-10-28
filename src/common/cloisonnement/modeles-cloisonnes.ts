@@ -7,6 +7,16 @@
  * si les deux divergent.
  */
 export const MODELES_CLOISONNES = new Set<string>([
+  // Ligne microfina-m2 · bons de commande (idée 2), arrêtés de caisse et
+  // plafonds (idée 5), chéquiers et chèques émis (idée 9).
+  'BonCommandeFournisseur',
+  'LigneBonCommande',
+  'ExecutionBonCommande',
+  'ArreteCaisse',
+  'CoupureArreteCaisse',
+  'PlafondEncaisse',
+  'Chequier',
+  'ChequeEmis',
   'AffectationResultat',
   'ArticleStock',
   'Bailleur',

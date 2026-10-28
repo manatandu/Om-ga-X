@@ -376,7 +376,8 @@ export function EngagementsPage() {
                   {montant(e.resteAExecuter)}
                 </span>
                 <span className="ecran-seul flex gap-1.5 text-[11px]">
-                  {modifiable && e.statut === 'OUVERT' && (
+                  {e.bonCommande && <span className="text-text-dim">Bon n° {e.bonCommande.numero ?? '·'}</span>}
+                  {modifiable && !e.bonCommande && e.statut === 'OUVERT' && (
                     <button
                       type="button"
                       onClick={() => setRattachementPour(rattachementPour === e.id ? null : e.id)}
@@ -385,17 +386,17 @@ export function EngagementsPage() {
                       Rattacher
                     </button>
                   )}
-                  {modifiable && e.statut === 'OUVERT' && (
+                  {modifiable && !e.bonCommande && e.statut === 'OUVERT' && (
                     <button type="button" onClick={() => void onClore(e.id)} className="border border-border-dark px-1.5 py-0.5">
                       Clore
                     </button>
                   )}
-                  {modifiable && e.statut === 'CLOS' && (
+                  {modifiable && !e.bonCommande && e.statut === 'CLOS' && (
                     <button type="button" onClick={() => void onRouvrir(e.id)} className="border border-border-dark px-1.5 py-0.5">
                       Rouvrir
                     </button>
                   )}
-                  {modifiable && e.executions.length === 0 && (
+                  {modifiable && !e.bonCommande && e.executions.length === 0 && (
                     <button type="button" onClick={() => void onSupprimer(e.id)} className="border border-border-dark px-1.5 py-0.5">
                       Supprimer
                     </button>
@@ -415,7 +416,7 @@ export function EngagementsPage() {
                         {jour(x.ecriture.date)} · pièce {x.ecriture.numeroPiece ?? '·'} · {x.ecriture.libelle}
                       </span>
                       <span className="font-mono">{montant(x.montant)}</span>
-                      {modifiable && (
+                      {modifiable && !e.bonCommande && (
                         <button
                           type="button"
                           onClick={() => void onDetacher(e.id, x.id)}

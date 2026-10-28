@@ -53,3 +53,15 @@ export function jourUtc(date: Date): Date {
 export function echeanceDepassee(echeance: Date, aujourdhui: Date): boolean {
   return jourUtc(echeance).getTime() < jourUtc(aujourdhui).getTime();
 }
+
+/**
+ * UN JOUR AAAA-MM-JJ QUI EXISTE AU CALENDRIER, ou null (ligne microfina-m2,
+ * relecture m1) · la forme seule laissait passer « 2026-02-31 », que `Date`
+ * lit comme le 3 mars, et « 2026-13-45 », dont `toISOString` lève une erreur
+ * qui sortait en 500. Une date relue est celle qu'on a écrite, ou rien.
+ */
+export function jourValide(iso: unknown): string | null {
+  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
+}

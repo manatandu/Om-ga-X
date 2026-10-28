@@ -189,12 +189,25 @@ describe('Un RIB qui porte ses déclarations ne se retire pas en silence', () =>
   const compteur = (n: number) => ({ count: jest.fn(async () => n) });
 
   it('motifRibRetenu nomme chaque usage', async () => {
-    const prisma = { conditionBancaire: compteur(2), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(1) } as unknown as PrismaService;
+    const prisma = { conditionBancaire: compteur(2), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(1), chequier: compteur(0) } as unknown as PrismaService;
     expect(await motifRibRetenu(prisma, 't1', ['r1'])).toBe(
-      "Le RIB porte 2 version(s) de conditions bancaires, 1 appartenance(s) à une union de comptes · retirez-les d'abord (Structure › Paramètres de saisie › Conditions bancaires).",
+      "Le RIB est retenu · il porte 2 version(s) de conditions bancaires, 1 appartenance(s) à une union de comptes · retirez-les d'abord (Structure › Paramètres de saisie › Conditions bancaires).",
     );
-    const vide = { conditionBancaire: compteur(0), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(0) } as unknown as PrismaService;
+    const vide = { conditionBancaire: compteur(0), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(0), chequier: compteur(0) } as unknown as PrismaService;
     expect(await motifRibRetenu(vide, 't1', ['r1'])).toBeNull();
+    // Ligne microfina-m2, idée 9 · un carnet de chèques retient son RIB (les souches font pièce).
+    // Relecture m10 · un carnet qui a servi ne se retire plus · le message ne
+    // le promet pas, il nomme le geste qui reste (journal en sommeil) ; un
+    // carnet vierge, lui, se retire, et l'écran est nommé.
+    const carnets = (servis: number, vierges: number) => ({
+      count: jest.fn(async (a: { where: { cheques: { some?: unknown } } }) => (a.where.cheques.some ? servis : vierges)),
+    });
+    const avecCarnet = { conditionBancaire: compteur(0), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(0), chequier: carnets(1, 0) } as unknown as PrismaService;
+    const servi = await motifRibRetenu(avecCarnet, 't1', ['r1']);
+    expect(servi).toMatch(/1 chéquier\(s\) qui ont servi.*ne se retirent plus.*journal de banque en sommeil/);
+    expect(servi).not.toMatch(/retirez-les d'abord/);
+    const vierge = { conditionBancaire: compteur(0), autorisationFinancement: compteur(0), elementUnionComptesBancaires: compteur(0), chequier: carnets(0, 2) } as unknown as PrismaService;
+    expect(await motifRibRetenu(vierge, 't1', ['r1'])).toMatch(/2 chéquier\(s\) qui n'ont pas servi · retirez-les \(Traitement › Tiers et trésorerie › Chèques émis\)/);
   });
 
   it('BanquesService.supprimerRib refuse en 409 avant la base', async () => {
@@ -204,6 +217,7 @@ describe('Un RIB qui porte ses déclarations ne se retire pas en silence', () =>
       conditionBancaire: compteur(1),
       autorisationFinancement: compteur(0),
       elementUnionComptesBancaires: compteur(0),
+      chequier: compteur(0),
     } as unknown as PrismaService;
     await expect(new BanquesService(prisma).supprimerRib('t1', 'r1')).rejects.toBeInstanceOf(ConflictException);
     expect(supprime).not.toHaveBeenCalled();
@@ -216,6 +230,7 @@ describe('Un RIB qui porte ses déclarations ne se retire pas en silence', () =>
       conditionBancaire: compteur(0),
       autorisationFinancement: compteur(1),
       elementUnionComptesBancaires: compteur(0),
+      chequier: compteur(0),
     } as unknown as PrismaService;
     const service = new BanquesService(prisma);
     await expect(service.modifierRib('t1', 'r1', { devise: '' } as never)).rejects.toThrow(/La devise de ce RIB ne change pas.*1 autorisation/);
@@ -296,6 +311,7 @@ describe('Les jumeaux et le câblage (second tour)', () => {
       conditionBancaire: compteur(0),
       autorisationFinancement: compteur(1),
       elementUnionComptesBancaires: compteur(0),
+      chequier: compteur(0),
     } as unknown as PrismaService;
     const service = new JournalService(prisma);
     (service as unknown as { verifierCompteTresorerie: () => Promise<void> }).verifierCompteTresorerie = jest.fn(async () => undefined);

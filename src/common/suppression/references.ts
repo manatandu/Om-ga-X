@@ -97,6 +97,14 @@ const LIBELLES: Record<string, string> = {
   // Ligne sage-l5, fonction 88 · la répartition analytique d'un salarié retient sa section et son plan.
   'LigneRepartitionAnalytiquePaie.sectionId': 'répartitions analytiques de la paie',
   'RepartitionAnalytiquePaie.planId': 'répartitions analytiques de la paie',
+  // Ligne microfina-m2 · le bon de commande retient son fournisseur et ses
+  // sections, l'arrêté et le plafond leur caisse, le chéquier son RIB.
+  'BonCommandeFournisseur.tiersId': 'bons de commande fournisseur',
+  'LigneBonCommande.sectionId': 'lignes de bons de commande fournisseur',
+  'ExecutionBonCommande.sectionId': 'exécutions de bons de commande fournisseur',
+  'ArreteCaisse.compteId': 'arrêtés de caisse',
+  'PlafondEncaisse.compteId': "plafonds d'encaisse",
+  'Chequier.ribId': 'chéquiers (Chèques émis)',
 };
 
 function relationsVers(cible: string, exclure: string[]) {

@@ -406,8 +406,11 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // « Remises en banque » au même groupe (ligne sage-l3, fonction 40,
     // 2026-10-22), puis « Effets de commerce » (fonction 39, même jour) et
     // « Extraits bancaires » (fonction 45, même jour), puis « Financements et
-    // placements » (fonction 47, même jour).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 26],
+    // placements » (fonction 47, même jour). Puis, ligne microfina-m2 (2026-10-25),
+    // « Bons de commande fournisseur » sous « Déclarations et registres », à
+    // côté du registre des engagements qu'il nourrit, « Arrêté de caisse » et
+    // « Chèques émis » sous « Tiers et trésorerie ».
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 29],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);

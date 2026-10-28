@@ -828,6 +828,9 @@ model Tenant {
   plansAnalytiques          PlanAnalytique[]
   sectionsAnalytiques       SectionAnalytique[]
   engagementsDepense        EngagementDepense[]
+  bonsCommandeFournisseur   BonCommandeFournisseur[]
+  lignesBonCommande         LigneBonCommande[]
+  executionsBonCommande     ExecutionBonCommande[]
   odAnalytiques             OdAnalytique[]
   lignesOdAnalytique        LigneOdAnalytique[]
   clesRepartition           CleRepartition[]
@@ -870,6 +873,11 @@ model Tenant {
   consommationsUniteOeuvre         ConsommationUniteOeuvre[]
   pvComptageCaisse                 ProcesVerbalComptageCaisse[]
   coupuresComptees                 CoupureComptee[]
+  arretesCaisse                    ArreteCaisse[]
+  coupuresArreteCaisse             CoupureArreteCaisse[]
+  plafondsEncaisse                 PlafondEncaisse[]
+  chequiers                        Chequier[]
+  chequesEmis                      ChequeEmis[]
   evenementsAudit                  EvenementAudit[]
   mandatsAuditeur                  MandatAuditeur[]
   accordsCadresPlan                AccordCadrePlan[]
@@ -1497,6 +1505,9 @@ model Compte {
   /// Lignes du registre des provisions portées par ce compte (ch. 18 § 5.3).
   provisionsRisquesCharges   ProvisionRisqueCharge[]
   ProcesVerbalComptageCaisse ProcesVerbalComptageCaisse[]
+  /// Ligne microfina-m2, idée 5 · arrêtés quotidiens et plafond d'encaisse de cette caisse.
+  arretesCaisse              ArreteCaisse[]
+  plafondsEncaisse           PlafondEncaisse[]
 
   /// Articles de magasin rattachés à ce compte de stock (classe 3).
   articlesStock ArticleStock[]
@@ -1879,6 +1890,8 @@ model Exercice {
   reclassementsImmo            ReclassementImmobilisation[]
   budgetsSection               BudgetSection[]
   engagementsDepense           EngagementDepense[]
+  bonsCommandeFournisseur      BonCommandeFournisseur[]
+  arretesCaisse                ArreteCaisse[]
   odAnalytiques                OdAnalytique[]
   clesRepartition              CleRepartition[]
   coutsProductionDeclares      CoutProductionDeclare[]
@@ -2252,6 +2265,8 @@ model Ecriture {
   transfertGroupe                 TransfertImmobilisationGroupe?      @relation("TransfertGroupeEcriture")
   transfertGroupeNegatif          TransfertImmobilisationGroupe?      @relation("TransfertGroupeNegatif")
   /// Ligne sage-l6 · les pièces justificatives jointes à l'écriture.
+  // Ligne microfina-m2, idée 9 · le chèque émis qui paie cette pièce (SET NULL, il reste au registre).
+  chequeEmis                      ChequeEmis?
   piecesJointes                   PieceJointeEcriture[]
 
   @@index([tenantId, exerciceId, date])
@@ -3052,6 +3067,8 @@ model Tiers {
   abonnements          AbonnementCabinet[]
 
   contratsLocationAcquisition ContratLocationAcquisition[]
+  // Ligne microfina-m2, idée 2 · les bons de commande remis à ce fournisseur.
+  bonsCommande                BonCommandeFournisseur[]
 
   @@unique([tenantId, code])
   // L'agrégation du groupe interroge les tiers PAR CELLULE · sans cet index
@@ -3339,17 +3356,19 @@ model SectionAnalytique {
   estActive Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  budgets          BudgetSection[]
-  ventilations     VentilationAnalytique[]
-  engagements      EngagementDepense[]
-  lignesOd         LigneOdAnalytique[]
-  clesSource       CleRepartition[]                 @relation("CleSource")
-  lignesCle        LigneCleRepartition[]
-  coutsProduction  CoutProductionDeclare[]
+  budgets               BudgetSection[]
+  ventilations          VentilationAnalytique[]
+  engagements           EngagementDepense[]
+  lignesBonCommande     LigneBonCommande[]
+  executionsBonCommande ExecutionBonCommande[]
+  lignesOd              LigneOdAnalytique[]
+  clesSource            CleRepartition[]                 @relation("CleSource")
+  lignesCle             LigneCleRepartition[]
+  coutsProduction       CoutProductionDeclare[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie qui la nomment.
-  repartitionsPaie LigneRepartitionAnalytiquePaie[]
+  repartitionsPaie      LigneRepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la section.
-  piecesJointes    PieceJointeSection[]
+  piecesJointes         PieceJointeSection[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -3448,7 +3467,17 @@ model EngagementDepense {
 
   executions ExecutionEngagement[]
 
+  /// LE BON DE COMMANDE QUI A FAIT NAÎTRE L'ENGAGEMENT (ligne microfina-m2,
+  /// idée 2) · un engagement par ligne budgétaire du bon, à sa remise. Il se
+  /// tient PAR SON BON (exécution par la facture, clôture, réouverture) ·
+  /// le registre refuse de le retoucher à la main, sans quoi le bon et son
+  /// engagement diraient deux restes différents. RESTRICT · un bon remis ne
+  /// se supprime pas, et l'engagement ne se dénoue pas en silence.
+  bonCommandeId String?
+  bonCommande   BonCommandeFournisseur? @relation(fields: [bonCommandeId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, exerciceId, nature, reference])
+  @@index([bonCommandeId])
   @@index([tenantId, exerciceId])
   @@map("engagements_depense")
 }
@@ -3471,12 +3500,150 @@ model ExecutionEngagement {
   createdAt DateTime @default(now())
   createdBy String
 
+  /// La part de facture d'un bon de commande qui a posé ce rattachement.
+  executionBonCommande ExecutionBonCommande?
+
   // Une même écriture ne s'impute qu'une fois sur un engagement donné · deux
   // rattachements de la même facture au même bon annuleraient deux fois le
   // même reste à exécuter.
   @@unique([engagementId, ecritureId])
   @@index([ecritureId])
   @@map("executions_engagement")
+}
+
+// ---------------------------------------------------------------------------
+// BON DE COMMANDE FOURNISSEUR (ligne microfina-m2, idée 2 · Microfina++,
+// M p. 125, 126, 147 à 150).
+//
+// SYCEBNL, Guide d'application, ch. 7, APPLICATION 22, règle (d) · la colonne
+// Engagement du tableau d'exécution budgétaire porte les « bons de commande
+// de biens et services remis aux fournisseurs au cours de l'exercice
+// budgétaire, non exécutés ». Le registre des engagements les saisissait à
+// part, en double de la commande ; le bon les FAIT NAÎTRE à sa remise, un par
+// ligne budgétaire, et la facture d'achat qui le suit les EXÉCUTE.
+//
+// AUCUNE ÉCRITURE COMPTABLE · un bon remis ne débite ni ne crédite rien (le 40
+// n'est crédité que « du montant des factures », fiche du compte 40 du
+// SYCEBNL). C'est une pièce justificative d'origine interne (CPCC, ch. 1,
+// § 1.1.1 · « bons de commande adressés aux fournisseurs »), datée et
+// conservée (AUDCIF art. 17, 3°), qui n'acquiert force probante qu'avec la
+// facture et le bon de réception (CPCC, § 1.2).
+// ---------------------------------------------------------------------------
+
+/// BROUILLON (modifiable, supprimable, n'engage rien), REMIS (numéroté,
+/// engagé, plus jamais supprimé), CLOS (motif, ses engagements avec lui).
+enum StatutBonCommande {
+  BROUILLON
+  REMIS
+  CLOS
+}
+
+model BonCommandeFournisseur {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  /// « au cours de l'exercice budgétaire » (règle (d)) · la date de remise
+  /// tombe dans cet exercice, et c'est le tableau de cet exercice qu'il charge.
+  exerciceId String
+  exercice   Exercice @relation(fields: [exerciceId], references: [id])
+
+  /// Le fournisseur · un tiers de type FOURNISSEUR du dossier.
+  tiersId        String
+  tiers          Tiers   @relation(fields: [tiersId], references: [id], onDelete: Restrict)
+  /// Recopié à la REMISE, comme les identités d'une facture · un bon est un
+  /// document daté, un fournisseur renommé ne le réécrit pas.
+  fournisseurNom String?
+
+  /// NUMÉRO CONTINU PAR DOSSIER, posé à la REMISE (convention d'OmegaX) · un
+  /// brouillon se supprime sans laisser de trou, un bon remis ne se supprime
+  /// jamais. Nul tant que le bon est au brouillon.
+  numero     Int?
+  objet      String
+  dateRemise DateTime?         @db.Date
+  statut     StatutBonCommande @default(BROUILLON)
+
+  remisLe      DateTime?
+  remisPar     String?
+  /// Commande annulée, ou soldée en moins de ce qui était commandé · exigé.
+  motifCloture String?
+  closLe       DateTime?
+  closPar      String?
+
+  createdAt DateTime @default(now())
+  createdBy String
+  updatedAt DateTime @updatedAt
+
+  lignes      LigneBonCommande[]
+  engagements EngagementDepense[]
+  executions  ExecutionBonCommande[]
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, exerciceId])
+  @@index([tiersId])
+  @@map("bons_commande_fournisseur")
+}
+
+/// Une ligne du bon · une désignation sur UNE ligne budgétaire (règle (a),
+/// « suivant la nomenclature budgétaire du projet »). Le montant HT est
+/// calculé par le serveur (quantité × prix au centime) · le bon est ÉMIS par
+/// le dossier, il n'y a pas de document externe dont le chiffre ferait foi.
+model LigneBonCommande {
+  id       String                 @id @default(uuid())
+  tenantId String
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id])
+  bonId    String
+  bon      BonCommandeFournisseur @relation(fields: [bonId], references: [id], onDelete: Cascade)
+  ordre    Int
+
+  designation  String
+  quantite     Decimal @db.Decimal(18, 4)
+  prixUnitaire Decimal @db.Decimal(18, 2)
+  montantHT    Decimal @db.Decimal(18, 2)
+  /// La taxe PRÉVUE sur la facture, saisie (aucun taux deviné) · l'engagement
+  /// porte le TTC prévu, la somme que la facture portera au 40.
+  montantTva   Decimal @default(0) @db.Decimal(18, 2)
+
+  sectionId String
+  section   SectionAnalytique @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  @@unique([bonId, ordre])
+  @@index([tenantId, bonId])
+  @@index([sectionId])
+  @@map("lignes_bon_commande")
+}
+
+/// LA PART D'UNE FACTURE D'ACHAT QUI EXÉCUTE UNE LIGNE BUDGÉTAIRE DU BON ·
+/// DÉCLARÉE, jamais répartie au prorata (une facture peut solder la commande
+/// en partie, ou deux commandes). Elle réduit le RESTE À FACTURER du bon ; et
+/// quand la facture est passée dans l'exercice du bon, elle pose le
+/// rattachement de l'engagement (`executionEngagementId`) qui fait sortir la
+/// dépense de la colonne Engagement au moment où elle entre au 40.
+model ExecutionBonCommande {
+  id        String                 @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
+  bonId     String
+  bon       BonCommandeFournisseur @relation(fields: [bonId], references: [id], onDelete: Restrict)
+  factureId String
+  facture   Facture                @relation(fields: [factureId], references: [id], onDelete: Restrict)
+  sectionId String
+  section   SectionAnalytique      @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  montant   Decimal                @db.Decimal(18, 2)
+
+  /// Nul quand la facture est d'un exercice POSTÉRIEUR · le tableau de
+  /// l'exercice du bon est établi exercice par exercice, le bon y était non
+  /// exécuté à la clôture, et son engagement reste tel.
+  executionEngagementId String?              @unique
+  executionEngagement   ExecutionEngagement? @relation(fields: [executionEngagementId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@unique([bonId, factureId, sectionId])
+  @@index([tenantId, bonId])
+  @@index([factureId])
+  @@index([sectionId])
+  @@map("executions_bon_commande")
 }
 
 enum NatureEngagement {
@@ -4160,6 +4327,9 @@ model Devise {
   lignes           LigneEcriture[]
   // PV de caisse comptés dans cette devise (ligne A10).
   pvComptageCaisse ProcesVerbalComptageCaisse[]
+  // Arrêtés de caisse et plafonds d'encaisse dans cette devise (ligne microfina-m2).
+  arretesCaisse    ArreteCaisse[]
+  plafondsEncaisse PlafondEncaisse[]
 
   @@unique([tenantId, code])
   @@map("devises")
@@ -7141,6 +7311,126 @@ model ProcesVerbalComptageCaisse {
   @@map("proces_verbaux_comptage_caisse")
 }
 
+// ---------------------------------------------------------------------------
+// ARRÊTÉ DE CAISSE ET PLAFOND D'ENCAISSE (ligne microfina-m2, idée 5 ·
+// Microfina++, M p. 19, 90 à 92).
+//
+// Fiche du compte 57 des deux plans · « le solde du compte caisse doit
+// toujours correspondre exactement à la somme disponible réellement », et ses
+// éléments de contrôle · « procès-verbaux de caisse ; états de reddition de la
+// caisse ; bordereaux de situation journalière » (SYCEBNL Partie 2 ch. 3 ;
+// AUDCIF Titre VII). Le procès-verbal de comptage d'inventaire
+// (`ProcesVerbalComptageCaisse`) compte la caisse à la clôture ; l'arrêté la
+// compte au JOUR, par coupures, contre le solde de tout ce qui est saisi.
+// Aucune écriture · un écart se dit, il ne se passe pas d'office (aucune
+// source lue ne dit quoi créditer d'un excédent de caisse).
+// ---------------------------------------------------------------------------
+
+model ArreteCaisse {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  exerciceId String
+  exercice   Exercice @relation(fields: [exerciceId], references: [id])
+  /// La caisse arrêtée · un compte 57 d'imputation du dossier.
+  compteId   String
+  compte     Compte   @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  /// Le jour arrêté · le solde comparé est celui de la fin de ce jour.
+  jour       DateTime @db.Date
+  /// AJOUT DE L'ÉDITEUR, comme au PV · une caisse bouge dans la journée.
+  heure      String?  @db.VarChar(5)
+
+  /// L'UNITÉ · une caisse dont les lignes portent une seule devise s'arrête
+  /// dans cette devise (même règle que le refus de la caisse créditrice),
+  /// francs sinon · nul = francs.
+  deviseId String?
+  devise   Devise? @relation(fields: [deviseId], references: [id], onDelete: Restrict)
+
+  /// FIGÉ à l'arrêté · le solde de tout ce qui est saisi à la fin du jour
+  /// (brouillard compris, situation et à-nouveau provisoire exclus), lu par le
+  /// serveur, jamais saisi.
+  soldeTheorique                Decimal @db.Decimal(18, 2)
+  /// Combien d'écritures au brouillard ce solde comprend · un arrêté du jour
+  /// lit d'ordinaire des pièces que la validation mensuelle (AUDCIF art. 22,
+  /// 2°) n'a pas encore portées au livre-journal, et c'est dit.
+  ecrituresAuBrouillard         Int
+  /// Dont celles d'un exercice ANTÉRIEUR non clôturé que le solde remonte
+  /// faute d'ouverture (relecture m4) · elles comptent dans le solde, et
+  /// l'arrêté le dit.
+  brouillardExercicesAnterieurs Int     @default(0)
+  /// La somme des coupures, calculée par le serveur.
+  especesComptees               Decimal @db.Decimal(18, 2)
+  /// especesComptees − soldeTheorique · positif, excédent ; négatif, manquant.
+  ecart                         Decimal @db.Decimal(18, 2)
+
+  /// Le plafond d'encaisse EN VIGUEUR au jour, recopié · nul sans plafond, ou
+  /// quand son unité n'est pas celle de l'arrêté (`plafondNonCompare` le dit).
+  plafondFige       Decimal? @db.Decimal(18, 2)
+  plafondNonCompare String?  @db.VarChar(300)
+
+  caissier     String  @db.VarChar(100)
+  controlePar  String? @db.VarChar(100)
+  observations String? @db.VarChar(1000)
+
+  etabliLe        DateTime  @default(now())
+  etabliPar       String
+  /// Un arrêté faux s'ANNULE avec son motif, jamais ne se retouche ni ne se
+  /// supprime · un seul arrêté NON ANNULÉ par caisse et par jour (index
+  /// NULLS NOT DISTINCT dans la migration).
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?   @db.VarChar(500)
+
+  coupures CoupureArreteCaisse[]
+
+  @@unique([compteId, jour, annuleLe])
+  @@index([tenantId, jour])
+  @@index([tenantId, compteId])
+  @@index([deviseId])
+  @@map("arretes_caisse")
+}
+
+/// Une coupure comptée · valeur faciale et nombre. Le total des coupures EST
+/// les espèces comptées (« arrêté par coupures »).
+model CoupureArreteCaisse {
+  id             String       @id @default(uuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  arreteId       String
+  arrete         ArreteCaisse @relation(fields: [arreteId], references: [id], onDelete: Cascade)
+  valeurUnitaire Decimal      @db.Decimal(18, 2)
+  nombre         Int
+
+  @@index([tenantId, arreteId])
+  @@map("coupures_arrete_caisse")
+}
+
+/// LE PLAFOND D'ENCAISSE D'UNE CAISSE · CONVENTION DU DOSSIER, AUCUN TEXTE LU
+/// N'EN FIXE (« maximum autorisé en caisse » de Microfina++, M p. 19). Il
+/// AVERTIT, il ne refuse jamais rien · une règle sans texte ne bloque pas une
+/// opération. Versionné par date d'effet, posé par l'administrateur avec son
+/// motif (la décision interne qui le fixe).
+model PlafondEncaisse {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  compteId  String
+  compte    Compte   @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  dateEffet DateTime @db.Date
+  montant   Decimal  @db.Decimal(18, 2)
+  /// L'unité du plafond · nul = francs.
+  deviseId  String?
+  devise    Devise?  @relation(fields: [deviseId], references: [id], onDelete: Restrict)
+  motif     String   @db.VarChar(300)
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@unique([compteId, dateEffet])
+  @@index([tenantId, compteId])
+  @@index([deviseId])
+  @@map("plafonds_encaisse")
+}
+
 /// L'unité d'un PV de caisse (ligne A10) · francs, une devise, ou francs au
 /// cours historique de chaque mouvement quand les lignes mêlent les monnaies.
 enum ModeComparaisonCaisse {
@@ -7527,10 +7817,12 @@ model Facture {
   viseePar  String?
   viseeLe   DateTime?
 
-  lignes            LigneFacture[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  factureAbonnement FactureAbonnement?
+  lignes                LigneFacture[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  factureAbonnement     FactureAbonnement?
+  /// Ligne microfina-m2, idée 2 · les bons de commande que cette facture d'achat exécute.
+  executionsBonCommande ExecutionBonCommande[]
 
   @@unique([tenantId, sens, numeroSerie])
   /// L'état détaillé interroge un MOIS de factures d'achat.
@@ -9280,9 +9572,93 @@ model RibBanque {
   conditions    ConditionBancaire[]
   autorisations AutorisationFinancement[]
   unions        ElementUnionComptesBancaires[]
+  // Ligne microfina-m2, idée 9 · les chéquiers reçus de la banque sur ce compte.
+  chequiers     Chequier[]
 
   @@unique([tenantId, abrege])
   @@map("ribs_banque")
+}
+
+// ---------------------------------------------------------------------------
+// REGISTRE DES CHÈQUES ÉMIS (ligne microfina-m2, idée 9 · Microfina++, M p.
+// 69 et 153).
+//
+// CPCC, ch. 1 § 1.1.1 · les « souches ou talons de chéquiers » sont des pièces
+// justificatives d'origine interne ; ch. 3 · le « coupon de chèque » appuie le
+// paiement d'une dette fournisseur. Guide SYSCOHADA, Partie 1 ch. 4 § 2.2 ·
+// le débiteur enregistre le chèque « dès l'émission » (prudence), la
+// tolérance d'un enregistrement à l'avis de débit exigeant que la
+// régularisation de fin de période « tienne compte des chèques en
+// circulation ». Le registre dit quel chèque est parti, lequel est annulé,
+// lequel attend sa présentation · l'état ENCAISSÉ n'est jamais saisi, il se
+// LIT au rapprochement bancaire (la ligne de la pièce au compte de la banque
+// pointée face au relevé). Aucun texte lu ne régit le chéquier lui-même ·
+// conventions d'OmegaX, dites.
+// ---------------------------------------------------------------------------
+
+/// Un carnet reçu de la banque · une plage de numéros sur un compte du dossier.
+model Chequier {
+  id            String    @id @default(uuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  ribId         String
+  rib           RibBanque @relation(fields: [ribId], references: [id], onDelete: Restrict)
+  numeroDebut   Int
+  numeroFin     Int
+  /// Le nombre de chiffres imprimés · « 0042 » se lit 42 et s'affiche sur quatre chiffres.
+  largeur       Int
+  /// Chèques pré-barrés par la banque (Microfina++ · « barré »).
+  barre         Boolean   @default(true)
+  dateReception DateTime  @db.Date
+  commentaire   String?   @db.VarChar(200)
+  createdAt     DateTime  @default(now())
+  createdBy     String
+
+  cheques ChequeEmis[]
+
+  @@index([tenantId, ribId])
+  @@map("chequiers")
+}
+
+/// ÉMIS (date, bénéficiaire, montant) ou ANNULÉ (motif) · ENCAISSÉ se lit au rapprochement.
+enum EtatChequeEmis {
+  EMIS
+  ANNULE
+}
+
+/// Un numéro du carnet qui a servi · émis, ou annulé (feuillet gâché, perdu,
+/// chèque refait). Un numéro ne sert qu'une fois.
+model ChequeEmis {
+  id           String         @id @default(uuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  chequierId   String
+  chequier     Chequier       @relation(fields: [chequierId], references: [id], onDelete: Restrict)
+  numero       Int
+  etat         EtatChequeEmis
+  dateEmission DateTime?      @db.Date
+  beneficiaire String?        @db.VarChar(150)
+  montant      Decimal?       @db.Decimal(18, 2)
+
+  /// LA PIÈCE QUI PAIE PAR CE CHÈQUE · une pièce de la banque du chéquier.
+  /// SET NULL · la pièce au brouillard se retire sans être retenue par le
+  /// registre ; le chèque reste émis, « sans pièce », sa description gardée
+  /// (`pieceDecrite`), et se rattache à la pièce repassée. Une pièce validée
+  /// est indélébile (AUDCIF art. 22, 2°) et ne part jamais.
+  ecritureId   String?   @unique
+  ecriture     Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: SetNull)
+  pieceDecrite String?   @db.VarChar(200)
+
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?   @db.VarChar(500)
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@unique([chequierId, numero])
+  @@index([tenantId, chequierId])
+  @@map("cheques_emis")
 }
 
 /// CONDITIONS BANCAIRES D'UN COMPTE (ligne sage-l3, fonction 46 · Sage,
