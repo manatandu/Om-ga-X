@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { jourDeKinshasaIso } from '../lib/roles-cantonnes';
-import { dateLue, LIBELLE_NATURE_RECU, type DetentionServie, type RecuServi } from '../lib/detention-bien';
+import { dateLue, LIBELLE_NATURE_RECU, salarieRetenu, type ActeAnnulable, type DetentionServie, type RecuServi } from '../lib/detention-bien';
 import { Aide } from './chrome/Aide';
 
 interface Historique {
   bien: { id: string; designation: string; sorti: boolean };
   enCours: DetentionServie | null;
+  acteAnnulable: ActeAnnulable | null;
   detentions: DetentionServie[];
   total: number;
   tronque: boolean;
@@ -61,6 +62,10 @@ function RecuDetention({ recuId, onFait }: { recuId: string; onFait: () => void 
   const [signataires, setSignataires] = useState('');
   const [date, setDate] = useState(() => jourDeKinshasaIso(new Date()));
   const [occupe, setOccupe] = useState(false);
+  // Relecture m8 · la réponse d'une déclaration ne vaut que pour le reçu
+  // qu'elle vise · un autre reçu ouvert entre-temps ne reçoit pas son texte.
+  const recuCourant = useRef(recuId);
+  recuCourant.current = recuId;
   useEffect(() => {
     let vivant = true;
     setRecu(null);
@@ -75,13 +80,15 @@ function RecuDetention({ recuId, onFait }: { recuId: string; onFait: () => void 
   }, [recuId]);
   const declarer = async (e: React.FormEvent) => {
     e.preventDefault();
+    const vise = recuId;
     setOccupe(true);
     setErreur(null);
     try {
-      setRecu(await api.post<RecuComplet>(`/immobilisations/detentions/recus/${recuId}/signature`, { signataires, date }));
+      const r = await api.post<RecuComplet>(`/immobilisations/detentions/recus/${vise}/signature`, { signataires, date });
+      if (recuCourant.current === vise) setRecu(r);
       onFait();
     } catch (err) {
-      setErreur(message(err, 'La signature n’a pas pu être déclarée.'));
+      if (recuCourant.current === vise) setErreur(message(err, 'La signature n’a pas pu être déclarée.'));
     } finally {
       setOccupe(false);
     }
@@ -91,6 +98,11 @@ function RecuDetention({ recuId, onFait }: { recuId: string; onFait: () => void 
   return (
     <div className="border border-border bg-fenetre p-2 mt-2 text-[11.5px]" data-testid="recu-detention">
       <pre className="whitespace-pre-wrap font-[inherit] mb-2">{recu.texte}</pre>
+      {recu.annulation && (
+        <div className="text-warning mb-2" data-testid="recu-annule">
+          Acte annulé le {new Date(recu.annulation.le).toLocaleDateString('fr-FR')} par {recu.annulation.par ?? '·'} · {recu.annulation.motif ?? '·'}
+        </div>
+      )}
       <div className="mb-2">
         {recu.signature ? (
           <span data-testid="signature-declaree">
@@ -104,7 +116,7 @@ function RecuDetention({ recuId, onFait }: { recuId: string; onFait: () => void 
         <button type="button" className="border border-border-dark px-2 py-[3px]" onClick={() => setErreur(imprimerRecu(recu))}>
           Imprimer le reçu
         </button>
-        {!recu.signature && peutValider && (
+        {!recu.signature && !recu.annulation && peutValider && (
           <form onSubmit={(e) => void declarer(e)} className="flex gap-2 items-end flex-wrap">
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Signé par</span>
@@ -148,11 +160,12 @@ type Geste = 'AFFECTATION' | 'TRANSFERT' | 'LIBERATION';
 export function DetenteurImmobilisation({
   bien,
   onFait,
-  onOccupe,
+  onEtatTravail,
 }: {
   bien: { id: string; designation: string };
   onFait: (message: string) => void;
-  onOccupe?: (occupe: boolean) => void;
+  /** Relecture m9 · la fermeture gardée (F177) · un envoi tient, une saisie entamée se confirme. */
+  onEtatTravail?: (etat: { occupe: boolean; nonEnregistre: boolean }) => void;
 }) {
   const { peutValider } = useAuth();
   const [historique, setHistorique] = useState<Historique | null>(null);
@@ -169,6 +182,7 @@ export function DetenteurImmobilisation({
   const [observation, setObservation] = useState('');
   const [occupe, setOccupe] = useState(false);
   const [recuOuvert, setRecuOuvert] = useState<string | null>(null);
+  const [annulation, setAnnulation] = useState<{ motif: string } | null>(null);
   const jeton = useRef(0);
 
   const charger = useCallback(() => {
@@ -183,9 +197,11 @@ export function DetenteurImmobilisation({
   // Le rappel passe par une référence · la fiche le recrée à chaque rendu, et
   // le mettre en dépendance relançait l'effet, qui la faisait se redessiner,
   // sans fin.
-  const surOccupe = useRef(onOccupe);
-  surOccupe.current = onOccupe;
-  useEffect(() => surOccupe.current?.(occupe), [occupe]);
+  const surEtat = useRef(onEtatTravail);
+  surEtat.current = onEtatTravail;
+  const nonEnregistre =
+    (geste !== null && (salarieId !== '' || lieuId !== '' || observation.trim() !== '')) || (annulation !== null && annulation.motif.trim() !== '');
+  useEffect(() => surEtat.current?.({ occupe, nonEnregistre }), [occupe, nonEnregistre]);
 
   // Les salariés sous contrat à la DATE du geste · relus quand elle change.
   useEffect(() => {
@@ -198,8 +214,9 @@ export function DetenteurImmobilisation({
       (r) => {
         if (!vivant) return;
         setSalaries({ liste: r.salaries, tronque: r.tronque });
-        // Un choix unique se présélectionne.
-        if (r.salaries.length === 1) setSalarieId(r.salaries[0].id);
+        // Un choix unique se présélectionne ; un choix que la nouvelle date
+        // n'admet plus est vidé (relecture m5).
+        setSalarieId((actuel) => salarieRetenu(actuel, r.salaries));
       },
       (e) => vivant && setErreurSalaries(message(e, 'La liste des salariés n’a pas pu être lue.')),
     );
@@ -221,8 +238,11 @@ export function DetenteurImmobilisation({
 
   const ouvrir = (g: Geste) => {
     setGeste(g);
+    setAnnulation(null);
     setErreur(null);
     setSalarieId('');
+    // Relecture m6 · le lieu du geste précédent ne se reporte pas en silence.
+    setLieuId('');
     setObservation('');
   };
   const envoyer = async (e: React.FormEvent) => {
@@ -244,8 +264,29 @@ export function DetenteurImmobilisation({
       charger();
     } catch (err) {
       setErreur(message(err, 'Le geste n’a pas pu être enregistré.'));
+      // Relecture m7 · un refus peut venir d'un acte passé ailleurs entre-temps ·
+      // l'historique se relit, sans quoi l'écran garderait l'état périmé.
+      charger();
     } finally {
       setOccupe(false);
+    }
+  };
+  const annuler = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const acte = historique?.acteAnnulable;
+    if (!acte || !annulation) return;
+    setOccupe(true);
+    setErreur(null);
+    try {
+      await api.post(`/immobilisations/detentions/${acte.detentionId}/annuler`, { recuId: acte.recuId, motif: annulation.motif.trim() });
+      setAnnulation(null);
+      setRecuOuvert(null);
+      onFait(`Acte annulé · le reçu n° ${acte.numero ?? '·'} reste au registre, marqué annulé.`);
+    } catch (err) {
+      setErreur(message(err, 'L’annulation n’a pas pu être enregistrée.'));
+    } finally {
+      setOccupe(false);
+      charger();
     }
   };
 
@@ -270,13 +311,14 @@ export function DetenteurImmobilisation({
             {enCours.bienSortiPendantLaDetention && (
               <span className="text-warning"> · bien sorti du registre le {dateLue(enCours.dateSortieDuBien)}, détention à libérer</span>
             )}
+            {enCours.detenteurSansContratEnCours && <span className="text-warning"> · aucun contrat en cours aujourd’hui, à transférer ou libérer</span>}
           </>
         ) : (
           <span className="text-text-dim">Aucun détenteur</span>
         )}
       </div>
 
-      {peutValider && !geste && (
+      {peutValider && !geste && !annulation && (
         <div className="flex gap-2 mb-2">
           {!enCours && !historique.bien.sorti && (
             <button type="button" className="bg-sel text-white px-3 py-[4px] font-semibold" onClick={() => ouvrir('AFFECTATION')}>
@@ -293,7 +335,50 @@ export function DetenteurImmobilisation({
               Libérer
             </button>
           )}
+          {historique.acteAnnulable && (
+            <button
+              type="button"
+              className="border border-border-dark px-2 py-[3px]"
+              onClick={() => {
+                setErreur(null);
+                setAnnulation({ motif: '' });
+              }}
+            >
+              Annuler le dernier acte (reçu n° {historique.acteAnnulable.numero ?? '·'})
+            </button>
+          )}
         </div>
+      )}
+
+      {annulation && historique.acteAnnulable && (
+        <form onSubmit={(e) => void annuler(e)} className="border border-border bg-fenetre p-2 mb-2 flex flex-wrap gap-2 items-end">
+          <span className="font-semibold w-full flex items-center gap-1.5">
+            {historique.acteAnnulable.genre === 'LIBERATION' ? 'Annuler le retour' : 'Annuler la remise'} · reçu n° {historique.acteAnnulable.numero ?? '·'}
+            <Aide
+              titre="Annuler un acte de détention"
+              texte="Seul le dernier acte du bien s’annule, du plus récent au plus ancien. Rien ne s’efface · la détention et son reçu sont marqués annulés, le numéro du reçu reste dans la suite. Une remise par transfert annulée rend le bien au détenteur précédent ; un retour annulé rend le bien à son détenteur. Le lieu donné à la remise n’est pas rendu · déplacez le bien s’il le faut."
+              source="Convention d’OmegaX"
+            />
+          </span>
+          <label className="flex flex-col gap-0.5 flex-1 min-w-[260px]">
+            <span className="text-text-dim">Motif</span>
+            <input
+              aria-label="Motif de l’annulation"
+              value={annulation.motif}
+              onChange={(e) => setAnnulation({ motif: e.target.value })}
+              required
+              minLength={3}
+              maxLength={500}
+              className="border border-border-dark px-2 py-[3px]"
+            />
+          </label>
+          <button type="submit" disabled={occupe} className="bg-sel text-white px-3 py-[4px] font-semibold disabled:opacity-60">
+            Confirmer l’annulation
+          </button>
+          <button type="button" disabled={occupe} onClick={() => setAnnulation(null)} className="border border-border-dark px-2 py-[3px]">
+            Fermer
+          </button>
+        </form>
       )}
 
       {geste && (
@@ -361,16 +446,20 @@ export function DetenteurImmobilisation({
         </thead>
         <tbody>
           {historique.detentions.map((d) => (
-            <tr key={d.id}>
-              <td>{d.salarie.nom}</td>
+            <tr key={d.id} className={d.annulation ? 'text-text-dim' : undefined}>
+              <td>
+                {d.salarie.nom}
+                {d.annulation && <span title={d.annulation.motif ?? undefined}> · annulée</span>}
+                {d.bienSortiAvantLaRemise && <span className="text-warning"> · bien sorti avant la remise</span>}
+              </td>
               <td>{dateLue(d.dateDebut)}</td>
-              <td>{d.dateFin ? dateLue(d.dateFin) : 'en cours'}</td>
+              <td>{d.annulation ? '·' : d.dateFin ? dateLue(d.dateFin) : 'en cours'}</td>
               <td>{d.lieu ? d.lieu.code : '·'}</td>
               <td className="whitespace-nowrap">
                 {[d.recuRemise, d.recuFin].filter((r): r is RecuServi => !!r).map((r) => (
                   <button key={r.id} type="button" className="text-sel underline mr-2" onClick={() => setRecuOuvert(recuOuvert === r.id ? null : r.id)}>
                     n° {r.numero}
-                    {r.signature ? '' : ' (non signé)'}
+                    {r.annulation ? ' (annulé)' : r.signature ? '' : ' (non signé)'}
                   </button>
                 ))}
               </td>
@@ -396,6 +485,8 @@ interface Suivi {
   total: number;
   tronque: boolean;
   detentionsOuvertesSurBienSorti: number;
+  detenteursSansContratEnCours?: number;
+  biensSortisAvantLaRemise?: number;
 }
 
 /**
@@ -466,6 +557,16 @@ export function SuiviDetentions() {
           {suivi.detentionsOuvertesSurBienSorti} bien(s) sorti(s) du registre restent détenus · libérez-les depuis leur fiche.
         </div>
       )}
+      {suivi && (suivi.detenteursSansContratEnCours ?? 0) > 0 && (
+        <div className="text-warning mb-2" data-testid="suivi-sans-contrat">
+          {suivi.detenteursSansContratEnCours} bien(s) détenu(s) par un salarié sans contrat en cours aujourd’hui · transférez-les ou libérez-les.
+        </div>
+      )}
+      {suivi && (suivi.biensSortisAvantLaRemise ?? 0) > 0 && (
+        <div className="text-warning mb-2" data-testid="suivi-sortis-avant-remise">
+          {suivi.biensSortisAvantLaRemise} détention(s) dont le bien est sorti avant la remise · annulez la détention ou corrigez la sortie.
+        </div>
+      )}
       {suivi && (
         <table className="w-full">
           <thead>
@@ -483,7 +584,11 @@ export function SuiviDetentions() {
               <tr key={d.id}>
                 <td>{d.bien.designation}</td>
                 <td>{d.bien.numeroInventaire ?? '·'}</td>
-                <td>{d.salarie.nom}</td>
+                <td>
+                  {d.salarie.nom}
+                  {d.detenteurSansContratEnCours && <span className="text-warning"> · sans contrat en cours</span>}
+                  {d.bienSortiAvantLaRemise && <span className="text-warning"> · sorti avant la remise</span>}
+                </td>
                 <td>{dateLue(d.dateDebut)}</td>
                 <td>{d.dateFin ? dateLue(d.dateFin) : 'en cours'}</td>
                 <td>{d.lieu ? d.lieu.code : '·'}</td>

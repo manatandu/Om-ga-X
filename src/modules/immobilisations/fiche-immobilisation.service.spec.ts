@@ -25,6 +25,8 @@ function fabrique(
     /** Le maillon qui laisse l'exercice clos a une pré-image ILLISIBLE (ligne k6-defauts). */
     preImageIllisible?: boolean;
     numerotation?: 'CONTINUE_JOURNAL' | 'MENSUELLE';
+    /** Ligne Microfina M4 · le jour de la première remise vivante (relecture m1). */
+    premiereRemise?: string;
   } = {},
 ) {
   const statut = options.statut ?? 'BROUILLARD';
@@ -137,6 +139,19 @@ function fabrique(
         ),
       ),
       findFirst: jest.fn().mockResolvedValue({ horodatage: new Date('2025-01-01T00:00:00Z') }),
+    },
+    // Ligne Microfina M4 · détentions VIVANTES et reçus vivants (relecture B1),
+    // et la première remise (m1) · aucune, sauf quand le cas en pose.
+    detentionBien: {
+      count: jest.fn().mockResolvedValue(usages.detentionBien ?? 0),
+      findFirst: jest.fn().mockResolvedValue(options.premiereRemise ? { dateDebut: new Date(`${options.premiereRemise}T00:00:00Z`) } : null),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    recuDetentionBien: {
+      count: jest.fn().mockResolvedValue(usages.recuDetentionBien ?? 0),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
     },
     annulationTraitementImmobilisation: {
       count: jest.fn().mockResolvedValue(0),
@@ -418,5 +433,37 @@ describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () 
     expect(etat.neeDUneEcriturePassee).toBe(true);
     expect(etat.suppression.ouverte).toBe(true);
     expect(etat.modificationAEffet.ouverte).toBe(false);
+  });
+});
+
+describe('la fiche et ses détentions (ligne Microfina M4, relecture B1 et m1)', () => {
+  it('une détention VIVANTE retient la suppression, et le refus nomme l’annulation à rebours', async () => {
+    const { service, prisma } = fabrique({ usages: { detentionBien: 1, recuDetentionBien: 1 } });
+    await expect(service.supprimer('t-1', ID)).rejects.toThrow(/annulez-les d’abord depuis le volet Détenteur/);
+    expect(prisma.immobilisation.delete).not.toHaveBeenCalled();
+    // Le compte ne lit que les actes vivants.
+    expect(prisma.detentionBien.count).toHaveBeenCalledWith({ where: { tenantId: 't-1', immobilisationId: ID, annuleeLe: null } });
+    expect(prisma.recuDetentionBien.count).toHaveBeenCalledWith({ where: { tenantId: 't-1', immobilisationId: ID, annuleLe: null } });
+  });
+
+  it('la fiche dont les détentions sont annulées se supprime · elles et leurs reçus partent DÉTACHÉS, jamais supprimés, avant la fiche', async () => {
+    const { service, prisma } = fabrique();
+    const ordre: string[] = [];
+    prisma.detentionBien.findMany.mockResolvedValueOnce([{ id: 'd-1' }]);
+    prisma.recuDetentionBien.findMany.mockResolvedValueOnce([{ id: 'r-1' }, { id: 'r-2' }]);
+    prisma.detentionBien.update.mockImplementation(async () => ordre.push('detention'));
+    prisma.recuDetentionBien.update.mockImplementation(async () => ordre.push('recu'));
+    prisma.immobilisation.delete.mockImplementation(async () => ordre.push('fiche'));
+    await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
+    expect(prisma.detentionBien.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 't-1', immobilisationId: ID, annuleeLe: { not: null } } }));
+    expect(prisma.detentionBien.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { immobilisationId: null } });
+    expect(prisma.recuDetentionBien.update).toHaveBeenCalledWith({ where: { id: 'r-2' }, data: { immobilisationId: null } });
+    expect(ordre).toEqual(['detention', 'recu', 'recu', 'fiche']);
+  });
+
+  it('m1 · la date d’acquisition ne passe pas après la première remise vivante · rien n’est écrit', async () => {
+    const { service, prisma } = fabrique({ premiereRemise: '2026-01-05' });
+    await expect(service.modifier('t-1', 'u-1', ID, { dateAcquisition: '2026-02-01' } as never)).rejects.toThrow(/remis à un salarié le 2026-01-05/);
+    expect(prisma.immobilisation.update).not.toHaveBeenCalled();
   });
 });

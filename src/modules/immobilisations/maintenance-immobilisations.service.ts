@@ -7,6 +7,8 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ImmobilisationService } from './immobilisation.service';
 import { estCompteDeBien } from './compte-du-bien';
 import { filtreLignesDeBienSansFiche } from './creation-depuis-ecritures.service';
+import { compterDetenteursSansContrat, compterSortiesAvantLaRemise } from './detention-bien.service';
+import { jourDeKinshasa } from '../../common/echeance';
 import {
   FicheANumeroter,
   ParametresRenumerotation,
@@ -198,8 +200,9 @@ export class MaintenanceImmobilisationsService {
     // salarié · nommé par sa désignation (jamais le nom du salarié, la
     // maintenance n'étant pas le registre du personnel), rien n'est libéré
     // d'office · la date du retour se déclare.
-    const filtreDetenusSortis = { tenantId, dateFin: null, immobilisation: { statut: { not: StatutImmobilisation.EN_SERVICE } } };
-    const [detenusSortis, detenusSortisTotal] = await Promise.all([
+    // Une détention ANNULÉE ne dit plus que le bien est en main (relecture B1).
+    const filtreDetenusSortis = { tenantId, dateFin: null, annuleeLe: null, immobilisation: { statut: { not: StatutImmobilisation.EN_SERVICE } } };
+    const [detenusSortis, detenusSortisTotal, detenteursSansContrat, sortisAvantLaRemise] = await Promise.all([
       this.prisma.detentionBien.findMany({
         where: { ...filtreDetenusSortis, tenantId },
         orderBy: { dateDebut: 'asc' },
@@ -207,6 +210,11 @@ export class MaintenanceImmobilisationsService {
         select: { immobilisation: { select: { id: true, designation: true, numeroInventaire: true, dateSortie: true } } },
       }),
       this.prisma.detentionBien.count({ where: { ...filtreDetenusSortis, tenantId } }),
+      // Relecture m3 et m2 · deux NOMBRES, sans nom de salarié (la maintenance
+      // n'est pas le registre du personnel) · le volet Détenteur et le suivi
+      // nomment le bien.
+      compterDetenteursSansContrat(this.prisma, tenantId, jourDeKinshasa(new Date())),
+      compterSortiesAvantLaRemise(this.prisma, tenantId),
     ]);
 
     const doubles = numerosEnDouble(fiches);
@@ -224,13 +232,15 @@ export class MaintenanceImmobilisationsService {
       numerosEnDouble: doubles.slice(0, PLAFOND_NOMMES),
       numerosEnDoubleTotal: doubles.length,
       biensEnServiceSansNumero: enService.filter((f) => !(f.numeroInventaire ?? '').trim()).length,
-      biensSortisEncoreDetenus: detenusSortis.map((d) => ({
-        id: d.immobilisation.id,
-        designation: d.immobilisation.designation,
-        numeroInventaire: d.immobilisation.numeroInventaire,
-        dateSortie: d.immobilisation.dateSortie ? d.immobilisation.dateSortie.toISOString().slice(0, 10) : null,
+      biensSortisEncoreDetenus: detenusSortis.flatMap((d) => (d.immobilisation ? [d.immobilisation] : [])).map((d) => ({
+        id: d.id,
+        designation: d.designation,
+        numeroInventaire: d.numeroInventaire,
+        dateSortie: d.dateSortie ? d.dateSortie.toISOString().slice(0, 10) : null,
       })),
       biensSortisEncoreDetenusTotal: detenusSortisTotal,
+      detentionsSansContratEnCours: detenteursSansContrat,
+      detentionsSortiesAvantLaRemise: sortisAvantLaRemise,
     };
   }
 

@@ -15,10 +15,12 @@ import {
   EtatDeLaFiche,
   champsAEffetDemandes,
   exerciceClosQuiPorteLaFiche,
+  motifRefusEntreeSousLesDetentions,
   motifRefusModificationAEffet,
   motifRefusSuppression,
   propositionDeDuplication,
 } from './fiche-immobilisation';
+import { detacherLesDetentionsAnnulees, detentionsQuiRetiennentLaFiche } from './detentions-de-la-fiche';
 
 type Db = Prisma.TransactionClient | PrismaService;
 const jourIso = (d: Date) => d.toISOString().slice(0, 10);
@@ -102,7 +104,7 @@ export class FicheImmobilisationService {
       return this.etat(tenantId, id);
     }
 
-    const motif = motifRefusModificationAEffet(lu.etat);
+    const motif = motifRefusModificationAEffet(lu.etat) ?? motifRefusEntreeSousLesDetentions(lu.etat, dto.dateAcquisition);
     if (motif) throw new BadRequestException(motif);
 
     const repris = !f.ecritureAcquisitionId;
@@ -178,7 +180,7 @@ export class FicheImmobilisationService {
       await transactionJournalisee(this.prisma, async (tx) => {
         // Relue dans la transaction · un traitement passé entre-temps refuse.
         const relu = await this.lire(tx, tenantId, id);
-        const encore = motifRefusModificationAEffet(relu.etat);
+        const encore = motifRefusModificationAEffet(relu.etat) ?? motifRefusEntreeSousLesDetentions(relu.etat, dto.dateAcquisition);
         if (encore) throw new ConflictException(`La fiche a changé pendant la modification · ${encore}`);
         await tx.immobilisation.update({
           where: { id: f.id },
@@ -257,6 +259,9 @@ export class FicheImmobilisationService {
         take: 1000,
       });
       for (const a of annulations) await tx.annulationTraitementImmobilisation.delete({ where: { id: a.id } });
+      // Les détentions annulées et leurs reçus restent au registre, détachés ·
+      // jamais supprimés, la suite des reçus n'a pas de trou (relecture B1).
+      await detacherLesDetentionsAnnulees(tx, tenantId, id);
       try {
         await tx.immobilisation.delete({ where: { id } });
       } catch (err) {
@@ -337,7 +342,19 @@ export class FicheImmobilisationService {
     const HORS_TRAITEMENTS = new Set(['AnnulationTraitementImmobilisation', 'PieceJointeImmobilisation', 'DetentionBien', 'RecuDetentionBien']);
     const usages = refs.filter((r) => !HORS_TRAITEMENTS.has(r.modele));
     const documents = refs.filter((r) => r.modele === 'PieceJointeImmobilisation').reduce((s, r) => s + r.nombre, 0);
-    const detentions = refs.filter((r) => r.modele === 'DetentionBien').reduce((s, r) => s + r.nombre, 0);
+    // Ligne Microfina M4, relecture B1 · seuls les actes de détention VIVANTS
+    // retiennent la suppression ; une détention annulée et ses reçus annulés
+    // partent détachés de la fiche (`detacherLesDetentionsAnnulees`).
+    const retenue = await detentionsQuiRetiennentLaFiche(db, tenantId, id);
+    // Le refus compte les DÉTENTIONS · un reçu vivant sans détention vivante
+    // (registre incohérent) retient aussi, compté à leur place.
+    const detentions = retenue.detentions > 0 ? retenue.detentions : retenue.recus;
+    // Relecture m1 · la première remise VIVANTE borne la date d'acquisition.
+    const premiere = await db.detentionBien.findFirst({
+      where: { tenantId, immobilisationId: id, annuleeLe: null },
+      orderBy: { dateDebut: 'asc' },
+      select: { dateDebut: true },
+    });
     const annulationsRetenant = await db.annulationTraitementImmobilisation.count({
       where: { tenantId, immobilisationId: id, OR: [{ ecritureOrigineId: { not: null } }, { ecritureNegatifId: { not: null } }] },
     });
@@ -386,6 +403,7 @@ export class FicheImmobilisationService {
       exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.toISOString().slice(0, 10) : null,
       documents,
       detentions,
+      premiereRemise: premiere ? premiere.dateDebut.toISOString().slice(0, 10) : null,
       renouvelle: fiche.composantRemplaceId
         ? ((await db.immobilisation.findFirst({ where: { id: fiche.composantRemplaceId, tenantId }, select: { designation: true } }))?.designation ?? '·')
         : null,

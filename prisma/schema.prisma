@@ -12922,8 +12922,14 @@ model DetentionBien {
   id               String             @id @default(uuid())
   tenantId         String
   tenant           Tenant             @relation(fields: [tenantId], references: [id])
-  immobilisationId String
-  immobilisation   Immobilisation     @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  /// Nul seulement pour une détention ANNULÉE dont la fiche a été retirée
+  /// ensuite (suppression, annulation d'un transfert dans le groupe) · elle
+  /// reste au registre, décrite par `bienDecrit`, jamais supprimée.
+  immobilisationId String?
+  immobilisation   Immobilisation?    @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  /// Le bien tel qu'il était à la remise (désignation, numéro d'inventaire) ·
+  /// figé, il dit encore de quel bien il s'agit quand la fiche n'est plus.
+  bienDecrit       String             @db.VarChar(400)
   salarieId        String
   salarie          Salarie            @relation(fields: [salarieId], references: [id], onDelete: Restrict)
   /// Le lieu où le bien est remis, s'il est dit · nul sinon.
@@ -12941,6 +12947,13 @@ model DetentionBien {
   recuFin          RecuDetentionBien? @relation("RecuFinDetention", fields: [recuFinId], references: [id], onDelete: Restrict)
   createdAt        DateTime           @default(now())
   createdBy        String
+  /// L'ANNULATION de la remise (à rebours, le dernier acte vivant du bien) ·
+  /// la détention est marquée, jamais supprimée ; nulle tant qu'elle vit.
+  /// Une seule détention OUVERTE et VIVANTE par bien · index unique partiel
+  /// écrit dans la migration (Prisma ne le déclare pas).
+  annuleeLe        DateTime?
+  annuleePar       String?
+  motifAnnulation  String?            @db.VarChar(500)
 
   @@index([tenantId, immobilisationId, dateDebut])
   @@index([tenantId, salarieId])
@@ -12959,8 +12972,10 @@ model RecuDetentionBien {
   numero               Int
   nature               NatureRecuDetention
   dateActe             DateTime            @db.Date
-  immobilisationId     String
-  immobilisation       Immobilisation      @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  /// Nul seulement pour un reçu ANNULÉ dont la fiche a été retirée ensuite ·
+  /// le reçu garde son numéro et son texte, la suite n'a pas de trou.
+  immobilisationId     String?
+  immobilisation       Immobilisation?     @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
   texte                String
   etabliLe             DateTime            @default(now())
   etabliPar            String
@@ -12968,6 +12983,10 @@ model RecuDetentionBien {
   dateSignature        DateTime?           @db.Date
   signatureDeclareeLe  DateTime?
   signatureDeclareePar String?
+  /// L'acte que ce reçu constate a été ANNULÉ · le reçu reste, marqué.
+  annuleLe             DateTime?
+  annulePar            String?
+  motifAnnulation      String?             @db.VarChar(500)
   detentionOuverte     DetentionBien?      @relation("RecuDebutDetention")
   detentionClose       DetentionBien?      @relation("RecuFinDetention")
 

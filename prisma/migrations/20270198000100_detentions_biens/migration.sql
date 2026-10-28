@@ -15,7 +15,7 @@ CREATE TABLE "recus_detention_biens" (
     "numero" INTEGER NOT NULL,
     "nature" "NatureRecuDetention" NOT NULL,
     "dateActe" DATE NOT NULL,
-    "immobilisationId" TEXT NOT NULL,
+    "immobilisationId" TEXT,
     "texte" TEXT NOT NULL,
     "etabliLe" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "etabliPar" TEXT NOT NULL,
@@ -23,6 +23,9 @@ CREATE TABLE "recus_detention_biens" (
     "dateSignature" DATE,
     "signatureDeclareeLe" TIMESTAMP(3),
     "signatureDeclareePar" TEXT,
+    "annuleLe" TIMESTAMP(3),
+    "annulePar" TEXT,
+    "motifAnnulation" VARCHAR(500),
 
     CONSTRAINT "recus_detention_biens_pkey" PRIMARY KEY ("id")
 );
@@ -31,7 +34,8 @@ CREATE TABLE "recus_detention_biens" (
 CREATE TABLE "detentions_biens" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
-    "immobilisationId" TEXT NOT NULL,
+    "immobilisationId" TEXT,
+    "bienDecrit" VARCHAR(400) NOT NULL,
     "salarieId" TEXT NOT NULL,
     "lieuId" TEXT,
     "dateDebut" DATE NOT NULL,
@@ -41,6 +45,9 @@ CREATE TABLE "detentions_biens" (
     "recuFinId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdBy" TEXT NOT NULL,
+    "annuleeLe" TIMESTAMP(3),
+    "annuleePar" TEXT,
+    "motifAnnulation" VARCHAR(500),
 
     CONSTRAINT "detentions_biens_pkey" PRIMARY KEY ("id")
 );
@@ -62,6 +69,13 @@ CREATE INDEX "detentions_biens_tenantId_immobilisationId_dateDebut_idx" ON "dete
 
 -- CreateIndex
 CREATE INDEX "detentions_biens_tenantId_salarieId_idx" ON "detentions_biens"("tenantId", "salarieId");
+
+-- UNE SEULE DÉTENTION OUVERTE ET VIVANTE PAR BIEN · tenue en base, pas
+-- seulement par le verrou de la fiche (une base retouchée à la main, ou un
+-- chemin qui oublierait le verrou, ne fait jamais deux détenteurs). Index
+-- PARTIEL · Prisma ne le déclare pas au schéma, `detention-bien.spec.ts`
+-- relit cette instruction. Une détention annulée ou terminée en sort.
+CREATE UNIQUE INDEX "detentions_biens_ouverte_vivante_key" ON "detentions_biens"("immobilisationId") WHERE "dateFin" IS NULL AND "annuleeLe" IS NULL;
 
 -- CreateIndex
 CREATE INDEX "detentions_biens_tenantId_dateDebut_idx" ON "detentions_biens"("tenantId", "dateDebut");

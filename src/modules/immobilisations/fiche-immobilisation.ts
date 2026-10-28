@@ -24,6 +24,8 @@
  * enregistrement d'annulation pointe le bien).
  */
 
+import { motifRefusEntreeApresDetention } from './detention-bien';
+
 /** Les champs sans effet comptable. */
 export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle'] as const;
 
@@ -134,6 +136,11 @@ export interface EtatDeLaFiche {
    * des reçus ne se troue pas.
    */
   detentions?: number;
+  /**
+   * Relecture m1 · le jour de la première remise VIVANTE du bien (AAAA-MM-JJ),
+   * ou null · une date d'acquisition ne se porte pas après elle.
+   */
+  premiereRemise?: string | null;
 }
 
 /**
@@ -272,14 +279,17 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
       'les retient ne se supprime pas (AUDCIF art. 22, 2°).'
     );
   }
-  // Ligne sage-l6, fonction n° 22 · un document ne se perd jamais avec la
-  // fiche, en silence · on le retire d'abord, de l'onglet Documents.
+  // Ligne Microfina M4 · un acte de détention VIVANT retient la fiche ;
+  // annulé, il part détaché d'elle (relecture B1), d'où l'issue nommée.
   if ((e.detentions ?? 0) > 0) {
     return (
-      `La fiche porte l’historique de ${e.detentions} détention(s) par un salarié, avec leurs reçus numérotés · elle ne se ` +
-      'supprime plus. Un bien qui n’existe plus se sort (mise au rebut, destruction, vol).'
+      `La fiche porte ${e.detentions} acte(s) de détention par un salarié encore en vigueur, avec leurs reçus numérotés · ` +
+      'annulez-les d’abord depuis le volet Détenteur, du plus récent au plus ancien, puis supprimez la fiche. Un bien qui ' +
+      'existe mais n’est plus utilisé se sort (mise au rebut, destruction, vol).'
     );
   }
+  // Ligne sage-l6, fonction n° 22 · un document ne se perd jamais avec la
+  // fiche, en silence · on le retire d'abord, de l'onglet Documents.
   if ((e.documents ?? 0) > 0) {
     return `La fiche porte ${e.documents} document(s) joint(s) · retirez-les d’abord, depuis l’onglet Documents de la fiche.`;
   }
@@ -320,4 +330,16 @@ export function propositionDeDuplication(f: FicheACopier) {
     unitesOeuvrePrevues: f.unitesOeuvrePrevues,
     uniteOeuvreLibelle: f.uniteOeuvreLibelle,
   };
+}
+
+/**
+ * Relecture m1 · la date d'acquisition demandée ne passe pas après la
+ * première remise VIVANTE du bien (`motifRefusEntreeApresDetention`). Rien à
+ * juger si la date ne change pas.
+ */
+export function motifRefusEntreeSousLesDetentions(e: EtatDeLaFiche, dateAcquisition: string | undefined): string | null {
+  if (!dateAcquisition || !e.premiereRemise) return null;
+  const jour = new Date(`${dateAcquisition.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(jour.getTime())) return null;
+  return motifRefusEntreeApresDetention(jour, new Date(`${e.premiereRemise}T00:00:00.000Z`));
 }

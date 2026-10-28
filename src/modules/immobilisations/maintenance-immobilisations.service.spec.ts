@@ -13,7 +13,7 @@ const jour = (s: string) => new Date(`${s}T00:00:00Z`);
 const P = { prefixe: 'IMM-', premierNumero: 1, largeur: 4, ordre: 'ACQUISITION' as const, perimetre: 'EN_SERVICE' as const };
 
 function fabrique(
-  options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[]; campagnes?: unknown[]; detenusSortis?: unknown[] } = {},
+  options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[]; campagnes?: unknown[]; detenusSortis?: unknown[]; sansContrat?: number; sortisAvant?: number } = {},
 ) {
   const fiches = options.fiches ?? [
     {
@@ -57,8 +57,11 @@ function fabrique(
     // Ligne Microfina M4 · les détentions en cours sur un bien sorti.
     detentionBien: {
       findMany: jest.fn().mockResolvedValue(options.detenusSortis ?? []),
-      count: jest.fn().mockResolvedValue((options.detenusSortis ?? []).length),
+      // La doublure HONORE la requête · le compte des détenteurs sans contrat
+      // (relecture m3) porte un filtre sur le salarié, l'autre non.
+      count: jest.fn(async ({ where }: { where: Record<string, unknown> }) => (where.salarie ? (options.sansContrat ?? 0) : (options.detenusSortis ?? []).length)),
     },
+    $queryRaw: jest.fn(async () => [{ n: BigInt(options.sortisAvant ?? 0) }]),
     $executeRaw: jest.fn(async () => {
       ordre.push('verrou');
       return 1;
@@ -201,8 +204,19 @@ describe('la maintenance', () => {
     expect(r.biensSortisEncoreDetenus).toEqual([{ id: 'z', designation: 'Moto', numeroInventaire: 'IMM-0009', dateSortie: '2026-04-30' }]);
     expect(r.biensSortisEncoreDetenusTotal).toBe(1);
     expect(prisma.detentionBien.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: 't-1', dateFin: null, immobilisation: { statut: { not: 'EN_SERVICE' } } } }),
+      expect.objectContaining({ where: { tenantId: 't-1', dateFin: null, annuleeLe: null, immobilisation: { statut: { not: 'EN_SERVICE' } } } }),
     );
     expect(JSON.stringify(prisma.detentionBien.findMany.mock.calls[0][0].select)).not.toContain('salarie');
+  });
+  it('compte les détentions sans contrat en cours et celles dont le bien est sorti avant la remise, sans nom (relecture m2, m3)', async () => {
+    const { service, prisma } = fabrique({ tableau: { groupes: [] }, balance: [], sansContrat: 2, sortisAvant: 1 });
+    const r = await service.maintenance('t-1', 'ex-n');
+    expect(r.detentionsSansContratEnCours).toBe(2);
+    expect(r.detentionsSortiesAvantLaRemise).toBe(1);
+    const sansContrat = prisma.detentionBien.count.mock.calls.find((c: [{ where: Record<string, unknown> }]) => c[0].where.salarie)[0].where;
+    expect(sansContrat).toMatchObject({ tenantId: 't-1', annuleeLe: null, dateFin: null });
+    const sql = String((prisma.$queryRaw.mock.calls[0] as unknown[])[0]);
+    expect(sql).toContain('"annuleeLe" IS NULL');
+    expect(sql).toContain('"tenantId" =');
   });
 });

@@ -45,3 +45,18 @@ export class SignatureRecuDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La date de la signature se lit AAAA-MM-JJ.' })
   date!: string;
 }
+
+/**
+ * L'annulation du dernier acte vivant d'un bien (relecture B1) · le reçu que
+ * l'écran a montré, et le motif. Le serveur rejuge l'acte sous le verrou de
+ * la fiche (`detention-bien.ts`, `acteAAnnuler`).
+ */
+export class AnnulationActeDetentionDto {
+  @IsUUID('4')
+  recuId!: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  motif!: string;
+}

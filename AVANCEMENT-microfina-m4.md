@@ -41,9 +41,42 @@ sur une période).
 - Le lieu donné à la remise devient le lieu du bien.
 - Une fiche qui porte des détentions ne se supprime plus.
 
+## Relecture indépendante (2026-10-28), corrigée
+
+- B1 · ANNULATION du dernier acte vivant, à rebours (`POST
+  /immobilisations/detentions/:id/annuler`, `recuId` montré + motif,
+  administrateur et comptable, sous `FOR UPDATE` de la fiche, mises à jour
+  unitaires au journal d'audit). Détention MARQUÉE (`annuleeLe`), reçu
+  marqué (`annuleLe`), numéro gardé ; transfert annulé rouvre la précédente,
+  libération annulée rouvre la sienne. Annulées hors du suivi, de l'ordre des
+  dates, de la suppression et du décompte du transfert dans le groupe ;
+  détachées (`immobilisationId` nul, `bienDecrit` figé) quand la fiche part
+  (`detentions-de-la-fiche.ts`). Le lieu donné à la remise n'est pas rendu
+  (aucun ancien lieu gardé), dit dans la bulle.
+- m1 · acquisition datée après la première remise vivante refusée
+  (modification de la fiche ; l'entrée dans le groupe naît sur une fiche
+  neuve, sans détention).
+- m2 · CHOIX · une sortie datée avant la remise n'est PAS refusée (acte
+  comptable daté par sa pièce, huit chemins de sortie) · NOMMÉE au volet,
+  au suivi (compteur et ligne) et à la maintenance (compteur).
+- m3 · détenteur sans contrat en cours aujourd'hui · compteur au suivi
+  (avec la ligne) et à la maintenance (nombre seul).
+- m4 · index unique partiel `detentions_biens_ouverte_vivante_key`, relu
+  par `detention-bien.spec.ts`, éprouvé en base au rejeu.
+- m5 à m11 · salarié vidé hors liste, lieu remis à zéro, historique relu
+  après un refus, réponse de signature rattachée au reçu, `nonEnregistre`
+  pour la fermeture gardée, e2e daté au plus petit du début d'exercice et
+  du jour (et annulation au navigateur), commentaire remis à sa place.
+- Maintenance · l'écran ne montrait pas les biens sortis encore détenus ·
+  servis avec les deux compteurs.
+
 ## Reste
 
-- Rejeu sur vraie base FAIT · `scripts/rejouer-detentions-biens.cjs`, tout vert (PostgreSQL 16 jetable).
+- Rejeu sur vraie base FAIT · `scripts/rejouer-detentions-biens.cjs`, tout vert (PostgreSQL 16 jetable),
+  y compris l'annulation à travers la clôture de 2025 et les deux impasses
+  (doublon supprimé après annulation ; transfert dans le groupe annulé après
+  l'annulation de la détention chez la cellule).
+- Gestionnaire de paie · choix gardé (aucun accès), à soumettre à Manasse.
 - Relecture « échecs silencieux » FAITE (relecture propre, sans agent) ·
   liste des lieux en échec dite au lieu d'une liste vide ; boucle de rendu
   du volet (rappel instable en dépendance d'effet) corrigée et gelée.

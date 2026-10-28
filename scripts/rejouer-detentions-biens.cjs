@@ -196,6 +196,132 @@ async function main() {
     verifier(l2.dateFin === '2026-05-02' && l2.recuFin?.numero === 5, 'le bien sorti se libère encore · reçu n° 5');
     r = await A.statut('POST', `/immobilisations/${bien2.id}/detentions/affectation`, { salarieId: s1.id, date: '2026-05-03' });
     verifier(r.statut === 400 && /sorti du registre/.test(JSON.stringify(r.corps)), `réaffectation d'un bien sorti refusée (${r.statut})`);
+
+    console.log('Relecture B1 · annulation à rebours sur le bien 1, à travers la clôture de 2025');
+    let h = await A.get(`/immobilisations/${bien.id}/detentions`);
+    const dKab = h.detentions.find((d) => d.salarie.id === s1.id);
+    const dMbu = h.detentions.find((d) => d.salarie.id === s2.id);
+    verifier(h.acteAnnulable?.detentionId === dMbu.id && h.acteAnnulable?.genre === 'LIBERATION' && h.acteAnnulable?.numero === 3, `acte annulable · la libération n° 3 (lu ${JSON.stringify(h.acteAnnulable)})`);
+    r = await A.statut('POST', `/immobilisations/detentions/${dKab.id}/annuler`, { recuId: dKab.recuRemise.id, motif: 'Essai sous un acte plus récent' });
+    verifier(r.statut === 400 && /à rebours/.test(JSON.stringify(r.corps)), `annulation sous un acte plus récent refusée (${r.statut})`);
+    r = await A.statut('POST', `/immobilisations/detentions/${dMbu.id}/annuler`, { recuId: dMbu.recuRemise.id, motif: 'Mauvais reçu visé' });
+    verifier(r.statut === 409, `annulation d'un autre acte que celui montré refusée en 409 (${r.statut})`);
+    r = await A.statut('POST', `/immobilisations/detentions/${dMbu.id}/annuler`, { recuId: h.acteAnnulable.recuId, motif: 'x' });
+    verifier(r.statut === 400, `motif trop court refusé (${r.statut})`);
+    h = await A.post(`/immobilisations/detentions/${dMbu.id}/annuler`, { recuId: h.acteAnnulable.recuId, motif: 'Retour saisi par erreur' });
+    verifier(h.enCours?.salarie.id === s2.id && h.enCours.dateFin === null && h.acteAnnulable?.genre === 'REMISE' && h.acteAnnulable?.numero === 2, 'libération annulée · MBUYI détient de nouveau, le transfert n° 2 devient annulable');
+    h = await A.post(`/immobilisations/detentions/${dMbu.id}/annuler`, { recuId: h.acteAnnulable.recuId, motif: 'Transfert saisi par erreur' });
+    verifier(h.enCours?.salarie.id === s1.id && h.enCours.dateDebut === '2025-03-01' && h.enCours.dateFin === null, 'transfert annulé · la détention de 2025 (exercice clôturé) se rouvre, KABILA détient');
+    verifier(h.detentions.find((d) => d.id === dMbu.id)?.annulation?.motif === 'Transfert saisi par erreur', 'la détention annulée reste à l’historique, marquée');
+    const sAnn = await A.get('/immobilisations/detentions/suivi?du=2025-01-01&au=2026-12-31');
+    verifier(!sAnn.detentions.some((d) => d.id === dMbu.id), 'suivi · la détention annulée en sort');
+    r = await A.statut('POST', `/immobilisations/${bien.id}/detentions/transfert`, { salarieId: s2.id, date: '2026-03-01' });
+    verifier(r.statut === 201 || r.statut === 200, `l’ordre des dates ne compte plus l’annulée · transfert au 2026-03-01 admis (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+    const ouvertes = await prisma.$queryRawUnsafe(`SELECT count(*)::int AS n FROM detentions_biens WHERE "immobilisationId" = $1 AND "dateFin" IS NULL AND "annuleeLe" IS NULL`, bien.id);
+    verifier(ouvertes[0].n === 1, 'une seule détention ouverte et vivante');
+    // m4 · l'index unique partiel tient en base, même hors du service.
+    const unRecu = await prisma.recuDetentionBien.findFirst({ where: { tenantId }, select: { id: true } });
+    let indexTient = false;
+    try {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO detentions_biens (id, "tenantId", "immobilisationId", "bienDecrit", "salarieId", "dateDebut", "recuDebutId", "createdBy") VALUES (gen_random_uuid()::text, $1, $2, 'x', $3, '2026-06-01', $4, 'rejeu')`,
+        tenantId, bien.id, s1.id, unRecu.id,
+      );
+    } catch (e) { indexTient = /detentions_biens_ouverte_vivante_key|recuDebutId/.test(String(e.message)); }
+    verifier(indexTient, 'm4 · une seconde détention ouverte vivante est refusée par la base');
+
+    console.log('Impasse 1 · fiche doublon affectée, annulée, supprimée');
+    const doublon = await A.post('/immobilisations', {
+      compteImmobilisationId: c2441.id, designation: 'Ordinateur (doublon)', numeroInventaire: 'INV-0099',
+      dateAcquisition: '2025-11-01', dateMiseEnService: '2025-11-01', valeurOrigine: 300000, dureeAmortissementAns: 3,
+      amortissementAnterieur: 0, repris: true, exerciceId: e2026.id,
+    });
+    const aD = await A.post(`/immobilisations/${doublon.id}/detentions/affectation`, { salarieId: s1.id, date: '2026-03-05' });
+    r = await A.statut('PATCH', `/immobilisations/${doublon.id}`, { dateAcquisition: '2026-04-01' });
+    verifier(r.statut === 400 && /remis à un salarié le 2026-03-05/.test(JSON.stringify(r.corps)), `m1 · acquisition reportée après la remise refusée (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+    r = await A.statut('DELETE', `/immobilisations/${doublon.id}`);
+    verifier(r.statut === 400 && /annulez-les d’abord/.test(JSON.stringify(r.corps)), `suppression du doublon détenu refusée avec l'issue (${r.statut})`);
+    await A.post(`/immobilisations/detentions/${aD.id}/annuler`, { recuId: aD.recuRemise.id, motif: 'Fiche en double' });
+    r = await A.statut('DELETE', `/immobilisations/${doublon.id}`);
+    verifier(r.statut === 200, `le doublon dont la détention est annulée se supprime (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+    const dDet = await prisma.detentionBien.findUnique({ where: { id: aD.id } });
+    const rDet = await prisma.recuDetentionBien.findUnique({ where: { id: aD.recuRemise.id } });
+    verifier(dDet && dDet.immobilisationId === null && dDet.annuleeLe && /doublon/.test(dDet.bienDecrit), 'la détention annulée reste, détachée, le bien décrit');
+    verifier(rDet && rDet.immobilisationId === null && rDet.annuleLe && /doublon/.test(rDet.texte), 'le reçu annulé reste, détaché, son texte garde le bien');
+    const suite = await prisma.recuDetentionBien.findMany({ where: { tenantId }, orderBy: { numero: 'asc' }, select: { numero: true } });
+    verifier(suite.every((x, i) => x.numero === i + 1), `suite des reçus sans trou (${suite.map((x) => x.numero).join(',')})`);
+    console.log('m2 et m3 · détenteur parti, sortie antidatée sous la remise');
+    const s4 = await A.post('/personnel/salaries', { nom: 'LUKUSA', prenoms: 'Marie', sexe: 'FEMININ' });
+    const c4 = await A.post(`/personnel/salaries/${s4.id}/contrats`, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2026-01-01' });
+    const tablette = await A.post('/immobilisations', {
+      compteImmobilisationId: c2441.id, designation: 'Tablette', numeroInventaire: 'INV-0101', dateAcquisition: '2025-11-01',
+      dateMiseEnService: '2025-11-01', valeurOrigine: 150000, dureeAmortissementAns: 3, amortissementAnterieur: 0, repris: true, exerciceId: e2026.id,
+    });
+    await A.post(`/immobilisations/${tablette.id}/detentions/affectation`, { salarieId: s4.id, date: '2026-02-01' });
+    await A.post(`/personnel/contrats/${c4.id}/fin`, { dateFin: '2026-04-30', motifFin: 'Démission' });
+    const camera = await A.post('/immobilisations', {
+      compteImmobilisationId: c2441.id, designation: 'Caméra', numeroInventaire: 'INV-0102', dateAcquisition: '2025-11-01',
+      dateMiseEnService: '2025-11-01', valeurOrigine: 250000, dureeAmortissementAns: 3, amortissementAnterieur: 0, repris: true, exerciceId: e2026.id,
+    });
+    await A.post(`/immobilisations/${camera.id}/detentions/affectation`, { salarieId: s1.id, date: '2026-05-10' });
+    await A.post(`/immobilisations/${camera.id}/sortie`, {
+      dateSortie: '2026-05-05', type: 'MISE_HORS_SERVICE', exerciceId: e2026.id, journalId: od.id,
+      natureSortie: 'MISE_AU_REBUT', referencePieceSortie: 'PV-REBUT-2', datePieceSortie: '2026-05-05',
+    });
+    const maintA = await A.get(`/immobilisations/maintenance?exerciceId=${e2026.id}`);
+    verifier(maintA.detentionsSansContratEnCours === 1 && maintA.detentionsSortiesAvantLaRemise === 1 && !JSON.stringify(maintA).includes('LUKUSA'), `maintenance · m3 un détenteur sans contrat, m2 une sortie avant la remise, sans nom (${maintA.detentionsSansContratEnCours}, ${maintA.detentionsSortiesAvantLaRemise})`);
+    const sM = await A.get('/immobilisations/detentions/suivi?du=2026-01-01&au=2026-12-31');
+    verifier(sM.detenteursSansContratEnCours === 1 && sM.biensSortisAvantLaRemise === 1 && sM.detentions.some((d) => d.bien.designation === 'Tablette' && d.detenteurSansContratEnCours) && sM.detentions.some((d) => d.bien.designation === 'Caméra' && d.bienSortiAvantLaRemise), 'suivi · les deux cas nommés sur leur ligne et comptés');
+
+    console.log('Impasse 2 · bien transféré dans le groupe, affecté chez le receveur, détention annulée, transfert annulé');
+    await prisma.tenant.update({ where: { id: tenantId }, data: { plafondCellules: 3 } });
+    const emailCell = `m4-cell-${stamp}@exemple.invalid`;
+    const cell = await A.post('/groupe/cellules', { nom: 'Rejeu M4 Établissement', emailAdmin: emailCell });
+    const C = new Client();
+    await C.post('/auth/login', { email: emailCell, motDePasse: cell.motDePasseTemporaire });
+    await C.post('/auth/changer-mot-de-passe', { motDePasseActuel: cell.motDePasseTemporaire, nouveauMotDePasse: MDP });
+    await C.post('/auth/login', { email: emailCell, motDePasse: MDP });
+    const ctx = await A.get('/immobilisations/transferts-groupe/contexte');
+    const dA = ctx.dossiers.find((d) => d.id === tenantId);
+    const dC = ctx.dossiers.find((d) => d.id === cell.tenant.id);
+    const bienG = await A.post('/immobilisations', {
+      compteImmobilisationId: c2441.id, designation: 'Scanner à transférer', numeroInventaire: 'INV-0100',
+      dateAcquisition: '2025-10-01', dateMiseEnService: '2025-10-01', valeurOrigine: 600000, dureeAmortissementAns: 3,
+      amortissementAnterieur: 50000, repris: true, exerciceId: e2026.id,
+    });
+    // La famille du compte 2441 naît chez la cellule avec un premier bien
+    // (elle suit le compte du bien, `compte-du-bien.ts`).
+    const planC = await C.get('/comptes?typeCompte=DETAIL');
+    const c2441C = planC.find((c) => c.numero === c2441.numero);
+    await C.patch(`/comptes/${c2441C.id}`, { estRetenu: true });
+    await C.post('/immobilisations', {
+      compteImmobilisationId: c2441C.id, designation: 'Bureau de la cellule', dateAcquisition: '2025-10-01', dateMiseEnService: '2025-10-01',
+      valeurOrigine: 200000, dureeAmortissementAns: 4, amortissementAnterieur: 0, repris: true, exerciceId: dC.exercicesOuverts[0].id,
+    });
+    const liaison = (d) => d.comptesLiaison.find((c) => /^18[4-7]/.test(c.numero)) ?? d.comptesLiaison[0];
+    const od2 = (d) => d.journaux.find((j) => j.code === 'OD') ?? d.journaux[0];
+    const trG = await A.post('/immobilisations/transferts-groupe', {
+      dossierCedantId: tenantId, immobilisationId: bienG.id, dossierReceveurId: cell.tenant.id, date: '2026-06-01',
+      referencePiece: 'TR-M4-1', datePiece: '2026-06-01', journalCedantId: od2(dA).id, journalReceveurId: od2(dC).id,
+      compteLiaisonCedantId: liaison(dA).id, compteLiaisonReceveurId: liaison(dC).id,
+    });
+    const entree = await prisma.transfertImmobilisationGroupe.findFirst({ where: { tenantId: cell.tenant.id, sens: 'ENTREE' }, select: { transfertId: true, immobilisationId: true } });
+    verifier(!!entree?.immobilisationId, `transfert passé, fiche née chez la cellule (${JSON.stringify(trG).slice(0, 120)})`);
+    const sc = await C.post('/personnel/salaries', { nom: 'NGOY', prenoms: 'Paul', sexe: 'MASCULIN' });
+    await C.post(`/personnel/salaries/${sc.id}/contrats`, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2026-01-01' });
+    const aC = await C.post(`/immobilisations/${entree.immobilisationId}/detentions/affectation`, { salarieId: sc.id, date: '2026-06-02' });
+    verifier(aC.recuRemise?.numero === 1, `affectation chez la cellule · reçu n° 1 de SA suite (lu ${aC.recuRemise?.numero})`);
+    r = await A.statut('POST', `/immobilisations/transferts-groupe/${entree.transfertId}/annulation`, { motif: 'Transfert à défaire' });
+    verifier(r.statut === 400 && /remis à un salarié/.test(JSON.stringify(r.corps)) && /volet Détenteur/.test(JSON.stringify(r.corps)), `annulation du transfert refusée tant que la détention vit, issue nommée (${r.statut} ${JSON.stringify(r.corps).slice(0, 240)})`);
+    await C.post(`/immobilisations/detentions/${aC.id}/annuler`, { recuId: aC.recuRemise.id, motif: 'Le bien repart au siège' });
+    r = await A.statut('POST', `/immobilisations/transferts-groupe/${entree.transfertId}/annulation`, { motif: 'Transfert à défaire' });
+    verifier(r.statut === 200 || r.statut === 201, `annulation du transfert admise après l'annulation de la détention (${r.statut} ${JSON.stringify(r.corps).slice(0, 240)})`);
+    const dC2 = await prisma.detentionBien.findUnique({ where: { id: aC.id } });
+    const rC2 = await prisma.recuDetentionBien.findUnique({ where: { id: aC.recuRemise.id } });
+    const ficheC = await prisma.immobilisation.findUnique({ where: { id: entree.immobilisationId } });
+    verifier(!ficheC && dC2?.immobilisationId === null && dC2?.annuleeLe && rC2?.immobilisationId === null && rC2?.annuleLe, 'la fiche reçue est retirée · détention et reçu annulés restent chez la cellule, détachés');
+    const bienGApres = await prisma.immobilisation.findUnique({ where: { id: bienG.id }, select: { statut: true } });
+    verifier(bienGApres.statut === 'EN_SERVICE', 'le siège reprend le bien');
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

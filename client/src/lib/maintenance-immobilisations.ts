@@ -48,6 +48,13 @@ export interface MaintenanceLue {
   numerosEnDouble: { numero: string; fiches: { id: string; designation: string }[] }[];
   numerosEnDoubleTotal: number;
   biensEnServiceSansNumero: number;
+  /** Ligne Microfina M4 · biens sortis du registre encore détenus par un salarié. */
+  biensSortisEncoreDetenus?: { id: string; designation: string; numeroInventaire: string | null; dateSortie: string | null }[];
+  biensSortisEncoreDetenusTotal?: number;
+  /** Relecture m3 · détentions en cours dont le détenteur n'a plus de contrat en cours (nombre seul, sans nom). */
+  detentionsSansContratEnCours?: number;
+  /** Relecture m2 · détentions dont le bien est sorti avant la remise. */
+  detentionsSortiesAvantLaRemise?: number;
 }
 
 /** La requête de l'aperçu · chaque paramètre encodé, le préfixe compris (« / » et « . » y sont admis). */

@@ -1,3 +1,4 @@
+import { detacherLesDetentionsAnnulees, detentionsQuiRetiennentLaFiche } from './detentions-de-la-fiche';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureMouvementDepreciation, Prisma, SensDepreciation, SensTransfertGroupe, StatutEcriture, StatutExercice, StatutImmobilisation, TypeJournal } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -613,10 +614,24 @@ export class TransfertGroupeService {
         // ANNULÉ ne compte pas · son historique (`AnnulationTraitementImmobilisation`)
         // garde l'acte en entier dans `acte` et se détache de la fiche avant
         // qu'elle parte (colonne nullable, prévue pour un acte sans bien).
+        // Ligne Microfina M4, relecture B1 · les détentions se jugent à part ·
+        // une détention VIVANTE chez celui qui a reçu le bien refuse, avec son
+        // issue ; une détention ANNULÉE et ses reçus annulés ne retiennent
+        // rien, ils partent détachés de la fiche (jamais supprimés).
         const refs = await referencesVers(tx, 'Immobilisation', fiche.id, entree.tenantId, [
           'TransfertImmobilisationGroupe.immobilisationId',
           'AnnulationTraitementImmobilisation.immobilisationId',
+          'DetentionBien.immobilisationId',
+          'RecuDetentionBien.immobilisationId',
         ]);
+        const detentions = await detentionsQuiRetiennentLaFiche(tx, entree.tenantId, fiche.id);
+        if (detentions.total > 0) {
+          throw new BadRequestException(
+            `Le dossier qui a reçu le bien l'a remis à un salarié (${detentions.detentions} détention(s) en vigueur, ` +
+              `${detentions.recus} reçu(s)) · annulez d'abord ces actes depuis le volet Détenteur de sa fiche, du plus récent au ` +
+              'plus ancien, puis le transfert.',
+          );
+        }
         const heritees = await tx.depreciationImmobilisation.count({ where: { immobilisationId: fiche.id, nature: NatureMouvementDepreciation.TRANSFERT_GROUPE, immobilisation: { tenantId: entree.tenantId } } });
         const usages = refs.filter((r) => !(r.modele === 'DepreciationImmobilisation' && r.nombre === heritees) && r.modele !== 'PieceJointeImmobilisation');
         if (usages.length > 0) {
@@ -639,6 +654,7 @@ export class TransfertGroupeService {
         // un `updateMany` ne laisserait que son filtre et son compte.
         const historique = await tx.annulationTraitementImmobilisation.findMany({ where: { tenantId: entree.tenantId, immobilisationId: fiche.id }, select: { id: true }, take: 1_000 });
         for (const h of historique) await tx.annulationTraitementImmobilisation.update({ where: { id: h.id }, data: { immobilisationId: null } });
+        await detacherLesDetentionsAnnulees(tx, entree.tenantId, fiche.id);
 
         const maintenant = new Date();
         const negatifs = new Map<string, string>();

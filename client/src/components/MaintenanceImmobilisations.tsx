@@ -91,6 +91,23 @@ export function MaintenanceImmobilisations({ exerciceId }: { exerciceId: string 
           {lue.biensEnServiceSansNumero > 0 && (
             <div className="mt-2 text-text-dim">Biens en service sans numéro d’inventaire · {lue.biensEnServiceSansNumero}.</div>
           )}
+          {(lue.biensSortisEncoreDetenusTotal ?? 0) > 0 && (
+            <div className="mt-2 text-warning" data-testid="maintenance-detenus-sortis">
+              Biens sortis encore détenus par un salarié ({lue.biensSortisEncoreDetenusTotal}) ·{' '}
+              {(lue.biensSortisEncoreDetenus ?? []).map((b) => b.designation).join(', ')}
+              {(lue.biensSortisEncoreDetenusTotal ?? 0) > (lue.biensSortisEncoreDetenus ?? []).length ? '…' : ''} · libérez-les depuis leur fiche.
+            </div>
+          )}
+          {(lue.detentionsSansContratEnCours ?? 0) > 0 && (
+            <div className="mt-2 text-warning" data-testid="maintenance-detenteurs-sans-contrat">
+              Biens détenus par un salarié sans contrat en cours · {lue.detentionsSansContratEnCours} · transférez-les ou libérez-les (onglet Détenteurs).
+            </div>
+          )}
+          {(lue.detentionsSortiesAvantLaRemise ?? 0) > 0 && (
+            <div className="mt-2 text-warning" data-testid="maintenance-sortis-avant-remise">
+              Détentions dont le bien est sorti avant la remise · {lue.detentionsSortiesAvantLaRemise} · annulez la détention ou corrigez la sortie.
+            </div>
+          )}
         </>
       )}
     </div>

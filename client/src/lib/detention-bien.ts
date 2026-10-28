@@ -22,17 +22,30 @@ export interface RecuServi {
   nature: 'AFFECTATION' | 'TRANSFERT' | 'LIBERATION';
   dateActe: string;
   signature: { signataires: string | null; date: string | null; declareeLe: string; declareePar: string | null } | null;
+  /** L'acte de ce reçu a été annulé · le reçu reste, marqué (relecture B1). */
+  annulation?: { le: string; par: string | null; motif: string | null } | null;
+}
+
+/** Le seul acte qui s'annule, à rebours · servi par le serveur, qui le rejuge. */
+export interface ActeAnnulable {
+  detentionId: string;
+  recuId: string;
+  genre: 'REMISE' | 'LIBERATION';
+  numero: number | null;
 }
 
 export interface DetentionServie {
   id: string;
-  bien: { id: string; designation: string; numeroInventaire: string | null };
+  bien: { id: string | null; designation: string; numeroInventaire: string | null };
   salarie: { id: string; nom: string };
   lieu: { id: string; code: string; intitule: string } | null;
   dateDebut: string;
   dateFin: string | null;
   observation: string | null;
+  annulation?: { le: string; par: string | null; motif: string | null } | null;
   bienSortiPendantLaDetention: boolean;
+  bienSortiAvantLaRemise?: boolean;
+  detenteurSansContratEnCours?: boolean;
   dateSortieDuBien: string | null;
   recuRemise: RecuServi | null;
   recuFin: RecuServi | null;
@@ -50,3 +63,14 @@ export function dateLue(iso: string | null | undefined): string {
   const [a, m, j] = iso.slice(0, 10).split('-');
   return `${j}/${m}/${a}`;
 }
+
+/**
+ * Relecture m5 · après un changement de date, la liste des salariés sous
+ * contrat est relue · un choix qui n'y figure plus est vidé (jamais envoyé
+ * pour un salarié que la date n'admet plus), un choix unique se présélectionne.
+ */
+export function salarieRetenu(actuel: string, liste: readonly { id: string }[]): string {
+  if (liste.length === 1) return liste[0].id;
+  return liste.some((s) => s.id === actuel) ? actuel : '';
+}
+

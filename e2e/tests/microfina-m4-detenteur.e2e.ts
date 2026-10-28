@@ -15,7 +15,11 @@ test('SYSCOHADA · affecter un bien à un salarié, déclarer la signature du re
   const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Détenteur M4 e2e', montant: 10_000 });
   await seConnecter(page, dossier.email);
   const [exercice] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
-  const debut = exercice.dateDebut.slice(0, 10);
+  // Relecture m10 · la remise se date au plus petit du début de l'exercice et
+  // du jour de Kinshasa · un exercice qui s'ouvre plus tard que le jour ferait
+  // une remise future, que le serveur refuse.
+  const aujourdhui = new Date(Date.now() + 3_600_000).toISOString().slice(0, 10);
+  const debut = exercice.dateDebut.slice(0, 10) < aujourdhui ? exercice.dateDebut.slice(0, 10) : aujourdhui;
 
   const salarie = await appelApi<{ id: string }>(page, 'POST', '/personnel/salaries', { nom: 'KABILA', prenoms: 'Jean', sexe: 'MASCULIN' });
   await appelApi(page, 'POST', `/personnel/salaries/${salarie.id}/contrats`, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2025-01-01' });
@@ -75,6 +79,26 @@ test('SYSCOHADA · affecter un bien à un salarié, déclarer la signature du re
   await suivi.getByLabel('Début de la période').fill(debut);
   await suivi.getByRole('button', { name: 'Afficher' }).click();
   await expect(suivi.getByRole('row', { name: /Moto M4 e2e.*KABILA Jean.*en cours/ })).toBeVisible();
+
+  // Relecture B1 · l'affectation se défait à rebours, avec son motif · la
+  // détention et son reçu restent, marqués annulés, et le bien n'a plus de
+  // détenteur ; le suivi ne la montre plus.
+  await page.getByRole('tab', { name: 'Biens' }).click();
+  await page.getByRole('button', { name: 'Fiche', exact: true }).click();
+  await expect(fiche).toBeVisible();
+  await fiche.getByRole('tab', { name: 'Détenteur' }).click();
+  await fiche.getByRole('button', { name: /Annuler le dernier acte \(reçu n° 1\)/ }).click();
+  await fiche.getByLabel('Motif de l’annulation').fill('Remise saisie sur la mauvaise fiche');
+  await fiche.getByRole('button', { name: 'Confirmer l’annulation' }).click();
+  await expect(fiche.getByTestId('detenteur-actuel')).toHaveText('Aucun détenteur');
+  await expect(fiche.getByRole('row', { name: /KABILA Jean · annulée/ })).toBeVisible();
+  await expect(fiche.getByRole('button', { name: /n° 1 \(annulé\)/ })).toBeVisible();
+  expect(await balance()).toBe(balanceAvant);
+  await fiche.getByRole('button', { name: 'Fermer la fiche' }).click();
+  await page.getByRole('tab', { name: 'Détenteurs' }).click();
+  await suivi.getByLabel('Début de la période').fill(debut);
+  await suivi.getByRole('button', { name: 'Afficher' }).click();
+  await expect(suivi.getByRole('row', { name: /Moto M4 e2e/ })).toHaveCount(0);
 
   expect(pannes).toEqual([]);
 });

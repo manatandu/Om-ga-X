@@ -227,3 +227,82 @@ export function touchePeriode(d: { dateDebut: Date; dateFin: Date | null }, du: 
 
 /** Au-delà, une liste se tronque et le dit · convention d'OmegaX (CLAUDE.md § 8 bis). */
 export const PLAFOND_DETENTIONS_LUES = 500;
+
+/** Le bien tel que la détention le décrit, figé à la remise · il survit à la fiche. */
+export function bienDecrit(b: { designation: string; numeroInventaire: string | null }): string {
+  const n = b.numeroInventaire?.trim();
+  return `${b.designation}${n ? ` (n° d'inventaire ${n})` : ''}`.slice(0, 400);
+}
+
+/**
+ * L'ANNULATION D'UN ACTE DE DÉTENTION, À REBOURS (relecture B1). Une
+ * détention retient la suppression de la fiche et l'annulation d'un transfert
+ * dans le groupe · sans annulation, une remise saisie par erreur enfermait le
+ * bien pour toujours. Comme les autres annulations du dépôt (AUDCIF art. 20,
+ * al. 2, par analogie · aucun texte ne régit la détention), rien ne
+ * s'efface · l'acte est MARQUÉ annulé avec son motif, son reçu garde son
+ * numéro (la suite n'a pas de trou), et seul le DERNIER acte vivant du bien
+ * s'annule, du plus récent au plus ancien · annuler une remise sous une
+ * libération plus tardive laisserait une fin sans début.
+ *
+ * Le dernier acte vivant se lit sur la détention vivante la plus récente du
+ * bien (dates, puis ordre de saisie) · ouverte, c'est sa REMISE (affectation,
+ * ou transfert qui rouvre la détention précédente) ; terminée, c'est sa
+ * LIBÉRATION, qui la rouvre.
+ */
+export type ActeAAnnuler =
+  | { genre: 'REMISE'; recuId: string; nature: 'AFFECTATION' | 'TRANSFERT' }
+  | { genre: 'LIBERATION'; recuId: string };
+
+export interface DetentionPourAnnulation {
+  id: string;
+  dateFin: Date | null;
+  recuDebut: { id: string; nature: NatureActeDetention };
+  recuFin: { id: string; nature: NatureActeDetention } | null;
+}
+
+/** Le dernier acte vivant de la détention, si elle est la plus récente du bien · sinon le refus nommé. */
+export function acteAAnnuler(
+  visee: DetentionPourAnnulation,
+  plusRecente: (DetentionPourAnnulation & { detenteur: string; dateDebut: Date }) | null,
+): ActeAAnnuler | string {
+  if (!plusRecente || plusRecente.id !== visee.id) {
+    const quoi = plusRecente
+      ? ` (la détention de ${plusRecente.detenteur}, remise le ${iso(plusRecente.dateDebut)}${plusRecente.dateFin ? `, rendue le ${iso(plusRecente.dateFin)}` : ''})`
+      : '';
+    return `Un acte plus récent tient ce bien${quoi} · les actes de détention s'annulent à rebours, à partir du plus récent.`;
+  }
+  if (visee.dateFin === null) {
+    const n = visee.recuDebut.nature;
+    if (n !== 'AFFECTATION' && n !== 'TRANSFERT') return 'Le reçu de cette remise est incohérent · aucun acte ne s’annule.';
+    return { genre: 'REMISE', recuId: visee.recuDebut.id, nature: n };
+  }
+  // Terminée et la plus récente · elle ne peut l'être que par une libération
+  // (un transfert ouvre une détention plus récente, qui serait la visée).
+  if (!visee.recuFin || visee.recuFin.nature !== 'LIBERATION') {
+    return 'La fin de cette détention n’a pas de reçu de retour vivant · aucun acte ne s’annule (registre incohérent).';
+  }
+  return { genre: 'LIBERATION', recuId: visee.recuFin.id };
+}
+
+/** Le motif d'une annulation · trois à cinq cents caractères, exigé. */
+export function motifRefusMotifAnnulation(motif: unknown): string | null {
+  if (typeof motif !== 'string' || motif.trim().length < 3 || motif.trim().length > 500) {
+    return 'Dites pourquoi l’acte est annulé (trois à cinq cents caractères).';
+  }
+  return null;
+}
+
+/**
+ * LA DATE D'ENTRÉE DU BIEN NE PASSE PAS SOUS SES DÉTENTIONS (relecture m1) ·
+ * une fiche dont on retarde l'acquisition au-delà de la première remise
+ * vivante dirait un bien détenu avant d'être à l'entité. Refus nommé, avec
+ * l'issue · annuler d'abord les détentions, ou garder la date.
+ */
+export function motifRefusEntreeApresDetention(premierJour: Date, premiereRemise: Date | null): string | null {
+  if (!premiereRemise || premierJour.getTime() <= premiereRemise.getTime()) return null;
+  return (
+    `Le bien a été remis à un salarié le ${iso(premiereRemise)} · son acquisition ne se date pas après (le ${iso(premierJour)}). ` +
+    'Annulez d’abord ses détentions depuis le volet Détenteur, du plus récent au plus ancien, ou gardez la date.'
+  );
+}

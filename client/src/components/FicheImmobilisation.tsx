@@ -121,7 +121,7 @@ export function FicheImmobilisation({
             )}
             {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />}
             {onglet === 'detenteur' && detentionsLisibles && (
-              <DetenteurImmobilisation bien={bien} onFait={onFait} onOccupe={(occupe) => setTravail({ occupe, nonEnregistre: false })} />
+              <DetenteurImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />
             )}
             {onglet === 'documents' && (
               <VoletPiecesJointes

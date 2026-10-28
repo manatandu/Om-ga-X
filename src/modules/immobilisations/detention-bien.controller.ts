@@ -7,7 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { DetentionBienService } from './detention-bien.service';
-import { LiberationBienDto, RemiseBienDto, SignatureRecuDto } from './dto/detention-bien.dto';
+import { AnnulationActeDetentionDto, LiberationBienDto, RemiseBienDto, SignatureRecuDto } from './dto/detention-bien.dto';
 
 /**
  * LIGNE MICROFINA M4 · LE DÉTENTEUR D'UN BIEN. Commun aux deux référentiels ·
@@ -17,7 +17,8 @@ import { LiberationBienDto, RemiseBienDto, SignatureRecuDto } from './dto/detent
  * sous sa responsabilité, les procédures nécessaires ») :
  *  · LIRE · l'administrateur, le comptable et la lecture seule, comme le
  *    registre des immobilisations ;
- *  · ÉCRIRE (affecter, transférer, libérer, déclarer une signature) ·
+ *  · ÉCRIRE (affecter, transférer, libérer, annuler le dernier acte,
+ *    déclarer une signature) ·
  *    l'administrateur et le comptable, comme le registre du personnel ;
  *  · les deux RÔLES CANTONNÉS sont refusés en entier, lecture comprise. Le
  *    détenteur est un salarié NOMMÉ · l'aide-comptable n'a pas accès au
@@ -67,6 +68,17 @@ export class DetentionBienController {
     @Body() dto: SignatureRecuDto,
   ) {
     return this.detentions.declarerSignature(user.tenantId, user, recuId, dto);
+  }
+
+  /** Annuler le dernier acte vivant du bien, à rebours, avec son motif (relecture B1). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post('detentions/:detentionId/annuler')
+  annuler(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('detentionId', ParseUUIDPipe) detentionId: string,
+    @Body() dto: AnnulationActeDetentionDto,
+  ) {
+    return this.detentions.annuler(user.tenantId, user, detentionId, dto);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
