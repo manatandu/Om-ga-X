@@ -466,6 +466,12 @@ interface ContexteFlux {
    * dispose pas (consolidation), et alors ces termes valent zéro.
    */
   reevaluations: VirementsParCompte;
+  /**
+   * Ligne sage-l4, n° 73 · les mouvements des pièces de transfert de bien
+   * dans le groupe et de leurs négatifs (`EcritureService.mouvementsDeTransfertGroupe`),
+   * lus par les termes `liaison: 'TRANSFERT_GROUPE'` · vides hors de ce cas.
+   */
+  transfertsGroupe: VirementsParCompte;
 }
 
 /** Classes qui composent le bilan · la 6, la 7 et la 8 sont le résultat, la 9 est hors états. */
@@ -1235,6 +1241,15 @@ export class EtatsFinanciersSyscohadaService {
   /** Lecture d'un ensemble de comptes · les quatre natures de `LectureCompte`. */
   private lireComptes(terme: TermeComptes, ctx: ContexteFlux): CompteDuPoste[] {
     const retenues = ctx.lignesCourant.filter((l) => correspond(l.numero, terme.prefixes, terme.exclusions));
+    if (terme.liaison === 'TRANSFERT_GROUPE') {
+      return retenues
+        .map((l) => {
+          const m = ctx.transfertsGroupe.get(l.compteId);
+          const montant = terme.lecture === 'MOUVEMENT_DEBIT' ? (m?.debit ?? 0) : terme.lecture === 'MOUVEMENT_CREDIT' ? (m?.credit ?? 0) : 0;
+          return { numero: l.numero, intitule: l.intitule, montant };
+        })
+        .filter((c) => Math.abs(c.montant) > EPSILON);
+    }
     if (terme.liaison === 'REEVALUATION') {
       // Lot 14 · la seule part des mouvements que porte l'écriture de
       // réévaluation du module, reconnue par sa liaison · jamais par le
@@ -1471,6 +1486,7 @@ export class EtatsFinanciersSyscohadaService {
     // au premier jour, sans exercice précédent ni report · ni flux ni
     // ouverture, les postes qui lisent l'une ou l'autre restent vides.
     motifOuvertureIncertaine: string | null = null,
+    transfertsGroupe: VirementsParCompte = AUCUN_VIREMENT,
   ): {
     parRef: Map<string, { libelle: string; montant: number; comptes: CompteDuPoste[] }>;
     postesNonCalculables: PosteNonCalculable[];
@@ -1494,6 +1510,7 @@ export class EtatsFinanciersSyscohadaService {
       soldesAnterieurs,
       exerciceAnterieurDisponible,
       reevaluations,
+      transfertsGroupe,
     };
 
     const parRef = new Map<string, { libelle: string; montant: number; comptes: CompteDuPoste[] }>();
@@ -1585,7 +1602,7 @@ export class EtatsFinanciersSyscohadaService {
     // colonne N-1, elle, reste l'exercice précédent ENTIER, comme le tiret le
     // demande.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1, lignesN2, reevaluationsN, reevaluationsN1] = await Promise.all([
+    const [lignesN, lignesN1, lignesN2, reevaluationsN, reevaluationsN1, transfertsN, transfertsN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       this.chargerLignes(tenantId, exerciceN2Id),
@@ -1593,6 +1610,9 @@ export class EtatsFinanciersSyscohadaService {
       // ses lignes (une situation arrêtée avant la clôture ne la contient pas).
       this.ecritureService.mouvementsDeReevaluation(tenantId, exerciceId, borneN),
       this.ecritureService.mouvementsDeReevaluation(tenantId, exerciceN1Id),
+      // Ligne sage-l4, n° 73 · les transferts de biens dans le groupe, bornés de même.
+      this.ecritureService.mouvementsDeTransfertGroupe(tenantId, exerciceId, borneN),
+      this.ecritureService.mouvementsDeTransfertGroupe(tenantId, exerciceN1Id),
     ]);
 
     // POSITIONS N-1 · la clôture de l'exercice précédent quand il est tenu,
@@ -1644,6 +1664,7 @@ export class EtatsFinanciersSyscohadaService {
       n1Tenu,
       reevaluationsN,
       ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN) : null,
+      transfertsN,
     );
     // Colonne N-1 seulement si l'exercice existe · jamais un faux zéro pour un
     // dossier à son premier exercice (même discipline que partout ailleurs).
@@ -1656,6 +1677,7 @@ export class EtatsFinanciersSyscohadaService {
           n2Tenu,
           reevaluationsN1,
           ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA', precedentN1) : null,
+          transfertsN1,
         )
       : null;
 

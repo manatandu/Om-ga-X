@@ -238,7 +238,7 @@ puis, le 2026-10-24, l'ADRESSE DU SITE séparée de celle du logiciel (« Pour l
 logiciel, laisse omegax.web.app », lu comme `oomega.web.app`) · la racine du
 domaine du cabinet ouvrait la page publique (aiguillage retiré le
 2026-10-28 avec ce domaine), sans toucher au serveur ; puis, le même jour, le SITE DU CABINET de l'ancien éditeur
-Consulting (`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
+(`docs/site-vitrine/cabinet/`, pages statiques et formulaire de demande par
 courriel, hébergées hors du dépôt), choisi par Manasse (retiré du dépôt le 2026-10-28), sans
 toucher au serveur ; puis, le 2026-10-25, l'ÉCRAN DES LOGICIELS après la
 connexion (« Le tout en cascade ») · tuiles tirées du menu réel
@@ -1964,7 +1964,22 @@ des autres, la ligne part non ventilée et la cause est dite, avec son
 issue ; la reprise en négatif se ventile comme la pièce d'origine (recopiée,
 ou refaite par les répartitions au centime, jamais au prorata). QUESTIONNAIRE (fonction 85) · lit, puis écrit
 les seuls champs qui existent par leurs routes, « pas encore dit » à chaque
-question, une valeur enregistrée jamais effacée.
+question, une valeur enregistrée jamais effacée. FEUILLES DE TEMPS (fonction
+78, reste, `feuilles-temps.ts`) · une feuille par salarié et par période
+(trente et un jours au plus, sans chevauchement), des HEURES par jour,
+jamais un montant ; durée légale lue à l'art. 119 (huit heures par jour,
+quarante-cinq par semaine), la semaine du lundi au dimanche payée au mois de
+son dimanche ; heures supplémentaires (au-delà de huit par jour, puis de
+quarante-cinq), de nuit, du dimanche et des fériés, du samedi, PROPOSÉES au
+bulletin comme les heures majorées (taux DÉCLARÉ avec sa source, jamais en
+dur, jamais substitué, samedi jamais présélectionné), « au moins » dit
+quand un jour de la semaine manque ; refus · jour d'absence ou de congé,
+jour hors contrat, jour d'un mois dont le bulletin est émis. COMPTEURS
+LIBRES · trente nommés par dossier, nourris par les feuilles, sans effet de
+paie. Mêmes droits que le registre du personnel. La maternité payée par la
+Caisse sans subrogation est CLOSE par la loi (2026-10-25 · Code du travail,
+art. 130, al. 2, 59 et 131 ; arrêté n° 146/2018, art. 63 et 139, al. 2 et
+3) · l'employeur doit les deux tiers et ne déduit rien, aucun code.
 
 **Consolidation SYSCOHADA, tranche 1 · périmètre (2026-09-24).** AUDCIF art. 74 à
 98, D4C ch. XII ; SYSCOHADA SEUL (l'art. 3 du SYCEBNL écarte les art. 73 à 113).
@@ -3791,7 +3806,26 @@ le filtre du n° 68, reclassés après la clôture, doublons et biens sans
 numéro nommés · rien n'est corrigé. LA FUSION D'UN AUTRE DOSSIER DU GROUPE
 N'EST PAS SERVIE (AUDCIF, fiche du compte 18 · opérations symétriques par
 les comptes de liaison ; un bien « repris sans écriture » chez l'un resterait
-chez l'autre).
+chez l'autre) · LE BIEN SE TRANSFÈRE (même fonction, reste,
+`transfert-groupe.ts`, SYSCOHADA seul, décision par la loi du 2026-10-25)
+entre le siège et une cellule, depuis le siège, par les comptes permanents
+de liaison 184 et 185 (fiche du compte 18 · « égaux et de sens contraire »,
+mêmes pièces, même période ; « comme un tiers » régit la tenue du compte,
+jamais la valeur), à sa valeur d'entrée avec ses amortissements et ses
+dépréciations, plan inchangé, sans 81 ni 82 (art. 35 et 36) · deux pièces
+nées ensemble, dans une transaction, sous le périmètre du groupe ; celui qui
+cède dote jusqu'au mois du transfert, celui qui reçoit à partir du mois qui
+suit (`dateEntreeGroupe`, `debutDeDetention`), le ré-étalement sur la durée
+restant au jour d'entrée, et au SMT celui qui cède garde l'annuité. Chaque
+côté retient sa pièce et son négatif ; annulation motivée des deux côtés
+(art. 20, al. 2), refusée dès que celui qui a reçu a traité le bien. Les
+pièces sont NEUTRALISÉES au tableau des flux par leur liaison (Titre IX
+ch. 5 § 1.3) et écartées du contrôle 15 bis. Refus nommés · bien sorti, en
+cours, composant ou principal à composants, dérogatoire, réévalué,
+subvention, dette aléatoire, démantèlement, location-acquisition, dossier
+hors groupe, deux cellules, autre référentiel. Au SYCEBNL, REFUSÉ au serveur
+(la fiche du compte 58 ne vise que la trésorerie), gelé par un test,
+question posée à Manasse.
 
 **Assistant de création d'un bien (ligne sage-l4, n° 18).**
 `client/src/lib/assistant-bien.ts`, `AssistantCreationBien.tsx` · huit

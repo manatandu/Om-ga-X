@@ -481,10 +481,18 @@ export class GroupeService {
           : undefined,
       typeLicence: licence?.type,
     });
-    await this.prisma.tenant.update({
-      where: { id: resultat.tenant.id },
-      data: { dossierMereId: tenantId },
-    });
+    // LE RATTACHEMENT S'ÉCRIT DANS LE PÉRIMÈTRE DE LA CELLULE · `Tenant` est
+    // audité, et son maillon va dans la chaîne du dossier modifié, la
+    // cellule · hors de ce périmètre, la garde refusait le maillon et la
+    // création d'une cellule tombait en 500 après l'inscription (vu sur
+    // vraie base le 2026-10-25, ligne sage-l4, n° 73), la cellule restant
+    // créée sans mère. Même périmètre que la licence ci-dessous.
+    await perimetreDeGroupe([resultat.tenant.id], () =>
+      this.prisma.tenant.update({
+        where: { id: resultat.tenant.id },
+        data: { dossierMereId: tenantId },
+      }),
+    );
     // Le mot de passe a transité par le siège · le responsable de la cellule
     // devra le remplacer à sa première connexion (voir schema.prisma, User).
     // SORTIE DE CLOISONNEMENT · le compte visé est celui de la CELLULE qui

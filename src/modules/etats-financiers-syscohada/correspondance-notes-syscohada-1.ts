@@ -240,6 +240,25 @@ import { SpecificationNote } from '../notes-annexes/note-annexe.types';
  *    231). ÉCART RESTANT, ASSUMÉ · un virement passé à la main, ou un
  *    reclassement (`ImmobilisationService.reclasser`), reste compté en
  *    acquisition et en cession, faute de liaison qui le dise.
+ *    LE TRANSFERT D'UN BIEN ENTRE ÉTABLISSEMENTS DU GROUPE (ligne sage-l4,
+ *    n° 73) RESTE EN « ACQUISITIONS » CHEZ CELUI QUI REÇOIT ET EN
+ *    « CESSIONS » CHEZ CELUI QUI CÈDE, et c'est un ÉCART, pas un oubli. Lu
+ *    le 2026-10-28 · le ch. 6 ne nomme, pour les notes 3A et 3B, que les
+ *    colonnes « Acquisitions, Apports, Créations », « Virements de poste à
+ *    poste », « Suite à une réévaluation » et « Cessions, Scissions, Hors
+ *    service », sans les définir ; la fiche du compte 18 (Titre VII) dit
+ *    comment le compte de liaison fonctionne (« comme s'il s'agissait d'un
+ *    tiers », « de manière symétrique ») et ne dit rien du tableau des
+ *    immobilisations. Aucun texte lu ne range donc ce mouvement en « virement
+ *    de poste à poste » · le bien ne change pas de poste, il change de
+ *    comptabilité autonome. Le porter là serait une lecture d'OmegaX qu'aucun
+ *    article n'appuie ; le laisser en acquisition et en cession est la lecture
+ *    de la comptabilité autonome de chaque établissement, et les deux se
+ *    compensent dans la liasse du groupe, qui additionne les dossiers. Le
+ *    tableau des flux, lui, le neutralise par sa liaison (Titre IX ch. 5
+ *    § 1.3, aucun flux de trésorerie). La note 3B n'est pas touchée · un bien
+ *    tenu par un contrat de location-acquisition ne se transfère pas
+ *    (`transfert-groupe.ts`, `motifRefusBien`). Question au suivi.
  *
  * 10. **NOTE 3C, immeubles de placement** · le brut distingue 2281, 2315 et
  *    2325, mais le plan n'a AUCUN compte d'amortissement dédié (282 ne

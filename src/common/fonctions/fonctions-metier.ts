@@ -110,6 +110,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   FicheImmobilisationController: FonctionMetier.IMMOBILISATIONS,
   CreationDepuisEcrituresController: FonctionMetier.IMMOBILISATIONS,
   MaintenanceImmobilisationsController: FonctionMetier.IMMOBILISATIONS,
+  TransfertGroupeController: FonctionMetier.IMMOBILISATIONS,
   // Reclassement, dépréciation, perte · des régularisations du compte client.
   CreancesDouteusesController: FonctionMetier.SAISIE,
   StockController: FonctionMetier.STOCKS,
@@ -131,6 +132,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   CongesController: FonctionMetier.PAIE,
   AbsencesController: FonctionMetier.PAIE,
   MajorationsHeuresController: FonctionMetier.PAIE,
+  FeuillesTempsController: FonctionMetier.PAIE,
   // Ligne sage-l5 · le paiement du salarié et des salaires, de la fenêtre Personnel.
   PaiementSalairesController: FonctionMetier.PAIE,
   RepartitionsAnalytiquesPaieController: FonctionMetier.PAIE,

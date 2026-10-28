@@ -179,6 +179,12 @@ export const MODELES_CLOISONNES = new Set<string>([
   'AbsenceSalarie',
   'MajorationHeures',
   'IndemniteCaisseAbsence',
+  // Ligne sage-l5, fonction 78, reste · feuilles de temps et compteurs libres.
+  'FeuilleTemps',
+  'JourFeuilleTemps',
+  'CompteurHeures',
+  'TransfertImmobilisationGroupe',
+  'HeuresCompteurJour',
   // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
   'RibSalarie',
   'PaiementSalaires',

@@ -497,8 +497,10 @@ export interface TermeComptes {
    * Lot 14 · ne lire QUE les mouvements de l'écriture que le module de
    * réévaluation a passée, reconnue par sa liaison (`ReevaluationBilan`),
    * jamais par le compte · seulement en MOUVEMENT_DEBIT ou MOUVEMENT_CREDIT.
+   * Ligne sage-l4, n° 73 · de même la pièce d'un transfert de bien dans le
+   * groupe et son négatif (`TransfertImmobilisationGroupe`), `TRANSFERT_GROUPE`.
    */
-  liaison?: 'REEVALUATION';
+  liaison?: 'REEVALUATION' | 'TRANSFERT_GROUPE';
 }
 
 /**
@@ -615,6 +617,28 @@ const MOTIF_REEVALUATION_LIEE =
   "Écriture de réévaluation du module (Titre VIII ch. 28 § 4.2.4.1 et § 4.3.1), reconnue par sa liaison · sans " +
   "trésorerie, « – Écart et provision spéciale de réévaluation de l'exercice de réévaluation uniquement » (ch. 5 " +
   "§ 1.3), relue ici en sens inverse pour que sa contribution au poste soit nulle (anomalies n° 11 et 21).";
+
+/**
+ * LIGNE SAGE-L4, N° 73 · LE TRANSFERT D'UN BIEN DANS LE GROUPE, NEUTRALISÉ PAR
+ * SA LIAISON. Le bien quitte un dossier et entre dans l'autre par les comptes
+ * de liaison 184 et 185 (AUDCIF, Titre VII, fiche du compte 18), sans aucune
+ * trésorerie · « les variations d'immobilisations qui n'ont pas généré un
+ * flux de trésorerie ne figurent pas » (ch. 5 § 1.3). Lu par les termes
+ * généraux, le Δ brut se lisait en fausse acquisition chez celui qui reçoit
+ * (1 200 000 de décaissement inventé) et, chez celui qui cède, le brut sorti
+ * et ses amortissements en reconstitution d'une cession qui n'existe pas. Les
+ * lignes de la pièce et de son négatif, reconnues par la LIAISON et jamais par
+ * le compte, y sont relues en sens inverse · leur contribution est nulle. Le
+ * 184 et le 185 ne sont lus par aucun terme, et la dotation complémentaire
+ * reste une dotation (hors CAFG, sans décaissement).
+ */
+const MOTIF_TRANSFERT_GROUPE_LIE =
+  "Transfert d'un bien entre deux dossiers du groupe (fiche du compte 18), reconnu par sa liaison · sans trésorerie " +
+  "(ch. 5 § 1.3), relu ici en sens inverse pour que sa contribution au poste soit nulle.";
+
+function transfertLie(signe: 1 | -1, lecture: 'MOUVEMENT_DEBIT' | 'MOUVEMENT_CREDIT', prefixes: string[]): TermeFluxTresorerie {
+  return { signe, comptes: { prefixes, lecture, liaison: 'TRANSFERT_GROUPE' }, motif: MOTIF_TRANSFERT_GROUPE_LIE };
+}
 
 function variation(signe: 1 | -1, prefixes: string[], sensSolde: SensSolde, motif: string, exclusions?: string[]): TermeFluxTresorerie {
   return {
@@ -865,6 +889,9 @@ export const POSTES_INVESTISSEMENT_SYSCOHADA: PosteFluxTresorerieSyscohada[] = [
       credit(1, ['251'], 'Avances imputées sur la facture définitive (débit 21x par crédit 251) · déjà décaissées, en N ou avant (anomalie n° 2).'),
       debit(-1, ['4041', '4046', '4811', '4821'], 'Règlements de dettes sur immobilisations incorporelles (fournisseurs d\'acquisitions courantes 404 et d\'investissements 481/482).'),
       credit(1, ['4041', '4046', '4811', '4821'], 'Acquisitions à crédit non encore réglées · « déduire la variation des dettes sur acquisitions » (§ 1.3 (1)).'),
+      transfertLie(1, 'MOUVEMENT_DEBIT', ['21']),
+      transfertLie(-1, 'MOUVEMENT_CREDIT', ['21']),
+      transfertLie(1, 'MOUVEMENT_DEBIT', ['281']),
     ],
     nonDeterminables: [
       {
@@ -912,6 +939,9 @@ export const POSTES_INVESTISSEMENT_SYSCOHADA: PosteFluxTresorerieSyscohada[] = [
       reevaluationLiee(-1, 'MOUVEMENT_CREDIT', ['22', '23', '24'], MOTIF_REEVALUATION_LIEE),
       reevaluationLiee(1, 'MOUVEMENT_DEBIT', ['282', '283', '284'], MOTIF_REEVALUATION_LIEE),
       reevaluationLiee(-1, 'MOUVEMENT_CREDIT', ['106', '154'], MOTIF_REEVALUATION_LIEE),
+      transfertLie(1, 'MOUVEMENT_DEBIT', ['22', '23', '24']),
+      transfertLie(-1, 'MOUVEMENT_CREDIT', ['22', '23', '24']),
+      transfertLie(1, 'MOUVEMENT_DEBIT', ['282', '283', '284']),
     ],
     nonDeterminables: [
       {

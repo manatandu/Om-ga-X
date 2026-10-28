@@ -67,6 +67,15 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       '378 au SYCEBNL (fiche du compte 37), seule racine admise par le serveur · la reprise en est presque toujours le ' +
       'premier mouvement, la règle viderait la liste.',
   },
+  // Ligne sage-l4, n° 73 · les comptes de liaison du transfert d'un bien
+  // dans le groupe, servis avec les dossiers, journaux et exercices.
+  '/immobilisations/transferts-groupe/contexte': {
+    regime: 'texte',
+    motif:
+      "Le transfert d'un bien entre le siège et un établissement passe par les comptes permanents de liaison 184 et 185 " +
+      '(AUDCIF, Titre VII, fiche du compte 18), seules racines admises par le serveur · le transfert en est souvent le premier ' +
+      'mouvement, la règle viderait la liste.',
+  },
   '/creances-douteuses/comptes': {
     regime: 'texte',
     motif:
@@ -134,6 +143,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/personnel/compteurs-heures':
+    "compteurs libres d'heures de la paie (ligne sage-l5, fonction 78), des heures nommées par le dossier, aucun compte comptable",
   '/comptes/:id/sous-compte-propose':
     "numéro proposé pour un sous-compte à ouvrir sous le compte du plan choisi, un seul numéro et jamais une liste",
   '/comptes/en-saisie/proposition':

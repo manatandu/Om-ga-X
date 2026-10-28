@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { avertissementHeuresSaisies, joursQuiPortentDesHeures } from './feuilles-temps.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { MULTIPLICATEURS_ARTICLE_7 } from './bareme-smig';
 import { moisValide } from './bulletin-paie';
@@ -544,12 +545,14 @@ export class CongesService {
       },
       select: { id: true },
     });
+    const avertissementHeures = avertissementHeuresSaisies(await joursQuiPortentDesHeures(this.prisma, tenantId, salarieId, { du, au }), 'congé');
     return {
       id: cree.id,
       jours: jours.jours,
       ...(await this.compteur(tenantId, salarieId)),
-      // Second tour, point 2 · un bulletin que rien ne confronte au congé est dit.
-      avertissements: surLesBulletins.avertissements,
+      // Second tour, point 2 · un bulletin que rien ne confronte au congé est
+      // dit ; les heures déjà saisies sur ses jours aussi (`joursQuiPortentDesHeures`).
+      avertissements: [...surLesBulletins.avertissements, ...(avertissementHeures ? [avertissementHeures] : [])],
     };
   }
 

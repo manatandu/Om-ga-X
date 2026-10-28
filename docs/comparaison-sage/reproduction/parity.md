@@ -2,22 +2,23 @@
 
 Mesuré le 2026-10-15 sur `main` (`a503f49`), après l'intégration des lignes
 sage-l4, sage-l5 et sage-l1, puis recompté à l'intégration de sage-l2, de
-sage-l7 et, le 2026-10-22, de sage-l3 (même barème, même fichier), par l'outil de la compétence de réplication
+sage-l7 et, le 2026-10-22, de sage-l3, puis le 2026-10-25 aux restes des n° 73 et 78
+(même barème, même fichier), par l'outil de la compétence de réplication
 (`parity.py`, pondération must 3, should 2, could 1, partiel compté pour
 moitié) sur `features.csv` · colonnes relues sous les noms qu'il attend
 (ligne en domaine, fonction, priorité, clone, note), rien d'autre changé.
 
 ## Le score
 
-**Parité fonctionnelle · 83,3 sur 100.** 41 fonctions comptées, **13 des 14
-« must » faites** (62,9 avant sage-l3 et la relecture de sage-l6, 58,6 avant
+**Parité fonctionnelle · 86,0 sur 100.** 41 fonctions comptées, **les 14
+« must » faites** (83,3 avant les restes des n° 73 et 78, 62,9 avant sage-l3 et la relecture de sage-l6, 58,6 avant
 sage-l7, 39,2 et 7 avant sage-l2).
 
 | Ligne | Fonctions | Score | État |
 |---|---|---|---|
 | L1 · saisie | 6 | 100 | intégrée le 2026-10-15 |
-| L4 · immobilisations | 4 | 90,9 | intégrée le 2026-10-14 (fusion d'un autre dossier non servie, n° 73) |
-| L5 · paie | 5 | 89,3 | intégrée le 2026-10-15 (feuilles de temps et compteurs libres non repris, n° 78) |
+| L4 · immobilisations | 4 | 100 | intégrée le 2026-10-14 ; transfert d'un bien dans le groupe, SYSCOHADA, le 2026-10-25 (SYCEBNL refusé, question posée, n° 73) |
+| L5 · paie | 5 | 100 | intégrée le 2026-10-15 ; feuilles de temps et compteurs libres le 2026-10-25 (n° 78) |
 | L1 L2 L4 · mode assistant (n° 18) | 1 | 100 | compte, journal, bien et règlement guidés |
 | L2 · tiers et règlements | 7 | 100 | intégrée le 2026-10-15 (monnaie électronique, prélèvement et effet de commerce face à l'art. 59 bis, question posée) |
 | L3 · banque et trésorerie | 6 | 100 | intégrée le 2026-10-22 (ni LCR, ni BOR, ni CFONB · circuit comptable seul ; aucun agio calculé) |
@@ -26,8 +27,8 @@ sage-l7, 39,2 et 7 avant sage-l2).
 | L8 · gestion commerciale | 3 | 0 | non commencée |
 | L9 · cabinet et plateforme | 5 | 0 | non commencée |
 
-Les sept lignes faites sont à 89 à 100 % chacune ; l'écart tient à L8 et
-L9, construites ensuite, et aux restes partiels des n° 73 et 78.
+Les sept lignes faites sont à 100 % chacune ; l'écart tient à L8 et L9,
+construites ensuite.
 
 **Disposition des écrans · non mesurée.** La comparaison par carte des bords
 demande deux captures dans le même état, à la même taille. Celles de Sage
@@ -38,10 +39,7 @@ rien. La parité qui compte ici est la fonction.
 
 ## Ce qui reste, dans l'ordre de construction
 
-Le seul « must » restant · L5, n° 78, reste partiel (feuilles de temps,
-compteurs libres · aucun texte ne les régit).
-
-Puis les « should » · L8 (91, 94), L9 (95, 101, 102) et la fusion du n° 73 ;
+Aucun « must » ne reste. Les « should » · L8 (91, 94), L9 (95, 101, 102) ;
 enfin les « could » · L8 (90), L9 (96, 100).
 
 ## Différences de comportement gardées à dessein
@@ -54,8 +52,8 @@ enfin les « could » · L8 (90), L9 (96, 100).
 | 16 · lettre choisie | prochaine lettre changée à la main | lettre tapée par lettrage, refusée si déjà employée sur le compte | garder ; double envoi en 500 (B-PAR-01) à corriger |
 | 19 · séquences | ranges aussi les rubriques de paie | modèles de saisie seuls | question posée (rubriques de paie) |
 | 66 · fiche du bien | modifier propose un virement de poste | la valeur ne se retouche qu'au brouillard ; validée, reclassement ou révision du plan | garder (art. 20, 22, 2°) |
-| 73 · fusion de fichiers | fusionne deux fichiers | renumérotation et maintenance ; fusion d'un autre dossier du groupe non servie | question posée (comptes de liaison) |
-| 78 · temps de travail | feuilles de temps, compteurs libres | absences, arrêts, heures majorées par leurs textes | garder ; aucun texte pour le reste |
+| 73 · fusion de fichiers | fusionne deux fichiers | renumérotation et maintenance ; transfert d'un bien entre le siège et une cellule par les comptes de liaison 184 et 185, SYSCOHADA | SYCEBNL refusé, question posée (fiche du compte 58) |
+| 78 · temps de travail | feuilles de temps, compteurs libres | absences, arrêts, heures majorées par leurs textes ; feuilles de temps par salarié et par période, heures supplémentaires proposées au bulletin ; compteurs libres sans effet de paie | garder |
 | 79 · congés acquis | alimentés chaque mois | acquis par mois de service sur bulletin émis, droits nés à l'expiration de l'année | garder (Code du travail, art. 140, 141) ; mois avec un jour hors service, question posée |
 | 1 · mode de règlement | mode libre sur le tiers et la ligne | un paiement d'au moins 1 000 000 FC hors chèque, virement ou carte est averti, jamais refusé ; les modes que le texte ne nomme pas sous réserve | garder (O.-L. n° 10/001, art. 59 bis, 74 bis) ; monnaie électronique, prélèvement et effet de commerce, question posée |
 | 36 · écart de règlement | en charge ou en produit sous le seuil | en charge seulement (remise d'un reste client, renonciation au trop-payé fournisseur) ; trop-perçu d'un client et fournisseur payé en moins refusés | garder (Code civil, Livre III, art. 132, 133, 142, 252) |

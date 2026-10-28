@@ -1,4 +1,5 @@
 import {
+  ISSUE_TRANSFERT_GROUPE,
   ActeDuBien,
   actesQuiEnDependent,
   etatDuPlanApres,
@@ -132,6 +133,22 @@ describe('le motif du refus', () => {
     });
     expect(m).toMatch(/ne s’annule pas dans OmegaX/);
     expect(m).not.toMatch(/Annulez d’abord/);
+  });
+
+  it('ligne sage-l4, n° 73 · ce qui est né d’un transfert dans le groupe renvoie à l’annulation du transfert, depuis le siège', () => {
+    expect(motifRefusAnnulation({ exerciceClos: false, transfertGroupe: true, dependants: [] })).toMatch(/annulez le transfert depuis le siège/);
+    const sortieParTransfert = {
+      nature: 'SORTIE' as const,
+      id: 'b',
+      exerciceFin: new Date('2027-12-31'),
+      creeLe: new Date('2027-06-15'),
+      libelle: 'le transfert du bien dans le groupe le 2027-06-15',
+      issue: ISSUE_TRANSFERT_GROUPE,
+    };
+    const m = motifRefusAnnulation({ exerciceClos: false, dependants: [sortieParTransfert] });
+    expect(m).toContain('annulez le transfert depuis le siège');
+    // Jamais « ne s'annule pas dans OmegaX » · le transfert s'annule, ailleurs.
+    expect(m).not.toContain('ne s’annule pas dans OmegaX');
   });
 
   it('refuse le transfert de mise en service et la révision posée par une réévaluation', () => {

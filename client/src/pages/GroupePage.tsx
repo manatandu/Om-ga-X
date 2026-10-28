@@ -8,6 +8,7 @@ import type { BalanceAgregeeGroupe, JeuEtatsFinanciersSycebnl } from '../lib/typ
 import { PortailModale } from '../components/PortailModale';
 import * as montants from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
+import { TransfertsBiensGroupe } from '../components/groupe/TransfertsBiensGroupe';
 
 /**
  * GROUPE D'ÉTABLISSEMENTS · fenêtre du dossier MÈRE (le siège). Une même
@@ -99,6 +100,8 @@ export function GroupePage() {
   const [supervision, setSupervision] = useState<LigneSupervision[] | null>(null);
   const [agregat, setAgregat] = useState<BalanceAgregeeGroupe | null>(null);
   const [ongletBalance, setOngletBalance] = useState(false);
+  // Ligne sage-l4, n° 73 · le transfert d'un bien, SYSCOHADA seul (le serveur le refuse ailleurs).
+  const [ongletTransferts, setOngletTransferts] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(false);
   const [liasseEnCours, setLiasseEnCours] = useState(false);
@@ -325,21 +328,41 @@ export function GroupePage() {
       <div className="flex gap-2 mb-2">
         <button
           type="button"
-          onClick={() => setOngletBalance(false)}
-          className={`px-3 py-1 text-[11.5px] font-semibold border ${!ongletBalance ? 'bg-sel text-white border-sel' : 'bg-chrome border-border-dark'}`}
+          onClick={() => {
+            setOngletBalance(false);
+            setOngletTransferts(false);
+          }}
+          className={`px-3 py-1 text-[11.5px] font-semibold border ${!ongletBalance && !ongletTransferts ? 'bg-sel text-white border-sel' : 'bg-chrome border-border-dark'}`}
         >
           Supervision
         </button>
         <button
           type="button"
-          onClick={chargerAgregat}
-          className={`px-3 py-1 text-[11.5px] font-semibold border ${ongletBalance ? 'bg-sel text-white border-sel' : 'bg-chrome border-border-dark'}`}
+          onClick={() => {
+            setOngletTransferts(false);
+            void chargerAgregat();
+          }}
+          className={`px-3 py-1 text-[11.5px] font-semibold border ${ongletBalance && !ongletTransferts ? 'bg-sel text-white border-sel' : 'bg-chrome border-border-dark'}`}
         >
           Balance agrégée
         </button>
+        {syscohada && (
+          <button
+            type="button"
+            onClick={() => {
+              setOngletBalance(false);
+              setOngletTransferts(true);
+            }}
+            className={`px-3 py-1 text-[11.5px] font-semibold border ${ongletTransferts ? 'bg-sel text-white border-sel' : 'bg-chrome border-border-dark'}`}
+          >
+            Transferts de biens
+          </button>
+        )}
       </div>
 
-      {!ongletBalance && (
+      {syscohada && ongletTransferts && <TransfertsBiensGroupe />}
+
+      {!ongletBalance && !ongletTransferts && (
         <div className="border border-border bg-surface shadow-posee max-w-[1120px] overflow-x-auto">
           <div className="min-w-[1020px]">
             <div className="grid grid-cols-[1.3fr_110px_100px_70px_80px_120px_110px_90px_190px] gap-2 px-3.5 py-1.5 bg-chrome border-b border-border text-[11px] font-bold text-text-dim">
@@ -410,7 +433,7 @@ export function GroupePage() {
         </div>
       )}
 
-      {ongletBalance && (
+      {ongletBalance && !ongletTransferts && (
         <div className="max-w-[1120px]">
           {!agregat && <div className="border border-border bg-surface p-3 text-[11.5px] text-text-dim">Calcul de l'agrégat…</div>}
 

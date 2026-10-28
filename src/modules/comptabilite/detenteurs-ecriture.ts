@@ -38,6 +38,12 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'Immobilisation.ecritureSortieEcartReevaluationId',
   'DotationAmortissement.ecritureId',
   'DepreciationImmobilisation.ecritureId',
+  // Ligne sage-l4, n° 73 · chaque côté d'un transfert de bien dans le groupe
+  // retient sa pièce et son négatif · retirée seule, une comptabilité porterait
+  // le bien et l'autre plus rien, et la liaison cesserait d'être égale et de
+  // sens contraire (AUDCIF, fiche du compte 18).
+  'TransfertImmobilisationGroupe.ecritureId',
+  'TransfertImmobilisationGroupe.ecritureNegatifId',
   'ReclassementImmobilisation.ecritureId',
   'Reevaluation.ecritureEcartsId',
   'Reevaluation.ecritureProvisionId',

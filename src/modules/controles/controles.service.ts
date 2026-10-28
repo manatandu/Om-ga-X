@@ -3022,6 +3022,16 @@ export class ControlesService {
             // faisait contre-passer une seconde fois.
             annulationTraitementOrigine: null,
             annulationTraitementNegatif: null,
+            // LIGNE SAGE-L4, N° 73 · la pièce d'un transfert de bien dans le
+            // groupe et son négatif, reconnues par leur LIAISON · le cumul qui
+            // suit le bien (C 28 chez celui qui reçoit) et la dotation du mois
+            // du transfert (C 28 chez celui qui cède) sont des actes du module.
+            // Après une annulation, ni la fiche née (retirée) ni la sortie
+            // (défaite) ne retiennent plus la pièce, et le contrôle aurait dit
+            // « que le module ne connaît pas » d'un amortissement soldé par son
+            // négatif.
+            transfertGroupe: null,
+            transfertGroupeNegatif: null,
           },
         },
         select: { credit: true, compte: { select: { numero: true, intitule: true } } },

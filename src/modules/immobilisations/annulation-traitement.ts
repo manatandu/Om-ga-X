@@ -64,7 +64,16 @@ export interface ActeDuBien {
   bien?: string;
   /** Reprise de subvention · celle de la sortie ne dépend pas de la sortie, elle la suit. */
   repriseALaSortie?: boolean;
+  /**
+   * L'issue propre de ce geste, quand il se défait AILLEURS que dans l'onglet
+   * Traitements · la sortie par un transfert dans le groupe s'annule avec le
+   * transfert, depuis le siège (ligne sage-l4, n° 73).
+   */
+  issue?: string;
 }
+
+/** Ligne sage-l4, n° 73 · ce que l'onglet Traitements dit d'un acte né d'un transfert dans le groupe. */
+export const ISSUE_TRANSFERT_GROUPE = 'annulez le transfert depuis le siège (fenêtre Groupe, onglet « Transferts de biens »)';
 
 /** Les natures annulables, dans l'ordre où l'écran les présente. */
 export const NATURES_ANNULABLES: readonly NatureTraitement[] = [
@@ -229,6 +238,8 @@ export function motifRefusAnnulation(entree: {
   exerciceClos: boolean;
   /** Transfert de dépréciation à la mise en service · il appartient à ce geste-là. */
   transfertMiseEnService?: boolean;
+  /** Dotation ou dépréciation née d'un transfert dans le groupe · elle s'annule avec lui. */
+  transfertGroupe?: boolean;
   /** Révision posée par une réévaluation libre (méthode 2) · elle suit son opération. */
   revisionDeReevaluation?: boolean;
   dependants: readonly ActeDuBien[];
@@ -243,6 +254,12 @@ export function motifRefusAnnulation(entree: {
       "pour l'erreur « commise et découverte sur l'exercice en cours » (AUDCIF art. 20, al. 2). Significative, elle se " +
       'corrige par ajustement du report à nouveau (al. 3) ; dans tous les cas, elle fait l’objet d’une information dans les ' +
       'Notes annexes (al. 4).'
+    );
+  }
+  if (entree.transfertGroupe) {
+    return (
+      'Ce mouvement est né du transfert du bien dans le groupe (dotation complémentaire chez celui qui cède, dépréciation qui a ' +
+      `suivi le bien chez celui qui reçoit) · il fait partie de ce geste et ne s’annule pas seul · ${ISSUE_TRANSFERT_GROUPE}.`
     );
   }
   if (entree.transfertMiseEnService) {
@@ -264,12 +281,15 @@ export function motifRefusAnnulation(entree: {
       .map((a) => `${a.libelle}${a.bien ? ` (${a.bien})` : ''}`)
       .join(' ; ');
     const reste = entree.dependants.length > 5 ? ` et ${entree.dependants.length - 5} autre(s)` : '';
-    const bloquants = entree.dependants.filter((a) => NON_ANNULABLES.has(a.nature));
+    const bloquants = entree.dependants.filter((a) => NON_ANNULABLES.has(a.nature) && !a.issue);
+    const ailleurs = entree.dependants.filter((a) => !!a.issue);
     const issue =
-      bloquants.length > 0
-        ? ` ${bloquants.map((a) => a.libelle).join(' ; ')} ne s’annule pas dans OmegaX · la correction passe alors par une ` +
-          'écriture en négatif saisie par le cabinet, avec son motif (AUDCIF art. 20, al. 2).'
-        : ` Annulez d’abord le plus récent (${premier.libelle}${premier.bien ? `, ${premier.bien}` : ''}), puis celui-ci.`;
+      ailleurs.length > 0
+        ? ` ${ailleurs.map((a) => a.libelle).join(' ; ')} · ${ailleurs[0].issue}, puis annulez celui-ci.`
+        : bloquants.length > 0
+          ? ` ${bloquants.map((a) => a.libelle).join(' ; ')} ne s’annule pas dans OmegaX · la correction passe alors par une ` +
+            'écriture en négatif saisie par le cabinet, avec son motif (AUDCIF art. 20, al. 2).'
+          : ` Annulez d’abord le plus récent (${premier.libelle}${premier.bien ? `, ${premier.bien}` : ''}), puis celui-ci.`;
     return (
       `Un traitement postérieur a lu le résultat de celui-ci · ${liste}${reste}. L’annuler seul laisserait ces actes ` +
       `calculés sur un montant que le journal ne porte plus, sans qu’aucun total ne le signale.${issue}`
