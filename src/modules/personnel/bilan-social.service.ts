@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import {
   datesDuBilanSocial,
   formulaireBilanSocial,
@@ -48,6 +49,10 @@ export class BilanSocialService {
     if (!t) throw new NotFoundException('Dossier introuvable.');
     const forme = t.referentiel === 'SYSCOHADA' ? t.formeJuridiqueSyscohada : t.formeJuridique;
     const total = bulletins._sum.totalVerseFc;
+    // Le JSON gardé se rejuge à la lecture · une ligne altérée hors d'OmegaX se
+    // dit, jamais une erreur anonyme ni un total qui l'omet.
+    const motifStocke = saisie ? motifRefusSaisie({ lignes: saisie.lignes, commentaire: saisie.commentaire }) : null;
+    if (motifStocke) throw new ConflictException(`Le bilan social enregistré pour ${exercice} est illisible · ${motifStocke}`);
     return formulaireBilanSocial({
       exercice,
       identite: {
@@ -64,10 +69,21 @@ export class BilanSocialService {
     });
   }
 
+  /**
+   * `lu` · l'instant d'enregistrement que l'écran a lu (null s'il n'a rien lu
+   * d'enregistré). Une saisie faite sur une version dépassée est refusée en
+   * 409 · sans lui, le second poste écrasait le premier sans un mot.
+   */
   async enregistrer(tenantId: string, auteur: string, exercice: number, corps: unknown) {
     this.exerciceLisible(exercice);
     const motif = motifRefusSaisie(corps);
     if (motif) throw new BadRequestException(motif);
+    const luBrut = (corps as { lu?: unknown }).lu;
+    if (luBrut !== null && luBrut !== undefined && (typeof luBrut !== 'string' || Number.isNaN(Date.parse(luBrut)))) {
+      throw new BadRequestException("L'instant de la version lue est illisible.");
+    }
+    const lu = typeof luBrut === 'string' ? new Date(luBrut) : null;
+    const DEPASSEE = new ConflictException("Le bilan social de cet exercice a été enregistré entre-temps par un autre poste · relisez-le avant de l'enregistrer à nouveau.");
     const saisie = normaliserSaisie(corps as SaisieBilanSocial);
     const donnees = {
       lignes: saisie.lignes as unknown as Prisma.InputJsonValue,
@@ -76,12 +92,22 @@ export class BilanSocialService {
       enregistreLe: new Date(),
     };
     try {
-      const existant = await this.prisma.bilanSocial.findFirst({ where: { tenantId, exercice }, select: { id: true } });
-      if (existant) await this.prisma.bilanSocial.update({ where: { id: existant.id }, data: donnees });
-      else await this.prisma.bilanSocial.create({ data: { tenantId, exercice, ...donnees } });
+      await transactionJournalisee(this.prisma, async (tx) => {
+        // La ligne verrouillée le temps de juger sa version, puis retouchée par
+        // une mise à jour unitaire (le journal d'audit garde avant et après).
+        const [existant] = await tx.$queryRaw<{ id: string; enregistreLe: Date }[]>`
+          SELECT id, "enregistreLe" FROM "bilans_sociaux" WHERE "tenantId" = ${tenantId} AND exercice = ${exercice} FOR UPDATE`;
+        if (existant) {
+          if (!lu || existant.enregistreLe.getTime() !== lu.getTime()) throw DEPASSEE;
+          await tx.bilanSocial.update({ where: { id: existant.id }, data: donnees });
+        } else {
+          if (lu) throw DEPASSEE;
+          await tx.bilanSocial.create({ data: { tenantId, exercice, ...donnees } });
+        }
+      });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException("Le bilan social de cet exercice vient d'être enregistré par un autre poste · relisez-le avant de l'enregistrer à nouveau.");
+        throw DEPASSEE;
       }
       throw e;
     }

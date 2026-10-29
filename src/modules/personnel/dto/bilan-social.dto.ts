@@ -11,4 +11,8 @@ export class BilanSocialDto {
 
   @Allow()
   commentaire!: unknown;
+
+  /** L'instant d'enregistrement de la version lue par l'écran, ou null. */
+  @Allow()
+  lu!: unknown;
 }

@@ -6,13 +6,15 @@ describe('bilan social · saisie', () => {
     expect(lireMontantSaisi('  ')).toEqual({ valeur: null });
     expect('erreur' in lireMontantSaisi('12,345')).toBe(true);
     expect('erreur' in lireMontantSaisi('-3')).toBe(true);
+    expect(lireMontantSaisi('500.000')).toEqual({ erreur: expect.stringContaining('ambigu') });
   });
 
   it('retire les lignes vides, garde la monnaie, nomme la ligne illisible', () => {
     const l = (numero: number, p: Partial<{ nombre: string; budgete: string; realise: string; devise: 'CDF' | 'USD' | '' }>) => ({ numero, nombre: '', budgete: '', realise: '', devise: '' as const, ...p });
-    expect(saisieAEnvoyer([l(1, {}), l(2, { nombre: '3', budgete: '10', devise: 'USD' })], ' note ')).toEqual({
-      corps: { lignes: [{ numero: 2, nombre: 3, budgete: '10', realise: null, devise: 'USD' }], commentaire: 'note' },
+    expect(saisieAEnvoyer([l(1, {}), l(2, { nombre: '3', budgete: '10', devise: 'USD' })], ' note ', '2026-10-29T10:00:00.000Z')).toEqual({
+      corps: { lignes: [{ numero: 2, nombre: 3, budgete: '10', realise: null, devise: 'USD' }], commentaire: 'note', lu: '2026-10-29T10:00:00.000Z' },
     });
-    expect(saisieAEnvoyer([l(4, { realise: 'abc' })], '')).toEqual({ erreur: expect.stringContaining('Ligne 4') });
+    expect(saisieAEnvoyer([l(4, { realise: 'abc' })], '', null)).toEqual({ erreur: expect.stringContaining('Ligne 4') });
+    expect(saisieAEnvoyer([l(5, { realise: '10' })], '', null)).toEqual({ erreur: expect.stringContaining('exige sa monnaie') });
   });
 });

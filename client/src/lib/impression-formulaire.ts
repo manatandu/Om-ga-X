@@ -22,7 +22,11 @@ export function imprimerLeFormulaire(idElement: string) {
   const copie = document.createElement('div');
   copie.id = ID_IMPRESSION_ISOLEE;
   const clone = cible.cloneNode(true) as HTMLElement;
-  clone.removeAttribute('id');
+  // Aucun identifiant en double tant que la copie vit.
+  for (const el of [clone, ...clone.querySelectorAll<HTMLElement>('[id], [aria-labelledby]')]) {
+    el.removeAttribute('id');
+    el.removeAttribute('aria-labelledby');
+  }
   copie.appendChild(clone);
   document.body.appendChild(copie);
   document.body.classList.add(CLASSE_IMPRESSION_FORMULAIRE);
@@ -30,7 +34,10 @@ export function imprimerLeFormulaire(idElement: string) {
     document.body.classList.remove(CLASSE_IMPRESSION_FORMULAIRE);
     copie.remove();
     window.removeEventListener('afterprint', retirer);
+    window.removeEventListener('focus', retirer);
   };
   window.addEventListener('afterprint', retirer);
+  // Repli · un navigateur mobile qui n'émet pas `afterprint` rend la main par le focus.
+  window.addEventListener('focus', retirer);
   window.print();
 }

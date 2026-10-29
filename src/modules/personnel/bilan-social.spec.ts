@@ -31,7 +31,8 @@ describe('bilan social de l’ONEM', () => {
     expect(motifRefusSaisie({ lignes: [{ numero: 3, realise: '1,5', devise: 'CDF' }] })).toMatch(/deux décimales/);
     expect(motifRefusSaisie({ lignes: [{ numero: 3, realise: '10', devise: 'EUR' }] })).toMatch(/CDF ou USD/);
     expect(motifRefusSaisie({ lignes: [{ numero: 3, nombre: -1 }] })).toMatch(/entier positif/);
-    expect(motifRefusSaisie({ lignes: [{ numero: 3, nombre: 4, budgete: '10.5', devise: 'USD' }], commentaire: 'ok' })).toBeNull();
+    expect(motifRefusSaisie({ lignes: [{ numero: 3, nombre: 4, budgete: '10.5', devise: 'USD' }], commentaire: 'ok', lu: null })).toBeNull();
+    expect(motifRefusSaisie({ lignes: [], intrus: 1 })).toMatch(/Champ inconnu/);
   });
 
   it('le solde est le budgétisé moins le réalisé, au centime, et le total ne mêle jamais les monnaies', () => {
@@ -47,7 +48,7 @@ describe('bilan social de l’ONEM', () => {
     expect(f.lignes[1].solde).toBe('-25.50');
     expect(f.lignes[7].solde).toBeNull();
     expect(f.total).toEqual([
-      { devise: 'CDF', budgete: '1000.30', realise: '900.05', solde: '100.25', incomplet: true },
+      { devise: 'CDF', budgete: '1000.30', realise: '900.05', solde: null, incomplet: true },
       { devise: 'USD', budgete: '50.00', realise: '75.50', solde: '-25.50', incomplet: false },
     ]);
   });

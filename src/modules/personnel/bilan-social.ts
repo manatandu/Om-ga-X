@@ -30,7 +30,10 @@
  * LES COLONNES · « (CDF/USD) » · chaque ligne chiffrée porte sa monnaie, et un
  * montant sans monnaie est refusé (comme un montant convenu au contrat). Le
  * SOLDE est le budgétisé moins le réalisé, lecture d'OmegaX, calculé quand
- * les deux sont saisis, jamais stocké. Le TOTAL s'additionne PAR MONNAIE,
+ * les deux sont saisis, jamais stocké. Le TOTAL s'additionne PAR MONNAIE ;
+ * son solde n'est servi que si chaque ligne chiffrée dans cette monnaie l'est
+ * des deux côtés (relecture · 150 budgétés contre 80 réalisés donnaient un
+ * solde de 70 quand la somme des soldes de ligne faisait 20), sinon null,
  * jamais francs et dollars ensemble ; le total des « Nombre » n'est pas
  * calculé, ces nombres comptant des choses différentes (enfants, agents,
  * médailles).
@@ -101,6 +104,7 @@ export function datesDuBilanSocial(exercice: number) {
 export function motifRefusSaisie(s: unknown): string | null {
   if (!s || typeof s !== 'object') return 'La saisie du bilan social est illisible.';
   const { lignes, commentaire } = s as Record<string, unknown>;
+  for (const cle of Object.keys(s)) if (!['lignes', 'commentaire', 'lu'].includes(cle)) return `Champ inconnu · ${cle}.`;
   if (!Array.isArray(lignes)) return 'Les lignes du bilan social sont illisibles.';
   if (lignes.length > LIGNES_BILAN_SOCIAL.length) return `Le formulaire compte ${LIGNES_BILAN_SOCIAL.length} lignes.`;
   if (commentaire !== null && commentaire !== undefined && (typeof commentaire !== 'string' || commentaire.length > LONGUEUR_COMMENTAIRE)) {
@@ -215,8 +219,8 @@ export function formulaireBilanSocial(entree: {
       devise: m,
       budgete: enMontant(t.budgete),
       realise: enMontant(t.realise),
-      solde: enMontant(t.budgete - t.realise),
-      // Une ligne chiffrée d'un seul côté · le total de l'autre colonne ne la compte pas, et c'est dit.
+      // Une ligne chiffrée d'un seul côté · aucun solde total, plutôt qu'un solde faux.
+      solde: t.budgeteComplet && t.realiseComplet ? enMontant(t.budgete - t.realise) : null,
       incomplet: !t.budgeteComplet || !t.realiseComplet,
     };
   });

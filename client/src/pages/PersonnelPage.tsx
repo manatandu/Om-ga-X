@@ -607,6 +607,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [confrontation, setConfrontation] = useState<Confrontation | null>(null);
   const [effectif, setEffectif] = useState<Effectif | null>(null);
   const [onglet, setOnglet] = useState<OngletPersonnel>(() => ongletPersonnelDe(adresse));
+  // Une saisie non enregistrée du bilan social · changer d'onglet le démonterait.
+  const [bilanNonEnregistre, setBilanNonEnregistre] = useState<string | null>(null);
   // La fenêtre n'est pas remontée quand un menu la redemande sur un autre
   // onglet · l'adresse change, l'état reste. D'où la resynchronisation.
   useEffect(() => {
@@ -1556,7 +1558,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             key={o}
             type="button"
             title={o === 'confrontation' ? 'Code du travail, art. 212 et art. 40 à 45' : undefined}
-            onClick={() => setOnglet(o)}
+            onClick={() => {
+              if (o !== onglet && bilanNonEnregistre && !window.confirm(`${bilanNonEnregistre} Changer d'onglet quand même ?`)) return;
+              if (o !== onglet) setBilanNonEnregistre(null);
+              setOnglet(o);
+            }}
             className={`px-3 py-1 border ${
               onglet === o ? 'border-accent text-accent' : 'border-border text-text-dim'
             }`}
@@ -3934,7 +3940,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'declaration' && (
         <div className="space-y-5">
           <OngletDeclarationMainOeuvre />
-          <OngletBilanSocial peutEcrire={peutEcrire} />
+          <OngletBilanSocial peutEcrire={peutEcrire} onModifie={setBilanNonEnregistre} />
           <DeclarationMouvementTravailleur salaries={registre ? salaries : null} inactifsInclus={tous} tronque={registre?.tronque ?? false} />
           <DeclarationEtablissement />
         </div>

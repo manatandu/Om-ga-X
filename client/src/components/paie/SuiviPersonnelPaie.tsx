@@ -66,7 +66,12 @@ function useLecture<T>(lire: (() => Promise<T>) | null, cle: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cle]);
   useEffect(relire, [relire]);
-  return { donnees, erreur, setErreur, relire };
+  /** La réponse d'un enregistrement prend la place de la lecture, sans relire · et jette toute lecture en vol. */
+  const remplacer = useCallback((d: T) => {
+    jeton.current += 1;
+    setDonnees(d);
+  }, []);
+  return { donnees, erreur, setErreur, relire, remplacer };
 }
 
 function useEnvoi(relire: () => void, setErreur: (m: string) => void) {
@@ -846,7 +851,7 @@ type BilanSocial = {
   identification: { libelle: string; valeur: string | null }[];
   effectifActifAu: string;
   lignes: LigneBilanSocial[];
-  total: { devise: MonnaieBilan; budgete: string; realise: string; solde: string; incomplet: boolean }[];
+  total: { devise: MonnaieBilan; budgete: string; realise: string; solde: string | null; incomplet: boolean }[];
   commentaire: string | null;
   enregistreLe: string | null;
   enregistrePar: string | null;
@@ -863,40 +868,78 @@ const editer = (b: BilanSocial): LigneEditee[] =>
  * le serveur (`bilan-social.ts`), solde et total aussi, rien recalculé ici.
  * L'exercice est l'année écoulée, déposée au plus tard le 31 janvier qui suit.
  */
-export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
-  const [exercice, setExercice] = useState(String(new Date().getFullYear() - 1));
-  const lisible = /^\d{4}$/.test(exercice);
-  const { donnees, erreur, setErreur, relire } = useLecture(
-    lisible ? () => api.get<BilanSocial>(`/personnel/bilan-social/${exercice}`) : null,
+export function OngletBilanSocial({ peutEcrire, onModifie }: { peutEcrire: boolean; onModifie?: (motif: string | null) => void }) {
+  // Deux états · l'exercice TAPÉ et l'exercice LU. Le second ne change qu'une
+  // fois les quatre chiffres validés (sortie du champ ou Entrée), et une
+  // saisie non enregistrée le fait confirmer · sans cela une frappe effaçait
+  // les vingt et une lignes (relecture, bloquant).
+  const [exerciceTape, setExerciceTape] = useState(String(new Date().getFullYear() - 1));
+  const [exercice, setExercice] = useState(exerciceTape);
+  const lisible = /^\d{4}$/.test(exerciceTape);
+  const { donnees, erreur, setErreur, remplacer } = useLecture(
+    () => api.get<BilanSocial>(`/personnel/bilan-social/${exercice}`),
     `bilan-social-${exercice}`,
   );
-  const { envoi, envoyer } = useEnvoi(relire, setErreur);
+  const [envoi, setEnvoi] = useState(false);
   const [lignes, setLignes] = useState<LigneEditee[] | null>(null);
   const [commentaire, setCommentaire] = useState('');
   const [modifie, setModifie] = useState(false);
-  useGardeFermeture(modifie ? 'Le bilan social a des lignes non enregistrées · elles seraient perdues.' : null);
+  const MOTIF_NON_ENREGISTRE = 'Le bilan social a des lignes non enregistrées · elles seraient perdues.';
+  useGardeFermeture(modifie ? MOTIF_NON_ENREGISTRE : null);
   useEffect(() => {
-    // Chaque lecture (exercice changé ou enregistrement relu) refait la grille.
+    onModifie?.(modifie ? MOTIF_NON_ENREGISTRE : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modifie]);
+  useEffect(() => {
+    // Chaque lecture (exercice changé ou enregistrement servi) refait la grille.
     setLignes(donnees ? editer(donnees) : null);
     setCommentaire(donnees?.commentaire ?? '');
     setModifie(false);
   }, [donnees]);
+  const appliquerExercice = () => {
+    if (!lisible || exerciceTape === exercice) return;
+    if (modifie && !window.confirm(`${MOTIF_NON_ENREGISTRE} Lire l'exercice ${exerciceTape} quand même ?`)) {
+      setExerciceTape(exercice);
+      return;
+    }
+    setExercice(exerciceTape);
+  };
   const changer = (numero: number, champ: keyof Omit<LigneEditee, 'numero'>, v: string) => {
     setLignes((ls) => ls && ls.map((l) => (l.numero === numero ? { ...l, [champ]: v } : l)));
     setModifie(true);
   };
-  const enregistrer = () => {
-    if (!lignes) return;
-    const s = saisieAEnvoyer(lignes, commentaire);
+  const reporter = (numero: number, realise: string) => {
+    const e = lignes?.find((l) => l.numero === numero);
+    // Le report ne change jamais en silence la monnaie d'un budgétisé déjà saisi.
+    if (e && e.devise && e.devise !== 'CDF' && e.budgete.trim() !== '') {
+      setErreur(`Ligne ${numero} · le budgétisé est en ${e.devise} · la proposition est en CDF, à reporter à la main dans la même monnaie.`);
+      return;
+    }
+    setLignes((ls) => ls && ls.map((l) => (l.numero === numero ? { ...l, realise, devise: 'CDF' } : l)));
+    setModifie(true);
+  };
+  const enregistrer = async () => {
+    if (!lignes || !donnees) return;
+    const s = saisieAEnvoyer(lignes, commentaire, donnees.enregistreLe);
     if ('erreur' in s) {
       setErreur(s.erreur);
       return;
     }
-    void envoyer(() => api.put(`/personnel/bilan-social/${exercice}`, s.corps));
+    const pour = exercice;
+    setErreur('');
+    setEnvoi(true);
+    try {
+      const r = await api.put<BilanSocial>(`/personnel/bilan-social/${pour}`, s.corps);
+      // La réponse vaut lecture · une relecture qui échouerait ensuite ne ferait pas disparaître ce qui est enregistré.
+      remplacer(r);
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Enregistrement refusé');
+    } finally {
+      setEnvoi(false);
+    }
   };
   const b = donnees;
   const td = 'px-1.5 py-0.5';
-  const montantOuVide = (v: string | null) => (v === null ? <Vide /> : fc(v));
   return (
     <div className="max-w-[1000px] text-[11.5px] space-y-3">
       <div className="ecran-seul space-y-2">
@@ -913,10 +956,15 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
           </label>
           <input
             id="bilan-social-exercice"
-            value={exercice}
+            value={exerciceTape}
             inputMode="numeric"
             maxLength={4}
-            onChange={(e) => setExercice(e.target.value)}
+            disabled={envoi}
+            onChange={(e) => setExerciceTape(e.target.value)}
+            onBlur={appliquerExercice}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') appliquerExercice();
+            }}
             className={`${champ} w-[60px] font-normal`}
           />
           {b && (
@@ -925,13 +973,13 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
             </button>
           )}
           {b && peutEcrire && (
-            <button type="button" onClick={enregistrer} disabled={envoi || !modifie} className="bg-sel text-white font-semibold px-3 py-1 disabled:opacity-50">
+            <button type="button" onClick={() => void enregistrer()} disabled={envoi || !modifie} className="bg-sel text-white font-semibold px-3 py-1 disabled:opacity-50">
               Enregistrer
             </button>
           )}
         </div>
         {!lisible && <div className="text-warning">Exercice illisible · quatre chiffres (AAAA).</div>}
-        {lisible && b === null && !erreur && <div className="text-text-dim">Lecture du bilan social…</div>}
+        {b === null && !erreur && <div className="text-text-dim">Lecture du bilan social…</div>}
         {b && (
           <div>
             Exercice du {b.du} au {b.au} · dépôt au plus tard le {b.dateLimite}
@@ -953,8 +1001,9 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
             </thead>
             <tbody>
               {b.lignes.map((l) => {
-                const e = lignes.find((x) => x.numero === l.numero)!;
-                const libre = !peutEcrire;
+                const e = lignes.find((x) => x.numero === l.numero);
+                if (!e) return null;
+                const lectureSeule = !peutEcrire || envoi;
                 return (
                   <tr key={l.numero}>
                     <td className={`${td} text-right`}>{l.numero}</td>
@@ -968,10 +1017,8 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
                             <button
                               type="button"
                               className="underline ml-1"
-                              onClick={() => {
-                                changer(l.numero, 'realise', l.proposition!.realise);
-                                changer(l.numero, 'devise', 'CDF');
-                              }}
+                              disabled={envoi}
+                              onClick={() => reporter(l.numero, l.proposition!.realise)}
                             >
                               Reporter
                             </button>
@@ -980,22 +1027,22 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
                       )}
                     </th>
                     <td className={td}>
-                      <input aria-label={`Nombre, ligne ${l.numero}`} disabled={libre} inputMode="numeric" value={e.nombre} onChange={(x) => changer(l.numero, 'nombre', x.target.value)} className={`${champ} w-[70px] text-right`} />
+                      <input aria-label={`Nombre, ligne ${l.numero}`} readOnly={lectureSeule} inputMode="numeric" value={e.nombre} onChange={(x) => changer(l.numero, 'nombre', x.target.value)} className={`${champ} w-[70px] text-right`} />
                     </td>
                     <td className={td}>
-                      <input aria-label={`Montant budgétisé, ligne ${l.numero}`} disabled={libre} inputMode="decimal" value={e.budgete} onChange={(x) => changer(l.numero, 'budgete', x.target.value)} className={`${champ} w-[120px] text-right`} />
+                      <input aria-label={`Montant budgétisé, ligne ${l.numero}`} readOnly={lectureSeule} inputMode="decimal" value={e.budgete} onChange={(x) => changer(l.numero, 'budgete', x.target.value)} className={`${champ} w-[120px] text-right`} />
                     </td>
                     <td className={td}>
-                      <input aria-label={`Montant réalisé, ligne ${l.numero}`} disabled={libre} inputMode="decimal" value={e.realise} onChange={(x) => changer(l.numero, 'realise', x.target.value)} className={`${champ} w-[120px] text-right`} />
+                      <input aria-label={`Montant réalisé, ligne ${l.numero}`} readOnly={lectureSeule} inputMode="decimal" value={e.realise} onChange={(x) => changer(l.numero, 'realise', x.target.value)} className={`${champ} w-[120px] text-right`} />
                     </td>
                     <td className={td}>
-                      <select aria-label={`Monnaie, ligne ${l.numero}`} disabled={libre} value={e.devise} onChange={(x) => changer(l.numero, 'devise', x.target.value)} className={champ}>
+                      <select aria-label={`Monnaie, ligne ${l.numero}`} disabled={lectureSeule} value={e.devise} onChange={(x) => changer(l.numero, 'devise', x.target.value)} className={champ}>
                         <option value="">·</option>
                         <option value="CDF">CDF</option>
                         <option value="USD">USD</option>
                       </select>
                     </td>
-                    <td className={`${td} text-right`}>{modifie ? <Vide /> : montantOuVide(l.solde)}</td>
+                    <td className={`${td} text-right`}>{modifie || l.solde === null ? <Vide /> : `${fc(l.solde)} ${l.devise ?? ''}`}</td>
                   </tr>
                 );
               })}
@@ -1009,7 +1056,7 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
             </label>
             <textarea
               id="bilan-social-commentaire"
-              disabled={!peutEcrire}
+              readOnly={!peutEcrire || envoi}
               value={commentaire}
               maxLength={4000}
               onChange={(e) => {
@@ -1059,9 +1106,9 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
                     {l.libelle}
                   </th>
                   <td className={`${td} text-right`}>{l.nombre ?? <Vide />}</td>
-                  <td className={`${td} text-right`}>{l.budgete === null ? <Vide /> : `${fc(l.budgete)} ${l.devise}`}</td>
-                  <td className={`${td} text-right`}>{l.realise === null ? <Vide /> : `${fc(l.realise)} ${l.devise}`}</td>
-                  <td className={`${td} text-right`}>{l.solde === null ? <Vide /> : `${fc(l.solde)} ${l.devise}`}</td>
+                  <td className={`${td} text-right`}>{l.budgete === null ? <Vide /> : `${fc(l.budgete)} ${l.devise ?? ''}`}</td>
+                  <td className={`${td} text-right`}>{l.realise === null ? <Vide /> : `${fc(l.realise)} ${l.devise ?? ''}`}</td>
+                  <td className={`${td} text-right`}>{l.solde === null ? <Vide /> : `${fc(l.solde)} ${l.devise ?? ''}`}</td>
                 </tr>
               ))}
               {b.total.length === 0 ? (
@@ -1082,7 +1129,7 @@ export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
                     </th>
                     <td className={`${td} text-right`}>{fc(t.budgete)}</td>
                     <td className={`${td} text-right`}>{fc(t.realise)}</td>
-                    <td className={`${td} text-right`}>{fc(t.solde)}</td>
+                    <td className={`${td} text-right`}>{t.solde === null ? <Vide /> : fc(t.solde)}</td>
                   </tr>
                 ))
               )}

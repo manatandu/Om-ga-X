@@ -85,7 +85,7 @@ async function main() {
     verifier(r.statut === 400 && /exige sa monnaie/.test(JSON.stringify(r.corps)), `montant sans monnaie refusé (${r.statut})`);
     r = await A.statut('PUT', '/personnel/bilan-social/2026', { lignes: [{ numero: 30 }] });
     verifier(r.statut === 400, `ligne hors du formulaire refusée (${r.statut})`);
-    const saisie = {
+    const saisie0 = {
       lignes: [
         { numero: 1, nombre: 14, budgete: '2500000', realise: '2350000.50', devise: 'CDF' },
         { numero: 10, nombre: 2, budgete: null, realise: attendu, devise: 'CDF' },
@@ -93,12 +93,21 @@ async function main() {
       ],
       commentaire: 'Exercice sans imprévu.',
     };
-    f = await A.appeler('PUT', '/personnel/bilan-social/2026', saisie).then((x) => x.corps);
+    const saisie = saisie0;
+    f = await A.appeler('PUT', '/personnel/bilan-social/2026', { ...saisie, lu: null }).then((x) => x.corps);
     verifier(f.lignes[0].solde === '149999.50' && f.lignes[18].solde === '-150.00' && f.lignes[9].solde === null, `soldes au centime (${f.lignes[0].solde} ${f.lignes[18].solde})`);
     const cdf = (Number('2350000.50') + Number(attendu)).toFixed(2);
-    verifier(JSON.stringify(f.total) === JSON.stringify([{ devise: 'CDF', budgete: '2500000.00', realise: cdf, solde: (2500000 - Number(cdf)).toFixed(2), incomplet: true }, { devise: 'USD', budgete: '1200.00', realise: '1350.00', solde: '-150.00', incomplet: false }]), `total par monnaie, jamais mêlé (${JSON.stringify(f.total)})`);
+    verifier(JSON.stringify(f.total) === JSON.stringify([{ devise: 'CDF', budgete: '2500000.00', realise: cdf, solde: null, incomplet: true }, { devise: 'USD', budgete: '1200.00', realise: '1350.00', solde: '-150.00', incomplet: false }]), `total par monnaie, jamais mêlé, aucun solde total sur une ligne chiffrée d'un seul côté (${JSON.stringify(f.total)})`);
+    // Deux postes · une version dépassée est refusée, jamais écrasée en silence.
+    r = await A.statut('PUT', '/personnel/bilan-social/2026', { ...saisie, lu: null });
+    verifier(r.statut === 409, `enregistrement sans la version lue refusé (${r.statut})`);
+    r = await A.statut('PUT', '/personnel/bilan-social/2026', { ...saisie, lu: '2020-01-01T00:00:00.000Z' });
+    verifier(r.statut === 409, `version dépassée refusée (${r.statut})`);
+    const refait = await A.appeler('PUT', '/personnel/bilan-social/2026', { ...saisie, commentaire: 'Exercice sans imprévu.', lu: f.enregistreLe }).then((x) => x.corps);
+    verifier(refait.enregistreLe !== f.enregistreLe, 'la version lue admise, enregistrement renouvelé');
+    f = refait;
     const audit = await prisma.evenementAudit.count({ where: { tenantId, entite: 'BilanSocial' } });
-    verifier(audit >= 1, `enregistrement au journal d'audit (${audit})`);
+    verifier(audit >= 2, `enregistrement au journal d'audit (${audit})`);
 
     console.log('Clôture de 2026');
     r = await A.statut('POST', `/exercices/${e2025.id}/cloturer`, {});
