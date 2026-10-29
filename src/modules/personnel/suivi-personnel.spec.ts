@@ -90,16 +90,18 @@ describe('Échéancier des contrats (art. 42, 43 al. 4, 69)', () => {
   // Ligne paie-suite, fonction 81 · le plafond de l'art. 41, al. 1er.
   describe("le plafond de l'art. 41, compté de date à date", () => {
     const cdd = { ...base, type: 'DUREE_DETERMINEE', clauseEssai: false, dateEntreeEnVigueur: d('2027-01-05'), dateFinPrevue: null };
-    it('deux ans de date à date · 5 janvier 2027 au 5 janvier 2029, jamais 730 jours', () => {
+    it('deux ans de date à date · du 5 janvier 2027 au 4 janvier 2029 inclus, jamais 730 jours', () => {
       const e = echeancesDuContrat(cdd, d('2028-12-20'));
-      expect(e).toEqual([expect.objectContaining({ objet: 'PLAFOND_ARTICLE_41', echeance: '2029-01-05', joursRestants: 16, depassee: false })]);
+      expect(e).toEqual([expect.objectContaining({ objet: 'PLAFOND_ARTICLE_41', echeance: '2029-01-04', joursRestants: 15, depassee: false })]);
       expect(e[0].consequence).toMatch(/ne fixe pas de terme/);
     });
     it('un an pour le travailleur séparé de sa famille', () => {
-      expect(echeancesDuContrat({ ...cdd, separeDeSaFamille: true }, d('2027-12-20'))[0]).toMatchObject({ objet: 'PLAFOND_ARTICLE_41', echeance: '2028-01-05' });
+      expect(echeancesDuContrat({ ...cdd, separeDeSaFamille: true }, d('2027-12-20'))[0]).toMatchObject({ objet: 'PLAFOND_ARTICLE_41', echeance: '2028-01-04' });
     });
     it('un terme au plus tard au plafond se dit par la fin du CDD seule, un terme au-delà fait dire le plafond', () => {
-      expect(echeancesDuContrat({ ...cdd, dateFinPrevue: d('2029-01-05') }, d('2028-12-20')).map((e) => e.objet)).toEqual(['FIN_CDD']);
+      expect(echeancesDuContrat({ ...cdd, dateFinPrevue: d('2029-01-04') }, d('2028-12-20')).map((e) => e.objet)).toEqual(['FIN_CDD']);
+      // Le terme au jour anniversaire excède les deux ans d'un jour.
+      expect(echeancesDuContrat({ ...cdd, dateFinPrevue: d('2029-01-05') }, d('2028-12-20')).map((e) => e.objet)).toEqual(['FIN_CDD', 'PLAFOND_ARTICLE_41']);
       const au = echeancesDuContrat({ ...cdd, dateFinPrevue: d('2029-06-30') }, d('2028-12-20'));
       expect(au.map((e) => e.objet)).toEqual(['PLAFOND_ARTICLE_41']);
       expect(au[0].consequence).toMatch(/2029-06-30 va au-delà/);

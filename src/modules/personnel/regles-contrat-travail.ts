@@ -447,16 +447,25 @@ export function joursEntre(debut: Date, fin: Date): number {
 /**
  * LE DERNIER JOUR QUE L'ART. 41, AL. 1er, PERMET À UN CDD · « ne peut excéder
  * deux ans », un an pour le travailleur séparé de sa famille. Compté DE DATE
- * À DATE, jamais en 730 jours (5 janvier 2027 au 5 janvier 2029 · 731 jours,
- * deux ans) · le texte raisonne en années, et la règle ne dépend pas du
- * nombre de jours de février. Une seule écriture du calcul, lue par le
- * contrôle des contrats (`requalifications`) et par l'échéancier des
- * contrats (`suivi-personnel.ts`, ligne paie-suite, fonction 81).
+ * À DATE, jamais en 730 jours · le texte raisonne en années, et la règle ne
+ * dépend pas du nombre de jours de février. DÉCISION PAR LA LOI (2026-10-29,
+ * demande de Manasse) · l'article mesure une DURÉE, et le jour d'entrée en
+ * vigueur en est le premier ; deux ans depuis le 1er janvier 2025 couvrent
+ * donc le 1er janvier 2025 au 31 décembre 2026 inclus, et un service le
+ * 1er janvier 2027 « excède » les deux ans (al. 3, continuation de service).
+ * Le Code ne pose aucune règle de computation · c'est la lecture de
+ * `plafondEssaiEnJours` (six mois depuis le 5 janvier · 181 jours, dernier
+ * jour le 4 juillet) et du terme du registre, jour de service compris
+ * (`dateFinPrevue`, lu en vigueur ce jour-là). Jusqu'au 2026-10-29, le
+ * plafond rendait la date anniversaire et admettait un jour de trop. Une
+ * seule écriture du calcul, lue par le contrôle des contrats
+ * (`requalifications`) et par l'échéancier des contrats (`suivi-personnel.ts`,
+ * ligne paie-suite, fonction 81).
  */
 export function plafondDureeCdd(debut: Date, separeDeSaFamille: boolean): Date {
-  const plafond = new Date(debut.getTime());
-  plafond.setUTCFullYear(plafond.getUTCFullYear() + (separeDeSaFamille ? 1 : 2));
-  return plafond;
+  const anniversaire = new Date(debut.getTime());
+  anniversaire.setUTCFullYear(anniversaire.getUTCFullYear() + (separeDeSaFamille ? 1 : 2));
+  return new Date(anniversaire.getTime() - MS_PAR_JOUR);
 }
 
 /** L'art. 41, alinéas 2 et 3, EN ENTIER · exception comprise. */

@@ -121,7 +121,7 @@ async function main() {
     await A.post(`/personnel/salaries/${s1.id}/mode-paiement`, { modePaiement: 'CHEQUE' });
     const ech = await A.get('/personnel/echeancier-contrats?horizon=90');
     const p41 = (ech.echeances ?? []).find((e) => e.objet === 'PLAFOND_ARTICLE_41');
-    verifier(p41?.echeance === '2027-01-01' && p41.depassee === false, `le CDD sans terme montre le plafond de l’art. 41, de date à date (${p41?.echeance})`);
+    verifier(p41?.echeance === '2026-12-31' && p41.depassee === false, `le CDD sans terme montre le plafond de l’art. 41, de date à date (${p41?.echeance})`);
 
     console.log('4. Décembre 2026 · sur les comptes des salariés');
     const b1dec = await A.post(`/personnel/salaries/${s1.id}/bulletins`, corps('2026-12'));

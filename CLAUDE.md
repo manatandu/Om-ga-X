@@ -1470,8 +1470,10 @@ formule (« de plein droit », « est réputé »), jamais appliquées en base. 
 d'exclusion se nomme par sa FIN, jamais par sa forme** · l'archive de restitution
 lisait celle du journal d'audit (`motDePasse`, `estOperateurPlateforme`), et y
 verser date de naissance et rémunération l'aurait VIDÉE en la disant complète. Le
-plafond de l'art. 41 se compte DATE À DATE, jamais en 730 jours (5 janvier 2027 au 5
-janvier 2029 · 731 jours, deux ans). « Un numéro, deux sens » · art. 37 du Code du
+plafond de l'art. 41 se compte DATE À DATE, jamais en 730 jours, le jour
+d'entrée en vigueur étant le premier de la durée (décision par la loi du
+2026-10-29 · deux ans depuis le 5 janvier 2027 vont jusqu'au 4 janvier 2029
+inclus, 731 jours ; le terme au jour anniversaire excède d'un jour). « Un numéro, deux sens » · art. 37 du Code du
 travail (nullité de la clause moins favorable) contre art. 37, point 4 de la loi
 n° 004/2001 (60 % de main-d'œuvre locale). **L'EFFECTIF EST PROPOSÉ, JAMAIS
 SUBSTITUÉ** (`Tenant.effectifPermanent`, notes 27B et 29B, part locale de
