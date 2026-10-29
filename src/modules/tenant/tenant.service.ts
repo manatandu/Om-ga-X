@@ -212,6 +212,8 @@ export class TenantService {
       creationCompteEnSaisie: tenant.creationCompteEnSaisie,
       // Visa des RIB (`tiers/visa-rib.ts`) · aux deux référentiels, comme le double regard.
       visaRibs: tenant.visaRibs,
+      // Ligne paie-suite · visa des plans d'étalement, aux deux référentiels.
+      visaPlansEtalement: tenant.visaPlansEtalement,
       // Circuit de visa avant validation (`comptabilite/circuit-visa.ts`) · aux deux référentiels.
       circuitVisa: tenant.circuitVisa,
       // Ligne sage-l2, fonction 36 · aux deux référentiels ; `null` = aucun seuil fixé.
@@ -1247,6 +1249,16 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaRibs } });
+    return this.parametres(tenantId);
+  }
+
+  /** Ligne paie-suite · le visa des plans d'étalement (`personnel/visa-plan-etalement.ts`), option du dossier. */
+  async modifierVisaPlansEtalement(tenantId: string, visaPlansEtalement: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaPlansEtalement } });
     return this.parametres(tenantId);
   }
 

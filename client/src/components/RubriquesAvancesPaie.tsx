@@ -3,6 +3,8 @@ import { api, ApiError } from '../lib/api';
 import { Aide } from './chrome/Aide';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
 import { montant as fc } from '../lib/montants';
+import { useAuth } from '../lib/auth';
+import { etatDuVisaPlan, peutViserLePlan, type VisaPlanLu } from '../lib/visa-plan';
 
 export interface RubriquePaie {
   id: string;
@@ -42,6 +44,8 @@ export interface AvanceSalaire {
   } | null;
   /** La retenue que le plan propose pour le mois demandé · null hors demande. */
   proposition?: { montantFc: number | null; motif: string; rang: number | null; auDelaDuPlan: boolean } | null;
+  /** Ligne paie-suite · le visa du plan, null sans plan. */
+  visaPlan?: VisaPlanLu | null;
 }
 
 /** Une liste du serveur et ce qu'elle dit d'elle-même (audit final F259). */
@@ -105,6 +109,9 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
   });
   // La mainlevée d'une saisie-arrêt (AUPSRVE, art. 201), par saisie.
   const [finSaisie, setFinSaisie] = useState<Record<string, string>>({});
+  const { peutValider } = useAuth();
+  // L'avertissement du visa d'un plan d'avant la règle (auteur inconnu).
+  const [avisVisa, setAvisVisa] = useState<string | null>(null);
 
   const charger = useCallback(() => {
     api.get<{ rubriques: RubriquePaie[]; naturesPermises: string[] } & Tranche>('/personnel/rubriques').then(
@@ -168,6 +175,7 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
   return (
     <div className="ecran-seul max-w-[1240px] text-[11.5px] space-y-4">
       {erreur && <div className="border border-danger/30 bg-danger-soft text-danger px-3 py-2">{erreur}</div>}
+      {avisVisa && <div className="border border-warning/30 bg-warning-soft text-warning px-3 py-2">{avisVisa}</div>}
 
       <section>
         <div className="font-semibold mb-1 flex items-center gap-1.5">
@@ -295,6 +303,26 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
                         ? `${a.plan.nombreEcheances} échéances`
                         : `${fc(a.plan.retenueMensuelleFc ?? 0)} par mois`}{' '}
                       (fin prévue {a.plan.echeancier[a.plan.echeancier.length - 1]?.mois ?? '·'})
+                      {a.visaPlan && (
+                        <span className={a.visaPlan.exige && !a.visaPlan.vise ? ' text-warning' : ''}> · {etatDuVisaPlan(a.visaPlan)}</span>
+                      )}
+                      {peutViserLePlan(a.visaPlan, peutValider) && (
+                        <button
+                          type="button"
+                          className="text-sel hover:underline ml-1.5"
+                          aria-label={`Viser le plan de ${a.salarie}`}
+                          onClick={() =>
+                            void envoyer(async () => {
+                              const r = await api.post<{ avertissement: string | null }>(`/personnel/avances/${a.id}/viser-plan`, {
+                                saisiLeLu: a.visaPlan!.saisiLe,
+                              });
+                              setAvisVisa(r.avertissement);
+                            })
+                          }
+                        >
+                          Viser le plan
+                        </button>
+                      )}
                     </div>
                   )}
                   {a.retenues.length > 0 && (

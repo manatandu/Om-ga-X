@@ -398,6 +398,11 @@ describe('la liste d’exclusion est fermée sur User', () => {
       // nombre de mois, aucun montant (la retenue mensuelle reste masquée).
       'premierMoisRetenue',
       'nombreEcheances',
+      // Ligne paie-suite · le visa du plan · des identifiants et des instants, aucun montant.
+      'planSaisiPar',
+      'planSaisiLe',
+      'planVisePar',
+      'planViseLe',
       'creePar',
       'createdAt',
       'retenues',

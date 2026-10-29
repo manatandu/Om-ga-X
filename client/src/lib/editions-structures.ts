@@ -286,6 +286,7 @@ export function editionParametres(
     ['Vente de biens ou de services', p.venteBiensServices == null ? 'non renseigné' : ouiNon(p.venteBiensServices)],
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
     ['Visa des RIB par un second utilisateur', ouiNon(p.visaRibs)],
+    ['Visa des plans d’étalement par un second utilisateur', ouiNon(p.visaPlansEtalement === true)],
     ['Circuit de visa avant validation', ouiNon(p.circuitVisa === true)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],

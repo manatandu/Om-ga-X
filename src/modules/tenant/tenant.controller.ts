@@ -12,6 +12,7 @@ import {
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
   ModifierVisaRibsDto,
+  ModifierVisaPlansEtalementDto,
   ModifierCircuitVisaDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
@@ -188,6 +189,16 @@ export class TenantController {
     @Body() dto: ModifierVisaRibsDto,
   ) {
     return this.tenantService.modifierVisaRibs(user.tenantId, dto.visaRibs);
+  }
+
+  /** Ligne paie-suite · visa des plans d'étalement · voir `personnel/visa-plan-etalement.ts`. */
+  @Patch('visa-plans-etalement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierVisaPlansEtalement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierVisaPlansEtalementDto,
+  ) {
+    return this.tenantService.modifierVisaPlansEtalement(user.tenantId, dto.visaPlansEtalement);
   }
 
   /** Circuit de visa avant validation · voir `comptabilite/circuit-visa.ts`. */

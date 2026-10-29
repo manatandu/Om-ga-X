@@ -511,6 +511,23 @@ export function ParametresDossierPage() {
     }
   };
 
+  const changerVisaPlans = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/visa-plans-etalement', { visaPlansEtalement: actif }));
+      setInfo(
+        actif
+          ? 'Visa des plans d’étalement exigé · la retenue d’un plan non visé n’est plus proposée au bulletin.'
+          : 'Visa des plans d’étalement retiré.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const changerVisaRibs = async (actif: boolean) => {
     setEnvoi(true);
     setErreur(null);
@@ -1902,6 +1919,25 @@ export function ParametresDossierPage() {
                         params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
                       }). L’activer ne vise rien d’office.`}
                       source={params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2) · option d’OmegaX' : 'AUDCIF art. 69 · option d’OmegaX'}
+                    />
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.visaPlansEtalement === true}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerVisaPlans(e.target.checked)}
+                  />
+                  <span>
+                    Visa des plans d’étalement par un second utilisateur{' '}
+                    <Aide
+                      titre="Visa des plans d’étalement"
+                      texte={`La retenue qu’un plan d’étalement d’avance ou de prêt propose chaque mois au bulletin ne l’est plus tant qu’un administrateur ou un comptable autre que celui qui a saisi le plan ne l’a pas visé ; la simulation le dit. Toute saisie du premier mois, de la durée ou de la retenue mensuelle fait tomber le visa. Un plan déclaré avant cette option n’a pas d’auteur connu · il se vise, et la réponse le dit. La retenue saisie à la main au bulletin reste possible. Aucun texte n’impose ce second regard · procédure que l’entité se donne (${
+                        params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
+                      }).`}
+                      source={params.referentiel === 'SYCEBNL' ? 'Code du travail, art. 112 · SYCEBNL art. 16, 2) · option d’OmegaX' : 'Code du travail, art. 112 · AUDCIF art. 69 · option d’OmegaX'}
                     />
                   </span>
                 </label>

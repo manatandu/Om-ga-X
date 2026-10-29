@@ -689,6 +689,13 @@ model Tenant {
   // (`tiers/visa-rib.ts`). Un RIB modifié en silence détourne un paiement ·
   // le visa met un second regard entre la saisie et l'argent qui part.
   visaRibs                      Boolean  @default(false)
+  // LIGNE PAIE-SUITE · VISA D'UN PLAN D'ÉTALEMENT PAR UN SECOND UTILISATEUR
+  // (gel levé par Manasse le 2026-10-29). Même modèle que le visa des RIB ·
+  // une OPTION, désactivée par défaut, aucun texte lu ne l'imposant (AUDCIF
+  // art. 69 ; SYCEBNL art. 16, 2)). Activée, la retenue d'un plan non visé
+  // n'est pas proposée au bulletin, et la simulation le dit
+  // (`personnel/visa-plan-etalement.ts`).
+  visaPlansEtalement            Boolean  @default(false)
   // CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1 · Microfina++,
   // « visa puis validation », M p. 130 à 133). Une OPTION, désactivée par
   // défaut, comme le double regard · aucun texte lu ne l'impose. AUDCIF
@@ -8854,6 +8861,14 @@ model AvanceSalaire {
   /// la retenue mensuelle reste alors une simple indication.
   premierMoisRetenue String?                 @db.VarChar(7)
   nombreEcheances    Int?
+  /// LIGNE PAIE-SUITE · le visa du plan (`visa-plan-etalement.ts`) · qui l'a
+  /// saisi ou changé en dernier, qui l'a visé et quand. Nuls sur un plan
+  /// d'avant la règle (auteur inconnu, visable et dit) et sur une avance sans
+  /// plan. Des identifiants d'utilisateur, comme le visa des RIB.
+  planSaisiPar       String?
+  planSaisiLe        DateTime?
+  planVisePar        String?
+  planViseLe         DateTime?
   objet              String
   /// Reconnaissance de dette ou contrat de prêt · « éléments de contrôle » du
   /// compte 42 dans les deux plans.

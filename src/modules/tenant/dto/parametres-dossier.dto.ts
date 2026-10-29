@@ -526,6 +526,17 @@ export class ModifierVisaRibsDto {
 }
 
 /**
+ * LIGNE PAIE-SUITE · VISA DES PLANS D'ÉTALEMENT PAR UN SECOND UTILISATEUR ·
+ * même modèle que le visa des RIB, désactivé par défaut · aucun texte lu ne
+ * l'impose (AUDCIF art. 69 ; SYCEBNL art. 16, 2). Voir
+ * `personnel/visa-plan-etalement.ts`.
+ */
+export class ModifierVisaPlansEtalementDto {
+  @IsBoolean()
+  visaPlansEtalement!: boolean;
+}
+
+/**
  * CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1) · une option,
  * désactivée par défaut, comme le double regard · aucun texte lu ne l'impose
  * (AUDCIF art. 22, 2° et 69 ; SYCEBNL art. 16, 2)). Voir

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { motifPlanNonPropose } from './visa-plan-etalement';
 import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
@@ -1621,7 +1622,13 @@ export class PersonnelService {
       take: 200,
       include: { retenues: { select: { montantFc: true, bulletin: { select: { statut: true, moisDePaie: true } } } } },
     });
+    if (avances.length === 0) return { retenuesPlanifiees: [], avertissementsRetenuesPlanifiees: [] };
+    // LIGNE PAIE-SUITE · l'option du visa des plans, lue seulement quand un
+    // plan existe · un dossier introuvable n'est pas « aucun visa exigé ».
+    const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaPlansEtalement: true } });
+    if (!dossier) throw new NotFoundException('Dossier introuvable.');
     const proposees: { avanceId: string; libelle: string; montantFc: number; motif: string }[] = [];
+    const nonVises: string[] = [];
     for (const a of avances) {
       // Le solde au moment du calcul, sur les bulletins ÉMIS seulement · un
       // bulletin annulé (à réémettre) rend sa retenue.
@@ -1641,9 +1648,17 @@ export class PersonnelService {
       );
       if (p.montantFc === null || !(p.montantFc > 0)) continue;
       const libelle = `${a.type === 'PRET' ? 'Prêt' : a.type === 'ACOMPTE' ? 'Acompte' : 'Avance'} du ${a.dateOctroi.toISOString().slice(0, 10)} · ${a.objet}`;
+      // LIGNE PAIE-SUITE · UN PLAN NON VISÉ N'EST PAS PROPOSÉ, ET C'EST DIT
+      // (`visa-plan-etalement.ts`, règle 5) · ni proposé, ni compté comme un
+      // écart au plan (qui ferait lire une retenue manquante).
+      const nonPropose = motifPlanNonPropose(dossier.visaPlansEtalement === true, a, libelle);
+      if (nonPropose) {
+        nonVises.push(nonPropose);
+        continue;
+      }
       proposees.push({ avanceId: a.id, libelle, montantFc: p.montantFc, motif: p.motif });
     }
-    const avertissements = ecartsAuPlan(proposees, portees);
+    const avertissements = [...nonVises, ...ecartsAuPlan(proposees, portees)];
     // Au-delà de deux cents avances planifiées pour un salarié, la lecture se
     // coupe · elle le DIT, jamais un plan oublié en silence.
     if (avances.length >= 200) avertissements.push("Plus de deux cents avances étalées pour ce salarié · seules les deux cents plus anciennes sont confrontées au bulletin.");
