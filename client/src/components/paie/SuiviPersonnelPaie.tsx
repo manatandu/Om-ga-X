@@ -323,7 +323,7 @@ export function OngletDemandesConge({ salaries, peutEcrire }: { salaries: Salari
 
 // ---- Idée 10 -----------------------------------------------------------
 
-type Echeance = { contratId: string; salarie: string; objet: 'FIN_CDD' | 'FIN_ESSAI'; echeance: string; joursRestants: number; depassee: boolean; article: string; consequence: string };
+type Echeance = { contratId: string; salarie: string; objet: 'FIN_CDD' | 'FIN_ESSAI' | 'PLAFOND_ARTICLE_41'; echeance: string; joursRestants: number; depassee: boolean; article: string; consequence: string };
 
 export function OngletEcheancierContrats() {
   const { donnees, erreur } = useLecture(
@@ -334,11 +334,11 @@ export function OngletEcheancierContrats() {
     <div className="ecran-seul max-w-[1240px] text-[11.5px] space-y-3">
       <Erreur m={erreur} />
       <div className="font-semibold flex items-center gap-1.5">
-        Fins de contrat et de période d&apos;essai
+        Fins de contrat, de période d&apos;essai et de durée maximale
         <Aide
           titre="Échéancier des contrats"
-          texte="Les contrats en cours dont le terme ou la fin d'essai tombe dans les soixante jours, ou est passé. Un contrat à durée déterminée prend fin au terme fixé ; conclu pour un emploi permanent, il est réputé à durée indéterminée. La prolongation des services au-delà de la durée maximale de l'essai confirme le contrat. Le plafond de l'essai se compte de date à date. L'échéancier ne termine ni ne requalifie aucun contrat."
-          source="Code du travail, art. 42, 43 et 69"
+          texte="Les contrats en cours dont le terme, la fin d'essai ou la durée maximale tombe dans les soixante jours, ou est passé. Un contrat à durée déterminée prend fin au terme fixé ; conclu pour un emploi permanent, il est réputé à durée indéterminée. Il ne peut excéder deux ans, un an pour le travailleur séparé de sa famille, comptés de date à date depuis son entrée en vigueur ; ce plafond n'est dit que quand le contrat ne fixe pas de terme ou le fixe au-delà. La prolongation des services au-delà de la durée maximale de l'essai confirme le contrat. L'échéancier ne termine ni ne requalifie aucun contrat."
+          source="Code du travail, art. 41, 42, 43 et 69"
         />
       </div>
       {donnees === null && !erreur && <div className="text-text-dim">Lecture des contrats…</div>}
@@ -358,7 +358,7 @@ export function OngletEcheancierContrats() {
             {donnees.echeances.map((e) => (
               <tr key={`${e.contratId}-${e.objet}`} className={e.depassee ? 'text-danger' : undefined}>
                 <td className="px-2 py-1">{e.salarie}</td>
-                <td className="px-2 py-1">{e.objet === 'FIN_CDD' ? 'Terme du contrat' : "Fin de l'essai"}</td>
+                <td className="px-2 py-1">{e.objet === 'FIN_CDD' ? 'Terme du contrat' : e.objet === 'PLAFOND_ARTICLE_41' ? 'Durée maximale du contrat' : "Fin de l'essai"}</td>
                 <td className="px-2 py-1">
                   {e.echeance} · {e.depassee ? `passée de ${-e.joursRestants} j` : `dans ${e.joursRestants} j`}
                 </td>

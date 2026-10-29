@@ -21,7 +21,7 @@ Excel), départements et directions, visa d'un plan d'étalement.
 
 ## Reste
 
-- [ ] 81 · plafond de l'art. 41 dans l'échéancier des contrats.
+- [x] 81 · plafond de l'art. 41 (al. 1er) dans l'échéancier des contrats, de date à date (`plafondDureeCdd`, partagé avec le contrôle). Fin d'essai et fin de CDD y étaient déjà (microfina-m3).
 - [ ] Départements et directions.
 - [ ] 89 · fiche individuelle et cumuls annuels.
 - [ ] 82 · import du personnel.
