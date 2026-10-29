@@ -37,6 +37,7 @@ import { OrganigrammeController } from './organigramme.controller';
 import { OrganigrammeService } from './organigramme.service';
 import { PersonnelSuiteController } from './personnel-suite.controller';
 import { FicheIndividuelleService } from './fiche-individuelle.service';
+import { ImportPersonnelService } from './import-personnel.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -83,6 +84,7 @@ import { FicheIndividuelleService } from './fiche-individuelle.service';
     BilanSocialService,
     OrganigrammeService,
     FicheIndividuelleService,
+    ImportPersonnelService,
   ],
   exports: [PersonnelService],
 })

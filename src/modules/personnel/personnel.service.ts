@@ -448,27 +448,7 @@ export class PersonnelService {
   }
 
   private champsSalarie(dto: SalarieDto) {
-    return {
-      matricule: dto.matricule?.trim() || null,
-      nom: dto.nom.trim(),
-      postNom: dto.postNom?.trim() || null,
-      prenoms: dto.prenoms?.trim() || null,
-      sexe: dto.sexe,
-      numeroAffiliationCnss: dto.numeroAffiliationCnss?.trim() || null,
-      dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
-      millesimeNaissance: dto.millesimeNaissance ?? null,
-      lieuNaissance: dto.lieuNaissance?.trim() || null,
-      nationalite: dto.nationalite?.trim() || null,
-      nomConjoint: dto.nomConjoint?.trim() || null,
-      aptitudeConstateeLe: dto.aptitudeConstateeLe ? new Date(dto.aptitudeConstateeLe) : null,
-      aptitudeConstateePar: dto.aptitudeConstateePar?.trim() || null,
-      aptitudeProvisoire: dto.aptitudeProvisoire ?? false,
-      declarationEngagementLe: dto.declarationEngagementLe
-        ? new Date(dto.declarationEngagementLe)
-        : null,
-      declarationDepartLe: dto.declarationDepartLe ? new Date(dto.declarationDepartLe) : null,
-      actif: dto.actif ?? true,
-    };
+    return champsDuSalarie(dto);
   }
 
   private async verifierMatriculeLibre(
@@ -530,31 +510,7 @@ export class PersonnelService {
         tenantId,
         salarieId,
         createdBy: userId,
-        type: dto.type,
-        constateParEcrit: dto.constateParEcrit ?? true,
-        dateEntreeEnVigueur: new Date(dto.dateEntreeEnVigueur),
-        dateConclusion: dto.dateConclusion ? new Date(dto.dateConclusion) : null,
-        lieuConclusion: dto.lieuConclusion?.trim() || null,
-        dateFinPrevue: dto.dateFinPrevue ? new Date(dto.dateFinPrevue) : null,
-        separeDeSaFamille: dto.separeDeSaFamille ?? false,
-        ouvrageDetermine: dto.ouvrageDetermine?.trim() || null,
-        motifRemplacement: dto.motifRemplacement?.trim() || null,
-        emploiPermanent: dto.emploiPermanent ?? false,
-        natureTravail: dto.natureTravail?.trim() || null,
-        lieuExecution: dto.lieuExecution?.trim() || null,
-        categorieProfessionnelle: dto.categorieProfessionnelle?.trim() || null,
-        classeProfessionnelle: dto.classeProfessionnelle ?? null,
-        periodiciteRemuneration: dto.periodiciteRemuneration ?? null,
-        manoeuvreSansSpecialite: dto.manoeuvreSansSpecialite ?? false,
-        remunerationBase: dto.remunerationBase ?? null,
-        deviseRemuneration: dto.deviseRemuneration ?? null,
-        avantagesConvenus: dto.avantagesConvenus?.trim() || null,
-        clauseEssai: dto.clauseEssai ?? false,
-        essaiConstateParEcrit: dto.essaiConstateParEcrit ?? false,
-        essaiDureeJours: dto.essaiDureeJours ?? null,
-        dureePreavisJours: dto.dureePreavisJours ?? null,
-        viseParOnem: dto.viseParOnem ?? false,
-        dateVisaOnem: dto.dateVisaOnem ? new Date(dto.dateVisaOnem) : null,
+        ...champsDuContrat(dto),
         renouvelleDeId: dto.renouvelleDeId ?? null,
       },
     });
@@ -2606,3 +2562,64 @@ export type SimulationPaie = Awaited<ReturnType<PersonnelService['simulerPaie']>
 export type DecompteFinal = Awaited<ReturnType<PersonnelService['decompteFinal']>>;
 export type LivreDePaie = ReturnType<PersonnelService['livreDePaie']>;
 export type BulletinPaieLu = Awaited<ReturnType<PersonnelService['lireBulletin']>>;
+
+/**
+ * LIGNE PAIE-SUITE, FONCTION 82 · les colonnes d'une fiche du registre et
+ * celles d'un contrat, une seule écriture · la saisie et l'import du
+ * personnel (`import-personnel.service.ts`) écrivent la même chose, sans
+ * quoi un import ferait entrer une fiche que la saisie aurait écrite
+ * autrement.
+ */
+export function champsDuSalarie(dto: SalarieDto) {
+  return {
+    matricule: dto.matricule?.trim() || null,
+    nom: dto.nom.trim(),
+    postNom: dto.postNom?.trim() || null,
+    prenoms: dto.prenoms?.trim() || null,
+    sexe: dto.sexe,
+    numeroAffiliationCnss: dto.numeroAffiliationCnss?.trim() || null,
+    dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
+    millesimeNaissance: dto.millesimeNaissance ?? null,
+    lieuNaissance: dto.lieuNaissance?.trim() || null,
+    nationalite: dto.nationalite?.trim() || null,
+    nomConjoint: dto.nomConjoint?.trim() || null,
+    aptitudeConstateeLe: dto.aptitudeConstateeLe ? new Date(dto.aptitudeConstateeLe) : null,
+    aptitudeConstateePar: dto.aptitudeConstateePar?.trim() || null,
+    aptitudeProvisoire: dto.aptitudeProvisoire ?? false,
+    declarationEngagementLe: dto.declarationEngagementLe
+      ? new Date(dto.declarationEngagementLe)
+      : null,
+    declarationDepartLe: dto.declarationDepartLe ? new Date(dto.declarationDepartLe) : null,
+    actif: dto.actif ?? true,
+  };
+}
+
+export function champsDuContrat(dto: ContratTravailDto) {
+  return {
+    type: dto.type,
+    constateParEcrit: dto.constateParEcrit ?? true,
+    dateEntreeEnVigueur: new Date(dto.dateEntreeEnVigueur),
+    dateConclusion: dto.dateConclusion ? new Date(dto.dateConclusion) : null,
+    lieuConclusion: dto.lieuConclusion?.trim() || null,
+    dateFinPrevue: dto.dateFinPrevue ? new Date(dto.dateFinPrevue) : null,
+    separeDeSaFamille: dto.separeDeSaFamille ?? false,
+    ouvrageDetermine: dto.ouvrageDetermine?.trim() || null,
+    motifRemplacement: dto.motifRemplacement?.trim() || null,
+    emploiPermanent: dto.emploiPermanent ?? false,
+    natureTravail: dto.natureTravail?.trim() || null,
+    lieuExecution: dto.lieuExecution?.trim() || null,
+    categorieProfessionnelle: dto.categorieProfessionnelle?.trim() || null,
+    classeProfessionnelle: dto.classeProfessionnelle ?? null,
+    periodiciteRemuneration: dto.periodiciteRemuneration ?? null,
+    manoeuvreSansSpecialite: dto.manoeuvreSansSpecialite ?? false,
+    remunerationBase: dto.remunerationBase ?? null,
+    deviseRemuneration: dto.deviseRemuneration ?? null,
+    avantagesConvenus: dto.avantagesConvenus?.trim() || null,
+    clauseEssai: dto.clauseEssai ?? false,
+    essaiConstateParEcrit: dto.essaiConstateParEcrit ?? false,
+    essaiDureeJours: dto.essaiDureeJours ?? null,
+    dureePreavisJours: dto.dureePreavisJours ?? null,
+    viseParOnem: dto.viseParOnem ?? false,
+    dateVisaOnem: dto.dateVisaOnem ? new Date(dto.dateVisaOnem) : null,
+  };
+}

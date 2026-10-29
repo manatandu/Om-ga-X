@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { RoleUtilisateur } from '@prisma/client';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,6 +9,8 @@ import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { TYPE_XLSX } from '../exports/envoi-en-flux';
 import { FicheIndividuelleService } from './fiche-individuelle.service';
+import { ImportPersonnelService } from './import-personnel.service';
+import { FichierPersonnelDto } from './dto/import-personnel.dto';
 
 /**
  * LIGNE PAIE-SUITE · fiche individuelle et cumuls (89) · mêmes droits que le
@@ -19,7 +21,10 @@ import { FicheIndividuelleService } from './fiche-individuelle.service';
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('personnel')
 export class PersonnelSuiteController {
-  constructor(private readonly fiches: FicheIndividuelleService) {}
+  constructor(
+    private readonly fiches: FicheIndividuelleService,
+    private readonly imports: ImportPersonnelService,
+  ) {}
 
   @Get('salaries/:salarieId/fiche-individuelle')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
@@ -43,5 +48,34 @@ export class PersonnelSuiteController {
       'Access-Control-Expose-Headers': 'Content-Disposition',
     });
     res.send(c.buffer);
+  }
+
+  // ---- 82 · import du personnel ------------------------------------------
+
+  @Get('import/modele')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async modeleImport(@Res() res: Response) {
+    const buffer = await this.imports.modele();
+    res.set({
+      'Content-Type': TYPE_XLSX,
+      'Content-Disposition': 'attachment; filename="modele-import-personnel.xlsx"',
+      'Access-Control-Expose-Headers': 'Content-Disposition',
+    });
+    res.send(buffer);
+  }
+
+  /** La simulation · chaque ligne jugée par les règles de la saisie, rien d'écrit. */
+  @Post('import/simulation')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  async simulerImport(@CurrentUser() user: AuthenticatedUser, @Body() dto: FichierPersonnelDto) {
+    const { jugees: _interne, ...simulation } = await this.imports.simuler(user.tenantId, dto.nomFichier, dto.contenuBase64);
+    return simulation;
+  }
+
+  /** L'import · la simulation rejouée, tout ou rien. */
+  @Post('import')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  importer(@CurrentUser() user: AuthenticatedUser, @Body() dto: FichierPersonnelDto) {
+    return this.imports.importer(user.tenantId, user.userId, dto.nomFichier, dto.contenuBase64);
   }
 }

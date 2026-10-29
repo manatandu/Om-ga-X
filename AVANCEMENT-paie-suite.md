@@ -24,7 +24,7 @@ Excel), départements et directions, visa d'un plan d'étalement.
 - [x] 81 · plafond de l'art. 41 (al. 1er) dans l'échéancier des contrats, de date à date (`plafondDureeCdd`, partagé avec le contrôle). Fin d'essai et fin de CDD y étaient déjà (microfina-m3).
 - [x] Départements et directions · `personnel/organigramme.ts`, tables `UniteOrganisation` (arbre libre, niveau nommé par le dossier, section analytique proposée, sommeil) et `RattachementUnite` (daté, annulable avec motif), onglet Organigramme, section de l'unité préremplie dans la répartition analytique.
 - [x] 89 · fiche individuelle et cumuls annuels par rubrique · `personnel/fiche-individuelle.ts` (moteur pur), `fiche-individuelle-excel.ts` (deux feuilles), routes `GET /personnel/salaries/:id/fiche-individuelle[/excel]?annee=`, onglet Fiche individuelle. Bulletins émis seuls, au mois de paie, rubrique du cabinet sinon nature, francs figés.
-- [ ] 82 · import du personnel.
+- [x] 82 · import du personnel · `personnel/import-personnel.ts` (lecture des colonnes par leur nom, valeurs illisibles refusées, « 500.000 » ambigu), `import-personnel.service.ts` (chaque ligne jugée par `SalarieDto`, `ContratTravailDto`, la monnaie exigée et le matricule unique ; simulation, puis import tout ou rien rejouant la simulation), modèle Excel, onglet Import. Les colonnes écrites sont celles de la saisie (`champsDuSalarie`, `champsDuContrat`, extraits de `personnel.service.ts`).
 - [ ] 87 · rappel de salaires.
 - [ ] 76 · compte individuel du salarié.
 - [ ] Rejeu sur vraie base à travers une clôture, relecture en deux tours.

@@ -28,6 +28,8 @@ export const ONGLETS_PERSONNEL = [
   'organisation',
   // Ligne paie-suite, fonction 89 · fiche individuelle et cumuls annuels.
   'fiche',
+  // Ligne paie-suite, fonction 82 · import du personnel depuis Excel.
+  'import',
   'rubriques',
   'baremes',
   'decompte',
