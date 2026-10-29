@@ -303,6 +303,13 @@ d'audit), l'exercice E déposé au plus tard le 31 janvier E+1 (art. 3), un
 montant sans monnaie refusé, le solde (budgétisé moins réalisé) et le total
 PAR MONNAIE calculés en centimes entiers, la seule ligne 10 PROPOSÉE (total
 versé des bulletins émis de l'année), jamais substituée.
+Puis, le même jour, le RESTE DE SAGE ET DE MICROFINA++ (« Lève le gel pour 1
+et 3 uniquement et traite le tous en cascade ») · les lignes L8 (gestion
+commerciale) et L9 (dossier et interface) de la reproduction de Sage, les
+vingt-sept « Plus tard » GARDÉS au tri du même jour (trente-quatre écartés,
+`docs/plan-gel-leve-2026-10-29.md`), le visa d'un plan d'étalement et les
+départements et directions (organigramme libre du dossier, aucun niveau
+imposé) ; le bon de commande au SYSCOHADA ÉCARTÉ.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
