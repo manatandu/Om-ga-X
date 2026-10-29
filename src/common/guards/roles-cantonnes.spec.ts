@@ -19,6 +19,7 @@ import { FeuillesTempsController } from '../../modules/personnel/feuilles-temps.
 import { MissionsController } from '../../modules/personnel/missions.controller';
 import { SuiviPersonnelController } from '../../modules/personnel/suivi-personnel.controller';
 import { OrganigrammeController } from '../../modules/personnel/organigramme.controller';
+import { PersonnelSuiteController } from '../../modules/personnel/personnel-suite.controller';
 import { BilanSocialController } from '../../modules/personnel/bilan-social.controller';
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
@@ -206,7 +207,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController, OrganigrammeController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController, OrganigrammeController, PersonnelSuiteController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -271,6 +272,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/personnel/organigramme.controller.ts',
       // Ligne sage-l5 · le paiement du salarié et des salaires (fonction 75).
       'modules/personnel/paiement-salaires.controller.ts',
+      // Ligne paie-suite · fiche individuelle, import du personnel, rappels de salaire.
+      'modules/personnel/personnel-suite.controller.ts',
       'modules/personnel/personnel.controller.ts',
       // Ligne sage-l6 · les documents du salarié font partie de son dossier (fonction 22).
       'modules/personnel/pieces-jointes-salarie.controller.ts',

@@ -26,6 +26,8 @@ export const ONGLETS_PERSONNEL = [
   'declaration',
   // Ligne paie-suite · départements et directions.
   'organisation',
+  // Ligne paie-suite, fonction 89 · fiche individuelle et cumuls annuels.
+  'fiche',
   'rubriques',
   'baremes',
   'decompte',

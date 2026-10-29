@@ -35,6 +35,8 @@ import { BilanSocialService } from './bilan-social.service';
 import { SuiviPersonnelService } from './suivi-personnel.service';
 import { OrganigrammeController } from './organigramme.controller';
 import { OrganigrammeService } from './organigramme.service';
+import { PersonnelSuiteController } from './personnel-suite.controller';
+import { FicheIndividuelleService } from './fiche-individuelle.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -60,6 +62,8 @@ import { OrganigrammeService } from './organigramme.service';
     BilanSocialController,
     // Ligne paie-suite · départements et directions.
     OrganigrammeController,
+    // Ligne paie-suite · fiche individuelle (89), import (82), rappels (87).
+    PersonnelSuiteController,
   ],
   providers: [
     PersonnelService,
@@ -78,6 +82,7 @@ import { OrganigrammeService } from './organigramme.service';
     SuiviPersonnelService,
     BilanSocialService,
     OrganigrammeService,
+    FicheIndividuelleService,
   ],
   exports: [PersonnelService],
 })

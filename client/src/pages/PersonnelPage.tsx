@@ -12,6 +12,7 @@ import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
 import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
 import { OngletBilanSocial, OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
 import { OngletOrganigramme } from '../components/paie/OrganigrammePaie';
+import { OngletFicheIndividuelle } from '../components/paie/FicheIndividuellePaie';
 import { DeclarationEtablissement, DeclarationMouvementTravailleur } from '../components/paie/DeclarationsTravail';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
@@ -1596,6 +1597,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Main-d’œuvre'
                       : o === 'organisation'
                       ? 'Organigramme'
+                      : o === 'fiche'
+                      ? 'Fiche individuelle'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -3941,6 +3944,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'echeances' && <OngletEcheancierContrats />}
       {onglet === 'formation' && <OngletFormation salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'organisation' && <OngletOrganigramme salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'fiche' && <OngletFicheIndividuelle salaries={salaries} />}
       {onglet === 'declaration' && (
         <div className="space-y-5">
           <OngletDeclarationMainOeuvre />

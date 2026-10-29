@@ -212,7 +212,7 @@ const nombreOuNull = (x: unknown): number | null => (typeof x === 'number' && Nu
  * sortait déséquilibrée, et le bulletin arrêtait la paie du mois entier.
  * Un élément sans montant en francs, ni converti, rend le bulletin illisible.
  */
-function elementsEnFrancs(elements: unknown, conversion: Json): EntreePassation['elements'] | null {
+export function elementsEnFrancs(elements: unknown, conversion: Json): EntreePassation['elements'] | null {
   if (!Array.isArray(elements)) return null;
   const convertis = Array.isArray(conversion?.elements) ? (conversion!.elements as unknown[]) : null;
   const rendus: EntreePassation['elements'][number][] = [];
