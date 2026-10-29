@@ -54,7 +54,7 @@ reste à lui.
 
 ## 2. Pile technique
 
-**Serveur** · NestJS 10, Prisma 5, PostgreSQL (Neon, PG 18), Jest, ExcelJS,
+**Serveur** · NestJS 12 sur Express 5, Prisma 5, PostgreSQL (Neon, PG 18), Jest, ExcelJS,
 passport-jwt, bcryptjs. Node 22. **TypeScript 7** type et construit
 (`npx tsc --noEmit`, `npm run build` = `tsc -p tsconfig.json`), installé sous
 l'alias `typescript7` · le paquet `typescript` reste en VERSION 6 pour ts-jest,
@@ -63,6 +63,13 @@ plus ; `scripts/lier-tsc-7.cjs` (postinstall) relie la commande `tsc` à la 7,
 `tsc-7.spec.ts` le tient. Côté client, `typescript` est la 7 et
 `@typescript/typescript6` sert les deux tests qui lisent le code source
 (`client/scripts/lier-tsc-7.cjs`, même raison).
+**NestJS 12 n'est publié qu'en ESM**, le serveur reste en CommonJS · Node 22
+charge un module ESM par `require()`, la production n'y voit rien ; Jest, lui,
+convertit les modules de `node_modules/@nestjs` par
+`scripts/jest-transformer.cjs` (`esModuleInterop` vrai pour eux, faux pour le
+code du dépôt, `import.meta.url` traduit), tenu par `memoire-des-tests.spec.ts`.
+Express 5 garde l'analyseur de requêtes ÉTENDU d'Express 4 (`bootstrap.ts`) ·
+le simple lisait `?type[]=A` comme une clé et le filtre tombait en silence.
 **Client** · React 18, Vite, TypeScript, Tailwind 4 (thème dans le bloc `@theme`
 de `client/src/index.css`, aucun fichier de configuration), react-router-dom 7 en
 **HashRouter** (les URL sont de la forme `oomega.web.app/#/comptes`).

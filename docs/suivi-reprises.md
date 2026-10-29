@@ -859,6 +859,12 @@ aucun accès aux données d'un dossier, décision du 2026-10-09).
   des cellules) ; captures v3 et v4 comparées sur la connexion, la page
   publique et douze écrans connectés, sans écart visible ; les opacités
   passent par `color-mix` (navigateurs d'au moins 2023, exigés par la v4).
+  NESTJS 12 FAIT le même jour, avec Express 5 · serveur gardé en CommonJS
+  (Node 22 charge l'ESM par `require()`), modules de NestJS convertis pour Jest
+  par `scripts/jest-transformer.cjs`, analyseur de requêtes étendu d'Express 4
+  conservé, serveur compilé démarré sur vraie base et suite navigateur rejouée
+  contre lui. Restent ouvertes · Vite 8 et React Router 7 sont déjà faits,
+  seules les actions GitHub restent.
 
 ## Relevés de la ligne lettrage-verrou (2026-10-29), antérieurs au changement
 
