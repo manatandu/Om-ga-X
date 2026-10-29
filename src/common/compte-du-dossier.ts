@@ -46,8 +46,9 @@ export class CompteFacultatifDuDossier implements PipeTransform<unknown, Promise
   constructor(private readonly prisma: PrismaService) {}
 
   async transform(valeur: unknown, metadata: ArgumentMetadata): Promise<string | undefined> {
-    const id: string | undefined = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
-    if (id === undefined || id === null) return id;
+    // NestJS 11 type le retour `string | null | undefined` · une absence reste une absence.
+    const id = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
+    if (id === undefined || id === null) return undefined;
     const tenantId = dossierDeLaSession();
     const compte = await this.prisma.compte.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!compte) throw new NotFoundException(MESSAGE_COMPTE_HORS_DOSSIER);

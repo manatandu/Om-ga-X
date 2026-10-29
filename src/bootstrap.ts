@@ -57,6 +57,13 @@ export function configurerApplication(app: INestApplication) {
   // Le nombre de relais de confiance vient d'une seule règle (sauts-de-confiance.ts) ·
   // zéro vaut `false`, jamais « tout croire ».
   app.getHttpAdapter().getInstance().set('trust proxy', sautsDeConfiance() || false);
+  // L'ANALYSEUR DE REQUÊTES D'EXPRESS 4 (2026-10-29, passage à NestJS 12 et
+  // Express 5). Express 5 lit par défaut `?type[]=A` comme une clé « type[] »
+  // et non comme un tableau · un filtre envoyé en tableau aurait été ignoré en
+  // silence, la liste rendue entière (`lister-tiers-entree.spec.ts`, 200 au
+  // lieu du 400 nommé). L'analyseur étendu garde la lecture que les DTO et
+  // leurs refus ont été écrits pour juger.
+  app.getHttpAdapter().getInstance().set('query parser', 'extended');
   app.use(compression());
   // 12 Mo : l'import de balance et d'écritures envoie le fichier encodé en
   // base64 dans le corps JSON (voir ImportService), ce qui déborde largement

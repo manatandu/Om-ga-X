@@ -46,8 +46,9 @@ export class JournalFacultatifDuDossier implements PipeTransform<unknown, Promis
   constructor(private readonly prisma: PrismaService) {}
 
   async transform(valeur: unknown, metadata: ArgumentMetadata): Promise<string | undefined> {
-    const id: string | undefined = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
-    if (id === undefined || id === null) return id;
+    // NestJS 11 type le retour `string | null | undefined` · une absence reste une absence.
+    const id = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
+    if (id === undefined || id === null) return undefined;
     const tenantId = dossierDeLaSession();
     const journal = await this.prisma.journal.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!journal) throw new NotFoundException(MESSAGE_JOURNAL_HORS_DOSSIER);

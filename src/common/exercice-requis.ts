@@ -126,7 +126,8 @@ export class ExerciceRequisDuDossier implements PipeTransform<unknown, Promise<s
   constructor(private readonly prisma: PrismaService) {}
 
   async transform(valeur: unknown, metadata: ArgumentMetadata): Promise<string> {
-    const id: string = await FORMAT_REQUIS.transform(valeur as string, metadata);
+    // Requis, le contrôle de forme refuse l'absence · le retour est une chaîne.
+    const id = (await FORMAT_REQUIS.transform(valeur as string, metadata)) as string;
     await exigerExerciceDuDossier(this.prisma, id);
     return id;
   }
@@ -140,8 +141,9 @@ export class ExerciceFacultatifDuDossier implements PipeTransform<unknown, Promi
   constructor(private readonly prisma: PrismaService) {}
 
   async transform(valeur: unknown, metadata: ArgumentMetadata): Promise<string | undefined> {
-    const id: string | undefined = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
-    if (id === undefined || id === null) return id;
+    // NestJS 11 type le retour `string | null | undefined` · une absence reste une absence.
+    const id = await FORMAT_FACULTATIF.transform(valeur as string, metadata);
+    if (id === undefined || id === null) return undefined;
     await exigerExerciceDuDossier(this.prisma, id);
     return id;
   }
