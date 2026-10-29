@@ -18,7 +18,7 @@ import { entreeEnVigueurAuPlusTot, finDuDelaiDeResiliation, motifDelaiArticle34,
  * `versions/` ; retoucher le texte d'une version publiée fait tomber ce spec.
  */
 const EMPREINTES_GELEES: Record<number, string> = {
-  2: 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e',
+  3: 'deae0898432fb16cc14b5b3328caf015c22030b1dac180a93d697940562a2bff',
 };
 
 describe('l’empreinte SHA-256, écrite pour les deux côtés', () => {
@@ -60,6 +60,7 @@ describe('chaque version publiée garde son texte et son empreinte', () => {
     // jamais, et son numéro ne sert plus aucun texte.
     expect(VERSIONS_RETIREES.map((v) => [v.numero, v.empreinte])).toEqual([
       [1, '1a878fe68d79ec76fa40173395750ab68cbf8a1a581c91397e45b30815dac75d'],
+      [2, 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e'],
     ]);
     for (const r of VERSIONS_RETIREES) {
       expect(versionPubliee(r.numero)).toBeNull();
@@ -79,7 +80,7 @@ describe('chaque version publiée garde son texte et son empreinte', () => {
   });
 
   it('une version se retrouve par son numéro, et un numéro inconnu n’a pas de texte', () => {
-    expect(versionPubliee(2)?.texte).toBe(VERSIONS_PUBLIEES[0].texte);
+    expect(versionPubliee(3)?.texte).toBe(VERSIONS_PUBLIEES[0].texte);
     expect(versionPubliee(99)).toBeNull();
   });
 });
@@ -111,9 +112,9 @@ describe('les délais de l’art. 34 (Code du numérique), comptés au plus long
     expect(motifDelaiArticle34({ numero: 2, communiqueeLe: null, enVigueurLe: '2027-01-01' }, [1])).toBeNull();
     // Après une version acceptable, la suivante est une modification.
     expect(motifDelaiArticle34({ numero: 2, communiqueeLe: null, enVigueurLe: '2027-01-01' })).toContain('date de communication');
-    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: null, enVigueurLe: '2027-01-01' }, retires)).toContain('date de communication');
-    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-26' }, retires)).toContain('ne peut entrer en vigueur avant le 2026-11-27');
-    expect(motifDelaiArticle34({ numero: 3, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-27' }, retires)).toBeNull();
+    expect(motifDelaiArticle34({ numero: 4, communiqueeLe: null, enVigueurLe: '2027-01-01' }, retires)).toContain('date de communication');
+    expect(motifDelaiArticle34({ numero: 4, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-26' }, retires)).toContain('ne peut entrer en vigueur avant le 2026-11-27');
+    expect(motifDelaiArticle34({ numero: 4, communiqueeLe: '2026-10-15', enVigueurLe: '2026-11-27' }, retires)).toBeNull();
   });
 
   it('UNE SEULE VERSION tant que la bascule de N à N+1 n’est pas servie', () => {

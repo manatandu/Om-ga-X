@@ -553,6 +553,7 @@ type Declaration = {
   destinataires: string;
   reserve: string;
   reserveNationalite: string | null;
+  dateLimite: string;
 };
 
 export function OngletDeclarationMainOeuvre() {
@@ -570,8 +571,8 @@ export function OngletDeclarationMainOeuvre() {
         <input aria-label="Année déclarée" value={annee} onChange={(e) => setAnnee(e.target.value)} className={`${champ} w-[60px] font-normal`} />
         <Aide
           titre="Déclaration annuelle de la main-d'œuvre"
-          texte="Toute entreprise fait parvenir, au moins une fois par an, au service du ministère du Travail et à l'Office national de l'emploi, une déclaration sur la situation de la main-d'œuvre nationale et étrangère employée. OmegaX en sert les chiffres tirés du registre ; le formulaire et ses modalités relèvent d'un arrêté du Ministre qu'il ne porte pas, et le bilan social n'est pas servi."
-          source="Code du travail, art. 218 et 219"
+          texte="Toute entreprise fait parvenir chaque année, au plus tard le 31 janvier, à l'Inspection du travail et à l'Office national de l'emploi, une déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, en quatre exemplaires sur le formulaire officiel. Le formulaire compte le personnel permanent au 1er janvier. OmegaX en sert les chiffres de l'effectif tirés du registre ; le reste du formulaire et le bilan social ne sont pas servis."
+          source="Code du travail, art. 218 et 219 ; arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 1er et 2"
         />
       </div>
       {donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}
@@ -579,7 +580,7 @@ export function OngletDeclarationMainOeuvre() {
         <>
           <div className="text-warning">{donnees.reserve}</div>
           {donnees.reserveNationalite && <div className="text-warning">{donnees.reserveNationalite}</div>}
-          <table className="w-full" aria-label="Main-d'œuvre au 31 décembre">
+          <table className="w-full" aria-label="Main-d'œuvre au 1er janvier">
             <thead>
               <tr>
                 <th className="text-left px-2 py-1">Au {donnees.au}</th>
@@ -616,7 +617,8 @@ export function OngletDeclarationMainOeuvre() {
             )}
             {donnees.sexeNonRenseigne ? ` · ${donnees.sexeNonRenseigne} salarié(s) sans sexe renseigné` : ''}
           </div>
-          <div className="text-text-dim">À adresser {donnees.destinataires}.</div>
+          <div>Au plus tard le {donnees.dateLimite}.</div>
+          <div className="text-text-dim">À adresser {donnees.destinataires}</div>
         </>
       )}
     </div>

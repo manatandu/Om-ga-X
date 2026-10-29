@@ -267,15 +267,50 @@ export function suiviFormation(
 // fournit chaque année son bilan social aux services précités. » ART. 219 ·
 // le Ministre « détermine, par arrêté, les modalités des déclarations ».
 //
-// L'ARRÊTÉ DE L'ART. 219 N'EST PAS AU CORPUS · OmegaX ne sert ni le
-// formulaire, ni sa date limite, ni le bilan social · seulement les CHIFFRES
-// que le registre porte, et il le dit. Nationalité · même lecture que
-// l'effectif (`effectif-registre.ts`) ; une nationalité absente rend la
-// répartition NON CALCULÉE, jamais devinée.
+// L'ARRÊTÉ DE L'ART. 219 EST L'ARRÊTÉ MINISTÉRIEL n° 005/CAB/PVPM/ETPS/2010
+// du 1er avril 2010 (J.O. RDC, première partie, n° 7 ; lu sur le scan fourni
+// le 2026-10-29, `docs/sources/arretes-005-006-008-2010-declarations-main-oeuvre.md`).
+// Art. 1er · à la Division provinciale de l'Inspection du travail et au Bureau
+// provincial de l'ONEM « au plus tard le 31 janvier de chaque année » ;
+// art. 2 · quatre exemplaires sur le formulaire annexé, deux à l'Inspecteur
+// du travail du ressort (recommandé avec accusé de réception, ou déposés
+// contre accusé), un à l'ONEM du ressort, le quatrième gardé pour le
+// contrôle ; art. 4 · peines de l'art. 321 du Code. Le formulaire compte le
+// « personnel permanent au premier janvier de l'année en cours » · la
+// déclaration de l'année N, déposée en janvier N+1, lit donc l'effectif au
+// 1er janvier N+1, et les mouvements de l'année N.
+//
+// TROIS ANOMALIES DU TEXTE, DITES, NON CORRIGÉES · l'art. 1er renvoie à
+// « l'article 216 » (déclaration d'ouverture et de fermeture) quand le visa
+// et le formulaire citent l'art. 218 ; le NB du formulaire inverse la
+// répartition des exemplaires de l'art. 2 (l'article prime) ; aucun report
+// au jour ouvrable n'est écrit, le 31 janvier reste le 31 janvier.
+//
+// OmegaX ne remplit pas le formulaire · il sert les CHIFFRES de l'effectif
+// que le registre porte (section II, sans la ventilation par catégorie ni la
+// distinction du personnel non permanent, que le registre ne tient pas), la
+// date limite et les destinataires, et il le dit. Ni la masse salariale, ni
+// la durée hebdomadaire, ni les besoins en main-d'œuvre et en formation
+// (sections III à VI), ni le bilan social de l'art. 218, al. 2, dont l'arrêté
+// ne fixe aucune modalité. Nationalité · même lecture que l'effectif
+// (`effectif-registre.ts`) ; une nationalité absente rend la répartition NON
+// CALCULÉE, jamais devinée.
 // ──────────────────────────────────────────────────────────────────────────
 
 export const RESERVE_DECLARATION_MAIN_OEUVRE =
-  "Chiffres seuls · le formulaire, la date limite et les modalités de la déclaration relèvent de l'arrêté du Ministre prévu à l'art. 219 du Code du travail, que le corpus d'OmegaX ne porte pas. Le bilan social de l'art. 218, al. 2 n'est pas servi.";
+  "Chiffres de l'effectif seuls · le formulaire annexé à l'arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010 demande aussi la répartition par catégorie professionnelle, le personnel non permanent, la masse salariale, la durée hebdomadaire et les besoins en main-d'œuvre et en formation, que le registre ne porte pas. Tous les contrats en vigueur sont comptés, permanents ou non. Le bilan social de l'art. 218, al. 2 du Code du travail n'est pas servi, et l'arrêté n'en fixe aucune modalité.";
+
+/**
+ * L'ÉCHÉANCE ET LES EXEMPLAIRES · arrêté n° 005/CAB/PVPM/ETPS/2010, art. 1er
+ * et 2. La déclaration de l'année N se dépose au plus tard le 31 janvier N+1,
+ * sans report au jour ouvrable (l'arrêté n'en écrit aucun).
+ */
+export function dateLimiteDeclarationMainOeuvre(annee: number): string {
+  return `${annee + 1}-01-31`;
+}
+
+export const DESTINATAIRES_DECLARATION_MAIN_OEUVRE =
+  "en quatre exemplaires datés et signés sur le formulaire officiel · deux à l'Inspecteur du travail du ressort (Division provinciale de l'Inspection du travail), par pli recommandé avec accusé de réception ou déposés contre accusé de réception, un au Bureau provincial de l'Office national de l'emploi, le quatrième conservé pour le contrôle (arrêté n° 005/CAB/PVPM/ETPS/2010, art. 1er et 2 ; le NB du formulaire, qui inverse la répartition, cède devant l'article). Infraction punie des peines de l'art. 321 du Code du travail (art. 4).";
 
 /**
  * La règle des mouvements, dite à l'écran avec les chiffres · l'art. 218 ne
@@ -284,4 +319,4 @@ export const RESERVE_DECLARATION_MAIN_OEUVRE =
  * interruption n'est ni l'un ni l'autre.
  */
 export const REGLE_MOUVEMENTS_MAIN_OEUVRE =
-  "Entrées et sorties au sens de l'art. 217 du Code du travail (engagement, départ de l'entreprise) · une entrée est un contrat pris d'effet dans l'année sans autre contrat du salarié en vigueur la veille ; une sortie, un contrat fini dans l'année sans autre contrat en vigueur le lendemain. Un CDD renouvelé, ou suivi d'un CDI, ne compte ni l'une ni l'autre ; un salarié parti puis réengagé compte deux mouvements.";
+  "Entrées et sorties au sens de l'art. 217 du Code du travail (engagement, départ de l'entreprise) · une entrée est un contrat pris d'effet dans l'année sans autre contrat du salarié en vigueur la veille ; une sortie, un contrat fini dans l'année sans autre contrat en vigueur le lendemain. Un CDD renouvelé, ou suivi d'un CDI, ne compte ni l'une ni l'autre ; un salarié parti puis réengagé compte deux mouvements. Chaque embauche et chaque départ se déclarent aussi, dans les quarante-huit heures, à l'Inspection du travail et à l'ONEM (arrêté n° 006/CAB/PVPM/ETPS/2010, art. 1er), sauf le travailleur engagé au jour le jour qui n'a pas accompli vingt-deux journées de travail sur deux mois (art. 4).";

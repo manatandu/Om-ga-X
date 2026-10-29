@@ -1,6 +1,9 @@
 import {
   FONDEMENT_TITRE_CONGE,
   RESERVE_DECLARATION_MAIN_OEUVRE,
+  DESTINATAIRES_DECLARATION_MAIN_OEUVRE,
+  dateLimiteDeclarationMainOeuvre,
+  REGLE_MOUVEMENTS_MAIN_OEUVRE,
   echeancesDuContrat,
   finEssaiOpposable,
   motifRefusDecision,
@@ -103,9 +106,24 @@ describe('Formation (art. 8)', () => {
   });
 });
 
-describe("Déclaration de la main-d'œuvre (art. 218, 219)", () => {
-  it("dit que le formulaire relève de l'arrêté de l'art. 219, absent du corpus", () => {
-    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toMatch(/art\. 219/);
+describe("Déclaration de la main-d'œuvre (art. 218, 219 ; arrêté n° 005/CAB/PVPM/ETPS/2010)", () => {
+  it("nomme l'arrêté de l'art. 219 et dit ce que le formulaire demande en plus des chiffres", () => {
+    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010');
     expect(RESERVE_DECLARATION_MAIN_OEUVRE).toMatch(/bilan social/);
+    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toMatch(/masse salariale/);
+  });
+  it("au plus tard le 31 janvier de l'année qui suit, sans report au jour ouvrable (art. 1er)", () => {
+    expect(dateLimiteDeclarationMainOeuvre(2026)).toBe('2027-01-31');
+    // 31 janvier 2027 · un dimanche, que l'arrêté ne reporte pas.
+    expect(new Date(Date.UTC(2027, 0, 31)).getUTCDay()).toBe(0);
+  });
+  it("quatre exemplaires · deux à l'Inspection, un à l'ONEM, l'article primant sur le NB du formulaire (art. 2)", () => {
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("deux à l'Inspecteur du travail du ressort");
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("un au Bureau provincial de l'Office national de l'emploi");
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('art. 321');
+  });
+  it("rappelle la déclaration d'embauche et de départ dans les quarante-huit heures (arrêté n° 006, art. 1er et 4)", () => {
+    expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('quarante-huit heures');
+    expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('vingt-deux journées de travail sur deux mois');
   });
 });

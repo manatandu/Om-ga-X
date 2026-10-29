@@ -18,6 +18,8 @@ import {
 import {
   FONDEMENT_TITRE_CONGE,
   HORIZON_ECHEANCIER_JOURS,
+  DESTINATAIRES_DECLARATION_MAIN_OEUVRE,
+  dateLimiteDeclarationMainOeuvre,
   REGLE_MOUVEMENTS_MAIN_OEUVRE,
   RESERVE_DECLARATION_MAIN_OEUVRE,
   echeancesDuContrat,
@@ -469,7 +471,9 @@ export class SuiviPersonnelService {
   // ---- Idée 11 · déclaration annuelle de la main-d'œuvre --------------
 
   /**
-   * LES CHIFFRES DE L'ART. 218 · l'effectif au 31 décembre de l'année, par
+   * LES CHIFFRES DE L'ART. 218 · l'effectif au 1er janvier de l'année qui
+   * suit (le formulaire de l'arrêté n° 005/CAB/PVPM/ETPS/2010 compte le
+   * « personnel permanent au premier janvier de l'année en cours »), par
    * nationalité (nationale, étrangère) et par sexe, et les entrées et
    * sorties de l'année. Des AGRÉGATS de la base, un salarié compté une fois
    * (`some`). Une nationalité absente rend la répartition non calculée.
@@ -478,6 +482,7 @@ export class SuiviPersonnelService {
     if (!Number.isInteger(annee) || annee < 2000 || annee > 2100) throw new BadRequestException("L'année se lit sur quatre chiffres.");
     const debut = new Date(Date.UTC(annee, 0, 1));
     const fin = new Date(Date.UTC(annee, 11, 31));
+    const premierJanvierSuivant = new Date(Date.UTC(annee + 1, 0, 1));
     const enVigueurAu = (d: Date) => ({ tenantId, dateEntreeEnVigueur: { lte: d }, OR: [{ dateFin: null }, { dateFin: { gte: d } }] });
     // M3 DE LA RELECTURE · ENTRÉES ET SORTIES SE LISENT COMME L'ART. 217 LES
     // DÉCLARE · « à l'occasion de son ENGAGEMENT » et « tout travailleur
@@ -495,7 +500,7 @@ export class SuiviPersonnelService {
     const [groupes, [entrees], [sorties]] = await Promise.all([
       this.prisma.salarie.groupBy({
         by: ['sexe', 'nationalite'],
-        where: { tenantId, contrats: { some: enVigueurAu(fin) } },
+        where: { tenantId, contrats: { some: enVigueurAu(premierJanvierSuivant) } },
         _count: { _all: true },
       }),
       this.prisma.$queryRaw<{ n: number }[]>`
@@ -535,7 +540,8 @@ export class SuiviPersonnelService {
     });
     return {
       annee,
-      au: iso(fin),
+      au: iso(premierJanvierSuivant),
+      dateLimite: dateLimiteDeclarationMainOeuvre(annee),
       effectif: somme(() => true),
       hommes: ventile('MASCULIN'),
       femmes: ventile('FEMININ'),
@@ -545,8 +551,7 @@ export class SuiviPersonnelService {
       entrees: entrees?.n ?? 0,
       sorties: sorties?.n ?? 0,
       regleMouvements: REGLE_MOUVEMENTS_MAIN_OEUVRE,
-      destinataires:
-        "au service compétent du ministère ayant l'emploi, le travail et la prévoyance sociale dans ses attributions et à l'Office national de l'emploi (art. 218)",
+      destinataires: DESTINATAIRES_DECLARATION_MAIN_OEUVRE,
       reserve: RESERVE_DECLARATION_MAIN_OEUVRE,
       reserveNationalite:
         sansNationalite > 0

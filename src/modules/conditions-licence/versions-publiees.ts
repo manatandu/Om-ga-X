@@ -1,6 +1,6 @@
 import { texteBrutDesConditions } from './conditions-de-licence';
 import { sha256Hex } from './empreinte';
-import { TEXTE_VERSION_2 } from './versions/version-2';
+import { TEXTE_VERSION_3 } from './versions/version-3';
 
 /**
  * LES VERSIONS PUBLIÉES DES CONDITIONS DE LICENCE · numéro, date, empreinte
@@ -80,19 +80,29 @@ export const VERSIONS_RETIREES: readonly VersionRetiree[] = [
     empreinte: '1a878fe68d79ec76fa40173395750ab68cbf8a1a581c91397e45b30815dac75d',
     motif: 'Offre restée incomplète, jamais acceptable · retirée le 2026-10-28 avec le nom de l’ancien éditeur.',
   },
+  // LA VERSION 2 (décision de Manasse du 2026-10-29, « Nomme l'éditeur xxx ») ·
+  // même raison que la version 1 · son offre est restée incomplète (art. 54,
+  // al. 2), aucun contrat ne s'est formé sur elle, et le logiciel n'est pas sur
+  // le marché. Son texte reste dans l'historique du dépôt.
+  {
+    numero: 2,
+    date: '2026-10-28',
+    empreinte: 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e',
+    motif: 'Offre restée incomplète, jamais acceptable · remplacée le 2026-10-29 par la version 3, qui nomme l’éditeur xxx.',
+  },
 ];
 
 export const VERSIONS_PUBLIEES: readonly VersionPubliee[] = [
   {
-    numero: 2,
-    date: '2026-10-28',
-    dateLisible: '28 octobre 2026',
-    // Aucune communication de l'art. 34 · elle ne suit qu'une version
-    // retirée, sur laquelle aucun contrat ne s'est formé.
+    numero: 3,
+    date: '2026-10-29',
+    dateLisible: '29 octobre 2026',
+    // Aucune communication de l'art. 34 · elle ne suit que des versions
+    // retirées, sur lesquelles aucun contrat ne s'est formé.
     communiqueeLe: null,
-    enVigueurLe: '2026-10-28',
-    empreinte: 'f980b6ce005f83bcc6610892deb519c9c8b154e6202f34ac0954e4bd33217f9e',
-    texte: TEXTE_VERSION_2,
+    enVigueurLe: '2026-10-29',
+    empreinte: 'deae0898432fb16cc14b5b3328caf015c22030b1dac180a93d697940562a2bff',
+    texte: TEXTE_VERSION_3,
   },
 ];
 

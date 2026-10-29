@@ -42,7 +42,7 @@
  */
 
 /** La version en vigueur · un numéro et une date, jamais l'une sans l'autre. */
-export const VERSION_CONDITIONS_LICENCE = { numero: 2, date: '2026-10-28', dateLisible: '28 octobre 2026' } as const;
+export const VERSION_CONDITIONS_LICENCE = { numero: 3, date: '2026-10-29', dateLisible: '29 octobre 2026' } as const;
 
 /** La langue proposée pour la conclusion du contrat (Code du numérique, art. 53, 8°). */
 export const LANGUE_DU_CONTRAT = 'français';
@@ -61,6 +61,14 @@ export const LANGUE_DU_CONTRAT = 'français';
  * veut le nom de la personne physique ou la dénomination de la personne
  * morale qui vend. Elle reste donc `null`, dite « à arrêter », et
  * l'acceptation en ligne fermée tant qu'une entité n'est pas nommée.
+ *
+ * VERSION 3 (décision de Manasse du 2026-10-29, « Nomme l'éditeur xxx ») ·
+ * le logiciel est en développement, rien n'est sur le marché, et
+ * l'éditeur n'a pas encore de nom · « xxx » le tient en attendant. Le
+ * siège, les contacts, l'immatriculation, le paiement, les réclamations, la
+ * rétractation et les garanties restent à arrêter, si bien que l'acceptation
+ * en ligne demeure fermée (art. 54, al. 2) et qu'aucun contrat ne se forme
+ * sous ce nom provisoire.
  */
 export interface IdentiteEditeur {
   /** Art. 52, 1° et 2° · nom de la personne physique ou dénomination de la personne morale. */
@@ -85,7 +93,7 @@ export interface IdentiteEditeur {
 }
 
 export const EDITEUR: IdentiteEditeur = {
-  denomination: null,
+  denomination: 'xxx',
   siege: null,
   courriel: null,
   telephone: null,

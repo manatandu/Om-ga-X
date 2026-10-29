@@ -1,22 +1,23 @@
 /**
- * LE TEXTE DE LA VERSION 2 DES CONDITIONS DE LICENCE, MOT POUR MOT · archivé
+ * LE TEXTE DE LA VERSION 3 DES CONDITIONS DE LICENCE, MOT POUR MOT · archivé
  * à sa publication (Code du numérique, art. 53, 9°). ENGENDRÉ une fois par
  * `texteBrutDesConditions()`, puis figé · ne JAMAIS le retoucher, pas même une
- * virgule. Un changement du texte fait une version 3, archivée à côté. Son
+ * virgule. Un changement du texte fait une version 4, archivée à côté. Son
  * empreinte SHA-256 est gelée par `versions-publiees.spec.ts`.
  *
- * Elle retire le nom de l'ancien éditeur (décision de Manasse du 2026-10-28,
- * « OmegaX seul ») · la dénomination de l'éditeur y est « à arrêter »
- * (art. 52, 1° et 2°), et l'acceptation en ligne reste fermée.
+ * Elle nomme l'éditeur « xxx » (décision de Manasse du 2026-10-29, logiciel en
+ * développement, aucun nom encore arrêté) · le reste de l'identité et de
+ * l'offre reste « à arrêter », et l'acceptation en ligne fermée (art. 54,
+ * al. 2).
  */
-export const TEXTE_VERSION_2 = `CONDITIONS DE LICENCE D’OMEGAX
-Version 2 du 28 octobre 2026 · langue du contrat · français
+export const TEXTE_VERSION_3 = `CONDITIONS DE LICENCE D’OMEGAX
+Version 3 du 29 octobre 2026 · langue du contrat · français
 
 1. Les parties
 
-L’éditeur est la personne qui exploite et vend OmegaX. Les informations qui suivent sont celles que le Code du numérique (art. 52) veut accessibles de façon permanente.
+L’éditeur est xxx, qui exploite et vend OmegaX. Les informations qui suivent sont celles que le Code du numérique (art. 52) veut accessibles de façon permanente.
 
-  - Dénomination · (à arrêter par l’éditeur).
+  - Dénomination · xxx.
   - Siège social · (à arrêter par l’éditeur).
   - Courrier électronique · (à arrêter par l’éditeur).
   - Téléphone · (à arrêter par l’éditeur).

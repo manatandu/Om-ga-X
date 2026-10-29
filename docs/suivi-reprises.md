@@ -689,10 +689,16 @@ deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · AUPSRVE, art. 184.
 - **Reliquat d'un centime en fin de plan** · gardé · aucun texte ne fixe
   l'arrondi d'une retenue étalée, la dernière échéance prend le reste comme
   la dernière sortie d'un stock (convention d'OmegaX, dite).
-- **Déclaration de la main-d'œuvre (art. 218)** · formulaire, date limite et
-  dérogations relèvent de l'arrêté du Ministre de l'art. 219, absent du
-  corpus ; le bilan social de l'art. 218, al. 2 n'est pas servi. Texte à
-  fournir.
+- **Déclaration de la main-d'œuvre (art. 218)** · FERMÉ le 2026-10-29 ·
+  l'arrêté de l'art. 219 est l'arrêté n° 005/CAB/PVPM/ETPS/2010 du 1er avril
+  2010, lu sur le scan fourni (`docs/sources/arretes-005-006-008-2010-declarations-main-oeuvre.md`) ·
+  31 janvier, quatre exemplaires, effectif au 1er janvier de l'année qui
+  suit, servis à l'écran. Restent hors d'OmegaX · les sections III à VI du
+  formulaire, la ventilation par catégorie, le personnel non permanent, et
+  le bilan social de l'art. 218, al. 2, dont l'arrêté ne fixe rien. Les
+  déclarations d'embauche et de départ (arrêté n° 006, quarante-huit heures)
+  et d'ouverture ou de fermeture (arrêté n° 008, quinzaine qui précède) sont
+  dites, non servies · fonctions nouvelles, sous le gel.
 
 
 ## Décisions par la loi du 2026-10-28 · questions des lignes Microfina et sécurité
@@ -756,6 +762,17 @@ manuel qui pose l'ingress, lit `oomega.web.app/api/health`, et le remet à `all`
 premier échec, après avoir repointé la surveillance et le contrôle de santé sur le
 site. (5) ANOMALIE N° 9 DE LA NOTE 3A · « Oui » · tranchée plus haut. Les fichiers
 engendrés étaient déjà retirés de l'index (`3bff15bca`).
+
+Suite du 2026-10-29 · (1) « Nomme l'éditeur xxx, ne me contredis pas. Rien n'est sur
+le marché » · posé. Les conditions de licence passent en VERSION 3 (dénomination
+« xxx »), la version 2 RETIRÉE comme la version 1 (offre restée incomplète, aucun
+contrat formé, `VERSIONS_RETIREES`) ; siège, contacts, immatriculation, paiement,
+réclamations, rétractation et garanties restent « à arrêter », l'acceptation en ligne
+reste donc fermée (art. 54, al. 2). (3) Les arrêtés n° 005, 006 et 008/CAB/PVPM/ETPS/2010
+sont LUS sur le Journal officiel fourni · la déclaration de la main-d'œuvre les cite
+(voir la ligne « Déclaration de la main-d'œuvre » plus haut). L'arrêté de 2023 cité
+par l'ONEM reste non lu · s'il modifie l'arrêté n° 005, la date et le formulaire
+suivront.
 
 ## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
 
