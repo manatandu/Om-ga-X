@@ -69,8 +69,9 @@ export function salaireDeLaSaisie(entree: unknown): { salaire: number; devise: '
   let salaire = 0;
   for (const x of e.elements as unknown[]) {
     if (!x || typeof x !== 'object') return null;
-    const el = x as { nature?: unknown; montantFc?: unknown; montantUsd?: unknown };
-    if (el.nature !== 'SALAIRE_OU_TRAITEMENT') continue;
+    const el = x as { nature?: unknown; montantFc?: unknown; montantUsd?: unknown; rappelId?: unknown };
+    // Un rappel de salaire paie des mois passés · il n'est pas le salaire du mois (ligne paie-suite, fonction 87).
+    if (el.nature !== 'SALAIRE_OU_TRAITEMENT' || el.rappelId) continue;
     const brut = devise === 'USD' ? el.montantUsd : el.montantFc;
     const n = brut === undefined || brut === null ? 0 : Number(brut);
     if (!Number.isFinite(n)) return null;

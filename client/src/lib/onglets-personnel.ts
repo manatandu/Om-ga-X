@@ -30,6 +30,8 @@ export const ONGLETS_PERSONNEL = [
   'fiche',
   // Ligne paie-suite, fonction 82 · import du personnel depuis Excel.
   'import',
+  // Ligne paie-suite, fonction 87 · rappels de salaire.
+  'rappels',
   'rubriques',
   'baremes',
   'decompte',

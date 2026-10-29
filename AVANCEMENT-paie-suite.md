@@ -25,7 +25,7 @@ Excel), départements et directions, visa d'un plan d'étalement.
 - [x] Départements et directions · `personnel/organigramme.ts`, tables `UniteOrganisation` (arbre libre, niveau nommé par le dossier, section analytique proposée, sommeil) et `RattachementUnite` (daté, annulable avec motif), onglet Organigramme, section de l'unité préremplie dans la répartition analytique.
 - [x] 89 · fiche individuelle et cumuls annuels par rubrique · `personnel/fiche-individuelle.ts` (moteur pur), `fiche-individuelle-excel.ts` (deux feuilles), routes `GET /personnel/salaries/:id/fiche-individuelle[/excel]?annee=`, onglet Fiche individuelle. Bulletins émis seuls, au mois de paie, rubrique du cabinet sinon nature, francs figés.
 - [x] 82 · import du personnel · `personnel/import-personnel.ts` (lecture des colonnes par leur nom, valeurs illisibles refusées, « 500.000 » ambigu), `import-personnel.service.ts` (chaque ligne jugée par `SalarieDto`, `ContratTravailDto`, la monnaie exigée et le matricule unique ; simulation, puis import tout ou rien rejouant la simulation), modèle Excel, onglet Import. Les colonnes écrites sont celles de la saisie (`champsDuSalarie`, `champsDuContrat`, extraits de `personnel.service.ts`).
-- [ ] 87 · rappel de salaires.
+- [x] 87 · rappel de salaires · `personnel/rappel-salaire.ts` (calcul proportionnel au salaire figé, exclusions nommées), `rappels-salaire.service.ts`, table `RappelSalaire` (calcul figé, porteur RESTRICT), routes de simulation, déclaration, annulation et « à payer » ; le bulletin d'un mois postérieur PORTE le rappel (`rappelsPortes`), un élément « Salaire ou traitement » par mois rappelé, lié à l'émission sous verrou. Onglet Rappels de salaire, bloc « Rappels de salaire à payer » de la simulation.
 - [ ] 76 · compte individuel du salarié.
 - [ ] Rejeu sur vraie base à travers une clôture, relecture en deux tours.
 
@@ -43,6 +43,16 @@ Excel), départements et directions, visa d'un plan d'étalement.
   au texte). La section d'une unité doit être une section Détail active d'un
   plan qui ventile la classe 6 · sinon la répartition de la paie la
   refuserait au moment où on suit la proposition.
+- Rappel (87) · DÉCISION PAR LA LOI · les arriérés se paient sur le bulletin du
+  mois où ils sont versés (Code du travail, art. 213, « à chaque paie » ;
+  arrêté du 8 août 2008, mention 13, et arrêté n° 142/2018, art. 12,
+  « arriérés de rémunération portés sous la rubrique divers ») · jamais un
+  second bulletin d'un mois payé, que l'art. 119 de la loi n° 23/053
+  annualiserait une seconde fois. Le « bulletin complémentaire » demandé
+  devient un rappel calculé, porté par le bulletin du paiement. Calcul
+  proportionnel (convention d'OmegaX, dite) · salaire figé × (nouvelle base −
+  base figée) ÷ base figée. Baisse refusée (art. 112, liste fermée). Mois en
+  dollars, mois sans bulletin, mois déjà rappelés · exclus et nommés.
 
 ## Vérification
 

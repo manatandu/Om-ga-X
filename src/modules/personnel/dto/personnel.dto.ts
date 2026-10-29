@@ -433,6 +433,12 @@ export class MissionPorteeDto {
   missionId!: string;
 }
 
+/** Ligne paie-suite, fonction 87 · un rappel de salaire que le bulletin paie · le serveur rejoue ses montants. */
+export class RappelPorteDto {
+  @IsUUID('4')
+  rappelId!: string;
+}
+
 /**
  * LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · des heures majorées du mois · la
  * majoration est celle que le cabinet a déclarée avec sa source, relue au
@@ -482,6 +488,14 @@ export class SimulationPaieDto {
   @ValidateNested({ each: true })
   @Type(() => MissionPorteeDto)
   missionsPortees?: MissionPorteeDto[];
+
+  /** Ligne paie-suite, fonction 87 · les rappels de salaire que ce bulletin paie. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => RappelPorteDto)
+  rappelsPortes?: RappelPorteDto[];
 
   /** Retenues d'avance, d'acompte et de prêt · le salarié doit être nommé. */
   @IsOptional()

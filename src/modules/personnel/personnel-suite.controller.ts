@@ -11,9 +11,12 @@ import { TYPE_XLSX } from '../exports/envoi-en-flux';
 import { FicheIndividuelleService } from './fiche-individuelle.service';
 import { ImportPersonnelService } from './import-personnel.service';
 import { FichierPersonnelDto } from './dto/import-personnel.dto';
+import { RappelsSalaireService } from './rappels-salaire.service';
+import { AnnulationRappelDto, RappelSalaireDto } from './dto/rappel-salaire.dto';
 
 /**
- * LIGNE PAIE-SUITE · fiche individuelle et cumuls (89) · mêmes droits que le
+ * LIGNE PAIE-SUITE · fiche individuelle et cumuls (89), import du personnel
+ * (82), rappels de salaire (87) · mêmes droits que le
  * registre du personnel (fermé à l'aide-comptable, ouvert au gestionnaire de
  * paie), dont elle fait partie.
  */
@@ -24,6 +27,7 @@ export class PersonnelSuiteController {
   constructor(
     private readonly fiches: FicheIndividuelleService,
     private readonly imports: ImportPersonnelService,
+    private readonly rappels: RappelsSalaireService,
   ) {}
 
   @Get('salaries/:salarieId/fiche-individuelle')
@@ -77,5 +81,39 @@ export class PersonnelSuiteController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   importer(@CurrentUser() user: AuthenticatedUser, @Body() dto: FichierPersonnelDto) {
     return this.imports.importer(user.tenantId, user.userId, dto.nomFichier, dto.contenuBase64);
+  }
+
+  // ---- 87 · rappels de salaire -------------------------------------------
+
+  @Get('rappels')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  listerRappels(@CurrentUser() user: AuthenticatedUser, @Query('salarieId') salarieId?: string) {
+    return this.rappels.lister(user.tenantId, salarieId || undefined);
+  }
+
+  /** Les rappels qu'un bulletin du mois peut payer · la simulation les propose, jamais les porte seule. */
+  @Get('salaries/:salarieId/rappels/a-payer/:mois')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  rappelsAPayer(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Param('mois') mois: string) {
+    return this.rappels.aPorter(user.tenantId, salarieId, mois);
+  }
+
+  /** Le calcul seul, rien d'écrit. */
+  @Post('salaries/:salarieId/rappels/simulation')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  simulerRappel(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Body() dto: RappelSalaireDto) {
+    return this.rappels.simuler(user.tenantId, salarieId, dto);
+  }
+
+  @Post('salaries/:salarieId/rappels')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  creerRappel(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Body() dto: RappelSalaireDto) {
+    return this.rappels.creer(user.tenantId, user.userId, salarieId, dto);
+  }
+
+  @Post('rappels/:id/annulation')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  annulerRappel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AnnulationRappelDto) {
+    return this.rappels.annuler(user.tenantId, user.userId, id, dto);
   }
 }

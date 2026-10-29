@@ -151,8 +151,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // 221 avec les détentions de biens et leurs reçus, bornés par leur
     // tenantId (ligne Microfina M4) ; 222 avec le bilan social de l'ONEM ;
     // 224 avec l'organigramme et les rattachements datés, bornés par leur
-    // tenantId (ligne paie-suite).
-    expect(modeles).toHaveLength(224);
+    // tenantId (ligne paie-suite) ; 225 avec les rappels de salaire, bornés
+    // par leur tenantId (même ligne, fonction 87).
+    expect(modeles).toHaveLength(225);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

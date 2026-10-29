@@ -163,6 +163,7 @@ import {
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
 import { lierMissionsAuBulletin, missionsAPorter, type MissionPortee } from './missions.service';
+import { elementsDesRappels, lierRappelsAuBulletin, rappelsAPorter, type RappelPorte } from './rappels-salaire.service';
 import { libelleForfaitMission, libelleRemboursementMission } from './missions-salarie';
 import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
 
@@ -177,6 +178,8 @@ type SaisieRelue = SimulationPaieDto & {
   heuresPortees?: HeuresPortee[];
   /** Ligne microfina-m3, idée 3 · les missions rejouées, hors de tout DTO. */
   missionsLiees?: MissionPortee[];
+  /** Ligne paie-suite, fonction 87 · les rappels de salaire rejoués, hors de tout DTO. */
+  rappelsLies?: RappelPorte[];
 };
 
 /**
@@ -1125,6 +1128,24 @@ export class PersonnelService {
       ];
     }
 
+    // LIGNE PAIE-SUITE, FONCTION 87 · LES RAPPELS DE SALAIRE que ce bulletin
+    // paie (`rappel-salaire.ts`) · relus et rejoués au serveur, un élément par
+    // mois rappelé, sous la nature du salaire (les arriérés de rémunération,
+    // mention 13 de l'arrêté du 8 août 2008). Tenus en francs · un bulletin
+    // stipulé en dollars ne les porte pas. Même garde que les missions · relue
+    // une seconde fois, la saisie ne les ajoute pas deux fois.
+    const demandesRappels = dto.rappelsPortes ?? [];
+    let rappelsLies: RappelPorte[] = (dto as SaisieRelue).rappelsLies ?? [];
+    if (demandesRappels.length) {
+      if (!salarieId) throw new BadRequestException('Un rappel de salaire se rapporte à un salarié · choisissez-le.');
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      if ((dto.deviseStipulation ?? 'CDF') === 'USD') {
+        throw new BadRequestException("Les rappels de salaire sont calculés en francs · un bulletin stipulé en dollars ne les porte pas.");
+      }
+      rappelsLies = await rappelsAPorter(this.prisma, tenantId, salarieId, dto.moisDePaie, demandesRappels.map((r) => r.rappelId));
+      elements = [...elements, ...elementsDesRappels(rappelsLies)];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1197,6 +1218,8 @@ export class PersonnelService {
         heuresPortees,
         missionsPortees: undefined,
         missionsLiees,
+        rappelsPortes: undefined,
+        rappelsLies,
       } as SaisieRelue,
       retenuesAvances,
     };
@@ -1496,6 +1519,8 @@ export class PersonnelService {
       // LIGNE MICROFINA-M3, IDÉE 3 · les missions que ce bulletin porte,
       // liées à lui par l'émission, dans sa transaction.
       missionsPortees: (dtoStipule as SaisieRelue).missionsLiees ?? [],
+      // LIGNE PAIE-SUITE, FONCTION 87 · les rappels de salaire que ce bulletin paie.
+      rappelsPortes: (dtoStipule as SaisieRelue).rappelsLies ?? [],
       reserveRetenuesAvances: retenuesAvances.length ? RESERVE_QUOTITE_AVANCES : null,
       // LIGNE MICROFINA-M3, IDÉE 6 · les retenues que les plans d'étalement
       // proposent ce mois-ci, et ce que le bulletin en porte · un oubli se
@@ -1881,8 +1906,9 @@ export class PersonnelService {
     saisie: SimulationPaieDto,
   ): Promise<{ refus: string | null; avertissements: string[] }> {
     const devise = saisie.deviseStipulation ?? 'CDF';
+    // Un rappel de salaire paie des mois passés · il n'est pas le salaire du mois (fonction 87).
     const salaire = saisie.elements
-      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT')
+      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT' && !(e as { rappelId?: string }).rappelId)
       .reduce((n, e) => n + Number((devise === 'USD' ? e.montantUsd : e.montantFc) ?? 0), 0);
     const avertissements: string[] = [];
     // Second tour · le mois du bulletin, confronté aux congés qui le touchent
@@ -2050,6 +2076,10 @@ export class PersonnelService {
         // Ligne microfina-m3, idée 3 · les missions, liées sous le même verrou.
         if (simulation.missionsPortees.length) {
           await lierMissionsAuBulletin(tx, tenantId, cree.id, simulation.missionsPortees);
+        }
+        // Ligne paie-suite, fonction 87 · les rappels de salaire, liés sous le même verrou.
+        if (simulation.rappelsPortes.length) {
+          await lierRappelsAuBulletin(tx, tenantId, cree.id, simulation.rappelsPortes);
         }
         return cree;
       });

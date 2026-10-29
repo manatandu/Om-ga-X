@@ -129,13 +129,15 @@ export function ficheIndividuelle(
       illisibles.push(b.numero);
       continue;
     }
-    for (const e of elements as readonly { nature: string; libelle: string; montantFc: number; rubriqueId?: string }[]) {
+    for (const e of elements as readonly { nature: string; libelle: string; montantFc: number; rubriqueId?: string; rappelId?: string }[]) {
       const rubrique = e.rubriqueId ? rubriques.get(e.rubriqueId) : undefined;
-      const cle = rubrique ? `R:${e.rubriqueId}` : `N:${e.nature}`;
+      // Un rappel de salaire (fonction 87) a sa ligne · mêlé au salaire du
+      // mois, il grossirait le salaire de base de l'année sans le dire.
+      const cle = e.rappelId ? 'RAPPEL' : rubrique ? `R:${e.rubriqueId}` : `N:${e.nature}`;
       const l = lignes.get(cle) ?? {
         cle,
         code: rubrique?.code ?? null,
-        libelle: rubrique?.libelle ?? e.libelle,
+        libelle: e.rappelId ? 'Rappels de salaire (arriérés)' : (rubrique?.libelle ?? e.libelle),
         nature: e.nature,
         parMois: {},
         total: 0,

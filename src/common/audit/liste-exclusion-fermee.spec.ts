@@ -169,6 +169,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'repartitionsAnalytiques',
       // Ligne paie-suite · ses rattachements à l'organigramme, la relation seule.
       'rattachementsUnite',
+      // Ligne paie-suite, fonction 87 · ses rappels de salaire, la relation seule.
+      'rappelsSalaire',
       // Ligne sage-l6 · fonction 22 · les documents du salarié, la relation seule
       // (nom, commentaire et binaire exclus de leur propre table).
       'piecesJointes',
@@ -270,6 +272,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'lignesPaiement',
       // Ligne microfina-m3, idée 3 · les missions qu'il porte · la relation seule.
       'missionsPortees',
+      // Ligne paie-suite, fonction 87 · les rappels qu'il paie · la relation seule.
+      'rappelsPortes',
     ],
     // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
     // rattachement à un bulletin, sa prise au-delà du solde et son
