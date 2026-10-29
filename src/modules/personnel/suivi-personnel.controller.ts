@@ -120,4 +120,18 @@ export class SuiviPersonnelController {
   declarationMainOeuvre(@CurrentUser() user: AuthenticatedUser, @Param('annee') annee: string) {
     return this.service.declarationMainOeuvre(user.tenantId, Number(annee));
   }
+
+  // Arrêté n° 006/CAB/PVPM/ETPS/2010 · le formulaire d'un mouvement, rempli depuis le registre.
+  @Get('contrats/:contratId/declaration-mouvement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  declarationMouvement(@CurrentUser() user: AuthenticatedUser, @Param('contratId') contratId: string, @Query('motif') motif: string) {
+    return this.service.declarationMouvement(user.tenantId, contratId, motif ?? '');
+  }
+
+  // Arrêté n° 008/CAB/PVPM/ETPS/2010 · la déclaration d'ouverture, de fermeture ou de changement.
+  @Get('declaration-etablissement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  declarationEtablissement(@CurrentUser() user: AuthenticatedUser, @Query('nature') nature?: string, @Query('date') date?: string) {
+    return this.service.declarationEtablissement(user.tenantId, nature || undefined, date || undefined);
+  }
 }

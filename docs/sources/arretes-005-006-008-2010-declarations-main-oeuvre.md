@@ -133,6 +133,10 @@ Nota · « à adresser en 1 exemplaire à l'Inspecteur du travail du ressort et 
 
 « Vu pour être annexé à l'Arrêté Ministériel n°006/CAB/PVPM/ETPS/2010 du 01avril 2010 fixant les modalités de déclaration d'embauche et de départ d'un travailleur. » Mobutu Nzanga.
 
+### Le délai de l'article 1er ne vaut plus
+
+L'art. 217 du Code du travail, réécrit par la loi n° 16/010 du 15 juillet 2016, dit « dans les quinze jours ». L'arrêté n° 006 de 2010 a été pris sur l'ancienne rédaction, et ses « quarante-huit heures » cèdent devant la loi, postérieure et supérieure · l'art. 219 ne délègue au Ministre que « les modalités » et « les dérogations ». Le formulaire, les quatre exemplaires (art. 2) et la dérogation des journaliers (art. 4) restent applicables. Pour l'ouverture et la fermeture (arrêté n° 008), la loi et l'arrêté disent la même chose, la quinzaine qui précède.
+
 ### Anomalie du texte
 
 Même divergence que l'arrêté n° 005 · l'article 2 (deux exemplaires à l'Inspection, un à l'ONEM) contre le Nota du formulaire (un à l'Inspection, deux à l'ONEM). L'article prime.

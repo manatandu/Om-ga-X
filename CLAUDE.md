@@ -267,6 +267,11 @@ seule exception écrite à la règle qui fige une migration appliquée ·
 to date ») et sur une base neuve avant le geste ; l'historique Git n'est pas
 réécrit. Le modèle anonyme du site d'un cabinet distributeur est gardé sur la
 branche `sauvegarde/site-cabinet`, sans historique, qu'aucun workflow ne lit.
+Puis, le 2026-10-29, les DÉCLARATIONS D'EMBAUCHE ET DE DÉPART, D'OUVERTURE ET
+DE FERMETURE (« Lève le gel pour les déclarations d'embauche et de départ,
+d'ouverture et fermeture ») · formulaires des arrêtés n° 006 et 008 de 2010
+remplis depuis le registre, délai de quinze jours de l'art. 217 (loi n° 16/010),
+qui prime sur les quarante-huit heures de l'arrêté.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

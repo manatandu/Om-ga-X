@@ -696,9 +696,17 @@ deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · AUPSRVE, art. 184.
   suit, servis à l'écran. Restent hors d'OmegaX · les sections III à VI du
   formulaire, la ventilation par catégorie, le personnel non permanent, et
   le bilan social de l'art. 218, al. 2, dont l'arrêté ne fixe rien. Les
-  déclarations d'embauche et de départ (arrêté n° 006, quarante-huit heures)
+  déclarations d'embauche et de départ (art. 217, quinze jours ; arrêté n° 006)
   et d'ouverture ou de fermeture (arrêté n° 008, quinzaine qui précède) sont
-  dites, non servies · fonctions nouvelles, sous le gel.
+  servies depuis le 2026-10-29 (gel levé par Manasse) · formulaires de
+  l'arrêté n° 006 (mouvement du travailleur) et n° 008 (établissement),
+  remplis depuis le registre et la fiche du dossier, à imprimer, onglet
+  Déclarations du Personnel (`declarations-travail.ts`). DÉCISION PAR LA LOI
+  · le délai de l'embauche et du départ est celui de l'art. 217, quinze
+  jours, réécrit par la loi n° 16/010 du 15 juillet 2016 · les quarante-huit
+  heures de l'arrêté n° 006, pris sur l'ancienne rédaction, cèdent (la loi,
+  postérieure et supérieure, prime ; l'art. 219 ne délègue que les modalités
+  et les dérogations). Le cas du journalier (art. 4) est dit, non compté.
 
 
 ## Décisions par la loi du 2026-10-28 · questions des lignes Microfina et sécurité

@@ -6,6 +6,21 @@ import { jourDeKinshasa } from '../../common/echeance';
 import { CongesService } from './conges.service';
 import { estNationaliteCongolaise } from './effectif-registre';
 import {
+  DEROGATION_JOUR_LE_JOUR,
+  EXEMPLAIRES_ETABLISSEMENT,
+  EXEMPLAIRES_MOUVEMENT,
+  FONDEMENT_ETABLISSEMENT,
+  FONDEMENT_MOUVEMENT,
+  NATURES_ETABLISSEMENT,
+  PRIMAUTE_DELAI_LOI,
+  fenetreDeclarationEtablissement,
+  formulaireEtablissement,
+  formulaireMouvement,
+  motifRefusMouvement,
+  type MotifMouvement,
+} from './declarations-travail';
+import { declarationsDues } from './regles-contrat-travail';
+import {
   AccordDemandeCongeDto,
   AnnulationFormationDto,
   DemandeCongeDto,
@@ -557,6 +572,114 @@ export class SuiviPersonnelService {
         sansNationalite > 0
           ? `${sansNationalite} salarié(s) de l'effectif n'ont pas de nationalité au registre · la répartition nationale et étrangère n'est pas calculée.`
           : null,
+    };
+  }
+
+  /** L'identité de l'employeur que portent les deux formulaires (arrêtés n° 006 et 008). */
+  private async employeurDeclare(tenantId: string) {
+    const t = await this.prisma.tenant.findFirst({
+      where: { id: tenantId },
+      select: { nom: true, adresse: true, ville: true, telephone: true, activite: true, numeroAffiliationCnssEmployeur: true },
+    });
+    if (!t) throw new NotFoundException('Dossier introuvable.');
+    return t;
+  }
+
+  /**
+   * LA DÉCLARATION DE MOUVEMENT DU TRAVAILLEUR (art. 217 ; arrêté n° 006),
+   * remplie depuis le registre pour UN contrat et le motif CHOISI.
+   */
+  async declarationMouvement(tenantId: string, contratId: string, motif: string) {
+    const contrat = await this.prisma.contratTravail.findFirst({
+      where: { id: contratId, tenantId },
+      include: {
+        salarie: {
+          include: { _count: { select: { enfants: true } } },
+        },
+      },
+    });
+    if (!contrat) throw new NotFoundException('Contrat introuvable.');
+    const refus = motifRefusMouvement(motif, { dateFin: contrat.dateFin });
+    if (refus) throw new BadRequestException(refus);
+    const s = contrat.salarie;
+    const employeur = await this.employeurDeclare(tenantId);
+    const nationalite = (s.nationalite ?? '').trim();
+    const formulaire = formulaireMouvement(
+      employeur,
+      {
+        nom: s.nom,
+        postNom: s.postNom,
+        prenoms: s.prenoms,
+        sexe: s.sexe,
+        dateNaissance: s.dateNaissance,
+        millesimeNaissance: s.millesimeNaissance,
+        lieuNaissance: s.lieuNaissance,
+        nationalite: s.nationalite,
+        numeroAffiliationCnss: s.numeroAffiliationCnss,
+        nomConjoint: s.nomConjoint,
+        nombreEnfants: s._count.enfants,
+        etranger: nationalite ? !estNationaliteCongolaise(nationalite) : null,
+      },
+      {
+        type: contrat.type,
+        dateEntreeEnVigueur: contrat.dateEntreeEnVigueur,
+        dateFin: contrat.dateFin,
+        natureTravail: contrat.natureTravail,
+        categorieProfessionnelle: contrat.categorieProfessionnelle,
+        classeProfessionnelle: contrat.classeProfessionnelle,
+        periodiciteRemuneration: contrat.periodiciteRemuneration,
+        remunerationBase: contrat.remunerationBase === null ? null : Number(contrat.remunerationBase),
+        deviseRemuneration: contrat.deviseRemuneration,
+      },
+      motif as MotifMouvement,
+    );
+    // Le délai et l'état se lisent par la même règle que la confrontation du registre.
+    const objet = formulaire.offreAPreciser ? 'DEPART' : 'ENGAGEMENT';
+    const due = declarationsDues(
+      {
+        dateEntreeEnVigueur: contrat.dateEntreeEnVigueur,
+        declarationEngagementLe: s.declarationEngagementLe,
+        dateFin: contrat.dateFin,
+        declarationDepartLe: s.declarationDepartLe,
+      },
+      jourDeKinshasa(new Date()),
+    ).find((d) => d.objet === objet)!;
+    return {
+      ...formulaire,
+      echeance: iso(due.echeance),
+      faiteLe:
+        objet === 'ENGAGEMENT'
+          ? s.declarationEngagementLe && iso(s.declarationEngagementLe)
+          : s.declarationDepartLe && iso(s.declarationDepartLe),
+      enRetard: due.enRetard,
+      destinataires: due.destinataires,
+      delai: PRIMAUTE_DELAI_LOI,
+      exemplaires: EXEMPLAIRES_MOUVEMENT,
+      derogation: contrat.type === 'JOUR_LE_JOUR' ? DEROGATION_JOUR_LE_JOUR : null,
+      fondement: FONDEMENT_MOUVEMENT,
+    };
+  }
+
+  /**
+   * LA DÉCLARATION D'ÉTABLISSEMENT (art. 216 ; arrêté n° 008) · identité du
+   * déclarant et, sur la date de l'événement, la quinzaine où elle se dépose.
+   */
+  async declarationEtablissement(tenantId: string, nature: string | undefined, date: string | undefined) {
+    if (nature && !NATURES_ETABLISSEMENT.some((n) => n.code === nature)) {
+      throw new BadRequestException('Nature inconnue · ouverture, fermeture, réouverture, déclaration à titre transitoire ou changement divers.');
+    }
+    const fenetre = date ? fenetreDeclarationEtablissement(date) : null;
+    if (date && !fenetre) throw new BadRequestException('La date se lit AAAA-MM-JJ.');
+    const employeur = await this.employeurDeclare(tenantId);
+    const aujourdhui = iso(jourDeKinshasa(new Date()));
+    return {
+      ...formulaireEtablissement(employeur),
+      natures: NATURES_ETABLISSEMENT,
+      fenetre,
+      // Passé le jour d'avant l'événement, le délai est couru · dit, jamais un refus.
+      delaiCouru: fenetre ? aujourdhui > fenetre.au : null,
+      exemplaires: EXEMPLAIRES_ETABLISSEMENT,
+      fondement: FONDEMENT_ETABLISSEMENT,
     };
   }
 }

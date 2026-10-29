@@ -11,6 +11,7 @@ import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
 import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
 import { OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
+import { DeclarationEtablissement, DeclarationMouvementTravailleur } from '../components/paie/DeclarationsTravail';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
@@ -3930,7 +3931,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'demandes' && <OngletDemandesConge salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'echeances' && <OngletEcheancierContrats />}
       {onglet === 'formation' && <OngletFormation salaries={salaries} peutEcrire={peutEcrire} />}
-      {onglet === 'declaration' && <OngletDeclarationMainOeuvre />}
+      {onglet === 'declaration' && (
+        <div className="space-y-5">
+          <OngletDeclarationMainOeuvre />
+          <DeclarationMouvementTravailleur salaries={registre ? salaries : null} inactifsInclus={tous} tronque={registre?.tronque ?? false} />
+          <DeclarationEtablissement />
+        </div>
+      )}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}

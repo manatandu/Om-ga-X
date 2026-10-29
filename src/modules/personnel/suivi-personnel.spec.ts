@@ -122,8 +122,9 @@ describe("Déclaration de la main-d'œuvre (art. 218, 219 ; arrêté n° 005/CAB
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("un au Bureau provincial de l'Office national de l'emploi");
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('art. 321');
   });
-  it("rappelle la déclaration d'embauche et de départ dans les quarante-huit heures (arrêté n° 006, art. 1er et 4)", () => {
-    expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('quarante-huit heures');
+  it("rappelle la déclaration d'embauche et de départ dans les quinze jours de la loi, qui prime sur l'arrêté (art. 217 ; arrêté n° 006, art. 4)", () => {
+    expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('dans les quinze jours');
+    expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('loi n° 16/010 du 15 juillet 2016');
     expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('vingt-deux journées de travail sur deux mois');
   });
 });
