@@ -781,6 +781,22 @@ sont LUS sur le Journal officiel fourni · la déclaration de la main-d'œuvre l
 (voir la ligne « Déclaration de la main-d'œuvre » plus haut). L'arrêté de 2023 cité
 par l'ONEM reste non lu · s'il modifie l'arrêté n° 005, la date et le formulaire
 suivront.
+(4) CLOUD RUN FERMÉ AU SEUL TRAFIC DU SITE · ESSAYÉ ET RATÉ (run n° 1 de
+`essai-ingress-cloud-run.yml`, 14:10 UTC) · fermé en
+`internal-and-cloud-load-balancing`, le service ne répondait plus au relais de
+Firebase Hosting, qui l'appelle par `*.run.app` sans équilibreur ; le site a perdu
+son serveur pour tous les cabinets de 14:10 à 14:23 UTC, jusqu'au geste
+« rouvrir » (run n° 2, vert, accès à `all`). La fermeture est retirée du
+workflow, qui ne garde que « rouvrir ». Voie restante, à décider par Manasse
+(coût) · un équilibreur de charge HTTPS Google devant le service (NEG sans
+serveur), le relais du site pointé sur lui, puis l'ingress fermé. (5) ARRÊTÉ ONEM
+DE 2023 · référence et date lues sur le formulaire « DASMO » de l'ONEM et sa page
+de téléchargements (corroboration, texte non lu) · arrêté ministériel
+n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, qui porterait les
+déclarations d'ouverture, de mouvement du personnel, de la situation annuelle de
+la main-d'œuvre et le bilan social. S'il remplace les arrêtés de 2010, les
+formulaires de l'onglet Déclarations (embauche, départ, ouverture, fermeture,
+situation annuelle) sont à revoir · rien n'est touché avant d'avoir le texte.
 
 ## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
 

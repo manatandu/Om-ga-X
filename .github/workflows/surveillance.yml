@@ -25,11 +25,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # L'ADRESSE DIRECTE DE CLOUD RUN N'EST PLUS SONDÉE (2026-10-29, essai de
-  # fermeture décidé par Manasse) · fermé au seul trafic du site
-  # (essai-ingress-cloud-run.yml), le service refuse `*.run.app` par
-  # construction, et la sonde ouvrirait une panne qui n'en est pas une. Le
-  # relais ci-dessous interroge le même /health, par le chemin des clients.
+  # L'ADRESSE DIRECTE DE CLOUD RUN N'EST PLUS SONDÉE (2026-10-29) · le relais
+  # ci-dessous interroge le même /health, par le chemin des clients, qui est
+  # le seul qui compte (l'essai de fermeture de l'adresse directe a échoué le
+  # même jour, voir essai-ingress-cloud-run.yml).
   # LE CHEMIN DES CLIENTS · le site relaie /api vers le service (firebase.json).
   # Le service peut répondre en direct et le relais être cassé : c'est ce
   # chemin-là que les navigateurs empruntent, c'est lui qui doit répondre.

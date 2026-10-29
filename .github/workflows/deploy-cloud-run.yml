@@ -586,11 +586,10 @@ jobs:
       # le déploiement échoue alors en rouge au lieu de laisser croire que
       # tout va bien.
       #
-      # PAR LE RELAIS DU SITE (2026-10-29) · c'est le chemin des clients, et
-      # le seul qui réponde une fois le service fermé au trafic du site
-      # (essai-ingress-cloud-run.yml). L'accès entrant que l'essai a posé
-      # n'est jamais retouché ici · `gcloud run deploy` sans `--ingress`
-      # garde celui du service, et l'étape le dit.
+      # PAR LE RELAIS DU SITE (2026-10-29) · c'est le chemin des clients.
+      # L'accès entrant n'est jamais retouché ici · `gcloud run deploy` sans
+      # `--ingress` garde celui du service (`all`, l'essai de fermeture ayant
+      # coupé le site, voir essai-ingress-cloud-run.yml), et l'étape le dit.
       - name: Accès entrant du service
         continue-on-error: true
         run: |

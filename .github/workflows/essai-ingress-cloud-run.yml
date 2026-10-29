@@ -1,35 +1,28 @@
-name: Essai · Cloud Run fermé au seul trafic du site
+name: Cloud Run · rouvrir l'accès entrant
 
-# ESSAI DÉCIDÉ PAR MANASSE LE 2026-10-29 (« Oui pour l'essai cloud run »).
+# ESSAI DÉCIDÉ PAR MANASSE LE 2026-10-29 (« Oui pour l'essai cloud run »),
+# JOUÉ ET RATÉ LE MÊME JOUR (run n° 1, 14:10 UTC).
 #
-# Le service répond aujourd'hui à deux adresses · le relais du site
-# (`oomega.web.app/api/**`, firebase.json), chemin des navigateurs, et son
-# adresse directe `*.run.app`, qu'aucun client n'emploie et par laquelle un
-# appel contourne le relais (src/common/sauts-de-confiance.ts, audit final
-# F160). Le fermer au seul trafic interne et des équilibreurs de charge
-# (`--ingress internal-and-cloud-load-balancing`) ferme l'adresse directe.
+# Fermé au seul trafic interne et des équilibreurs de charge
+# (`--ingress internal-and-cloud-load-balancing`), le service ne répondait
+# plus au relais du site (`oomega.web.app/api/**`, firebase.json) · le relais
+# de Firebase Hosting appelle l'adresse `*.run.app` comme n'importe quel
+# client, il ne passe par aucun équilibreur. Le site a perdu son serveur pour
+# tous les cabinets de 14:10 à 14:23 UTC, jusqu'au geste « rouvrir ».
 #
-# CE QUI N'EST PAS SÛR, ET QUE L'ESSAI TRANCHE · aucune source lue ne dit
-# que le relais de Firebase Hosting traverse un tel accès entrant. S'il ne le
-# traverse pas, le site entier perd son serveur pour tous les cabinets. D'où
-# un essai borné · on ferme, on interroge le relais, et au PREMIER échec on
-# rouvre aussitôt (`all`) et l'essai tombe en rouge. Réussi, l'accès reste
-# fermé · `deploy-cloud-run.yml` ne passe pas `--ingress`, donc le garde, et
-# son contrôle de santé passe désormais par le relais, comme la
-# surveillance.
-#
-# À LA MAIN SEULEMENT. `rouvrir` remet l'accès à `all` sans rien tester
-# d'autre que le relais.
+# LA FERMETURE EST RETIRÉE DE CE WORKFLOW · fermer l'adresse directe sans
+# couper le site suppose un équilibreur de charge Google devant le service
+# (ligne du suivi, docs/suivi-reprises.md), qui n'existe pas. Seul reste le
+# geste de secours, « rouvrir », qui remet l'accès à `all` et relit le relais.
 on:
   workflow_dispatch:
     inputs:
       geste:
-        description: 'essayer (fermer puis vérifier, rouvrir au premier échec) ou rouvrir'
+        description: 'rouvrir (accès entrant remis à all, relais relu)'
         required: true
-        default: essayer
+        default: rouvrir
         type: choice
         options:
-          - essayer
           - rouvrir
 
 permissions:
@@ -44,7 +37,6 @@ env:
   REGION: us-east1
   SERVICE: comptaflow-api
   URL_RELAIS: https://oomega.web.app/api/health
-  URL_DIRECTE: https://comptaflow-api-968832127045.us-east1.run.app/health
 
 jobs:
   acces:
@@ -61,43 +53,6 @@ jobs:
         run: |
           gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
             --format='value(metadata.annotations["run.googleapis.com/ingress"])'
-
-      - name: Le relais répond avant de fermer
-        if: inputs.geste == 'essayer'
-        run: |
-          # Un relais déjà en panne ferait imputer sa panne à la fermeture.
-          curl -sf --max-time 20 "$URL_RELAIS" > /dev/null \
-            || { echo "::error::Le relais ne répond pas AVANT l'essai · rien n'est fermé."; exit 1; }
-          echo "relais sain avant l'essai"
-
-      - name: Fermer au seul trafic du site
-        if: inputs.geste == 'essayer'
-        run: |
-          gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
-            --ingress internal-and-cloud-load-balancing --quiet
-
-      - name: Le relais répond une fois fermé, sinon on rouvre
-        if: inputs.geste == 'essayer'
-        run: |
-          sleep 30
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -sf --max-time 20 "$URL_RELAIS" > /dev/null; then
-              echo "relais sain avec l'accès fermé (tentative $i)"
-              # Contre-épreuve · l'adresse directe doit maintenant être refusée.
-              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL_DIRECTE" || true)
-              echo "adresse directe · HTTP $code (attendu · refus, 403 ou 404)"
-              if [ "$code" = "200" ]; then
-                echo "::warning::L'adresse directe répond encore · l'accès entrant n'a peut-être pas encore pris, relancer l'essai plus tard."
-              fi
-              exit 0
-            fi
-            echo "tentative $i · le relais ne répond pas, nouvelle tentative dans 15 s"
-            sleep 15
-          done
-          echo "::error::Le relais ne traverse pas l'accès fermé · réouverture immédiate."
-          gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
-            --ingress all --quiet
-          exit 1
 
       - name: Rouvrir
         if: inputs.geste == 'rouvrir'
