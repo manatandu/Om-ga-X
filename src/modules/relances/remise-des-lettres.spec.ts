@@ -77,6 +77,7 @@ function service(lignes: ReturnType<typeof ligne>[], repondre: ReponseFile = san
       findUnique: jest.fn().mockResolvedValue({ nom: 'ONG Kin' }),
     },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+    decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
     niveauRelance: {
       findFirst: jest.fn().mockResolvedValue(NIVEAU),
       findMany: jest.fn().mockResolvedValue([]),

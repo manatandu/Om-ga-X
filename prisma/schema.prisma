@@ -960,6 +960,8 @@ model Tenant {
   sequencesSaisie                      SequenceSaisie[]
   /// Ligne gl-saisie, fonction 64 · les écritures revues par le cabinet.
   revuesEcritures                      RevueEcriture[]
+  /// Ligne gl-saisie, fonction 33 · les décisions de relance posées sur une ligne.
+  decisionsRelanceLignes               DecisionRelanceLigne[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   reprisesConges                       RepriseCongesSalarie[]
   congesSalaries                       CongeSalarie[]
@@ -2463,6 +2465,8 @@ model LigneEcriture {
   imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
   /// Ligne sage-l4, n° 68 · le bien né de cette ligne d'acquisition déjà passée.
   immobilisationAcquise Immobilisation?      @relation("ImmoLigneAcquisition")
+  /// Ligne gl-saisie, fonction 33 · la décision de relance posée sur cette ligne (exclusion, échéance accordée).
+  decisionRelance       DecisionRelanceLigne?
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -13239,4 +13243,38 @@ model RevueEcriture {
 
   @@index([tenantId, revueLe])
   @@map("revues_ecritures")
+}
+
+/// LA DÉCISION DE RELANCE SUR UNE LIGNE (ligne gl-saisie, fonction 33 · Sage
+/// i7, « exclure des écritures du circuit de relance », « décaler la date
+/// d'échéance »). Règles dans `relances/decision-relance-ligne.ts`.
+///
+/// À CÔTÉ DE LA LIGNE, JAMAIS EN ELLE · la ligne d'une écriture validée ne se
+/// réécrit pas (AUDCIF art. 22, 2°), et seule la relance lit la décision ;
+/// balance âgée, notes et échéancier gardent l'échéance de la pièce. Sur une
+/// ligne VALIDÉE de facture (40, 41) non lettrée · une par ligne (clé
+/// unique). EXCLURE porte sur le courrier, jamais sur la créance ; DÉCALER
+/// recule le terme accordé au débiteur (Code civil, Livre III, art. 84 et
+/// 85). Motif exigé pour l'un et l'autre, auteur et date posés par le
+/// serveur ; au journal d'audit. `Restrict` · une ligne validée ne se supprime
+/// jamais ; un chemin qui viendrait à la supprimer est refusé par la base au
+/// lieu de dénouer la décision.
+model DecisionRelanceLigne {
+  id               String        @id @default(uuid())
+  tenantId         String
+  tenant           Tenant        @relation(fields: [tenantId], references: [id])
+  ligneEcritureId  String        @unique
+  ligneEcriture    LigneEcriture @relation(fields: [ligneEcritureId], references: [id], onDelete: Restrict)
+  exclue           Boolean       @default(false)
+  motifExclusion   String?
+  exclueLe         DateTime?
+  exclueePar       String?
+  echeanceAccordee DateTime?
+  motifEcheance    String?
+  accordeeLe       DateTime?
+  accordeePar      String?
+  createdAt        DateTime      @default(now())
+
+  @@index([tenantId])
+  @@map("decisions_relance_lignes")
 }

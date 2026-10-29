@@ -208,6 +208,9 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne gl-saisie, fonction 64 · la revue d'une écriture est un jugement du
   // cabinet · qui l'a posée, quand, et qui l'a retirée se lisent au journal.
   'RevueEcriture',
+  // Ligne gl-saisie, fonction 33 · exclure une ligne de la relance ou décaler
+  // son échéance est une décision de gestion · qui, quand, pourquoi.
+  'DecisionRelanceLigne',
   // Ligne sage-l7, fonction 99 · l'export des écritures, numéroté et daté
   // (AUDCIF art. 22, 7°) · la pièce que la receveuse cite ; retouché après
   // coup, il attesterait un envoi qui n'a pas eu lieu. Son fichier n'est pas

@@ -2544,7 +2544,20 @@ export interface PositionRelance {
    * lacune doit se voir AVANT le clic, pas seulement au compte rendu.
    */
   tiersEmail: string | null;
-  lignes: { date: string; echeance: string | null; libelle: string; montant: number; retardJours: number }[];
+  lignes: {
+    /** Ligne gl-saisie, fonction 33 · la ligne d'écriture, sur laquelle une décision de relance se pose. */
+    ligneId?: string;
+    date: string;
+    echeance: string | null;
+    /** L'échéance de la pièce, quand la relance compte depuis une échéance accordée. */
+    echeanceDeLaPiece?: string | null;
+    motifEcheance?: string | null;
+    libelle: string;
+    montant: number;
+    retardJours: number;
+  }[];
+  /** Ligne gl-saisie, fonction 33 · les lignes exclues de la relance, montrées, jamais réclamées. */
+  lignesExclues?: { ligneId: string; date: string; echeance: string | null; libelle: string; montant: number; motif: string }[];
   /**
    * Les factures soldées dans leur devise dont l'écart de change réalisé
    * n'est pas passé · ni réclamées ni retranchées, l'écart nommé (AUDCIF

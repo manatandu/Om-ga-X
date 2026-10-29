@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 import { TypeRelance } from '@prisma/client';
 
 export class CreerNiveauDto {
@@ -83,6 +83,30 @@ export class EmettreRelancesDto {
 export class HorsRelanceDto {
   @IsBoolean()
   horsRelance!: boolean;
+
+  @IsOptional()
+  @IsString()
+  motif?: string;
+}
+
+/** Exclure UNE ligne de la relance, ou l'y remettre (ligne gl-saisie, fonction 33). */
+export class ExclusionLigneDto {
+  @IsBoolean()
+  exclue!: boolean;
+
+  @IsOptional()
+  @IsString()
+  motif?: string;
+}
+
+/**
+ * Décaler l'échéance d'UNE ligne (ligne gl-saisie, fonction 33) · une date
+ * AAAA-MM-JJ, ou `null` pour revenir à l'échéance de la pièce.
+ */
+export class EcheanceAccordeeDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsDateString()
+  echeanceAccordee!: string | null;
 
   @IsOptional()
   @IsString()
