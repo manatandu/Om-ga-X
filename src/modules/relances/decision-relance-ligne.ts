@@ -38,6 +38,12 @@
  * pièce d'origine (`originesDesReports`, la même clé que la date d'origine) et
  * lui applique la décision de l'origine. Une décision posée sur la ligne
  * reportée elle-même l'emporte.
+ *
+ * LIMITE ÉCRITE · un groupe de lettrage qui ne se répartit pas sûrement se
+ * réclame pour son NET, porté par sa facture ouverte la plus ancienne (règle
+ * des relances, paquet 1, M2) · la décision qui vaut est celle de CETTE
+ * ligne, la seule que la relance montre et donc la seule que l'écran offre
+ * de décider.
  */
 
 export const MOTIF_MIN = 3;

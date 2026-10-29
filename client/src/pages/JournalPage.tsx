@@ -622,7 +622,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     }
   };
   const retirerRevue = async (ecritureId: string) => {
-    if (revueEnCours) return;
+    // Un clic sur l'étiquette ne retire pas la revue d'un autre sans le dire.
+    if (revueEnCours || !window.confirm('Retirer la revue de cette écriture ? Elle redevient à revoir.')) return;
     setRevueEnCours(true);
     setErreur(null);
     try {
