@@ -80,7 +80,7 @@ async function main() {
     verifier(v('Adresse') === 'Av. du Port 4, Kinshasa' && v('N° INSS (CNSS)') === 'CNSS-E-77', "identité de l'employeur recopiée de la fiche du dossier");
     verifier(f.manquants.includes('Téléphone') && !f.travailleur.some((c) => c.libelle.startsWith('Carte de travail')), 'manquants nommés · pas de carte de travail pour un national');
     verifier(f.enRetard === true && f.faiteLe === null, 'délai couru, non déclarée');
-    verifier(/Direction provinciale de l'Office national de l'emploi/.test(f.destinataires) && /Division provinciale de l'Emploi et du Travail \(deux exemplaires\)/.test(f.exemplaires) && /n'a pas été lu/.test(f.formulaire) && /10 USD par travailleur/.test(f.redevance), "services et exemplaires de l'arrêté du 24 février 2023, modèle annexé dit non lu");
+    verifier(/Direction provinciale de l'Office national de l'emploi/.test(f.destinataires) && /Division provinciale de l'Emploi et du Travail \(deux exemplaires\)/.test(f.exemplaires) && /tel que l'ONEM le remet/.test(f.formulaire) && /10 USD par travailleur/.test(f.redevance), "services et exemplaires de l'arrêté du 24 février 2023, formulaire de 2010 tel que l’ONEM le remet");
 
     console.log('Clôture de 2025');
     r = await A.statut('POST', `/exercices/${e2025.id}/cloturer`, {});

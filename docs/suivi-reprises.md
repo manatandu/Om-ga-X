@@ -802,10 +802,11 @@ service de l'emploi, un à l'ONEM, un conservé. Codé dans les trois déclarati
 Les modèles de l'ONEM de la SITUATION ANNUELLE (DASMO) et du BILAN SOCIAL sont
 lus depuis (compétence `onem-rdc`, `formulaires-onem.md`) et SERVIS le 2026-10-29
 (`situation-main-oeuvre.ts`, `bilan-social.ts`, onglet Déclarations du Personnel).
-Restent au suivi · les modèles annexés de l'OUVERTURE et du MOUVEMENT (art. 4,
-retirés à l'ONEM, art. 5), absents des pièces reçues, qui seuls diront si les
-rubriques de 2010 tiennent (`FORMULAIRE_2023_NON_LU`) ; l'arrêté n° 092/2016
-(titre exécutoire de la contribution ONEM), non reçu. Les REDEVANCES (art. 7)
+Pour l'OUVERTURE et le MOUVEMENT, le même dossier de l'ONEM sert les modèles de
+2010 (« vu pour être annexé » aux arrêtés n° 006 et 008) · aucun autre modèle
+n'est connu, le point est FERMÉ le 2026-10-29 (`FORMULAIRE_DE_2010`). Reste
+l'arrêté n° 092/2016 (titre exécutoire de la contribution ONEM), non reçu, qui ne
+sert qu'au recouvrement par l'ONEM. Les REDEVANCES (art. 7)
 sont lues dans l'arrêté interministériel du 2 août 2022
 (`docs/sources/arrete-interministeriel-2022-taux-emploi.md`) et dites sur chaque
 formulaire · mouvement 10 USD par travailleur, établissement 1 000 USD, situation

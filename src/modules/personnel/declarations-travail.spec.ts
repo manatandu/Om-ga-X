@@ -2,7 +2,7 @@ import {
   DEROGATION_JOUR_LE_JOUR,
   EXEMPLAIRES_ETABLISSEMENT,
   EXEMPLAIRES_MOUVEMENT,
-  FORMULAIRE_2023_NON_LU,
+  FORMULAIRE_DE_2010,
   REDEVANCE_BILAN_SOCIAL,
   REDEVANCE_ETABLISSEMENT,
   REDEVANCE_MOUVEMENT,
@@ -147,8 +147,8 @@ describe('la déclaration d’établissement (art. 216 ; arrêté n° 008)', () 
 
 describe('l’arrêté du 24 février 2023 · son modèle annexé n’est pas lu, et c’est dit', () => {
   it('renvoie au formulaire de l’ONEM, sans prétendre le remplir', () => {
-    expect(FORMULAIRE_2023_NON_LU).toContain('Direction provinciale de l\'ONEM (art. 4 et 5)');
-    expect(FORMULAIRE_2023_NON_LU).toContain('ce modèle n\'a pas été lu');
+    expect(FORMULAIRE_DE_2010).toContain("tel que l'ONEM le remet aux employeurs (arrêté du 24 février 2023, art. 4 et 5)");
+    expect(FORMULAIRE_DE_2010).toContain("ceux de l'arrêté de 2023, qui remplace sur ces points");
   });
 });
 

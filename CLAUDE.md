@@ -288,8 +288,8 @@ d'ouverture et fermeture ») · formulaires des arrêtés n° 006 et 008 de 2010
 remplis depuis le registre, délai de quinze jours de l'art. 217 (loi n° 16/010),
 qui prime sur les quarante-huit heures de l'arrêté ; services et exemplaires de
 l'arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, qui
-remplace sur ces points les arrêtés de 2010 (son modèle annexé, non lu, reste au
-suivi) ; et le même jour la DÉCLARATION ANNUELLE DE LA SITUATION DE LA
+remplace sur ces points les arrêtés de 2010 (les formulaires restent ceux de
+2010, tels que l'ONEM les remet) ; et le même jour la DÉCLARATION ANNUELLE DE LA SITUATION DE LA
 MAIN-D'ŒUVRE (« Oui »), le modèle de l'ONEM « vu pour être annexé » à cet
 arrêté rempli depuis le registre (`personnel/situation-main-oeuvre.ts`) ·
 l'exercice E lu au 1er janvier E et déposé au plus tard le 31 janvier E

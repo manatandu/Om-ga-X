@@ -31,8 +31,11 @@
  * l'Emploi et du Travail et la Direction provinciale de l'ONEM) et la
  * RÉPARTITION des quatre exemplaires (art. 4). Il ne dit aucun délai pour
  * l'embauche, le départ, l'ouverture ni la fermeture · la loi et l'arrêté n° 008
- * restent. Son modèle annexé n'est pas au scan reçu (trois pages) · OmegaX
- * remplit le formulaire de 2010, et le dit (`FORMULAIRE_2023_NON_LU`).
+ * restent. LE FORMULAIRE RESTE CELUI DE 2010 · le dossier de l'ONEM reçu le
+ * 2026-10-29 (compétence `onem-rdc`, `formulaires-onem.md`) sert, à côté des
+ * modèles de 2023 de la situation annuelle et du bilan social, les modèles
+ * de 2010 du mouvement et de l'établissement, « vu pour être annexé » aux
+ * arrêtés n° 006 et 008 · aucun autre modèle n'est connu (`FORMULAIRE_DE_2010`).
  *
  * OmegaX REMPLIT, il n'envoie rien · le formulaire se tire, se date, se signe
  * et se dépose. Un champ que le registre ne tient pas est rendu VIDE et
@@ -84,8 +87,8 @@ export const REDEVANCE_ETABLISSEMENT = redevance('1 000 USD', "déclaration d'é
 export const REDEVANCE_SITUATION_ANNUELLE = redevance('500 USD', "déclaration annuelle de la situation de la main-d'œuvre");
 export const REDEVANCE_BILAN_SOCIAL = redevance('200 USD', 'bilan social');
 
-export const FORMULAIRE_2023_NON_LU =
-  "Le formulaire officiel est celui annexé à l'arrêté du 24 février 2023, que les employeurs retirent à la Direction provinciale de l'ONEM (art. 4 et 5) · ce modèle n'a pas été lu, OmegaX remplit les rubriques du formulaire de 2010, à reporter sur celui de l'ONEM s'il diffère.";
+export const FORMULAIRE_DE_2010 =
+  "Formulaire de 2010, tel que l'ONEM le remet aux employeurs (arrêté du 24 février 2023, art. 4 et 5) · les services destinataires et le nombre d'exemplaires sont ceux de l'arrêté de 2023, qui remplace sur ces points ceux qu'imprime le formulaire.";
 
 export const EXEMPLAIRES_MOUVEMENT = DEPOT_ARRETE_2023;
 
