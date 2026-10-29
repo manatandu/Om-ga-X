@@ -129,6 +129,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   FraisMission: 'Frais de mission',
   DemandeCongeSalarie: 'Demande de congé',
   FormationPersonnel: 'Formation du personnel',
+  BilanSocial: 'Bilan social',
   ParticipantFormation: "Participant à une formation",
   VersionBaremePaie: 'Barème de paie',
   RepriseCongesSalarie: 'Reprise des congés acquis',

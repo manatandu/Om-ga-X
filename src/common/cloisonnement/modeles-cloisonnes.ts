@@ -204,6 +204,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'DemandeCongeSalarie',
   'FormationPersonnel',
   'ParticipantFormation',
+  // Le bilan social de l'ONEM.
+  'BilanSocial',
   // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
   'RibSalarie',
   'PaiementSalaires',

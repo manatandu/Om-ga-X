@@ -149,8 +149,8 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // microfina-m3, idée 3) ; 219 avec les demandes de congé, les formations
     // et leurs participants, chacun borné par son tenantId (même ligne, lot 2).
     // 221 avec les détentions de biens et leurs reçus, bornés par leur
-    // tenantId (ligne Microfina M4).
-    expect(modeles).toHaveLength(221);
+    // tenantId (ligne Microfina M4) ; 222 avec le bilan social de l'ONEM.
+    expect(modeles).toHaveLength(222);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

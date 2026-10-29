@@ -769,6 +769,7 @@ model Tenant {
   fraisMission               FraisMission[]
   demandesConge              DemandeCongeSalarie[]
   formationsPersonnel        FormationPersonnel[]
+  bilansSociaux              BilanSocial[]
   participantsFormation      ParticipantFormation[]
   retenuesAvance             RetenueAvanceBulletin[]
   versionsBaremesPaie        VersionBaremePaie[]
@@ -13132,6 +13133,27 @@ enum StatutDemandeConge {
 /// LIGNE MICROFINA-M3, IDÉE 8 · LE PLAN ET LE SUIVI DE LA FORMATION (Code du
 /// travail, art. 8). Prévu et réalisé, aucune écriture · le coût se passe par
 /// la facture au 633. Une formation ne se supprime pas, elle s'annule.
+/// LE BILAN SOCIAL DE L'ONEM, saisi par exercice (Code du travail, art. 218 ;
+/// arrêté du 24 février 2023, art. 3 · déposé au plus tard le 31 janvier qui
+/// suit). Une ligne par dossier et par exercice · les vingt et une lignes du
+/// formulaire en JSON jugé par `bilan-social.ts`, jamais un montant reçu sans
+/// sa monnaie.
+model BilanSocial {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  /// L'année civile E du bilan.
+  exercice       Int
+  /// [{ numero, nombre, budgete, realise, devise }], montants en chaînes décimales.
+  lignes         Json
+  commentaire    String?  @db.VarChar(4000)
+  enregistrePar  String
+  enregistreLe   DateTime @default(now())
+
+  @@unique([tenantId, exercice])
+  @@map("bilans_sociaux")
+}
+
 model FormationPersonnel {
   id              String                 @id @default(uuid())
   tenantId        String

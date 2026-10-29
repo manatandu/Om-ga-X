@@ -30,6 +30,8 @@ import { PiecesJointesSalarieController } from './pieces-jointes-salarie.control
 import { MissionsController } from './missions.controller';
 import { MissionsService } from './missions.service';
 import { SuiviPersonnelController } from './suivi-personnel.controller';
+import { BilanSocialController } from './bilan-social.controller';
+import { BilanSocialService } from './bilan-social.service';
 import { SuiviPersonnelService } from './suivi-personnel.service';
 
 @Module({
@@ -53,6 +55,7 @@ import { SuiviPersonnelService } from './suivi-personnel.service';
     MissionsController,
     // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
     SuiviPersonnelController,
+    BilanSocialController,
   ],
   providers: [
     PersonnelService,
@@ -69,6 +72,7 @@ import { SuiviPersonnelService } from './suivi-personnel.service';
     QuestionnairePaieService,
     MissionsService,
     SuiviPersonnelService,
+    BilanSocialService,
   ],
   exports: [PersonnelService],
 })

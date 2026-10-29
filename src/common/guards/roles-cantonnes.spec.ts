@@ -18,6 +18,7 @@ import { MajorationsHeuresController } from '../../modules/personnel/majorations
 import { FeuillesTempsController } from '../../modules/personnel/feuilles-temps.controller';
 import { MissionsController } from '../../modules/personnel/missions.controller';
 import { SuiviPersonnelController } from '../../modules/personnel/suivi-personnel.controller';
+import { BilanSocialController } from '../../modules/personnel/bilan-social.controller';
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
 import { QuestionnairePaieController } from '../../modules/personnel/questionnaire-paie.controller';
@@ -204,7 +205,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -256,6 +257,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/personnel/absences.controller.ts',
       'modules/personnel/avances-rubriques.controller.ts',
       'modules/personnel/baremes-paie.controller.ts',
+      // Le bilan social de l'ONEM (Code du travail, art. 218).
+      'modules/personnel/bilan-social.controller.ts',
       // Ligne sage-l5 · le compteur des congés fait partie du registre.
       'modules/personnel/conges.controller.ts',
       // Ligne sage-l5 · les feuilles de temps font partie du registre (fonction 78, reste).

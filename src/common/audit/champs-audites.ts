@@ -346,6 +346,8 @@ export const MODELES_AUDITES = new Set<string>([
   'DemandeCongeSalarie',
   'FormationPersonnel',
   'ParticipantFormation',
+  // Le bilan social de l'ONEM · qui l'a saisi, quand, et ce qu'il portait.
+  'BilanSocial',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
