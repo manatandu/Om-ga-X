@@ -799,8 +799,12 @@ service de l'emploi, un à l'ONEM, un conservé. Codé dans les trois déclarati
 (`DEPOT_ARRETE_2023`, `DESTINATAIRES_DECLARATION_MAIN_OEUVRE`, `declarationsDues`).
 Restent au suivi · son MODÈLE ANNEXÉ (art. 4, retiré à l'ONEM, art. 5), absent du
 scan, qui seul dira si les rubriques de 2010 tiennent (`FORMULAIRE_2023_NON_LU`) ;
-le BILAN SOCIAL, dû au 31 janvier (art. 3), non servi ; les DROITS, TAXES ET
-REDEVANCES (art. 7, arrêté interministériel du 2 août 2022, non lu).
+le BILAN SOCIAL, dû au 31 janvier (art. 3), non servi. Les REDEVANCES (art. 7)
+sont lues dans l'arrêté interministériel du 2 août 2022
+(`docs/sources/arrete-interministeriel-2022-taux-emploi.md`) et dites sur chaque
+formulaire · mouvement 10 USD par travailleur, établissement 1 000 USD, situation
+annuelle 500 USD, bilan social 200 USD, en francs au taux officiel du jour, jamais
+convertis.
 
 ## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
 

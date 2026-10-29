@@ -27,6 +27,7 @@ type Mouvement = {
   delai: string;
   exemplaires: string;
   formulaire: string;
+  redevance: string;
   derogation: string | null;
   fondement: string;
 };
@@ -41,6 +42,7 @@ type Etablissement = {
   position: 'AVANT' | 'DANS' | 'APRES' | null;
   exemplaires: string;
   formulaire: string;
+  redevance: string;
   fondement: string;
 };
 
@@ -197,6 +199,7 @@ export function DeclarationMouvementTravailleur({
             </div>
             {donnees.etatNonTenu && <div className="text-text-dim">{donnees.etatNonTenu}</div>}
             <div className="text-text-dim">{donnees.formulaire}</div>
+            <div className="text-text-dim">{donnees.redevance}</div>
             <div className="text-text-dim">{donnees.delai}</div>
             {donnees.derogation && <div className="text-text-dim">{donnees.derogation}</div>}
             {donnees.manquants.length > 0 && <div className="text-warning">À compléter à la main · {donnees.manquants.join(' ; ')}.</div>}
@@ -311,6 +314,7 @@ export function DeclarationEtablissement() {
           <div className="text-text-dim">{donnees.exemplaires}</div>
           <div className="ecran-seul space-y-1 pt-1">
             <div className="text-text-dim">{donnees.formulaire}</div>
+            <div className="text-text-dim">{donnees.redevance}</div>
             {donnees.fenetre ? (
               <div>
                 À déposer du {donnees.fenetre.du} au {donnees.fenetre.au}, dans la quinzaine qui précède l’événement.

@@ -123,6 +123,7 @@ describe("Déclaration de la main-d'œuvre (art. 218, 219 ; arrêté n° 005/CAB
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("un à la Direction provinciale de l'Office national de l'emploi");
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('087/02/2023 du 24 février 2023');
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('art. 321');
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('Redevance · 500 USD');
     expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('bilan social');
     expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('31 janvier (arrêté du 24 février 2023, art. 3)');
   });
