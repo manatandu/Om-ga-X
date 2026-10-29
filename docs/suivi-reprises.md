@@ -848,7 +848,11 @@ aucun accès aux données d'un dossier, décision du 2026-10-09).
 - **Dependabot** · la mise à jour groupée du serveur (n° 25) est intégrée,
   ts-node déclaré ; les mises à jour MAJEURES (Vite 8, React Router 7,
   TypeScript 7, Tailwind 4, NestJS 12, actions GitHub) restent ouvertes, une
-  ligne chacune.
+  ligne chacune. TYPESCRIPT 7 FAIT le 2026-10-29 (demande de Manasse) · typage
+  et construction des deux côtés en 7 ; TypeScript 6 garde ts-jest, ts-node et
+  la CLI de NestJS (ts-jest exige `<7`, l'API du compilateur a quitté la 7) ;
+  `@swc/jest` essayé et écarté (exports non redéfinissables, onze suites à
+  `jest.spyOn` tombées).
 
 ## Relevés de la ligne lettrage-verrou (2026-10-29), antérieurs au changement
 

@@ -1,4 +1,4 @@
-import * as express from 'express';
+import express = require('express');
 import { lastValueFrom, of } from 'rxjs';
 import { AuditContexteInterceptor } from './audit/audit-contexte.interceptor';
 import { acteurCourant } from './audit/contexte-audit';

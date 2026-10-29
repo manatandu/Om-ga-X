@@ -1,8 +1,8 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
-import * as compression from 'compression';
-import * as cookieParser from 'cookie-parser';
+import compression = require('compression');
+import cookieParser = require('cookie-parser');
 import { sautsDeConfiance } from './common/sauts-de-confiance';
 
 /**

@@ -55,7 +55,14 @@ reste à lui.
 ## 2. Pile technique
 
 **Serveur** · NestJS 10, Prisma 5, PostgreSQL (Neon, PG 18), Jest, ExcelJS,
-passport-jwt, bcryptjs. Node 22.
+passport-jwt, bcryptjs. Node 22. **TypeScript 7** type et construit
+(`npx tsc --noEmit`, `npm run build` = `tsc -p tsconfig.json`), installé sous
+l'alias `typescript7` · le paquet `typescript` reste en VERSION 6 pour ts-jest,
+ts-node et la CLI de NestJS, qui lisent l'API du compilateur que la 7 n'expose
+plus ; `scripts/lier-tsc-7.cjs` (postinstall) relie la commande `tsc` à la 7,
+`tsc-7.spec.ts` le tient. Côté client, `typescript` est la 7 et
+`@typescript/typescript6` sert les deux tests qui lisent le code source
+(`client/scripts/lier-tsc-7.cjs`, même raison).
 **Client** · React 18, Vite, TypeScript, Tailwind, react-router-dom 7 en
 **HashRouter** (les URL sont de la forme `oomega.web.app/#/comptes`).
 

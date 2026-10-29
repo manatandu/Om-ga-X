@@ -19,6 +19,8 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 
 COPY package*.json ./
 COPY prisma ./prisma
+# Le postinstall relie la commande tsc à TypeScript 7 (scripts/lier-tsc-7.cjs).
+COPY scripts/lier-tsc-7.cjs ./scripts/
 RUN npm ci
 
 COPY tsconfig.json nest-cli.json ./
@@ -38,6 +40,7 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 
 COPY package*.json ./
 COPY prisma ./prisma
+COPY scripts/lier-tsc-7.cjs ./scripts/
 RUN npm ci --omit=dev
 RUN npx prisma generate
 
