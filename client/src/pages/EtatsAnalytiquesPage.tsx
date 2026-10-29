@@ -9,7 +9,11 @@ import type {
   BalanceAnalytique,
   ControleCumuls,
   EtatBudgetaire,
+  FiltreBalanceAnalytique,
   GrandLivreAnalytique,
+  JournalAnalytique,
+  LignesNonVentilees,
+  OrigineJournalAnalytique,
   PlanAnalytique,
   SectionAnalytique,
 } from '../lib/types';
@@ -28,7 +32,13 @@ import { montantOuVide as montant } from '../lib/montants';
  * Voir docs/analytique-et-budget.md.
  */
 
-type Onglet = 'balance' | 'grand-livre' | 'controle' | 'budgetaire';
+type Onglet = 'balance' | 'journal' | 'grand-livre' | 'controle' | 'budgetaire';
+
+/**
+ * Le choix « Lignes non ventilées » du grand livre (fonction n° 52) · ce n'est
+ * pas une section, c'est ce que l'axe aurait dû recevoir et n'a pas reçu.
+ */
+const NON_VENTILEES = '__non_ventilees__';
 
 const MOIS = ['Tous', 'janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
@@ -46,12 +56,18 @@ export function EtatsAnalytiquesPage() {
   const [sections, setSections] = useState<SectionAnalytique[]>([]);
   const [sectionId, setSectionId] = useState('');
   const [mois, setMois] = useState(0);
+  // Fonction n° 53 · toutes les sections, les mouvementées, les non soldées.
+  const [filtreBalance, setFiltreBalance] = useState<FiltreBalanceAnalytique>('TOUTES');
   const [erreur, setErreur] = useState<string | null>(null);
 
   const [balance, setBalance] = useState<BalanceAnalytique | null>(null);
   const [grandLivre, setGrandLivre] = useState<GrandLivreAnalytique | null>(null);
   const [controle, setControle] = useState<ControleCumuls[] | null>(null);
   const [budgetaire, setBudgetaire] = useState<EtatBudgetaire | null>(null);
+  // Fonction n° 52 · journal analytique et lignes non ventilées, partis de null.
+  const [origineJournal, setOrigineJournal] = useState<OrigineJournalAnalytique>('TOUTES');
+  const [journal, setJournal] = useState<JournalAnalytique | null>(null);
+  const [nonVentilees, setNonVentilees] = useState<LignesNonVentilees | null>(null);
 
   const plan = plans.find((p) => p.id === planId) ?? null;
 
@@ -127,7 +143,9 @@ export function EtatsAnalytiquesPage() {
     if (!planId) return;
     api.get<SectionAnalytique[]>(`/analytique/plans/${planId}/sections`).then((r) => {
       setSections(r);
-      setSectionId((id) => (r.some((s) => s.id === id) ? id : (r.find((s) => s.type === 'DETAIL')?.id ?? '')));
+      setSectionId((id) =>
+        id === NON_VENTILEES || r.some((s) => s.id === id) ? id : (r.find((s) => s.type === 'DETAIL')?.id ?? ''),
+      );
     }, () => setSections([]));
   }, [planId]);
 
@@ -138,7 +156,20 @@ export function EtatsAnalytiquesPage() {
     const echec = (e: unknown) => setErreur(e instanceof ApiError ? e.message : 'Chargement impossible');
 
     if (onglet === 'balance') {
-      api.get<BalanceAnalytique>(`/analytique/etats/balance?planId=${planId}&exerciceId=${ex}`).then(setBalance, echec);
+      setBalance(null);
+      api
+        .get<BalanceAnalytique>(`/analytique/etats/balance?planId=${planId}&exerciceId=${ex}&filtre=${filtreBalance}`)
+        .then(setBalance, echec);
+    } else if (onglet === 'journal') {
+      setJournal(null);
+      api
+        .get<JournalAnalytique>(`/analytique/etats/journal?planId=${planId}&exerciceId=${ex}&origine=${origineJournal}`)
+        .then(setJournal, echec);
+    } else if (onglet === 'grand-livre' && sectionId === NON_VENTILEES) {
+      setNonVentilees(null);
+      api
+        .get<LignesNonVentilees>(`/analytique/etats/non-ventilees?planId=${planId}&exerciceId=${ex}`)
+        .then(setNonVentilees, echec);
     } else if (onglet === 'grand-livre' && sectionId) {
       api
         .get<GrandLivreAnalytique>(`/analytique/etats/grand-livre?sectionId=${sectionId}&exerciceId=${ex}`)
@@ -152,7 +183,7 @@ export function EtatsAnalytiquesPage() {
         )
         .then(setBudgetaire, echec);
     }
-  }, [onglet, planId, sectionId, mois, exerciceCourant?.id, rechargement]);
+  }, [onglet, planId, sectionId, mois, filtreBalance, origineJournal, exerciceCourant?.id, rechargement]);
 
   const ongletClasse = (o: Onglet) =>
     `px-4 py-1.5 text-[11.5px] font-bold ${onglet === o ? 'bg-surface border-x border-border' : 'text-text-dim'}`;
@@ -179,6 +210,20 @@ export function EtatsAnalytiquesPage() {
               ))}
             </select>
           </label>
+          {onglet === 'balance' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-text-dim">Sections</span>
+              <select
+                value={filtreBalance}
+                onChange={(e) => setFiltreBalance(e.target.value as FiltreBalanceAnalytique)}
+                className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px]"
+              >
+                <option value="TOUTES">Toutes</option>
+                <option value="MOUVEMENTEES">Mouvementées</option>
+                <option value="NON_SOLDEES">Non soldées</option>
+              </select>
+            </label>
+          )}
           {onglet === 'grand-livre' && (
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-bold text-text-dim">Section</span>
@@ -194,6 +239,20 @@ export function EtatsAnalytiquesPage() {
                       {s.code} · {s.intitule}
                     </option>
                   ))}
+                <option value={NON_VENTILEES}>Lignes non ventilées de l'axe</option>
+              </select>
+            </label>
+          )}
+          {onglet === 'journal' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-text-dim">Lignes</span>
+              <select
+                value={origineJournal}
+                onChange={(e) => setOrigineJournal(e.target.value as OrigineJournalAnalytique)}
+                className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px]"
+              >
+                <option value="TOUTES">Toutes</option>
+                <option value="OD">OD analytiques seules</option>
               </select>
             </label>
           )}
@@ -225,6 +284,9 @@ export function EtatsAnalytiquesPage() {
       <div className="flex bg-chrome border border-border border-b-0 rounded-t-[10px] overflow-hidden">
         <button onClick={() => setOnglet('balance')} className={ongletClasse('balance')}>
           Balance
+        </button>
+        <button onClick={() => setOnglet('journal')} className={ongletClasse('journal')}>
+          Journal
         </button>
         <button onClick={() => setOnglet('grand-livre')} className={ongletClasse('grand-livre')}>
           Grand livre
@@ -271,7 +333,19 @@ export function EtatsAnalytiquesPage() {
           ))}
           {balance && balance.lignes.length === 0 && (
             <div className="px-4 py-4 text-[11.5px] text-text-dim italic">
-              Aucune section sur cet axe.
+              {balance.masquees > 0 ? 'Aucune section ne répond au filtre.' : 'Aucune section sur cet axe.'}
+            </div>
+          )}
+          {balance && balance.masquees > 0 && (
+            <div className="px-4 py-1 text-[11px] text-text-dim border-t border-border/40 flex items-center gap-1.5">
+              <span>
+                {balance.masquees} section(s) masquée(s) par le filtre · leurs montants restent aux totaux.
+              </span>
+              <Aide
+                titre="Filtre de la balance"
+                texte="« Mouvementées » garde les sections qui ont reçu un débit ou un crédit sur la période, « Non soldées » celles dont le solde n'est pas nul au centime. Une rubrique se juge sur le total de ses sections. Le filtre masque des lignes · les totaux restent ceux de toutes les sections Détail de l'axe."
+                source="Convention d'OmegaX (Sage, balance analytique)"
+              />
             </div>
           )}
           {balance && (
@@ -286,7 +360,139 @@ export function EtatsAnalytiquesPage() {
         </div>
       )}
 
-      {onglet === 'grand-livre' && (
+      {onglet === 'journal' && (
+        <div className="border border-border bg-surface rounded-b-[10px] overflow-x-auto">
+          <div className="grid grid-cols-[90px_60px_70px_110px_110px_1fr_120px_120px] min-w-[960px] gap-2 px-4 py-1.5 bg-chrome-alt border-b border-border text-[11px] font-bold text-text-dim">
+            <span>DATE</span>
+            <span>JAL</span>
+            <span>Pièce</span>
+            <span>Section</span>
+            <span>COMPTE</span>
+            <span className="flex items-center gap-1">
+              Libellé
+              <Aide
+                titre="Journal analytique"
+                texte="Les ventilations des lignes du grand livre et les OD analytiques de l'axe, dans l'ordre des dates, sur l'exercice. « OD analytiques seules » ne montre que les corrections passées par la saisie des OD analytiques, au journal « OD ANA », qui ne sont pas des pièces du livre-journal. Au-delà de deux mille lignes, la liste n'en montre que les premières et le dit · les totaux portent toujours sur tout l'exercice."
+                source="Convention d'OmegaX (Sage, journal analytique)"
+              />
+            </span>
+            <span className="text-right">Débit</span>
+            <span className="text-right">Crédit</span>
+          </div>
+          {!journal && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {journal?.lignes.map((l) => (
+            <div
+              key={l.id}
+              className="grid grid-cols-[90px_60px_70px_110px_110px_1fr_120px_120px] min-w-[960px] gap-2 px-4 py-1 text-[11.5px] border-b border-border/40"
+            >
+              <span className="font-mono">{l.date}</span>
+              <span className="font-mono">{l.journal}</span>
+              <span className="font-mono text-text-dim">{l.numeroPiece ?? ''}</span>
+              <span className="font-mono" title={l.sectionIntitule}>
+                {l.sectionCode}
+              </span>
+              <span className="font-mono" title={l.compteIntitule}>
+                {l.compteNumero}
+              </span>
+              <span className="truncate">{l.libelle}</span>
+              <span className="text-right font-mono">{montant(l.debit)}</span>
+              <span className="text-right font-mono">{montant(l.credit)}</span>
+            </div>
+          ))}
+          {journal && journal.lignes.length === 0 && (
+            <div className="px-4 py-4 text-[11.5px] text-text-dim italic">
+              {journal.origine === 'OD' ? 'Aucune OD analytique sur cet axe.' : 'Aucun mouvement analytique sur cet axe.'}
+            </div>
+          )}
+          {journal && journal.tronque && (
+            <div className="px-4 py-1 text-[11px] text-text-dim border-t border-border/40">
+              {journal.lignes.length} premières lignes sur {journal.total.toLocaleString('fr-FR')} · les totaux portent sur toutes.
+            </div>
+          )}
+          {journal && (
+            <div className="grid grid-cols-[90px_60px_70px_110px_110px_1fr_120px_120px] min-w-[960px] gap-2 px-4 py-1.5 bg-chrome border-t border-border text-[11.5px] font-bold">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+              <span>Total de l'axe</span>
+              <span className="text-right font-mono">{montant(journal.totaux.debit)}</span>
+              <span className="text-right font-mono">{montant(journal.totaux.credit)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {onglet === 'grand-livre' && sectionId === NON_VENTILEES && (
+        <div className="border border-border bg-surface rounded-b-[10px] overflow-x-auto">
+          <div className="px-4 py-2 bg-chrome-alt border-b border-border text-[11.5px] flex items-center gap-1.5">
+            <span className="font-bold">Lignes non ventilées</span>
+            {nonVentilees && (
+              <span className="text-text-dim">
+                · classes {nonVentilees.plan.classesVentilees.split(',').join(', ')} restées sans répartition sur l'axe
+              </span>
+            )}
+            <Aide
+              titre="Lignes non ventilées"
+              texte="Les lignes du grand livre des classes que l'axe ventile, sans répartition sur lui, brouillard compris · les mêmes que celles du contrôle des cumuls, où elles se ventilent. L'écriture qui solde les comptes de gestion à la clôture n'y figure pas. Au-delà de deux mille lignes, la liste n'en montre que les premières et le dit."
+              source="Convention d'OmegaX (Sage, grand livre analytique)"
+            />
+          </div>
+          <div className="grid grid-cols-[90px_60px_70px_110px_1fr_120px_120px_130px] min-w-[940px] gap-2 px-4 py-1.5 bg-chrome-alt border-b border-border text-[11px] font-bold text-text-dim">
+            <span>DATE</span>
+            <span>JAL</span>
+            <span>Pièce</span>
+            <span>COMPTE</span>
+            <span>Libellé</span>
+            <span className="text-right">Débit</span>
+            <span className="text-right">Crédit</span>
+            <span className="text-right">SOLDE</span>
+          </div>
+          {!nonVentilees && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {nonVentilees?.lignes.map((l) => (
+            <div
+              key={l.ligneEcritureId}
+              className={`grid grid-cols-[90px_60px_70px_110px_1fr_120px_120px_130px] min-w-[940px] gap-2 px-4 py-1 text-[11.5px] border-b border-border/40 ${
+                l.statut === 'BROUILLARD' ? 'italic' : ''
+              }`}
+            >
+              <span className="font-mono">{l.date}</span>
+              <span className="font-mono">{l.journal}</span>
+              <span className="font-mono text-text-dim">{l.numeroPiece ?? ''}</span>
+              <span className="font-mono" title={l.compteIntitule}>
+                {l.compteNumero}
+              </span>
+              <span className="truncate">{l.libelle}</span>
+              <span className="text-right font-mono">{montant(l.debit)}</span>
+              <span className="text-right font-mono">{montant(l.credit)}</span>
+              <span className="text-right font-mono text-text-dim">{montant(l.soldeProgressif)}</span>
+            </div>
+          ))}
+          {nonVentilees && nonVentilees.lignes.length === 0 && (
+            <div className="px-4 py-4 text-[11.5px] text-text-dim italic">Toutes les lignes de l'axe sont ventilées.</div>
+          )}
+          {nonVentilees && nonVentilees.tronque && (
+            <div className="px-4 py-1 text-[11px] text-text-dim border-t border-border/40">
+              {nonVentilees.lignes.length} premières lignes sur {nonVentilees.total.toLocaleString('fr-FR')} · les totaux portent sur toutes.
+            </div>
+          )}
+          {nonVentilees && (
+            <div className="grid grid-cols-[90px_60px_70px_110px_1fr_120px_120px_130px] min-w-[940px] gap-2 px-4 py-1.5 bg-chrome border-t border-border text-[11.5px] font-bold">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span>Total non ventilé</span>
+              <span className="text-right font-mono">{montant(nonVentilees.totaux.debit)}</span>
+              <span className="text-right font-mono">{montant(nonVentilees.totaux.credit)}</span>
+              <span className="text-right font-mono">{montant(nonVentilees.totaux.solde)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {onglet === 'grand-livre' && sectionId !== NON_VENTILEES && (
         <div className="border border-border bg-surface rounded-b-[10px] overflow-x-auto">
           {grandLivre && (
             <div className="px-4 py-2 bg-chrome-alt border-b border-border text-[11.5px]">

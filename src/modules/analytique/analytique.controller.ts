@@ -23,6 +23,8 @@ import { OdAnalytiqueService } from './od-analytique.service';
 import { CloreEngagementDto, CreerEngagementDto, RattacherExecutionDto } from './dto/engagement.dto';
 import { Referentiel, RoleUtilisateur } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { lireFiltreBalance } from './filtres-balance-analytique';
+import { lireOrigineJournal } from './journal-analytique';
 
 /**
  * Même règle que le plan comptable et les journaux : consultation ouverte aux
@@ -215,8 +217,15 @@ export class AnalytiqueController {
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
+    @Query('filtre') filtreTexte?: string,
   ) {
-    return this.etats.balance(user.tenantId, { planId, exerciceId, dateDebut, dateFin });
+    // Fonction n° 53 · toutes, mouvementées ou non soldées ; un filtre inconnu
+    // est refusé, jamais lu comme « toutes » (il aurait l'air appliqué).
+    const filtre = lireFiltreBalance(filtreTexte);
+    if (!filtre) {
+      throw new BadRequestException('Filtre de la balance analytique inconnu · TOUTES, MOUVEMENTEES ou NON_SOLDEES.');
+    }
+    return this.etats.balance(user.tenantId, { planId, exerciceId, dateDebut, dateFin, filtre });
   }
 
   @Get('etats/grand-livre')
@@ -228,6 +237,33 @@ export class AnalytiqueController {
     @Query('dateFin') dateFin?: string,
   ) {
     return this.etats.grandLivre(user.tenantId, { sectionId, exerciceId, dateDebut, dateFin });
+  }
+
+  /** Fonction n° 52 · le journal analytique d'un plan (toutes les lignes, ou les OD seules). */
+  @Get('etats/journal')
+  async journalAnalytique(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('planId') planId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('dateDebut') dateDebut?: string,
+    @Query('dateFin') dateFin?: string,
+    @Query('origine') origineTexte?: string,
+  ) {
+    const origine = lireOrigineJournal(origineTexte);
+    if (!origine) throw new BadRequestException('Origine du journal analytique inconnue · TOUTES ou OD.');
+    return this.etats.journal(user.tenantId, { planId, exerciceId, dateDebut, dateFin, origine });
+  }
+
+  /** Fonction n° 52 · le grand livre des lignes restées sans répartition sur un plan. */
+  @Get('etats/non-ventilees')
+  async nonVentilees(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('planId') planId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('dateDebut') dateDebut?: string,
+    @Query('dateFin') dateFin?: string,
+  ) {
+    return this.etats.nonVentilees(user.tenantId, { planId, exerciceId, dateDebut, dateFin });
   }
 
   @Get('etats/controle-cumuls')

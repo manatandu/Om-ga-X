@@ -23,12 +23,20 @@ réalisé lu en mouvement hors écriture qui solde les comptes de gestion
 
 ## Fait
 
-(rien encore)
+- 53 · filtres de la balance analytique (`filtres-balance-analytique.ts`) ·
+  toutes, mouvementées, non soldées ; le filtre masque, les totaux restent
+  ceux de toutes les feuilles, le nombre masqué est dit ; zéro au centime ;
+  filtre inconnu refusé en 400.
+- 52 · journal analytique (`GET /analytique/etats/journal`, toutes ou OD
+  seules) et grand livre des lignes non ventilées
+  (`GET /analytique/etats/non-ventilees`) · écrans de travail, tranche de
+  deux mille dite, totaux et décompte par la base ; le périmètre des non
+  ventilées est celui du contrôle des cumuls (`perimetreDuPlan`,
+  `sansRepartitionSur`, filtres nommés de `lectures-hors-situation.spec.ts`).
+  Onglet Journal et choix « Lignes non ventilées de l'axe » du grand livre.
 
 ## Reste
 
-- 53 · filtres de la balance analytique
-- 52 · journal analytique, grand livre des lignes non ventilées
 - 48 · grille analytique du compte
 - 51 · budget par compte général
 - relecture, rejeu sur vraie base à travers une clôture

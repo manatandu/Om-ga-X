@@ -1,13 +1,23 @@
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { ClasseCompte, Prisma, TypeCompteDetailTotal } from '@prisma/client';
+import { Prisma, TypeCompteDetailTotal } from '@prisma/client';
 import type { LigneBalanceAnalytique, LigneEtatBudgetaire } from './analytique.service';
 import { totalDesFeuilles, valeurDeLaLigne } from './rubriques-budgetaires';
 import { fusionnerCumuls } from './od-analytique';
 import { OdAnalytiqueService } from './od-analytique.service';
 import { moisEntre } from '../../common/mois-entre';
 import { bornesDuMois } from './mois-de-l-exercice';
+import { filtrerBalance, type FiltreBalanceAnalytique } from './filtres-balance-analytique';
+import {
+  PLAFOND_LIGNES_JOURNAL_ANALYTIQUE,
+  classesDuPlan,
+  perimetreDuPlan,
+  premieresDeLUnion,
+  sansRepartitionSur,
+  type LigneJournalAnalytique,
+  type OrigineJournalAnalytique,
+} from './journal-analytique';
 
 /** Une ligne du grand livre analytique : le détail d'une section. */
 export interface LigneGrandLivreAnalytique {
@@ -153,8 +163,13 @@ export class EtatsAnalytiquesService {
    */
   async balance(
     tenantId: string,
-    params: { planId: string; exerciceId: string; dateDebut?: string; dateFin?: string },
-  ): Promise<{ lignes: LigneBalanceAnalytique[]; totaux: { debit: number; credit: number; solde: number } }> {
+    params: { planId: string; exerciceId: string; dateDebut?: string; dateFin?: string; filtre?: FiltreBalanceAnalytique },
+  ): Promise<{
+    lignes: LigneBalanceAnalytique[];
+    totaux: { debit: number; credit: number; solde: number };
+    filtre: FiltreBalanceAnalytique;
+    masquees: number;
+  }> {
     await this.plan(tenantId, params.planId);
     const { du, au } = await this.bornes(tenantId, params.exerciceId, params.dateDebut, params.dateFin);
 
@@ -176,9 +191,13 @@ export class EtatsAnalytiquesService {
       return { sectionId: s.id, code: s.code, intitule: s.intitule, type: s.type, debit, credit, solde: debit - credit };
     });
 
+    // Les totaux sont ceux de TOUTES les feuilles, filtre ou non · le filtre
+    // masque des lignes, il ne change pas ce que l'axe a reçu (fonction n° 53).
     const debit = totalDesFeuilles(sections, debitDe);
     const credit = totalDesFeuilles(sections, creditDe);
-    return { lignes, totaux: { debit, credit, solde: debit - credit } };
+    const filtre = params.filtre ?? 'TOUTES';
+    const filtrees = filtrerBalance(lignes, filtre);
+    return { lignes: filtrees.lignes, totaux: { debit, credit, solde: debit - credit }, filtre, masquees: filtrees.masquees };
   }
 
   /** Grand livre analytique d'une section, avec solde progressif. */
@@ -292,45 +311,16 @@ export class EtatsAnalytiquesService {
 
     const resultats: LigneControleCumuls[] = [];
     for (const plan of plans) {
-      const classes = plan.classesVentilees
-        .split(',')
-        .map((c) => `CLASSE_${c}` as ClasseCompte)
-        .filter((c) => Object.values(ClasseCompte).includes(c));
-
       // LES CUMULS SE DEMANDENT À LA BASE, LA LISTE SE BORNE (audit final
-      // F186). Toutes les lignes des classes ventilées de l'exercice étaient
-      // rapatriées une à une, plan par plan, pour en faire deux sommes, et la
-      // liste des lignes sans répartition partait entière · sur un dossier
-      // d'un million de lignes, c'est l'instance qui tombait. Un seul
-      // périmètre sert les deux agrégats, la tranche et son décompte : deux
-      // filtres écrits séparément rendraient des cumuls et une liste qui ne
-      // parlent pas des mêmes lignes. La borne du dossier passe par
-      // l'écriture, ligne et ventilation n'ayant pas de tenantId.
-      //
-      // SANS L'ÉCRITURE QUI SOLDE LES COMPTES DE GESTION (régression de
-      // l'audit final F4) · elle vire les classes 6 et 7 au 13 à la clôture,
-      // n'est l'objet d'aucune ventilation, et doublait les mouvements
-      // généraux d'un exercice clos en ressortant ligne à ligne « à ventiler ».
-      const perimetre: Prisma.LigneEcritureWhereInput = {
-        ecriture: {
-          tenantId,
-          exerciceId: params.exerciceId,
-          date: { gte: du, lte: au },
-          estSoldeDesComptesDeGestion: false,
-          // Jamais une écriture de situation (ligne sage-l1, fonction 12).
-          ...HORS_SITUATION,
-        },
-        compte: { classe: { in: classes } },
-      };
-      // Sans répartition sur CE plan, et non nulle · la même condition que la
-      // boucle d'avant (aucune ventilation du plan, débit ou crédit non nul),
-      // dite à la base. `not: 0` et non `gt: 0` · une réimputation inscrit en
-      // négatif, et la ligne négative reste à ventiler.
-      const sansRepartition: Prisma.LigneEcritureWhereInput = {
-        ...perimetre,
-        ventilations: { none: { planId: plan.id } },
-        OR: [{ debit: { not: 0 } }, { credit: { not: 0 } }],
-      };
+      // F186). Un seul périmètre sert les deux agrégats, la tranche et son
+      // décompte, et le grand livre des lignes non ventilées (fonction n° 52) ·
+      // deux filtres écrits séparément rendraient des cumuls et une liste qui
+      // ne parlent pas des mêmes lignes. Il écarte l'écriture qui solde les
+      // comptes de gestion (régression de l'audit final F4) et les écritures
+      // de situation (`journal-analytique.ts`).
+      const fenetre = { tenantId, exerciceId: params.exerciceId, du, au, classes: classesDuPlan(plan.classesVentilees) };
+      const perimetre = perimetreDuPlan(fenetre);
+      const sansRepartition = sansRepartitionSur(fenetre, plan.id);
 
       const [general, analytique, tranche, nombreSansRepartition] = await Promise.all([
         this.prisma.ligneEcriture.aggregate({ where: perimetre, _sum: { debit: true, credit: true } }),
@@ -496,4 +486,179 @@ export class EtatsAnalytiquesService {
       },
     };
   }
+
+  /**
+   * LE JOURNAL ANALYTIQUE D'UN PLAN (fonction n° 52) · les ventilations des
+   * lignes du grand livre et les lignes d'OD analytiques, dans l'ordre du
+   * journal, sur une fenêtre de l'exercice. `OD` ne rend que les OD
+   * analytiques (Sage, « reports et OD analytiques » · l'analytique d'OmegaX
+   * n'a pas de report à lui). Écran de travail · une tranche, dite, et des
+   * totaux et un décompte pris par la base sur toute la fenêtre.
+   */
+  async journal(
+    tenantId: string,
+    params: { planId: string; exerciceId: string; dateDebut?: string; dateFin?: string; origine: OrigineJournalAnalytique },
+  ) {
+    const plan = await this.plan(tenantId, params.planId);
+    const { du, au } = await this.bornes(tenantId, params.exerciceId, params.dateDebut, params.dateFin);
+    const avecVentilations = params.origine === 'TOUTES';
+    // Même périmètre que la balance et le grand livre · jamais une écriture de
+    // situation ; la ventilation n'a pas de tenantId, la borne passe par
+    // l'écriture de sa ligne.
+    const whereVentilations: Prisma.VentilationAnalytiqueWhereInput = {
+      planId: plan.id,
+      ligne: { ecriture: { tenantId, exerciceId: params.exerciceId, date: { gte: du, lte: au }, ...HORS_SITUATION } },
+    };
+    // La borne du dossier est écrite DANS chaque appel (`cloisonnement.spec.ts`
+    // la lit par sa structure) · seul le filtre de l'en-tête est partagé.
+    const odDuPlan: Prisma.OdAnalytiqueWhereInput = {
+      tenantId,
+      planId: plan.id,
+      exerciceId: params.exerciceId,
+      date: { gte: du, lte: au },
+    };
+    const plafond = PLAFOND_LIGNES_JOURNAL_ANALYTIQUE;
+    const [ventilations, lignesOd, sommeV, sommeOd, nombreV, nombreOd] = await Promise.all([
+      avecVentilations
+        ? this.prisma.ventilationAnalytique.findMany({
+            where: whereVentilations,
+            include: {
+              section: { select: { code: true, intitule: true } },
+              ligne: {
+                include: {
+                  compte: { select: { numero: true, intitule: true } },
+                  ecriture: { select: { date: true, libelle: true, numeroPiece: true, journal: { select: { code: true } } } },
+                },
+              },
+            },
+            orderBy: [
+              { ligne: { ecriture: { date: 'asc' } } },
+              { ligne: { ecriture: { journal: { code: 'asc' } } } },
+              { ligne: { ecriture: { numeroPiece: 'asc' } } },
+              { id: 'asc' },
+            ],
+            take: plafond,
+          })
+        : Promise.resolve([]),
+      this.prisma.ligneOdAnalytique.findMany({
+        where: { tenantId, od: odDuPlan },
+        include: {
+          section: { select: { code: true, intitule: true } },
+          od: { include: { compte: { select: { numero: true, intitule: true } } } },
+        },
+        orderBy: [{ od: { date: 'asc' } }, { id: 'asc' }],
+        take: plafond,
+      }),
+      avecVentilations
+        ? this.prisma.ventilationAnalytique.aggregate({ where: whereVentilations, _sum: { debit: true, credit: true } })
+        : Promise.resolve({ _sum: { debit: null, credit: null } }),
+      this.prisma.ligneOdAnalytique.aggregate({ where: { tenantId, od: odDuPlan }, _sum: { debit: true, credit: true } }),
+      avecVentilations ? this.prisma.ventilationAnalytique.count({ where: whereVentilations }) : Promise.resolve(0),
+      this.prisma.ligneOdAnalytique.count({ where: { tenantId, od: odDuPlan } }),
+    ]);
+
+    const lues: LigneJournalAnalytique[] = ventilations.map((v) => ({
+      id: v.id,
+      origine: 'VENTILATION' as const,
+      date: v.ligne.ecriture.date,
+      journal: v.ligne.ecriture.journal.code,
+      numeroPiece: v.ligne.ecriture.numeroPiece,
+      sectionCode: v.section.code,
+      sectionIntitule: v.section.intitule,
+      compteNumero: v.ligne.compte.numero,
+      compteIntitule: v.ligne.compte.intitule,
+      libelle: v.ligne.libelle ?? v.ligne.ecriture.libelle,
+      debit: Number(v.debit),
+      credit: Number(v.credit),
+    }));
+    // « OD ANA » · une correction extra-comptable ne se lit jamais comme une
+    // pièce du livre-journal (même libellé que le grand livre analytique).
+    const od: LigneJournalAnalytique[] = lignesOd.map((l) => ({
+      id: l.id,
+      origine: 'OD' as const,
+      date: l.od.date,
+      journal: 'OD ANA',
+      numeroPiece: null,
+      sectionCode: l.section.code,
+      sectionIntitule: l.section.intitule,
+      compteNumero: l.od.compte.numero,
+      compteIntitule: l.od.compte.intitule,
+      libelle: l.od.libelle,
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+    }));
+    const tranche = premieresDeLUnion(lues, od, plafond);
+    const total = nombreV + nombreOd;
+    const debit = Number(sommeV._sum.debit ?? 0) + Number(sommeOd._sum.debit ?? 0);
+    const credit = Number(sommeV._sum.credit ?? 0) + Number(sommeOd._sum.credit ?? 0);
+    return {
+      plan: { id: plan.id, code: plan.code, intitule: plan.intitule },
+      origine: params.origine,
+      lignes: tranche.map((l) => ({ ...l, date: l.date.toISOString().slice(0, 10) })),
+      total,
+      tronque: total > tranche.length,
+      totaux: { debit, credit },
+    };
+  }
+
+  /**
+   * LE GRAND LIVRE DES LIGNES NON VENTILÉES D'UN PLAN (fonction n° 52) · les
+   * lignes des classes que le plan ventile, restées sans répartition sur lui,
+   * avec leur solde progressif · ce que Sage imprime à la suite du grand
+   * livre analytique. Mêmes lignes que le contrôle des cumuls, par le même
+   * périmètre. Une tranche, dite ; totaux et décompte pris par la base.
+   */
+  async nonVentilees(tenantId: string, params: { planId: string; exerciceId: string; dateDebut?: string; dateFin?: string }) {
+    const plan = await this.plan(tenantId, params.planId);
+    const { du, au } = await this.bornes(tenantId, params.exerciceId, params.dateDebut, params.dateFin);
+    const where = sansRepartitionSur(
+      { tenantId, exerciceId: params.exerciceId, du, au, classes: classesDuPlan(plan.classesVentilees) },
+      plan.id,
+    );
+    const [lignes, somme, total] = await Promise.all([
+      this.prisma.ligneEcriture.findMany({
+        where,
+        include: {
+          compte: { select: { numero: true, intitule: true } },
+          ecriture: { select: { date: true, libelle: true, numeroPiece: true, statut: true, journal: { select: { code: true } } } },
+        },
+        orderBy: TRI_SANS_REPARTITION,
+        take: PLAFOND_LIGNES_JOURNAL_ANALYTIQUE,
+      }),
+      this.prisma.ligneEcriture.aggregate({ where, _sum: { debit: true, credit: true } }),
+      this.prisma.ligneEcriture.count({ where }),
+    ]);
+    // Le solde progressif part de la première ligne · la tranche est faite des
+    // PREMIÈRES lignes dans l'ordre, il est donc juste sur tout ce qui est montré.
+    let cumul = 0;
+    return {
+      plan: { id: plan.id, code: plan.code, intitule: plan.intitule, classesVentilees: plan.classesVentilees },
+      lignes: lignes.map((l) => {
+        const debit = Number(l.debit);
+        const credit = Number(l.credit);
+        cumul += debit - credit;
+        return {
+          ligneEcritureId: l.id,
+          date: l.ecriture.date.toISOString().slice(0, 10),
+          journal: l.ecriture.journal.code,
+          numeroPiece: l.ecriture.numeroPiece,
+          statut: l.ecriture.statut,
+          compteNumero: l.compte.numero,
+          compteIntitule: l.compte.intitule,
+          libelle: l.libelle ?? l.ecriture.libelle,
+          debit,
+          credit,
+          soldeProgressif: cumul,
+        };
+      }),
+      total,
+      tronque: total > lignes.length,
+      totaux: {
+        debit: Number(somme._sum.debit ?? 0),
+        credit: Number(somme._sum.credit ?? 0),
+        solde: Number(somme._sum.debit ?? 0) - Number(somme._sum.credit ?? 0),
+      },
+    };
+  }
+
 }
