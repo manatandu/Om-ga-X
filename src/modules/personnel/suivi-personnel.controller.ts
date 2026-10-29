@@ -115,10 +115,11 @@ export class SuiviPersonnelController {
     return this.service.annulerFormation(user.tenantId, id, dto);
   }
 
-  @Get('declaration-main-oeuvre/:annee')
+  // L'EXERCICE DU FORMULAIRE DE L'ONEM · la situation au 1er janvier, déposée au 31 janvier.
+  @Get('declaration-main-oeuvre/:exercice')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
-  declarationMainOeuvre(@CurrentUser() user: AuthenticatedUser, @Param('annee') annee: string) {
-    return this.service.declarationMainOeuvre(user.tenantId, Number(annee));
+  declarationMainOeuvre(@CurrentUser() user: AuthenticatedUser, @Param('exercice') exercice: string) {
+    return this.service.declarationMainOeuvre(user.tenantId, Number(exercice));
   }
 
   // Arrêté n° 006/CAB/PVPM/ETPS/2010 · le formulaire d'un mouvement, rempli depuis le registre.

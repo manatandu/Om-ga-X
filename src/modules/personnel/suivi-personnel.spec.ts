@@ -2,7 +2,6 @@ import {
   FONDEMENT_TITRE_CONGE,
   RESERVE_DECLARATION_MAIN_OEUVRE,
   DESTINATAIRES_DECLARATION_MAIN_OEUVRE,
-  dateLimiteDeclarationMainOeuvre,
   REGLE_MOUVEMENTS_MAIN_OEUVRE,
   echeancesDuContrat,
   finEssaiOpposable,
@@ -107,15 +106,10 @@ describe('Formation (art. 8)', () => {
 });
 
 describe("Déclaration de la main-d'œuvre (art. 218, 219 ; arrêté n° 005/CAB/PVPM/ETPS/2010)", () => {
-  it("nomme l'arrêté de l'art. 219 et dit ce que le formulaire demande en plus des chiffres", () => {
-    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010');
+  it("dit ce que le modèle de 2023 demande et qui reste à remplir, et que le bilan social n'est pas servi", () => {
+    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain("formulaire de l'ONEM annexé à l'arrêté du 24 février 2023");
     expect(RESERVE_DECLARATION_MAIN_OEUVRE).toMatch(/bilan social/);
     expect(RESERVE_DECLARATION_MAIN_OEUVRE).toMatch(/masse salariale/);
-  });
-  it("au plus tard le 31 janvier de l'année qui suit, sans report au jour ouvrable (art. 1er)", () => {
-    expect(dateLimiteDeclarationMainOeuvre(2026)).toBe('2027-01-31');
-    // 31 janvier 2027 · un dimanche, que l'arrêté ne reporte pas.
-    expect(new Date(Date.UTC(2027, 0, 31)).getUTCDay()).toBe(0);
   });
   it("quatre exemplaires et services de l'arrêté du 24 février 2023 (art. 2 à 5), qui remplace l'arrêté n° 005 sur ces points", () => {
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("deux à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail");

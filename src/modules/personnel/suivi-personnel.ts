@@ -289,7 +289,8 @@ export function suiviFormation(
 // contrôle ; art. 4 · peines de l'art. 321 du Code. Le formulaire compte le
 // « personnel permanent au premier janvier de l'année en cours » · la
 // déclaration de l'année N, déposée en janvier N+1, lit donc l'effectif au
-// 1er janvier N+1, et les mouvements de l'année N.
+// 1er janvier N+1, et les mouvements de l'année N. Le modèle de 2023 nomme
+// « Exercice » cette année du 1er janvier · l'exercice N+1, dit ainsi à l'écran.
 //
 // TROIS ANOMALIES DU TEXTE, DITES, NON CORRIGÉES · l'art. 1er renvoie à
 // « l'article 216 » (déclaration d'ouverture et de fermeture) quand le visa
@@ -297,28 +298,17 @@ export function suiviFormation(
 // répartition des exemplaires de l'art. 2 (l'article prime) ; aucun report
 // au jour ouvrable n'est écrit, le 31 janvier reste le 31 janvier.
 //
-// OmegaX ne remplit pas le formulaire · il sert les CHIFFRES de l'effectif
-// que le registre porte (section II, sans la ventilation par catégorie ni la
-// distinction du personnel non permanent, que le registre ne tient pas), la
-// date limite et les destinataires, et il le dit. Ni la masse salariale, ni
-// la durée hebdomadaire, ni les besoins en main-d'œuvre et en formation
-// (sections III à VI), ni le bilan social de l'art. 218, al. 2, dont l'arrêté
-// ne fixe aucune modalité. Nationalité · même lecture que l'effectif
-// (`effectif-registre.ts`) ; une nationalité absente rend la répartition NON
-// CALCULÉE, jamais devinée.
+// OmegaX REMPLIT le modèle de l'ONEM annexé à l'arrêté du 24 février 2023
+// (formulaire DASMO, reçu le 2026-10-29) pour ce que le registre porte, et
+// laisse vide et nommé le reste (`situation-main-oeuvre.ts`). L'exercice E se
+// lit au 1er janvier E et se dépose au plus tard le 31 janvier E. Le bilan
+// social de l'art. 218, al. 2 n'est pas servi, faute de son modèle.
+// Nationalité · même lecture que l'effectif (`effectif-registre.ts`) ; une
+// nationalité absente rend la répartition NON CALCULÉE, jamais devinée.
 // ──────────────────────────────────────────────────────────────────────────
 
 export const RESERVE_DECLARATION_MAIN_OEUVRE =
-  "Chiffres de l'effectif seuls · le formulaire annexé à l'arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010 demande aussi la répartition par catégorie professionnelle, le personnel non permanent, la masse salariale, la durée hebdomadaire et les besoins en main-d'œuvre et en formation, que le registre ne porte pas. Tous les contrats en vigueur sont comptés, permanents ou non. Le bilan social de l'art. 218, al. 2 du Code du travail, dû lui aussi au plus tard le 31 janvier (arrêté du 24 février 2023, art. 3), n'est pas servi.";
-
-/**
- * L'ÉCHÉANCE ET LES EXEMPLAIRES · arrêté n° 005/CAB/PVPM/ETPS/2010, art. 1er
- * et 2. La déclaration de l'année N se dépose au plus tard le 31 janvier N+1,
- * sans report au jour ouvrable (l'arrêté n'en écrit aucun).
- */
-export function dateLimiteDeclarationMainOeuvre(annee: number): string {
-  return `${annee + 1}-01-31`;
-}
+  "Le formulaire de l'ONEM annexé à l'arrêté du 24 février 2023 est rempli pour ce que le registre porte · l'identification, l'effectif permanent par catégorie du décret n° 25/22, nationalité et sexe, les permanents des deux années d'avant et les non-permanents. La masse salariale, la durée hebdomadaire, les effectifs maximaux et les besoins en main-d'œuvre et en formation restent à remplir. Le bilan social de l'art. 218, al. 2 du Code du travail, dû lui aussi au plus tard le 31 janvier (arrêté du 24 février 2023, art. 3), n'est pas servi, faute de son modèle.";
 
 export const DESTINATAIRES_DECLARATION_MAIN_OEUVRE =
   "en quatre exemplaires sur le formulaire officiel (modèle annexé à l'arrêté du 24 février 2023, retiré à la Direction provinciale de l'ONEM) · à Kinshasa, deux à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail ; dans les autres provinces, deux à la Division provinciale de l'Emploi et du Travail ; un à la Direction provinciale de l'Office national de l'emploi ; le quatrième conservé par le déclarant (arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2 à 5, qui remplace sur ces points l'arrêté n° 005/CAB/PVPM/ETPS/2010). Infraction punie des peines de l'art. 321 du Code du travail (art. 9). Redevance · 500 USD, payable en francs congolais au taux officiel du jour (arrêté interministériel n° 005/CAB/MIN/ETPS/06/2022 et n° 048/CAB/MIN/FINANCES/2022 du 2 août 2022, art. 1er, section 62 ; arrêté du 24 février 2023, art. 7) ; 200 USD pour le bilan social.";

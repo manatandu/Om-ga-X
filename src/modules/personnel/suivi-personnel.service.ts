@@ -23,6 +23,7 @@ import {
   type MotifMouvement,
 } from './declarations-travail';
 import { declarationsDues } from './regles-contrat-travail';
+import { datesDeLExercice, formulaireSituationMainOeuvre, LIBELLE_FORME } from './situation-main-oeuvre';
 import {
   AccordDemandeCongeDto,
   AnnulationFormationDto,
@@ -37,7 +38,6 @@ import {
   FONDEMENT_TITRE_CONGE,
   HORIZON_ECHEANCIER_JOURS,
   DESTINATAIRES_DECLARATION_MAIN_OEUVRE,
-  dateLimiteDeclarationMainOeuvre,
   REGLE_MOUVEMENTS_MAIN_OEUVRE,
   RESERVE_DECLARATION_MAIN_OEUVRE,
   echeancesDuContrat,
@@ -489,36 +489,28 @@ export class SuiviPersonnelService {
   // ---- Idée 11 · déclaration annuelle de la main-d'œuvre --------------
 
   /**
-   * LES CHIFFRES DE L'ART. 218 · l'effectif au 1er janvier de l'année qui
-   * suit (le formulaire de l'arrêté n° 005/CAB/PVPM/ETPS/2010 compte le
-   * « personnel permanent au premier janvier de l'année en cours »), par
-   * nationalité (nationale, étrangère) et par sexe, et les entrées et
-   * sorties de l'année. Des AGRÉGATS de la base, un salarié compté une fois
-   * (`some`). Une nationalité absente rend la répartition non calculée.
+   * LA DÉCLARATION ANNUELLE DE L'ART. 218 POUR L'EXERCICE E DU FORMULAIRE ·
+   * la situation au 1er janvier E, déposée au plus tard le 31 janvier E
+   * (arrêté du 24 février 2023, art. 3 ; le formulaire de l'« Exercice 2024 »
+   * se lit au 1er janvier 2024, `situation-main-oeuvre.ts`). L'effectif par
+   * nationalité et par sexe, des AGRÉGATS de la base, un salarié compté une
+   * fois (`some`), et les entrées et sorties de l'année E-1. Le formulaire
+   * rempli (`formulaire`) suit le modèle annexé. Une nationalité absente
+   * rend la répartition non calculée.
    */
-  async declarationMainOeuvre(tenantId: string, annee: number) {
-    if (!Number.isInteger(annee) || annee < 2000 || annee > 2100) throw new BadRequestException("L'année se lit sur quatre chiffres.");
-    const debut = new Date(Date.UTC(annee, 0, 1));
-    const fin = new Date(Date.UTC(annee, 11, 31));
-    const premierJanvierSuivant = new Date(Date.UTC(annee + 1, 0, 1));
+  async declarationMainOeuvre(tenantId: string, exercice: number) {
+    if (!Number.isInteger(exercice) || exercice < 2000 || exercice > 2100) throw new BadRequestException("L'exercice se lit sur quatre chiffres.");
+    const dates = datesDeLExercice(exercice);
+    const debut = new Date(Date.UTC(exercice - 1, 0, 1));
+    const fin = new Date(Date.UTC(exercice - 1, 11, 31));
+    const premierJanvier = new Date(`${dates.au}T00:00:00.000Z`);
     const enVigueurAu = (d: Date) => ({ tenantId, dateEntreeEnVigueur: { lte: d }, OR: [{ dateFin: null }, { dateFin: { gte: d } }] });
-    // M3 DE LA RELECTURE · ENTRÉES ET SORTIES SE LISENT COMME L'ART. 217 LES
-    // DÉCLARE · « à l'occasion de son ENGAGEMENT » et « tout travailleur
-    // QUITTANT L'EMPLOYEUR […] la date du départ de l'entreprise ». Un CDD
-    // renouvelé, ou suivi d'un CDI sans interruption, n'est ni un engagement
-    // ni un départ · il comptait jusque-là une entrée ET une sortie. Une
-    // ENTRÉE est donc un contrat pris d'effet dans l'année sans qu'aucun autre
-    // contrat du salarié soit en vigueur la VEILLE ; une SORTIE, un contrat
-    // fini dans l'année sans qu'aucun autre soit en vigueur le LENDEMAIN. Deux
-    // contrats nés (ou finis) le même jour comptent une fois. On compte des
-    // MOUVEMENTS · un salarié parti puis réengagé dans l'année compte deux
-    // fois, comme il fait deux déclarations de l'art. 217.
     const debutIso = iso(debut);
     const finIso = iso(fin);
     const [groupes, [entrees], [sorties]] = await Promise.all([
       this.prisma.salarie.groupBy({
         by: ['sexe', 'nationalite'],
-        where: { tenantId, contrats: { some: enVigueurAu(premierJanvierSuivant) } },
+        where: { tenantId, contrats: { some: enVigueurAu(premierJanvier) } },
         _count: { _all: true },
       }),
       this.prisma.$queryRaw<{ n: number }[]>`
@@ -556,10 +548,13 @@ export class SuiviPersonnelService {
       nationaux: sansNationalite > 0 ? null : somme((g) => avec(g) && g.sexe === sexe && estNationaliteCongolaise(g.nationalite)),
       etrangers: sansNationalite > 0 ? null : somme((g) => avec(g) && g.sexe === sexe && !estNationaliteCongolaise(g.nationalite)),
     });
+    const formulaire = await this.formulaireSituationMainOeuvre(tenantId, exercice, premierJanvier, enVigueurAu);
     return {
-      annee,
-      au: iso(premierJanvierSuivant),
-      dateLimite: dateLimiteDeclarationMainOeuvre(annee),
+      exercice,
+      annee: exercice - 1,
+      au: dates.au,
+      dateLimite: dates.dateLimite,
+      formulaire,
       effectif: somme(() => true),
       hommes: ventile('MASCULIN'),
       femmes: ventile('FEMININ'),
@@ -576,6 +571,71 @@ export class SuiviPersonnelService {
           ? `${sansNationalite} salarié(s) de l'effectif n'ont pas de nationalité au registre · la répartition nationale et étrangère n'est pas calculée.`
           : null,
     };
+  }
+
+  /**
+   * Le formulaire de l'ONEM rempli · un contrat par salarié en vigueur au
+   * 1er janvier (le plus récent s'il en a plusieurs), et les permanents
+   * (contrats à durée indéterminée) au 1er janvier des deux années d'avant.
+   * Au-delà de dix mille contrats, refus nommé plutôt qu'un formulaire amputé.
+   */
+  private async formulaireSituationMainOeuvre(
+    tenantId: string,
+    exercice: number,
+    premierJanvier: Date,
+    enVigueurAu: (d: Date) => Prisma.ContratTravailWhereInput,
+  ) {
+    const PLAFOND = 10_000;
+    const dates = datesDeLExercice(exercice);
+    const permanentsAu = (d: string) =>
+      this.prisma.salarie.count({
+        where: { tenantId, contrats: { some: { ...enVigueurAu(new Date(`${d}T00:00:00.000Z`)), type: 'DUREE_INDETERMINEE' } } },
+      });
+    const [t, contrats, anneePrecedente, anneeAnterieure] = await Promise.all([
+      this.prisma.tenant.findFirst({
+        where: { id: tenantId },
+        select: {
+          nom: true, adresse: true, ville: true, telephone: true, email: true, rccm: true, numeroImpot: true, activite: true, idNat: true,
+          numeroAffiliationCnssEmployeur: true, referentiel: true, formeJuridique: true, formeJuridiqueSyscohada: true,
+        },
+      }),
+      this.prisma.contratTravail.findMany({
+        where: enVigueurAu(premierJanvier),
+        select: {
+          salarieId: true, type: true, classeProfessionnelle: true, dateEntreeEnVigueur: true,
+          salarie: { select: { nom: true, postNom: true, prenoms: true, sexe: true, nationalite: true } },
+        },
+        orderBy: [{ dateEntreeEnVigueur: 'desc' }, { id: 'desc' }],
+        take: PLAFOND + 1,
+      }),
+      permanentsAu(dates.anneePrecedente),
+      permanentsAu(dates.anneeAnterieure),
+    ]);
+    if (!t) throw new NotFoundException('Dossier introuvable.');
+    if (contrats.length > PLAFOND) {
+      throw new BadRequestException(`Plus de ${PLAFOND} contrats en vigueur au ${dates.au} · le formulaire ne se remplit pas en entier, il n'est pas servi.`);
+    }
+    const vus = new Set<string>();
+    const auPremierJanvier = contrats
+      .filter((c) => (vus.has(c.salarieId) ? false : (vus.add(c.salarieId), true)))
+      .map((c) => ({
+        salarie: [c.salarie.nom, c.salarie.postNom, c.salarie.prenoms].filter(Boolean).join(' '),
+        sexe: c.salarie.sexe,
+        nationalite: c.salarie.nationalite,
+        type: c.type,
+        classeProfessionnelle: c.classeProfessionnelle,
+      }));
+    const forme = t.referentiel === 'SYSCOHADA' ? t.formeJuridiqueSyscohada : t.formeJuridique;
+    return formulaireSituationMainOeuvre({
+      exercice,
+      identite: {
+        nom: t.nom, adresse: t.adresse, ville: t.ville, telephone: t.telephone, email: t.email, rccm: t.rccm, numeroImpot: t.numeroImpot,
+        activite: t.activite, idNat: t.idNat, numeroAffiliationCnssEmployeur: t.numeroAffiliationCnssEmployeur,
+        formeJuridique: forme ? (LIBELLE_FORME[forme] ?? null) : null,
+      },
+      auPremierJanvier,
+      permanentsPrecedents: { anneePrecedente, anneeAnterieure },
+    });
   }
 
   /** L'identité de l'employeur que portent les deux formulaires (arrêtés n° 006 et 008). */
