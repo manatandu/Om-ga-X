@@ -7,6 +7,7 @@ import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { avecStatut } from '../comptabilite/ecritures-de-situation';
 import { OrdresVirementService, type LigneAOrdonner } from '../reglements/ordres-virement.service';
 import { coordonneesImprimees } from '../tiers/ribs-tiers';
+import { compteDuPaiement } from './compte-salarie';
 import { compteDuRole } from './passation-paie';
 import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
 import {
@@ -48,6 +49,14 @@ function estDoublon(e: unknown): boolean {
  * l'aide-comptable compris, à qui le personnel est fermé
  * (roles-cantonnes.ts). Le détail par salarié est sur la fiche du paiement et
  * sur l'ordre de virement, que l'aide-comptable ne lit pas.
+ *
+ * SAUF COMPTES INDIVIDUELS (ligne paie-suite, fonction 76, option du dossier,
+ * `compte-salarie.ts`) · le débit se fait alors compte par compte, sur le
+ * compte où le bulletin a été PASSÉ (celui du salarié si la pièce de
+ * passation le porte, le collectif sinon) · débiter le compte du salarié pour
+ * un net inscrit au collectif laisserait l'un débiteur et l'autre créditeur,
+ * balance bouclée. Un bulletin pas encore passé suit l'option et le compte du
+ * jour, comme sa passation à venir.
  */
 @Injectable()
 export class PaiementSalairesService {
@@ -336,7 +345,7 @@ export class PaiementSalairesService {
     if (ids.length !== dto.bulletinIds.length) throw new BadRequestException('Un bulletin est donné deux fois.');
 
     const [tenant, journal, bulletins, deja] = await Promise.all([
-      this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } }),
+      this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true, comptesIndividuelsSalaries: true } }),
       this.prisma.journal.findFirst({
         where: { id: dto.journalId, tenantId },
         select: {
@@ -350,7 +359,17 @@ export class PaiementSalairesService {
       }),
       this.prisma.bulletinPaie.findMany({
         where: { tenantId, id: { in: ids } },
-        select: { id: true, numero: true, moisDePaie: true, statut: true, salarieId: true, nomComplet: true, netAPayerFc: true, salarie: { select: { modePaiement: true } } },
+        select: {
+          id: true,
+          numero: true,
+          moisDePaie: true,
+          statut: true,
+          salarieId: true,
+          nomComplet: true,
+          netAPayerFc: true,
+          ecritureId: true,
+          salarie: { select: { modePaiement: true, compteId: true } },
+        },
       }),
       this.dejaPayes(tenantId, mois),
     ]);
@@ -405,6 +424,39 @@ export class PaiementSalairesService {
     if (!compte422 || compte422.typeCompte !== TypeCompteDetailTotal.DETAIL) {
       throw new BadRequestException(`Le compte ${numero422} (Personnel, rémunérations dues) n'est pas ouvert en imputation dans ce dossier · ouvrez-le au plan comptable.`);
     }
+    // FONCTION 76 · le compte à débiter, bulletin par bulletin · celui où son
+    // net a été inscrit. La pièce de passation dit si elle porte le compte du
+    // salarié ; une seule lecture, bornée aux comptes individuels en jeu.
+    const avecCompte = bulletins.filter((b) => b.salarie.compteId);
+    const passesSurLeurCompte = new Set<string>();
+    if (avecCompte.some((b) => b.ecritureId)) {
+      const ecritureIds = [...new Set(avecCompte.filter((b) => b.ecritureId).map((b) => b.ecritureId as string))];
+      const comptesIds = [...new Set(avecCompte.map((b) => b.salarie.compteId as string))];
+      const portees = await this.prisma.ligneEcriture.findMany({
+        // Une passation n'est jamais une situation · le filtre le dit quand même.
+        where: { ecriture: avecStatut({ tenantId, id: { in: ecritureIds } }), compteId: { in: comptesIds } },
+        select: { ecritureId: true, compteId: true },
+        take: ecritureIds.length * comptesIds.length,
+      });
+      for (const l of portees) passesSurLeurCompte.add(`${l.ecritureId}|${l.compteId}`);
+    }
+    const compteADebiter = (bulletinId: string): string => {
+      const b = bulletins.find((x) => x.id === bulletinId)!;
+      const individuel = b.salarie.compteId;
+      const choix = compteDuPaiement({
+        compteIndividuelId: individuel,
+        passe: b.ecritureId !== null,
+        passeSurSonCompte: passesSurLeurCompte.has(`${b.ecritureId}|${individuel}`),
+        option: tenant.comptesIndividuelsSalaries,
+      });
+      return choix === 'INDIVIDUEL' && individuel ? individuel : compte422.id;
+    };
+    const debits = new Map<string, number>();
+    for (const l of lignes) {
+      const c = compteADebiter(l.bulletinId);
+      debits.set(c, (debits.get(c) ?? 0) + centimes(l.montant));
+    }
+
     // Virement · le RIB du journal et le RIB principal de chaque salarié, AVANT la pièce.
     const preparation =
       mode === ModePaiementSalaire.VIREMENT
@@ -432,8 +484,10 @@ export class PaiementSalairesService {
           date: dto.date,
           libelle,
           reference: referencePiece,
+          // Une ligne de débit par compte (le collectif seul, sans comptes
+          // individuels, comme avant), la trésorerie au total.
           lignes: [
-            { compteId: compte422.id, libelle, debit: total, credit: 0 },
+            ...[...debits.entries()].map(([compteId, c]) => ({ compteId, libelle, debit: c / 100, credit: 0 })),
             { compteId: journal!.compteTresorerie!.id, libelle, debit: 0, credit: total },
           ],
         },

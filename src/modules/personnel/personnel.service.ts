@@ -60,6 +60,7 @@ import {
   usdEnFc,
 } from './conversion-usd';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { ouvrirCompteSalarie } from './comptes-salaries.service';
 
 /** La trace d'une conversion USD vers FC · figée avec le bulletin émis. */
 export interface ConversionUsd {
@@ -358,7 +359,12 @@ export class PersonnelService {
 
   async creerSalarie(tenantId: string, userId: string, dto: SalarieDto) {
     await this.verifierMatriculeLibre(tenantId, dto.matricule, null);
-    return this.prisma.salarie.create({
+    // FONCTION 76 · sous l'option, le compte individuel naît AVEC le salarié,
+    // dans la même transaction (`compte-salarie.ts`, règle 2) · jamais un
+    // salarié de plus que de comptes.
+    const option = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { comptesIndividuelsSalaries: true } });
+    return transactionJournalisee(this.prisma, async (tx) => {
+      const cree = await tx.salarie.create({
       data: {
         tenantId,
         createdBy: userId,
@@ -378,6 +384,10 @@ export class PersonnelService {
           : {}),
       },
       include: { enfants: true },
+      });
+      if (!option?.comptesIndividuelsSalaries) return cree;
+      const { compte } = await ouvrirCompteSalarie(tx, tenantId, cree.id);
+      return { ...cree, compteId: compte.id };
     });
   }
 

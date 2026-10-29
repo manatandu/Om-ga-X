@@ -4,6 +4,7 @@ import { validate } from 'class-validator';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { ouvrirCompteSalarie } from './comptes-salaries.service';
 import { lireFichier } from '../import/lecture-fichier';
 import { ContratTravailDto, SalarieDto } from './dto/personnel.dto';
 import { champsDuContrat, champsDuSalarie } from './personnel.service';
@@ -106,6 +107,8 @@ export class ImportPersonnelService {
         motifs: s.lignes.filter((l) => l.refus.length).slice(0, 50).map((l) => `Ligne ${l.rang} · ${l.refus.join(' ')}`),
       });
     }
+    // Fonction 76 · sous l'option, chaque salarié importé naît avec son compte.
+    const option = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { comptesIndividuelsSalaries: true } });
     const crees = await transactionJournalisee(this.prisma, async (tx) => {
       let salaries = 0;
       let contrats = 0;
@@ -113,6 +116,7 @@ export class ImportPersonnelService {
         const dtoSalarie = plainToInstance(SalarieDto, l.lue.salarie);
         const cree = await tx.salarie.create({ data: { tenantId, createdBy: userId, ...champsDuSalarie(dtoSalarie) }, select: { id: true } });
         salaries++;
+        if (option?.comptesIndividuelsSalaries) await ouvrirCompteSalarie(tx, tenantId, cree.id);
         if (l.lue.contrat) {
           const dtoContrat = plainToInstance(ContratTravailDto, l.lue.contrat);
           await tx.contratTravail.create({ data: { tenantId, salarieId: cree.id, createdBy: userId, ...champsDuContrat(dtoContrat), renouvelleDeId: null } });

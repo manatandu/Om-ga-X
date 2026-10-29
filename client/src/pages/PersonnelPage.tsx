@@ -14,6 +14,7 @@ import { OngletBilanSocial, OngletDeclarationMainOeuvre, OngletDemandesConge, On
 import { OngletOrganigramme } from '../components/paie/OrganigrammePaie';
 import { OngletFicheIndividuelle } from '../components/paie/FicheIndividuellePaie';
 import { OngletImportPersonnel } from '../components/paie/ImportPersonnelPaie';
+import { BandeComptesIndividuels } from '../components/paie/ComptesIndividuelsPaie';
 import { OngletRappelsSalaire } from '../components/paie/RappelsSalairePaie';
 import { DeclarationEtablissement, DeclarationMouvementTravailleur } from '../components/paie/DeclarationsTravail';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
@@ -598,7 +599,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // (`@Roles` ADMIN_CABINET, COMPTABLE). Simulation, décompte final et livre
   // de paie restent ouverts à la lecture seule · le serveur les lui ouvre,
   // ils calculent sans rien conserver.
-  const { peutEcrire } = useAuth();
+  const { peutEcrire, estAdmin } = useAuth();
   const [salaries, setSalaries] = useState<Salarie[]>([]);
   // Ce que la liste du registre dit d'elle-même · null tant qu'elle n'est
   // pas lue, et « Aucun salarié » ne se dit que sur une liste LUE (audit
@@ -1652,6 +1653,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         </span>
       </div>
 
+      {onglet === 'registre' && <BandeComptesIndividuels estAdmin={estAdmin} onOuverts={charger} />}
       {onglet === 'registre' && (
         // LE CONTENEUR QUI DÉFILE, et il n'est pas décoratif · la grille
         // ci-dessous fait 748 px au minimum, et sur un écran de 360 px elle

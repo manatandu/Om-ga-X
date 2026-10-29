@@ -287,6 +287,7 @@ export function editionParametres(
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
     ['Visa des RIB par un second utilisateur', ouiNon(p.visaRibs)],
     ['Visa des plans d’étalement par un second utilisateur', ouiNon(p.visaPlansEtalement === true)],
+    ['Comptes individuels des salariés sous le 422', ouiNon(p.comptesIndividuelsSalaries === true)],
     ['Circuit de visa avant validation', ouiNon(p.circuitVisa === true)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],

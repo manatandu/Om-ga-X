@@ -537,6 +537,17 @@ export class ModifierVisaPlansEtalementDto {
 }
 
 /**
+ * LIGNE PAIE-SUITE, FONCTION 76 · COMPTES INDIVIDUELS DES SALARIÉS SOUS LE
+ * 422 · une option, désactivée par défaut · aucun texte ne la tranche, et elle
+ * met au journal, que tout le dossier lit, le nom et le net de chacun. Voir
+ * `personnel/compte-salarie.ts`.
+ */
+export class ModifierComptesIndividuelsSalariesDto {
+  @IsBoolean()
+  comptesIndividuelsSalaries!: boolean;
+}
+
+/**
  * CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1) · une option,
  * désactivée par défaut, comme le double regard · aucun texte lu ne l'impose
  * (AUDCIF art. 22, 2° et 69 ; SYCEBNL art. 16, 2)). Voir

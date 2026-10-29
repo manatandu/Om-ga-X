@@ -13,10 +13,11 @@ import { ImportPersonnelService } from './import-personnel.service';
 import { FichierPersonnelDto } from './dto/import-personnel.dto';
 import { RappelsSalaireService } from './rappels-salaire.service';
 import { AnnulationRappelDto, RappelSalaireDto } from './dto/rappel-salaire.dto';
+import { ComptesSalariesService } from './comptes-salaries.service';
 
 /**
  * LIGNE PAIE-SUITE · fiche individuelle et cumuls (89), import du personnel
- * (82), rappels de salaire (87) · mêmes droits que le
+ * (82), rappels de salaire (87), comptes individuels (76) · mêmes droits que le
  * registre du personnel (fermé à l'aide-comptable, ouvert au gestionnaire de
  * paie), dont elle fait partie.
  */
@@ -28,6 +29,7 @@ export class PersonnelSuiteController {
     private readonly fiches: FicheIndividuelleService,
     private readonly imports: ImportPersonnelService,
     private readonly rappels: RappelsSalaireService,
+    private readonly comptes: ComptesSalariesService,
   ) {}
 
   @Get('salaries/:salarieId/fiche-individuelle')
@@ -115,5 +117,27 @@ export class PersonnelSuiteController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   annulerRappel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AnnulationRappelDto) {
     return this.rappels.annuler(user.tenantId, user.userId, id, dto);
+  }
+
+  /** Fonction 76 · l'option et le nombre de salariés avec et sans compte individuel. */
+  @Get('comptes-individuels')
+  etatComptesIndividuels(@CurrentUser() user: AuthenticatedUser) {
+    return this.comptes.etat(user.tenantId);
+  }
+
+  /**
+   * Ouvrir un compte sous le 422 est un geste de STRUCTURE, comme le compte
+   * d'un tiers (§ 6 du règlement, plan des tiers) · l'administrateur seul.
+   */
+  @Post('salaries/:salarieId/compte')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  ouvrirCompteSalarie(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string) {
+    return this.comptes.ouvrir(user.tenantId, salarieId);
+  }
+
+  @Post('comptes-individuels')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  ouvrirComptesIndividuels(@CurrentUser() user: AuthenticatedUser) {
+    return this.comptes.ouvrirTous(user.tenantId);
   }
 }

@@ -696,6 +696,14 @@ model Tenant {
   // n'est pas proposée au bulletin, et la simulation le dit
   // (`personnel/visa-plan-etalement.ts`).
   visaPlansEtalement            Boolean  @default(false)
+  // LIGNE PAIE-SUITE, FONCTION 76 · LE COMPTE INDIVIDUEL DU SALARIÉ sous le 422
+  // « Personnel, rémunérations dues » (fiche du compte 42 des deux plans ;
+  // AUDCIF art. 18, al. 3 ; SYCEBNL Partie 2 ch. 2, section 1), comme les
+  // comptes de tiers sous leur collectif. Une OPTION, désactivée par défaut ·
+  // aucun texte n'impose l'un ou l'autre modèle, et le compte individuel met
+  // au journal, que tout le dossier lit, le net de chaque salarié que la
+  // paie agrégée y taisait (`personnel/compte-salarie.ts`).
+  comptesIndividuelsSalaries    Boolean  @default(false)
   // CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1 · Microfina++,
   // « visa puis validation », M p. 130 à 133). Une OPTION, désactivée par
   // défaut, comme le double regard · aucun texte lu ne l'impose. AUDCIF
@@ -1405,6 +1413,8 @@ model Compte {
   collectifId String?
   collectif   Compte?  @relation("CompteCollectif", fields: [collectifId], references: [id], onDelete: Restrict)
   individuels Compte[] @relation("CompteCollectif")
+  /// Ligne paie-suite, fonction 76 · le salarié dont c'est le compte individuel sous le 422.
+  salarie     Salarie? @relation("CompteDuSalarie")
 
   // Taux de taxe proposé automatiquement dès que ce compte est saisi · Sage
   // porte un code taxe sur la fiche compte (skill sage-i7,
@@ -8433,6 +8443,12 @@ model Salarie {
   rattachementsUnite      RattachementUnite[]
   /// Ligne paie-suite, fonction 87 · ses rappels de salaire (RESTRICT).
   rappelsSalaire          RappelSalaire[]
+  /// LIGNE PAIE-SUITE, FONCTION 76 · son compte individuel sous le 422, né
+  /// sous le collectif (`Compte.collectifId`). RESTRICT · un compte qui porte
+  /// un salarié ne se supprime pas en le dénouant. Null tant qu'il n'est pas
+  /// ouvert · la paie passe alors au collectif.
+  compteId                String?                     @unique
+  compte                  Compte?                     @relation("CompteDuSalarie", fields: [compteId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   createdBy String

@@ -39,6 +39,7 @@ import { PersonnelSuiteController } from './personnel-suite.controller';
 import { FicheIndividuelleService } from './fiche-individuelle.service';
 import { ImportPersonnelService } from './import-personnel.service';
 import { RappelsSalaireService } from './rappels-salaire.service';
+import { ComptesSalariesService } from './comptes-salaries.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -87,6 +88,7 @@ import { RappelsSalaireService } from './rappels-salaire.service';
     FicheIndividuelleService,
     ImportPersonnelService,
     RappelsSalaireService,
+    ComptesSalariesService,
   ],
   exports: [PersonnelService],
 })

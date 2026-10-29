@@ -143,6 +143,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/personnel/comptes-individuels':
+    "état des comptes individuels des salariés (ligne paie-suite, fonction 76) · l'option et deux nombres, aucun compte à choisir",
   '/personnel/compteurs-heures':
     "compteurs libres d'heures de la paie (ligne sage-l5, fonction 78), des heures nommées par le dossier, aucun compte comptable",
   '/comptes/:id/sous-compte-propose':

@@ -171,6 +171,10 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'rattachementsUnite',
       // Ligne paie-suite, fonction 87 · ses rappels de salaire, la relation seule.
       'rappelsSalaire',
+      // Ligne paie-suite, fonction 76 · son compte individuel sous le 422 ·
+      // un fait de gestion, comme le compte d'un tiers.
+      'compteId',
+      'compte',
       // Ligne sage-l6 · fonction 22 · les documents du salarié, la relation seule
       // (nom, commentaire et binaire exclus de leur propre table).
       'piecesJointes',

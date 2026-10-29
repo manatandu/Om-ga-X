@@ -48,6 +48,8 @@ describe("l'import du personnel · le service", () => {
     const crees: { salarie: Record<string, unknown>[]; contrat: Record<string, unknown>[] } = { salarie: [], contrat: [] };
     const prisma = {
       $transaction: async (f: (tx: unknown) => unknown) => f(prisma),
+      // Fonction 76 · l'option des comptes individuels, retirée ici.
+      tenant: { findUnique: jest.fn(async () => ({ comptesIndividuelsSalaries: false })) },
       salarie: {
         findMany: jest.fn(async ({ where }: { where: { tenantId: string; matricule: { in: string[] } } }) =>
           existants.filter((e) => where.matricule.in.includes(e.matricule)),

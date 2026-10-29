@@ -511,6 +511,23 @@ export function ParametresDossierPage() {
     }
   };
 
+  const changerComptesSalaries = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/comptes-individuels-salaries', { comptesIndividuelsSalaries: actif }));
+      setInfo(
+        actif
+          ? 'Comptes individuels des salariés activés · ouvrez les comptes depuis le registre du personnel ; un salarié créé naît avec le sien.'
+          : 'Comptes individuels des salariés retirés · la paie suivante retourne au collectif, les comptes ouverts restent.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const changerVisaPlans = async (actif: boolean) => {
     setEnvoi(true);
     setErreur(null);
@@ -1938,6 +1955,23 @@ export function ParametresDossierPage() {
                         params.referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 2)' : 'AUDCIF art. 69'
                       }).`}
                       source={params.referentiel === 'SYCEBNL' ? 'Code du travail, art. 112 · SYCEBNL art. 16, 2) · option d’OmegaX' : 'Code du travail, art. 112 · AUDCIF art. 69 · option d’OmegaX'}
+                    />
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.comptesIndividuelsSalaries === true}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerComptesSalaries(e.target.checked)}
+                  />
+                  <span>
+                    Comptes individuels des salariés sous le 422{' '}
+                    <Aide
+                      titre="Comptes individuels des salariés"
+                      texte="Chaque salarié reçoit un compte sous le 422 « Personnel, rémunérations dues » · la passation de la paie y crédite son brut et y débite ses retenues, le paiement y débite son net, et la balance générale fond ces comptes sur le collectif. Le nom et le net de chacun paraissent alors au journal, que tout le dossier lit, l’aide-comptable compris · c’est pourquoi l’option est retirée par défaut. Un bulletin passé avant l’ouverture de son compte se paie et se reprend sur le collectif, où son net a été inscrit. Retirer l’option ne ferme aucun compte."
+                      source="Fiche du compte 42 des deux plans · subdivision du plan (AUDCIF art. 18 ; SYCEBNL Partie 2 ch. 2) · option d’OmegaX"
                     />
                   </span>
                 </label>
