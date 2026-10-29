@@ -11,6 +11,7 @@ import {
   motifOuvertureBloquante,
 } from '../lib/rapprochement-a-nouveau';
 import { montant as fmt, montantOuVide } from '../lib/montants';
+import { LIBELLE_FILTRE_RAPPROCHEMENT, filtrerPointees, mentionFiltreRapprochement, type FiltreRapprochement } from '../lib/filtre-rapprochement';
 
 /**
  * Pointage écriture par écriture d'un rapprochement bancaire (§3.4) : chaque
@@ -50,6 +51,15 @@ export function RapprochementDetailPage({ id: idProp }: { id?: string } = {}) {
   const mentionFondues = detail ? mentionFonduesDansLeDepart(detail.fonduesDansLeDepart) : null;
   const ouvertureBloquante = detail ? motifOuvertureBloquante(detail) : null;
   const encours = detail?.encours ?? [];
+  // Ligne gl-saisie, fonction 58 · rapprochées ou non (lib/filtre-rapprochement.ts).
+  const [filtrePointage, setFiltrePointage] = useState<FiltreRapprochement>('TOUTES');
+  const lignesVues = filtrerPointees(detail?.lignes ?? [], filtrePointage);
+  const encoursVus = filtrerPointees(encours, filtrePointage);
+  const mentionFiltre = mentionFiltreRapprochement(
+    filtrePointage,
+    (detail?.lignes.length ?? 0) + encours.length - lignesVues.length - encoursVus.length,
+    detail?.tronque === true,
+  );
 
   // --- Réouverture d'un rapprochement clos (administrateur, motif) --------
   const [reouverture, setReouverture] = useState<string | null>(null);
@@ -297,6 +307,24 @@ export function RapprochementDetailPage({ id: idProp }: { id?: string } = {}) {
             // qui emportait alors titre, onglets et boutons hors de l'écran.
             className="border border-border bg-surface shadow-posee max-w-[900px] overflow-x-auto"
           >
+            <div className="px-3.5 py-1 border-b border-border flex items-center gap-2 flex-wrap text-[11.5px]">
+              <label htmlFor="filtre-pointage" className="text-[11px] font-bold text-text-dim">
+                Lignes affichées
+              </label>
+              <select
+                id="filtre-pointage"
+                value={filtrePointage}
+                onChange={(e) => setFiltrePointage(e.target.value as FiltreRapprochement)}
+                className="border border-border-dark bg-surface px-2 py-[2px] text-[11.5px]"
+              >
+                {(Object.keys(LIBELLE_FILTRE_RAPPROCHEMENT) as FiltreRapprochement[]).map((f) => (
+                  <option key={f} value={f}>
+                    {LIBELLE_FILTRE_RAPPROCHEMENT[f]}
+                  </option>
+                ))}
+              </select>
+              {mentionFiltre && <span className="text-[11px] text-text-dim">{mentionFiltre}</span>}
+            </div>
             <div className="grid grid-cols-[26px_70px_46px_1.4fr_100px_100px] min-w-[570px] gap-2.5 px-3.5 py-1.5 bg-chrome border-b border-border text-[11px] font-bold text-text-dim">
               <span />
               <span>DATE</span>
@@ -305,7 +333,7 @@ export function RapprochementDetailPage({ id: idProp }: { id?: string } = {}) {
               <span className="text-right">Débit</span>
               <span className="text-right">Crédit</span>
             </div>
-            {detail.lignes.map((l, i) => (
+            {lignesVues.map((l, i) => (
               <div
                 key={l.id}
                 className={`grid grid-cols-[26px_70px_46px_1.4fr_100px_100px] min-w-[570px] gap-2.5 px-3.5 py-1.5 items-center border-b border-border last:border-b-0 text-[11.5px] ${
@@ -344,7 +372,7 @@ export function RapprochementDetailPage({ id: idProp }: { id?: string } = {}) {
               </div>
             ))}
             {/* Les en-cours d'ouverture se pointent comme des lignes du compte · aucune écriture ne les porte. */}
-            {encours.map((e) => (
+            {encoursVus.map((e) => (
               <div
                 key={e.id}
                 className={`grid grid-cols-[26px_70px_46px_1.4fr_100px_100px] min-w-[570px] gap-2.5 px-3.5 py-1.5 items-center border-b border-border last:border-b-0 text-[11.5px] ${
@@ -384,6 +412,9 @@ export function RapprochementDetailPage({ id: idProp }: { id?: string } = {}) {
             ))}
             {detail.lignes.length === 0 && encours.length === 0 && (
               <div className="p-3 text-[11.5px] text-text-dim">Aucun mouvement pointable sur ce compte.</div>
+            )}
+            {(detail.lignes.length > 0 || encours.length > 0) && lignesVues.length === 0 && encoursVus.length === 0 && (
+              <div className="p-3 text-[11.5px] text-text-dim">Aucune ligne {LIBELLE_FILTRE_RAPPROCHEMENT[filtrePointage].toLowerCase()} sur ce compte.</div>
             )}
             {/* Une tranche se dit (audit final F185) · les soldes ci-dessus
                 portent tout le compte, la liste seulement ses premières lignes. */}
