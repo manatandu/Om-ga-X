@@ -10,6 +10,8 @@ import {
   EXEMPLAIRES_ETABLISSEMENT,
   EXEMPLAIRES_MOUVEMENT,
   FORMULAIRE_2023_NON_LU,
+  REDEVANCE_ETABLISSEMENT,
+  REDEVANCE_MOUVEMENT,
   FONDEMENT_ETABLISSEMENT,
   FONDEMENT_MOUVEMENT,
   NATURES_ETABLISSEMENT,
@@ -672,6 +674,7 @@ export class SuiviPersonnelService {
       delai: PRIMAUTE_DELAI_LOI,
       exemplaires: EXEMPLAIRES_MOUVEMENT,
       formulaire: FORMULAIRE_2023_NON_LU,
+      redevance: REDEVANCE_MOUVEMENT,
       derogation: contrat.type === 'JOUR_LE_JOUR' ? DEROGATION_JOUR_LE_JOUR : null,
       fondement: FONDEMENT_MOUVEMENT,
     };
@@ -700,6 +703,7 @@ export class SuiviPersonnelService {
       position: fenetre ? (aujourdhui < fenetre.du ? 'AVANT' : aujourdhui > fenetre.au ? 'APRES' : 'DANS') : null,
       exemplaires: EXEMPLAIRES_ETABLISSEMENT,
       formulaire: FORMULAIRE_2023_NON_LU,
+      redevance: REDEVANCE_ETABLISSEMENT,
       fondement: FONDEMENT_ETABLISSEMENT,
     };
   }

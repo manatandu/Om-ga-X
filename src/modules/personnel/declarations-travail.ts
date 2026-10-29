@@ -54,7 +54,35 @@ export const ARRETE_2023 =
 export const DEPOT_ARRETE_2023 =
   "À déposer, en quatre exemplaires, à Kinshasa à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail (deux exemplaires) et à la Direction provinciale de l'Office national de l'emploi (un exemplaire) ; dans les autres provinces, à la Division provinciale de l'Emploi et du Travail (deux exemplaires) et à la Direction provinciale de l'Office national de l'emploi (un exemplaire) ; le quatrième est conservé par le déclarant (" +
   ARRETE_2023 +
-  ', art. 2 et 4). Infraction punie des peines de l\'art. 321 du Code du travail (art. 9). Les droits, taxes et redevances de la déclaration sont dus (art. 7 · arrêté interministériel du 2 août 2022), leur montant n\'est pas calculé.';
+  ', art. 2 et 4). Infraction punie des peines de l\'art. 321 du Code du travail (art. 9).';
+
+/**
+ * LES REDEVANCES DE LA DÉCLARATION (arrêté du 24 février 2023, art. 7, qui
+ * renvoie à l'arrêté interministériel n° 005/CAB/MIN/ETPS/06/2022 et
+ * n° 048/CAB/MIN/FINANCES/2022 du 2 août 2022, J.O. RDC n° 18 du 15 septembre
+ * 2022, col. 25 · lu sur la copie fournie le 2026-10-29,
+ * `docs/sources/arrete-interministeriel-2022-taux-emploi.md`). Art. 1er, taux
+ * « fixés en dollar américain (USD), payables en francs congolais au taux
+ * officiel du jour » ; tableau, Inspection générale du travail (section 62),
+ * A. Droits sur diverses prestations, rubriques de la « Demande de visa
+ * d'inspection de travail » · 3. déclaration d'établissement 1 000 ; 6. bilan
+ * social 200 ; 7. déclaration de mouvement des travailleurs 10 par
+ * travailleur ; 8. déclaration annuelle de la situation de la main-d'œuvre
+ * 500. OmegaX DIT le taux en dollars et ne le convertit pas · le cours du jour
+ * est celui du paiement, et le cours tenu dans Devises est celui que le
+ * cabinet saisit, pas forcément le taux officiel.
+ */
+export const ARRETE_TAUX_2022 =
+  'arrêté interministériel n° 005/CAB/MIN/ETPS/06/2022 et n° 048/CAB/MIN/FINANCES/2022 du 2 août 2022';
+
+function redevance(montant: string, rubrique: string): string {
+  return `Redevance · ${montant}, payable en francs congolais au taux officiel du jour (${ARRETE_TAUX_2022}, art. 1er, section 62, « ${rubrique} » ; arrêté du 24 février 2023, art. 7).`;
+}
+
+export const REDEVANCE_MOUVEMENT = redevance('10 USD par travailleur déclaré', 'déclaration de mouvement des travailleurs');
+export const REDEVANCE_ETABLISSEMENT = redevance('1 000 USD', "déclaration d'établissement");
+export const REDEVANCE_SITUATION_ANNUELLE = redevance('500 USD', "déclaration annuelle de la situation de la main-d'œuvre");
+export const REDEVANCE_BILAN_SOCIAL = redevance('200 USD', 'bilan social');
 
 export const FORMULAIRE_2023_NON_LU =
   "Le formulaire officiel est celui annexé à l'arrêté du 24 février 2023, que les employeurs retirent à la Direction provinciale de l'ONEM (art. 4 et 5) · ce modèle n'a pas été lu, OmegaX remplit les rubriques du formulaire de 2010, à reporter sur celui de l'ONEM s'il diffère.";

@@ -3,6 +3,10 @@ import {
   EXEMPLAIRES_ETABLISSEMENT,
   EXEMPLAIRES_MOUVEMENT,
   FORMULAIRE_2023_NON_LU,
+  REDEVANCE_BILAN_SOCIAL,
+  REDEVANCE_ETABLISSEMENT,
+  REDEVANCE_MOUVEMENT,
+  REDEVANCE_SITUATION_ANNUELLE,
   MOTIFS_MOUVEMENT,
   PRIMAUTE_DELAI_LOI,
   fenetreDeclarationEtablissement,
@@ -145,5 +149,18 @@ describe('l’arrêté du 24 février 2023 · son modèle annexé n’est pas lu
   it('renvoie au formulaire de l’ONEM, sans prétendre le remplir', () => {
     expect(FORMULAIRE_2023_NON_LU).toContain('Direction provinciale de l\'ONEM (art. 4 et 5)');
     expect(FORMULAIRE_2023_NON_LU).toContain('ce modèle n\'a pas été lu');
+  });
+});
+
+describe('les redevances (arrêté interministériel du 2 août 2022, section 62)', () => {
+  it('mouvement 10 USD par travailleur, établissement 1 000, situation annuelle 500, bilan social 200, en francs au taux officiel du jour', () => {
+    expect(REDEVANCE_MOUVEMENT).toContain('10 USD par travailleur déclaré');
+    expect(REDEVANCE_ETABLISSEMENT).toContain('1 000 USD');
+    expect(REDEVANCE_SITUATION_ANNUELLE).toContain('500 USD');
+    expect(REDEVANCE_BILAN_SOCIAL).toContain('200 USD');
+    for (const r of [REDEVANCE_MOUVEMENT, REDEVANCE_ETABLISSEMENT, REDEVANCE_SITUATION_ANNUELLE, REDEVANCE_BILAN_SOCIAL]) {
+      expect(r).toContain('payable en francs congolais au taux officiel du jour');
+      expect(r).toContain('n° 005/CAB/MIN/ETPS/06/2022 et n° 048/CAB/MIN/FINANCES/2022 du 2 août 2022');
+    }
   });
 });

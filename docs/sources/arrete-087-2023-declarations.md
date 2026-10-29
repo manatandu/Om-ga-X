@@ -146,8 +146,10 @@ Claudine NDUSI M'KEMBE
   (art. 5) · le modèle n'est pas lu. Les formulaires de 2010 ne sont abrogés
   que s'ils sont contraires au modèle de 2023, ce qui ne se juge pas sans lui.
 - **Dérogation des journaliers** (arrêté n° 006, art. 4) · non contraire, elle reste.
-- **Droits, taxes et redevances** (art. 7) · dus, au taux de l'arrêté
-  interministériel du 2 août 2022, non lu, donc non calculé.
+- **Droits, taxes et redevances** (art. 7) · au taux de l'arrêté
+  interministériel du 2 août 2022, lu (`arrete-interministeriel-2022-taux-emploi.md`) ·
+  mouvement 10 USD par travailleur, établissement 1 000 USD, situation annuelle
+  500 USD, bilan social 200 USD, payables en francs au taux officiel du jour.
 
 ## Anomalies du texte, dites, non corrigées
 
