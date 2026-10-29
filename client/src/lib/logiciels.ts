@@ -66,6 +66,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
       '/libelles',
       '/taux-tva',
       '/plans-analytiques',
+      '/grilles-analytiques',
       '/regularisations',
       '/creances-douteuses',
       '/devises',

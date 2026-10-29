@@ -257,9 +257,18 @@ export function AppShell() {
       items: [
         { label: 'Plan comptable', chemin: '/comptes', onClick: () => navigate('/comptes') },
         { label: 'Plan des tiers', chemin: '/tiers', onClick: () => navigate('/tiers') },
-        // Chez une EBNL, l'axe analytique est celui des projets et des
-        // bailleurs · voir docs/analytique-et-budget.md.
-        { label: 'Plans analytiques', chemin: '/plans-analytiques', onClick: () => navigate('/plans-analytiques') },
+        {
+          // REGROUPÉ (ligne analytique, 2026-10-29) · la grille du compte
+          // rejoint le plan analytique, et le panneau garde ses neuf lignes.
+          titre: 'Analytique',
+          items: [
+            // Chez une EBNL, l'axe analytique est celui des projets et des
+            // bailleurs · voir docs/analytique-et-budget.md.
+            { label: 'Plans analytiques', chemin: '/plans-analytiques', onClick: () => navigate('/plans-analytiques') },
+            // Ligne analytique, fonction n° 48 · la répartition par défaut d'un compte, proposée à la saisie.
+            { label: 'Grilles analytiques', chemin: '/grilles-analytiques', onClick: () => navigate('/grilles-analytiques') },
+          ],
+        },
         { label: 'Codes journaux', chemin: '/journaux', onClick: () => navigate('/journaux') },
         {
           titre: 'Paramètres de saisie',

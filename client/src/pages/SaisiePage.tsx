@@ -45,6 +45,14 @@ import {
   type FenetreAttendue,
 } from '../lib/echeance-saisie';
 import { FenetreEcheances } from '../components/FenetreEcheances';
+import {
+  SECTION_GRILLE,
+  grilleProposee,
+  resumeDeLaGrille,
+  ventilationsDeLaLigne,
+  type GrilleAnalytiqueLue,
+  type ListeGrillesAnalytiques,
+} from '../lib/grille-analytique';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -324,6 +332,11 @@ export function SaisiePage() {
   const plans = plansLus ?? AUCUN_PLAN;
   const [sectionsParPlan, setSectionsParPlan] = useState<Record<string, SectionAnalytique[]>>({});
   const [sectionsSaisie, setSectionsSaisie] = useState<Record<string, string>>({});
+  // Les grilles analytiques des comptes (fonction n° 48) · `null` tant qu'elles
+  // ne sont pas lues · une lecture tombée se dit, et aucune grille ne se
+  // propose plutôt qu'une grille d'hier.
+  const [grillesLues, setGrillesLues] = useState<GrilleAnalytiqueLue[] | null>(null);
+  const [erreurGrilles, setErreurGrilles] = useState<string | null>(null);
 
   // Pièce en cours de composition
   const [jour, setJour] = useState(1);
@@ -552,6 +565,13 @@ export function SaisiePage() {
       },
       (e) => setErreurAnalytique(e instanceof Error ? e.message : "Les axes analytiques n'ont pas pu être lus."),
     );
+    api.get<ListeGrillesAnalytiques>('/analytique/grilles').then(
+      (r) => {
+        setGrillesLues(r.grilles);
+        setErreurGrilles(r.tronque ? `seules les ${r.grilles.length} premières grilles sur ${r.total} se proposent` : null);
+      },
+      (e) => setErreurGrilles(e instanceof Error ? e.message : "Les grilles analytiques n'ont pas pu être lues."),
+    );
   }, []);
 
   /**
@@ -569,6 +589,30 @@ export function SaisiePage() {
     () => plans.filter((p) => (sectionsParPlan[p.id] ?? []).length > 0),
     [plans, sectionsParPlan],
   );
+
+  /*
+    LA GRILLE DU COMPTE SE PROPOSE QUAND LE COMPTE EST CHOISI (fonction n° 48) ·
+    l'axe passe à « Grille », que le comptable garde, remplace par une section
+    ou efface ; un compte sans grille retire la marque laissée par le compte
+    d'avant, jamais une section choisie à la main.
+  */
+  useEffect(() => {
+    setSectionsSaisie((prev) => {
+      let change = false;
+      const suite = { ...prev };
+      for (const p of axesGrille) {
+        const proposee = grilleProposee(grillesLues, compteChoisi?.id, p.id);
+        if (proposee && prev[p.id] !== SECTION_GRILLE) {
+          suite[p.id] = SECTION_GRILLE;
+          change = true;
+        } else if (!proposee && prev[p.id] === SECTION_GRILLE) {
+          suite[p.id] = '';
+          change = true;
+        }
+      }
+      return change ? suite : prev;
+    });
+  }, [compteChoisi?.id, grillesLues, axesGrille]);
 
   /**
    * Raccourcis de la grille · repris des manuels Sage, où ils sont ce qui
@@ -1547,6 +1591,18 @@ export function SaisiePage() {
       return;
     }
     if (decales.length > 0) setDecalageAccepte(signature);
+    // Les ventilations se calculent ICI, sur le montant de chaque ligne tel
+    // qu'il est · « Grille » se répartit au centime (fonction n° 48), et une
+    // grille qui ne se propose plus arrête l'envoi en le disant.
+    const ventilationsParLigne: { sectionId: string; debit?: number; credit?: number }[][] = [];
+    for (const l of lignes) {
+      const v = ventilationsDeLaLigne(l, grillesLues, (planId) => plans.find((p) => p.id === planId)?.code ?? 'analytique');
+      if ('erreur' in v) {
+        setErreur(v.erreur);
+        return;
+      }
+      ventilationsParLigne.push(v.ventilations);
+    }
     setEnvoi(true);
     try {
       const { date } = datee;
@@ -1559,7 +1615,7 @@ export function SaisiePage() {
         reference: reference || undefined,
         ...(reporterAuPremierJourOuvert ? { reporterAuPremierJourOuvert: true } : {}),
         ...(confirmerComptesEnSommeil ? { confirmerComptesEnSommeil: true } : {}),
-        lignes: lignes.map((l) => ({
+        lignes: lignes.map((l, indice) => ({
           compteId: l.compteId,
           libelle: l.libelle || undefined,
           debit: l.debit || undefined,
@@ -1571,11 +1627,10 @@ export function SaisiePage() {
           deviseId: l.deviseId,
           montantDevise: l.montantDevise,
           coursApplique: l.coursApplique,
-          // Une section par axe, imputée pour la totalité de la ligne · le
-          // serveur vérifie cet équilibre axe par axe.
-          ventilations: Object.values(l.sections ?? {})
-            .filter(Boolean)
-            .map((sectionId) => ({ sectionId, debit: l.debit || undefined, credit: l.credit || undefined })),
+          // Une section par axe imputée pour la totalité de la ligne, ou la
+          // grille du compte répartie au centime · le serveur vérifie cet
+          // équilibre axe par axe.
+          ventilations: ventilationsParLigne[indice],
         })),
       }, { rejouerConflit: true }); // une transaction sérialisable, rejouée sur un 409 qui n'a rien écrit (reprise-conflit.ts)
       setSucces(
@@ -2162,6 +2217,18 @@ export function SaisiePage() {
                 {l.numero}
               </span>
               {axesGrille.map((p) => {
+                if (l.sections?.[p.id] === SECTION_GRILLE) {
+                  const g = grilleProposee(grillesLues, l.compteId, p.id);
+                  return (
+                    <span
+                      key={p.id}
+                      className="text-[11px] text-sel truncate"
+                      title={g ? `Grille du compte · ${resumeDeLaGrille(g)}, répartie au centime à l'enregistrement` : 'Grille du compte'}
+                    >
+                      Grille
+                    </span>
+                  );
+                }
                 const section = (sectionsParPlan[p.id] ?? []).find((sc) => sc.id === l.sections?.[p.id]);
                 return (
                   <span key={p.id} className="font-mono text-[11px] text-text-dim truncate" title={section?.intitule}>
@@ -2358,6 +2425,11 @@ export function SaisiePage() {
               Axes analytiques illisibles · {erreurAnalytique}
             </div>
           )}
+          {erreurGrilles && axesGrille.length > 0 && (
+            <div className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-danger">
+              Grilles analytiques des comptes · {erreurGrilles}
+            </div>
+          )}
           {/* Zone de saisie de la ligne · Tab de zone en zone, Entrée valide. */}
           <div style={grilleStyle} className={`${grille} px-3 py-1.5 items-center border-b border-border bg-surface`}>
             <span className="font-mono text-[11.5px] text-text-dim text-center">·</span>
@@ -2466,13 +2538,18 @@ export function SaisiePage() {
                   disabled={!actif}
                   title={
                     actif
-                      ? p.intitule
+                      ? sectionsSaisie[p.id] === SECTION_GRILLE && grilleProposee(grillesLues, compteChoisi?.id, p.id)
+                        ? `${p.intitule} · grille du compte, ${resumeDeLaGrille(grilleProposee(grillesLues, compteChoisi?.id, p.id)!)}`
+                        : p.intitule
                       : `${p.intitule} · ne ventile que les classes ${p.classesVentilees.split(',').join(', ')}`
                   }
                   onChange={(e) => setSectionsSaisie((prev) => ({ ...prev, [p.id]: e.target.value }))}
                   className="w-full border border-border-dark px-1 py-1 text-[11.5px] font-mono disabled:opacity-40 disabled:bg-chrome-alt"
                 >
                   <option value="">{actif ? '·' : ''}</option>
+                  {actif && grilleProposee(grillesLues, compteChoisi?.id, p.id) && (
+                    <option value={SECTION_GRILLE}>Grille</option>
+                  )}
                   {(sectionsParPlan[p.id] ?? []).map((sc) => (
                     <option key={sc.id} value={sc.id}>
                       {sc.code}

@@ -35,9 +35,20 @@ réalisé lu en mouvement hors écriture qui solde les comptes de gestion
   `sansRepartitionSur`, filtres nommés de `lectures-hors-situation.spec.ts`).
   Onglet Journal et choix « Lignes non ventilées de l'axe » du grand livre.
 
+- 48 · grille analytique du compte (`GrilleAnalytique`,
+  `LigneGrilleAnalytique`, migration `20270220000100_grilles_analytiques`) ·
+  une grille par compte et par axe, pourcentages à deux décimales qui font
+  100, sections Détail actives, compte de détail d'une classe que l'axe
+  ventile (`motifRefusGrille`). Structure → Analytique → Grilles analytiques
+  (administrateur) ; la saisie propose « Grille » quand le compte est choisi,
+  la ligne se répartit à l'envoi au centime par le plus fort reste
+  (`repartirSelonLaGrille`, recopiée à l'écran, cas partagés
+  `cas-grille-analytique.json`) ; une grille suspendue (section en sommeil,
+  plan en sommeil) se dit et ne se propose pas. Jamais imposée · ni serveur
+  à la saisie, ni modules, ni imports.
+
 ## Reste
 
-- 48 · grille analytique du compte
 - 51 · budget par compte général
 - relecture, rejeu sur vraie base à travers une clôture
 

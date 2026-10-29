@@ -25,6 +25,8 @@ import { Referentiel, RoleUtilisateur } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { lireFiltreBalance } from './filtres-balance-analytique';
 import { lireOrigineJournal } from './journal-analytique';
+import { GrillesAnalytiquesService } from './grilles-analytiques.service';
+import { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
 
 /**
  * Même règle que le plan comptable et les journaux : consultation ouverte aux
@@ -45,7 +47,29 @@ export class AnalytiqueController {
     private readonly etats: EtatsAnalytiquesService,
     private readonly engagements: EngagementService,
     private readonly od: OdAnalytiqueService,
+    private readonly grilles: GrillesAnalytiquesService,
   ) {}
+
+  // --- Grilles analytiques des comptes (fonction n° 48) --------------------
+  // Une STRUCTURE, comme le plan · posée et retirée par l'administrateur, lue
+  // par tous (la saisie la propose). Elle ne touche à aucune écriture.
+
+  @Get('grilles')
+  async listerGrilles(@CurrentUser() user: AuthenticatedUser) {
+    return this.grilles.lister(user.tenantId);
+  }
+
+  @Post('grilles')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async poserGrille(@CurrentUser() user: AuthenticatedUser, @Body() dto: PoserGrilleAnalytiqueDto) {
+    return this.grilles.poser(user.tenantId, user.userId, dto);
+  }
+
+  @Delete('grilles/:grilleId')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async retirerGrille(@CurrentUser() user: AuthenticatedUser, @Param('grilleId') grilleId: string) {
+    return this.grilles.retirer(user.tenantId, grilleId);
+  }
 
   // --- OD analytiques ------------------------------------------------------
   // Un acte de saisie, pas de structure : il suit les droits d'écriture, comme

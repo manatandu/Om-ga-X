@@ -337,6 +337,9 @@ export const MODELES_AUDITES = new Set<string>([
   // sur quelles sections la paie portera ses charges · qui l'a déclarée,
   // retirée, et pourquoi.
   'RepartitionAnalytiquePaie',
+  // Ligne analytique, fonction n° 48 · la grille d'un compte dit sur quelles
+  // sections la saisie proposera ses lignes · qui l'a posée, remplacée, retirée.
+  'GrilleAnalytique',
   // Ligne microfina-m3, idée 3 · une mission annulée, un frais ajouté ou
   // retiré changent ce que le bulletin porte · la trace dit qui et quand.
   'MissionSalarie',
@@ -490,6 +493,7 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
   LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,
+  LigneGrilleAnalytique: LIGNES_DE_LA_TETE,
   LignePaiementSalaire:
     "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
   LigneOrdreVirement:
