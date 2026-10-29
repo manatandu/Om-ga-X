@@ -53,6 +53,7 @@ export class FicheImmobilisationService {
         designation: f.designation,
         numeroInventaire: f.numeroInventaire,
         natureFiscaleCle: f.natureFiscaleCle,
+        numeroSerie: f.numeroSerie,
         compteImmobilisationId: f.compteImmobilisationId,
         compteContrepartieId: lu.contrepartieId,
         dateAcquisition: jourIso(f.dateAcquisition),
@@ -90,6 +91,10 @@ export class FicheImmobilisationService {
     if (dto.designation !== undefined) libres.designation = dto.designation.trim();
     if (dto.numeroInventaire !== undefined) libres.numeroInventaire = dto.numeroInventaire?.trim() || null;
     if (dto.natureFiscaleCle !== undefined) libres.natureFiscaleCle = dto.natureFiscaleCle?.trim() || null;
+    // Les libres que la branche à effet ne recompose pas · ils passent tels quels avec elle.
+    const libresAjoutes: Prisma.ImmobilisationUpdateInput = {};
+    if (dto.numeroSerie !== undefined) libresAjoutes.numeroSerie = dto.numeroSerie?.trim() || null;
+    Object.assign(libres, libresAjoutes);
 
     const aEffet = champsAEffetDemandes(dto);
     if (aEffet.length === 0) {
@@ -188,6 +193,7 @@ export class FicheImmobilisationService {
             designation: fusion.designation,
             numeroInventaire: fusion.numeroInventaire ?? null,
             natureFiscaleCle: p.natureFiscaleCle,
+            ...libresAjoutes,
             famille: { connect: { id: p.famille.id } },
             compteImmobilisation: { connect: { id: p.famille.compteImmobilisationId } },
             compteAmortissement: { connect: { id: p.famille.compteAmortissementId } },

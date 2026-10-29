@@ -4906,6 +4906,14 @@ model Immobilisation {
 
   designation      String
   numeroInventaire String?
+  /// LIGNE IMMOS, FONCTION N° 71 · le NUMÉRO DE SÉRIE du fabricant, gravé sur
+  /// le bien · ce qui l'identifie à l'inventaire physique (AUDCIF art. 42,
+  /// « procéder au recensement » ; CPCC, étape 1), à côté du numéro
+  /// d'inventaire que le cabinet lui donne. Information de fiche, sans effet
+  /// comptable, recopiée sur la fiche de comptage (`FicheInventaire`).
+  /// Jamais repris par la duplication · un numéro de série désigne UN objet.
+  /// Ni code-barres ni étiquette (écartés, plan du 2026-10-29).
+  numeroSerie      String?   @db.VarChar(100)
 
   /// LIEU DU BIEN · référentiel des lieux du dossier (Sage Immobilisations,
   /// « Lieux des biens »). Information de fiche, sans effet comptable ; un
@@ -6356,6 +6364,11 @@ model FicheInventaire {
   designation String
   emplacement String?
   uniteMesure String?
+  /// LIGNE IMMOS, FONCTION N° 71 · le numéro de série du bien, recopié du
+  /// registre quand la fiche est engendrée (et complété au geste suivant sur
+  /// une fiche plus ancienne qui n'en avait pas) · le compteur vérifie l'objet
+  /// qu'il a devant lui. Une saisie sur la fiche prime, comme l'emplacement.
+  numeroSerie String?  @db.VarChar(100)
 
   /// Étape 2. Null tant que la fiche n'a pas été servie · une fiche imprimée
   /// à blanc pour aller compter n'a pas de quantité, et zéro n'est pas la même

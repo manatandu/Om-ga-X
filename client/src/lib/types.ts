@@ -1133,6 +1133,8 @@ export interface Immobilisation {
   famille?: FamilleImmobilisation;
   designation: string;
   numeroInventaire: string | null;
+  /** Ligne immos, n° 71 · le numéro de série du fabricant · null si non renseigné. */
+  numeroSerie?: string | null;
   /** Lieu du bien (référentiel des lieux du dossier) · null si non placé. */
   lieuId?: string | null;
   lieu?: { id: string; code: string; intitule: string } | null;
@@ -4578,6 +4580,8 @@ export interface FicheInventaire {
   id: string;
   designation: string;
   emplacement: string | null;
+  /** Ligne immos, n° 71 · recopié du registre des biens. */
+  numeroSerie?: string | null;
   uniteMesure: string | null;
   quantiteComptee: string | null;
   valeurInventaire: string | null;

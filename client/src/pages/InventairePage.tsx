@@ -857,7 +857,11 @@ function LigneFiche({ fiche, saisissable, agir }: { fiche: FicheInventaire; sais
   return (
     <Fragment>
       <tr className="border-b border-border/40">
-        <td className="px-2.5 py-1">{fiche.designation}</td>
+        <td className="px-2.5 py-1">
+          {fiche.designation}
+          {/* Ligne immos, n° 71 · l'objet se reconnaît à son numéro de série. */}
+          {fiche.numeroSerie && <span className="block text-[11px] text-text-dim">N° de série {fiche.numeroSerie}</span>}
+        </td>
         <td className="px-2.5 py-1 font-mono text-text-dim">{fiche.compte.numero}</td>
         <td className="px-2.5 py-1 text-right tabular-nums">
           {fiche.quantiteComptee === null ? (

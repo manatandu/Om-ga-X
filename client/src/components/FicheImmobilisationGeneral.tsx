@@ -232,6 +232,10 @@ export function FicheImmobilisationGeneral({
           N° inventaire
           <input value={saisie.numeroInventaire} disabled={!peutEcrire} onChange={(e) => poser('numeroInventaire', e.target.value)} className={champ} />
         </label>
+        <label className={etiquette}>
+          N° de série
+          <input value={saisie.numeroSerie} maxLength={100} disabled={!peutEcrire} onChange={(e) => poser('numeroSerie', e.target.value)} className={champ} />
+        </label>
         <label className={`${etiquette} sm:col-span-3`}>
           Nature du bien (barème fiscal)
           <select value={saisie.natureFiscaleCle} disabled={!peutEcrire} onChange={(e) => poser('natureFiscaleCle', e.target.value)} className={champ}>

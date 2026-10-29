@@ -363,7 +363,7 @@ export class InventaireService {
       }),
       this.prisma.ficheInventaire.findMany({
         where: { tenantId, campagneId, immobilisationId: { not: null } },
-        select: { id: true, immobilisationId: true, emplacement: true },
+        select: { id: true, immobilisationId: true, emplacement: true, numeroSerie: true },
       }),
     ]);
     const connues = new Set(dejaFichees.map((f) => f.immobilisationId));
@@ -383,7 +383,19 @@ export class InventaireService {
         data: { emplacement: lieuParBien.get(f.immobilisationId as string) },
       });
     }
-    if (aCreer.length === 0) return { creees: 0, deja: connues.size, lieuxRecopies: aCompleter.length };
+    // LIGNE IMMOS, N° 71 · le numéro de série, même règle que le lieu · recopié
+    // sur une fiche plus ancienne qui n'en porte pas, jamais sur une saisie.
+    const serieParBien = new Map(biens.map((b) => [b.id, b.numeroSerie?.trim() || null]));
+    const seriesACompleter = dejaFichees.filter((f) => !f.numeroSerie && f.immobilisationId && serieParBien.get(f.immobilisationId));
+    for (const f of seriesACompleter) {
+      await this.prisma.ficheInventaire.updateMany({
+        where: { id: f.id, tenantId, numeroSerie: null },
+        data: { numeroSerie: serieParBien.get(f.immobilisationId as string) },
+      });
+    }
+    if (aCreer.length === 0) {
+      return { creees: 0, deja: connues.size, lieuxRecopies: aCompleter.length, seriesRecopiees: seriesACompleter.length };
+    }
 
     // Le compte d'imputation du bien est celui contre lequel son écart se
     // mesurera · c'est lui qui porte la valeur d'entrée au bilan. À la date
@@ -397,10 +409,11 @@ export class InventaireService {
         immobilisationId: b.id,
         designation: b.numeroInventaire ? `${b.numeroInventaire} · ${b.designation}` : b.designation,
         emplacement: libelleLieuBien(b.lieu),
+        numeroSerie: b.numeroSerie?.trim() || null,
         uniteMesure: 'unité',
       })),
     });
-    return { creees: aCreer.length, deja: connues.size, lieuxRecopies: aCompleter.length };
+    return { creees: aCreer.length, deja: connues.size, lieuxRecopies: aCompleter.length, seriesRecopiees: seriesACompleter.length };
   }
 
   async creerFiche(tenantId: string, campagneId: string, dto: CreerFicheDto) {

@@ -27,6 +27,12 @@ export class ModifierImmobilisationDto {
   @MaxLength(10)
   natureFiscaleCle?: string | null;
 
+  /** Ligne immos, n° 71 · `null` efface le numéro de série. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  numeroSerie?: string | null;
+
   @FacultatifNonNul('Le compte du bien ne s’efface pas · omettez le champ pour le garder.')
   @IsUUID('4')
   compteImmobilisationId?: string;

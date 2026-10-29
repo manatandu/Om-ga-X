@@ -21,6 +21,7 @@ import { FicheImmobilisation } from '../components/FicheImmobilisation';
 import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
 import { AssistantCreationBien } from '../components/AssistantCreationBien';
 import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
+import { SimulationDotations } from '../components/SimulationDotations';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
@@ -237,6 +238,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [seuilPetit, setSeuilPetit] = useState<SeuilPetitMateriel | null>(null);
   const [iDesignation, setIDesignation] = useState('');
   const [iNumeroInventaire, setINumeroInventaire] = useState('');
+  // Ligne immos, n° 71 · le numéro de série du fabricant.
+  const [iNumeroSerie, setINumeroSerie] = useState('');
   const [iDateAcquisition, setIDateAcquisition] = useState(() => new Date().toISOString().slice(0, 10));
   // Vide, le bien est acquis et pas encore en état de fonctionner (AUDCIF
   // art. 45) · aucune dotation tant que la mise en service n'est pas posée.
@@ -663,6 +666,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
         compteImmobilisationId: iCompteBienId,
         designation: iDesignation,
         numeroInventaire: iNumeroInventaire || undefined,
+        numeroSerie: iNumeroSerie.trim() || undefined,
         lieuId: iLieuId || undefined,
         dateAcquisition: iDateAcquisition,
         // Vide · bien non encore mis en service, la date se pose plus tard.
@@ -1235,6 +1239,10 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               <label className="text-[11.5px] font-semibold text-text-dim">
                 N° inventaire
                 <input value={iNumeroInventaire} onChange={(e) => setINumeroInventaire(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal font-mono" />
+              </label>
+              <label className="text-[11.5px] font-semibold text-text-dim">
+                N° de série
+                <input value={iNumeroSerie} maxLength={100} onChange={(e) => setINumeroSerie(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal" />
               </label>
               <div>
                 <label className="block text-[11.5px] font-semibold text-text-dim">
@@ -2807,6 +2815,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               />
             )}
             <BiensSousReserveDePropriete exerciceId={exerciceCourant?.id} syscohada={syscohada} />
+            {/* Ligne immos, n° 72 · le plan de tout le parc, simulé sans écriture · une lecture, ouverte à tous. */}
+            <SimulationDotations exerciceId={exerciceCourant?.id} />
             {/* Lot 14 · la réévaluation porte sur TOUT le parc (art. 62), jamais sur un bien · rangée parmi les opérations. */}
             <ReevaluationImmobilisations
               exerciceId={exerciceCourant?.id}

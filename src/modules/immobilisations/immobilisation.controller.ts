@@ -5,6 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ImmobilisationService } from './immobilisation.service';
+import { lireNombreDePeriodes } from './simulation-dotations';
 import {
   CreerImmobilisationDto,
   CreerLocationAcquisitionDto,
@@ -66,6 +67,22 @@ export class ImmobilisationController {
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
   ) {
     return this.immobilisationService.tableauAmortissements(user.tenantId, exerciceId);
+  }
+
+  /**
+   * LIGNE IMMOS, FONCTION N° 72 · la simulation des dotations futures, par le
+   * moteur du plan, sans rien écrire (`simulation-dotations.ts`). Une lecture ·
+   * ouverte à qui lit le registre.
+   */
+  @Get('simulation-dotations')
+  async simulationDotations(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('exercices') exercices?: string,
+  ) {
+    const nombre = lireNombreDePeriodes(exercices);
+    if (typeof nombre !== 'number') throw new BadRequestException(nombre.motif);
+    return this.immobilisationService.simulerDotations(user.tenantId, exerciceId, nombre);
   }
 
   /**

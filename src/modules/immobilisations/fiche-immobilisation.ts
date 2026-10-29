@@ -27,7 +27,7 @@
 import { motifRefusEntreeApresDetention } from './detention-bien';
 
 /** Les champs sans effet comptable. */
-export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle'] as const;
+export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle', 'numeroSerie'] as const;
 
 /** Les champs qui fondent l'écriture d'acquisition et le plan. */
 export const CHAMPS_A_EFFET = [
@@ -188,7 +188,7 @@ function motifExerciceClosQuiLaPorte(cloture: string, geste: 'modifier' | 'suppr
  */
 export function motifRefusModificationAEffet(e: EtatDeLaFiche): string | null {
   if (e.sortie) {
-    return 'Le bien est sorti · sa fiche ne se modifie plus que pour sa désignation, son numéro d’inventaire et sa nature.';
+    return 'Le bien est sorti · sa fiche ne se modifie plus que pour sa désignation, ses numéros d’inventaire et de série et sa nature.';
   }
   if (e.autresEcritures.length > 0) {
     return (
@@ -300,7 +300,8 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
 /**
  * LA COPIE PROPOSÉE PAR « DUPLIQUER » · une nouvelle fiche, sans écriture,
  * dont le cabinet confirme chaque valeur. Ce que la duplication ne reprend
- * pas · le numéro d'inventaire (une étiquette par bien), les dates (un autre
+ * pas · le numéro d'inventaire (une étiquette par bien) et le numéro de série
+ * (ligne immos, n° 71 · il désigne UN objet), les dates (un autre
  * bien, une autre acquisition), le repris (fait de l'autre bien), le
  * composant (le principal ne se déclare pas par copie).
  */

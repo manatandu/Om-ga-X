@@ -162,6 +162,7 @@ export function AssistantCreationBien({
   const recap: [string, string][] = [
     ['Désignation', s.designation.trim()],
     ['N° inventaire', s.numeroInventaire.trim() || '·'],
+    ['N° de série', s.numeroSerie.trim() || '·'],
     ['Lieu', lieu ? `${lieu.code} · ${lieu.intitule}` : '·'],
     ['Compte', compte ? `${compte.numero} · ${compte.intitule}` : '·'],
     ['Nature au barème', nature ? `${nature.designation} (${nature.dureeAns} ans)` : '·'],
@@ -261,6 +262,10 @@ export function AssistantCreationBien({
                     <label className={etiquette}>
                       N° inventaire
                       <input value={s.numeroInventaire} onChange={(e) => poser('numeroInventaire', e.target.value)} className={champ} />
+                    </label>
+                    <label className={etiquette}>
+                      N° de série
+                      <input value={s.numeroSerie} maxLength={100} onChange={(e) => poser('numeroSerie', e.target.value)} className={champ} />
                     </label>
                     <label className={etiquette}>
                       Lieu

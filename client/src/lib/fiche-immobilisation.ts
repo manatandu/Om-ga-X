@@ -12,6 +12,8 @@ export interface ValeursFiche {
   designation: string;
   numeroInventaire: string | null;
   natureFiscaleCle: string | null;
+  /** Ligne immos, n° 71. */
+  numeroSerie: string | null;
   compteImmobilisationId: string;
   compteContrepartieId: string | null;
   dateAcquisition: string;
@@ -31,6 +33,7 @@ export type SaisieFiche = Record<
   | 'designation'
   | 'numeroInventaire'
   | 'natureFiscaleCle'
+  | 'numeroSerie'
   | 'compteImmobilisationId'
   | 'compteContrepartieId'
   | 'dateAcquisition'
@@ -50,6 +53,7 @@ export function saisieDepuis(v: ValeursFiche): SaisieFiche {
     designation: v.designation,
     numeroInventaire: v.numeroInventaire ?? '',
     natureFiscaleCle: v.natureFiscaleCle ?? '',
+    numeroSerie: v.numeroSerie ?? '',
     compteImmobilisationId: v.compteImmobilisationId,
     compteContrepartieId: v.compteContrepartieId ?? '',
     dateAcquisition: v.dateAcquisition,
@@ -84,12 +88,13 @@ export function corpsModification(v: ValeursFiche, s: SaisieFiche): { corps: Rec
     if (valeur.trim() !== v[cle]) corps[cle] = valeur.trim();
   };
   texte('designation', s.designation);
-  const effacable = (cle: 'numeroInventaire' | 'natureFiscaleCle' | 'dateMiseEnService', valeur: string) => {
+  const effacable = (cle: 'numeroInventaire' | 'natureFiscaleCle' | 'numeroSerie' | 'dateMiseEnService', valeur: string) => {
     const lu = valeur.trim() || null;
     if (lu !== (v[cle] ?? null)) corps[cle] = lu;
   };
   effacable('numeroInventaire', s.numeroInventaire);
   effacable('natureFiscaleCle', s.natureFiscaleCle);
+  effacable('numeroSerie', s.numeroSerie);
   effacable('dateMiseEnService', s.dateMiseEnService);
   for (const cle of ['compteImmobilisationId', 'dateAcquisition', 'modeAmortissement'] as const) {
     if (s[cle] && s[cle] !== v[cle]) corps[cle] = s[cle];

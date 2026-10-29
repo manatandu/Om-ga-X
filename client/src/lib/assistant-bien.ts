@@ -31,6 +31,8 @@ export const ETAPES: readonly { cle: EtapeAssistant; libelle: string }[] = [
 export interface SaisieAssistant {
   designation: string;
   numeroInventaire: string;
+  /** Ligne immos, n° 71. */
+  numeroSerie: string;
   lieuId: string;
   compteImmobilisationId: string;
   natureFiscaleCle: string;
@@ -55,6 +57,7 @@ export function saisieVierge(aujourdhui: string): SaisieAssistant {
   return {
     designation: '',
     numeroInventaire: '',
+    numeroSerie: '',
     lieuId: '',
     compteImmobilisationId: '',
     natureFiscaleCle: '',
@@ -144,6 +147,7 @@ export function corpsCreationBien(s: SaisieAssistant, exerciceId: string | undef
     compteImmobilisationId: s.compteImmobilisationId,
     designation: s.designation.trim(),
     ...(s.numeroInventaire.trim() ? { numeroInventaire: s.numeroInventaire.trim() } : {}),
+    ...(s.numeroSerie.trim() ? { numeroSerie: s.numeroSerie.trim() } : {}),
     ...(s.lieuId ? { lieuId: s.lieuId } : {}),
     ...(s.natureFiscaleCle ? { natureFiscaleCle: s.natureFiscaleCle } : {}),
     dateAcquisition: s.dateAcquisition,
@@ -166,8 +170,9 @@ export function corpsCreationBien(s: SaisieAssistant, exerciceId: string | undef
  * LA CRÉATION ENCHAÎNÉE · « créer un autre bien » repart de la première
  * étape avec ce qui se répète d'une série (compte, nature, lieu, dates,
  * financement, plan), et vide ce qui est propre au bien (désignation,
- * numéro, valeur). Convention d'OmegaX, dite dans l'aide.
+ * numéros, valeur). Convention d'OmegaX, dite dans l'aide. Le numéro de
+ * série (n° 71) est celui d'UN objet · il ne se répète jamais.
  */
 export function saisieEnchainee(s: SaisieAssistant): SaisieAssistant {
-  return { ...s, designation: '', numeroInventaire: '', valeurOrigine: '', valeurResiduelle: '', amortissementAnterieur: '' };
+  return { ...s, designation: '', numeroInventaire: '', numeroSerie: '', valeurOrigine: '', valeurResiduelle: '', amortissementAnterieur: '' };
 }

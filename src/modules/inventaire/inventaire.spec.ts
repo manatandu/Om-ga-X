@@ -576,3 +576,36 @@ describe('fiches des immobilisations · le compte inscrit à la date de l’inve
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Ligne immos, fonction n° 71 · le numéro de série suit le bien sur sa fiche
+// ---------------------------------------------------------------------------
+
+describe('fiches des immobilisations · le numéro de série (ligne immos, n° 71)', () => {
+  it('est recopié à la naissance de la fiche, et complète une fiche ancienne sans jamais écraser une saisie', async () => {
+    // Ce qui casserait en silence · une fiche sans le numéro, et le compteur
+    // ne sait pas QUEL ordinateur portable de la série il a devant lui.
+    const { svc, prisma } = service({
+      campagne: { ...campagne(StatutCampagneInventaire.RECENSEMENT), dateInventaire: new Date('2026-12-31') },
+    });
+    (prisma as unknown as Record<string, unknown>).immobilisation = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'pc1', designation: 'Portable', numeroInventaire: null, numeroSerie: ' SN-A1 ', valeurOrigine: 900, compteImmobilisationId: 'c244', compteEnCoursId: null, dateMiseEnService: new Date('2026-01-01') },
+        { id: 'pc2', designation: 'Portable', numeroInventaire: null, numeroSerie: 'SN-A2', valeurOrigine: 900, compteImmobilisationId: 'c244', compteEnCoursId: null, dateMiseEnService: new Date('2026-01-01') },
+        { id: 'pc3', designation: 'Portable', numeroInventaire: null, numeroSerie: 'SN-A3', valeurOrigine: 900, compteImmobilisationId: 'c244', compteEnCoursId: null, dateMiseEnService: new Date('2026-01-01') },
+      ]),
+    };
+    // pc2 a déjà sa fiche sans numéro (engendrée avant la règle), pc3 a une fiche dont le numéro a été saisi.
+    (prisma.ficheInventaire as unknown as Record<string, unknown>).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (prisma.ficheInventaire.findMany as jest.Mock).mockResolvedValueOnce([
+      { id: 'f2', immobilisationId: 'pc2', emplacement: 'Bureau', numeroSerie: null },
+      { id: 'f3', immobilisationId: 'pc3', emplacement: 'Bureau', numeroSerie: 'VU-SUR-PLACE' },
+    ]);
+    const r = await svc.engendrerFichesImmobilisations('t1', 'camp1');
+    const creees = (prisma.ficheInventaire.createMany as jest.Mock).mock.calls[0][0].data as { immobilisationId: string; numeroSerie: string | null }[];
+    expect(creees).toEqual([expect.objectContaining({ immobilisationId: 'pc1', numeroSerie: 'SN-A1' })]);
+    const completees = (prisma.ficheInventaire.updateMany as jest.Mock).mock.calls.filter((c) => 'numeroSerie' in c[0].data);
+    expect(completees).toEqual([[{ where: { id: 'f2', tenantId: 't1', numeroSerie: null }, data: { numeroSerie: 'SN-A2' } }]]);
+    expect(r.seriesRecopiees).toBe(1);
+  });
+});

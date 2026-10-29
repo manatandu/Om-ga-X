@@ -11,6 +11,7 @@ const valeurs: ValeursFiche = {
   designation: 'Camion',
   numeroInventaire: 'INV-1',
   natureFiscaleCle: null,
+  numeroSerie: 'SN-001',
   compteImmobilisationId: 'c1',
   compteContrepartieId: 'c521',
   dateAcquisition: '2026-01-01',
@@ -49,6 +50,11 @@ describe('le corps de la modification', () => {
     const r = corpsModification(valeurs, { ...saisieDepuis(valeurs), valeurOrigine: 'douze', dureeAmortissementAns: '5' });
     expect(r.illisibles).toEqual(['Valeur d’origine']);
     expect(r.corps).not.toHaveProperty('valeurOrigine');
+  });
+
+  it('le numéro de série (n° 71) est un champ libre · changé il part seul, vidé il part en null', () => {
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: ' SN-002 ' }).corps).toEqual({ numeroSerie: 'SN-002' });
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: '' }).corps).toEqual({ numeroSerie: null });
   });
 
   it('la contrepartie d’un bien repris ne part jamais · il n’a pas d’écriture', () => {

@@ -102,6 +102,12 @@ export class CreerImmobilisationDto {
   @IsString()
   numeroInventaire?: string;
 
+  /** Ligne immos, n° 71 · le numéro de série du fabricant (fiche, inventaire physique). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  numeroSerie?: string;
+
   /** Lieu du bien, au référentiel des lieux du dossier. */
   @IsOptional()
   @IsUUID('4')

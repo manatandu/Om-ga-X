@@ -160,6 +160,7 @@ import {
   type MouvementLu,
 } from './transfert-depreciation-en-cours';
 import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-remplacee';
+import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -2429,6 +2430,8 @@ export class ImmobilisationService {
           familleId: famille.id,
           designation: dto.designation,
           numeroInventaire: dto.numeroInventaire,
+          // Ligne immos, n° 71 · vide n'est pas un numéro.
+          numeroSerie: dto.numeroSerie?.trim() || null,
           lieuId: dto.lieuId ?? null,
           compteImmobilisationId: famille.compteImmobilisationId,
           compteAmortissementId: famille.compteAmortissementId,
@@ -3808,6 +3811,141 @@ export class ImmobilisationService {
         ),
         repriseEcart: arrondir(listeGroupes.reduce((t, g) => t + g.lignes.reduce((u, l) => u + (l.reevaluation?.repriseEcart ?? 0), 0), 0)),
       },
+    };
+  }
+
+  /**
+   * LIGNE IMMOS, FONCTION N° 72 · LA SIMULATION DES DOTATIONS FUTURES
+   * (`simulation-dotations.ts`). Aucune écriture, aucune ligne en base · le
+   * plan de chaque bien en service, période par période, par LE MÊME MOTEUR
+   * que la dotation (`calculerDotation`, mêmes arguments que `passerDotation`
+   * et que le tableau des amortissements). Une dotation déjà passée se lit
+   * telle qu'au journal ; ensuite, chaque annuité simulée tient lieu de
+   * dotation passée pour la suivante.
+   *
+   * Ce que la simulation ne voit pas, et qu'elle dit · une acquisition, une
+   * sortie, une dépréciation, une révision ou une réévaluation à venir ; les
+   * relevés d'unités d'œuvre futurs (annuité non calculée, jamais zéro) ; le
+   * dérogatoire du dégressif fiscal, dont le plan fiscal a son propre écran.
+   */
+  async simulerDotations(tenantId: string, exerciceId: string, nombrePeriodes: number) {
+    const regime = await this.regimeComptable(tenantId);
+    const sansProrata = this.sansProrataTemporis(regime);
+    const depart = exerciceDuDossierOuRefus(
+      await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true, dateFin: true } }),
+    );
+    const exercices = await this.prisma.exercice.findMany({
+      where: { tenantId, dateDebut: { gt: depart.dateFin } },
+      select: { id: true, dateDebut: true, dateFin: true },
+      orderBy: { dateDebut: 'asc' },
+      take: PERIODES_MAX,
+    });
+    const periodes = periodesDeSimulation(depart, exercices, nombrePeriodes);
+    const immos = await this.prisma.immobilisation.findMany({
+      where: { tenantId, statut: StatutImmobilisation.EN_SERVICE, dateAcquisition: { lte: periodes[periodes.length - 1].dateFin } },
+      include: {
+        compteImmobilisation: { select: { id: true, numero: true, intitule: true } },
+        dotations: { select: { montant: true, exerciceId: true, exercice: { select: { dateFin: true } } } },
+        depreciations: { select: { sens: true, montant: true, nature: true, exercice: { select: { dateFin: true } } } },
+        consommationsUniteOeuvre: { select: { exerciceId: true, unitesConsommees: true, exercice: { select: { dateFin: true } } } },
+      },
+      orderBy: [{ compteImmobilisation: { numero: 'asc' } }, { dateAcquisition: 'asc' }, { id: 'asc' }],
+    });
+    const arrondir = (x: number) => Math.round(x * 100) / 100;
+    const biens = immos.map((immo) => {
+      const nonAmortissable =
+        motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl) ??
+        motifNonAmortissable(immo.compteImmobilisation.numero, regime.referentiel) ??
+        (immo.dureeNonLimitee ? MOTIF_NON_AMORTI : null);
+      const unites = immo.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE;
+      // Les dotations du journal antérieures à la première période · le point de départ.
+      const anterieures = immo.dotations.filter((d) => d.exercice.dateFin < periodes[0].dateFin).map((d) => ({ montant: Number(d.montant) }));
+      const cumulAvant = arrondir(anterieures.reduce((t, d) => t + d.montant, 0) + amortissementsHorsDotations(immo));
+      const dotationsCourantes = [...anterieures];
+      const annuites: (number | null)[] = [];
+      const passees: boolean[] = [];
+      let interrompu = false;
+      for (const p of periodes) {
+        const passee = p.exerciceId ? immo.dotations.find((d) => d.exerciceId === p.exerciceId) : undefined;
+        if (passee) {
+          annuites.push(Number(passee.montant));
+          passees.push(true);
+          dotationsCourantes.push({ montant: Number(passee.montant) });
+          continue;
+        }
+        passees.push(false);
+        // Aux unités d'œuvre, une période sans relevé ne se devine pas · et
+        // l'annuité suivante dépend de celle-ci, elle non plus.
+        const releve = unites && p.exerciceId ? immo.consommationsUniteOeuvre.find((c) => c.exerciceId === p.exerciceId) : undefined;
+        if (nonAmortissable) {
+          annuites.push(0);
+          continue;
+        }
+        if (interrompu || (unites && !releve)) {
+          interrompu = true;
+          annuites.push(null);
+          continue;
+        }
+        const uniteOeuvre = unites
+          ? {
+              prevues: Number(immo.unitesOeuvrePrevues ?? 0),
+              consommees: Number(releve!.unitesConsommees),
+              consommeesAnterieures: immo.consommationsUniteOeuvre
+                .filter((c) => c.exercice.dateFin < p.dateFin && c.exerciceId !== p.exerciceId)
+                .reduce((t, c) => t + Number(c.unitesConsommees), 0),
+            }
+          : null;
+        const montant = arrondir(
+          this.calculerDotation(
+            Number(immo.valeurOrigine),
+            Number(immo.valeurResiduelle),
+            immo.dureeAmortissementAns,
+            debutAmortissement(immo),
+            dotationsCourantes,
+            p,
+            amortissementsHorsDotations(immo),
+            this.cumulDepreciation(
+              immo.depreciations
+                .filter((d) => estDepreciationAnterieure(d, p))
+                .map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
+            ),
+            sansProrata,
+            uniteOeuvre,
+            planDuBien(immo),
+            debutDeDetention(immo.dateEntreeGroupe),
+          ),
+        );
+        annuites.push(montant);
+        dotationsCourantes.push({ montant });
+      }
+      const calculees = annuites.filter((a): a is number => a !== null);
+      return {
+        id: immo.id,
+        designation: immo.designation,
+        numeroInventaire: immo.numeroInventaire,
+        compte: { numero: immo.compteImmobilisation.numero, intitule: immo.compteImmobilisation.intitule },
+        valeurBrute: Number(immo.valeurOrigine),
+        cumulAvant,
+        annuites,
+        passees,
+        // La valeur nette à la fin de la dernière période calculée · null dès
+        // qu'une annuité manque, la suite ne se lisant plus.
+        valeurNetteFin: annuites.some((a) => a === null) ? null : arrondir(Number(immo.valeurOrigine) - cumulAvant - calculees.reduce((t, a) => t + a, 0)),
+        nonAmortissable: nonAmortissable ? true : undefined,
+        pasEnService: !immo.dateMiseEnService ? true : undefined,
+        unitesOeuvre: unites ? true : undefined,
+        degressifFiscal: immo.degressifFiscal ? true : undefined,
+      };
+    });
+    return {
+      periodes: periodes.map((p) => ({
+        dateDebut: p.dateDebut.toISOString().slice(0, 10),
+        dateFin: p.dateFin.toISOString().slice(0, 10),
+        exerciceId: p.exerciceId,
+        fictive: p.exerciceId === null,
+      })),
+      biens,
+      totaux: totauxDeLaSimulation(biens, periodes.length),
     };
   }
 
