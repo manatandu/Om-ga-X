@@ -401,6 +401,35 @@ describe('Lettrage automatique', () => {
     }).toEqual({ lectures: 1, codes: ['A', 'B', 'C'], delai: expect.objectContaining({ timeout: 10_300 }) });
   });
 
+  // Point 4 de la relecture lettrage-verrou · le calcul se fait HORS du verrou du dossier, et n'est refait sous lui
+  // que si une proposition ne tient plus.
+  it('calcule une fois hors du verrou quand rien n’a bougé, et ne prend aucun verrou sans rien à poser', async () => {
+    const { service: s, prisma } = service([ligne('a', 750, 0), ligne('b', 0, 750)]);
+    const calcul = jest.spyOn(s as unknown as { calculerPropositions: () => unknown }, 'calculerPropositions');
+    await expect(s.lettrageAutomatique('t1', 'c1', 'u1')).resolves.toMatchObject({ groupes: 1 });
+    expect(calcul).toHaveBeenCalledTimes(1);
+    const transaction = jest.fn(prisma.$transaction);
+    prisma.$transaction = transaction as typeof prisma.$transaction;
+    await expect(s.lettrageAutomatique('t1', 'c1', 'u1')).resolves.toMatchObject({ groupes: 0 });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('refait le calcul sous le verrou quand une ligne proposée a été prise entre-temps', async () => {
+    const { service: s, lignes, prisma } = service([ligne('a', 750, 0), ligne('b', 0, 750), ligne('c', 0, 750)]);
+    const calcul = jest.spyOn(s as unknown as { calculerPropositions: () => unknown }, 'calculerPropositions');
+    const transaction = prisma.$transaction;
+    prisma.$transaction = (<R>(fn: (tx: unknown) => Promise<R>) => {
+      lignes[1].lettrageId = 'autre';
+      return transaction(fn);
+    }) as typeof prisma.$transaction;
+    const r = await s.lettrageAutomatique('t1', 'c1', 'u1');
+    expect(calcul).toHaveBeenCalledTimes(2);
+    // Le calcul refait apparie a avec c, que la proposition d'avant laissait de côté.
+    expect(r).toMatchObject({ groupes: 1 });
+    expect(lignes[0].lettrageId).not.toBeNull();
+    expect(lignes[2].lettrageId).toBe(lignes[0].lettrageId);
+  });
+
   it('ne réapparie pas une ligne déjà rattachée à un groupe partiel', async () => {
     const { service: s, groupes } = service([ligne('a', 1000, 0), ligne('b', 0, 600), ligne('c', 0, 400)]);
     await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { autoriserPartiel: true });

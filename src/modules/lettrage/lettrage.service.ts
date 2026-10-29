@@ -1320,7 +1320,40 @@ export class LettrageService {
       // (une ligne figée ne l'aurait pas été de toute façon).
       ecarteesReclassement: ecarteesDesMontants,
       passesParMontantSuspendues: miseDeCote.passesParMontantSuspendues,
+      // Relu sous le verrou par le lettrage automatique (`propositionsToujoursValables`).
+      reclassees,
     };
+  }
+
+  /**
+   * LE CALCUL HORS DU VERROU, SA VALIDITÉ SOUS LUI (point 4 de la relecture
+   * lettrage-verrou, 2026-10-29). Calculées sous le verrou du dossier, les
+   * propositions d'un compte de milliers de lignes le tenaient pendant tout
+   * l'appariement · toute écriture auditée du dossier (saisie comprise)
+   * attendait, puis recevait `DOSSIER_OCCUPE`. Le calcul se fait donc AVANT,
+   * et le verrou ne garde que ce contrôle et les écritures. Ce qu'A7 quater
+   * (m1) relisait dans la transaction est relu ici · chaque ligne proposée
+   * toujours libre, sur ce compte, hors simulation et hors à-nouveau
+   * provisoire ; aucune figée par une clôture posée depuis ; le même jeu de
+   * lignes reclassées (un reclassement nouveau suspend les passes par
+   * montant). Une seule différence et le calcul est REFAIT sous le verrou,
+   * comme avant · rien n'est posé sur une lecture périmée. Une ligne saisie
+   * depuis n'est simplement pas proposée · elle le sera au lancement suivant.
+   */
+  private async propositionsToujoursValables(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compteId: string,
+    calcul: { parPiece: string[][]; parMontant: string[][]; reclassees: ReadonlySet<string> },
+  ): Promise<boolean> {
+    const ids = [...new Set([...calcul.parPiece, ...calcul.parMontant].flat())];
+    const libres = await tx.ligneEcriture.count({
+      where: { id: { in: ids }, compteId, lettrageId: null, ecriture: { tenantId, estANouveauProvisoire: false, ...HORS_SITUATION } },
+    });
+    if (libres !== ids.length) return false;
+    if ((await lignesFigees(tx, tenantId, ids)).size > 0) return false;
+    const reclassees = await lignesReclasseesDuCompte(tx, tenantId, compteId);
+    return reclassees.size === calcul.reclassees.size && [...reclassees].every((id) => calcul.reclassees.has(id));
   }
 
   /**
@@ -1769,18 +1802,34 @@ export class LettrageService {
 
   async lettrageAutomatique(tenantId: string, compteId: string, userId: string) {
     const compte = await this.trouverCompteLettrable(tenantId, compteId);
-    // A7 QUATER, m1 · LE CALCUL SE FAIT DANS LA TRANSACTION QUI POSE. Calculé
-    // avant elle, un reclassement passé ou une clôture posée entre-temps
-    // n'était relu par rien · `creerGroupe` ne revérifie que la liberté des
-    // lignes, et le groupe facture-reclassement, ou une ligne figée, partait.
-    // Les lignes que le calcul peut apparier · jamais une simulation (ligne
-    // sage-l1, fonction 12), que `calculerPropositions` écarte aussi.
-    const ouvertes = await this.prisma.ligneEcriture.count({ where: { compteId, lettrageId: null, ecriture: { tenantId, ...HORS_SITUATION } } });
+    // A7 QUATER, m1 · un reclassement passé ou une clôture posée entre le
+    // calcul et la pose n'était relu par rien · `creerGroupe` ne revérifie que
+    // la liberté des lignes. Le calcul se fait HORS du verrou du dossier, et
+    // sa validité se relit SOUS lui (`propositionsToujoursValables`), sinon il
+    // est refait là (point 4 de la relecture lettrage-verrou).
+    const horsVerrou = await this.calculerPropositions(tenantId, compte);
+    const rienAPoser = (c: typeof horsVerrou) => c.parPiece.length === 0 && c.parMontant.length === 0;
+    const reponseVide = (c: typeof horsVerrou) => ({
+      groupes: 0,
+      parPiece: 0,
+      parMontant: 0,
+      lettres: [] as string[],
+      ecarteesReclassement: c.ecarteesReclassement,
+      passesParMontantSuspendues: c.passesParMontantSuspendues,
+      miseDeCote: messageMiseDeCote(c.ecarteesReclassement, c.passesParMontantSuspendues),
+    });
+    // Rien à apparier sur une lecture cohérente · aucun verrou n'est pris.
+    if (rienAPoser(horsVerrou)) return reponseVide(horsVerrou);
+    // Le délai se règle sur les lignes lettrables lues, qui bornent les groupes
+    // et un calcul refait sous le verrou.
+    const operations = horsVerrou.lignes.length;
     return transactionSousVerrouDuDossier(
       this.prisma,
       tenantId,
       async (tx) => {
-        const { parPiece, parMontant, ecarteesReclassement, passesParMontantSuspendues } = await this.calculerPropositions(tenantId, compte, tx);
+        const valable = await this.propositionsToujoursValables(tx, tenantId, compteId, horsVerrou);
+        const calcul = valable ? horsVerrou : await this.calculerPropositions(tenantId, compte, tx);
+        const { parPiece, parMontant, ecarteesReclassement, passesParMontantSuspendues } = calcul;
         const parPieceGroupes = parPiece;
         const groupes = parMontant;
         // m7 · ce que la règle des reclassements laisse ouvert se dit.
@@ -1816,9 +1865,7 @@ export class LettrageService {
         };
       },
       'Trop de lettrages effectués au même instant sur ce compte · veuillez réessayer.',
-      // Le nombre de groupes n'est connu que dans la transaction · le délai se
-      // règle sur les lignes ouvertes du compte, qui le bornent.
-      { operations: ouvertes },
+      { operations },
     );
   }
 

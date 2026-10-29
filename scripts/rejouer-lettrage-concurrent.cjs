@@ -148,6 +148,35 @@ async function main() {
       verifier(groupes === PAIRES + 3, `groupes du compte · ${groupes} = ${PAIRES + 3}`);
     }
 
+    // LETTRAGE AUTOMATIQUE CONTRE LETTRAGES MANUELS DU MÊME COMPTE (point 4) ·
+    // le calcul se fait hors du verrou, sa validité se relit sous lui · aucune
+    // ligne lettrée deux fois, aucun groupe déséquilibré, aucune panne.
+    {
+      const d = dossiers[2];
+      const AUTO = 20;
+      const ids = [];
+      for (let p = 0; p < AUTO; p++) {
+        const m = 555_000 + p * 13;
+        const f = await d.ecr(d.ex26.id, '2026-06-02', `Facture auto ${p}`, [{ compteId: d.charge.id, libelle: 'F', debit: m, credit: 0 }, { compteId: d.fournisseur.id, libelle: 'F', debit: 0, credit: m }]);
+        const r = await d.ecr(d.ex26.id, '2026-06-03', `Règlement auto ${p}`, [{ compteId: d.fournisseur.id, libelle: 'R', debit: m, credit: 0 }, { compteId: d.banque.id, libelle: 'R', debit: 0, credit: m }]);
+        ids.push([f.id, r.id]);
+      }
+      await d.c.post('/ecritures/valider-jusqua', { exerciceId: d.ex26.id, dateLimite: '2026-12-31' });
+      const paires = [];
+      for (const [f, r] of ids) paires.push([(await prisma.ligneEcriture.findFirst({ where: { ecritureId: f, compteId: d.fournisseur.id } })).id, (await prisma.ligneEcriture.findFirst({ where: { ecritureId: r, compteId: d.fournisseur.id } })).id]);
+      const issues = await Promise.all([
+        d.c.appeler('POST', `/comptes/${d.fournisseur.id}/lettrage/auto`, {}, [200, 201, 400, 409]),
+        ...paires.slice(0, 3).map((q) => d.c.appeler('POST', `/comptes/${d.fournisseur.id}/lettrage`, { ligneIds: q }, [200, 201, 400, 409])),
+      ]);
+      // Ce qu'un refus a laissé se relettre au lancement suivant.
+      await d.c.appeler('POST', `/comptes/${d.fournisseur.id}/lettrage/auto`, {}, [200, 201]);
+      const ouvertesAuto = await prisma.ligneEcriture.count({ where: { id: { in: paires.flat() }, lettrageId: null } });
+      const groupesAuto = await prisma.lettrage.findMany({ where: { compteId: d.fournisseur.id, lignes: { some: { id: { in: paires.flat() } } } }, include: { lignes: { select: { debit: true, credit: true } } } });
+      const desequilibres = groupesAuto.filter((g) => Math.abs(g.lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0)) > 0.005 || g.lignes.length !== 2);
+      verifier(ouvertesAuto === 0 && groupesAuto.length === AUTO && desequilibres.length === 0,
+        `lettrage automatique contre trois manuels · ${groupesAuto.length} groupes équilibrés pour ${AUTO} paires, ${ouvertesAuto} ligne(s) ouverte(s) (${issues.map((x) => x.statut).join(', ')})`);
+    }
+
     // À travers la clôture · le premier dossier clôture 2026 et lettre en 2027.
     const d = dossiers[0];
     const ex27 = await d.c.post('/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
