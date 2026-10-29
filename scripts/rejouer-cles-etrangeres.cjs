@@ -110,7 +110,7 @@ async function main() {
             await etendu.ligneEcriture.update({ where: { id: ligne.id }, data: { compteId } });
           }).then(() => 'passé', (x) => `${x.name} · ${x.message}`);
         const etranger = await tenterVers(banqueB.id);
-        verifier(/CloisonnementViole/.test(etranger) && /Compte d'un autre dossier/.test(etranger), `règle F · compte de B refusé par la garde (${etranger.slice(0, 120)})`);
+        verifier(/introuvable dans ce dossier/.test(etranger), `règle F · compte de B refusé par la garde (${etranger.slice(0, 120)})`);
         const relue = await prisma.ligneEcriture.findUnique({ where: { id: ligne.id }, select: { compteId: true } });
         verifier(relue.compteId === banqueA.id, 'la ligne garde son compte');
         verifier((await tenterVers(banqueA.id)) === 'passé', 'règle F · le compte du dossier passe');
@@ -137,7 +137,7 @@ async function main() {
     verifier(Number(report._sum.debit ?? 0) - Number(report._sum.credit ?? 0) === attendu, `report 2027 du 521 · ${Number(report._sum.debit ?? 0) - Number(report._sum.credit ?? 0)} = ${attendu}`);
     await ecr(A, ex27.id, A.od.id, '2027-01-15', 'Charge 2027', deux(chargeA, banqueA, 30_000));
     verifier(true, 'saisie en 2027');
-    verifier(!/CloisonnementViole/.test(journal.replace(/Compte voisin|Journal voisin/g, '')) || (journal.match(/CloisonnementViole/g) ?? []).length <= 2, 'aucun refus de la garde hors des deux essais voulus');
+    verifier((journal.match(/CloisonnementViole|introuvable dans ce dossier/g) ?? []).length === 0, 'aucun refus de la garde au journal du serveur');
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

@@ -1,7 +1,18 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { acteurCourant, transactionAuditee } from '../audit/contexte-audit';
 import { MODELES_CLOISONNES, MODELES_PORTES_PAR_LEUR_PARENT } from './modeles-cloisonnes';
-import { lignesDesignees, requeteDesDossiers } from './cles-etrangeres';
+import { NotFoundException } from '@nestjs/common';
+import { LiaisonIllisible, lignesDesignees, requeteDesDossiers } from './cles-etrangeres';
+
+export const MOTIF_LIGNE_DESIGNEE_INTROUVABLE = 'Une ligne désignée par cette demande est introuvable dans ce dossier.';
+
+/** Les lignes que la règle F sait du dossier, par transaction · oubliées avec elle. */
+const VERIFIEES = new WeakMap<object, Set<string>>();
+function verifiesDansLaTransaction(tx: object): Set<string> {
+  let s = VERIFIEES.get(tx);
+  if (!s) VERIFIEES.set(tx, (s = new Set()));
+  return s;
+}
 import {
   CloisonnementViole,
   horsCloisonnement,
@@ -264,25 +275,46 @@ export async function garderCloisonnement(
 
   // F · les lignes que l'écriture DÉSIGNE par une clé étrangère sont du
   // dossier de la session, ou du périmètre déclaré (cles-etrangeres.ts).
+  const transaction = transactionAuditee();
   if (dossier && (CREATIONS.includes(operation) || MISES_A_JOUR.includes(operation))) {
-    const designes = lignesDesignees(model, (args as { data?: unknown })?.data);
-    if (operation === 'upsert') {
-      lignesDesignees(model, (args as { create?: unknown })?.create, designes);
-      lignesDesignees(model, (args as { update?: unknown })?.update, designes);
+    let designes;
+    try {
+      designes = lignesDesignees(model, (args as { data?: unknown })?.data);
+      if (operation === 'upsert') {
+        lignesDesignees(model, (args as { create?: unknown })?.create, designes);
+        lignesDesignees(model, (args as { update?: unknown })?.update, designes);
+      }
+    } catch (e) {
+      if (e instanceof LiaisonIllisible) {
+        throw new CloisonnementViole(
+          `Écriture refusée · ${model}.${operation} relie une ligne de ${e.modele} par une clé autre que son identifiant, que la garde ne sait pas borner au dossier. Relier par { id }.`,
+        );
+      }
+      throw e;
+    }
+    // Ce que la transaction a déjà vérifié ou créé ne se relit pas · le
+    // lettrage en boucle et la clôture relisaient le même groupe, le même
+    // compte, à chaque ligne (relecture du 2026-10-29).
+    const dejaVus = transaction ? verifiesDansLaTransaction(transaction) : null;
+    if (dejaVus) {
+      for (const [cible, ids] of designes) {
+        for (const id of [...ids]) if (dejaVus.has(`${cible}:${id}`)) ids.delete(id);
+      }
     }
     const requete = requeteDesDossiers(designes);
     if (requete) {
       // Même lecteur que la règle B · la transaction en cours, sinon `base`.
-      const lecteur = (transactionAuditee() ?? base) as unknown as {
+      const lecteur = (transaction ?? base) as unknown as {
         $queryRawUnsafe: (sql: string, ...p: unknown[]) => Promise<{ dossier: string | null; modele: string }[]>;
       };
       const lus = await lecteur.$queryRawUnsafe(requete.sql, ...requete.parametres);
-      const etrangere = lus.find((l) => !dossierAutorise(l.dossier));
-      if (etrangere) {
-        throw new CloisonnementViole(
-          `Écriture refusée · ${model}.${operation} désigne une ligne de ${etrangere.modele} d'un autre dossier que celui de la session.`,
-        );
+      if (lus.some((l) => !dossierAutorise(l.dossier))) {
+        // INTROUVABLE, ET NON « AILLEURS » · une erreur distincte dirait à
+        // l'appelant que l'identifiant existe dans un autre dossier (même
+        // parti que la règle A). La trace serveur nomme le modèle.
+        throw new NotFoundException(MOTIF_LIGNE_DESIGNEE_INTROUVABLE);
       }
+      if (dejaVus) for (const [cible, ids] of designes) for (const id of ids) dejaVus.add(`${cible}:${id}`);
     }
   }
 
@@ -302,7 +334,16 @@ export async function garderCloisonnement(
         }
       }
     }
-    if (operation !== 'upsert') return query(args);
+    if (operation !== 'upsert') {
+      const cree = await query(args);
+      // La ligne que la transaction vient de créer, sous la garde D, est du
+      // dossier · la règle F ne la relira pas quand une écriture suivante la
+      // désignera (le groupe de lettrage créé, puis posé sur ses lignes).
+      const id = (cree as { id?: unknown } | null)?.id;
+      const sonDossier = operation === 'create' ? dossierCree(donnees) : undefined;
+      if (transaction && sonDossier !== undefined && dossierAutorise(sonDossier) && typeof id === 'string') verifiesDansLaTransaction(transaction).add(`${model}:${id}`);
+      return cree;
+    }
   }
 
   // E · la ligne OBTENUE, et pas seulement la ligne visée (F240). Posé AVANT

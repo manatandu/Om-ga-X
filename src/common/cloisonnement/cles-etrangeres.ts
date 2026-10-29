@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { MODELES_CLOISONNES } from './modeles-cloisonnes';
+import { MODELES_CLOISONNES, MODELES_PORTES_PAR_LEUR_PARENT } from './modeles-cloisonnes';
 
 /**
  * F · LES CLÉS ÉTRANGÈRES D'UNE ÉCRITURE SE JUGENT DANS LE DOSSIER (audit de
@@ -53,6 +53,31 @@ const modeles = new Map<string, ModeleDmmf>((Prisma.dmmf.datamodel.models as unk
 
 const versLIdentifiant = (to: readonly string[] | undefined) => !to || to.length === 0 || (to.length === 1 && to[0] === 'id');
 
+/**
+ * Une cible JUGÉE · un modèle cloisonné, ou un modèle porté par son parent,
+ * jugé par le dossier de ce parent (la ligne d'écriture par son écriture ·
+ * relecture du 2026-10-29, six clés reçues du client visaient des lignes).
+ */
+const estJugee = (cible: string) => MODELES_CLOISONNES.has(cible) || MODELES_PORTES_PAR_LEUR_PARENT.has(cible);
+
+/** Le parent cloisonné qui dit le dossier d'un modèle porté · sa première relation requise vers lui. */
+export function parentQuiPorte(modele: string): { champ: string; parent: string } | null {
+  const m = modeles.get(modele);
+  if (!m) return null;
+  const candidates = m.fields.filter(
+    (f) => f.kind === 'object' && MODELES_CLOISONNES.has(f.type) && f.relationFromFields?.length === 1 && versLIdentifiant(f.relationToFields),
+  );
+  const requise = candidates.find((f) => (f as { isRequired?: boolean }).isRequired) ?? candidates[0];
+  return requise ? { champ: requise.relationFromFields![0], parent: requise.type } : null;
+}
+
+/** Une liaison que la règle ne sait pas lire (`connect` par une clé autre que `id`) · refusée, jamais passée. */
+export class LiaisonIllisible extends Error {
+  constructor(readonly modele: string) {
+    super(`liaison vers ${modele} par une clé autre que son identifiant`);
+  }
+}
+
 /** Clés scalaires et relations de chaque modèle, lues une fois. */
 const CLES = new Map<string, Cle[]>();
 const RELATIONS = new Map<string, Map<string, Relation>>();
@@ -63,7 +88,7 @@ for (const m of modeles.values()) {
     if (f.kind !== 'object') continue;
     const parIdentifiant = versLIdentifiant(f.relationToFields);
     relations.set(f.name, { nom: f.name, cible: f.type, parIdentifiant });
-    if (MODELES_CLOISONNES.has(f.type) && f.relationFromFields?.length === 1 && parIdentifiant) {
+    if (estJugee(f.type) && f.relationFromFields?.length === 1 && parIdentifiant) {
       cles.push({ champ: f.relationFromFields[0], cible: f.type });
     }
   }
@@ -75,7 +100,7 @@ for (const m of modeles.values()) {
 export type Designes = Map<string, Set<string>>;
 
 function ajouter(acc: Designes, cible: string, valeur: unknown) {
-  if (!MODELES_CLOISONNES.has(cible)) return;
+  if (!estJugee(cible)) return;
   const v = valeur && typeof valeur === 'object' && 'set' in (valeur as object) ? (valeur as { set: unknown }).set : valeur;
   if (typeof v !== 'string' || v === '') return;
   let s = acc.get(cible);
@@ -84,9 +109,15 @@ function ajouter(acc: Designes, cible: string, valeur: unknown) {
 }
 
 function liaisons(acc: Designes, cible: string, relation: Relation, valeur: unknown) {
-  if (!relation.parIdentifiant) return;
+  if (!estJugee(cible)) return;
   for (const x of Array.isArray(valeur) ? valeur : [valeur]) {
-    if (x && typeof x === 'object') ajouter(acc, cible, (x as { id?: unknown }).id);
+    if (!x || typeof x !== 'object') continue;
+    const id = (x as { id?: unknown }).id;
+    // Par une clé unique composée (`tenantId_numero`) ou tout autre champ ·
+    // la règle ne saurait pas dire le dossier visé, et le refus est la seule
+    // réponse sûre (même parti que `FORME_ILLISIBLE` de la règle E).
+    if (!relation.parIdentifiant || typeof id !== 'string') throw new LiaisonIllisible(cible);
+    ajouter(acc, cible, id);
   }
 }
 
@@ -147,15 +178,26 @@ const guillemets = (s: string) => `"${s.replace(/"/g, '""')}"`;
 export function requeteDesDossiers(designes: Designes): { sql: string; parametres: string[][] } | null {
   const morceaux: string[] = [];
   const parametres: string[][] = [];
+  const colonne = (m: ModeleDmmf, nom: string) => guillemets(m.fields.find((f) => f.name === nom)?.dbName ?? nom);
+  const table = (m: ModeleDmmf) => guillemets(m.dbName ?? m.name);
   for (const [cible, ids] of designes) {
     const m = modeles.get(cible);
     if (!m || ids.size === 0) continue;
     const id = m.fields.find((f) => f.name === 'id');
-    const tenant = m.fields.find((f) => f.name === 'tenantId');
-    if (!id || !tenant || id.type !== 'String') continue;
+    if (!id || id.type !== 'String') continue;
+    const litteral = `'${cible.replace(/'/g, "''")}'::text AS "modele"`;
+    if (MODELES_CLOISONNES.has(cible)) {
+      parametres.push([...ids]);
+      morceaux.push(`SELECT ${colonne(m, 'tenantId')}::text AS "dossier", ${litteral} FROM ${table(m)} WHERE ${colonne(m, 'id')} = ANY($${parametres.length}::text[])`);
+      continue;
+    }
+    // Porté par son parent · le dossier se lit sur le parent, par jointure.
+    const porte = parentQuiPorte(cible);
+    const p = porte ? modeles.get(porte.parent) : undefined;
+    if (!porte || !p) continue;
     parametres.push([...ids]);
     morceaux.push(
-      `SELECT ${guillemets(tenant.dbName ?? 'tenantId')}::text AS "dossier", '${cible.replace(/'/g, "''")}'::text AS "modele" FROM ${guillemets(m.dbName ?? m.name)} WHERE ${guillemets(id.dbName ?? 'id')} = ANY($${parametres.length}::text[])`,
+      `SELECT p.${colonne(p, 'tenantId')}::text AS "dossier", ${litteral} FROM ${table(m)} c JOIN ${table(p)} p ON p.${colonne(p, 'id')} = c.${colonne(m, porte.champ)} WHERE c.${colonne(m, 'id')} = ANY($${parametres.length}::text[])`,
     );
   }
   return morceaux.length === 0 ? null : { sql: morceaux.join(' UNION ALL '), parametres };

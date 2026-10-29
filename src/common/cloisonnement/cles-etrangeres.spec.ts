@@ -1,5 +1,9 @@
-import { garderCloisonnement } from './extension-cloisonnement';
-import { lignesDesignees, requeteDesDossiers } from './cles-etrangeres';
+import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { garderCloisonnement, MOTIF_LIGNE_DESIGNEE_INTROUVABLE } from './extension-cloisonnement';
+import { lignesDesignees, parentQuiPorte, requeteDesDossiers } from './cles-etrangeres';
+import { MODELES_CLOISONNES, MODELES_PORTES_PAR_LEUR_PARENT } from './modeles-cloisonnes';
+import { journaliserDansTransaction } from '../audit/contexte-audit';
 import { CloisonnementViole, horsCloisonnement, perimetreDeGroupe } from './contexte-cloisonnement';
 import { dansContexteAudit } from '../audit/contexte-audit';
 
@@ -71,7 +75,7 @@ describe('la garde refuse une ligne désignée d’un autre dossier', () => {
     const query = jest.fn(async () => ({ id: 'x' }));
     await expect(
       dansDossier(D, () => ecrire(client, 'create', { data: { tenantId: D, campagneId: 'k', compteId: 'c', tiersId: 't-voisin' } }, query)),
-    ).rejects.toThrow(/désigne une ligne de Tiers d'un autre dossier/);
+    ).rejects.toThrow(MOTIF_LIGNE_DESIGNEE_INTROUVABLE);
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -79,7 +83,7 @@ describe('la garde refuse une ligne désignée d’un autre dossier', () => {
     const { client } = base([{ dossier: AUTRE, modele: 'Tiers' }]);
     await expect(
       dansDossier(D, () => ecrire(client, 'update', { where: { id: 'x', tenantId: D }, data: { tiersId: 't-voisin' } })),
-    ).rejects.toBeInstanceOf(CloisonnementViole);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('les lignes du dossier passent', async () => {
@@ -108,7 +112,7 @@ describe('la garde refuse une ligne désignée d’un autre dossier', () => {
       dansDossier(D, () =>
         garderCloisonnement(client, { model: 'LigneEcriture', operation: 'update', args: { where: { id: 'l' }, data: { compteId: 'c-voisin' } }, query }),
       ),
-    ).rejects.toThrow(/LigneEcriture\.update désigne une ligne de Compte d'un autre dossier/);
+    ).rejects.toThrow(MOTIF_LIGNE_DESIGNEE_INTROUVABLE);
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -116,5 +120,67 @@ describe('la garde refuse une ligne désignée d’un autre dossier', () => {
     const { client, appels } = base([]);
     await dansDossier(D, () => ecrire(client, 'update', { where: { id: 'x', tenantId: D }, data: { destinataire: 'Y' } }));
     expect(appels).toEqual([]);
+  });
+});
+
+describe('seconde relecture (2026-10-29) · ce que la règle laissait passer ou relisait', () => {
+  it('une liaison par une clé autre que l’identifiant est refusée, jamais passée', async () => {
+    const { client } = base([]);
+    await expect(
+      dansDossier(D, () =>
+        garderCloisonnement(client, {
+          model: 'DemandeConfirmation',
+          operation: 'update',
+          args: { where: { id: 'x', tenantId: D }, data: { compte: { connect: { tenantId_numero: { tenantId: AUTRE, numero: '52110000' } } } } },
+          query: jest.fn(),
+        }),
+      ),
+    ).rejects.toThrow(/par une clé autre que son identifiant/);
+  });
+
+  it('une clé vers une ligne d’écriture se juge par le dossier de son écriture', () => {
+    expect(parentQuiPorte('LigneEcriture')).toEqual({ champ: 'ecritureId', parent: 'Ecriture' });
+    const r = requeteDesDossiers(lignesDesignees('VentilationAnalytique', { ligneEcritureId: 'l-1' }))!;
+    expect(r.sql).toMatch(/JOIN "ecritures" p ON p\."id" = c\."ecritureId"/);
+    expect(r.parametres).toEqual([['l-1']]);
+  });
+
+  it('dans une transaction, une ligne déjà vérifiée ou créée ne se relit pas', async () => {
+    const { client, appels } = base([{ dossier: D, modele: 'Compte' }]);
+    const tx = { ...client };
+    await dansDossier(D, () =>
+      journaliserDansTransaction(tx as never, async () => {
+        const ecrire = (data: unknown) =>
+          garderCloisonnement(client, { model: 'DemandeConfirmation', operation: 'update', args: { where: { id: 'x', tenantId: D }, data }, query: jest.fn(async () => ({})) });
+        await ecrire({ compteId: 'c-1' });
+        await ecrire({ compteId: 'c-1' });
+        // Le groupe créé dans la transaction, désigné ensuite · aucune relecture.
+        await garderCloisonnement(client, { model: 'Lettrage', operation: 'create', args: { data: { tenantId: D } }, query: jest.fn(async () => ({ id: 'g-1' })) });
+        await garderCloisonnement(client, {
+          model: 'LigneEcriture',
+          operation: 'updateMany',
+          args: { where: { id: { in: ['l'] } }, data: { lettrageId: 'g-1' } },
+          query: jest.fn(async () => ({ count: 1 })),
+        });
+      }),
+    );
+    expect(appels).toHaveLength(1);
+  });
+
+  it('LE SCHÉMA RESTE LISIBLE PAR LA RÈGLE · identifiants textuels, aucun uuid natif, chaque modèle porté a son parent', () => {
+    const modeles = Prisma.dmmf.datamodel.models;
+    for (const m of modeles) {
+      if (!MODELES_CLOISONNES.has(m.name) && !MODELES_PORTES_PAR_LEUR_PARENT.has(m.name)) continue;
+      const id = m.fields.find((f) => f.name === 'id');
+      expect([m.name, id?.type, (id as unknown as { nativeType?: unknown } | undefined)?.nativeType ?? null]).toEqual([m.name, 'String', null]);
+      for (const f of m.fields) {
+        if (f.kind !== 'object' || !(MODELES_CLOISONNES.has(f.type) || MODELES_PORTES_PAR_LEUR_PARENT.has(f.type))) continue;
+        // Une clé composée, ou vers autre chose que l'identifiant, échapperait à la règle.
+        if (f.relationFromFields && f.relationFromFields.length > 0) {
+          expect([m.name, f.name, f.relationFromFields.length, f.relationToFields]).toEqual([m.name, f.name, 1, ['id']]);
+        }
+      }
+    }
+    for (const porte of MODELES_PORTES_PAR_LEUR_PARENT) expect([porte, parentQuiPorte(porte) !== null]).toEqual([porte, true]);
   });
 });
