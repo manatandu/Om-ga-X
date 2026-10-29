@@ -1,6 +1,6 @@
 # Arrêtés ministériels n° 005, 006 et 008/CAB/PVPM/ETPS/2010 du 1er avril 2010 · déclarations de la main-d'œuvre, d'embauche et de départ, d'ouverture et de fermeture
 
-Source · Journal officiel de la République Démocratique du Congo, Première partie, n° 7, 1er avril 2010, pages 10 à 17 (scan fourni par Manasse le 2026-10-29, cinq pages, sans couche texte). Transcription faite à la lecture des images à 300 dpi, sans OCR · relue mot à mot sur le scan. L'article 1er de l'arrêté n° 006 est mal imprimé sur le scan (encre bavée) · sa lecture, « dans les quarante-huit heures de l'embauche », est la seule compatible avec les lettres visibles, et elle est signalée comme telle.
+Source · Journal officiel de la République Démocratique du Congo, Première partie, n° 7, 1er avril 2010, pages 10 à 17 (scan fourni par Manasse le 2026-10-29, cinq pages, sans couche texte). Transcription faite à la lecture des images à 300 dpi, sans OCR · relue mot à mot sur le scan. L'article 1er de l'arrêté n° 006, mal imprimé sur le scan (encre bavée), est confirmé par la copie de leganet.cd (rubrique Droit social, Formalités, tirée le 7 octobre 2010) que Manasse a fournie le même jour · « dans les quarante-huit heures de l'embauche », « fait également l'objet ». Le texte de l'arrêté n° 006 concorde mot pour mot avec cette copie, aux coquilles de numérisation de celle-ci près.
 
 Ces trois arrêtés exécutent les articles 216 à 219 du Code du travail (loi n° 015/2002 du 16 octobre 2002) · l'art. 219 renvoie au Ministre « les modalités des déclarations ».
 
@@ -95,7 +95,7 @@ ARRETE :
 
 Tout départ d'un travailleur pour quelque cause que ce soit fait également l'objet d'une déclaration établie dans les mêmes conditions.
 
-(Impression dégradée sur le scan · « quarante-huit heures », « embauche », « également » lus sur les formes visibles des lettres.)
+(Impression dégradée sur le scan · lecture confirmée par la copie de leganet.cd fournie le 2026-10-29.)
 
 ### Section II : Modalités des déclarations
 
