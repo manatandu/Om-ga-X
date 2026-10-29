@@ -95,6 +95,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   OperationsTresorerieController: FonctionMetier.TRESORERIE,
   TitresPlacementController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
+  // Ligne gl-saisie, fonction 35 · l'avis de règlement suit l'ordre qu'il annonce.
+  EnvoiAvisReglementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
   // Ligne microfina-m2 · arrêté de caisse et registre des chèques émis.
   ArretesCaisseController: FonctionMetier.TRESORERIE,
