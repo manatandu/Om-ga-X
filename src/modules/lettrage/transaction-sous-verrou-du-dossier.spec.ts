@@ -93,7 +93,16 @@ describe('le lettrage sous le verrou du dossier', () => {
   it('le service de lettrage ne retourne plus à l’isolation sérialisable', () => {
     const source = readFileSync(join(__dirname, 'lettrage.service.ts'), 'utf-8');
     expect(source).not.toMatch(/avecRetrySerialisable\(/);
-    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(6);
+    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(7);
+  });
+
+  // Point 5 · la déclaration d'un à-nouveau au brouillard réécrit une ligne avant son premier maillon d'audit · elle
+  // prend le verrou du dossier en premier, et un interblocage se rejoue au lieu de rendre un 500.
+  it('la déclaration d’un à-nouveau au brouillard passe sous le verrou du dossier', () => {
+    const source = readFileSync(join(__dirname, '..', 'devises', 'declaration-devise-a-nouveau.service.ts'), 'utf-8');
+    const corps = source.slice(source.indexOf('private async declarerAuBrouillard('), source.indexOf('private async declarerParCorrection('));
+    expect(corps).toMatch(/return transactionSousVerrouDuDossier\(this\.prisma, tenantId,/);
+    expect(corps).not.toMatch(/transactionJournalisee\(/);
   });
 
   // Relecture lettrage-verrou, M3 · la réimputation ne prend pas le verrou du dossier · chaque écriture qui pose un

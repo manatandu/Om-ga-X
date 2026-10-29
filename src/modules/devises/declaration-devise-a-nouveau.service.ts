@@ -9,6 +9,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { prochainNumeroPiece } from '../journaux/numerotation-piece';
 import { lignesFigees } from '../exercice/gel-cloture';
 import { poserGroupeSoldeDuModule, prochaineLettreDuCompte } from '../lettrage/lettrage.service';
+import { transactionSousVerrouDuDossier } from '../lettrage/transaction-sous-verrou-du-dossier';
 import { DevisesService } from './devises.service';
 import { seReevalueALaCloture } from './perimetre-reevaluation';
 import {
@@ -623,7 +624,12 @@ export class DeclarationDeviseANouveauService {
     exactes: ReturnType<typeof lignesExactes>,
     base: Omit<Prisma.DeclarationDeviseANouveauUncheckedCreateInput, 'mode'>,
   ) {
-    return transactionJournalisee(this.prisma, async (tx) => {
+    // Sous le verrou du dossier, pris en PREMIER (point 5 de la relecture
+    // lettrage-verrou) · la mise à jour de la ligne précédait le premier
+    // maillon d'audit, qui prend ce verrou · contre un lettrage qui le tient
+    // déjà et attend cette ligne, l'interblocage (40P01) rendait un 500 ; il
+    // est désormais évité, et rejoué s'il survient.
+    return transactionSousVerrouDuDossier(this.prisma, tenantId, async (tx) => {
       const encore = await tx.ecriture.count({
         where: { id: ligne.ecritureId, tenantId, statut: StatutEcriture.BROUILLARD },
       });
@@ -674,7 +680,7 @@ export class DeclarationDeviseANouveauService {
         ecritureCorrectionId: null,
         messages: [`À-nouveau au brouillard complété en place · ${exactes.length} ligne(s) sur le compte ${ligne.compte.numero}.`],
       };
-    });
+    }, 'Trop de gestes au même instant sur ce dossier · veuillez réessayer la déclaration.');
   }
 
   /**

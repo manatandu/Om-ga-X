@@ -4,7 +4,6 @@ import { PrismaService } from '../../common/prisma.service';
 import { OrigineLettrage, Prisma, StatutEcriture, StatutExercice, StatutLettrage } from '@prisma/client';
 import { lettreBienFormee, motifLettreDejaEmployee, MOTIF_FORMAT_LETTRE, normaliserLettre } from './lettre-choisie';
 import { transactionSousVerrouDuDossier } from './transaction-sous-verrou-du-dossier';
-import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { lignesFigees, refuserSiLignesFigees } from '../exercice/gel-cloture';
 import { comptesPrescrits, ecartDuGroupe, natureDuCompte } from '../reglements/ecart-change-realise';
 import { referentielDuDossier } from '../reglements/compte-ecart-change';
@@ -1066,7 +1065,11 @@ export class LettrageService {
       if (groupe.origine === OrigineLettrage.MODULE) {
         throw new BadRequestException(MOTIF_DELETTRAGE_MODULE(groupe.code));
       }
-      return transactionJournalisee(this.prisma, async (tx) => {
+      // Sous le verrou du dossier, pris en PREMIER (point 5 de la relecture
+      // lettrage-verrou) · la mise à jour des lignes précédait le premier
+      // maillon d'audit, qui prend ce verrou · contre un lettrage qui le tient
+      // déjà et attend ces lignes, l'interblocage (40P01) rendait un 500.
+      return transactionSousVerrouDuDossier(this.prisma, tenantId, async (tx) => {
         // Relu DANS la transaction (m1) · une clôture posée entre-temps fige.
         const duGroupe = await tx.ligneEcriture.findMany({ where: { lettrageId: groupe.id }, select: { id: true } });
         await refuserSiLignesFigees(tx, tenantId, duGroupe.map((l) => l.id), 'délettrer');
@@ -1076,7 +1079,7 @@ export class LettrageService {
         });
         await tx.lettrage.delete({ where: { id: groupe.id } });
         return { lettre: groupe.code, nombreLignes: count };
-      });
+      }, 'Trop de lettrages défaits au même instant sur ce compte · veuillez réessayer.');
     }
 
     // Aucun groupe : dossier dont un lettrage n'aurait pas été repris par la

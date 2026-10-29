@@ -177,6 +177,26 @@ async function main() {
         `lettrage automatique contre trois manuels · ${groupesAuto.length} groupes équilibrés pour ${AUTO} paires, ${ouvertesAuto} ligne(s) ouverte(s) (${issues.map((x) => x.statut).join(', ')})`);
     }
 
+    // DÉLETTRAGES ET LETTRAGES DU MÊME COMPTE EN MÊME TEMPS (point 5) · le
+    // délettrage prend le verrou du dossier avant les lignes · aucun
+    // interblocage ne rend un 500, chaque groupe défait se relettre.
+    {
+      const d = dossiers[3];
+      const groupes3 = await prisma.lettrage.findMany({ where: { compteId: d.fournisseur.id }, include: { lignes: { select: { id: true } } }, orderBy: { code: 'asc' } });
+      const aDefaire = groupes3.slice(0, 5);
+      const aRelettrer = groupes3.slice(5, 10);
+      for (const g of aRelettrer) await d.c.appeler('DELETE', `/comptes/${d.fournisseur.id}/lettrage/${g.code}`, undefined, [200]);
+      const issues = await Promise.all([
+        ...aDefaire.map((g) => d.c.appeler('DELETE', `/comptes/${d.fournisseur.id}/lettrage/${g.code}`, undefined, [200, 409])),
+        ...aRelettrer.map((g) => d.c.appeler('POST', `/comptes/${d.fournisseur.id}/lettrage`, { ligneIds: g.lignes.map((l) => l.id) }, [200, 201, 409])),
+      ]);
+      const statuts = issues.map((x) => x.statut);
+      const ouvertesDefaites = await prisma.ligneEcriture.count({ where: { id: { in: aDefaire.flatMap((g) => g.lignes.map((l) => l.id)) }, lettrageId: null } });
+      const relettrees = await prisma.ligneEcriture.count({ where: { id: { in: aRelettrer.flatMap((g) => g.lignes.map((l) => l.id)) }, lettrageId: { not: null } } });
+      verifier(statuts.every((x) => x < 300) && ouvertesDefaites === 10 && relettrees === 10,
+        `cinq délettrages et cinq lettrages du même compte en même temps · ${ouvertesDefaites}/10 lignes libérées, ${relettrees}/10 relettrées (${statuts.join(', ')})`);
+    }
+
     // À travers la clôture · le premier dossier clôture 2026 et lettre en 2027.
     const d = dossiers[0];
     const ex27 = await d.c.post('/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
