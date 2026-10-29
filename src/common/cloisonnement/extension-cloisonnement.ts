@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { acteurCourant, transactionAuditee } from '../audit/contexte-audit';
-import { MODELES_CLOISONNES } from './modeles-cloisonnes';
+import { MODELES_CLOISONNES, MODELES_PORTES_PAR_LEUR_PARENT } from './modeles-cloisonnes';
+import { lignesDesignees, requeteDesDossiers } from './cles-etrangeres';
 import {
   CloisonnementViole,
   horsCloisonnement,
@@ -245,7 +246,10 @@ export async function garderCloisonnement(
   },
 ): Promise<unknown> {
   const { model, operation, args, query } = contexte;
-  if (!MODELES_CLOISONNES.has(model)) return query(args);
+  const cloisonne = MODELES_CLOISONNES.has(model);
+  // F vaut AUSSI pour les modèles portés par leur parent · c'est la ligne
+  // d'écriture qui porte le compte, et elle n'a pas de `tenantId` à elle.
+  if (!cloisonne && !MODELES_PORTES_PAR_LEUR_PARENT.has(model)) return query(args);
   // Sortie explicite et motivée · connexion, console plateforme, siège de
   // groupe, semis. Voir contexte-cloisonnement.ts.
   if (raisonHorsCloisonnement()) return query(args);
@@ -257,6 +261,32 @@ export async function garderCloisonnement(
   /** La ligne relue appartient-elle à un dossier que la session peut toucher ? */
   const dossierAutorise = (proprietaire: string | null) =>
     proprietaire === dossier || (proprietaire !== null && perimetre?.has(proprietaire) === true);
+
+  // F · les lignes que l'écriture DÉSIGNE par une clé étrangère sont du
+  // dossier de la session, ou du périmètre déclaré (cles-etrangeres.ts).
+  if (dossier && (CREATIONS.includes(operation) || MISES_A_JOUR.includes(operation))) {
+    const designes = lignesDesignees(model, (args as { data?: unknown })?.data);
+    if (operation === 'upsert') {
+      lignesDesignees(model, (args as { create?: unknown })?.create, designes);
+      lignesDesignees(model, (args as { update?: unknown })?.update, designes);
+    }
+    const requete = requeteDesDossiers(designes);
+    if (requete) {
+      // Même lecteur que la règle B · la transaction en cours, sinon `base`.
+      const lecteur = (transactionAuditee() ?? base) as unknown as {
+        $queryRawUnsafe: (sql: string, ...p: unknown[]) => Promise<{ dossier: string | null; modele: string }[]>;
+      };
+      const lus = await lecteur.$queryRawUnsafe(requete.sql, ...requete.parametres);
+      const etrangere = lus.find((l) => !dossierAutorise(l.dossier));
+      if (etrangere) {
+        throw new CloisonnementViole(
+          `Écriture refusée · ${model}.${operation} désigne une ligne de ${etrangere.modele} d'un autre dossier que celui de la session.`,
+        );
+      }
+    }
+  }
+
+  if (!cloisonne) return query(args);
 
   if (CREATIONS.includes(operation) || operation === 'upsert') {
     const donnees = operation === 'upsert' ? (args as { create?: unknown })?.create : (args as { data?: unknown })?.data;
