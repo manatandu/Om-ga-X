@@ -1830,6 +1830,8 @@ export interface ParametresDossier {
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */
   creationCompteEnSaisie: boolean;
+  /** Ligne gl-saisie, fonction 2 · échéance obligatoire sur la ligne d'une facture de tiers (option, faux par défaut). */
+  echeanceObligatoireTiers?: boolean;
   /**
    * Ligne sage-l2, fonction 36 · le seuil sous lequel un règlement passe
    * l'écart en charge, le tiers soldé · `null` quand aucun n'est fixé (aucun

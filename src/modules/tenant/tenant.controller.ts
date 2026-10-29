@@ -15,6 +15,7 @@ import {
   ModifierCircuitVisaDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
+  ModifierEcheanceObligatoireDto,
   ModifierSeuilEcartReglementDto,
   ModifierModulesDto,
   ModifierJeuEtatsDto,
@@ -208,6 +209,16 @@ export class TenantController {
     @Body() dto: ModifierCreationCompteEnSaisieDto,
   ) {
     return this.tenantService.modifierCreationCompteEnSaisie(user.tenantId, dto.creationCompteEnSaisie);
+  }
+
+  /** Échéance obligatoire sur la ligne d'une facture de tiers · ligne gl-saisie, fonction 2. */
+  @Patch('echeance-obligatoire')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierEcheanceObligatoire(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierEcheanceObligatoireDto,
+  ) {
+    return this.tenantService.modifierEcheanceObligatoire(user.tenantId, dto.echeanceObligatoireTiers);
   }
 
   /** Seuil de l'écart de règlement · ligne sage-l2, fonction 36. */

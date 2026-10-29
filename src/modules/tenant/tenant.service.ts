@@ -210,6 +210,8 @@ export class TenantService {
       refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
       // Ligne sage-l1, fonction 14 · aux deux référentiels.
       creationCompteEnSaisie: tenant.creationCompteEnSaisie,
+      // Ligne gl-saisie, fonction 2 · aux deux référentiels.
+      echeanceObligatoireTiers: tenant.echeanceObligatoireTiers,
       // Visa des RIB (`tiers/visa-rib.ts`) · aux deux référentiels, comme le double regard.
       visaRibs: tenant.visaRibs,
       // Circuit de visa avant validation (`comptabilite/circuit-visa.ts`) · aux deux référentiels.
@@ -1214,6 +1216,16 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { creationCompteEnSaisie } });
+    return this.parametres(tenantId);
+  }
+
+  /** L'échéance obligatoire sur la ligne d'une facture de tiers (ligne gl-saisie, fonction 2), option du dossier. */
+  async modifierEcheanceObligatoire(tenantId: string, echeanceObligatoireTiers: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { echeanceObligatoireTiers } });
     return this.parametres(tenantId);
   }
 

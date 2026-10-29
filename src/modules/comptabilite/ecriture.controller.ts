@@ -33,6 +33,8 @@ export class EcritureController {
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
+    // L'échéance obligatoire, option du dossier (ligne gl-saisie, fonction 2) · la saisie seule.
+    await this.ecritureService.verifierEcheancesObligatoires(user.tenantId, dto.lignes, { journalId: dto.journalId });
     // LA SAISIE, seule porte d'un journal de situation (ligne sage-l1). Une
     // caisse ne paie que ce qu'elle contient (`caisse-provisionnee.ts`), jugé
     // après les contrôles d'entrée, à la date inscrite.
@@ -144,6 +146,7 @@ export class EcritureController {
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
+    await this.ecritureService.verifierEcheancesObligatoires(user.tenantId, dto.lignes, { ecritureId: id });
     return this.ecritureService.modifier(user.tenantId, id, dto, { jugerLaCaisse: true, auteur: user.userId });
   }
 

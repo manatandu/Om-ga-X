@@ -1,4 +1,5 @@
 import { motifLignesTenues } from './lignes-tenues';
+import { motifEcheanceManquante } from './echeance-obligatoire';
 import { preparerLesPiecesADetacher, retoucherDescriptionDesPieces } from './pieces-jointes-ecriture';
 import { ecartClasse9, motifRefusClasse9 } from './classe-9-equilibree';
 import { motifExerciceCloture } from './exercice-cloture';
@@ -783,6 +784,43 @@ export class EcritureService {
    */
   async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string) {
     await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
+  }
+
+  /**
+   * L'ÉCHÉANCE OBLIGATOIRE (ligne gl-saisie, fonction 2) · option du dossier,
+   * jugée à la SAISIE seule, au contrôleur, comme le collectif · voir
+   * `echeance-obligatoire.ts`. Le journal décide (un journal de trésorerie
+   * enregistre un règlement) · celui du DTO à la création, celui de la pièce
+   * à la modification, qui ne change pas de journal.
+   */
+  async verifierEcheancesObligatoires(
+    tenantId: string,
+    lignes: { compteId: string; debit?: number; credit?: number; dateEcheance?: string }[] | undefined,
+    piece: { journalId: string } | { ecritureId: string },
+  ) {
+    if (!lignes || lignes.length === 0) return;
+    const dossier = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { echeanceObligatoireTiers: true } });
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    if (!dossier.echeanceObligatoireTiers) return;
+    // Le journal de la pièce, lu par le journal même · aucune lecture
+    // d'écriture n'est faite ici, rien n'est sommé.
+    const journal = await this.prisma.journal.findFirst({
+      where: 'journalId' in piece ? { id: piece.journalId, tenantId } : { tenantId, ecritures: { some: { id: piece.ecritureId, tenantId } } },
+      select: { type: true },
+    });
+    // Journal ou écriture introuvables · les contrôles d'entrée le disent avec leur propre motif.
+    if (!journal) return;
+    const comptes = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: [...new Set(lignes.map((l) => l.compteId))] } },
+      select: { id: true, numero: true },
+    });
+    const numeros = new Map(comptes.map((c) => [c.id, c.numero]));
+    const jugees = lignes.flatMap((l) => {
+      const numero = numeros.get(l.compteId);
+      return numero ? [{ ...l, numero }] : [];
+    });
+    const motif = motifEcheanceManquante(jugees, journal.type);
+    if (motif) throw new BadRequestException(motif);
   }
 
   /**

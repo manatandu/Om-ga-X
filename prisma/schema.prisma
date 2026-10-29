@@ -678,6 +678,13 @@ model Tenant {
   // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
   // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
   creationCompteEnSaisie        Boolean  @default(false)
+  // L'ÉCHÉANCE OBLIGATOIRE SUR LA LIGNE D'UNE FACTURE DE TIERS (ligne gl-saisie,
+  // fonction 2 · Sage i7). Fausse par défaut · aucun texte lu ne l'impose.
+  // Vraie, la saisie refuse la ligne d'une facture sur un 40 ou un 41 sans
+  // date d'échéance (`comptabilite/echeance-obligatoire.ts`) · sans elle, la
+  // balance âgée, les relances et les notes par échéance la rangent à la date
+  // de la pièce ou en « non ventilé ».
+  echeanceObligatoireTiers      Boolean  @default(false)
   // VISA DES RIB PAR UN SECOND UTILISATEUR (décision de Manasse du
   // 2026-10-21, « Lève le gel pour le visa d'un RIB », vu chez Microfina++).
   // Une OPTION, désactivée par défaut, comme le double regard · aucun texte lu

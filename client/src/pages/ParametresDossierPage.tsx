@@ -473,6 +473,24 @@ export function ParametresDossierPage() {
     }
   };
 
+  // Ligne gl-saisie, fonction 2 · l'échéance obligatoire sur la facture d'un tiers.
+  const changerEcheanceObligatoire = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/echeance-obligatoire', { echeanceObligatoireTiers: actif }));
+      setInfo(
+        actif
+          ? 'La saisie exige l’échéance sur la ligne d’une facture de fournisseur ou de client.'
+          : 'L’échéance de la ligne d’une facture redevient facultative.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   // Ligne sage-l1, fonction 14 · créer un compte pendant la saisie.
   const changerCreationCompteEnSaisie = async (actif: boolean) => {
     setEnvoi(true);
@@ -1955,6 +1973,23 @@ export function ParametresDossierPage() {
                       titre="Compte créé pendant la saisie"
                       texte="Cochée, un numéro tapé dans la grille de saisie et inconnu du dossier s’ouvre, sur confirmation, comme sous-compte du compte d’imputation du plan qu’il subdivise · il en reprend les réglages et naît personnalisé. Ni un numéro hors plan, ni un compte de tiers, qui naît avec sa fiche. Décochée, le plan reste la structure de l’administrateur (Plan comptable)."
                       source="AUDCIF art. 18, al. 3 ; SYCEBNL Partie 2 ch. 2, section 1 · règle d’organisation d’OmegaX"
+                    />
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.echeanceObligatoireTiers === true}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerEcheanceObligatoire(e.target.checked)}
+                  />
+                  <span>
+                    Échéance obligatoire sur la facture d’un tiers{' '}
+                    <Aide
+                      titre="Échéance obligatoire"
+                      texte="Cochée, la saisie refuse la ligne d’une facture sans date d’échéance · le fournisseur crédité (40) ou le client débité (41), hors factures non parvenues ou à établir (408, 418), avances (409, 419) et créances reclassées (416), et jamais dans un journal de trésorerie. La balance âgée, les relances, l’échéancier et les notes par échéance lisent cette date · absente, la ligne se range à la date de sa pièce ou en « non ventilé ». Les modules, la clôture et les imports ne sont pas jugés. Aucun texte ne l’impose · c’est l’organisation que le dossier se donne."
+                      source="Fiches des comptes 40 et 41 · règle d’organisation d’OmegaX"
                     />
                   </span>
                 </label>
