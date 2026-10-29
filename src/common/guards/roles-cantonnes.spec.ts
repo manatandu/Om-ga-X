@@ -18,6 +18,7 @@ import { MajorationsHeuresController } from '../../modules/personnel/majorations
 import { FeuillesTempsController } from '../../modules/personnel/feuilles-temps.controller';
 import { MissionsController } from '../../modules/personnel/missions.controller';
 import { SuiviPersonnelController } from '../../modules/personnel/suivi-personnel.controller';
+import { OrganigrammeController } from '../../modules/personnel/organigramme.controller';
 import { BilanSocialController } from '../../modules/personnel/bilan-social.controller';
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
@@ -205,7 +206,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController, OrganigrammeController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -266,6 +267,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/personnel/majorations-heures.controller.ts',
       // Ligne microfina-m3, idée 3 · les missions font partie du registre.
       'modules/personnel/missions.controller.ts',
+      // Ligne paie-suite · l'organigramme et les rattachements font partie du registre.
+      'modules/personnel/organigramme.controller.ts',
       // Ligne sage-l5 · le paiement du salarié et des salaires (fonction 75).
       'modules/personnel/paiement-salaires.controller.ts',
       'modules/personnel/personnel.controller.ts',

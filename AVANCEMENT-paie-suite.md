@@ -22,7 +22,7 @@ Excel), départements et directions, visa d'un plan d'étalement.
 ## Reste
 
 - [x] 81 · plafond de l'art. 41 (al. 1er) dans l'échéancier des contrats, de date à date (`plafondDureeCdd`, partagé avec le contrôle). Fin d'essai et fin de CDD y étaient déjà (microfina-m3).
-- [ ] Départements et directions.
+- [x] Départements et directions · `personnel/organigramme.ts`, tables `UniteOrganisation` (arbre libre, niveau nommé par le dossier, section analytique proposée, sommeil) et `RattachementUnite` (daté, annulable avec motif), onglet Organigramme, section de l'unité préremplie dans la répartition analytique.
 - [ ] 89 · fiche individuelle et cumuls annuels.
 - [ ] 82 · import du personnel.
 - [ ] 87 · rappel de salaires.
@@ -37,6 +37,12 @@ Excel), départements et directions, visa d'un plan d'étalement.
   joue qu'à la PROPOSITION de la retenue au bulletin, jamais un refus · la
   retenue saisie à la main reste celle que la saisie porte
   (avances-salaire.ts, « proposée, jamais substituée »).
+- Organigramme · aucun texte ne fixe l'organisation interne (Code du travail,
+  art. 212, ne demande au contrat que la nature du travail et ses lieux
+  d'exécution ; le plan du 2026-10-29 écrivait « l'emploi occupé », corrigé
+  au texte). La section d'une unité doit être une section Détail active d'un
+  plan qui ventile la classe 6 · sinon la répartition de la paie la
+  refuserait au moment où on suit la proposition.
 
 ## Vérification
 

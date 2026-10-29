@@ -24,6 +24,8 @@ export const ONGLETS_PERSONNEL = [
   'echeances',
   'formation',
   'declaration',
+  // Ligne paie-suite · départements et directions.
+  'organisation',
   'rubriques',
   'baremes',
   'decompte',

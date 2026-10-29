@@ -985,6 +985,9 @@ model Tenant {
   piecesJointesImmobilisations         PieceJointeImmobilisation[]
   piecesJointesSalaries                PieceJointeSalarie[]
   detentionsBiens                      DetentionBien[]
+  // Ligne paie-suite · l'organigramme et les rattachements datés.
+  unitesOrganisation                   UniteOrganisation[]
+  rattachementsUnite                   RattachementUnite[]
   recusDetentionBiens                  RecuDetentionBien[]
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures                     ExportEcritures[]
@@ -3382,6 +3385,8 @@ model SectionAnalytique {
   repartitionsPaie      LigneRepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la section.
   piecesJointes         PieceJointeSection[]
+  // Ligne paie-suite · les unités de l'organigramme qui la proposent à la paie.
+  unitesOrganisation    UniteOrganisation[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -8423,6 +8428,8 @@ model Salarie {
   piecesJointes           PieceJointeSalarie[]
   /// Ligne Microfina M4 · les biens que ce salarié a détenus (RESTRICT).
   detentionsBiens         DetentionBien[]
+  /// Ligne paie-suite · ses rattachements datés à l'organigramme (RESTRICT).
+  rattachementsUnite      RattachementUnite[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -8888,6 +8895,60 @@ model AvanceSalaire {
 
   @@index([tenantId, salarieId])
   @@map("avances_salaire")
+}
+
+/// LIGNE PAIE-SUITE · UNE UNITÉ DE L'ORGANIGRAMME (direction, département,
+/// service, ou ce que le dossier nomme · `personnel/organigramme.ts`). Arbre
+/// libre, sans limite de profondeur · aucun texte ne fixe l'organisation
+/// interne d'une entité. La parente est RESTRICT · une unité qui porte des
+/// filles ne se retire pas. La section analytique est PROPOSÉE à la
+/// répartition analytique de la paie, jamais imposée (RESTRICT · une section
+/// nommée par une unité ne se retire pas en silence).
+model UniteOrganisation {
+  id                  String             @id @default(uuid())
+  tenantId            String
+  tenant              Tenant             @relation(fields: [tenantId], references: [id])
+  code                String             @db.VarChar(20)
+  intitule            String             @db.VarChar(120)
+  /// Le niveau que le dossier nomme (« Direction », « Département »…) · libre, null permis.
+  niveau              String?            @db.VarChar(40)
+  parentId            String?
+  parent              UniteOrganisation? @relation("UniteParente", fields: [parentId], references: [id], onDelete: Restrict)
+  enfants             UniteOrganisation[] @relation("UniteParente")
+  sectionAnalytiqueId String?
+  sectionAnalytique   SectionAnalytique? @relation(fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
+  /// En sommeil · ne reçoit plus de rattachement nouveau, l'historique reste.
+  estActive           Boolean            @default(true)
+  creePar             String
+  createdAt           DateTime           @default(now())
+  rattachements       RattachementUnite[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, parentId])
+  @@map("unites_organisation")
+}
+
+/// LIGNE PAIE-SUITE · LE RATTACHEMENT DATÉ D'UN SALARIÉ À UNE UNITÉ · une
+/// mutation est un rattachement nouveau, jamais une retouche · l'historique se
+/// garde. Une saisie fausse s'ANNULE avec son motif (`annuleLe`), et reste lue.
+model RattachementUnite {
+  id              String            @id @default(uuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  salarieId       String
+  salarie         Salarie           @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  uniteId         String
+  unite           UniteOrganisation @relation(fields: [uniteId], references: [id], onDelete: Restrict)
+  dateEffet       DateTime          @db.Date
+  creePar         String
+  createdAt       DateTime          @default(now())
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?
+
+  @@index([tenantId, salarieId, dateEffet])
+  @@index([tenantId, uniteId])
+  @@map("rattachements_unite")
 }
 
 /// Ce qu'un bulletin a retenu sur une avance. Figé avec le bulletin · un

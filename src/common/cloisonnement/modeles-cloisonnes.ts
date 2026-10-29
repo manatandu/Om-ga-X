@@ -197,6 +197,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   'DetentionBien',
   'RecuDetentionBien',
   'HeuresCompteurJour',
+  // Ligne paie-suite · l'organigramme et les rattachements datés.
+  'UniteOrganisation',
+  'RattachementUnite',
   // Ligne microfina-m3, idée 3 · ordres et frais de mission.
   'MissionSalarie',
   'FraisMission',

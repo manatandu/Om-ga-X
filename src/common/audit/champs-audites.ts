@@ -346,6 +346,10 @@ export const MODELES_AUDITES = new Set<string>([
   'DemandeCongeSalarie',
   'FormationPersonnel',
   'ParticipantFormation',
+  // Ligne paie-suite · une unité créée, déplacée ou mise en sommeil, un
+  // rattachement saisi ou annulé · la trace dit qui et quand.
+  'UniteOrganisation',
+  'RattachementUnite',
   // Le bilan social de l'ONEM · qui l'a saisi, quand, et ce qu'il portait.
   'BilanSocial',
 

@@ -131,6 +131,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   FormationPersonnel: 'Formation du personnel',
   BilanSocial: 'Bilan social',
   ParticipantFormation: "Participant à une formation",
+  UniteOrganisation: "Unité de l'organigramme",
+  RattachementUnite: "Rattachement d'un salarié à une unité",
   VersionBaremePaie: 'Barème de paie',
   RepriseCongesSalarie: 'Reprise des congés acquis',
   CongeSalarie: 'Congé du personnel',

@@ -38,7 +38,7 @@ function coutSaisi(v: string, objet: string): { valeur?: number } | { refus: str
  * `api.get` reste lisible par `comptes-retenus-ecrans.spec.ts`), `cle` la
  * relance quand elle change ; null n'est jamais une liste vide.
  */
-function useLecture<T>(lire: (() => Promise<T>) | null, cle: string) {
+export function useLecture<T>(lire: (() => Promise<T>) | null, cle: string) {
   const [donnees, setDonnees] = useState<T | null>(null);
   const [erreur, setErreur] = useState('');
   // Une lecture par jeton · la réponse d'une clé dépassée est jetée, et une
@@ -74,7 +74,7 @@ function useLecture<T>(lire: (() => Promise<T>) | null, cle: string) {
   return { donnees, erreur, setErreur, relire, remplacer };
 }
 
-function useEnvoi(relire: () => void, setErreur: (m: string) => void) {
+export function useEnvoi(relire: () => void, setErreur: (m: string) => void) {
   const [envoi, setEnvoi] = useState(false);
   const envoyer = async (fn: () => Promise<unknown>) => {
     setErreur('');
@@ -93,7 +93,7 @@ function useEnvoi(relire: () => void, setErreur: (m: string) => void) {
   return { envoi, envoyer };
 }
 
-const Erreur = ({ m }: { m: string }) => (m ? <div className="border border-danger/30 bg-danger-soft text-danger px-3 py-2">{m}</div> : null);
+export const Erreur = ({ m }: { m: string }) => (m ? <div className="border border-danger/30 bg-danger-soft text-danger px-3 py-2">{m}</div> : null);
 
 // ---- Idée 7 ------------------------------------------------------------
 
