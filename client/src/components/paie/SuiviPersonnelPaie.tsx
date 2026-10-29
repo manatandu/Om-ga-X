@@ -539,7 +539,30 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
 
 // ---- Idée 11 -----------------------------------------------------------
 
+type Cellules = {
+  congolais: { h: number; f: number; total: number } | null;
+  etrangers: { h: number; f: number; total: number } | null;
+  totaux: { h: number; f: number; total: number };
+};
+
+type FormulaireDasmo = {
+  exercice: number;
+  au: string;
+  dateLimite: string;
+  anneePrecedente: string;
+  anneeAnterieure: string;
+  identification: { numero: number; libelle: string; valeur: string | null }[];
+  effectifs: { lignes: { cle: string; libelle: string; cellules: Cellules | null }[]; totaux: Cellules; sansClasse: string[] };
+  permanents: { annee: number; anneePrecedente: number; anneeAnterieure: number };
+  nonPermanents: { journaliers: number; temporaires: number; apprentis: number; noteTemporaires: string };
+  manquants: string[];
+  nonRemplies: string[];
+  modele: string;
+  fondement: string;
+};
+
 type Declaration = {
+  exercice: number;
   annee: number;
   au: string;
   effectif: number;
@@ -554,72 +577,183 @@ type Declaration = {
   reserve: string;
   reserveNationalite: string | null;
   dateLimite: string;
+  formulaire: FormulaireDasmo;
 };
 
-export function OngletDeclarationMainOeuvre() {
-  const [annee, setAnnee] = useState(String(new Date().getFullYear() - 1));
-  const { donnees, erreur } = useLecture(
-    /^\d{4}$/.test(annee) ? () => api.get<Declaration>(`/personnel/declaration-main-oeuvre/${annee}`) : null,
-    `declaration-${annee}`,
-  );
-  const n = (v: number | null) => (v === null ? 'non calculé' : String(v));
+const vide = <span className="text-text-dim">……</span>;
+
+/** Une ligne du tableau des effectifs · une cellule non calculée reste en pointillés, jamais à zéro. */
+function CellulesDasmo({ c }: { c: Cellules | null }) {
+  const trois = (v: { h: number; f: number; total: number } | null | undefined) =>
+    [v?.h, v?.f, v?.total].map((x, i) => (
+      <td key={i} className="px-1.5 py-0.5 text-right">
+        {x === undefined || x === null ? vide : x}
+      </td>
+    ));
   return (
-    <div className="ecran-seul max-w-[900px] text-[11.5px] space-y-3">
-      <Erreur m={erreur} />
-      <div className="font-semibold flex items-center gap-1.5">
-        Déclaration de la main-d&apos;œuvre
-        <input aria-label="Année déclarée" value={annee} onChange={(e) => setAnnee(e.target.value)} className={`${champ} w-[60px] font-normal`} />
-        <Aide
-          titre="Déclaration annuelle de la main-d'œuvre"
-          texte="Toute entreprise fait parvenir chaque année, au plus tard le 31 janvier, à l'Inspection du travail et à l'Office national de l'emploi, une déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, en quatre exemplaires sur le formulaire officiel. Le formulaire compte le personnel permanent au 1er janvier. OmegaX en sert les chiffres de l'effectif tirés du registre ; le reste du formulaire et le bilan social ne sont pas servis."
-          source="Code du travail, art. 218 et 219 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2 à 5 ; arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010"
-        />
+    <>
+      {trois(c?.congolais)}
+      {trois(c?.etrangers)}
+      {trois(c?.totaux)}
+    </>
+  );
+}
+
+/**
+ * LA DÉCLARATION ANNUELLE DE LA SITUATION DE LA MAIN-D'ŒUVRE · le modèle de
+ * l'ONEM annexé à l'arrêté du 24 février 2023, rempli par le serveur
+ * (`situation-main-oeuvre.ts`), rien n'est recalculé ici. L'exercice est
+ * l'année du 1er janvier, comme sur le formulaire. Il s'imprime · les
+ * réglages ne s'impriment pas (`ecran-seul`).
+ */
+export function OngletDeclarationMainOeuvre() {
+  const [exercice, setExercice] = useState(String(new Date().getFullYear()));
+  const { donnees, erreur } = useLecture(
+    /^\d{4}$/.test(exercice) ? () => api.get<Declaration>(`/personnel/declaration-main-oeuvre/${exercice}`) : null,
+    `declaration-${exercice}`,
+  );
+  const f = donnees?.formulaire;
+  return (
+    <div className="max-w-[1000px] text-[11.5px] space-y-3">
+      <div className="ecran-seul space-y-2">
+        <Erreur m={erreur} />
+        <div className="font-semibold flex items-center gap-1.5">
+          Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice
+          <input aria-label="Exercice du formulaire" value={exercice} onChange={(e) => setExercice(e.target.value)} className={`${champ} w-[60px] font-normal`} />
+          <Aide
+            titre="Déclaration annuelle de la situation de la main-d'œuvre"
+            texte="Toute entreprise dépose chaque année, au plus tard le 31 janvier, la déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, sur le formulaire de l'ONEM annexé à l'arrêté de 2023, en quatre exemplaires. L'exercice est l'année du 1er janvier, comme sur le formulaire. OmegaX le remplit pour ce que le registre porte · l'identification, l'effectif permanent (contrats à durée indéterminée) par catégorie de la grille du décret n° 25/22, nationalité et sexe, et les non-permanents. Le reste se remplit à la main, et il est nommé."
+            source="Code du travail, art. 218 et 219 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 1er à 5, et son modèle annexé"
+          />
+          {f && (
+            <button type="button" onClick={() => window.print()} className="bg-sel text-white font-semibold px-3 py-1 ml-auto">
+              Imprimer le formulaire
+            </button>
+          )}
+        </div>
+        {donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}
+        {donnees && (
+          <>
+            <div className="text-warning">{donnees.reserve}</div>
+            {donnees.reserveNationalite && <div className="text-warning">{donnees.reserveNationalite}</div>}
+            {f && f.manquants.length > 0 && (
+              <div>
+                <div className="font-semibold">À compléter avant le dépôt</div>
+                <ul className="list-disc pl-5">
+                  {f.manquants.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                  {f.nonRemplies.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {f && f.effectifs.sansClasse.length > 0 && (
+              <div className="text-text-dim">Permanents sans classe au contrat · {f.effectifs.sansClasse.join(', ')}.</div>
+            )}
+            <div>
+              Mouvements de l&apos;année {donnees.annee} · entrées {donnees.entrees}, sorties {donnees.sorties}
+              {donnees.regleMouvements && (
+                <>
+                  {' '}
+                  <Aide titre="Entrées et sorties" texte={donnees.regleMouvements} source="Code du travail, art. 217 et 218" />
+                </>
+              )}
+            </div>
+            <div>
+              Situation au {donnees.au}, à déposer au plus tard le {donnees.dateLimite}.
+            </div>
+            <div className="text-text-dim">À adresser {donnees.destinataires}</div>
+          </>
+        )}
       </div>
-      {donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}
-      {donnees && (
-        <>
-          <div className="text-warning">{donnees.reserve}</div>
-          {donnees.reserveNationalite && <div className="text-warning">{donnees.reserveNationalite}</div>}
-          <table className="w-full" aria-label="Main-d'œuvre au 1er janvier">
+      {f && (
+        <div className="border border-border px-4 py-3 space-y-2" aria-label="Déclaration annuelle de la situation de la main-d'œuvre">
+          <div className="font-semibold">Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice {f.exercice}</div>
+          <div className="text-text-dim">{f.fondement}</div>
+          <div className="font-semibold">I. Identification de l&apos;entreprise</div>
+          <table className="w-full eviter-coupure">
+            <tbody>
+              {f.identification.map((c) => (
+                <tr key={c.numero}>
+                  <td className="px-2 py-0.5 w-[40px] text-right">{c.numero}</td>
+                  <td className="px-2 py-0.5 w-[240px]">{c.libelle}</td>
+                  <td className="px-2 py-0.5">{c.valeur ?? <span className="text-text-dim">……………………</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="font-semibold">II. Effectif des travailleurs et répartition du personnel · personnel permanent au {f.au}</div>
+          <table className="w-full eviter-coupure" aria-label="Personnel permanent par catégorie">
             <thead>
               <tr>
-                <th className="text-left px-2 py-1">Au {donnees.au}</th>
-                <th className="text-right px-2 py-1">Nationaux</th>
-                <th className="text-right px-2 py-1">Étrangers</th>
+                <th rowSpan={2} className="text-left px-1.5 py-0.5">
+                  Catégories professionnelles
+                </th>
+                <th colSpan={3} className="px-1.5 py-0.5">Congolaise</th>
+                <th colSpan={3} className="px-1.5 py-0.5">Étrangère</th>
+                <th colSpan={3} className="px-1.5 py-0.5">Totaux</th>
+              </tr>
+              <tr>
+                {['H', 'F', 'Total', 'H', 'F', 'Total', 'H', 'F', 'Total'].map((x, i) => (
+                  <th key={i} className="text-right px-1.5 py-0.5">
+                    {x}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td className="px-2 py-1">Hommes</td>
-                <td className="px-2 py-1 text-right">{n(donnees.hommes.nationaux)}</td>
-                <td className="px-2 py-1 text-right">{n(donnees.hommes.etrangers)}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-1">Femmes</td>
-                <td className="px-2 py-1 text-right">{n(donnees.femmes.nationaux)}</td>
-                <td className="px-2 py-1 text-right">{n(donnees.femmes.etrangers)}</td>
-              </tr>
+              {f.effectifs.lignes.map((l) => (
+                <tr key={l.cle}>
+                  <td className="px-1.5 py-0.5">{l.libelle}</td>
+                  <CellulesDasmo c={l.cellules} />
+                </tr>
+              ))}
               <tr className="font-semibold">
-                <td className="px-2 py-1">Effectif</td>
-                <td colSpan={2} className="px-2 py-1 text-right">
-                  {donnees.effectif}
-                </td>
+                <td className="px-1.5 py-0.5">Totaux</td>
+                <CellulesDasmo c={f.effectifs.totaux} />
               </tr>
             </tbody>
           </table>
-          <div>
-            Entrées de l&apos;année {donnees.entrees} · sorties {donnees.sorties}
-            {donnees.regleMouvements && (
-              <>
-                {' '}
-                <Aide titre="Entrées et sorties" texte={donnees.regleMouvements} source="Code du travail, art. 217 et 218" />
-              </>
-            )}
-            {donnees.sexeNonRenseigne ? ` · ${donnees.sexeNonRenseigne} salarié(s) sans sexe renseigné` : ''}
-          </div>
-          <div>Au plus tard le {donnees.dateLimite}.</div>
-          <div className="text-text-dim">À adresser {donnees.destinataires}</div>
-        </>
+          <table className="w-full eviter-coupure" aria-label="Permanents et non-permanents">
+            <tbody>
+              <tr>
+                <td className="px-2 py-0.5">Personnel permanent au {f.au}</td>
+                <td className="px-2 py-0.5 text-right">{f.permanents.annee}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">Personnel permanent au {f.anneePrecedente}</td>
+                <td className="px-2 py-0.5 text-right">{f.permanents.anneePrecedente}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">Personnel permanent au {f.anneeAnterieure}</td>
+                <td className="px-2 py-0.5 text-right">{f.permanents.anneeAnterieure}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">Journaliers en service au {f.au}</td>
+                <td className="px-2 py-0.5 text-right">{f.nonPermanents.journaliers}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">
+                  Temporaires en service au {f.au} <Aide titre="Temporaires" texte={f.nonPermanents.noteTemporaires} source={f.modele} />
+                </td>
+                <td className="px-2 py-0.5 text-right">{f.nonPermanents.temporaires}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">Consultants · saisonniers</td>
+                <td className="px-2 py-0.5 text-right">{vide}</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0.5">Effectif maximum de chaque catégorie de non-permanents, et sa période</td>
+                <td className="px-2 py-0.5 text-right">{vide}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="font-semibold">III à V. Masse salariale, durée du travail, besoins en main-d&apos;œuvre et en formation</div>
+          <div className="text-text-dim">À remplir sur le formulaire de l&apos;ONEM.</div>
+          <div>Fait à ……………………, le …………………… · signature du déclarant</div>
+        </div>
       )}
     </div>
   );
