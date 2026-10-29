@@ -1117,6 +1117,8 @@ export interface FamilleImmobilisation {
   compteDotation?: Compte;
   dureeAmortissementAns: number;
   modeAmortissement: ModeAmortissement;
+  /** Ligne immos, n° 70 · la section de la dotation de ses biens · null, aucune. */
+  sectionAnalytiqueId?: string | null;
   estActif: boolean;
 }
 

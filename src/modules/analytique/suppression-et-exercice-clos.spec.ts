@@ -61,6 +61,9 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
     // Ligne sage-l5, fonction 88 · la répartition analytique de la paie retient sa section et son plan.
     ligneRepartitionAnalytiquePaie: { count: compteur(usages.repartitionsPaie, 'sectionId') },
     repartitionAnalytiquePaie: { count: compteur(undefined, 'planId') },
+    // Ligne immos, n° 70 · un bien et une famille retiennent la section de leur dotation.
+    immobilisation: { count: compteur(undefined, 'sectionAnalytiqueId') },
+    familleImmobilisation: { count: compteur(undefined, 'sectionAnalytiqueId') },
     // Ligne microfina-m2 · la ligne et l'exécution d'un bon de commande retiennent leur section.
     ligneBonCommande: { count: compteur(undefined, 'sectionId') },
     executionBonCommande: { count: compteur(undefined, 'sectionId') },

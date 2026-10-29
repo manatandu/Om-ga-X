@@ -161,6 +161,7 @@ import {
 } from './transfert-depreciation-en-cours';
 import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-remplacee';
 import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
+import { motifSectionImpropre, sectionDuBien, ventilationDeLaDotation } from './analytique-des-biens';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -1371,6 +1372,94 @@ export class ImmobilisationService {
     };
   }
 
+  /**
+   * LIGNE IMMOS, N° 70 · une section posée sur un bien ou une famille · du
+   * dossier (sinon 404), Détail, active, d'un plan actif qui ventile la classe
+   * du compte de dotation (`motifSectionImpropre`, 400 nommé). La même règle
+   * juge la passation, qui ne refuse pas mais part non ventilée.
+   */
+  async verifierSectionDuBien(tenantId: string, sectionId: string, compteDotationId: string) {
+    const [section, compte] = await Promise.all([
+      this.prisma.sectionAnalytique.findFirst({
+        where: { id: sectionId, tenantId },
+        select: { id: true, code: true, type: true, estActive: true, plan: { select: { code: true, estActif: true, classesVentilees: true } } },
+      }),
+      this.prisma.compte.findFirst({ where: { id: compteDotationId, tenantId }, select: { numero: true } }),
+    ]);
+    if (!section) throw new NotFoundException('Section analytique introuvable pour ce dossier');
+    const motif = motifSectionImpropre(section, (compte?.numero ?? '6').charAt(0));
+    if (motif) throw new BadRequestException(motif);
+  }
+
+  /**
+   * Ligne immos, n° 70 · les sections qui peuvent recevoir la dotation d'un
+   * bien · Détail, actives, d'un plan actif qui ventile la classe 6. Servies,
+   * l'écran ne recalcule rien. Bornées (un plan analytique d'ONG tient
+   * rarement plus de quelques centaines de sections) · la borne se dit.
+   */
+  async sectionsPourLesBiens(tenantId: string) {
+    const BORNE = 1000;
+    const sections = await this.prisma.sectionAnalytique.findMany({
+      where: { tenantId, type: TypeCompteDetailTotal.DETAIL, estActive: true, plan: { estActif: true } },
+      select: { id: true, code: true, intitule: true, plan: { select: { code: true, intitule: true, classesVentilees: true } } },
+      orderBy: [{ plan: { ordre: 'asc' } }, { code: 'asc' }],
+      take: BORNE + 1,
+    });
+    const retenues = sections.filter((s) => s.plan.classesVentilees.split(',').map((c) => c.trim()).includes('6'));
+    return {
+      sections: retenues.slice(0, BORNE).map((s) => ({ id: s.id, code: s.code, intitule: s.intitule, plan: { code: s.plan.code, intitule: s.plan.intitule } })),
+      tronque: sections.length > BORNE,
+    };
+  }
+
+  /**
+   * Ligne immos, n° 70 · la section d'une famille · un geste NOMMÉ, la
+   * famille ne se saisissant plus (décision de Manasse du 2026-10-01) · seule
+   * sa section se pose ou se retire.
+   */
+  async poserSectionFamille(tenantId: string, id: string, sectionId: string | null) {
+    const famille = await this.prisma.familleImmobilisation.findFirst({ where: { id, tenantId }, select: { id: true, compteDotationId: true } });
+    if (!famille) throw new NotFoundException('Famille introuvable pour ce dossier');
+    if (sectionId) await this.verifierSectionDuBien(tenantId, sectionId, famille.compteDotationId);
+    return this.prisma.familleImmobilisation.update({
+      where: { id: famille.id },
+      data: { sectionAnalytique: sectionId ? { connect: { id: sectionId } } : { disconnect: true } },
+      select: { id: true, sectionAnalytiqueId: true },
+    });
+  }
+
+  /**
+   * Ligne immos, n° 70 · la ventilation de la ligne de dotation d'un bien,
+   * lue au moment de la passation · la section du bien, sinon de sa famille ;
+   * impropre depuis sa pose, la dotation part non ventilée et le compte rendu
+   * le dit (`ventilationDeLaDotation`).
+   */
+  private async ventilationPourLaDotation(
+    tenantId: string,
+    immo: { sectionAnalytiqueId?: string | null; compteDotationId: string; famille?: { sectionAnalytiqueId?: string | null } | null },
+    montant: number,
+  ) {
+    const id = immo.sectionAnalytiqueId ?? immo.famille?.sectionAnalytiqueId ?? null;
+    if (!id) return ventilationDeLaDotation(null, '6', montant);
+    const [section, compte] = await Promise.all([
+      this.prisma.sectionAnalytique.findFirst({
+        where: { id, tenantId },
+        select: { id: true, code: true, type: true, estActive: true, plan: { select: { code: true, estActif: true, classesVentilees: true } } },
+      }),
+      this.prisma.compte.findFirst({ where: { id: immo.compteDotationId, tenantId }, select: { numero: true } }),
+    ]);
+    // RESTRICT au schéma · une section introuvable dirait un lien d'un autre
+    // dossier, que la pose refuse ; elle part non ventilée, dite.
+    if (!section) {
+      return { ventilations: [], compteRendu: { section: '·', origine: immo.sectionAnalytiqueId ? ('FICHE' as const) : ('FAMILLE' as const), nonVentilee: 'Dotation passée non ventilée · la section du bien est introuvable pour ce dossier.' } };
+    }
+    return ventilationDeLaDotation(
+      sectionDuBien(immo.sectionAnalytiqueId ? section : null, immo.sectionAnalytiqueId ? null : section),
+      (compte?.numero ?? '6').charAt(0),
+      montant,
+    );
+  }
+
   /** Un lieu d'un autre dossier n'existe pas, pour celui-ci. */
   private async lieuDuDossier(tenantId: string, lieuId: string) {
     const lieu = await this.prisma.lieuBien.findFirst({ where: { id: lieuId, tenantId }, select: { id: true } });
@@ -2432,6 +2521,7 @@ export class ImmobilisationService {
           numeroInventaire: dto.numeroInventaire,
           // Ligne immos, n° 71 · vide n'est pas un numéro.
           numeroSerie: dto.numeroSerie?.trim() || null,
+          sectionAnalytiqueId: dto.sectionAnalytiqueId ?? null,
           lieuId: dto.lieuId ?? null,
           compteImmobilisationId: famille.compteImmobilisationId,
           compteAmortissementId: famille.compteAmortissementId,
@@ -2826,6 +2916,8 @@ export class ImmobilisationService {
     }
 
     if (dto.lieuId) await this.lieuDuDossier(tenantId, dto.lieuId);
+    // Ligne immos, n° 70 · une section impropre se refuse à la pose, nommée.
+    if (dto.sectionAnalytiqueId) await this.verifierSectionDuBien(tenantId, dto.sectionAnalytiqueId, famille.compteDotationId);
 
     // LA RÉSERVE DE PROPRIÉTÉ (lot 15) · une information de fiche, déduite
     // d'une dette au 4816 quand rien n'est dit, et jamais contredite par elle
@@ -4111,13 +4203,15 @@ export class ImmobilisationService {
 
     // Utilisation au crédit du compte 28 (skill sycebnl, COMPTE 28) · par le
     // débit du compte 681 (dotations aux amortissements d'exploitation).
+    // Ligne immos, n° 70 · la charge se ventile sur la section du bien.
+    const ventilation = await this.ventilationPourLaDotation(tenantId, immo, montant);
     const ecriture = await this.ecritureService.creer(tenantId, userId, {
       exerciceId: dto.exerciceId,
       journalId: dto.journalId,
       date: exercice.dateFin.toISOString().slice(0, 10),
       libelle: `Dotation aux amortissements · ${immo.designation}`,
       lignes: [
-        { compteId: immo.compteDotationId, debit: montant, credit: 0 },
+        { compteId: immo.compteDotationId, debit: montant, credit: 0, ...(ventilation.ventilations.length ? { ventilations: ventilation.ventilations } : {}) },
         { compteId: immo.compteAmortissementId, debit: 0, credit: montant },
       ],
     });
@@ -4141,7 +4235,7 @@ export class ImmobilisationService {
           data: { immobilisationId: id, exerciceId: dto.exerciceId, montant, ecritureId: ecriture.id },
         });
       });
-      return versDotation(dotation);
+      return { ...versDotation(dotation), ventilation: ventilation.compteRendu };
     } catch (err) {
       if (estConflitUnicite(err)) {
         await this.annulerEcritureOrpheline(ecriture.id);
@@ -5524,6 +5618,8 @@ export class ImmobilisationService {
     let dotationPoseeId: string | null = null;
     try {
       if (montantComplement > EPSILON) {
+        // Ligne immos, n° 70 · le complément se ventile comme la dotation.
+        const ventilationComplement = await this.ventilationPourLaDotation(tenantId, immo, montantComplement);
         const ecritureComplement = await this.ecritureService.creer(tenantId, userId, {
           exerciceId: dto.exerciceId,
           journalId: dto.journalId,
@@ -5531,7 +5627,12 @@ export class ImmobilisationService {
           libelle: `Dotation complémentaire (sortie) · ${immo.designation}`,
           reference: referencePiece,
           lignes: [
-            { compteId: immo.compteDotationId, debit: montantComplement, credit: 0 },
+            {
+              compteId: immo.compteDotationId,
+              debit: montantComplement,
+              credit: 0,
+              ...(ventilationComplement.ventilations.length ? { ventilations: ventilationComplement.ventilations } : {}),
+            },
             { compteId: immo.compteAmortissementId, debit: 0, credit: montantComplement },
           ],
         });

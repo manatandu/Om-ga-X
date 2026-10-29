@@ -12,6 +12,7 @@ const valeurs: ValeursFiche = {
   numeroInventaire: 'INV-1',
   natureFiscaleCle: null,
   numeroSerie: 'SN-001',
+  sectionAnalytiqueId: null,
   compteImmobilisationId: 'c1',
   compteContrepartieId: 'c521',
   dateAcquisition: '2026-01-01',
@@ -55,6 +56,12 @@ describe('le corps de la modification', () => {
   it('le numéro de série (n° 71) est un champ libre · changé il part seul, vidé il part en null', () => {
     expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: ' SN-002 ' }).corps).toEqual({ numeroSerie: 'SN-002' });
     expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: '' }).corps).toEqual({ numeroSerie: null });
+  });
+
+  it('la section analytique (n° 70) se pose et se retire seule, champ libre', () => {
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), sectionAnalytiqueId: 's1' }).corps).toEqual({ sectionAnalytiqueId: 's1' });
+    const posee = { ...valeurs, sectionAnalytiqueId: 's1' };
+    expect(corpsModification(posee, { ...saisieDepuis(posee), sectionAnalytiqueId: '' }).corps).toEqual({ sectionAnalytiqueId: null });
   });
 
   it('la contrepartie d’un bien repris ne part jamais · il n’a pas d’écriture', () => {

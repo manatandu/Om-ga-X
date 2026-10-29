@@ -27,7 +27,7 @@
 import { motifRefusEntreeApresDetention } from './detention-bien';
 
 /** Les champs sans effet comptable. */
-export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle', 'numeroSerie'] as const;
+export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle', 'numeroSerie', 'sectionAnalytiqueId'] as const;
 
 /** Les champs qui fondent l'écriture d'acquisition et le plan. */
 export const CHAMPS_A_EFFET = [

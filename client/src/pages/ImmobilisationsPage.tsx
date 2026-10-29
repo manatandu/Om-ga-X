@@ -22,6 +22,7 @@ import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
 import { AssistantCreationBien } from '../components/AssistantCreationBien';
 import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
 import { SimulationDotations } from '../components/SimulationDotations';
+import { SectionsFamilles } from '../components/SectionsFamilles';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
@@ -757,11 +758,17 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     setInfo(null);
     try {
       const od = journaux.find((j) => j.code === 'OD');
-      const resultat = await api.post<{ montant: number }>(`/immobilisations/${immoId}/dotation`, {
+      const resultat = await api.post<{
+        montant: number;
+        ventilation?: { section: string; origine: 'FICHE' | 'FAMILLE'; nonVentilee: string | null } | null;
+      }>(`/immobilisations/${immoId}/dotation`, {
         exerciceId: exerciceCourant.id,
         journalId: od?.id ?? journaux[0]?.id,
       });
-      setInfo(`Dotation de ${montant(resultat.montant)} passée pour l'exercice ${libelleExercice(exerciceCourant)}.`);
+      // Ligne immos, n° 70 · la ventilation se dit, et une dotation partie non ventilée aussi.
+      const v = resultat.ventilation;
+      const ventilation = !v ? '' : v.nonVentilee ? ` ${v.nonVentilee}` : ` Ventilée sur la section ${v.section}${v.origine === 'FAMILLE' ? ' (famille)' : ''}.`;
+      setInfo(`Dotation de ${montant(resultat.montant)} passée pour l'exercice ${libelleExercice(exerciceCourant)}.${ventilation}`);
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Impossible de passer la dotation');
@@ -2817,6 +2824,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
             <BiensSousReserveDePropriete exerciceId={exerciceCourant?.id} syscohada={syscohada} />
             {/* Ligne immos, n° 72 · le plan de tout le parc, simulé sans écriture · une lecture, ouverte à tous. */}
             <SimulationDotations exerciceId={exerciceCourant?.id} />
+            {/* Ligne immos, n° 70 · la section des familles, une structure · à l'administrateur, comme au serveur. */}
+            {estAdmin && <SectionsFamilles />}
             {/* Lot 14 · la réévaluation porte sur TOUT le parc (art. 62), jamais sur un bien · rangée parmi les opérations. */}
             <ReevaluationImmobilisations
               exerciceId={exerciceCourant?.id}

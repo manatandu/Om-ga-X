@@ -10,6 +10,7 @@ import {
   CreerImmobilisationDto,
   CreerLocationAcquisitionDto,
   EchangerImmobilisationDto,
+  SectionFamilleDto,
   SimulerLocationAcquisitionDto,
   AffecterLieuDto,
   LieuBienDto,
@@ -118,6 +119,27 @@ export class ImmobilisationController {
   @Get('familles')
   async listerFamilles(@CurrentUser() user: AuthenticatedUser) {
     return this.immobilisationService.listerFamilles(user.tenantId);
+  }
+
+  /** Ligne immos, n° 70 · les sections qui peuvent recevoir la dotation d'un bien. */
+  @Get('sections-analytiques')
+  async sectionsPourLesBiens(@CurrentUser() user: AuthenticatedUser) {
+    return this.immobilisationService.sectionsPourLesBiens(user.tenantId);
+  }
+
+  /**
+   * Ligne immos, n° 70 · la section d'une famille · une structure, à
+   * l'administrateur, comme l'étaient les familles. Seule la section se pose,
+   * la famille ne se saisissant plus.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Patch('familles/:id/section')
+  async poserSectionFamille(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SectionFamilleDto,
+  ) {
+    return this.immobilisationService.poserSectionFamille(user.tenantId, id, dto.sectionAnalytiqueId ?? null);
   }
 
   // LA FAMILLE NE SE SAISIT PLUS (2026-10-01, décision de Manasse) · elle

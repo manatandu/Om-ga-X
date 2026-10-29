@@ -3375,6 +3375,9 @@ model SectionAnalytique {
   repartitionsPaie      LigneRepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la section.
   piecesJointes         PieceJointeSection[]
+  // Ligne immos, fonction 70 · les biens et les familles dont la dotation s'y ventile.
+  immobilisations       Immobilisation[]                 @relation("ImmoSection")
+  famillesImmobilisation FamilleImmobilisation[]         @relation("FamilleImmoSection")
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -4887,6 +4890,13 @@ model FamilleImmobilisation {
   dureeAmortissementAns Int
   modeAmortissement     ModeAmortissement @default(LINEAIRE)
 
+  /// LIGNE IMMOS, FONCTION N° 70 · la section analytique où se ventile la
+  /// dotation des biens de la famille qui n'en portent pas une à eux
+  /// (`analytique-des-biens.ts`). Null · aucune. RESTRICT · une section qui
+  /// la porte ne se supprime pas en dénouant le lien sans le dire.
+  sectionAnalytiqueId String?
+  sectionAnalytique   SectionAnalytique? @relation("FamilleImmoSection", fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
+
   estActif  Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -4914,6 +4924,13 @@ model Immobilisation {
   /// Jamais repris par la duplication · un numéro de série désigne UN objet.
   /// Ni code-barres ni étiquette (écartés, plan du 2026-10-29).
   numeroSerie      String?   @db.VarChar(100)
+
+  /// LIGNE IMMOS, FONCTION N° 70 · la section analytique où se ventile la
+  /// dotation de CE bien · elle prime sur celle de sa famille
+  /// (`analytique-des-biens.ts`). Information de fiche, sans effet sur les
+  /// dotations déjà passées. RESTRICT, comme celle de la famille.
+  sectionAnalytiqueId String?
+  sectionAnalytique   SectionAnalytique? @relation("ImmoSection", fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
 
   /// LIEU DU BIEN · référentiel des lieux du dossier (Sage Immobilisations,
   /// « Lieux des biens »). Information de fiche, sans effet comptable ; un

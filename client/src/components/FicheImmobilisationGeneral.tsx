@@ -18,6 +18,12 @@ interface EtatFiche {
   suppression: { ouverte: boolean; motif: string | null };
 }
 
+/** Ligne immos, n° 70 · `GET /immobilisations/sections-analytiques`. */
+export interface SectionsPourLesBiens {
+  sections: { id: string; code: string; intitule: string; plan: { code: string; intitule: string } }[];
+  tronque: boolean;
+}
+
 /** La copie proposée par « Dupliquer » (`GET /immobilisations/:id/duplication`). */
 export interface PropositionDuplication {
   designation: string;
@@ -70,6 +76,9 @@ export function FicheImmobilisationGeneral({
   const [bareme, setBareme] = useState<NatureBaremeFiscal[]>([]);
   // Un barème illisible n'est pas un barème vide · la liste des natures le dit.
   const [echecBareme, setEchecBareme] = useState<string | null>(null);
+  // Ligne immos, n° 70 · les sections qui reçoivent une dotation, servies · null tant que non lues.
+  const [sections, setSections] = useState<SectionsPourLesBiens | null>(null);
+  const [echecSections, setEchecSections] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmerSuppression, setConfirmerSuppression] = useState(false);
@@ -122,6 +131,18 @@ export function FicheImmobilisationGeneral({
       .get<NatureBaremeFiscal[]>('/immobilisations/bareme-fiscal')
       .then((b) => vivant && setBareme(b))
       .catch((e) => vivant && setEchecBareme(e instanceof ApiError ? e.message : 'Barème fiscal illisible'));
+    return () => {
+      vivant = false;
+    };
+  }, [peutEcrire]);
+  useEffect(() => {
+    if (!peutEcrire) return;
+    let vivant = true;
+    setEchecSections(null);
+    api
+      .get<SectionsPourLesBiens>('/immobilisations/sections-analytiques')
+      .then((s) => vivant && setSections(s))
+      .catch((e) => vivant && setEchecSections(e instanceof ApiError ? e.message : 'Sections analytiques illisibles'));
     return () => {
       vivant = false;
     };
@@ -235,6 +256,31 @@ export function FicheImmobilisationGeneral({
         <label className={etiquette}>
           N° de série
           <input value={saisie.numeroSerie} maxLength={100} disabled={!peutEcrire} onChange={(e) => poser('numeroSerie', e.target.value)} className={champ} />
+        </label>
+        <label className={`${etiquette} sm:col-span-2`}>
+          <span className="flex items-center gap-1">
+            Section analytique
+            <Aide
+              titre="Section analytique du bien"
+              texte="La section où se ventile la dotation du bien, à chaque passation et au complément de sortie. Vide, celle de la famille vaut. Une section mise en sommeil depuis ne bloque pas la dotation · elle part non ventilée, et le compte rendu le dit. Les dotations déjà passées ne changent pas."
+              source="AUDCIF Titre VII, classe 9 · usage laissé à l’initiative des entités"
+            />
+          </span>
+          <select value={saisie.sectionAnalytiqueId} disabled={!peutEcrire || sections === null} onChange={(e) => poser('sectionAnalytiqueId', e.target.value)} className={champ}>
+            <option value="">{sections === null ? '…' : 'Celle de la famille, ou aucune'}</option>
+            {saisie.sectionAnalytiqueId && sections && !sections.sections.some((s) => s.id === saisie.sectionAnalytiqueId) && (
+              <option value={saisie.sectionAnalytiqueId}>Section actuelle (impropre à la dotation)</option>
+            )}
+            {(sections?.sections ?? []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.plan.code} · {s.code} · {s.intitule}
+              </option>
+            ))}
+          </select>
+          {echecSections && <span className="block text-[11px] text-danger font-normal">{echecSections}</span>}
+          {sections && sections.sections.length === 0 && (
+            <span className="block text-[11px] text-text-dim font-normal">Aucune section Détail active d’un plan qui ventile la classe 6 · ouvrez-la dans Plans analytiques.</span>
+          )}
         </label>
         <label className={`${etiquette} sm:col-span-3`}>
           Nature du bien (barème fiscal)

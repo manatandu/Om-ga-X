@@ -27,6 +27,11 @@ export class ModifierImmobilisationDto {
   @MaxLength(10)
   natureFiscaleCle?: string | null;
 
+  /** Ligne immos, n° 70 · `null` retire la section (la famille vaut alors). */
+  @IsOptional()
+  @IsUUID('4')
+  sectionAnalytiqueId?: string | null;
+
   /** Ligne immos, n° 71 · `null` efface le numéro de série. */
   @IsOptional()
   @IsString()

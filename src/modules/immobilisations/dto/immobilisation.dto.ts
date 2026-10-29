@@ -58,6 +58,13 @@ export class CreerFamilleDto {
   modeAmortissement?: ModeAmortissement;
 }
 
+/** Ligne immos, n° 70 · la section de la famille · `null` la retire. */
+export class SectionFamilleDto {
+  @IsOptional()
+  @IsUUID('4')
+  sectionAnalytiqueId?: string | null;
+}
+
 export class ModifierFamilleDto {
   @IsOptional()
   @IsString()
@@ -107,6 +114,11 @@ export class CreerImmobilisationDto {
   @IsString()
   @MaxLength(100)
   numeroSerie?: string;
+
+  /** Ligne immos, n° 70 · la section analytique de la dotation du bien. */
+  @IsOptional()
+  @IsUUID('4')
+  sectionAnalytiqueId?: string;
 
   /** Lieu du bien, au référentiel des lieux du dossier. */
   @IsOptional()

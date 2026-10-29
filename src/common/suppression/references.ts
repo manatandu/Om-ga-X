@@ -70,6 +70,9 @@ const LIBELLES: Record<string, string> = {
   'Immobilisation.compteImmobilisationId': 'immobilisations',
   'Immobilisation.compteEnCoursId': 'immobilisations en cours',
   'FamilleImmobilisation.compteImmobilisationId': "familles d'immobilisations",
+  // Ligne immos, n° 70 · la section de la dotation d'un bien ou d'une famille.
+  'Immobilisation.sectionAnalytiqueId': 'immobilisations (section de la dotation)',
+  'FamilleImmobilisation.sectionAnalytiqueId': "familles d'immobilisations (section de la dotation)",
   'Facture.tiersId': 'factures',
   'Devis.tiersId': 'devis',
   'Cloture.journalId': 'clôtures de journal',
