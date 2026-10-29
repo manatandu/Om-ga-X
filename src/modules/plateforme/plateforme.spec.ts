@@ -225,7 +225,15 @@ describe('PlateformeService · création d’un cabinet client', () => {
         },
       },
     } as never;
-    const s = new PlateformeService(prisma, { get: () => undefined } as never, authService);
+    const envois: { tenantId: string; message: { destinataire: string; corps: string }; garde: string }[] = [];
+    const courrier = {
+      etatDuTransport: () => ({ configure: true }),
+      envoyerUnSecret: async (tenantId: string, message: { destinataire: string; corps: string }, garde: string) => {
+        envois.push({ tenantId, message, garde });
+        return { statut: 'ENVOYE' };
+      },
+    } as never;
+    const s = new PlateformeService(prisma, { get: () => undefined } as never, authService, undefined, courrier);
 
     const resultat = await s.creerCabinet({
       nomEntite: 'ASBL Lumière',
@@ -240,7 +248,16 @@ describe('PlateformeService · création d’un cabinet client', () => {
     // minimum de 10 du RegisterDto.
     expect(typeof dtoRecu!.motDePasse).toBe('string');
     expect((dtoRecu!.motDePasse as string).length).toBeGreaterThanOrEqual(16);
-    expect(resultat.motDePasseTemporaire).toBe(dtoRecu!.motDePasse);
+    // DÉCISION DU 2026-10-29 · le mot de passe part au SEUL courriel de
+    // l'administrateur, depuis son dossier, et la console ne le reçoit plus.
+    expect(resultat).not.toHaveProperty('motDePasseTemporaire');
+    expect(JSON.stringify(resultat)).not.toContain(dtoRecu!.motDePasse as string);
+    expect(resultat.courriel).toBe('ENVOYE');
+    expect(envois).toHaveLength(1);
+    expect(envois[0].tenantId).toBe('t-nouveau');
+    expect(envois[0].message.destinataire).toBe('admin@lumiere.cd');
+    expect(envois[0].message.corps).toContain(dtoRecu!.motDePasse as string);
+    expect(envois[0].garde).not.toContain(dtoRecu!.motDePasse as string);
     // La session du nouveau dossier appartient au client, pas à l'opérateur.
     expect(resultat).not.toHaveProperty('accessToken');
     // L'échéance demandée est posée sur la licence créée.
@@ -262,10 +279,21 @@ describe('PlateformeService · création d’un cabinet client', () => {
       { user: { update: async () => ({}) } } as never,
       { get: () => undefined } as never,
       authService,
+      undefined,
+      { etatDuTransport: () => ({ configure: true }), envoyerUnSecret: async () => ({ statut: 'ENVOYE' }) } as never,
     );
     await s.creerCabinet({ nomEntite: 'A', emailAdmin: 'a@a.cd' });
     await s.creerCabinet({ nomEntite: 'B', emailAdmin: 'b@b.cd' });
     expect(motsDePasse[0]).not.toBe(motsDePasse[1]);
+  });
+
+  it('sans messagerie, aucun dossier ne naît · le mot de passe n’aurait aucun chemin vers le client', async () => {
+    const register = jest.fn();
+    const s = new PlateformeService({} as never, { get: () => undefined } as never, { register } as never, undefined, {
+      etatDuTransport: () => ({ configure: false }),
+    } as never);
+    await expect(s.creerCabinet({ nomEntite: 'A', emailAdmin: 'a@a.cd' })).rejects.toThrow(/Aucune messagerie/);
+    expect(register).not.toHaveBeenCalled();
   });
 });
 

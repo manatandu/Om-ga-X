@@ -24,7 +24,7 @@ function console_(mere: Mere) {
     licence: { update: jest.fn(async () => ({})) },
     user: { update: jest.fn(async () => ({})) },
   };
-  const s = new PlateformeService(prisma as never, { get: () => undefined } as never, { register } as never);
+  const s = new PlateformeService(prisma as never, { get: () => undefined } as never, { register } as never, undefined, { etatDuTransport: () => ({ configure: true }), envoyerUnSecret: async () => ({ statut: 'ENVOYE' }) } as never);
   return { s, register, prisma };
 }
 

@@ -5462,6 +5462,14 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   cloisonnée porte un index qui commence par `tenantId` (F261,
   `index-du-dossier.spec.ts`) · sans lui, chaque lecture bornée balaie la
   table de tous les cabinets.
+  LES CLÉS ÉTRANGÈRES D'UNE ÉCRITURE SE JUGENT DANS LE DOSSIER (règle F,
+  2026-10-29, audit de sécurité du 2026-10-25, zone différée 1) · toute clé
+  vers un modèle cloisonné, à la racine de `data` et dans les créations et
+  liaisons imbriquées, lue dans le schéma (`cles-etrangeres.ts`), est relue en
+  UNE requête et refusée si elle désigne un autre dossier, y compris sur les
+  modèles portés par leur parent (la ligne d'écriture porte le compte) ;
+  aucune requête quand l'écriture ne désigne rien. Prouvé sur vraie base
+  (`scripts/rejouer-cles-etrangeres.cjs`, à travers une clôture).
   Deux échappatoires, et deux seulement :
   `horsCloisonnement('raison', ...)`, qui sort TOTALEMENT de la garde et dont
   la liste des utilisateurs est gelée par un test ; et

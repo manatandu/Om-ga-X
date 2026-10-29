@@ -59,3 +59,26 @@ export function avisReinitialisationAdmin(motDePasseProvisoire: string): {
     corpsGarde: texte('[remis au seul destinataire, non conservé]'),
   };
 }
+
+/**
+ * LE DOSSIER CRÉÉ PAR LA CONSOLE, MÊME RÈGLE (décision de Manasse du
+ * 2026-10-29, « Traite le en cascade », appliquant celle du 2026-10-09) · la
+ * console rendait à l'opérateur le mot de passe provisoire de l'administrateur
+ * du dossier qu'elle créait, et il pouvait l'ouvrir avant lui. Il part au seul
+ * courriel de l'administrateur, et la réponse ne le porte plus.
+ */
+export const ORIGINE_CREATION_CABINET = 'CREATION_CABINET';
+
+export function avisCreationCabinet(motDePasseProvisoire: string, nomEntite: string): { sujet: string; corps: string; corpsGarde: string } {
+  const texte = (mot: string) =>
+    'Bonjour,\n\n' +
+    `Votre dossier OmegaX « ${nomEntite} » est ouvert, et vous en êtes l'administrateur.\n\n` +
+    `Adresse de connexion · celle de ce courriel\nMot de passe provisoire · ${mot}\n\n` +
+    'Il vous sera demandé de le changer à votre première connexion.\n\n' +
+    "L'éditeur d'OmegaX n'a pas connaissance de ce mot de passe.\n";
+  return {
+    sujet: 'OmegaX · votre dossier est ouvert',
+    corps: texte(motDePasseProvisoire),
+    corpsGarde: texte('[remis au seul destinataire, non conservé]'),
+  };
+}

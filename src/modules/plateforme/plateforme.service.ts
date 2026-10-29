@@ -1,11 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { CourrierService } from '../courrier/courrier.service';
-import { ORIGINE_REINITIALISATION_ADMIN, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
+import { ORIGINE_CREATION_CABINET, ORIGINE_REINITIALISATION_ADMIN, avisCreationCabinet, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
 import { normaliserCourriel } from '../../common/courriel';
 import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
 import { FormeJuridiqueSyscohada, Referentiel, RoleUtilisateur, StatutEcriture, StatutLicence, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
 import { GarnissageDemonstrationService } from './garnissage-demonstration.service';
 import { scenarioDemonstration } from './scenario-demonstration';
@@ -498,8 +497,18 @@ export class PlateformeService implements OnModuleInit {
         systemeComptableSyscohada: referentiel === Referentiel.SYSCOHADA ? dto.systemeComptableSyscohada : null,
       });
     }
-    // 16 caractères base64url · large au-delà du minimum de 10 du RegisterDto.
-    const motDePasseTemporaire = randomBytes(12).toString('base64url');
+    // LE MOT DE PASSE NE PASSE PLUS PAR LA CONSOLE (décision du 2026-10-29) ·
+    // il part au seul courriel de l'administrateur. Sans messagerie, rien ne
+    // naît · un dossier dont personne ne connaîtrait le mot de passe serait
+    // fermé à tous.
+    if (!this.courrier || !this.courrier.etatDuTransport().configure) {
+      throw new ConflictException(
+        "Aucune messagerie n'est configurée · le mot de passe provisoire part au seul courriel de l'administrateur du " +
+          'cabinet, jamais à la console. Configurez la messagerie, puis créez le dossier.',
+      );
+    }
+    // Tiré au sort par le serveur, jamais rendu à l'opérateur.
+    const motDePasseTemporaire = motDePasseTireAuSort();
     const resultat = await this.authService.register({
       nomEntite: dto.nomEntite,
       // SYCEBNL par défaut (clientèle associative) · l'opérateur choisit
@@ -545,13 +554,33 @@ export class PlateformeService implements OnModuleInit {
         data: { doitChangerMotDePasse: true },
       }),
     );
+    // LE COURRIEL PART DIRECTEMENT, jamais par la file, dont le corps reste
+    // lisible par tout le dossier (`envoyerUnSecret`). Un envoi manqué ne
+    // défait pas le dossier · « Réinitialiser l'administrateur » en envoie un
+    // autre, et la réponse le dit.
+    const { sujet, corps, corpsGarde } = avisCreationCabinet(motDePasseTemporaire, dto.nomEntite);
+    let courriel: string;
+    try {
+      const envoi = await horsCloisonnement('console · mot de passe provisoire remis au seul administrateur du dossier créé', () =>
+        this.courrier!.envoyerUnSecret(
+          resultat.tenant.id,
+          { destinataire: normaliserCourriel(dto.emailAdmin), sujet, corps, origine: ORIGINE_CREATION_CABINET, origineId: null },
+          corpsGarde,
+        ),
+      );
+      courriel = envoi.statut;
+    } catch (erreur) {
+      this.logger.error(`Dossier ${resultat.tenant.id} créé · le courriel du mot de passe provisoire n'est pas parti`, erreur instanceof Error ? erreur.stack : String(erreur));
+      courriel = 'NON_PARTI';
+    }
     return {
       tenant: resultat.tenant,
       exercice: resultat.exercice,
       adminEmail: dto.emailAdmin,
-      // Le jeton d'accès de register() n'est PAS retransmis : la session du
-      // nouveau dossier appartient au client, pas à l'opérateur.
-      motDePasseTemporaire,
+      // Le jeton d'accès de register() n'est PAS retransmis, ni le mot de
+      // passe · la session et l'accès du nouveau dossier appartiennent au
+      // client, pas à l'opérateur.
+      courriel,
     };
   }
 

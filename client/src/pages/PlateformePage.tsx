@@ -55,7 +55,8 @@ interface CabinetClient {
 interface CabinetCree {
   tenant: { id: string; nom: string };
   adminEmail: string;
-  motDePasseTemporaire: string;
+  /** Statut de l'envoi du mot de passe provisoire, parti au seul courriel de l'administrateur. */
+  courriel: string;
 }
 
 const LIBELLE_JEU: Record<JeuEtatsFinanciersSycebnl, string> = {
@@ -785,20 +786,22 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
                 <span>Cabinet créé · {cree.tenant.nom}</span>
               </div>
               <div className="p-4">
-                <p className="text-[11.5px]">Remettez ces identifiants à l'administrateur du cabinet :</p>
-                <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 mt-2.5 text-[11.5px]">
-                  <span className="text-right text-text-dim">E-mail :</span>
-                  <span className="font-mono select-all">{cree.adminEmail}</span>
-                  <span className="text-right text-text-dim">Mot de passe :</span>
-                  <span className="font-mono select-all font-bold">{cree.motDePasseTemporaire}</span>
+                {/* Décision du 2026-10-29 · le mot de passe part au seul courriel de
+                    l'administrateur, la console ne le voit jamais. */}
+                <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-[11.5px]">
+                  <span className="text-right text-text-dim">Administrateur :</span>
+                  <span className="select-all">{cree.adminEmail}</span>
                 </div>
-                <div className="border border-warning/30 bg-warning-soft px-3 py-2 text-[11.5px] mt-3">
-                  Ce mot de passe n'est affiché qu'UNE SEULE FOIS · le serveur n'en garde qu'une empreinte. Notez-le
-                  maintenant, puis invitez le client à le changer à sa première connexion.
-                </div>
+                {cree.courriel === 'ENVOYE' ? (
+                  <p className="text-[11.5px] mt-3">Le mot de passe provisoire est parti à cette adresse.</p>
+                ) : (
+                  <div className="border border-danger/30 bg-danger-soft text-danger px-3 py-2 text-[11.5px] mt-3">
+                    Le courriel du mot de passe n'est pas parti. Utilisez « Mot de passe admin » sur la ligne du cabinet pour en envoyer un autre.
+                  </div>
+                )}
                 <div className="flex justify-end mt-4">
                   <button type="button" onClick={() => setCree(null)} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold">
-                    J'ai noté le mot de passe
+                    Fermer
                   </button>
                 </div>
               </div>
