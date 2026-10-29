@@ -1356,6 +1356,10 @@ summary:focus-visible {
   display: none;
 }
 
+#impression-isolee {
+  display: none;
+}
+
 @media print {
   @page {
     size: A4;
@@ -1395,20 +1399,16 @@ summary:focus-visible {
     overflow: visible !important;
   }
 
-  /* UN FORMULAIRE S'IMPRIME SEUL (`lib/impression-formulaire.ts`) · tout se
-     masque, sauf le formulaire marqué, posé en haut de la page. */
-  body.imprime-formulaire * {
-    visibility: hidden !important;
+  /* UN FORMULAIRE S'IMPRIME SEUL (`lib/impression-formulaire.ts`) · sa copie
+     sous le corps reste, tout le reste se retire. */
+  body.imprime-formulaire > :not(#impression-isolee) {
+    display: none !important;
   }
-  body.imprime-formulaire .formulaire-imprime,
-  body.imprime-formulaire .formulaire-imprime * {
-    visibility: visible !important;
+  body.imprime-formulaire #impression-isolee {
+    display: block !important;
   }
-  body.imprime-formulaire .formulaire-imprime {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
+  #impression-isolee > * {
+    display: block !important;
     border: none !important;
   }
 

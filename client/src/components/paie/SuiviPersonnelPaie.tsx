@@ -4,7 +4,9 @@ import { Aide } from '../chrome/Aide';
 import { libelleListeBornee } from '../../lib/liste-bornee-personnel';
 import { montant as fc } from '../../lib/montants';
 import { lireNombre } from '../../lib/conditions-bancaires-saisie';
-import { CLASSE_FORMULAIRE_IMPRIME, imprimerLeFormulaire } from '../../lib/impression-formulaire';
+import { imprimerLeFormulaire } from '../../lib/impression-formulaire';
+import { saisieAEnvoyer, type LigneEditee, type MonnaieBilan } from '../../lib/bilan-social';
+import { useGardeFermeture } from '../../lib/fenetres';
 
 /**
  * LIGNE MICROFINA-M3, LOT 2 · QUATRE ONGLETS DE LA FENÊTRE PERSONNEL ·
@@ -663,7 +665,7 @@ export function OngletDeclarationMainOeuvre() {
             className={`${champ} w-[60px] font-normal`}
           />
           {f && (
-            <button type="button" onClick={imprimerLeFormulaire} className="bg-sel text-white font-semibold px-3 py-1 ml-auto">
+            <button type="button" onClick={() => imprimerLeFormulaire('dasmo-formulaire')} className="bg-sel text-white font-semibold px-3 py-1 ml-auto">
               Imprimer le formulaire
             </button>
           )}
@@ -704,7 +706,7 @@ export function OngletDeclarationMainOeuvre() {
         )}
       </div>
       {f && (
-        <section className={`${CLASSE_FORMULAIRE_IMPRIME} border border-border px-4 py-3 space-y-2`} aria-labelledby="dasmo-titre">
+        <section id="dasmo-formulaire" className="border border-border px-4 py-3 space-y-2" aria-labelledby="dasmo-titre">
           <div id="dasmo-titre" className="font-semibold">
             Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice {f.exercice}
           </div>
@@ -819,6 +821,276 @@ export function OngletDeclarationMainOeuvre() {
             <Vide />
           </div>
           <div>Fait à ……………………, le …………………… · signature du déclarant</div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+type LigneBilanSocial = {
+  numero: number;
+  libelle: string;
+  nombre: number | null;
+  budgete: string | null;
+  realise: string | null;
+  devise: MonnaieBilan | null;
+  solde: string | null;
+  proposition: { realise: string; devise: 'CDF'; origine: string } | null;
+};
+
+type BilanSocial = {
+  exercice: number;
+  du: string;
+  au: string;
+  dateLimite: string;
+  identification: { libelle: string; valeur: string | null }[];
+  effectifActifAu: string;
+  lignes: LigneBilanSocial[];
+  total: { devise: MonnaieBilan; budgete: string; realise: string; solde: string; incomplet: boolean }[];
+  commentaire: string | null;
+  enregistreLe: string | null;
+  enregistrePar: string | null;
+  modele: string;
+  fondement: string;
+};
+
+const editer = (b: BilanSocial): LigneEditee[] =>
+  b.lignes.map((l) => ({ numero: l.numero, nombre: l.nombre === null ? '' : String(l.nombre), budgete: l.budgete ?? '', realise: l.realise ?? '', devise: l.devise ?? '' }));
+
+/**
+ * LE BILAN SOCIAL DE L'ONEM · les vingt et une lignes du modèle, saisies par
+ * le cabinet ; l'identification et la proposition de la ligne 10 servies par
+ * le serveur (`bilan-social.ts`), solde et total aussi, rien recalculé ici.
+ * L'exercice est l'année écoulée, déposée au plus tard le 31 janvier qui suit.
+ */
+export function OngletBilanSocial({ peutEcrire }: { peutEcrire: boolean }) {
+  const [exercice, setExercice] = useState(String(new Date().getFullYear() - 1));
+  const lisible = /^\d{4}$/.test(exercice);
+  const { donnees, erreur, setErreur, relire } = useLecture(
+    lisible ? () => api.get<BilanSocial>(`/personnel/bilan-social/${exercice}`) : null,
+    `bilan-social-${exercice}`,
+  );
+  const { envoi, envoyer } = useEnvoi(relire, setErreur);
+  const [lignes, setLignes] = useState<LigneEditee[] | null>(null);
+  const [commentaire, setCommentaire] = useState('');
+  const [modifie, setModifie] = useState(false);
+  useGardeFermeture(modifie ? 'Le bilan social a des lignes non enregistrées · elles seraient perdues.' : null);
+  useEffect(() => {
+    // Chaque lecture (exercice changé ou enregistrement relu) refait la grille.
+    setLignes(donnees ? editer(donnees) : null);
+    setCommentaire(donnees?.commentaire ?? '');
+    setModifie(false);
+  }, [donnees]);
+  const changer = (numero: number, champ: keyof Omit<LigneEditee, 'numero'>, v: string) => {
+    setLignes((ls) => ls && ls.map((l) => (l.numero === numero ? { ...l, [champ]: v } : l)));
+    setModifie(true);
+  };
+  const enregistrer = () => {
+    if (!lignes) return;
+    const s = saisieAEnvoyer(lignes, commentaire);
+    if ('erreur' in s) {
+      setErreur(s.erreur);
+      return;
+    }
+    void envoyer(() => api.put(`/personnel/bilan-social/${exercice}`, s.corps));
+  };
+  const b = donnees;
+  const td = 'px-1.5 py-0.5';
+  const montantOuVide = (v: string | null) => (v === null ? <Vide /> : fc(v));
+  return (
+    <div className="max-w-[1000px] text-[11.5px] space-y-3">
+      <div className="ecran-seul space-y-2">
+        <Erreur m={erreur} />
+        <div className="font-semibold flex items-center gap-1.5">
+          Bilan social
+          <Aide
+            titre="Bilan social"
+            texte="Chaque entreprise dépose, au plus tard le 31 janvier de chaque année, le bilan social de l'exercice écoulé, sur le modèle de l'ONEM. Les vingt et une lignes ne répondent à aucun compte du plan · le nombre, le montant budgétisé, le montant réalisé et sa monnaie se saisissent. Le solde est le budgétisé moins le réalisé ; le total s'additionne par monnaie. La rémunération annuelle reçoit une proposition, le total versé des bulletins émis de l'année, à reporter si elle convient."
+            source={b?.fondement ?? "Code du travail, art. 218 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 3"}
+          />
+          <label htmlFor="bilan-social-exercice" className="font-normal ml-2">
+            Exercice
+          </label>
+          <input
+            id="bilan-social-exercice"
+            value={exercice}
+            inputMode="numeric"
+            maxLength={4}
+            onChange={(e) => setExercice(e.target.value)}
+            className={`${champ} w-[60px] font-normal`}
+          />
+          {b && (
+            <button type="button" onClick={() => imprimerLeFormulaire('bilan-social-formulaire')} className="border border-border px-3 py-1 ml-auto" disabled={modifie} title={modifie ? "Enregistrez d'abord les lignes saisies" : undefined}>
+              Imprimer le formulaire
+            </button>
+          )}
+          {b && peutEcrire && (
+            <button type="button" onClick={enregistrer} disabled={envoi || !modifie} className="bg-sel text-white font-semibold px-3 py-1 disabled:opacity-50">
+              Enregistrer
+            </button>
+          )}
+        </div>
+        {!lisible && <div className="text-warning">Exercice illisible · quatre chiffres (AAAA).</div>}
+        {lisible && b === null && !erreur && <div className="text-text-dim">Lecture du bilan social…</div>}
+        {b && (
+          <div>
+            Exercice du {b.du} au {b.au} · dépôt au plus tard le {b.dateLimite}
+            {b.enregistreLe ? ` · enregistré le ${b.enregistreLe.slice(0, 10)} par ${b.enregistrePar}` : ' · pas encore enregistré'}
+          </div>
+        )}
+        {b && lignes && (
+          <table className="w-full" aria-label="Saisie du bilan social">
+            <thead>
+              <tr>
+                <th scope="col" className={`${td} text-right`}>N°</th>
+                <th scope="col" className={`${td} text-left`}>Désignation</th>
+                <th scope="col" className={`${td} text-right`}>Nombre</th>
+                <th scope="col" className={`${td} text-right`}>Montant budgétisé</th>
+                <th scope="col" className={`${td} text-right`}>Montant réalisé</th>
+                <th scope="col" className={td}>Monnaie</th>
+                <th scope="col" className={`${td} text-right`}>Solde</th>
+              </tr>
+            </thead>
+            <tbody>
+              {b.lignes.map((l) => {
+                const e = lignes.find((x) => x.numero === l.numero)!;
+                const libre = !peutEcrire;
+                return (
+                  <tr key={l.numero}>
+                    <td className={`${td} text-right`}>{l.numero}</td>
+                    <th scope="row" className={`${td} text-left font-normal`}>
+                      {l.libelle}
+                      {l.proposition && (
+                        <div className="text-text-dim">
+                          Proposé · {fc(l.proposition.realise)} CDF{' '}
+                          <Aide titre="Proposition" texte={l.proposition.origine} source={b.modele} />
+                          {peutEcrire && (
+                            <button
+                              type="button"
+                              className="underline ml-1"
+                              onClick={() => {
+                                changer(l.numero, 'realise', l.proposition!.realise);
+                                changer(l.numero, 'devise', 'CDF');
+                              }}
+                            >
+                              Reporter
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                    <td className={td}>
+                      <input aria-label={`Nombre, ligne ${l.numero}`} disabled={libre} inputMode="numeric" value={e.nombre} onChange={(x) => changer(l.numero, 'nombre', x.target.value)} className={`${champ} w-[70px] text-right`} />
+                    </td>
+                    <td className={td}>
+                      <input aria-label={`Montant budgétisé, ligne ${l.numero}`} disabled={libre} inputMode="decimal" value={e.budgete} onChange={(x) => changer(l.numero, 'budgete', x.target.value)} className={`${champ} w-[120px] text-right`} />
+                    </td>
+                    <td className={td}>
+                      <input aria-label={`Montant réalisé, ligne ${l.numero}`} disabled={libre} inputMode="decimal" value={e.realise} onChange={(x) => changer(l.numero, 'realise', x.target.value)} className={`${champ} w-[120px] text-right`} />
+                    </td>
+                    <td className={td}>
+                      <select aria-label={`Monnaie, ligne ${l.numero}`} disabled={libre} value={e.devise} onChange={(x) => changer(l.numero, 'devise', x.target.value)} className={champ}>
+                        <option value="">·</option>
+                        <option value="CDF">CDF</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </td>
+                    <td className={`${td} text-right`}>{modifie ? <Vide /> : montantOuVide(l.solde)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {b && (
+          <div>
+            <label htmlFor="bilan-social-commentaire" className="font-semibold block">
+              Commentaire du tableau social
+            </label>
+            <textarea
+              id="bilan-social-commentaire"
+              disabled={!peutEcrire}
+              value={commentaire}
+              maxLength={4000}
+              onChange={(e) => {
+                setCommentaire(e.target.value);
+                setModifie(true);
+              }}
+              className={`${champ} w-full h-[80px]`}
+            />
+          </div>
+        )}
+      </div>
+      {b && (
+        <section id="bilan-social-formulaire" className="impression-seul border border-border px-4 py-3 space-y-2" aria-labelledby="bilan-social-titre">
+          <div id="bilan-social-titre" className="font-semibold">
+            Bilan social · exercice {b.exercice}
+          </div>
+          <div className="text-text-dim">{b.fondement}</div>
+          <div className="font-semibold">I. Identification</div>
+          <table className="w-full eviter-coupure" aria-label="Identification">
+            <tbody>
+              {b.identification.map((c) => (
+                <tr key={c.libelle}>
+                  <th scope="row" className={`${td} text-left font-normal w-[220px]`}>
+                    {c.libelle}
+                  </th>
+                  <td className={td}>{c.valeur ?? <Vide />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="font-semibold">II. Désignation</div>
+          <table className="w-full eviter-coupure" aria-label="Désignation">
+            <thead>
+              <tr>
+                {['N°', 'Désignation', 'Nombre', 'Montant budgétisé', 'Montant réalisé', 'Solde'].map((x) => (
+                  <th key={x} scope="col" className={`${td} ${x === 'Désignation' ? 'text-left' : 'text-right'}`}>
+                    {x}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {b.lignes.map((l) => (
+                <tr key={l.numero}>
+                  <td className={`${td} text-right`}>{l.numero}</td>
+                  <th scope="row" className={`${td} text-left font-normal`}>
+                    {l.libelle}
+                  </th>
+                  <td className={`${td} text-right`}>{l.nombre ?? <Vide />}</td>
+                  <td className={`${td} text-right`}>{l.budgete === null ? <Vide /> : `${fc(l.budgete)} ${l.devise}`}</td>
+                  <td className={`${td} text-right`}>{l.realise === null ? <Vide /> : `${fc(l.realise)} ${l.devise}`}</td>
+                  <td className={`${td} text-right`}>{l.solde === null ? <Vide /> : `${fc(l.solde)} ${l.devise}`}</td>
+                </tr>
+              ))}
+              {b.total.length === 0 ? (
+                <tr className="font-semibold">
+                  <th scope="row" colSpan={3} className={`${td} text-left`}>
+                    Total
+                  </th>
+                  <td className={td} colSpan={3}>
+                    <Vide />
+                  </td>
+                </tr>
+              ) : (
+                b.total.map((t) => (
+                  <tr key={t.devise} className="font-semibold">
+                    <th scope="row" colSpan={3} className={`${td} text-left`}>
+                      Total en {t.devise}
+                      {t.incomplet ? ' (lignes chiffrées d’un seul côté comprises)' : ''}
+                    </th>
+                    <td className={`${td} text-right`}>{fc(t.budgete)}</td>
+                    <td className={`${td} text-right`}>{fc(t.realise)}</td>
+                    <td className={`${td} text-right`}>{fc(t.solde)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          <div className="font-semibold">Commentaire du tableau social</div>
+          <div className="whitespace-pre-wrap">{b.commentaire ?? <Vide />}</div>
+          <div>Fait à ……………………, le …………………… · signature du chef de l&apos;entreprise ou de l&apos;établissement</div>
         </section>
       )}
     </div>

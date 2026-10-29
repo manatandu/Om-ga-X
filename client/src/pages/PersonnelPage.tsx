@@ -10,7 +10,7 @@ import { OngletCongesPaie } from '../components/paie/CongesPaie';
 import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
 import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
-import { OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
+import { OngletBilanSocial, OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
 import { DeclarationEtablissement, DeclarationMouvementTravailleur } from '../components/paie/DeclarationsTravail';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
@@ -3934,6 +3934,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'declaration' && (
         <div className="space-y-5">
           <OngletDeclarationMainOeuvre />
+          <OngletBilanSocial peutEcrire={peutEcrire} />
           <DeclarationMouvementTravailleur salaries={registre ? salaries : null} inactifsInclus={tous} tronque={registre?.tronque ?? false} />
           <DeclarationEtablissement />
         </div>
