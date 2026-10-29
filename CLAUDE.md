@@ -295,7 +295,14 @@ arrêté rempli depuis le registre (`personnel/situation-main-oeuvre.ts`) ·
 l'exercice E lu au 1er janvier E et déposé au plus tard le 31 janvier E
 (art. 3), un salarié compté une fois, permanent dès qu'un contrat à durée
 indéterminée est en vigueur, la même règle aux trois 1er janvier du
-formulaire ; ce que le registre ne tient pas est nommé, jamais deviné.
+formulaire ; ce que le registre ne tient pas est nommé, jamais deviné. Puis
+le BILAN SOCIAL (« Termine la DASMO et enchaîne les autres »), le modèle de
+l'ONEM qui cite l'art. 218 et cet arrêté · vingt et une lignes SAISIES par
+exercice (`personnel/bilan-social.ts`, table `bilans_sociaux`, au journal
+d'audit), l'exercice E déposé au plus tard le 31 janvier E+1 (art. 3), un
+montant sans monnaie refusé, le solde (budgétisé moins réalisé) et le total
+PAR MONNAIE calculés en centimes entiers, la seule ligne 10 PROPOSÉE (total
+versé des bulletins émis de l'année), jamais substituée.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
