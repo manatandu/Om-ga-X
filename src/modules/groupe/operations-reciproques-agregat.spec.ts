@@ -119,6 +119,8 @@ function service(
             ? [{ id: 'c1', nom: 'Antenne Matete', exercices: options?.exercicesCellule ?? [EX_C1] }]
             : [],
       },
+      // Aucun transfert de bien entre dossiers dans ce jeu (anomalie n° 9 de la NOTE 3A).
+      transfertImmobilisationGroupe: { findMany: async () => [] },
       tiersCompte: {
         findMany: async ({ where }: { where: { tiers: { tenantId: { in: string[] } } } }) =>
           rattachements

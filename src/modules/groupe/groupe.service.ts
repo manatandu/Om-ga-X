@@ -4,7 +4,7 @@ import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { fondementEliminationGroupe } from './fondement-elimination';
 import { normaliserCourriel } from '../../common/courriel';
 import { Workbook } from 'exceljs';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import {
   ClasseCompte,
   JeuEtatsFinanciersSycebnl,
@@ -35,6 +35,7 @@ import {
 } from './canevas-tresorerie';
 import { licenceDeCellule } from '../licence/licence-de-cellule';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { acteurCourant, ACTEUR_SYSTEME, dansContexteAudit } from '../../common/audit/contexte-audit';
 import { balancesDesDossiers, comptagesDesDossiers } from './lecture-des-dossiers';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { exigerExercice } from '../../common/exercice-requis';
@@ -104,6 +105,36 @@ export interface EcartReciprocite {
 const MOTIF_CREANCE_DETTE = 'Créance ou dette réciproque';
 const MOTIF_CHARGE_PRODUIT = 'Charge ou produit réciproque';
 const MOTIF_LIAISON_ETABLISSEMENTS = 'Compte de liaison siège / établissement';
+const MOTIF_TRANSFERT_IMMOBILISATION = 'Transfert d’un bien entre dossiers du groupe';
+
+/**
+ * LE TRANSFERT D'UN BIEN ENTRE DOSSIERS DU GROUPE NE S'ACQUIERT NI NE SE CÈDE
+ * (anomalie n° 9 de la NOTE 3A, décision de Manasse du 2026-10-29). Chez
+ * celui qui reçoit, le bien entre au débit de son compte ; chez celui qui
+ * cède, il sort au crédit du sien (`piecesDuTransfert`). Dans la liasse
+ * combinée, l'agrégat les additionnait · la NOTE 3A du groupe lisait une
+ * acquisition ET une cession qu'aucun tiers n'a faites, et le tableau des
+ * flux un investissement et une cession, brut et amortissements gonflés
+ * d'autant, soldes justes. Le groupe étant UNE entité (fiche du compte 18),
+ * le mouvement sort de l'agrégat des deux côtés, comme les 184 à 187 ·
+ * l'entrée et la sortie du bien, de ses amortissements et de ses
+ * dépréciations. Le complément de dotation du cédant jusqu'au mois du
+ * transfert (D 68 / C 28) RESTE · c'est une charge réelle de l'entité.
+ * Aucun texte lu ne range ce mouvement en « Virements de poste à poste » ;
+ * l'éliminer est une lecture d'OmegaX, écrite ici.
+ *
+ * Les deux côtés ou rien · un transfert dont l'un des deux dossiers est
+ * absent de l'agrégat (exercice manquant ou discordant) n'est pas éliminé, et
+ * il est NOMMÉ · retirer un seul côté déséquilibrerait la colonne.
+ */
+export function lignesDuTransfertAEliminer<L extends { numero: string; debit: number; credit: number }>(sens: 'CEDANT' | 'RECEVEUR', lignes: L[]): L[] {
+  return lignes.filter((l) => {
+    if (!l.numero.startsWith('2')) return false;
+    // Le crédit du 28 chez le cédant est le complément de dotation · il reste.
+    if (sens === 'CEDANT' && l.numero.startsWith('28') && l.credit !== 0) return false;
+    return l.debit !== 0 || l.credit !== 0;
+  });
+}
 
 /**
  * LES COMPTES DE LIAISON DES ÉTABLISSEMENTS ET SUCCURSALES · SYSCOHADA
@@ -177,7 +208,8 @@ export class GroupeService {
    * son identifiant. Appelé AVANT `dansLeGroupe` · le périmètre se calcule une
    * fois, à l'entrée, et un dossier né après ne s'y ajouterait pas.
    *
-   * Ne touche que `Tenant`, qui n'est pas un modèle cloisonné.
+   * `Tenant` n'est pas un modèle cloisonné, mais le maillon d'audit de sa
+   * création l'est · voir plus bas.
    */
   private async assurerDossierCombinaison(tenantId: string): Promise<string> {
     const mere = await this.prisma.tenant.findUnique({
@@ -194,10 +226,24 @@ export class GroupeService {
       await this.prisma.tenant.update({ where: { id: mere.dossierCombinaisonId }, data: caracteres });
       return mere.dossierCombinaisonId;
     }
-    const combinaison = await this.prisma.tenant.create({
-      data: { nom: `${mere!.nom} · liasse du groupe`, ...caracteres },
-      select: { id: true },
-    });
+    // LE DOSSIER QUI NAÎT EST LE DOSSIER DE L'ACTE (même règle que
+    // `AuthService.register`) · le maillon d'audit de sa création ouvre SA
+    // chaîne ; écrit au nom du siège, la garde de cloisonnement le refusait
+    // comme une écriture chez un voisin, et la PREMIÈRE liasse d'un groupe
+    // tombait en 500 (vu sur vraie base le 2026-10-29). L'identifiant est tiré
+    // avant, la création journalisée dans sa transaction, l'acteur restant
+    // celui qui demande la liasse.
+    const idCombinaison = randomUUID();
+    const combinaison = await transactionJournalisee(this.prisma, (tx) =>
+      // ATTENDUE DANS LE CONTEXTE · une requête Prisma ne part qu'à son
+      // `await` ; rendue sans lui, elle s'exécutait au nom du siège.
+      dansContexteAudit({ ...(acteurCourant() ?? { acteurEmail: ACTEUR_SYSTEME }), tenantId: idCombinaison }, async () =>
+        await tx.tenant.create({
+          data: { id: idCombinaison, nom: `${mere!.nom} · liasse du groupe`, ...caracteres },
+          select: { id: true },
+        }),
+      ),
+    );
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: { dossierCombinaisonId: combinaison.id },
@@ -877,6 +923,12 @@ export class GroupeService {
           a.motif.localeCompare(b.motif),
       );
     }
+    // Anomalie n° 9 de la NOTE 3A · le transfert d'un bien entre dossiers du
+    // groupe sort de l'agrégat des deux côtés (`lignesDuTransfertAEliminer`).
+    const transfertsNonElimines = syscohada
+      ? await this.eliminerTransfertsImmobilisations(couplesRetenus, nomParDossier, reciproques)
+      : [];
+
     // L'agrégat est le cumul MOINS ce qui a été éliminé · `detailParDossier`
     // reste le cumul BRUT, dossier par dossier, pour que la soustraction se
     // refasse à la main : agrégat = détail par dossier − éliminations. Un
@@ -956,6 +1008,13 @@ export class GroupeService {
           'tableau des flux du groupe lit leur variation comme un flux de l’exercice.',
       );
     }
+    if (transfertsNonElimines.length > 0) {
+      avertissements.push(
+        `Transfert d'un bien entre dossiers du groupe NON éliminé · ${transfertsNonElimines.join(' ; ')}. ` +
+          "L'un des deux dossiers est absent de l'agrégat pour cet exercice · retirer un seul côté déséquilibrerait la " +
+          'balance agrégée. La NOTE 3A du groupe le lit donc en acquisition ou en cession · à retraiter à la main.',
+      );
+    }
     if (reciproques.comptesHao.length > 0) {
       avertissements.push(
         `Cession interne d'immobilisation NON neutralisée · une écriture interne au groupe porte un compte de la ` +
@@ -1029,6 +1088,125 @@ export class GroupeService {
       referentiel: syscohada ? Referentiel.SYSCOHADA : Referentiel.SYCEBNL,
       detailParDossier,
     };
+  }
+
+  /**
+   * Les transferts de biens entre dossiers du groupe, éliminés des deux côtés
+   * (voir `lignesDuTransfertAEliminer`) · rend les transferts qui n'ont pas pu
+   * l'être, nommés. Les pièces et leurs négatifs d'annulation sont lus ·
+   * l'original et son négatif s'éliminent ensemble, et leur somme est nulle.
+   */
+  private async eliminerTransfertsImmobilisations(
+    dossiersRetenus: Array<{ tenantId: string; exerciceId: string }>,
+    nomParDossier: Map<string, string>,
+    reciproques: { eliminations: EliminationReciproque[]; totaux: { debit: number; credit: number } },
+  ): Promise<string[]> {
+    const arrondi = (x: number) => Math.round(x * 100) / 100;
+    const nom = (id: string) => nomParDossier.get(id) ?? id;
+    const exerciceRetenu = new Map(dossiersRetenus.map((d) => [d.tenantId, d.exerciceId]));
+    const cotes = await this.prisma.transfertImmobilisationGroupe.findMany({
+      where: { tenantId: { in: dossiersRetenus.map((d) => d.tenantId) } },
+      select: { transfertId: true, tenantId: true, sens: true, dossierContrepartieId: true, designation: true, ecritureId: true, ecritureNegatifId: true },
+    });
+    if (cotes.length === 0) return [];
+    const ecritureIds = cotes.flatMap((c) => [c.ecritureId, c.ecritureNegatifId]).filter((id): id is string => id !== null);
+    const lignes = ecritureIds.length
+      ? await this.prisma.ligneEcriture.findMany({
+          // Bornée aux exercices RETENUS · une pièce d'un autre exercice n'est pas dans l'agrégat.
+          where: { ecritureId: { in: ecritureIds }, ecriture: { OR: dossiersRetenus.map((d) => ({ tenantId: d.tenantId, exerciceId: d.exerciceId })), ...HORS_SITUATION } },
+          select: {
+            ecritureId: true,
+            debit: true,
+            credit: true,
+            compte: { select: { numero: true, intitule: true } },
+            ecriture: { select: { tenantId: true, exerciceId: true } },
+          },
+        })
+      : [];
+    const parEcriture = new Map<string, typeof lignes>();
+    for (const l of lignes) parEcriture.set(l.ecritureId, [...(parEcriture.get(l.ecritureId) ?? []), l]);
+    // Une pièce compte si elle est dans l'exercice RETENU de son dossier · le
+    // même univers que les balances cumulées.
+    const pieceDansLAgregat = (id: string | null) => {
+      if (id === null) return null;
+      const ls = parEcriture.get(id);
+      if (!ls || ls.length === 0) return null;
+      return exerciceRetenu.get(ls[0].ecriture.tenantId) === ls[0].ecriture.exerciceId ? ls : null;
+    };
+    const parTransfert = new Map<string, typeof cotes>();
+    for (const c of cotes) parTransfert.set(c.transfertId, [...(parTransfert.get(c.transfertId) ?? []), c]);
+    const nonElimines: string[] = [];
+    const cumul = new Map<string, EliminationReciproque>();
+    // PAR PAIRES QUI S'ÉQUILIBRENT · l'original chez l'un et chez l'autre, le
+    // négatif d'annulation chez l'un et chez l'autre, puis, d'un même côté,
+    // l'original et son négatif (somme nulle). Une pièce restée seule n'est
+    // pas éliminée, et elle seule fait nommer le transfert · un transfert
+    // annulé dont un côté n'a laissé que sa paire à somme nulle n'est pas une
+    // anomalie (relecture « échecs silencieux », m1).
+    const eliminer = (c: (typeof cotes)[number], ls: NonNullable<ReturnType<typeof pieceDansLAgregat>>) => {
+      const sens = c.sens === 'SORTIE' ? 'CEDANT' : 'RECEVEUR';
+      const aEliminer = lignesDuTransfertAEliminer(
+        sens,
+        ls.map((l) => ({ numero: l.compte.numero, debit: Number(l.debit), credit: Number(l.credit), intitule: l.compte.intitule })),
+      );
+      for (const l of aEliminer) {
+        const cle = `${c.tenantId}|${c.dossierContrepartieId}|${l.numero}`;
+        const e = cumul.get(cle) ?? {
+          dossier: nom(c.tenantId),
+          contrepartie: nom(c.dossierContrepartieId),
+          numero: l.numero,
+          intitule: l.intitule,
+          motif: MOTIF_TRANSFERT_IMMOBILISATION,
+          debit: 0,
+          credit: 0,
+        };
+        e.debit += l.debit;
+        e.credit += l.credit;
+        cumul.set(cle, e);
+      }
+    };
+    for (const [, deux] of parTransfert) {
+      const cedant = deux.find((c) => c.sens === 'SORTIE');
+      const receveur = deux.find((c) => c.sens === 'ENTREE');
+      type Piece = { c: (typeof cotes)[number]; ls: NonNullable<ReturnType<typeof pieceDansLAgregat>> };
+      const piece = (c: (typeof cotes)[number] | undefined, id: string | null | undefined): Piece | null => {
+        if (!c || id === undefined) return null;
+        const ls = pieceDansLAgregat(id);
+        return ls ? { c, ls } : null;
+      };
+      const restantes = new Set<Piece>();
+      const pieces = {
+        co: piece(cedant, cedant?.ecritureId),
+        cn: piece(cedant, cedant?.ecritureNegatifId),
+        ro: piece(receveur, receveur?.ecritureId),
+        rn: piece(receveur, receveur?.ecritureNegatifId),
+      };
+      for (const p of Object.values(pieces)) if (p) restantes.add(p);
+      if (restantes.size === 0) continue;
+      for (const [x, y] of [[pieces.co, pieces.ro], [pieces.cn, pieces.rn], [pieces.co, pieces.cn], [pieces.ro, pieces.rn]] as const) {
+        if (!x || !y || !restantes.has(x) || !restantes.has(y)) continue;
+        eliminer(x.c, x.ls);
+        eliminer(y.c, y.ls);
+        restantes.delete(x);
+        restantes.delete(y);
+      }
+      if (restantes.size > 0) {
+        const present = [...restantes][0].c;
+        nonElimines.push(`${present.designation} (${nom(present.tenantId)} et ${nom(present.dossierContrepartieId)})`);
+      }
+    }
+    for (const e of cumul.values()) {
+      e.debit = arrondi(e.debit);
+      e.credit = arrondi(e.credit);
+      if (e.debit === 0 && e.credit === 0) continue;
+      reciproques.eliminations.push(e);
+      reciproques.totaux.debit = arrondi(reciproques.totaux.debit + e.debit);
+      reciproques.totaux.credit = arrondi(reciproques.totaux.credit + e.credit);
+    }
+    reciproques.eliminations.sort(
+      (a, b) => a.dossier.localeCompare(b.dossier) || a.numero.localeCompare(b.numero) || a.motif.localeCompare(b.motif),
+    );
+    return nonElimines.sort();
   }
 
   /**

@@ -487,6 +487,10 @@ describe('GroupeService · liasse du groupe en un clic', () => {
       // l'élimination des opérations réciproques : ce fichier est le garde-fou
       // qui le vérifie.
       tiersCompte: { findMany: async () => [] },
+      // Le dossier de combinaison naît dans sa propre transaction journalisée.
+      $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       tenant: {
         findUnique: async () => ({ id: 'mere', nom: 'Église centrale', dossierCombinaisonId: null }),
         findMany: async () => [

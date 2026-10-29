@@ -66,7 +66,10 @@ type Couples = { OR: Array<{ tenantId: string; exerciceId: string }> };
  * exercice) demandés, comme la base. Ces jeux d'essai ne portent que des
  * mouvements.
  */
-function lectureDesBalances(parDossier: Record<string, { exerciceId: string; lignes: Ligne[] }>) {
+function lectureDesBalances(
+  parDossier: Record<string, { exerciceId: string; lignes: Ligne[] }>,
+  transferts?: { lignes: Array<{ ecritureId: string; [cle: string]: unknown }> },
+) {
   const comptes = Object.entries(parDossier).flatMap(([tenantId, { lignes }]) =>
     lignes.map((x) => ({
       id: `${tenantId}:${x.numero}`,
@@ -84,6 +87,9 @@ function lectureDesBalances(parDossier: Record<string, { exerciceId: string; lig
         comptes.filter((c) => where.tenantId.in.includes(c.tenantId)).sort((a, b) => (a.numero < b.numero ? -1 : 1)),
     },
     ligneEcriture: {
+      // Les lignes des pièces de transfert demandées (anomalie n° 9), et rien d'autre.
+      findMany: async ({ where }: { where: { ecritureId?: { in: string[] } } }) =>
+        (transferts?.lignes ?? []).filter((x) => where.ecritureId?.in.includes(x.ecritureId)),
       groupBy: async ({ where }: { where: { ecriture: Couples & { estGenereeParCloture?: boolean } } }) =>
         where.ecriture.estGenereeParCloture !== false
           ? []
@@ -98,6 +104,7 @@ const service = (options: {
   referentiel: 'SYSCOHADA' | 'SYCEBNL';
   succursale?: typeof SUCCURSALE;
   siege?: typeof SIEGE;
+  transferts?: { cotes: unknown[]; lignes: Array<{ ecritureId: string; [cle: string]: unknown }> };
 }) => {
   const majTenant: unknown[] = [];
   const s = new GroupeService(
@@ -105,11 +112,13 @@ const service = (options: {
       ...lectureDesBalances({
         siege: { exerciceId: 'ex-m', lignes: (options.siege ?? SIEGE).lignes },
         succ: { exerciceId: 'ex-s', lignes: (options.succursale ?? SUCCURSALE).lignes },
-      }),
+      }, options.transferts),
       exercice: {
         findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
           where.id === 'ex-m' && where.tenantId === 'siege' ? EX : null,
       },
+      // Aucun transfert de bien entre dossiers dans ce jeu, sauf celui que le cas fournit (anomalie n° 9 de la NOTE 3A).
+      transfertImmobilisationGroupe: { findMany: async () => options.transferts?.cotes ?? [] },
       tiersCompte: { findMany: async () => [] },
       tenant: {
         findUnique: async () => ({
@@ -280,9 +289,109 @@ describe('F153 · le câblage · le dossier de combinaison lit le jeu du siège'
         create: cree,
         update: jest.fn(async () => ({})),
       },
+      // Le dossier de combinaison naît dans sa propre transaction journalisée.
+      $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
     };
     const s = new GroupeService(prisma as never, {} as never, {} as never, {} as never);
     await (s as unknown as { assurerDossierCombinaison: (t: string) => Promise<string> }).assurerDossierCombinaison('siege');
     expect((cree.mock.calls[0][0] as { data: { jeuEtatsFinanciersSycebnl: string } }).data.jeuEtatsFinanciersSycebnl).toBe('PROJETS_DEVELOPPEMENT');
+  });
+});
+
+/**
+ * ANOMALIE N° 9 DE LA NOTE 3A (décision de Manasse du 2026-10-29) · le siège
+ * cède à la succursale un matériel de 1 000, amorti de 400 dont 100 doté au
+ * mois du transfert, pour une valeur nette de 600 portée aux comptes de
+ * liaison (`piecesDuTransfert`). Combinés, l'entrée chez l'un et la sortie
+ * chez l'autre faisaient une acquisition et une cession de 1 000 qu'aucun tiers
+ * n'a faites. Elles sortent des deux côtés ; le complément de dotation reste.
+ */
+describe('groupe SYSCOHADA · le transfert d’un bien entre dossiers ne s’acquiert ni ne se cède', () => {
+  const ligneDe = (ecritureId: string, tenantId: string, exerciceId: string, numero: string, debit: number, credit: number) => ({
+    ecritureId,
+    debit,
+    credit,
+    compte: { numero, intitule: numero },
+    ecriture: { tenantId, exerciceId },
+  });
+  const transferts = {
+    cotes: [
+      { transfertId: 'tr1', tenantId: 'siege', sens: 'SORTIE', dossierContrepartieId: 'succ', designation: 'Groupe électrogène', ecritureId: 'e-c', ecritureNegatifId: null },
+      { transfertId: 'tr1', tenantId: 'succ', sens: 'ENTREE', dossierContrepartieId: 'siege', designation: 'Groupe électrogène', ecritureId: 'e-r', ecritureNegatifId: null },
+    ],
+    lignes: [
+      ligneDe('e-c', 'siege', 'ex-m', '68130000', 100, 0),
+      ligneDe('e-c', 'siege', 'ex-m', '28440000', 0, 100),
+      ligneDe('e-c', 'siege', 'ex-m', '28440000', 400, 0),
+      ligneDe('e-c', 'siege', 'ex-m', '18510001', 600, 0),
+      ligneDe('e-c', 'siege', 'ex-m', '24400000', 0, 1000),
+      ligneDe('e-r', 'succ', 'ex-s', '24400000', 1000, 0),
+      ligneDe('e-r', 'succ', 'ex-s', '28440000', 0, 400),
+      ligneDe('e-r', 'succ', 'ex-s', '18510000', 0, 600),
+    ],
+  };
+  const siege = {
+    lignes: [
+      l('18510001', 'Liaison succursale Lubumbashi', 1100, 0),
+      l('24400000', 'Matériel', 1000, 1000),
+      l('28440000', 'Amortissements du matériel', 400, 100),
+      l('52110000', 'Banque', 2000, 500),
+      l('68130000', 'Dotations aux amortissements', 100, 0),
+      l('70110000', 'Ventes de marchandises', 0, 2000),
+      l('10100000', 'Capital', 0, 1000),
+    ],
+    totaux: { debit: 4600, credit: 4600 },
+  };
+  const succursale = {
+    lignes: [
+      l('18510000', 'Liaison siège', 0, 1100),
+      l('24400000', 'Matériel', 1000, 0),
+      l('28440000', 'Amortissements du matériel', 0, 400),
+      l('57110000', 'Caisse', 500, 200),
+      l('60110000', 'Achats de marchandises', 200, 0),
+    ],
+    totaux: { debit: 1700, credit: 1700 },
+  };
+
+  it('sort l’entrée et la sortie du bien et de ses amortissements, garde le complément de dotation, et l’agrégat reste équilibré', async () => {
+    const a = await service({ referentiel: 'SYSCOHADA', siege, succursale, transferts }).s.balanceAgregee('siege', 'ex-m');
+    const ligne = (n: string) => a.lignes.find((x) => x.numero === n);
+    // Le brut du siège (1 000 cédé, 1 000 à l'ouverture) · seule la cession sort, l'achat d'origine reste.
+    expect(ligne('24400000')).toMatchObject({ totalDebit: 1000, totalCredit: 0 });
+    // L'amortissement · le complément doté au mois du transfert (100) reste au crédit.
+    expect(ligne('28440000')).toMatchObject({ totalDebit: 0, totalCredit: 100 });
+    expect(ligne('68130000')).toMatchObject({ totalDebit: 100 });
+    expect(a.totaux.debit).toBeCloseTo(a.totaux.credit, 2);
+    const transfert = a.eliminations.filter((e) => e.motif === 'Transfert d’un bien entre dossiers du groupe');
+    expect(transfert.reduce((t, e) => t + e.debit, 0)).toBe(1400);
+    expect(transfert.reduce((t, e) => t + e.credit, 0)).toBe(1400);
+    expect(a.controles.eliminationsSymetriques).toBe(true);
+    expect(a.avertissements.join(' ')).not.toMatch(/NON éliminé/);
+  });
+
+  it('transfert annulé, pièce du receveur retirée du brouillard · le cédant garde l’original et son négatif, éliminés ensemble, et rien n’est nommé', async () => {
+    const annule = {
+      cotes: [
+        { ...transferts.cotes[0], ecritureNegatifId: 'e-cn' },
+        { ...transferts.cotes[1], ecritureId: null, ecritureNegatifId: null },
+      ],
+      lignes: [
+        ...transferts.lignes.filter((x) => x.ecritureId === 'e-c'),
+        ...transferts.lignes.filter((x) => x.ecritureId === 'e-c').map((x) => ({ ...x, ecritureId: 'e-cn', debit: -x.debit, credit: -x.credit })),
+      ],
+    };
+    const a = await service({ referentiel: 'SYSCOHADA', siege, succursale, transferts: annule }).s.balanceAgregee('siege', 'ex-m');
+    const transfert = a.eliminations.filter((e) => e.motif === 'Transfert d’un bien entre dossiers du groupe');
+    expect(transfert.every((e) => e.debit === 0 && e.credit === 0)).toBe(true);
+    expect(a.avertissements.join(' ')).not.toMatch(/NON éliminé/);
+  });
+
+  it('un côté absent de l’agrégat · rien ne sort, et le transfert est nommé', async () => {
+    const seul = { ...transferts, lignes: transferts.lignes.filter((x) => x.ecritureId === 'e-c') };
+    const a = await service({ referentiel: 'SYSCOHADA', siege, succursale, transferts: seul }).s.balanceAgregee('siege', 'ex-m');
+    expect(a.eliminations.filter((e) => e.motif === 'Transfert d’un bien entre dossiers du groupe')).toEqual([]);
+    expect(a.avertissements.join(' ')).toMatch(/Groupe électrogène \(Société Kivu Trading et Succursale Lubumbashi\)/);
   });
 });

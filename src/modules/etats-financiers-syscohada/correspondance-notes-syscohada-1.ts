@@ -253,12 +253,17 @@ import { SpecificationNote } from '../notes-annexes/note-annexe.types';
  *    de poste à poste » · le bien ne change pas de poste, il change de
  *    comptabilité autonome. Le porter là serait une lecture d'OmegaX qu'aucun
  *    article n'appuie ; le laisser en acquisition et en cession est la lecture
- *    de la comptabilité autonome de chaque établissement, et les deux se
- *    compensent dans la liasse du groupe, qui additionne les dossiers. Le
- *    tableau des flux, lui, le neutralise par sa liaison (Titre IX ch. 5
- *    § 1.3, aucun flux de trésorerie). La note 3B n'est pas touchée · un bien
- *    tenu par un contrat de location-acquisition ne se transfère pas
- *    (`transfert-groupe.ts`, `motifRefusBien`). Question au suivi.
+ *    de la comptabilité autonome de chaque établissement. Le tableau des
+ *    flux de chaque dossier le neutralise par sa liaison (Titre IX ch. 5
+ *    § 1.3, aucun flux de trésorerie). DANS LA LIASSE DU GROUPE, il SORT
+ *    (décision de Manasse du 2026-10-29) · additionnés, l'entrée et la sortie
+ *    faisaient une acquisition et une cession qu'aucun tiers n'a faites, et
+ *    l'entité est une (fiche du compte 18) · l'agrégat retire l'entrée et la
+ *    sortie du bien, de ses amortissements et de ses dépréciations des deux
+ *    côtés, comme les 184 à 187, le complément de dotation du cédant restant
+ *    (`lignesDuTransfertAEliminer`, `GroupeService`). La note 3B n'est pas
+ *    touchée · un bien tenu par un contrat de location-acquisition ne se
+ *    transfère pas (`transfert-groupe.ts`, `motifRefusBien`).
  *
  * 10. **NOTE 3C, immeubles de placement** · le brut distingue 2281, 2315 et
  *    2325, mais le plan n'a AUCUN compte d'amortissement dédié (282 ne

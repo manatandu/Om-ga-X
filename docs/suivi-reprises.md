@@ -180,6 +180,16 @@ de produit.
   immobilisations ; aucun texte ne range ce mouvement en « Virements de
   poste à poste ». Écart écrit en tête de `correspondance-notes-syscohada-1.ts`
   (anomalie n° 9) ; le porter aux virements serait une lecture d'OmegaX.
+  **TRANCHÉ le 2026-10-29 (Manasse, « Oui »)** · dans la liasse du groupe, le
+  transfert sort des deux côtés comme les 184 à 187 (`lignesDuTransfertAEliminer`),
+  le complément de dotation du cédant restant ; un côté absent de l'agrégat n'élimine
+  rien et le transfert est nommé. Rejeu `scripts/rejouer-transfert-liasse-groupe.cjs` (bien entré en
+  2025, clôture, transfert en 2026, balance agrégée et liasse) · il a trouvé que la
+  PREMIÈRE liasse d'un groupe tombait en 500, le dossier de combinaison naissant au
+  nom du siège (maillon d'audit refusé par la garde) · corrigé, il naît au nom du
+  dossier qui naît, comme `register`. Reste, relevé MINEUR · le lien
+  `dossierCombinaisonId` se pose après sa transaction (deux premières liasses
+  simultanées laisseraient un dossier orphelin, rien de perdu).
 
 ## Relevés en attente · virement de fonds (second tour non bloquant)
 
@@ -721,14 +731,31 @@ Demande de Manasse · « Réfère-toi à la loi et tranche ce que tu peux ».
   intelligible » de ce qui est entré) ; le manifeste dit désormais le risque
   à l'ouverture par un tableur et la façon d'ouvrir les CSV.
 
-Restent à Manasse, que nul texte ne régit · fermer Cloud Run au seul trafic
-du site (réglage de la console Google ; vérifier d'abord que `surveillance.yml`
-et le contrôle `/health` du déploiement passent encore) ; le cadrage du
-logiciel d'audit ; l'identité de l'éditeur pour la version 3 du contrat de
-licence (Code du numérique, art. 52) ; l'anomalie n° 9 de la NOTE 3A
-(proposée · éliminer le transfert dans la liasse combinée, comme les 184 à
-187) ; l'arrêté de l'art. 219 (texte à fournir). Les fichiers engendrés
-étaient déjà retirés de l'index (`3bff15bca`).
+Réponses de Manasse du 2026-10-29 aux cinq points qui lui restaient · (1) IDENTITÉ DE
+L'ÉDITEUR · pas encore de nom, ne plus le demander, il le donnera ; le « xxx » demandé
+n'est pas posé · le contrat ouvre l'acceptation dès qu'une dénomination est écrite
+(`motifAcceptationFermee`), et « L'éditeur est xxx » ferait accepter un contrat sous
+un nom fictif (Code du numérique, art. 52, 1° et 2°) ; la version 2 publiée ne se
+réécrit pas (art. 34, `versions-publiees.spec.ts`). La mention « à arrêter par
+l'éditeur » reste jusqu'au nom. (2) LOGICIEL D'AUDIT · un autre logiciel, hors
+d'OmegaX, rien à faire ici. (3) ARRÊTÉ DE L'ART. 219 · recherché · trois textes
+nommés par le web, aucun lu · arrêté n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010
+(modalités de la déclaration annuelle de la situation de la main-d'œuvre),
+arrêté n° 006/CAB/PVPM/ETPS/2010 du même jour (déclaration d'embauche et de départ,
+art. 217), arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 (cité sur le formulaire
+« DASMO » de l'ONEM ; date limite du 31 janvier selon une source secondaire, non lue).
+`leganet.cd` et `onem.cd`, qui les portent, sont hors du réseau de la session ·
+rien n'est codé sur une corroboration (§ « un même texte, deux dates »). À lire
+quand l'un des deux domaines est ouvert à la session, ou sur le PDF. (4) CLOUD RUN
+FERMÉ AU SEUL TRAFIC DU SITE · non posé, faute de cohérence vérifiable · aucune
+source lue ne dit que le relais de Firebase Hosting traverse un ingress
+`internal-and-cloud-load-balancing` (s'il ne le traverse pas, le site entier tombe
+pour tous les cabinets), et `surveillance.yml` comme le contrôle `/health` du
+déploiement appellent `*.run.app` en direct. Voie · un essai borné par un workflow
+manuel qui pose l'ingress, lit `oomega.web.app/api/health`, et le remet à `all` au
+premier échec, après avoir repointé la surveillance et le contrôle de santé sur le
+site. (5) ANOMALIE N° 9 DE LA NOTE 3A · « Oui » · tranchée plus haut. Les fichiers
+engendrés étaient déjà retirés de l'index (`3bff15bca`).
 
 ## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
 

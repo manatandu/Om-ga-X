@@ -92,6 +92,8 @@ function harnais(lignes: LigneFixture[], rattachements: RattachementFixture[] = 
         findMany: async ({ where }: { where: { dossierMereId: string } }) =>
           where.dossierMereId === 'mere' ? [{ id: 'c1', nom: 'Antenne', exercices: [EX_C1] }] : [],
       },
+      // Aucun transfert de bien entre dossiers dans ce jeu (anomalie n° 9 de la NOTE 3A).
+      transfertImmobilisationGroupe: { findMany: async () => [] },
       tiersCompte: {
         findMany: async ({ where }: { where: { tiers: { tenantId: { in: string[] } } } }) =>
           rattachements
