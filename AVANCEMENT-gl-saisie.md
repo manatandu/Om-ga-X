@@ -23,7 +23,7 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 
 ## Reste
 
-Relecture adverse (deux tours), puis intégration par Manasse.
+Rien de la ligne. Restent hors de cette session · l'intégration sur `main` (non faite, à la demande), les tests navigateur de `e2e/` (non rejoués ici, le workflow les joue sur la demande de tirage ou après intégration), et le retrait de cette fiche à l'intégration.
 
 ## Décisions, avec leur fondement
 
