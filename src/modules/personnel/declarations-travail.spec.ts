@@ -103,6 +103,12 @@ describe('le formulaire de mouvement (arrêté n° 006, annexe)', () => {
     expect(f.offreAPreciser).toBe(true);
   });
 
+  it('un salaire sans monnaie est nommé, jamais complété', () => {
+    const f = formulaireMouvement(employeur, salarie, { ...contrat, deviseRemuneration: null }, 'EMBAUCHE');
+    expect(f.travailleur.find((c) => c.libelle === 'Salaire')?.valeur).toBe('900000.00 par mois');
+    expect(f.manquants).toContain('Monnaie du salaire (non renseignée au contrat)');
+  });
+
   it('une rémunération sans périodicité ne s’imprime pas comme un salaire', () => {
     const f = formulaireMouvement(employeur, salarie, { ...contrat, periodiciteRemuneration: null }, 'EMBAUCHE');
     expect(f.manquants).toContain('Salaire');

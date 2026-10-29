@@ -121,9 +121,9 @@ export function formulaireMouvement(e: EmployeurDeclare, s: SalarieDeclare, c: C
   const salaire =
     c.remunerationBase === null || !c.periodiciteRemuneration
       ? null
-      : `${c.remunerationBase.toFixed(2)} ${c.deviseRemuneration ?? '(monnaie non renseignée)'} ${
+      : `${c.remunerationBase.toFixed(2)} ${c.deviseRemuneration ?? ''} ${
           { JOUR: 'par jour', SEMAINE: 'par semaine', MOIS: 'par mois', ANNEE: 'par an' }[c.periodiciteRemuneration]
-        }`;
+        }`.replace(/  +/g, ' ');
   const contrat =
     c.type === 'DUREE_DETERMINEE'
       ? 'à durée déterminée'
@@ -160,6 +160,8 @@ export function formulaireMouvement(e: EmployeurDeclare, s: SalarieDeclare, c: C
   ];
   const date = m.objet === 'ENGAGEMENT' ? c.dateEntreeEnVigueur : c.dateFin!;
   const manquants = [...employeur, ...travailleur].filter((x) => x.valeur === null).map((x) => x.libelle);
+  // Un montant sans sa monnaie n'est pas un salaire lisible (P1b) · nommé.
+  if (salaire !== null && !c.deviseRemuneration) manquants.push('Monnaie du salaire (non renseignée au contrat)');
   manquants.push('Situation de famille · état civil à cocher (non tenu au registre)');
   return {
     employeur,

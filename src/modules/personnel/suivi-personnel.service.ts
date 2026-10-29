@@ -635,6 +635,17 @@ export class SuiviPersonnelService {
     );
     // Le délai et l'état se lisent par la même règle que la confrontation du registre.
     const objet = formulaire.offreAPreciser ? 'DEPART' : 'ENGAGEMENT';
+    // LES DATES DE DÉCLARATION SONT TENUES PAR SALARIÉ, PAS PAR CONTRAT
+    // (`Salarie.declarationEngagementLe`, `declarationDepartLe`) · elles ne se
+    // lisent que contre son DERNIER contrat. Pour un contrat antérieur
+    // (salarié réembauché), l'état n'est pas tenu, et c'est dit · sinon la
+    // date de la seconde embauche passait pour celle de la première.
+    const dernier = await this.prisma.contratTravail.findFirst({
+      where: { tenantId, salarieId: s.id },
+      orderBy: [{ dateEntreeEnVigueur: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    const etatTenu = dernier?.id === contrat.id;
     const due = declarationsDues(
       {
         dateEntreeEnVigueur: contrat.dateEntreeEnVigueur,
@@ -647,11 +658,15 @@ export class SuiviPersonnelService {
     return {
       ...formulaire,
       echeance: iso(due.echeance),
-      faiteLe:
-        objet === 'ENGAGEMENT'
+      faiteLe: !etatTenu
+        ? null
+        : objet === 'ENGAGEMENT'
           ? s.declarationEngagementLe && iso(s.declarationEngagementLe)
           : s.declarationDepartLe && iso(s.declarationDepartLe),
-      enRetard: due.enRetard,
+      enRetard: etatTenu ? due.enRetard : null,
+      etatNonTenu: etatTenu
+        ? null
+        : "Ce contrat n'est pas le dernier du salarié · la fiche ne tient la date de déclaration que pour son dernier contrat, l'état de celui-ci n'est pas lu.",
       destinataires: due.destinataires,
       delai: PRIMAUTE_DELAI_LOI,
       exemplaires: EXEMPLAIRES_MOUVEMENT,
@@ -674,10 +689,13 @@ export class SuiviPersonnelService {
     const aujourdhui = iso(jourDeKinshasa(new Date()));
     return {
       ...formulaireEtablissement(employeur),
-      natures: NATURES_ETABLISSEMENT,
+      // Ce que la réponse a retenu · l'écran imprime CES valeurs, jamais l'état de ses champs.
+      nature: nature ?? null,
+      natureLibelle: NATURES_ETABLISSEMENT.find((n) => n.code === nature)?.libelle ?? null,
+      date: date ?? null,
       fenetre,
-      // Passé le jour d'avant l'événement, le délai est couru · dit, jamais un refus.
-      delaiCouru: fenetre ? aujourdhui > fenetre.au : null,
+      // « Dans la quinzaine qui précède » · avant, dedans ou après, dit, jamais un refus.
+      position: fenetre ? (aujourdhui < fenetre.du ? 'AVANT' : aujourdhui > fenetre.au ? 'APRES' : 'DANS') : null,
       exemplaires: EXEMPLAIRES_ETABLISSEMENT,
       fondement: FONDEMENT_ETABLISSEMENT,
     };

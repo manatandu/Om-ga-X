@@ -96,8 +96,19 @@ async function main() {
     r = await A.statut('GET', `/personnel/contrats/${c2.id}/declaration-mouvement?motif=RETRAITE`);
     verifier(r.statut === 400, `motif inconnu refusé (${r.statut})`);
 
+    // Réembauche · la date de déclaration de la fiche ne vaut que pour le DERNIER contrat.
+    await prisma.salarie.update({ where: { id: s2.id }, data: { declarationEngagementLe: new Date('2025-06-05T00:00:00Z') } });
+    const c3 = await A.post(`/personnel/salaries/${s2.id}/contrats`, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2026-07-01' });
+    r = await A.statut('GET', `/personnel/contrats/${c2.id}/declaration-mouvement?motif=EMBAUCHE`);
+    verifier(r.statut === 200 && r.corps.faiteLe === null && r.corps.enRetard === null && /pas le dernier/.test(r.corps.etatNonTenu ?? ''), `contrat antérieur · état non lu, dit (${r.corps.faiteLe} ${r.corps.enRetard})`);
+    r = await A.statut('GET', `/personnel/contrats/${c3.id}/declaration-mouvement?motif=EMBAUCHE`);
+    verifier(r.statut === 200 && r.corps.etatNonTenu === null && r.corps.echeance === '2026-07-16', `dernier contrat · état lu, échéance à quinze jours (${r.corps.echeance})`);
+
     r = await A.statut('GET', '/personnel/declaration-etablissement?nature=FERMETURE&date=2026-03-01');
     verifier(r.statut === 200 && r.corps.fenetre.du === '2026-02-14' && r.corps.fenetre.au === '2026-02-28', `quinzaine qui précède (${JSON.stringify(r.corps.fenetre)})`);
+    verifier(r.corps.nature === 'FERMETURE' && r.corps.date === '2026-03-01' && r.corps.natureLibelle === 'Fermeture' && ['AVANT', 'DANS', 'APRES'].includes(r.corps.position), `nature, date et position rendues par le serveur (${r.corps.position})`);
+    r = await A.statut('GET', '/personnel/declaration-etablissement?nature=OUVERTURE&date=2099-01-20');
+    verifier(r.corps.position === 'AVANT', `quinzaine pas encore ouverte (${r.corps.position})`);
     r = await A.statut('GET', '/personnel/declaration-etablissement?nature=VENTE');
     verifier(r.statut === 400, `nature inconnue refusée (${r.statut})`);
 

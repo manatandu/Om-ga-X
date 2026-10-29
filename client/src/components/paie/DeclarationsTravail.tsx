@@ -20,7 +20,8 @@ type Mouvement = {
   manquants: string[];
   echeance: string;
   faiteLe: string | null;
-  enRetard: boolean;
+  enRetard: boolean | null;
+  etatNonTenu: string | null;
   destinataires: string;
   delai: string;
   exemplaires: string;
@@ -31,9 +32,11 @@ type Mouvement = {
 type Etablissement = {
   declarant: Champ[];
   manquants: string[];
-  natures: { code: string; libelle: string }[];
+  nature: string | null;
+  natureLibelle: string | null;
+  date: string | null;
   fenetre: { du: string; au: string } | null;
-  delaiCouru: boolean | null;
+  position: 'AVANT' | 'DANS' | 'APRES' | null;
   exemplaires: string;
   fondement: string;
 };
@@ -117,7 +120,15 @@ export function DeclarationMouvementTravailleur({
         )}
         {contrats.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <select aria-label="Contrat" value={contratId} onChange={(e) => setContratId(e.target.value)} className={champ}>
+            <select
+              aria-label="Contrat"
+              value={contratId}
+              onChange={(e) => {
+                setContratId(e.target.value);
+                setDonnees(null);
+              }}
+              className={champ}
+            >
               <option value="">Choisir le contrat</option>
               {contrats.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -125,7 +136,15 @@ export function DeclarationMouvementTravailleur({
                 </option>
               ))}
             </select>
-            <select aria-label="Motif de la déclaration" value={motif} onChange={(e) => setMotif(e.target.value)} className={champ}>
+            <select
+              aria-label="Motif de la déclaration"
+              value={motif}
+              onChange={(e) => {
+                setMotif(e.target.value);
+                setDonnees(null);
+              }}
+              className={champ}
+            >
               {MOTIFS.map((m) => (
                 <option key={m.code} value={m.code}>
                   {m.libelle}
@@ -173,6 +192,7 @@ export function DeclarationMouvementTravailleur({
               À déposer au plus tard le {donnees.echeance} {donnees.destinataires}.
               {donnees.faiteLe ? ` Déclaration faite le ${donnees.faiteLe}.` : donnees.enRetard ? ' Délai couru, non déclarée au registre.' : ''}
             </div>
+            {donnees.etatNonTenu && <div className="text-text-dim">{donnees.etatNonTenu}</div>}
             <div className="text-text-dim">{donnees.delai}</div>
             {donnees.derogation && <div className="text-text-dim">{donnees.derogation}</div>}
             {donnees.manquants.length > 0 && <div className="text-warning">À compléter à la main · {donnees.manquants.join(' ; ')}.</div>}
@@ -212,8 +232,6 @@ export function DeclarationEtablissement() {
     }
   }
 
-  const natureLue = donnees?.natures.find((n) => n.code === nature)?.libelle ?? nature;
-
   return (
     <div className="max-w-[900px] text-[11.5px] space-y-2">
       <div className="ecran-seul space-y-2">
@@ -226,7 +244,15 @@ export function DeclarationEtablissement() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select aria-label="Nature de la déclaration" value={nature} onChange={(e) => setNature(e.target.value)} className={champ}>
+          <select
+            aria-label="Nature de la déclaration"
+            value={nature}
+            onChange={(e) => {
+              setNature(e.target.value);
+              setDonnees(null);
+            }}
+            className={champ}
+          >
             <option value="OUVERTURE">Ouverture</option>
             <option value="FERMETURE">Fermeture</option>
             <option value="REOUVERTURE">Réouverture</option>
@@ -235,7 +261,16 @@ export function DeclarationEtablissement() {
           </select>
           <label className="flex items-center gap-1">
             Date de l’événement
-            <input type="date" aria-label="Date de l’événement" value={date} onChange={(e) => setDate(e.target.value)} className={champ} />
+            <input
+              type="date"
+              aria-label="Date de l’événement"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setDonnees(null);
+              }}
+              className={champ}
+            />
           </label>
           <button type="button" disabled={lecture} onClick={() => void remplir()} className="bg-sel text-white font-semibold px-3 py-1">
             Remplir le formulaire
@@ -253,10 +288,12 @@ export function DeclarationEtablissement() {
             Forme · propriété individuelle ; société ; service public ; paraétatique ; libérale ; association sans but lucratif ;
             syndicat ; établissement public ou privé de bienfaisance (cocher)
           </div>
-          <div className="font-semibold">2. Déclaration d’ouverture · de réouverture</div>
+          <div className="font-semibold">
+            2. {donnees.nature === 'CHANGEMENT' ? 'Déclaration de changement' : 'Déclaration d’ouverture · de fermeture · de réouverture'}
+          </div>
           <div>
-            {natureLue}
-            {date ? ` · le ${date}` : ' · le ……………………'}
+            {donnees.natureLibelle ?? '……………………'}
+            {donnees.date ? ` · le ${donnees.date}` : ' · le ……………………'}
           </div>
           <div className="font-semibold">3. Déclaration de changement divers</div>
           <div>
@@ -272,7 +309,7 @@ export function DeclarationEtablissement() {
             {donnees.fenetre ? (
               <div>
                 À déposer du {donnees.fenetre.du} au {donnees.fenetre.au}, dans la quinzaine qui précède l’événement.
-                {donnees.delaiCouru ? ' Le délai est couru.' : ''}
+                {donnees.position === 'APRES' ? ' Le délai est couru.' : donnees.position === 'AVANT' ? ' La quinzaine n’est pas encore ouverte.' : ''}
               </div>
             ) : (
               <div className="text-text-dim">Saisissez la date de l’événement pour lire la quinzaine où la déclaration se dépose.</div>
