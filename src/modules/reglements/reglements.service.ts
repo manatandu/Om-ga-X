@@ -27,6 +27,7 @@ import { avertissementExtourneManquante, issueReevaluationDejaPassee, motifRegle
 import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.service';
 import type { LigneReglee } from '../tiers/ribs-tiers';
 import { modeDuDossier } from './modes-reglement.service';
+import { refusReglementInterrompu, rejouerSiRienEcrit } from './reglement-interrompu';
 import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte, SEUIL_ART_59_BIS } from './modes-reglement';
 import { classerTransactions, estDAnouveau, transactionsDesLignes, type TransactionReglee } from './transactions-art-59-bis';
 import {
@@ -975,90 +976,153 @@ export class ReglementsService {
 
     const resultats = [];
     const aOrdonner: LigneAOrdonner[] = [];
-    for (const preparee of prepares) {
-      const { r, compte, du, montant, tiers, escompte, ecart, enDevise, reduite, parts, groupe } = preparee;
-      const libelle = libelleDe(preparee);
-      const ecriture = await this.ecritures.creer(tenantId, userId, {
-        exerciceId: dto.exerciceId,
-        journalId: dto.journalId,
-        date: dto.date,
-        libelle,
-        // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
-        // référence du règlement, et se lit sur la pièce comptable.
-        reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
-        lignes: lignesDe(preparee, libelle),
-      });
-      if (parts) {
-        // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
-        // désignée par le dossier (art. 151) devient le lettrage même, et le
-        // moteur de la TVA date chaque déduction sans imputer. Un lettrage
-        // refusé défait les groupes déjà posés et retire la pièce (F56).
-        const poses: string[] = [];
-        try {
-          for (const part of parts) {
-            const ligneTiersPart = ecriture.lignes.find((l) => l.compteId === r.compteId && l.libelle === part.libelle);
-            if (!ligneTiersPart) throw new ConflictException(`La ligne du règlement de « ${part.libelle} » est introuvable dans sa pièce.`);
-            const l = await this.lettrage.lettrerManuel(tenantId, r.compteId, [part.ligneId, ligneTiersPart.id], userId, {
-              autoriserPartiel: Math.round(part.montant * 100) < Math.round(part.du * 100),
-            });
-            poses.push(l.lettre);
-          }
-        } catch (e) {
-          // Le nettoyage manqué est CONSIGNÉ avec l'identifiant de la pièce, et
-          // l'erreur d'origine remonte toujours · jamais l'une pour l'autre.
-          try {
-            for (const code of poses) await this.lettrage.delettrer(tenantId, r.compteId, code);
-            await this.ecritures.retirerCompensation(tenantId, ecriture.id);
-          } catch (nettoyage) {
-            this.journalServeur.error(
-              `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard avec ${poses.length} lettrage(s) · son retrait après l'échec du lettrage a échoué`,
-              nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
-            );
-          }
-          throw e;
-        }
-        resultats.push({ compte: compte.numero, ecritureId: ecriture.id, montant, partiel: Math.round(montant * 100) < Math.round(du * 100), lettre: poses.join(', ') });
-        aOrdonner.push({
-          compteId: r.compteId,
-          montant,
-          reference: r.reference || null,
-          ecritureId: ecriture.id,
-          pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
-          // L'ordre IMPRIME l'imputation déclarée (art. 151, M6).
-          imputationDeclaree: imputationImprimee(parts),
-          montantDevise: enDevise ? enDevise.montantDevise : null,
-          devise: deviseDeLOrdre({ enDevise }),
+    // Point 6 · ce qu'une interruption laisse se dit (`reglement-interrompu.ts`).
+    let compteEnCours = '';
+    let resteeAuBrouillard: string | null = null;
+    const numeroDe = (e: { numeroPiece: number | null }) => [journal.code, e.numeroPiece].filter((v) => v !== null && v !== undefined).join(' ');
+    try {
+      for (const preparee of prepares) {
+        const { r, compte, du, montant, tiers, escompte, ecart, enDevise, reduite, parts, groupe } = preparee;
+        compteEnCours = compte.numero;
+        const libelle = libelleDe(preparee);
+        const ecriture = await this.ecritures.creer(tenantId, userId, {
+          exerciceId: dto.exerciceId,
+          journalId: dto.journalId,
+          date: dto.date,
+          libelle,
+          // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
+          // référence du règlement, et se lit sur la pièce comptable.
+          reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
+          lignes: lignesDe(preparee, libelle),
         });
-        continue;
-      }
-      const ligneTiers = ecriture.lignes.find((l) => l.compteId === r.compteId)!;
-      if (groupe) {
-        // LE RÈGLEMENT COMPLÈTE LE LETTRAGE PARTIEL (ligne lettrage-cloture) ·
-        // les autres factures choisies et la ligne du tiers y entrent, et le
-        // groupe passe SOLDÉ quand le reste est réglé. En devise, le réalisé
-        // du règlement s'ajoute à celui que le groupe garde (A6, `ecartCumule`).
-        let complete: Awaited<ReturnType<LettrageService['completer']>>;
-        try {
-          complete = await this.lettrage.completer(tenantId, groupe.id, [...r.ligneIds.filter((id) => !groupe.lignes.includes(id)), ligneTiers.id], {
-            ...(enDevise ? { ecartChangeRealise: enDevise.ecart } : {}),
-            // M1 · le reste lu ici se relit dans la transaction du lettrage ·
-            // dans sa DEVISE pour un règlement en devise (relecture TypeScript
-            // du second tour, bloquant 1), l'écart en francs restant à l'écart
-            // proposé au groupe soldé dans sa devise.
-            borne: {
-              soldeAttendu: groupe.solde,
-              sensDesFactures: dto.sens === 'CLIENT' ? 'DEBIT' : 'CREDIT',
-              deviseId: enDevise ? enDevise.deviseId : null,
-            },
-          });
-        } catch (e) {
-          // Mineur 9 · un retrait manqué est CONSIGNÉ, et l'erreur d'origine
-          // remonte (même règle que la voie des parts).
+        if (parts) {
+          // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
+          // désignée par le dossier (art. 151) devient le lettrage même, et le
+          // moteur de la TVA date chaque déduction sans imputer. Un lettrage
+          // refusé défait les groupes déjà posés et retire la pièce (F56).
+          const poses: string[] = [];
           try {
-            await this.ecritures.retirerCompensation(tenantId, ecriture.id);
+            for (const part of parts) {
+              const ligneTiersPart = ecriture.lignes.find((l) => l.compteId === r.compteId && l.libelle === part.libelle);
+              if (!ligneTiersPart) throw new ConflictException(`La ligne du règlement de « ${part.libelle} » est introuvable dans sa pièce.`);
+              const l = await rejouerSiRienEcrit(() =>
+                this.lettrage.lettrerManuel(tenantId, r.compteId, [part.ligneId, ligneTiersPart.id], userId, {
+                  autoriserPartiel: Math.round(part.montant * 100) < Math.round(part.du * 100),
+                }),
+              );
+              poses.push(l.lettre);
+            }
+          } catch (e) {
+            // Le nettoyage manqué est CONSIGNÉ avec l'identifiant de la pièce, et
+            // l'erreur d'origine remonte toujours · jamais l'une pour l'autre.
+            try {
+              for (const code of poses) await rejouerSiRienEcrit(() => this.lettrage.delettrer(tenantId, r.compteId, code));
+              await rejouerSiRienEcrit(() => this.ecritures.retirerCompensation(tenantId, ecriture.id));
+            } catch (nettoyage) {
+              resteeAuBrouillard = numeroDe(ecriture);
+              this.journalServeur.error(
+                `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard avec ${poses.length} lettrage(s) · son retrait après l'échec du lettrage a échoué`,
+                nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
+              );
+            }
+            throw e;
+          }
+          resultats.push({ compte: compte.numero, ecritureId: ecriture.id, montant, partiel: Math.round(montant * 100) < Math.round(du * 100), lettre: poses.join(', ') });
+          aOrdonner.push({
+            compteId: r.compteId,
+            montant,
+            reference: r.reference || null,
+            ecritureId: ecriture.id,
+            pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
+            // L'ordre IMPRIME l'imputation déclarée (art. 151, M6).
+            imputationDeclaree: imputationImprimee(parts),
+            montantDevise: enDevise ? enDevise.montantDevise : null,
+            devise: deviseDeLOrdre({ enDevise }),
+          });
+          continue;
+        }
+        const ligneTiers = ecriture.lignes.find((l) => l.compteId === r.compteId)!;
+        if (groupe) {
+          // LE RÈGLEMENT COMPLÈTE LE LETTRAGE PARTIEL (ligne lettrage-cloture) ·
+          // les autres factures choisies et la ligne du tiers y entrent, et le
+          // groupe passe SOLDÉ quand le reste est réglé. En devise, le réalisé
+          // du règlement s'ajoute à celui que le groupe garde (A6, `ecartCumule`).
+          let complete: Awaited<ReturnType<LettrageService['completer']>>;
+          try {
+            complete = await rejouerSiRienEcrit(() => this.lettrage.completer(tenantId, groupe.id, [...r.ligneIds.filter((id) => !groupe.lignes.includes(id)), ligneTiers.id], {
+              ...(enDevise ? { ecartChangeRealise: enDevise.ecart } : {}),
+              // M1 · le reste lu ici se relit dans la transaction du lettrage ·
+              // dans sa DEVISE pour un règlement en devise (relecture TypeScript
+              // du second tour, bloquant 1), l'écart en francs restant à l'écart
+              // proposé au groupe soldé dans sa devise.
+              borne: {
+                soldeAttendu: groupe.solde,
+                sensDesFactures: dto.sens === 'CLIENT' ? 'DEBIT' : 'CREDIT',
+                deviseId: enDevise ? enDevise.deviseId : null,
+              },
+            }));
+          } catch (e) {
+            // Mineur 9 · un retrait manqué est CONSIGNÉ, et l'erreur d'origine
+            // remonte (même règle que la voie des parts).
+            try {
+              await rejouerSiRienEcrit(() => this.ecritures.retirerCompensation(tenantId, ecriture.id));
+            } catch (nettoyage) {
+              resteeAuBrouillard = numeroDe(ecriture);
+              this.journalServeur.error(
+                `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard · le lettrage partiel ${groupe.code} n'a pas été complété et son retrait a échoué`,
+                nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
+              );
+            }
+            throw e;
+          }
+          resultats.push({
+            compte: compte.numero,
+            ecritureId: ecriture.id,
+            montant,
+            partiel: complete.statut !== StatutLettrage.SOLDE,
+            lettre: complete.lettre,
+            ...(enDevise ? { montantDevise: enDevise.montantDevise, ecartChange: enDevise.ecart } : {}),
+            ...(escompte > 0 ? { escompte } : {}),
+            ...(ecart > 0 ? { ecartReglement: ecart } : {}),
+          });
+          aOrdonner.push({
+            compteId: r.compteId,
+            montant,
+            reference: r.reference || null,
+            ecritureId: ecriture.id,
+            pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
+            montantDevise: enDevise ? enDevise.montantDevise : null,
+            devise: deviseDeLOrdre({ enDevise }),
+          });
+          continue;
+        }
+        // En devise, le partiel se lit DANS LA DEVISE · la contrevaleur payée au
+        // cours du jour peut dépasser le dû en francs sans solder la facture.
+        // Une ligne d'à-nouveau réglée en partie par une paire garde son montant
+        // entier · son lettrage avec ce règlement reste partiel (m1).
+        // Ce que la pièce ÉTEINT au compte du tiers (le payé, plus l'escompte et
+        // l'écart soldé, fonction 36) dit si le lettrage reste partiel.
+        const partiel = (enDevise ? enDevise.partiel : Math.round(tiers * 100) < Math.round(du * 100)) || reduite;
+        // Un lettrage refusé malgré tout (une facture lettrée entre-temps par un
+        // autre clic) retire la pièce qu'il devait accompagner · jamais un
+        // règlement sans le lettrage qui dit ce qu'il a payé (audit final F56).
+        let lettre: Awaited<ReturnType<LettrageService['lettrerManuel']>>;
+        try {
+          lettre = await rejouerSiRienEcrit(() => this.lettrage.lettrerManuel(tenantId, r.compteId, [...r.ligneIds, ligneTiers.id], userId, {
+            autoriserPartiel: partiel,
+            // Le tiers est soldé au coût historique · l'écart réalisé est sur
+            // sa propre ligne, hors du compte du tiers, et le groupe le garde,
+            // partiel compris · le solde passé ensuite s'y AJOUTE, et le groupe
+            // soldé porte le réalisé TOTAL (42 000 + 123 200 au séminaire).
+            ...(enDevise ? { ecartChangeRealise: enDevise.ecart } : {}),
+          }));
+        } catch (e) {
+          try {
+            await rejouerSiRienEcrit(() => this.ecritures.retirerCompensation(tenantId, ecriture.id));
           } catch (nettoyage) {
+            resteeAuBrouillard = numeroDe(ecriture);
             this.journalServeur.error(
-              `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard · le lettrage partiel ${groupe.code} n'a pas été complété et son retrait a échoué`,
+              `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard · son lettrage a échoué et son retrait aussi`,
               nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
             );
           }
@@ -1068,8 +1132,8 @@ export class ReglementsService {
           compte: compte.numero,
           ecritureId: ecriture.id,
           montant,
-          partiel: complete.statut !== StatutLettrage.SOLDE,
-          lettre: complete.lettre,
+          partiel,
+          lettre: lettre.lettre,
           ...(enDevise ? { montantDevise: enDevise.montantDevise, ecartChange: enDevise.ecart } : {}),
           ...(escompte > 0 ? { escompte } : {}),
           ...(ecart > 0 ? { ecartReglement: ecart } : {}),
@@ -1083,51 +1147,11 @@ export class ReglementsService {
           montantDevise: enDevise ? enDevise.montantDevise : null,
           devise: deviseDeLOrdre({ enDevise }),
         });
-        continue;
       }
-      // En devise, le partiel se lit DANS LA DEVISE · la contrevaleur payée au
-      // cours du jour peut dépasser le dû en francs sans solder la facture.
-      // Une ligne d'à-nouveau réglée en partie par une paire garde son montant
-      // entier · son lettrage avec ce règlement reste partiel (m1).
-      // Ce que la pièce ÉTEINT au compte du tiers (le payé, plus l'escompte et
-      // l'écart soldé, fonction 36) dit si le lettrage reste partiel.
-      const partiel = (enDevise ? enDevise.partiel : Math.round(tiers * 100) < Math.round(du * 100)) || reduite;
-      // Un lettrage refusé malgré tout (une facture lettrée entre-temps par un
-      // autre clic) retire la pièce qu'il devait accompagner · jamais un
-      // règlement sans le lettrage qui dit ce qu'il a payé (audit final F56).
-      let lettre: Awaited<ReturnType<LettrageService['lettrerManuel']>>;
-      try {
-        lettre = await this.lettrage.lettrerManuel(tenantId, r.compteId, [...r.ligneIds, ligneTiers.id], userId, {
-          autoriserPartiel: partiel,
-          // Le tiers est soldé au coût historique · l'écart réalisé est sur
-          // sa propre ligne, hors du compte du tiers, et le groupe le garde,
-          // partiel compris · le solde passé ensuite s'y AJOUTE, et le groupe
-          // soldé porte le réalisé TOTAL (42 000 + 123 200 au séminaire).
-          ...(enDevise ? { ecartChangeRealise: enDevise.ecart } : {}),
-        });
-      } catch (e) {
-        await this.ecritures.retirerCompensation(tenantId, ecriture.id);
-        throw e;
-      }
-      resultats.push({
-        compte: compte.numero,
-        ecritureId: ecriture.id,
-        montant,
-        partiel,
-        lettre: lettre.lettre,
-        ...(enDevise ? { montantDevise: enDevise.montantDevise, ecartChange: enDevise.ecart } : {}),
-        ...(escompte > 0 ? { escompte } : {}),
-        ...(ecart > 0 ? { ecartReglement: ecart } : {}),
-      });
-      aOrdonner.push({
-        compteId: r.compteId,
-        montant,
-        reference: r.reference || null,
-        ecritureId: ecriture.id,
-        pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
-        montantDevise: enDevise ? enDevise.montantDevise : null,
-        devise: deviseDeLOrdre({ enDevise }),
-      });
+    } catch (e) {
+      // Les pièces passées se lisent dans l'ordre où elles ont été gardées.
+      const passees = resultats.map((x, i) => ({ compte: x.compte, piece: aOrdonner[i]?.pieceReglement ?? x.ecritureId }));
+      throw refusReglementInterrompu(e, compteEnCours, passees, resteeAuBrouillard) ?? e;
     }
     const ordre = preparation
       ? await this.ordres.creer(tenantId, email, dto.journalId, dto.date, preparation, aOrdonner)

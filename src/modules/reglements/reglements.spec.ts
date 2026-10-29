@@ -6,6 +6,9 @@ import type { OrdresVirementService } from './ordres-virement.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { LettrageService } from '../lettrage/lettrage.service';
+import { ConflictException } from '@nestjs/common';
+import { CODE_DOSSIER_OCCUPE } from '../../common/audit/extension-audit';
+import { CODE_REGLEMENT_INTERROMPU } from './reglement-interrompu';
 
 /**
  * RÈGLEMENT DES TIERS · ce qui casserait en silence. Un règlement passé dans
@@ -218,6 +221,50 @@ describe('enregistrer', () => {
       /entre-temps/,
     );
     expect(retirerCompensation).toHaveBeenCalledWith('t', 'e1');
+  });
+
+  // Point 6 de la relecture lettrage-verrou · l'étape refusée sans rien écrire se rejoue, et une interruption après un
+  // tiers passé nomme ce qui est passé, sous un code qu'aucune interface ne rejoue.
+  const occupe = () => new ConflictException({ message: 'dossier occupé', code: CODE_DOSSIER_OCCUPE });
+  it('un lettrage refusé parce que le dossier est occupé se rejoue, et le règlement passe', async () => {
+    const { service, lettrerManuel, retirerCompensation } = monter();
+    lettrerManuel.mockRejectedValueOnce(occupe());
+    await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] })).resolves.toMatchObject({
+      reglements: [expect.objectContaining({ lettre: 'A' })],
+    });
+    expect(lettrerManuel).toHaveBeenCalledTimes(2);
+    expect(retirerCompensation).not.toHaveBeenCalled();
+  });
+
+  it('interrompu au second tiers · le premier est nommé, passé et gardé, et le refus porte son propre code', async () => {
+    const { service, lettrerManuel, retirerCompensation } = monter();
+    lettrerManuel.mockResolvedValueOnce({ lettre: 'A' }).mockRejectedValue(occupe());
+    const refus = await service
+      .enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'] }, { compteId: 'c402', ligneIds: ['g1'] }] })
+      .then(() => null, (e: ConflictException) => e);
+    expect(refus).toBeInstanceOf(ConflictException);
+    const reponse = refus!.getResponse() as { code: string; message: string; passees: { compte: string }[]; resteeAuBrouillard: string | null };
+    expect(reponse.code).toBe(CODE_REGLEMENT_INTERROMPU);
+    expect(reponse.passees).toEqual([expect.objectContaining({ compte: '40110000' })]);
+    expect(reponse.resteeAuBrouillard).toBeNull();
+    expect(reponse.message).toMatch(/Ne relancez pas le règlement entier/);
+    // Le lettrage du second tiers a été tenté trois fois, puis sa pièce retirée.
+    expect(lettrerManuel).toHaveBeenCalledTimes(1 + 3);
+    expect(retirerCompensation).toHaveBeenCalledWith('t', 'e2');
+  }, 10_000);
+
+  it('une pièce qui reste au brouillard sans son lettrage est nommée, même au premier tiers', async () => {
+    const { service, lettrerManuel, retirerCompensation } = monter();
+    lettrerManuel.mockRejectedValueOnce(new Error('Une des lignes a été lettrée entre-temps'));
+    retirerCompensation.mockRejectedValue(new Error('base indisponible'));
+    const refus = await service
+      .enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] })
+      .then(() => null, (e: ConflictException) => e);
+    const reponse = refus!.getResponse() as { code: string; message: string; resteeAuBrouillard: string | null };
+    expect(reponse.code).toBe(CODE_REGLEMENT_INTERROMPU);
+    expect(reponse.resteeAuBrouillard).not.toBeNull();
+    expect(reponse.message).toMatch(/entre-temps/);
+    expect(reponse.message).toMatch(/restée au brouillard sans son lettrage/);
   });
 
   it('une facture d’un journal de situation n’est pas due · refusée AVANT toute pièce, nommée (ligne sage-l1, relecture M1)', async () => {
