@@ -64,6 +64,7 @@ import {
   ReclasserImmobilisationDto,
   SaisirConsommationDto,
   SortieImmobilisation,
+  SortieGlobaleDto,
   TypeSortie,
   MiseEnServiceDto,
   TransfertDepreciationDto,
@@ -162,6 +163,7 @@ import {
 import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-remplacee';
 import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
 import { motifSectionImpropre, sectionDuBien, ventilationDeLaDotation } from './analytique-des-biens';
+import { messageRefusDuLot, motifRefusLot } from './sortie-globale';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -291,6 +293,22 @@ function nombresLot15(immo: Record<string, unknown>): Record<string, number | nu
     if (cle in immo) r[cle] = immo[cle] === null || immo[cle] === undefined ? null : Number(immo[cle]);
   }
   return r;
+}
+
+/** Ligne immos · ce que la sortie simulée rend (`simulerSortie`), sans rien écrire. */
+export interface SortieSimulee {
+  simulee: true;
+  id: string;
+  designation: string;
+  /** Le cumul d'amortissement avant le complément de l'exercice de sortie. */
+  cumulAvantComplement: number;
+  montantComplement: number;
+  cumulDepreciation: number;
+  valeurComptableNette: number;
+  /** Le 29 qui porte la dépréciation et le compte de sa reprise, quand elle existe. */
+  repriseDepreciation: { compteDepreciationId: string; compteRepriseId: string } | null;
+  /** Les lignes de réévaluation que la sortie solderait. */
+  passesEcart: SortDeLEcart[];
 }
 
 function versImmobilisation<
@@ -5253,7 +5271,38 @@ export class ImmobilisationService {
     };
   }
 
-  async sortir(tenantId: string, userId: string, id: string, dto: SortieImmobilisation, opts: { depuisEchange?: boolean } = {}) {
+  async sortir(
+    tenantId: string,
+    userId: string,
+    id: string,
+    dto: SortieImmobilisation,
+    opts: { depuisEchange?: boolean; complementImpose?: number } = {},
+  ) {
+    const r = await this.sortieDuBien(tenantId, userId, id, dto, { ...opts, simuler: false });
+    if ('simulee' in r) throw new InternalServerErrorException('La sortie a été simulée au lieu d’être passée · rien n’est écrit.');
+    return r;
+  }
+
+  /**
+   * LIGNE IMMOS · LA SORTIE JOUÉE SANS RIEN ÉCRIRE · tous les refus de la
+   * sortie (`sortieDuBien`), dans l'ordre, et ce qu'elle passerait · servie à
+   * la sortie globale (n° 69), qui juge tous les biens avant le premier, et à
+   * la sortie d'une partie des unités (n° 65), qui lit le complément et la
+   * dépréciation du lot entier.
+   */
+  async simulerSortie(tenantId: string, id: string, dto: SortieImmobilisation) {
+    const r = await this.sortieDuBien(tenantId, '', id, dto, { simuler: true });
+    if (!('simulee' in r) || r.simulee !== true) throw new InternalServerErrorException('La simulation de la sortie a écrit · défaut à signaler.');
+    return r as SortieSimulee;
+  }
+
+  private async sortieDuBien(
+    tenantId: string,
+    userId: string,
+    id: string,
+    dto: SortieImmobilisation,
+    opts: { depuisEchange?: boolean; complementImpose?: number; simuler: boolean },
+  ) {
     const immo = await this.trouver(tenantId, id);
     if (immo.statut !== StatutImmobilisation.EN_SERVICE) {
       throw new BadRequestException('Cette immobilisation est déjà sortie');
@@ -5403,7 +5452,10 @@ export class ImmobilisationService {
     // Un bien jamais mis en service n'a rien à compléter · et la lecture des
     // unités d'œuvre, qui réclame un relevé, ne doit pas bloquer sa sortie.
     // Un bien que le plan ne fait pas amortir n'a pas de complément non plus.
-    const montantComplement = dejaDoteCetExercice || !immo.dateMiseEnService ||
+    // Ligne immos, n° 65 · les unités sorties d'un lot portent la part du
+    // complément du LOT, imposée (`cession-partielle.ts`) · recalculée sur
+    // leur seule fiche, elle oublierait le ré-étalement d'une dépréciation.
+    const montantComplement = opts.complementImpose !== undefined ? opts.complementImpose : dejaDoteCetExercice || !immo.dateMiseEnService ||
       motifNonAmortissable(immo.compteImmobilisation.numero, referentiel) ||
       motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl) ||
       immo.dureeNonLimitee
@@ -5544,6 +5596,7 @@ export class ImmobilisationService {
     if (!projet && cumulAmorti > EPSILON) {
       lignesSortie.push({ compteId: immo.compteAmortissementId, debit: cumulAmorti, credit: 0 });
     }
+    let repriseDepreciation: { compteDepreciationId: string; compteRepriseId: string } | null = null;
     if (!projet && cumulDepreciation > EPSILON && compteDepreciationSortie) {
       // Le 29 au débit pour solde, et sa REPRISE au crédit · les deux
       // ensemble, jamais le premier seul.
@@ -5553,6 +5606,7 @@ export class ImmobilisationService {
         nature,
         porteur?.compteContrepartieDotationId ?? null,
       );
+      repriseDepreciation = { compteDepreciationId: compteDepreciationSortie, compteRepriseId: compteReprise.id };
       lignesSortie.push({ compteId: compteDepreciationSortie, debit: cumulDepreciation, credit: 0 });
       lignesSortie.push({ compteId: compteReprise.id, debit: 0, credit: cumulDepreciation });
     }
@@ -5590,6 +5644,22 @@ export class ImmobilisationService {
     // al. 2 ; ch. 28 § 6, « en appliquant aux valeurs réévaluées les principes
     // généraux »).
     const sortEcart = await this.sortDeLEcartALaSortie(tenantId, id, referentiel, dto);
+
+    // LA SIMULATION S'ARRÊTE ICI · tous les refus sont passés, rien n'est
+    // écrit (le verrou qui suit pose le statut).
+    if (opts.simuler) {
+      return {
+        simulee: true as const,
+        id,
+        designation: immo.designation,
+        cumulAvantComplement: Math.round((cumulAmorti - (montantComplement > EPSILON ? montantComplement : 0)) * 100) / 100,
+        montantComplement: montantComplement > EPSILON ? Math.round(montantComplement * 100) / 100 : 0,
+        cumulDepreciation: cumulDepreciation > EPSILON ? Math.round(cumulDepreciation * 100) / 100 : 0,
+        valeurComptableNette: Math.round(valeurComptableNette * 100) / 100,
+        repriseDepreciation,
+        passesEcart: sortEcart.passes,
+      };
+    }
 
     // Verrou par écriture conditionnelle (même risque de course que
     // passerDotation, trouvé en l'approfondissant · deux sorties simultanées
@@ -5744,6 +5814,93 @@ export class ImmobilisationService {
       await this.defaireSortie(tenantId, id, immo.designation, ecrituresPosees, dotationPoseeId);
       throw err;
     }
+  }
+
+  /**
+   * LIGNE IMMOS, FONCTION N° 69 · LA SORTIE GLOBALE DE PLUSIEURS BIENS
+   * (`sortie-globale.ts`). Chaque bien est jugé par les règles de la sortie
+   * ordinaire (`simulerSortie`) AVANT que le premier ne sorte · un seul refus
+   * arrête le lot, tous les refus nommés ensemble. Puis chaque bien sort par
+   * `sortir`, sa propre pièce comptable sous la référence COMMUNE de la pièce
+   * justificative (le procès-verbal de mise au rebut ou de destruction, la
+   * facture de vente · AUDCIF art. 17, 3° et 5°) · une fiche retient une
+   * écriture de sortie et une seule (`ecritureSortieId` unique). Une sortie
+   * qui tombe en route (un geste concurrent) défait les précédentes · tout ou
+   * rien.
+   */
+  async sortirPlusieurs(tenantId: string, userId: string, dto: SortieGlobaleDto) {
+    const refusLot = motifRefusLot(dto.biens.map((b) => b.immobilisationId), dto.type, dto.biens.map((b) => b.prixCession));
+    if (refusLot) throw new BadRequestException(refusLot);
+    const commun = (b: { immobilisationId: string; prixCession?: number }): SortieImmobilisation => ({
+      dateSortie: dto.dateSortie,
+      type: dto.type,
+      exerciceId: dto.exerciceId,
+      journalId: dto.journalId,
+      prixCession: dto.type === TypeSortie.CESSION ? b.prixCession : undefined,
+      compteContrepartieId: dto.type === TypeSortie.CESSION ? dto.compteContrepartieId : undefined,
+      cessionCourante: dto.cessionCourante,
+      compteFondsProjetId: dto.compteFondsProjetId,
+      natureSortie: dto.natureSortie,
+      referencePieceSortie: dto.referencePieceSortie,
+      datePieceSortie: dto.datePieceSortie,
+      compteReserveEcartId: dto.compteReserveEcartId,
+    });
+    // Le jugement de chaque bien, avant le premier geste.
+    const refus: { designation: string; motif: string }[] = [];
+    type Simulee = SortieSimulee;
+    const simulations: Simulee[] = [];
+    for (const b of dto.biens) {
+      try {
+        simulations.push(await this.simulerSortie(tenantId, b.immobilisationId, commun(b)));
+      } catch (err) {
+        if (!(err instanceof BadRequestException || err instanceof NotFoundException || err instanceof ConflictException)) throw err;
+        const designation =
+          (await this.prisma.immobilisation.findFirst({ where: { id: b.immobilisationId, tenantId }, select: { designation: true } }))?.designation ??
+          'bien introuvable';
+        refus.push({ designation, motif: (err as Error).message });
+      }
+    }
+    if (refus.length > 0) throw new BadRequestException(messageRefusDuLot(refus, dto.biens.length));
+
+    const sortis: { id: string; designation: string; ecritures: string[]; dotationId: string | null; passes: Simulee['passesEcart'] }[] = [];
+    try {
+      for (const [i, b] of dto.biens.entries()) {
+        const r = await this.sortir(tenantId, userId, b.immobilisationId, commun(b));
+        const sim = simulations[i]!;
+        const complement =
+          sim.montantComplement > EPSILON
+            ? ((r.dotations ?? []) as unknown as { id: string; exerciceId: string; ecritureId: string }[]).find((d) => d.exerciceId === dto.exerciceId)
+            : undefined;
+        sortis.push({
+          id: r.id,
+          designation: r.designation,
+          ecritures: [complement?.ecritureId, r.ecritureSortieId, r.ecritureProduitCessionId, r.ecritureSortieEcartReevaluationId].filter(
+            (x): x is string => typeof x === 'string',
+          ),
+          dotationId: complement?.id ?? null,
+          passes: sim.passesEcart,
+        });
+      }
+    } catch (err) {
+      // TOUT OU RIEN · les biens déjà sortis rentrent, leurs écritures retirées
+      // (au brouillard, elles viennent de naître), l'écart de réévaluation
+      // qu'ils avaient soldé rendu à ses lignes.
+      for (const s of [...sortis].reverse()) {
+        await this.defaireSortie(tenantId, s.id, s.designation, s.ecritures, s.dotationId);
+        for (const p of s.passes) {
+          await this.prisma.ligneReevaluationBilan.update({
+            where: { id: p.ligneId },
+            data: p.traitement === 'RESERVE' ? { ecartTransfere: { decrement: p.montant } } : { provisionReprise: { decrement: p.montant } },
+          });
+        }
+      }
+      throw err;
+    }
+    return {
+      nombre: sortis.length,
+      biens: sortis.map((s, i) => ({ id: s.id, designation: s.designation, valeurComptableNette: simulations[i]?.valeurComptableNette ?? null })),
+      reference: dto.referencePieceSortie.trim(),
+    };
   }
 
   /**

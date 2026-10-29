@@ -11,6 +11,7 @@ import {
   CreerLocationAcquisitionDto,
   EchangerImmobilisationDto,
   SectionFamilleDto,
+  SortieGlobaleDto,
   SimulerLocationAcquisitionDto,
   AffecterLieuDto,
   LieuBienDto,

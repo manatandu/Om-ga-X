@@ -22,6 +22,7 @@ import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
 import { AssistantCreationBien } from '../components/AssistantCreationBien';
 import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
 import { SimulationDotations } from '../components/SimulationDotations';
+import { SortieGlobale } from '../components/SortieGlobale';
 import { SectionsFamilles } from '../components/SectionsFamilles';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
@@ -2822,6 +2823,16 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               />
             )}
             <BiensSousReserveDePropriete exerciceId={exerciceCourant?.id} syscohada={syscohada} />
+            {/* Ligne immos, n° 69 · un lot de biens sort en un geste · chaque bien jugé par le serveur comme s'il sortait seul. */}
+            <SortieGlobale
+              biens={immobilisations ?? []}
+              exerciceId={exerciceCourant?.id}
+              journaux={journaux}
+              comptesFinancement={comptesFinancement}
+              syscohada={syscohada}
+              projetDeveloppement={projetDeveloppement}
+              onFait={() => void charger()}
+            />
             {/* Ligne immos, n° 72 · le plan de tout le parc, simulé sans écriture · une lecture, ouverte à tous. */}
             <SimulationDotations exerciceId={exerciceCourant?.id} />
             {/* Ligne immos, n° 70 · la section des familles, une structure · à l'administrateur, comme au serveur. */}

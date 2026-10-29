@@ -615,6 +615,69 @@ export class SortirImmobilisationDto {
   compteReserveEcartId?: string;
 }
 
+/** Ligne immos, n° 69 · un bien du lot, et son prix pour une cession. */
+export class BienDeLaSortieGlobaleDto {
+  @IsUUID('4')
+  immobilisationId!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  prixCession?: number;
+}
+
+/**
+ * LIGNE IMMOS, N° 69 · LA SORTIE GLOBALE · ce que les biens ont en commun
+ * (date, type, nature, pièce justificative, journal, contrepartie d'une
+ * cession), et la liste des biens. Le matériel récupéré, propre à chaque
+ * bien, ne s'y déclare pas · ce bien sort seul.
+ */
+export class SortieGlobaleDto {
+  @IsDateString()
+  dateSortie!: string;
+
+  @IsEnum(TypeSortie)
+  type!: TypeSortie;
+
+  @IsUUID('4')
+  exerciceId!: string;
+
+  @IsUUID('4')
+  journalId!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  compteContrepartieId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  cessionCourante?: boolean;
+
+  @IsOptional()
+  @IsUUID('4')
+  compteFondsProjetId?: string;
+
+  @IsEnum(NatureSortieImmobilisation)
+  natureSortie!: NatureSortieImmobilisation;
+
+  @IsString()
+  @MaxLength(120)
+  referencePieceSortie!: string;
+
+  @IsDateString()
+  datePieceSortie!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  compteReserveEcartId?: string;
+
+  @ArrayMinSize(2)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => BienDeLaSortieGlobaleDto)
+  biens!: BienDeLaSortieGlobaleDto[];
+}
+
 /**
  * La sortie telle que les gestes INTERNES l'appellent · le renouvellement d'un
  * composant et la levée d'une option portent leur propre pièce, l'échange
