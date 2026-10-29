@@ -78,6 +78,7 @@ function service(lignes: ReturnType<typeof ligne>[], tiersEnBase?: Record<string
       findUnique: jest.fn().mockResolvedValue({ nom: 'ONG Kin' }),
     },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+    decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
     // Le niveau 2 est atteignable : sans lui, `niveauSuggere` serait nul pour
     // tout le monde et le test de l'exclusion ne prouverait rien.
     niveauRelance: {

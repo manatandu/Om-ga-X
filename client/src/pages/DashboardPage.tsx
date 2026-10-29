@@ -7,6 +7,7 @@ import { IconNew } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
 import type { EcheancierFiscal, Ecriture, LigneBalance } from '../lib/types';
 import { echeancesAVenir, libelleDelai } from '../lib/echeances-a-venir';
+import { libelleJoursRestants, libelleSens, type EcheancesTiers } from '../lib/echeances-tiers';
 import { indicateursTableauDeBord } from '../lib/indicateurs-tableau-de-bord';
 import { montant } from '../lib/montants';
 import { useCompteur } from '../lib/compteur';
@@ -36,6 +37,9 @@ export function DashboardPage() {
   // rien ne disait qu'il n'y avait plus rien à attendre.
   const [erreurEcritures, setErreurEcritures] = useState<string | null>(null);
   const [erreurBalance, setErreurBalance] = useState<string | null>(null);
+  // Ligne gl-saisie, fonction 34 · les échéances proches des tiers ; un échec se dit.
+  const [echeancesTiers, setEcheancesTiers] = useState<EcheancesTiers | null>(null);
+  const [erreurEcheancesTiers, setErreurEcheancesTiers] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,6 +52,16 @@ export function DashboardPage() {
     setBalance(null);
     setErreurEcritures(null);
     setErreurBalance(null);
+    setEcheancesTiers(null);
+    setErreurEcheancesTiers(null);
+    api.get<EcheancesTiers>(`/echeances-tiers?exerciceId=${exerciceCourant.id}`).then(
+      (r) => {
+        if (!annule) setEcheancesTiers(r);
+      },
+      (e) => {
+        if (!annule) setErreurEcheancesTiers(e instanceof Error ? e.message : 'Les échéances des tiers n’ont pas pu être lues.');
+      },
+    );
     api.get<{ ecritures: Ecriture[] }>(`/ecritures?exerciceId=${exerciceCourant.id}&limite=8`).then(
       (r) => {
         if (!annule) setEcritures(r.ecritures);
@@ -204,6 +218,71 @@ export function DashboardPage() {
             <div className="px-3.5 py-1.5 text-[11px] text-text-dim border-t border-border/50">
               {aVenir.auDela} autre(s) échéance(s) au-delà de {aVenir.horizonJours} jours.
             </div>
+          )}
+        </div>
+      )}
+
+      {/*
+        ÉCHÉANCES DES TIERS (ligne gl-saisie, fonction 34) · ce que les clients
+        doivent et ce que le dossier doit aux fournisseurs dans l'horizon, et ce
+        qui est déjà échu, comptés sur tout le périmètre. Une liste vide veut
+        dire rien dans l'horizon, jamais un poste apuré.
+      */}
+      {(echeancesTiers || erreurEcheancesTiers) && (
+        <div className="bg-surface border border-border shadow-posee mb-2.5 overflow-x-auto">
+          <div className="px-3.5 py-1.5 bg-surface-alt border-b border-border-dark flex items-center justify-between">
+            <span className="text-[11px] font-bold text-text-dim">
+              ÉCHÉANCES DES TIERS{echeancesTiers ? ` · ${echeancesTiers.horizonJours} JOURS` : ''}
+            </span>
+            <a href="#/echeancier" className="text-[11px] text-sel hover:underline">
+              Ouvrir l'échéancier
+            </a>
+          </div>
+          {erreurEcheancesTiers && <div className="p-3 text-[11.5px] text-danger">Échéances des tiers illisibles · {erreurEcheancesTiers}</div>}
+          {echeancesTiers && (
+            <>
+              <div className="px-3.5 py-1.5 text-[11.5px] flex flex-wrap gap-x-5 gap-y-1 border-b border-border/50">
+                <span>
+                  À encaisser · <span className="font-mono font-semibold">{montant(echeancesTiers.aEchoir.aEncaisser)}</span>
+                </span>
+                <span>
+                  À payer · <span className="font-mono font-semibold">{montant(echeancesTiers.aEchoir.aPayer)}</span>
+                </span>
+                {echeancesTiers.echu.nombre > 0 && (
+                  <span className="text-danger">
+                    Déjà échu · {echeancesTiers.echu.nombre} échéance{echeancesTiers.echu.nombre > 1 ? 's' : ''}, à encaisser{' '}
+                    <span className="font-mono font-semibold">{montant(echeancesTiers.echu.aEncaisser)}</span>, à payer{' '}
+                    <span className="font-mono font-semibold">{montant(echeancesTiers.echu.aPayer)}</span>
+                  </span>
+                )}
+              </div>
+              {echeancesTiers.proches.length === 0 ? (
+                <div className="p-3 text-[11.5px] text-text-dim">Aucune échéance de tiers dans les {echeancesTiers.horizonJours} prochains jours.</div>
+              ) : (
+                echeancesTiers.proches.map((e) => (
+                  <div
+                    key={e.ligneId}
+                    className="grid grid-cols-[78px_1fr_92px_120px] min-w-[520px] gap-2.5 items-center px-3.5 py-[4px] border-b border-border/50 last:border-b-0 text-[11.5px]"
+                  >
+                    <span className="font-mono text-[11px] text-text-dim">{new Date(e.date).toLocaleDateString('fr-FR')}</span>
+                    <span className="truncate" title={e.libelle}>
+                      {e.tiers ?? e.compteNumero}
+                      <span className="ml-1.5 text-[11px] text-text-dim">{libelleSens(e.sens)}</span>
+                    </span>
+                    <span className="font-mono text-[11px] text-right text-text-dim">{libelleJoursRestants(e.joursRestants)}</span>
+                    <span className="font-mono font-semibold text-right">{montant(e.montant)}</span>
+                  </div>
+                ))
+              )}
+              {(echeancesTiers.tronque || echeancesTiers.sansEcheance > 0) && (
+                <div className="px-3.5 py-1.5 text-[11px] text-text-dim border-t border-border/50">
+                  {echeancesTiers.tronque ? `Les ${echeancesTiers.proches.length} plus proches sur ${echeancesTiers.aEchoir.nombre}. ` : ''}
+                  {echeancesTiers.sansEcheance > 0
+                    ? `${echeancesTiers.sansEcheance} facture${echeancesTiers.sansEcheance > 1 ? 's' : ''} ouverte${echeancesTiers.sansEcheance > 1 ? 's' : ''} sans échéance, non comptée${echeancesTiers.sansEcheance > 1 ? 's' : ''}.`
+                    : ''}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

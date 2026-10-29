@@ -272,6 +272,7 @@ describe('les relances lisent la paire (câblage, F4a)', () => {
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'n1', dateDebut: N1.dateDebut }) },
       ligneEcriture: l.ligneEcriture,
+      decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
       niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
       relance: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;

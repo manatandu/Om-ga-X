@@ -27,6 +27,11 @@ export interface CriteresRecherche {
   montantMax?: number;
   numeroPiece?: number;
   reference?: string;
+  /**
+   * Ligne gl-saisie, fonction 64 · `true` les seules écritures revues par le
+   * cabinet, `false` celles qui restent à revoir ; absent, toutes.
+   */
+  revue?: boolean;
 }
 
 /** Lit les critères d'une requête · un chiffre illisible est un refus, jamais un critère ignoré. */
@@ -36,6 +41,7 @@ export function lireCriteres(q: {
   montantMax?: string;
   numeroPiece?: string;
   reference?: string;
+  revue?: string;
 }): { criteres: CriteresRecherche } | { motif: string } {
   const criteres: CriteresRecherche = {};
   const nombre = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.'));
@@ -62,6 +68,11 @@ export function lireCriteres(q: {
     criteres.numeroPiece = n;
   }
   if (q.reference?.trim()) criteres.reference = q.reference.trim();
+  // Un filtre de revue illisible est REFUSÉ, jamais lu « toutes » en silence.
+  if (q.revue !== undefined && q.revue !== '') {
+    if (q.revue !== 'oui' && q.revue !== 'non') return { motif: 'Le filtre de revue vaut « oui » (revues) ou « non » (à revoir).' };
+    criteres.revue = q.revue === 'oui';
+  }
   return { criteres };
 }
 
@@ -74,6 +85,7 @@ export function filtreRecherche(c: CriteresRecherche): Prisma.EcritureWhereInput
   }
   if (c.numeroPiece !== undefined) et.push({ numeroPiece: c.numeroPiece });
   if (c.reference) et.push({ reference: { contains: c.reference, mode: 'insensitive' } });
+  if (c.revue !== undefined) et.push(c.revue ? { revue: { isNot: null } } : { revue: { is: null } });
 
   // Compte et montant sur la MÊME ligne · un seul `some`.
   const ligne: Prisma.LigneEcritureWhereInput = {};

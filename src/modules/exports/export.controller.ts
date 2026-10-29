@@ -113,9 +113,11 @@ export class ExportController {
     // Ignoré ici, l'export rendait le brouillard que l'écran venait d'écarter :
     // deux journaux différents pour les mêmes critères.
     @Query('inclureBrouillard') inclureBrouillard?: string,
+    // Ligne gl-saisie, fonction 64 · revues ou à revoir, le même périmètre que la fenêtre.
+    @Query('revue') revue?: string,
   ) {
     // Refusé AVANT le flux · une réponse commencée ne peut plus devenir un 400.
-    const criteres = criteresOuRefus({ compte, montant, montantMax, numeroPiece, reference });
+    const criteres = criteresOuRefus({ compte, montant, montantMax, numeroPiece, reference, revue });
     await envoyerXlsxEnFlux(res, (ouvrir) =>
       this.exportService.journalExcelEnFlux(
         user.tenantId,

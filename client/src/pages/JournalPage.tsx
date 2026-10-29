@@ -15,6 +15,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
 import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
+import { masquerLesLettrees } from '../lib/grand-livre-sans-lettrees';
 import { montant, montantOuVide } from '../lib/montants';
 import {
   cheminBalance,
@@ -111,6 +112,8 @@ interface Filtres {
    * vue-là qui s'imprime et qui fait foi.
    */
   inclureBrouillard: boolean;
+  /** Ligne gl-saisie, fonction 64 · « oui » les revues, « non » celles à revoir, vide toutes. */
+  revue: '' | 'oui' | 'non';
 }
 
 const FILTRES_VIDES: Filtres = {
@@ -124,6 +127,7 @@ const FILTRES_VIDES: Filtres = {
   numeroPiece: '',
   reference: '',
   inclureBrouillard: true,
+  revue: '',
 };
 
 /** Construit la query string commune à la consultation et à l'export. */
@@ -137,6 +141,7 @@ function versQuery(exerciceId: string, filtres: Filtres): string {
     if (filtres[cle].trim()) params.set(cle, filtres[cle].trim());
   }
   if (!filtres.inclureBrouillard) params.set('inclureBrouillard', 'false');
+  if (filtres.revue) params.set('revue', filtres.revue);
   return params.toString();
 }
 
@@ -422,6 +427,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         : (grandLivre ?? []).filter((c) => !compteGrandLivreId || c.compte.id === compteGrandLivreId),
     [grandLivre, compteGrandLivreId, refusGrandLivre, sectionSeule],
   );
+  // Ligne gl-saisie, fonction 56 · le grand livre sans les écritures lettrées,
+  // une vue de travail (lib/grand-livre-sans-lettrees.ts).
+  const [masquerLettrees, setMasquerLettrees] = useState(false);
+  const vueGrandLivre = useMemo(
+    () =>
+      masquerLettrees
+        ? masquerLesLettrees(sectionsAffichees)
+        : { sections: sectionsAffichees.map((section) => ({ section, cachees: 0, debitCache: 0, creditCache: 0 })), comptesEntierementLettres: 0 },
+    [sectionsAffichees, masquerLettrees],
+  );
 
   // Les comptes que la liste du grand livre propose, et le nom des comptes
   // ouverts d'un double-clic · gardé pour la liste quand la période n'en a rien.
@@ -460,7 +475,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   // n'en montre qu'une partie · l'impression est alors refusée ici et au
   // serveur ; l'export, lui, rend tout et s'enregistre de même.
   const rechercheActive = useMemo(
-    () => (['recherche', 'compte', 'montant', 'montantMax', 'numeroPiece', 'reference'] as const).some((k) => filtresAppliques[k].trim() !== ''),
+    () =>
+      (['recherche', 'compte', 'montant', 'montantMax', 'numeroPiece', 'reference'] as const).some((k) => filtresAppliques[k].trim() !== '') ||
+      // Les seules écritures revues, ou à revoir, ne sont pas le journal (ligne gl-saisie, fonction 64).
+      filtresAppliques.revue !== '',
     [filtresAppliques],
   );
   const [impressionEnCours, setImpressionEnCours] = useState(false);
@@ -571,8 +589,54 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       // Une écriture de situation ne se corrige pas en négatif · elle n'est
       // jamais entrée au livre-journal (ligne sage-l1, fonction 12).
       enSituation: e.statut === 'SITUATION',
+      enValidee: e.statut === 'VALIDEE',
+      revue: e.revue ?? null,
     })),
   ), [ecritures]);
+
+  // LA REVUE PAR LE CABINET (ligne gl-saisie, fonction 64) · marquer revue une
+  // écriture validée, ou toutes celles que la fenêtre montre, et retirer la
+  // marque. Le serveur écarte ce qui n'est pas validé et le dit.
+  const [revueEnCours, setRevueEnCours] = useState(false);
+  const marquerRevues = async (ids: string[]) => {
+    if (ids.length === 0 || revueEnCours) return;
+    setRevueEnCours(true);
+    setErreur(null);
+    try {
+      const b = await api.post<{ revues: number; dejaRevues: number; ecartees: { numeroPiece: number | null; motif: string }[] }>(
+        '/revues-ecritures',
+        { ecritureIds: ids.slice(0, 500) },
+      );
+      setInfo(
+        `${b.revues} écriture${b.revues > 1 ? 's' : ''} marquée${b.revues > 1 ? 's' : ''} revue${b.revues > 1 ? 's' : ''}` +
+          (b.dejaRevues ? ` · ${b.dejaRevues} déjà revue${b.dejaRevues > 1 ? 's' : ''}` : '') +
+          (b.ecartees.length ? ` · ${b.ecartees.length} écartée${b.ecartees.length > 1 ? 's' : ''} (brouillard ou situation)` : '') +
+          (ids.length > 500 ? ` · ${ids.length - 500} au-delà du lot de 500, à marquer ensuite` : '') +
+          '.',
+      );
+      charger();
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'La revue n’a pas pu être enregistrée.');
+    } finally {
+      setRevueEnCours(false);
+    }
+  };
+  const retirerRevue = async (ecritureId: string) => {
+    // Un clic sur l'étiquette ne retire pas la revue d'un autre sans le dire.
+    if (revueEnCours || !window.confirm('Retirer la revue de cette écriture ? Elle redevient à revoir.')) return;
+    setRevueEnCours(true);
+    setErreur(null);
+    try {
+      await api.delete(`/revues-ecritures/${ecritureId}`);
+      setInfo('Revue retirée · l’écriture est de nouveau à revoir.');
+      charger();
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'La revue n’a pas pu être retirée.');
+    } finally {
+      setRevueEnCours(false);
+    }
+  };
+  const aRevoirAffichees = ecritures.filter((e) => e.statut === 'VALIDEE' && !e.revue).map((e) => e.id);
 
   /**
    * CORRECTION D'ERREUR PAR INSCRIPTION EN NÉGATIF · art. 20 de l'AUDCIF,
@@ -767,6 +831,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               Brouillard
             </label>
           )}
+          {onglet === 'journal' && peutValider && aRevoirAffichees.length > 0 && (
+            <button
+              onClick={() => void marquerRevues(aRevoirAffichees)}
+              disabled={revueEnCours}
+              title="Marque revues les écritures validées que la fenêtre montre · auteur et date gardés, au journal d'audit"
+              className="border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt disabled:opacity-50"
+            >
+              Marquer revues ({Math.min(aRevoirAffichees.length, 500)})
+            </button>
+          )}
           {onglet === 'journal' && peutValider && filtresAppliques.compte.trim() && (
             <button
               onClick={() => setReimputationOuverte(true)}
@@ -958,6 +1032,19 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               className="border border-border bg-surface px-2 py-1 text-[11.5px] w-[120px]"
             />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-text-dim">Revue</span>
+            <select
+              aria-label="Revue"
+              value={filtres.revue}
+              onChange={(e) => setFiltres({ ...filtres, revue: e.target.value as Filtres['revue'] })}
+              className="border border-border bg-surface px-2 py-1 text-[11.5px]"
+            >
+              <option value="">Toutes</option>
+              <option value="oui">Revues</option>
+              <option value="non">À revoir</option>
+            </select>
+          </label>
           <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
             <span className="text-[11px] font-bold text-text-dim">Libellé contient</span>
             <input
@@ -1137,6 +1224,28 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   </span>
                 )}
                 {l.premiereLigne && etatCorrection(l)}
+                {l.premiereLigne && l.revue && (
+                  <button
+                    type="button"
+                    disabled={!peutValider || revueEnCours}
+                    onClick={() => void retirerRevue(l.ecritureId)}
+                    title={`Revue par ${l.revue.auteur} le ${new Date(l.revue.revueLe).toLocaleDateString('fr-FR')}${l.revue.commentaire ? ` · ${l.revue.commentaire}` : ''}${peutValider ? ' · cliquer pour retirer la revue' : ''}`}
+                    className="text-[11px] font-bold text-positive bg-positive-soft border border-positive/40 rounded-[3px] px-1 disabled:cursor-default"
+                  >
+                    Revue
+                  </button>
+                )}
+                {l.premiereLigne && !l.revue && l.enValidee && peutValider && (
+                  <button
+                    type="button"
+                    disabled={revueEnCours}
+                    onClick={() => void marquerRevues([l.ecritureId])}
+                    title="Marquer cette écriture revue"
+                    className="text-[11px] text-text-dim border border-border rounded-[3px] px-1 hover:bg-surface-alt"
+                  >
+                    Revoir
+                  </button>
+                )}
               </span>
             </div>
           ))}
@@ -1185,6 +1294,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 </option>
               ))}
             </select>
+            <label className="flex items-center gap-1.5 text-[11.5px]">
+              <input type="checkbox" checked={masquerLettrees} onChange={(e) => setMasquerLettrees(e.target.checked)} />
+              Masquer les écritures lettrées
+            </label>
             {(grandLivre || sectionSeule) && (
               <span className="text-[11px] text-text-dim">
                 {sectionsAffichees.length} compte{sectionsAffichees.length > 1 ? 's' : ''} ·{' '}
@@ -1230,7 +1343,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             progressif ·, et un pied qui totalise les mouvements du compte et
             donne son solde final.
           */}
-          {sectionsAffichees.map((section) => (
+          {masquerLettrees && (grandLivre || sectionSeule) && (
+            <div role="status" className="px-3.5 py-1.5 text-[11.5px] text-warning border-b border-border">
+              Vue de travail · les lignes lettrées sont masquées, ce n’est pas le grand livre de l’exercice. Les totaux de chaque compte restent ceux du livre entier
+              {vueGrandLivre.comptesEntierementLettres > 0
+                ? ` · ${vueGrandLivre.comptesEntierementLettres} compte${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''} entièrement lettré${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''} masqué${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''}`
+                : ''}
+              .
+            </div>
+          )}
+          {vueGrandLivre.sections.map(({ section, cachees, debitCache, creditCache }) => (
             <div key={section.compte.id}>
               <div className="px-3.5 py-1 border-y border-border-dark bg-chrome font-bold text-[11.5px]">
                 <span className="font-mono">{section.compte.numero}</span> · {section.compte.intitule}
@@ -1297,6 +1419,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 <span />
                 <span />
               </div>
+              {cachees > 0 && (
+                <div className="px-3.5 py-1 border-b border-border text-[11px] text-text-dim">
+                  dont {cachees} ligne{cachees > 1 ? 's' : ''} lettrée{cachees > 1 ? 's' : ''} masquée{cachees > 1 ? 's' : ''} · débit {montant(debitCache)}, crédit {montant(creditCache)}
+                </div>
+              )}
             </div>
           ))}
         </div>

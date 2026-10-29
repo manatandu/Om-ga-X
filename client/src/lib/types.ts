@@ -278,6 +278,8 @@ export interface Ecriture {
   motifCorrection: string | null;
   correction?: { id: string; numeroPiece: number | null; date: string } | null;
   corrigeEcriture?: { id: string; numeroPiece: number | null; date: string; libelle: string } | null;
+  /** Ligne gl-saisie, fonction 64 · la revue du cabinet, son auteur en courriel ; `null` à revoir. */
+  revue?: { revueLe: string; commentaire: string | null; auteur: string } | null;
 }
 
 export type StatutLettrage = 'PARTIEL' | 'SOLDE';
@@ -1838,6 +1840,8 @@ export interface ParametresDossier {
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */
   creationCompteEnSaisie: boolean;
+  /** Ligne gl-saisie, fonction 2 · échéance obligatoire sur la ligne d'une facture de tiers (option, faux par défaut). */
+  echeanceObligatoireTiers?: boolean;
   /**
    * Ligne sage-l2, fonction 36 · le seuil sous lequel un règlement passe
    * l'écart en charge, le tiers soldé · `null` quand aucun n'est fixé (aucun
@@ -2548,7 +2552,20 @@ export interface PositionRelance {
    * lacune doit se voir AVANT le clic, pas seulement au compte rendu.
    */
   tiersEmail: string | null;
-  lignes: { date: string; echeance: string | null; libelle: string; montant: number; retardJours: number }[];
+  lignes: {
+    /** Ligne gl-saisie, fonction 33 · la ligne d'écriture, sur laquelle une décision de relance se pose. */
+    ligneId?: string;
+    date: string;
+    echeance: string | null;
+    /** L'échéance de la pièce, quand la relance compte depuis une échéance accordée. */
+    echeanceDeLaPiece?: string | null;
+    motifEcheance?: string | null;
+    libelle: string;
+    montant: number;
+    retardJours: number;
+  }[];
+  /** Ligne gl-saisie, fonction 33 · les lignes exclues de la relance, montrées, jamais réclamées. */
+  lignesExclues?: { ligneId: string; date: string; echeance: string | null; libelle: string; montant: number; motif: string }[];
   /**
    * Les factures soldées dans leur devise dont l'écart de change réalisé
    * n'est pas passé · ni réclamées ni retranchées, l'écart nommé (AUDCIF

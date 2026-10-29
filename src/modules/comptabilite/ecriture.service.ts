@@ -1,4 +1,5 @@
 import { motifLignesTenues } from './lignes-tenues';
+import { motifEcheanceManquante } from './echeance-obligatoire';
 import { preparerLesPiecesADetacher, retoucherDescriptionDesPieces } from './pieces-jointes-ecriture';
 import { ecartClasse9, motifRefusClasse9 } from './classe-9-equilibree';
 import { motifExerciceCloture } from './exercice-cloture';
@@ -783,6 +784,43 @@ export class EcritureService {
    */
   async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string) {
     await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
+  }
+
+  /**
+   * L'ÉCHÉANCE OBLIGATOIRE (ligne gl-saisie, fonction 2) · option du dossier,
+   * jugée à la SAISIE seule, au contrôleur, comme le collectif · voir
+   * `echeance-obligatoire.ts`. Le journal décide (un journal de trésorerie
+   * enregistre un règlement) · celui du DTO à la création, celui de la pièce
+   * à la modification, qui ne change pas de journal.
+   */
+  async verifierEcheancesObligatoires(
+    tenantId: string,
+    lignes: { compteId: string; debit?: number; credit?: number; dateEcheance?: string }[] | undefined,
+    piece: { journalId: string } | { ecritureId: string },
+  ) {
+    if (!lignes || lignes.length === 0) return;
+    const dossier = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { echeanceObligatoireTiers: true } });
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    if (!dossier.echeanceObligatoireTiers) return;
+    // Le journal de la pièce, lu par le journal même · aucune lecture
+    // d'écriture n'est faite ici, rien n'est sommé.
+    const journal = await this.prisma.journal.findFirst({
+      where: 'journalId' in piece ? { id: piece.journalId, tenantId } : { tenantId, ecritures: { some: { id: piece.ecritureId, tenantId } } },
+      select: { type: true },
+    });
+    // Journal ou écriture introuvables · les contrôles d'entrée le disent avec leur propre motif.
+    if (!journal) return;
+    const comptes = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: [...new Set(lignes.map((l) => l.compteId))] } },
+      select: { id: true, numero: true },
+    });
+    const numeros = new Map(comptes.map((c) => [c.id, c.numero]));
+    const jugees = lignes.flatMap((l) => {
+      const numero = numeros.get(l.compteId);
+      return numero ? [{ ...l, numero }] : [];
+    });
+    const motif = motifEcheanceManquante(jugees, journal.type);
+    if (motif) throw new BadRequestException(motif);
   }
 
   /**
@@ -3605,6 +3643,8 @@ export class EcritureService {
         // donc déjà renvoyés · seul le lien inverse doit être demandé.
         correction: { select: { id: true, numeroPiece: true, date: true } },
         corrigeEcriture: { select: { id: true, numeroPiece: true, date: true, libelle: true } },
+        // Ligne gl-saisie, fonction 64 · la revue du cabinet, son auteur résolu plus bas.
+        revue: { select: { revuePar: true, revueLe: true, commentaire: true } },
       },
       // Départage explicite : à date égale, l'ordre de sortie serait sinon
       // laissé au plan d'exécution PostgreSQL et pourrait changer d'un export
@@ -3630,8 +3670,24 @@ export class EcritureService {
       this.prisma.ecriture.count({ where: { ...where, tenantId } }),
     ]);
 
+    // L'AUTEUR DE LA REVUE EN COURRIEL (ligne gl-saisie, fonction 64) · un
+    // réviseur ne lit pas un identifiant ; un utilisateur retiré du dossier se
+    // nomme comme tel, jamais une case vide.
+    const auteursRevue = [...new Set(ecritures.flatMap((e) => (e.revue ? [e.revue.revuePar] : [])))];
+    const courriels = new Map(
+      auteursRevue.length
+        ? (await this.prisma.user.findMany({ where: { tenantId, id: { in: auteursRevue } }, select: { id: true, email: true } })).map(
+            (u) => [u.id, u.email] as const,
+          )
+        : [],
+    );
     return {
-      ecritures,
+      ecritures: ecritures.map(({ revue, ...e }) => ({
+        ...e,
+        revue: revue
+          ? { revueLe: revue.revueLe, commentaire: revue.commentaire, auteur: courriels.get(revue.revuePar) ?? 'utilisateur retiré du dossier' }
+          : null,
+      })),
       totaux: { debit: Number(agg._sum.debit ?? 0), credit: Number(agg._sum.credit ?? 0) },
       /** Nombre d'écritures du périmètre, tranche ou pas. */
       total,

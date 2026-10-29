@@ -678,6 +678,13 @@ model Tenant {
   // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
   // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
   creationCompteEnSaisie        Boolean  @default(false)
+  // L'ÉCHÉANCE OBLIGATOIRE SUR LA LIGNE D'UNE FACTURE DE TIERS (ligne gl-saisie,
+  // fonction 2 · Sage i7). Fausse par défaut · aucun texte lu ne l'impose.
+  // Vraie, la saisie refuse la ligne d'une facture sur un 40 ou un 41 sans
+  // date d'échéance (`comptabilite/echeance-obligatoire.ts`) · sans elle, la
+  // balance âgée, les relances et les notes par échéance la rangent à la date
+  // de la pièce ou en « non ventilé ».
+  echeanceObligatoireTiers      Boolean  @default(false)
   // VISA DES RIB PAR UN SECOND UTILISATEUR (décision de Manasse du
   // 2026-10-21, « Lève le gel pour le visa d'un RIB », vu chez Microfina++).
   // Une OPTION, désactivée par défaut, comme le double regard · aucun texte lu
@@ -951,6 +958,10 @@ model Tenant {
   annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
+  /// Ligne gl-saisie, fonction 64 · les écritures revues par le cabinet.
+  revuesEcritures                      RevueEcriture[]
+  /// Ligne gl-saisie, fonction 33 · les décisions de relance posées sur une ligne.
+  decisionsRelanceLignes               DecisionRelanceLigne[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   reprisesConges                       RepriseCongesSalarie[]
   congesSalaries                       CongeSalarie[]
@@ -1994,6 +2005,8 @@ enum StatutEcriture {
 
 model Ecriture {
   id                            String                             @id @default(uuid())
+  /// Ligne gl-saisie, fonction 64 · la revue de l'écriture par le cabinet, s'il l'a marquée.
+  revue                         RevueEcriture?
   repriseSubvention             RepriseSubventionImmobilisation?
   reductionSubvention           ReductionSubventionImmobilisation?
   revisionPlanAmortissement     RevisionPlanAmortissement?
@@ -2452,6 +2465,8 @@ model LigneEcriture {
   imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
   /// Ligne sage-l4, n° 68 · le bien né de cette ligne d'acquisition déjà passée.
   immobilisationAcquise Immobilisation?      @relation("ImmoLigneAcquisition")
+  /// Ligne gl-saisie, fonction 33 · la décision de relance posée sur cette ligne (exclusion, échéance accordée).
+  decisionRelance       DecisionRelanceLigne?
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -13247,4 +13262,66 @@ model ParticipantFormation {
   @@unique([formationId, salarieId])
   @@index([tenantId, salarieId])
   @@map("participants_formation")
+}
+
+/// LA REVUE D'UNE ÉCRITURE PAR LE CABINET (ligne gl-saisie, fonction 64 ·
+/// Sage i7, « registre de révision » et filtres de révision). Le cabinet qui
+/// révise le journal marque chaque écriture qu'il a relue · auteur, date,
+/// commentaire facultatif · et filtre ce qui reste à revoir.
+///
+/// À CÔTÉ DE L'ÉCRITURE, JAMAIS EN ELLE · une écriture validée est
+/// irréversible (AUDCIF art. 22, 2°) ; la marque ne touche ni son origine, ni
+/// son contenu, ni son imputation (art. 22, 1°). Sur une écriture VALIDÉE
+/// seulement · le brouillard change encore, une revue y vaudrait pour un
+/// contenu qui n'existe plus. Une par écriture (clé unique) ; retirée, elle
+/// disparaît, et le journal d'audit garde qui l'avait posée et qui l'a
+/// retirée. `Cascade` · une écriture validée ne se supprime jamais, et la
+/// purge d'un dossier les emporte ensemble.
+model RevueEcriture {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  ecritureId  String   @unique
+  ecriture    Ecriture @relation(fields: [ecritureId], references: [id], onDelete: Cascade)
+  /// L'utilisateur qui a revu · son adresse se lit à l'affichage.
+  revuePar    String
+  revueLe     DateTime @default(now())
+  commentaire String?
+
+  @@index([tenantId, revueLe])
+  @@map("revues_ecritures")
+}
+
+/// LA DÉCISION DE RELANCE SUR UNE LIGNE (ligne gl-saisie, fonction 33 · Sage
+/// i7, « exclure des écritures du circuit de relance », « décaler la date
+/// d'échéance »). Règles dans `relances/decision-relance-ligne.ts`.
+///
+/// À CÔTÉ DE LA LIGNE, JAMAIS EN ELLE · la ligne d'une écriture validée ne se
+/// réécrit pas (AUDCIF art. 22, 2°), et seule la relance lit la décision ;
+/// balance âgée, notes et échéancier gardent l'échéance de la pièce. Sur une
+/// ligne VALIDÉE de facture (40, 41) non lettrée · une par ligne (clé
+/// unique). EXCLURE porte sur le courrier, jamais sur la créance ; DÉCALER
+/// recule le terme accordé au débiteur (Code civil, Livre III, art. 84 et
+/// 85). Motif exigé pour l'un et l'autre, auteur et date posés par le
+/// serveur ; au journal d'audit. `Restrict` · une ligne validée ne se supprime
+/// jamais ; un chemin qui viendrait à la supprimer est refusé par la base au
+/// lieu de dénouer la décision.
+model DecisionRelanceLigne {
+  id               String        @id @default(uuid())
+  tenantId         String
+  tenant           Tenant        @relation(fields: [tenantId], references: [id])
+  ligneEcritureId  String        @unique
+  ligneEcriture    LigneEcriture @relation(fields: [ligneEcritureId], references: [id], onDelete: Restrict)
+  exclue           Boolean       @default(false)
+  motifExclusion   String?
+  exclueLe         DateTime?
+  exclueePar       String?
+  echeanceAccordee DateTime?
+  motifEcheance    String?
+  accordeeLe       DateTime?
+  accordeePar      String?
+  createdAt        DateTime      @default(now())
+
+  @@index([tenantId])
+  @@map("decisions_relance_lignes")
 }

@@ -289,6 +289,7 @@ export function editionParametres(
     ['Circuit de visa avant validation', ouiNon(p.circuitVisa === true)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],
+    ["Échéance obligatoire sur la facture d'un tiers", ouiNon(p.echeanceObligatoireTiers === true)],
     // Ligne sage-l2, fonction 36 · `null` est « aucun seuil », jamais zéro.
     ["Seuil de l'écart de règlement", p.seuilEcartReglement == null ? 'aucun' : montant(p.seuilEcartReglement)],
   );
