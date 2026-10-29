@@ -2,6 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import { propositionPaieDuMois, type BulletinAComptabiliser, type OrigineDuBulletin } from './comptabilisation-paie';
 import { compteDuPaiement, intituleDuCompteSalarie } from './compte-salarie';
 import { ouvrirCompteSalarie } from './comptes-salaries.service';
+import { PaiementSalairesService } from './paiement-salaires.service';
+import { Prisma } from '@prisma/client';
 
 /**
  * LIGNE PAIE-SUITE, FONCTION 76 · LE COMPTE INDIVIDUEL DU SALARIÉ SOUS LE 422.
@@ -184,5 +186,72 @@ describe("l'ouverture du compte", () => {
 
   it('l’intitulé porte le nom et le matricule', () => {
     expect(intituleDuCompteSalarie({ nom: 'MUKENDI', postNom: 'WA', prenoms: 'Paul', matricule: null })).toBe('MUKENDI WA Paul · rémunérations dues');
+  });
+});
+
+describe('le paiement au service · deux salariés passés sur leur compte dans une même pièce', () => {
+  // Rejeu sur vraie base · la lecture des lignes de la passation était bornée
+  // au nombre de couples (pièce, compte) SANS `distinct` · la pièce porte deux
+  // lignes par salarié (brut et retenues), si bien que le second salarié était
+  // payé au collectif, la balance générale bouclée.
+  it('chaque net se débite sur le compte où il a été inscrit', async () => {
+    const lignesPassation = [
+      { ecritureId: 'e-dec', compteId: 'c1' },
+      { ecritureId: 'e-dec', compteId: 'c1' },
+      { ecritureId: 'e-dec', compteId: 'c2' },
+      { ecritureId: 'e-dec', compteId: 'c2' },
+    ];
+    const findMany = jest.fn(async (a: { distinct?: string[]; take?: number }) => {
+      let l = lignesPassation;
+      if (a.distinct) l = l.filter((x, i) => l.findIndex((y) => y.ecritureId === x.ecritureId && y.compteId === x.compteId) === i);
+      return l.slice(0, a.take ?? l.length);
+    });
+    const b = (id: string, salarieId: string, compteId: string) => ({
+      id,
+      numero: id === 'b1' ? 1 : 2,
+      moisDePaie: '2026-12',
+      statut: 'EMIS',
+      salarieId,
+      nomComplet: salarieId,
+      netAPayerFc: new Prisma.Decimal(649_300),
+      ecritureId: 'e-dec',
+      salarie: { modePaiement: 'CHEQUE', compteId },
+    });
+    const prisma = {
+      tenant: { findFirst: jest.fn(async () => ({ referentiel: 'SYSCOHADA', comptesIndividuelsSalaries: true })) },
+      journal: {
+        findFirst: jest.fn(async () => ({ id: 'j', code: 'BQ', type: 'TRESORERIE', estActif: true, compteTresorerie: { id: 'c521', numero: '52110000' }, ribsBanque: [] })),
+      },
+      bulletinPaie: { findMany: jest.fn(async () => [b('b1', 's1', 'c1'), b('b2', 's2', 'c2')]) },
+      lignePaiementSalaire: { groupBy: jest.fn(async () => []) },
+      compte: { findFirst: jest.fn(async () => ({ id: 'c422', typeCompte: 'DETAIL' })) },
+      ligneEcriture: { findMany },
+    };
+    let lignes: { compteId: string; debit: number; credit: number }[] = [];
+    const ecritures = {
+      verifierCaisseProvisionnee: jest.fn(),
+      creerAvec: jest.fn(async (_t: string, _u: string, dto: { lignes: typeof lignes }) => {
+        lignes = dto.lignes;
+        throw new Error('arrêt après la composition de la pièce');
+      }),
+    };
+    const svc = new PaiementSalairesService(prisma as never, ecritures as never, {} as never);
+    await expect(
+      svc.payer('t', 'u', 'a@b.c', '2026-12', {
+        mode: 'CHEQUE',
+        exerciceId: 'x',
+        journalId: 'j',
+        date: '2027-01-10',
+        bulletinIds: ['b1', 'b2'],
+        references: [
+          { bulletinId: 'b1', reference: 'CHQ 1' },
+          { bulletinId: 'b2', reference: 'CHQ 2' },
+        ],
+      } as never),
+    ).rejects.toThrow(/arrêt/);
+    expect(lignes.filter((l) => l.debit > 0).map((l) => [l.compteId, l.debit])).toEqual([
+      ['c1', 649_300],
+      ['c2', 649_300],
+    ]);
   });
 });

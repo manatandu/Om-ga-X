@@ -435,6 +435,12 @@ export class PaiementSalairesService {
       const portees = await this.prisma.ligneEcriture.findMany({
         // Une passation n'est jamais une situation · le filtre le dit quand même.
         where: { ecriture: avecStatut({ tenantId, id: { in: ecritureIds } }), compteId: { in: comptesIds } },
+        // UNE LIGNE PAR COUPLE (pièce, compte) · la passation en porte deux par
+        // salarié (brut et retenues) ; bornée au nombre de couples sans
+        // `distinct`, la lecture s'arrêtait aux deux lignes du premier salarié
+        // et le second, passé sur son compte, était payé au collectif (rejeu
+        // sur vraie base, ligne paie-suite).
+        distinct: ['ecritureId', 'compteId'],
         select: { ecritureId: true, compteId: true },
         take: ecritureIds.length * comptesIds.length,
       });
