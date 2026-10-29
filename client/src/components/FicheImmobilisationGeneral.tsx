@@ -135,8 +135,8 @@ export function FicheImmobilisationGeneral({
       vivant = false;
     };
   }, [peutEcrire]);
+  // Lue pour tous · la lecture seule voit aussi la section posée.
   useEffect(() => {
-    if (!peutEcrire) return;
     let vivant = true;
     setEchecSections(null);
     api
@@ -146,7 +146,7 @@ export function FicheImmobilisationGeneral({
     return () => {
       vivant = false;
     };
-  }, [peutEcrire]);
+  }, []);
   const compteBienId = saisie?.compteImmobilisationId ?? '';
   const repris = !!etat?.valeurs.repris;
   useEffect(() => {

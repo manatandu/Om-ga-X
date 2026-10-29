@@ -2859,7 +2859,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
             <BiensSousReserveDePropriete exerciceId={exerciceCourant?.id} syscohada={syscohada} />
             {/* Ligne immos, n° 69 · un lot de biens sort en un geste · chaque bien jugé par le serveur comme s'il sortait seul. */}
             <SortieGlobale
-              biens={immobilisations ?? []}
+              biens={immobilisations ?? null}
               exerciceId={exerciceCourant?.id}
               journaux={journaux}
               comptesFinancement={comptesFinancement}

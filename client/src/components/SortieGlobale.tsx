@@ -28,7 +28,8 @@ export function SortieGlobale({
   projetDeveloppement,
   onFait,
 }: {
-  biens: Immobilisation[];
+  /** Null tant que le registre n'est pas lu · jamais présenté comme vide. */
+  biens: Immobilisation[] | null;
   exerciceId: string | undefined;
   journaux: Journal[];
   comptesFinancement: Compte[] | null;
@@ -53,7 +54,7 @@ export function SortieGlobale({
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  const enService = useMemo(() => biens.filter((b) => b.statut === 'EN_SERVICE'), [biens]);
+  const enService = useMemo(() => (biens === null ? null : biens.filter((b) => b.statut === 'EN_SERVICE')), [biens]);
   const natures = naturesSortieOffertes({ type, projetDeveloppement, usufruit: false });
 
   useEffect(() => {
@@ -211,7 +212,9 @@ export function SortieGlobale({
               </label>
             )}
           </div>
-          {enService.length === 0 ? (
+          {enService === null ? (
+            <div className="text-text-dim">…</div>
+          ) : enService.length === 0 ? (
             <div className="text-text-dim">Aucun bien en service.</div>
           ) : (
             <div className="max-h-[320px] overflow-y-auto border border-border">
