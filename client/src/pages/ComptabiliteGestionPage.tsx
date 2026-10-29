@@ -279,7 +279,7 @@ function Comportements({ exerciceId, peutEcrire, notifier, echouer }: PropsOngle
                         disabled={!peutEcrire}
                         value={s.part}
                         onChange={(e) => setSaisie((x) => ({ ...x, [c.compteId]: { ...s, part: e.target.value } }))}
-                        className="w-full border border-border px-1.5 py-[1px] text-right"
+                        className="w-full border border-border px-1.5 py-px text-right"
                       />
                     )}
                   </td>
@@ -590,7 +590,7 @@ function Cles({ exerciceId, peutEcrire, notifier, echouer }: PropsOnglet) {
                         inputMode="decimal"
                         value={valeurs[s.id] ?? ''}
                         onChange={(e) => setValeurs((v) => ({ ...v, [s.id]: e.target.value }))}
-                        className="w-full border border-border px-1.5 py-[1px] text-right"
+                        className="w-full border border-border px-1.5 py-px text-right"
                       />
                     </td>
                   </tr>

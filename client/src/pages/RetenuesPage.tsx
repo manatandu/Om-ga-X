@@ -155,29 +155,29 @@ export function RetenuesPage() {
                 }`}
               >
                 <span className="font-mono text-[11.5px]">{jour(e.date)}</span>
-                <span className="text-[11px] text-text-dim uppercase tracking-[0.04em] pt-[1px]">
+                <span className="text-[11px] text-text-dim uppercase tracking-[0.04em] pt-px">
                   {RYTHME[e.periodicite]}
                 </span>
                 <span>
                   {e.libelle}
-                  <span className="block text-[11px] text-text-dim leading-[1.5]">{e.baseLegale}</span>
+                  <span className="block text-[11px] text-text-dim leading-normal">{e.baseLegale}</span>
                   {/*
                     Une DÉCLARATION ne porte aucun montant : sans son contenu,
                     la ligne ne dirait pas ce qu'il y a à produire, et une
                     échéance dont on ignore l'objet ne sert à rien.
                   */}
                   {e.contenu && (
-                    <span className="block text-[11px] leading-[1.5] mt-0.5">{e.contenu}</span>
+                    <span className="block text-[11px] leading-normal mt-0.5">{e.contenu}</span>
                   )}
                   {e.sanction && (
-                    <span className="block text-[11px] text-danger leading-[1.5] mt-0.5">{e.sanction}</span>
+                    <span className="block text-[11px] text-danger leading-normal mt-0.5">{e.sanction}</span>
                   )}
                   {e.sourceDonnees && (
-                    <span className="block text-[11px] text-text-dim italic leading-[1.5] mt-0.5">
+                    <span className="block text-[11px] text-text-dim italic leading-normal mt-0.5">
                       Où trouver la matière : {e.sourceDonnees}
                     </span>
                   )}
-                  {e.reserve && <span className="block text-[11px] text-warning leading-[1.5] mt-0.5">{e.reserve}</span>}
+                  {e.reserve && <span className="block text-[11px] text-warning leading-normal mt-0.5">{e.reserve}</span>}
                 </span>
                 <span
                   className="text-[11px] text-text-dim"

@@ -801,7 +801,7 @@ export function ReglementsPage() {
               const seuil = comptesEE?.seuil ?? null;
               return (
                 <tbody key={g.compteId}>
-                  <tr className="bg-[var(--a-50)]">
+                  <tr className="bg-(--a-50)">
                     <td colSpan={3} className="px-2 py-1 font-semibold">
                       {g.numero} · {g.tiers ?? g.intitule}
                     </td>
@@ -817,7 +817,7 @@ export function ReglementsPage() {
                                 placeholder={fmt(duDevise(g))}
                                 value={montantsDevise[g.compteId] ?? ''}
                                 onChange={(e) => setMontantsDevise((m) => ({ ...m, [g.compteId]: e.target.value }))}
-                                className="w-[100px] border border-border px-1.5 py-[1px] text-right"
+                                className="w-[100px] border border-border px-1.5 py-px text-right"
                               />
                               <span className="text-text-dim">Cours du jour</span>
                               <input
@@ -826,7 +826,7 @@ export function ReglementsPage() {
                                 value={coursDuGroupe(g, devise.id)}
                                 onChange={(e) => setCoursSaisis((c) => ({ ...c, [g.compteId]: e.target.value }))}
                                 title={coursCote ? `Dernier cours coté le ${jourFr(coursCote.date)}` : 'Aucun cours coté à cette date · saisissez-le'}
-                                className="w-[90px] border border-border px-1.5 py-[1px] text-right"
+                                className="w-[90px] border border-border px-1.5 py-px text-right"
                               />
                               <span className="text-text-dim">ou payé en francs</span>
                               <input
@@ -835,7 +835,7 @@ export function ReglementsPage() {
                                 value={francsSaisis[g.compteId] ?? ''}
                                 onChange={(e) => setFrancsSaisis((m) => ({ ...m, [g.compteId]: e.target.value }))}
                                 title="Le débit réel de la banque · le cours s'en déduit"
-                                className="w-[110px] border border-border px-1.5 py-[1px] text-right"
+                                className="w-[110px] border border-border px-1.5 py-px text-right"
                               />
                               {sensEcart !== null && proposables !== null && (sansComptePrescrit || proposables.length > 0) && (
                                 <select
@@ -847,7 +847,7 @@ export function ReglementsPage() {
                                       ? "Le texte ne donne aucun compte pour cet écart de change · choisissez le vôtre"
                                       : `Par défaut, le compte que le texte donne (${prescrit}) · ou l'un de ses sous-comptes`
                                   }
-                                  className="border border-border px-1 py-[1px] bg-surface max-w-[200px]"
+                                  className="border border-border px-1 py-px bg-surface max-w-[200px]"
                                 >
                                   <option value="">{sansComptePrescrit ? "Compte d'écart de change…" : `Compte ${prescrit} (par défaut)`}</option>
                                   {proposables.map((c) => (
@@ -875,7 +875,7 @@ export function ReglementsPage() {
                                 placeholder={fmt(payeParDefaut(du, escomptes[g.compteId]))}
                                 value={montants[g.compteId] ?? ''}
                                 onChange={(e) => setMontants((m) => ({ ...m, [g.compteId]: e.target.value }))}
-                                className="w-[110px] border border-border px-1.5 py-[1px] text-right"
+                                className="w-[110px] border border-border px-1.5 py-px text-right"
                               />
                               {somme === null && (
                                 <>
@@ -886,14 +886,14 @@ export function ReglementsPage() {
                                     value={escomptes[g.compteId] ?? ''}
                                     onChange={(e) => setEscomptes((m) => ({ ...m, [g.compteId]: e.target.value }))}
                                     title={sens === 'FOURNISSEUR' ? 'Escompte obtenu pour un paiement avant le terme' : 'Escompte accordé pour un paiement avant le terme'}
-                                    className="w-[90px] border border-border px-1.5 py-[1px] text-right"
+                                    className="w-[90px] border border-border px-1.5 py-px text-right"
                                   />
                                   {escompteSaisi && roleEsc && roleEsc.comptes.length > 1 && (
                                     <select
                                       aria-label={`Compte de l'escompte · ${g.numero}`}
                                       value={comptesEscompteChoisis[g.compteId] ?? ''}
                                       onChange={(e) => setComptesEscompteChoisis((c) => ({ ...c, [g.compteId]: e.target.value }))}
-                                      className="border border-border px-1 py-[1px] bg-surface max-w-[200px]"
+                                      className="border border-border px-1 py-px bg-surface max-w-[200px]"
                                     >
                                       <option value="">Compte de l'escompte…</option>
                                       {roleEsc.comptes.map((c) => (
@@ -932,7 +932,7 @@ export function ReglementsPage() {
                                       aria-label={`Compte de l'écart · ${g.numero}`}
                                       value={comptesEcartChoisis[g.compteId] ?? ''}
                                       onChange={(e) => setComptesEcartChoisis((c) => ({ ...c, [g.compteId]: e.target.value }))}
-                                      className="border border-border px-1 py-[1px] bg-surface max-w-[200px]"
+                                      className="border border-border px-1 py-px bg-surface max-w-[200px]"
                                     >
                                       <option value="">Compte de l'écart…</option>
                                       {roleEcart.comptes.map((c) => (
@@ -953,7 +953,7 @@ export function ReglementsPage() {
                                     value={piecesImputation[g.compteId] ?? ''}
                                     onChange={(e) => setPiecesImputation((m) => ({ ...m, [g.compteId]: e.target.value }))}
                                     title="Lettre, courriel ou bordereau qui a dit au fournisseur quelle facture ce règlement paie · l'ordre de virement, s'il est préparé, l'imprime à sa place"
-                                    className="w-[150px] border border-border px-1.5 py-[1px]"
+                                    className="w-[150px] border border-border px-1.5 py-px"
                                   />
                                 </>
                               )}
@@ -963,7 +963,7 @@ export function ReglementsPage() {
                           <input
                             value={references[g.compteId] ?? ''}
                             onChange={(e) => setReferences((r) => ({ ...r, [g.compteId]: e.target.value }))}
-                            className="w-[110px] border border-border px-1.5 py-[1px]"
+                            className="w-[110px] border border-border px-1.5 py-px"
                           />
                         </span>
                       )}
@@ -1043,7 +1043,7 @@ export function ReglementsPage() {
                                     value={parts[l.id] ?? ''}
                                     onChange={(e) => setParts((m) => ({ ...m, [l.id]: e.target.value }))}
                                     title="Part réglée de cette facture · le dossier qui paie déclare ce qu'il acquitte (Code civil, Livre III, art. 151). Vide pour toutes · imputation légale (art. 154)"
-                                    className="w-[100px] border border-border px-1.5 py-[1px] text-right"
+                                    className="w-[100px] border border-border px-1.5 py-px text-right"
                                   />
                                   {motif && (
                                     <div id={`part-${l.id}`} className="text-danger text-left">

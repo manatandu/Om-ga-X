@@ -232,7 +232,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
         */
         className={`shrink-0 flex items-center justify-between gap-2 pl-3.5 select-none border-b border-border transition-colors duration-150 ${
           agrandie ? '' : 'cursor-move'
-        } ${active ? 'bg-[var(--bandeau)] text-white' : 'bg-chrome text-text-dim'}`}
+        } ${active ? 'bg-(--bandeau) text-white' : 'bg-chrome text-text-dim'}`}
       >
         <span className="truncate text-[12px] font-semibold">{fenetre.titre}</span>
         <span className="flex items-stretch self-stretch shrink-0">
@@ -270,7 +270,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       </div>
 
       {/* --- Contenu -------------------------------------------------------- */}
-      <div className="flex-1 min-h-0 overflow-auto bg-[var(--fenetre)]">
+      <div className="flex-1 min-h-0 overflow-auto bg-(--fenetre)">
         <LimiteErreur titreFenetre={fenetre.titre}>
           {/* La clé porte le compteur d'Actualiser : l'incrémenter remonte le
               contenu, qui recharge ses données · le F5 de Sage.
@@ -306,7 +306,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
             style={{ cursor: CURSEUR_BORD[bord], touchAction: 'none' }}
             // Au-dessus des en-têtes collantes du contenu (z-10), qui
             // couvraient sinon la bande gauche et la bande droite.
-            className={`absolute z-[25] ${place}`}
+            className={`absolute z-25 ${place}`}
           >
             {bord === 'se' && (
               <svg viewBox="0 0 16 16" className="w-full h-full text-border-dark">

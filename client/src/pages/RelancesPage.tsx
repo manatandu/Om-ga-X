@@ -460,7 +460,7 @@ function PositionsRelances() {
                 {releve?.compteId === p.compteId && releve.cadre?.avant && (
                   <pre
                     title={`Modèle d'impression du tiers · ${releve.cadre.modele ?? ''}`}
-                    className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-[1.5]"
+                    className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-normal"
                   >
                     {releve.cadre.avant}
                   </pre>
@@ -497,7 +497,7 @@ function PositionsRelances() {
                   </table>
                 )}
                 {releve?.compteId === p.compteId && releve.cadre?.apres && (
-                  <pre className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-[1.5]">{releve.cadre.apres}</pre>
+                  <pre className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-normal">{releve.cadre.apres}</pre>
                 )}
               </div>
             )}

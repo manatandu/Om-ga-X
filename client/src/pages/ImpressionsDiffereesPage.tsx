@@ -317,11 +317,11 @@ export function ImpressionsDiffereesPage() {
                 </label>
                 <label className="flex flex-col gap-0.5">
                   <span className="text-text-dim">Du</span>
-                  <input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} className="border border-border px-2 py-[1px]" />
+                  <input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} className="border border-border px-2 py-px" />
                 </label>
                 <label className="flex flex-col gap-0.5">
                   <span className="text-text-dim">Au</span>
-                  <input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} className="border border-border px-2 py-[1px]" />
+                  <input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} className="border border-border px-2 py-px" />
                 </label>
                 <label className="inline-flex items-center gap-1.5 pb-[3px]">
                   <input type="checkbox" checked={inclureBrouillard} onChange={(e) => setInclureBrouillard(e.target.checked)} />

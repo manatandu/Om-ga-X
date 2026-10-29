@@ -1051,7 +1051,7 @@ export function TiersPage() {
                         });
                       }
                     }}
-                    className="flex-1 min-w-0 border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                    className="flex-1 min-w-0 border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-hidden focus:border-sel"
                   />
                   <Aide
                     titre="Qualité du tiers"
@@ -1219,13 +1219,13 @@ export function TiersPage() {
                         key={`${tiersSelectionne.id}-${champ.cle}`}
                         readOnly={!estAdmin}
                         onBlur={(e) => estAdmin && enregistrerCoordonnee(tiersSelectionne, champ.cle, e.target.value)}
-                        className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                        className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-hidden focus:border-sel"
                       />
                     </Fragment>
                   ))}
                 </div>
                 {!tiersSelectionne.adresse && !tiersSelectionne.email && (
-                  <div className="text-[11px] text-warning leading-[1.5] mt-1.5">
+                  <div className="text-[11px] text-warning leading-normal mt-1.5">
                     Sans adresse ni courriel, aucune lettre de rappel ni aucun relevé ne peut être adressé à ce tiers.
                   </div>
                 )}
@@ -1258,7 +1258,7 @@ export function TiersPage() {
                   )}
                 </div>
                 {dossiersGroupe.length === 0 ? (
-                  <div className="text-[11px] text-text-dim leading-[1.5]">
+                  <div className="text-[11px] text-text-dim leading-normal">
                     Ce dossier n'appartient à aucun groupe d'établissements · le rattachement d'un dossier mère et de
                     ses cellules se pose depuis la console de la plateforme.
                   </div>
@@ -1280,7 +1280,7 @@ export function TiersPage() {
                         </option>
                       ))}
                     </select>
-                    <div className="text-[11px] text-text-dim leading-[1.5]">
+                    <div className="text-[11px] text-text-dim leading-normal">
                       Opérations avec une cellule du groupe éliminées de la balance agrégée.
                     </div>
                   </>
@@ -1336,7 +1336,7 @@ export function TiersPage() {
                         if (propre === (tiersSelectionne.referenceAutorisationDebits ?? '')) return;
                         enregistrerChamp(tiersSelectionne, { referenceAutorisationDebits: propre || null });
                       }}
-                      className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                      className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-hidden focus:border-sel"
                     />
                     {/*
                       LA PÉRIODE DE L'AUTORISATION · une facture hors de la
@@ -1367,13 +1367,13 @@ export function TiersPage() {
                             if (valeur === (tiersSelectionne[champ]?.slice(0, 10) ?? '')) return;
                             enregistrerChamp(tiersSelectionne, { [champ]: valeur || null });
                           }}
-                          className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                          className="border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-hidden focus:border-sel"
                         />
                       </Fragment>
                     ))}
                   </div>
                 )}
-                <div className="text-[11px] text-text-dim leading-[1.5] mt-1.5">
+                <div className="text-[11px] text-text-dim leading-normal mt-1.5">
                   Mention exigée par le décret n° 011/42, art. 60 · O.-L. n° 10/001, art. 26 et art. 37.
                 </div>
               </div>

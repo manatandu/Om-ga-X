@@ -163,7 +163,7 @@ export function ImportPage() {
                     />
                     <span className="min-w-0">
                       <span className="block text-[12px] font-semibold">{t.titre}</span>
-                      <span className="block text-[11.5px] text-text-dim leading-[1.5] mt-0.5">{t.description}</span>
+                      <span className="block text-[11.5px] text-text-dim leading-normal mt-0.5">{t.description}</span>
                     </span>
                   </label>
                 ))}

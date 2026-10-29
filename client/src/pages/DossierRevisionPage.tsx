@@ -161,7 +161,7 @@ export function DossierRevisionPage() {
               )}
             </div>
             {l.exclusions && (
-              <div className="px-3 py-1.5 border-t border-border/60 text-[11px] text-text-dim leading-[1.5]">
+              <div className="px-3 py-1.5 border-t border-border/60 text-[11px] text-text-dim leading-normal">
                 <span className="font-bold">Exclusions · </span>
                 {l.exclusions}
               </div>

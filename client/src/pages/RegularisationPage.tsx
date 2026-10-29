@@ -638,7 +638,7 @@ export function RegularisationPage() {
                       <span>Différé aux exercices ultérieurs</span>
                       <span className="font-mono font-bold text-sel">{montant(simulation.montantDiffere)}</span>
                     </div>
-                    <div className="text-[11px] text-text-dim mt-1.5 leading-[1.5] flex items-center gap-1.5">
+                    <div className="text-[11px] text-text-dim mt-1.5 leading-normal flex items-center gap-1.5">
                       <span>
                         {simulation.joursApresCloture} jour(s) sur {simulation.joursTotal} tombent après la clôture du{' '}
                         {jour(simulation.finExercice)}.

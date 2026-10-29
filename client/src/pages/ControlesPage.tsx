@@ -343,7 +343,7 @@ export function ControlesPage() {
                         }
                         className={`text-right px-2 py-1 font-mono ${
                           v === 0
-                            ? 'text-text-dim/50'
+                            ? 'text-text-dim'
                             : c.moisAberrant === evolution.mois[i].cle
                               ? 'bg-warning-soft font-semibold text-warning'
                               : ''

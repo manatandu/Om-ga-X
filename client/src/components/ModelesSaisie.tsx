@@ -635,7 +635,7 @@ export function ModelesSaisieModale({
                     )}
   
                     {racineTiers && comptesTiers.length === 0 && (
-                      <div className="col-span-2 border border-danger/50 bg-danger/5 px-2.5 py-2 text-[11.5px] leading-[1.5]">
+                      <div className="col-span-2 border border-danger/50 bg-danger/5 px-2.5 py-2 text-[11.5px] leading-normal">
                         {tiersAuPlan
                           ? `Aucun compte personnalisé sous la racine ${racineTiers} · cette opération passe OBLIGATOIREMENT par un compte de tiers, personnalisez-le dans Plan comptable avant d'employer ce modèle.`
                           : `Aucun compte n'est ouvert sous la racine ${racineTiers} dans le plan de ce dossier. Cette opération passe OBLIGATOIREMENT par un compte de tiers · ouvrez-le au plan comptable avant d'employer ce modèle.`}
@@ -705,7 +705,7 @@ export function ModelesSaisieModale({
                       laisser essuyer un 400 après avoir rempli les montants. */}
                   {selection.modele.exigeDroitDAgir && catalogue?.methodeCotisations !== 'APPEL' && (
                     <div
-                      className={`mb-3 px-2.5 py-2 text-[11.5px] leading-[1.5] border ${
+                      className={`mb-3 px-2.5 py-2 text-[11.5px] leading-normal border ${
                         catalogue?.methodeCotisations === 'ENCAISSEMENT'
                           ? 'border-danger text-danger'
                           : 'border-border text-text-dim'
@@ -731,7 +731,7 @@ export function ModelesSaisieModale({
                       modèle ; l'écran dit où le geste se fait au lieu de
                       laisser remplir des montants pour un 400. */}
                   {selection.modele.renvoiModule && (
-                    <div className="mb-3 px-2.5 py-2 text-[11.5px] leading-[1.5] border border-border">
+                    <div className="mb-3 px-2.5 py-2 text-[11.5px] leading-normal border border-border">
                       Se passe dans la fenêtre {selection.modele.renvoiModule.fenetre} · {selection.modele.renvoiModule.geste}.
                     </div>
                   )}

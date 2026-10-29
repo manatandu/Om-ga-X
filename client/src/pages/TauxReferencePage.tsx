@@ -155,7 +155,7 @@ export function TauxReferencePage() {
               {t.operations > 0 && <span className="font-normal text-text-dim"> · {t.operations} opération(s)</span>}
             </h2>
             {estAdmin && t.operations === 0 && (
-              <button type="button" disabled={envoi !== null} onClick={() => void retirer(t)} className="px-2 py-[1px] border border-border text-danger disabled:opacity-40">
+              <button type="button" disabled={envoi !== null} onClick={() => void retirer(t)} className="px-2 py-px border border-border text-danger disabled:opacity-40">
                 {envoi === t.id ? '…' : 'Retirer le taux'}
               </button>
             )}
@@ -180,7 +180,7 @@ export function TauxReferencePage() {
                     <td className="px-2 py-1">{c.source}</td>
                     <td className="px-2 py-1">
                       {estAdmin && (
-                        <button type="button" disabled={envoi !== null} onClick={() => void retirerCours(t, c)} className="px-2 py-[1px] border border-border text-danger disabled:opacity-40">
+                        <button type="button" disabled={envoi !== null} onClick={() => void retirerCours(t, c)} className="px-2 py-px border border-border text-danger disabled:opacity-40">
                           {envoi === c.id ? '…' : 'Retirer'}
                         </button>
                       )}

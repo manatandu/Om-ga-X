@@ -105,7 +105,7 @@ describe('chrome à 360 px', () => {
     // Fixé à 168 px sur un écran de 360, il ne laissait que 118 px au
     // formulaire, et 40 px au texte une fois les marges retirées.
     expect(src).toMatch(/flex flex-col sm:flex-row/);
-    expect(src).toMatch(/w-full sm:w-\[168px\] sm:flex-shrink-0/);
+    expect(src).toMatch(/w-full sm:w-\[168px\] sm:shrink-0/);
   });
 
   it("la porte d'ouverture ne se réclame d'aucun référentiel", () => {

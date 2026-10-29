@@ -135,7 +135,7 @@ export function ModaleCorrection({
             </div>
   
             <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-dim mb-1.5">
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-text-dim mb-1.5">
                 Nature de l’erreur
               </label>
               <div className="grid grid-cols-2 gap-1.5">
@@ -157,7 +157,7 @@ export function ModaleCorrection({
             </div>
   
             <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-[0.05em] text-text-dim mb-1.5">
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-text-dim mb-1.5">
                 Précision · ce qui était faux, et ce qui sera enregistré
               </label>
               <textarea
@@ -166,12 +166,12 @@ export function ModaleCorrection({
                 value={precision}
                 onChange={(e) => setPrecision(e.target.value)}
                 placeholder={n_exemple(nature)}
-                className="w-full rounded-[4px] border border-border bg-bg px-2.5 py-2 text-[11.5px] leading-relaxed focus:outline-none focus:border-sel"
+                className="w-full rounded-[4px] border border-border bg-bg px-2.5 py-2 text-[11.5px] leading-relaxed focus:outline-hidden focus:border-sel"
               />
             </div>
   
             <div className="rounded-[4px] border border-border bg-chrome-alt px-3 py-2">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-dim mb-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-text-dim mb-1">
                 Motif tel qu’il figurera au journal
               </div>
               <div className="text-[11.5px] font-medium">

@@ -232,7 +232,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                   </thead>
                   <tbody>
                     {liste.ordres.map((o) => (
-                      <tr key={o.id} className="cursor-pointer hover:bg-[var(--a-50)]" onClick={() => ouvrir(o.id)}>
+                      <tr key={o.id} className="cursor-pointer hover:bg-(--a-50)" onClick={() => ouvrir(o.id)}>
                         <td className="px-2 py-1">{o.numero}</td>
                         <td className="px-2 py-1">{jour(o.date)}</td>
                         <td className="px-2 py-1">

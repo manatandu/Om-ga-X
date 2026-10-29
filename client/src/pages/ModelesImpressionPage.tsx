@@ -269,7 +269,7 @@ export function ModelesImpressionPage() {
               maxLength={LONGUEUR_TEXTE_MODELE}
               value={brouillon.texte}
               onChange={(e) => setBrouillon({ ...brouillon, texte: e.target.value })}
-              className="border border-border-dark px-2 py-1 font-sans leading-[1.5]"
+              className="border border-border-dark px-2 py-1 font-sans leading-normal"
             />
           </label>
           <div className="flex justify-end gap-2">

@@ -779,7 +779,7 @@ export function BrouillardPage() {
                   <button
                     onClick={() => supprimer(l.id)}
                     title="Supprimer du brouillard"
-                    className="text-[11.5px] text-danger/70 hover:text-danger"
+                    className="text-[11.5px] text-danger hover:text-danger"
                   >
                     Supprimer
                   </button>
@@ -1016,7 +1016,7 @@ export function BrouillardPage() {
                             <button
                               type="button"
                               onClick={() => setEdition({ ...edition, lignes: edition.lignes.filter((_, k) => k !== i) })}
-                              className="text-danger/70 hover:text-danger"
+                              className="text-danger hover:text-danger"
                             >
                               Retirer
                             </button>

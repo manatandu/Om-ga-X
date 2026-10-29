@@ -255,7 +255,7 @@ export function OdAnalytiquesPage() {
                         inputMode="decimal"
                         value={l.debit}
                         onChange={(e) => majLigne(i, 'debit', e.target.value)}
-                        className="w-full border border-border px-1.5 py-[1px] text-right"
+                        className="w-full border border-border px-1.5 py-px text-right"
                       />
                     </td>
                     <td className="px-2 py-1">
@@ -264,7 +264,7 @@ export function OdAnalytiquesPage() {
                         inputMode="decimal"
                         value={l.credit}
                         onChange={(e) => majLigne(i, 'credit', e.target.value)}
-                        className="w-full border border-border px-1.5 py-[1px] text-right"
+                        className="w-full border border-border px-1.5 py-px text-right"
                       />
                     </td>
                     <td className="px-1">

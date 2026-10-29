@@ -437,7 +437,7 @@ function SubventionsRattachees(p: {
               {octrois && octrois.octrois.length > 0 && (
                 <label className="flex items-center gap-2">
                   <span>Octroi inscrit</span>
-                  <select value={octroiChoisi} onChange={(e) => choisirOctroi(e.target.value)} className={`${champ} w-[28rem]`}>
+                  <select value={octroiChoisi} onChange={(e) => choisirOctroi(e.target.value)} className={`${champ} w-md`}>
                     <option value="">·</option>
                     {octrois.octrois.map((o) => (
                       <option key={o.ligneId} value={o.ligneId}>

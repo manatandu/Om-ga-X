@@ -322,7 +322,7 @@ export function AccueilPage() {
       {/* --- Barre verticale · groupes de fonctions, un seul ouvert ------- */}
       <nav
         aria-label="Barre verticale"
-        className="md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-[var(--bandeau)] bg-[var(--bandeau)] text-white flex flex-col min-h-0 overflow-y-auto"
+        className="md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-(--bandeau) bg-(--bandeau) text-white flex flex-col min-h-0 overflow-y-auto"
       >
         {GROUPES.map((groupe) => {
           const tuiles = tuilesVisibles(groupe);
@@ -335,16 +335,16 @@ export function AccueilPage() {
                 aria-expanded={ouvert}
                 onClick={() => setGroupeOuvert(groupe.titre)}
                 className={`w-full flex items-center gap-2 px-2.5 h-[26px] text-left text-[11.5px] font-semibold border-l-[3px] ${
-                  ouvert ? 'bg-[var(--bandeau-survol)] border-l-[var(--a-400)] text-white' : 'border-l-transparent text-white/85 hover:bg-white/10'
+                  ouvert ? 'bg-(--bandeau-survol) border-l-(--a-400) text-white' : 'border-l-transparent text-white/85 hover:bg-white/10'
                 }`}
               >
-                <groupe.Icon width={14} height={14} className="shrink-0 text-[var(--a-200)]" />
+                <groupe.Icon width={14} height={14} className="shrink-0 text-(--a-200)" />
                 <span className="truncate">{groupe.titre}</span>
               </button>
               {ouvert && (
                 /* Les fonctions descendent de leur intitulé (`anim-deplie`) ·
                    « qu'est-ce qui s'est ouvert ? », sans rien faire glisser d'autre. */
-                <ul className="anim-deplie bg-[var(--bandeau-survol)] pb-1">
+                <ul className="anim-deplie bg-(--bandeau-survol) pb-1">
                   {tuiles.map((t) => (
                     <li key={t.chemin} className="group flex items-center">
                       <button
@@ -352,7 +352,7 @@ export function AccueilPage() {
                         onClick={() => navigate(t.chemin)}
                         className="flex-1 min-w-0 flex items-center gap-2 pl-3 pr-1 h-[24px] text-left text-[11.5px] text-white/85 hover:bg-white/10 hover:text-white"
                       >
-                        <t.Icon width={13} height={13} className="shrink-0 text-[var(--a-200)]" />
+                        <t.Icon width={13} height={13} className="shrink-0 text-(--a-200)" />
                         <span className="truncate">{t.label}</span>
                       </button>
                       <BoutonFavori actif={favoris.includes(t.chemin)} onClick={() => basculerFavori(t.chemin)} />

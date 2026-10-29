@@ -594,7 +594,7 @@ export function DocumentsObligatoiresPage() {
                       prev.map((s2, j) => (i === j ? { ...s2, texte: e.target.value } : s2)),
                     )
                   }
-                  className="w-full border border-border-dark px-2 py-1.5 text-[11.5px] leading-[1.5] disabled:bg-surface-alt"
+                  className="w-full border border-border-dark px-2 py-1.5 text-[11.5px] leading-normal disabled:bg-surface-alt"
                 />
               </div>
             ))}

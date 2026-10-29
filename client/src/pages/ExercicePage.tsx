@@ -934,7 +934,7 @@ export function ExercicePage() {
                     value={iJustification}
                     onChange={(e) => setIJustification(e.target.value)}
                     placeholder="Nature du changement ou de l’erreur, exercice concerné, méthode de détermination de l’impact…"
-                    className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px] leading-[1.5]"
+                    className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px] leading-normal"
                   />
                 </label>
               </div>
@@ -999,7 +999,7 @@ export function ExercicePage() {
                             échéance opposable à un tiers, alors qu'ici c'est
                             l'omission qui est punie, quelle qu'ait été la date. */}
                         {j.sanction && (
-                          <div className="text-[11px] text-danger mt-1 leading-[1.5]">{j.sanction}</div>
+                          <div className="text-[11px] text-danger mt-1 leading-normal">{j.sanction}</div>
                         )}
                         {libelleMontant(j) !== null && (
                           <div className={`text-[11px] mt-1 ${montantNonCalcule(j) ? 'text-danger' : ''}`}>{libelleMontant(j)}</div>

@@ -588,7 +588,7 @@ export function PlanComptesPage() {
               </div>
 
               {estComptePrincipalOfficiel(selection) && (
-                <p className="mb-3 flex items-start gap-1.5 text-[11px] text-text-dim leading-[1.5]">
+                <p className="mb-3 flex items-start gap-1.5 text-[11px] text-text-dim leading-normal">
                   <span>
                     {utilisateur?.tenant.referentiel === 'SYSCOHADA'
                       ? 'Compte principal du plan SYSCOHADA (AUDCIF art. 18 · Titre VII, ch. 1 pour la liste des comptes à deux chiffres, ch. 2 pour le caractère impératif de la codification)'

@@ -466,7 +466,7 @@ export function ExonerationsPage() {
                 ))}
               </div>
 
-              <div className="border-t border-border pt-2.5 text-[11px] text-text-dim leading-[1.5]">
+              <div className="border-t border-border pt-2.5 text-[11px] text-text-dim leading-normal">
                 <div className="font-semibold text-text mb-1">Base légale</div>
                 {selection.modele.baseLegale}
               </div>
@@ -513,7 +513,7 @@ export function ExonerationsPage() {
                   <option value="PREVISIONNEL">Arrêté prévisionnel · flux récurrent, deux ans</option>
                   <option value="RENOUVELLEMENT">Renouvellement d’un arrêté prévisionnel</option>
                 </select>
-                <span className="block text-[11px] text-text-dim leading-[1.5] mt-1">
+                <span className="block text-[11px] text-text-dim leading-normal mt-1">
                   {referentiel?.modeles.find((m) => m.type === creation)?.objet}
                 </span>
               </label>

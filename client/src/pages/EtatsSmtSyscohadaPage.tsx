@@ -231,7 +231,7 @@ export function EtatsSmtSyscohadaPage() {
       className="grid grid-cols-[86px_minmax(150px,1fr)_110px_92px_110px] min-w-[560px] gap-2 px-3 py-1 text-[11.5px]"
     >
       <span className="font-mono text-[11.5px]">{jour(l.date)}</span>
-      <span className="break-words">
+      <span className="wrap-break-word">
         {l.designation}
         {l.origine === 'BALANCE' && <span className="ml-1.5 text-[11px] text-text-dim">caution</span>}
       </span>
@@ -321,7 +321,7 @@ export function EtatsSmtSyscohadaPage() {
     <div className="mt-1">
       {comptes.map((c) => (
         <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-          <span className="min-w-0 break-words">
+          <span className="min-w-0 wrap-break-word">
             {c.numero} · {c.intitule}
           </span>
           <span className="shrink-0">{montant(c.montant)}</span>
@@ -445,7 +445,7 @@ export function EtatsSmtSyscohadaPage() {
               height={14}
               className={`shrink-0 mt-0.5 ${bilan.equilibre ? 'text-positive' : 'text-danger'}`}
             />
-            <span className="font-mono text-[11.5px] font-medium break-words">
+            <span className="font-mono text-[11.5px] font-medium wrap-break-word">
               {bilan.equilibre
                 ? `LE BILAN EST ÉQUILIBRÉ · Total actif = Total passif = ${montant(bilan.totalActif)}`
                 : `DÉSÉQUILIBRE DÉTECTÉ · Total actif ${montant(bilan.totalActif)} contre Total passif ${montant(
@@ -552,7 +552,7 @@ export function EtatsSmtSyscohadaPage() {
                 .map((r) => (
                   <div key={r.cle} className="mb-1">
                     <div className="flex justify-between gap-3 text-[11.5px] font-bold">
-                      <span className="min-w-0 break-words">{r.intitule}</span>
+                      <span className="min-w-0 wrap-break-word">{r.intitule}</span>
                       <span className="font-mono shrink-0">{montant(r.montant)}</span>
                     </div>
                     {listeComptes(r.comptes)}
@@ -590,7 +590,7 @@ export function EtatsSmtSyscohadaPage() {
               cr.controle.concordant ? 'border-positive/30 bg-positive-soft' : 'border-warning/40 bg-warning-soft'
             }`}
           >
-            <span className="text-[11.5px] break-words">
+            <span className="text-[11.5px] wrap-break-word">
               {cr.controle.concordant
                 ? `Le résultat reconstitué (G ${montant(cr.resultatExercice)}) concorde avec le résultat de l'exercice logé au poste « Résultat exercice » du bilan, hors résultat précédent non affecté (${montant(
                     cr.controle.resultatBilan,
@@ -703,7 +703,7 @@ export function EtatsSmtSyscohadaPage() {
                   className="grid grid-cols-[80px_minmax(140px,1fr)_100px_100px_100px] min-w-[560px] gap-2 px-3 py-1 text-[11.5px]"
                 >
                   <span className="font-mono text-[11.5px]">{jour(o.date)}</span>
-                  <span className="break-words">
+                  <span className="wrap-break-word">
                     {o.libelle}
                     {o.virementInterne && <span className="ml-1.5 text-[11px] text-text-dim">virement interne</span>}
                     {!o.virementInterne && !o.ventile && (
@@ -775,7 +775,7 @@ export function EtatsSmtSyscohadaPage() {
                   className="grid grid-cols-[62px_minmax(120px,1fr)_150px] gap-2 px-3 py-1 text-[11.5px] min-w-[420px]"
                 >
                   <span className="font-mono text-[11.5px] text-text-dim">NOTE {n.numero}</span>
-                  <span className="break-words">{n.intitule}</span>
+                  <span className="wrap-break-word">{n.intitule}</span>
                   <span className="text-[11px] text-text-dim">
                     {n.partie === 'BILAN' ? 'Note sur le bilan' : 'Note sur le compte de résultat'}
                   </span>
@@ -905,7 +905,7 @@ export function EtatsSmtSyscohadaPage() {
                   className="grid grid-cols-[110px_minmax(140px,1fr)_86px_96px_110px] min-w-[540px] gap-2 px-3 py-1 text-[11.5px]"
                 >
                   <span className="font-mono text-[11.5px]">{l.reference}</span>
-                  <span className="break-words">{l.designation}</span>
+                  <span className="wrap-break-word">{l.designation}</span>
                   <span className="text-right text-text-dim">{quantite(l.quantite)}</span>
                   <span className="text-right text-text-dim">{montant(l.prixUnitaire)}</span>
                   <span className="font-mono text-right">{montant(l.montant)}</span>
@@ -993,7 +993,7 @@ export function EtatsSmtSyscohadaPage() {
                       key={l.numero}
                       className="grid grid-cols-[minmax(160px,1fr)_100px_100px_100px_100px_100px_100px_72px] min-w-[900px] gap-2 px-3 py-1 text-[11.5px]"
                     >
-                      <span className="break-words">
+                      <span className="wrap-break-word">
                         <span className="font-mono text-[11.5px] text-text-dim">{l.numero}</span> {l.nom}
                       </span>
                       <span className="font-mono text-right">{montant(l.montantCloture)}</span>
@@ -1064,8 +1064,8 @@ export function EtatsSmtSyscohadaPage() {
                     className="grid grid-cols-[86px_110px_minmax(150px,1fr)_110px_96px] min-w-[560px] gap-2 px-3 py-1 text-[11.5px]"
                   >
                     <span className="font-mono">{jour(l.date)}</span>
-                    <span className="break-words">{l.numeroFacture ?? '·'}</span>
-                    <span className="break-words">{l.nom}</span>
+                    <span className="wrap-break-word">{l.numeroFacture ?? '·'}</span>
+                    <span className="wrap-break-word">{l.nom}</span>
                     <span className="font-mono text-right">{montant(l.montant)}</span>
                     <span className="font-mono">{l.datePaiement ? jour(l.datePaiement) : l.paiementPartiel ? 'En partie' : '·'}</span>
                   </div>
@@ -1105,7 +1105,7 @@ export function EtatsSmtSyscohadaPage() {
                   }`}
                 >
                   <span className="font-mono text-[11px] text-text-dim">{v.ref}</span>
-                  <span className="break-words">{v.libelle}</span>
+                  <span className="wrap-break-word">{v.libelle}</span>
                   <span className="font-mono text-right">{montant(v.montant)}</span>
                 </div>
               ))}
@@ -1154,7 +1154,7 @@ export function EtatsSmtSyscohadaPage() {
                   title={s.clause}
                   className="grid grid-cols-[minmax(150px,1fr)_130px] min-w-[320px] gap-2 px-3 py-1 text-[11.5px]"
                 >
-                  <span className="break-words">{s.categorie}</span>
+                  <span className="wrap-break-word">{s.categorie}</span>
                   <span className="font-mono text-right">{s.montantFcfa.toLocaleString('fr-FR')}</span>
                 </div>
               ))}

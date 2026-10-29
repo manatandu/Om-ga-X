@@ -42,12 +42,12 @@ export function Ligne({
       des libellés fait toute la tenue du formulaire façon Sage.
     */
     <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-1 sm:gap-3 mb-1.5">
-      <span className="w-full sm:w-[158px] sm:flex-shrink-0 text-left sm:text-right text-[11.5px] text-text leading-[18px] sm:leading-[26px]">
+      <span className="w-full sm:w-[158px] sm:shrink-0 text-left sm:text-right text-[11.5px] text-text leading-[18px] sm:leading-[26px]">
         {label}
       </span>
-      <div className={large ? 'flex-1 min-w-0' : 'w-full sm:w-[210px] sm:flex-shrink-0'}>
+      <div className={large ? 'flex-1 min-w-0' : 'w-full sm:w-[210px] sm:shrink-0'}>
         {children}
-        {aide && <div className="mt-0.5 text-[11.5px] text-text-dim leading-[1.5]">{aide}</div>}
+        {aide && <div className="mt-0.5 text-[11.5px] text-text-dim leading-normal">{aide}</div>}
       </div>
     </div>
   );
@@ -69,7 +69,7 @@ export function SectionTitre({ children }: { children: ReactNode }) {
 
 /** Gabarit de champ commun à toutes les fenêtres de saisie du logiciel. */
 export const champSage =
-  'w-full rounded-[3px] border border-border bg-surface px-2.5 py-1 text-[12px] focus:outline-none focus:ring-2 focus:ring-sel/25 focus:border-sel disabled:bg-chrome disabled:text-text-dim';
+  'w-full rounded-[3px] border border-border bg-surface px-2.5 py-1 text-[12px] focus:outline-hidden focus:ring-2 focus:ring-sel/25 focus:border-sel disabled:bg-chrome disabled:text-text-dim';
 
 /**
  * DIALOGUE À ONGLETS VERTICAUX · la fenêtre « Identification de votre
@@ -107,7 +107,7 @@ export function OngletsVerticaux<T extends string>({
         libellés d'onglets (« Identification », « Forme juridique ») tiennent
         sur deux lignes à 124 px, ce que le formulaire ne pouvait pas faire.
       */}
-      <div className="w-[124px] sm:w-[172px] flex-shrink-0 border-r border-border bg-chrome overflow-y-auto py-1">
+      <div className="w-[124px] sm:w-[172px] shrink-0 border-r border-border bg-chrome overflow-y-auto py-1">
         {onglets.map((o) => {
           const estActif = o.cle === actif;
           return (

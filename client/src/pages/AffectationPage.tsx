@@ -189,7 +189,7 @@ export function AffectationPage() {
       </div>
 
       {erreur && (
-        <div className="mb-2.5 text-[11.5px] text-danger bg-danger-soft border border-danger/30 rounded-[3px] px-2.5 py-1.5 leading-[1.5]">
+        <div className="mb-2.5 text-[11.5px] text-danger bg-danger-soft border border-danger/30 rounded-[3px] px-2.5 py-1.5 leading-normal">
           {erreur}
         </div>
       )}
@@ -205,7 +205,7 @@ export function AffectationPage() {
       {avertissements.map((a) => (
         <div
           key={a}
-          className="mb-2.5 text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-[1.5]"
+          className="mb-2.5 text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-normal"
         >
           {a}
         </div>
@@ -375,7 +375,7 @@ export function AffectationPage() {
                 </button>
                 {prep.avertissementCapital &&
                   lignes.some((l) => prep.destinations.find((d) => d.id === l.compteId)?.numero.startsWith('101')) && (
-                    <div className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-[1.5]">
+                    <div className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-normal">
                       {prep.avertissementCapital}
                     </div>
                   )}

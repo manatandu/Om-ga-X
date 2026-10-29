@@ -1,4 +1,3 @@
-
 /* ---------------------------------------------------------------------------
    LES POLICES DE LA MARQUE · IBM Plex, servie depuis NOTRE origine.
 
@@ -24,105 +23,390 @@
    milieu d'un mot.
    --------------------------------------------------------------------------- */
 
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  LE THÈME DE TAILWIND 4 SE DÉCLARE ICI (2026-10-29), et non plus dans un
+  fichier de configuration. Ce qui suit reprend l'ancien tailwind.config.js,
+  règle pour règle.
+
+  POLICES. Pile système moderne · un logiciel installé doit ressembler au
+  système sur lequel il tourne, pas à une page web. Segoe UI Variable EN TÊTE
+  depuis le 2026-09-23 : derrière `ui-sans-serif`, Chrome sous Windows prenait
+  Segoe UI, la police de Windows 10 (voir `body`). `font-marque` est la police
+  de la MARQUE · sous 14 px le nom « OmegaX » est COMPOSÉ en IBM Plex Sans
+  plutôt que tracé, jamais dans une autre police. `font-mono` SUIT LA POLICE
+  D'INTERFACE depuis le 2026-09-25 · Sage 100 affiche numéros, codes et
+  montants dans la police de Windows, les chiffres restant alignés par
+  `tabular-nums` (posé sur `body`).
+
+  COULEURS. Elles passent par les CANAUX `--x-rgb` (voir `:root`), sans quoi
+  une opacité (`border-danger/30`, `bg-warning/5`) ne produisait AUCUNE règle
+  en version 3 (2026-09-28, plus de cinq cents emplois). La version 4 calcule
+  l'opacité par `color-mix`, qu'elle exige de toute façon du navigateur.
+  `canaux-couleurs.spec.ts` tient chaque canal égal à sa couleur.
+
+  LE TEXTE GARDE LA VARIABLE PLEINE (`--text-color-*`) · une encre adoucie par
+  une opacité tomberait sous le plancher de contraste AA mesuré au § 7.4 de la
+  charte, sans que personne l'ait mesurée. Le même spec refuse un
+  `text-<couleur>/NN` dans les écrans.
+
+  RAYON. `rounded` vaut 3 px (le DEFAULT de l'ancienne configuration).
+*/
+@theme {
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', ui-sans-serif,
+    system-ui, -apple-system, Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-marque: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', ui-sans-serif,
+    system-ui, -apple-system, Roboto, Arial, sans-serif;
+
+  --color-chrome: rgb(var(--chrome-rgb));
+  --color-mica: rgb(var(--mica-rgb));
+  --color-chrome-alt: rgb(var(--chrome-alt-rgb));
+  --color-chrome-border: rgb(var(--chrome-border-rgb));
+  --color-chrome-text: rgb(var(--chrome-text-rgb));
+  --color-chrome-text-dim: rgb(var(--chrome-text-dim-rgb));
+  --color-bg: rgb(var(--bg-rgb));
+  --color-surface: rgb(var(--surface-rgb));
+  --color-surface-alt: rgb(var(--surface-alt-rgb));
+  --color-border: rgb(var(--border-rgb));
+  --color-border-dark: rgb(var(--border-dark-rgb));
+  --color-text: rgb(var(--text-rgb));
+  --color-text-dim: rgb(var(--text-dim-rgb));
+  --color-sel: rgb(var(--sel-rgb));
+  --color-sel-soft: rgb(var(--sel-soft-rgb));
+  --color-positive: rgb(var(--positive-rgb));
+  --color-positive-soft: rgb(var(--positive-soft-rgb));
+  --color-warning: rgb(var(--warning-rgb));
+  --color-warning-soft: rgb(var(--warning-soft-rgb));
+  --color-danger: rgb(var(--danger-rgb));
+  --color-danger-soft: rgb(var(--danger-soft-rgb));
+
+  --text-color-chrome: var(--chrome);
+  --text-color-mica: var(--mica);
+  --text-color-chrome-alt: var(--chrome-alt);
+  --text-color-chrome-border: var(--chrome-border);
+  --text-color-chrome-text: var(--chrome-text);
+  --text-color-chrome-text-dim: var(--chrome-text-dim);
+  --text-color-bg: var(--bg);
+  --text-color-surface: var(--surface);
+  --text-color-surface-alt: var(--surface-alt);
+  --text-color-border: var(--border);
+  --text-color-border-dark: var(--border-dark);
+  --text-color-text: var(--text);
+  --text-color-text-dim: var(--text-dim);
+  --text-color-sel: var(--sel);
+  --text-color-sel-soft: var(--sel-soft);
+  --text-color-positive: var(--positive);
+  --text-color-positive-soft: var(--positive-soft);
+  --text-color-warning: var(--warning);
+  --text-color-warning-soft: var(--warning-soft);
+  --text-color-danger: var(--danger);
+  --text-color-danger-soft: var(--danger-soft);
+
+  --radius: 3px;
+
+  --shadow-plate: var(--ombre-plate);
+  --shadow-posee: var(--ombre-posee);
+  --shadow-flottante: var(--ombre-flottante);
+  --shadow-dominante: var(--ombre-dominante);
+  --shadow-focus: var(--anneau-focus);
+
+  --ease-sortie: var(--t-sortie);
+  --ease-ressort: var(--t-ressort);
+  --ease-doux: var(--t-doux);
 }
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-ext-400-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+/*
+  BORDURE PAR DÉFAUT. La version 4 la pose à `currentcolor`, la version 3 au
+  gris 200 de Tailwind (#e5e7eb, la v4 l’écrit en oklch). Gardée, pour que chaque `border` sans
+  couleur rende ce qu'il rendait.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+
+  /* D'autres défauts de la version 3, que la version 4 a changés · un
+     bouton montre la main (la v4 garde la flèche), un texte indicatif reste
+     gris 400 (la v4 prend la moitié de la couleur du texte), et le champ de
+     date garde la hauteur que le navigateur lui donne (la v4 retire le jeu
+     vertical de ses segments · 25,5 px au lieu de 27,5 dans les barres
+     d'outils, vu sur le Brouillard). */
+  /* La version 4 remet à zéro la marge intérieure de TOUT élément, la
+     version 3 laissait celle des cellules de tableau · 1 px, que le
+     navigateur pose en indication de présentation (`cellpadding`), ce que
+     `revert` ne rétablit pas. Sans elle, une ligne d'en-tête perdait 2 px. */
+  td,
+  th {
+    padding: 1px;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+  ::-webkit-date-and-time-value {
+    min-height: revert;
+    text-align: revert;
+  }
+  ::-webkit-datetime-edit {
+    display: revert;
+  }
+  ::-webkit-datetime-edit-fields-wrapper {
+    padding: revert;
+  }
+  ::-webkit-datetime-edit,
+  ::-webkit-datetime-edit-year-field,
+  ::-webkit-datetime-edit-month-field,
+  ::-webkit-datetime-edit-day-field,
+  ::-webkit-datetime-edit-hour-field,
+  ::-webkit-datetime-edit-minute-field,
+  ::-webkit-datetime-edit-second-field,
+  ::-webkit-datetime-edit-millisecond-field,
+  ::-webkit-datetime-edit-meridiem-field {
+    padding-block: revert;
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+
+@utility shadow-posee {
+  border-radius: 4px;
+  overflow: hidden;
 }
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-ext-500-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+@utility shadow-flottante {
+  border-radius: 4px;
+  overflow: hidden;
 }
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+
+@utility btn {
+  /* ---------------------------------------------------------------- */
+  /* Boutons · trois registres. Les pages plus anciennes composent      */
+  /* encore leurs boutons en utilitaires Tailwind ; ces classes sont la */
+  /* cible vers laquelle elles convergent.                              */
+  /* ---------------------------------------------------------------- */
+  @apply inline-flex items-center justify-center gap-1.5 px-3 h-[30px] text-[11.5px] font-semibold;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition:
+    background-color 0.14s var(--t-doux),
+    border-color 0.14s var(--t-doux),
+    color 0.14s var(--t-doux),
+    box-shadow 0.18s var(--t-doux),
+    transform 0.1s var(--t-ressort);
+  &:active:not(:disabled) {
+    transform: scale(0.975);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/polices/ibm-plex-sans-latin-ext-600-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+@utility btn-principal {
+  background: linear-gradient(180deg, var(--a-500), var(--a-600));
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(21, 26, 34, 0.16);
+  /* Le survol FONCE (a-600 à a-700, blanc à 8,32 puis 10,28:1) · il
+     éclaircissait vers a-400, où le texte blanc de 11,5 px tombait à 3,63:1,
+     sous le plancher AA (mesuré le 2026-10-15). */
+  &:hover:not(:disabled) {
+    background: linear-gradient(180deg, var(--a-600), var(--a-700));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 3px 10px -2px color-mix(in srgb, var(--a-600) 45%, transparent);
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/polices/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+
+@utility btn-neutre {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: var(--ombre-plate);
+  &:hover:not(:disabled) {
+    background: var(--surface-alt);
+    border-color: var(--border-dark);
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/polices/ibm-plex-mono-latin-ext-400-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+@utility btn-fantome {
+  background: transparent;
+  color: var(--text-dim);
+  &:hover:not(:disabled) {
+    background: var(--n-100);
+    color: var(--text);
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/polices/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+
+@utility onglet {
+  /* Onglets · le trait actif glisse au lieu de sauter. */
+  @apply relative px-3 py-1.5 text-[11.5px] font-semibold;
+  color: var(--text-dim);
+  transition: color 0.14s var(--t-doux);
+  &:hover {
+    color: var(--text);
+  }
 }
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/polices/ibm-plex-mono-latin-ext-500-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+@utility onglet-actif {
+  color: var(--sel);
+  &::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--sel);
+    animation: trait-onglet 0.24s var(--t-sortie) both;
+  }
+}
+
+@layer base {
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+    unicode-range:
+      U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-ext-400-normal.woff2')
+      format('woff2');
+    unicode-range:
+      U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+      U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+      U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+    unicode-range:
+      U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-ext-500-normal.woff2')
+      format('woff2');
+    unicode-range:
+      U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+      U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+      U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+    unicode-range:
+      U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/polices/ibm-plex-sans-latin-ext-600-normal.woff2')
+      format('woff2');
+    unicode-range:
+      U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+      U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+      U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/polices/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range:
+      U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/polices/ibm-plex-mono-latin-ext-400-normal.woff2')
+      format('woff2');
+    unicode-range:
+      U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+      U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+      U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/polices/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+    unicode-range:
+      U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/polices/ibm-plex-mono-latin-ext-500-normal.woff2')
+      format('woff2');
+    unicode-range:
+      U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+      U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+      U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  .filet-cloture {
+    height: 1px;
+    border: 0;
+    background: linear-gradient(
+      to right,
+      currentColor 0,
+      currentColor calc(50% - min(12px, 6.65%)),
+      transparent calc(50% - min(12px, 6.65%)),
+      transparent calc(50% + min(12px, 6.65%)),
+      currentColor calc(50% + min(12px, 6.65%)),
+      currentColor 100%
+    );
+    opacity: 0.28;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -137,26 +421,9 @@
    Tracé en dégradé plutôt qu'en deux éléments : un seul nœud, pas de risque
    qu'une moitié se retrouve seule après un retour à la ligne.
    --------------------------------------------------------------------------- */
-.filet-cloture {
-  height: 1px;
-  border: 0;
-  background: linear-gradient(
-    to right,
-    currentColor 0,
-    currentColor calc(50% - min(12px, 6.65%)),
-    transparent calc(50% - min(12px, 6.65%)),
-    transparent calc(50% + min(12px, 6.65%)),
-    currentColor calc(50% + min(12px, 6.65%)),
-    currentColor 100%
-  );
-  opacity: 0.28;
-}
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/*
+@layer utilities {
+  /*
  * DESIGN SYSTEM OMEGAX
  *
  * Registre : poste de travail comptable. La structure vient de Sage 100 i7
@@ -180,20 +447,20 @@
  *     coupe sous `prefers-reduced-motion`.
  */
 
-:root {
-  /* ---------------------------------------------------------------- */
-  /* Neutres · gris teintés de l'encre de cachet (2026-10-15).        */
-  /* Contrastes mesurés : text sur surface = 17,97:1.                  */
-  /* ---------------------------------------------------------------- */
-  --n-0: #ffffff;
-  --n-25: #fbfbfd;
-  --n-50: #f6f6f9;
-  --n-100: #ededf3;
-  --n-150: #e2e2ea;
-  --n-200: #d6d6e0;
-  --n-300: #b7b7c6;
-  --n-400: #8e8ea2;
-  /* MESURÉ, pas estimé. À #6b7688, `--text-dim` (qui vaut ce pas) donnait
+  :root {
+    /* ---------------------------------------------------------------- */
+    /* Neutres · gris teintés de l'encre de cachet (2026-10-15).        */
+    /* Contrastes mesurés : text sur surface = 17,97:1.                  */
+    /* ---------------------------------------------------------------- */
+    --n-0: #ffffff;
+    --n-25: #fbfbfd;
+    --n-50: #f6f6f9;
+    --n-100: #ededf3;
+    --n-150: #e2e2ea;
+    --n-200: #d6d6e0;
+    --n-300: #b7b7c6;
+    --n-400: #8e8ea2;
+    /* MESURÉ, pas estimé. À #6b7688, `--text-dim` (qui vaut ce pas) donnait
      4,28:1 sur `--surface-alt` et 3,98:1 sur `--bg` · sous le plancher AA de
      4,5:1 pour du texte courant. Le défaut ne se voyait nulle part : le texte
      restait lisible pour un œil valide, et aucun test ne mesurait. Assombri
@@ -204,221 +471,237 @@
      le fond a pris la teinte bleutée de Windows 11 : à #626c7d il tombait à
      4,26:1 sur le nouveau `--bg`. Teinté de l'encre de cachet le 2026-10-15
      (#5c5c70), il fait 5,59 sur `--bg`, 5,30 sur `--mica`, 6,52 sur blanc. */
-  --n-500: #5c5c70;
-  --n-600: #525266;
-  --n-700: #3d3d4e;
-  --n-800: #27272f;
-  --n-900: #16161f;
-  --n-950: #0e0e14;
+    --n-500: #5c5c70;
+    --n-600: #525266;
+    --n-700: #3d3d4e;
+    --n-800: #27272f;
+    --n-900: #16161f;
+    --n-950: #0e0e14;
 
-  /* Accent · l'échelle de l'encre de cachet (décision de Manasse du
+    /* Accent · l'échelle de l'encre de cachet (décision de Manasse du
      2026-10-15, « Oui vas-y »), qui remplace l'échelle bleue. `--a-600`
      (`--sel`) fait 8,32:1 sur blanc, `--a-700` porte le blanc des en-têtes
      de grille à 10,28:1. Table complète dans `docs/charte-omegax.md`, § 7. */
-  --a-50: #f4f2fc;
-  --a-100: #e6e1f8;
-  --a-200: #cec6f0;
-  --a-400: #8a79d6;
-  --a-500: #6550c4;
-  --a-600: #4f3ba8;
-  --a-700: #41318c;
-  --a-800: #352874;
-  /* L'ENCRE DE LA MARQUE · le violet du cachet, #2a1f5c, 14,49:1 sur
+    --a-50: #f4f2fc;
+    --a-100: #e6e1f8;
+    --a-200: #cec6f0;
+    --a-400: #8a79d6;
+    --a-500: #6550c4;
+    --a-600: #4f3ba8;
+    --a-700: #41318c;
+    --a-800: #352874;
+    /* L'ENCRE DE LA MARQUE · le violet du cachet, #2a1f5c, 14,49:1 sur
      blanc, AAA dans les deux sens (#142f6b jusqu'au 2026-10-15). Le
      générateur de la marque pose la même valeur sur le logo et les icônes.
      Elle n'est pas une nuance de plus dans l'échelle : c'est la couleur du
      logo, et le logo ne se recolorie pas. Toute la charte est dans
      `docs/charte-omegax.md`. */
-  --a-900: #2a1f5c;
+    --a-900: #2a1f5c;
 
-  --chrome: var(--n-50);
-  --chrome-alt: var(--n-100);
-  --chrome-border: var(--n-200);
-  --chrome-text: #eceaf6;
-  --chrome-text-dim: #b3acd6;
+    --chrome: var(--n-50);
+    --chrome-alt: var(--n-100);
+    --chrome-border: var(--n-200);
+    --chrome-text: #eceaf6;
+    --chrome-text-dim: #b3acd6;
 
-  /* FOND TEINTÉ façon Mica de Windows 11 (2026-09-23) · le tout-blanc
+    /* FOND TEINTÉ façon Mica de Windows 11 (2026-09-23) · le tout-blanc
      effaçait les repères, fond, cartes et barres ayant la même valeur. Le
      bureau est gris-bleu, les barres un cran plus clair, le contenu blanc. */
-  --bg: #ededf3;
-  --mica: #e7e7ee;
-  /* FOND DE FENÊTRE · le gris neutre de la face des fenêtres Windows, sur
+    --bg: #ededf3;
+    --mica: #e7e7ee;
+    /* FOND DE FENÊTRE · le gris neutre de la face des fenêtres Windows, sur
      lequel Sage 100 pose ses grilles blanches (manuel de formation Sage
      Comptabilité, captures de la saisie des journaux). Il DOIT différer du
      blanc des grilles et du bleu du bureau · sans quoi un tableau se fond
      dans la fenêtre qui le porte. */
-  --fenetre: #f6f6f9;
-  /* Bandeau et barre verticale · l'encre de la marque, comme le bandeau
+    --fenetre: #f6f6f9;
+    /* Bandeau et barre verticale · l'encre de la marque, comme le bandeau
      sombre de Sage Active (2026-09-25). Blanc dessus : 14,49:1. */
-  --bandeau: var(--a-900);
-  --bandeau-survol: var(--a-800);
-  --surface: var(--n-0);
-  --surface-alt: var(--n-50);
-  --border: var(--n-150);
-  --border-dark: var(--n-300);
-  --text: var(--n-900);
-  --text-dim: var(--n-500);
-  --sel: var(--a-600);
-  --sel-soft: var(--a-50);
+    --bandeau: var(--a-900);
+    --bandeau-survol: var(--a-800);
+    --surface: var(--n-0);
+    --surface-alt: var(--n-50);
+    --border: var(--n-150);
+    --border-dark: var(--n-300);
+    --text: var(--n-900);
+    --text-dim: var(--n-500);
+    --sel: var(--a-600);
+    --sel-soft: var(--a-50);
 
-  --positive: #0e7049;
-  --positive-soft: #e4f6ed;
-  --warning: #8e5406;
-  --warning-soft: #fdf0da;
-  --danger: #b52e26;
-  --danger-soft: #fde9e7;
+    --positive: #0e7049;
+    --positive-soft: #e4f6ed;
+    --warning: #8e5406;
+    --warning-soft: #fdf0da;
+    --danger: #b52e26;
+    --danger-soft: #fde9e7;
 
-  --titlebar-from: #2a1f5c;
-  --titlebar-to: #221a4c;
+    --titlebar-from: #2a1f5c;
+    --titlebar-to: #221a4c;
 
-  /* CANAUX des couleurs de la charte, pour l'opacité des utilitaires
-     (`border-danger/30`, `bg-warning/5`) · voir tailwind.config.js. Écrits en
+    /* CANAUX des couleurs de la charte, pour l'opacité des utilitaires
+     (`border-danger/30`, `bg-warning/5`) · voir le bloc `@theme`. Écrits en
      chiffres, parce qu'une variable ne se décompose pas ; chacun est tenu égal
      à sa couleur par `canaux-couleurs.spec.ts`, qui tombe si l'une bouge sans
      l'autre. */
-  --chrome-rgb: 246 246 249;
-  --mica-rgb: 231 231 238;
-  --chrome-alt-rgb: 237 237 243;
-  --chrome-border-rgb: 214 214 224;
-  --chrome-text-rgb: 236 234 246;
-  --chrome-text-dim-rgb: 179 172 214;
-  --bg-rgb: 237 237 243;
-  --surface-rgb: 255 255 255;
-  --surface-alt-rgb: 246 246 249;
-  --border-rgb: 226 226 234;
-  --border-dark-rgb: 183 183 198;
-  --text-rgb: 22 22 31;
-  --text-dim-rgb: 92 92 112;
-  --sel-rgb: 79 59 168;
-  --sel-soft-rgb: 244 242 252;
-  --positive-rgb: 14 112 73;
-  --positive-soft-rgb: 228 246 237;
-  --warning-rgb: 142 84 6;
-  --warning-soft-rgb: 253 240 218;
-  --danger-rgb: 181 46 38;
-  --danger-soft-rgb: 253 233 231;
+    --chrome-rgb: 246 246 249;
+    --mica-rgb: 231 231 238;
+    --chrome-alt-rgb: 237 237 243;
+    --chrome-border-rgb: 214 214 224;
+    --chrome-text-rgb: 236 234 246;
+    --chrome-text-dim-rgb: 179 172 214;
+    --bg-rgb: 237 237 243;
+    --surface-rgb: 255 255 255;
+    --surface-alt-rgb: 246 246 249;
+    --border-rgb: 226 226 234;
+    --border-dark-rgb: 183 183 198;
+    --text-rgb: 22 22 31;
+    --text-dim-rgb: 92 92 112;
+    --sel-rgb: 79 59 168;
+    --sel-soft-rgb: 244 242 252;
+    --positive-rgb: 14 112 73;
+    --positive-soft-rgb: 228 246 237;
+    --warning-rgb: 142 84 6;
+    --warning-soft-rgb: 253 240 218;
+    --danger-rgb: 181 46 38;
+    --danger-soft-rgb: 253 233 231;
 
-  /* ---------------------------------------------------------------- */
-  /* Élévation · trois niveaux, jamais plus. Chaque ombre combine un   */
-  /* filet coloré (le contact) et une diffusion (la hauteur).          */
-  /* ---------------------------------------------------------------- */
-  --ombre-plate: 0 1px 1px rgba(21, 26, 34, 0.04);
-  --ombre-posee:
-    0 0 0 1px rgba(21, 26, 34, 0.04),
-    0 1px 2px rgba(21, 26, 34, 0.05),
-    0 4px 12px -4px rgba(21, 26, 34, 0.08);
-  --ombre-flottante:
-    0 0 0 1px rgba(21, 26, 34, 0.06),
-    0 8px 16px -6px rgba(21, 26, 34, 0.12),
-    0 20px 40px -12px rgba(21, 26, 34, 0.2);
-  --ombre-dominante:
-    0 0 0 1px rgba(21, 26, 34, 0.08),
-    0 24px 48px -12px rgba(21, 26, 34, 0.3),
-    0 48px 80px -24px rgba(21, 26, 34, 0.22);
+    /* ---------------------------------------------------------------- */
+    /* Élévation · trois niveaux, jamais plus. Chaque ombre combine un   */
+    /* filet coloré (le contact) et une diffusion (la hauteur).          */
+    /* ---------------------------------------------------------------- */
+    --ombre-plate: 0 1px 1px rgba(21, 26, 34, 0.04);
+    --ombre-posee:
+      0 0 0 1px rgba(21, 26, 34, 0.04), 0 1px 2px rgba(21, 26, 34, 0.05),
+      0 4px 12px -4px rgba(21, 26, 34, 0.08);
+    --ombre-flottante:
+      0 0 0 1px rgba(21, 26, 34, 0.06), 0 8px 16px -6px rgba(21, 26, 34, 0.12),
+      0 20px 40px -12px rgba(21, 26, 34, 0.2);
+    --ombre-dominante:
+      0 0 0 1px rgba(21, 26, 34, 0.08), 0 24px 48px -12px rgba(21, 26, 34, 0.3),
+      0 48px 80px -24px rgba(21, 26, 34, 0.22);
 
-  /* L'anneau de focus est un contraste NON TEXTUEL (WCAG 1.4.11, 3:1 contre
+    /* L'anneau de focus est un contraste NON TEXTUEL (WCAG 1.4.11, 3:1 contre
      le blanc qui l'entoure) · à 26 % de `--sel` il mesurait 1,55:1, et à
      60 % il mesure 3,13:1 (2026-10-15, `docs/charte-omegax.md` § 7.4). */
-  --anneau-focus: 0 0 0 3px color-mix(in srgb, var(--sel) 60%, transparent);
+    --anneau-focus: 0 0 0 3px color-mix(in srgb, var(--sel) 60%, transparent);
 
-  /* Courbes · une seule famille, pour que tout le logiciel bouge de la
+    /* Courbes · une seule famille, pour que tout le logiciel bouge de la
      même façon. `sortie` pour ce qui apparaît, `ressort` pour ce que
      l'utilisateur vient de déclencher lui-même. */
-  --t-sortie: cubic-bezier(0.16, 1, 0.3, 1);
-  --t-ressort: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --t-doux: cubic-bezier(0.4, 0, 0.2, 1);
+    --t-sortie: cubic-bezier(0.16, 1, 0.3, 1);
+    --t-ressort: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --t-doux: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Tuiles de l'écran Accueil. */
-  --tile-bleu: #4f3ba8;
-  --tile-bleu-fonce: #352874;
-  --tile-sarcelle: #10695f;
-  --tile-sarcelle-fonce: #0a4a43;
-  --tile-ardoise: #46407a;
-  --tile-ardoise-fonce: #2f2b57;
-  --tile-neutre: var(--n-500);
-  --tile-neutre-fonce: var(--n-700);
-}
+    /* Tuiles de l'écran Accueil. */
+    --tile-bleu: #4f3ba8;
+    --tile-bleu-fonce: #352874;
+    --tile-sarcelle: #10695f;
+    --tile-sarcelle-fonce: #0a4a43;
+    --tile-ardoise: #46407a;
+    --tile-ardoise-fonce: #2f2b57;
+    --tile-neutre: var(--n-500);
+    --tile-neutre-fonce: var(--n-700);
+  }
 
-* {
-  box-sizing: border-box;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
 
-body {
-  margin: 0;
-  /* SEGOE UI VARIABLE EN TÊTE · la police de Windows 11. Derrière
+  body {
+    margin: 0;
+    /* SEGOE UI VARIABLE EN TÊTE · la police de Windows 11. Derrière
      `ui-sans-serif`, Chrome sous Windows rendait « Segoe UI », celle de
      Windows 10 : le logiciel n'avait donc jamais eu la police du système
      qu'il imite. Ailleurs (macOS, Android), elle est absente et la pile
      retombe sur la police native. */
-  font-family:
-    'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', ui-sans-serif, system-ui, -apple-system,
-    Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
-  /* Interlignage un cran plus large qu'avant : à densité égale, c'est ce qui
+    font-family:
+      'Segoe UI Variable Text',
+      'Segoe UI Variable',
+      'Segoe UI',
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      Inter,
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+    /* Interlignage un cran plus large qu'avant : à densité égale, c'est ce qui
      distingue un tableau lisible d'un tableau compact. */
-  /* 12 px · la police de l'interface Windows (Segoe UI 9 pt), celle de Sage
+    /* 12 px · la police de l'interface Windows (Segoe UI 9 pt), celle de Sage
      100. Un élément sans taille explicite en hérite. */
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--text);
-  background: var(--bg);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  /* Les chiffres d'une comptabilité doivent s'aligner colonne par colonne,
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Les chiffres d'une comptabilité doivent s'aligner colonne par colonne,
      y compris en police proportionnelle : sans chasse fixe, un 1 et un 8
      ne tombent pas au même endroit et l'œil ne peut plus comparer. */
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1, 'cv05' 1;
-}
+    font-variant-numeric: tabular-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'cv05' 1;
+  }
 
-/* Le fond n'est pas un aplat : un dégradé très large donne de la profondeur
+  /* Le fond n'est pas un aplat : un dégradé très large donne de la profondeur
    à la fenêtre sans que l'on puisse nommer la couleur. */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(1000px 520px at 88% -12%, rgba(79, 59, 168, 0.07), transparent 62%),
-    radial-gradient(760px 420px at 4% 104%, rgba(16, 105, 95, 0.05), transparent 60%),
-    linear-gradient(178deg, var(--n-50) 0%, var(--n-100) 100%);
-}
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        1000px 520px at 88% -12%,
+        rgba(79, 59, 168, 0.07),
+        transparent 62%
+      ),
+      radial-gradient(
+        760px 420px at 4% 104%,
+        rgba(16, 105, 95, 0.05),
+        transparent 60%
+      ),
+      linear-gradient(178deg, var(--n-50) 0%, var(--n-100) 100%);
+  }
 
-/* 4 px pour les CONTRÔLES (boutons, champs), 8 px pour les SURFACES
+  /* 4 px pour les CONTRÔLES (boutons, champs), 8 px pour les SURFACES
    (fenêtres, cartes, menus) · la règle d'arrondi de Windows 11. */
-button,
-input,
-select,
-textarea {
-  font-family: inherit;
-  font-variant-numeric: inherit;
-  border-radius: 4px;
-}
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-variant-numeric: inherit;
+    border-radius: 4px;
+  }
 
-/*
+  /*
  * CHAMPS À LA WINDOWS 11 · un filet plus sombre sous le champ au repos, qui
  * devient un trait d'accent au focus. Visé sur `.border-border` et non sur
  * tout champ bordé : un champ que l'écran a mis en erreur (`border-danger`)
  * ou en avertissement garde sa couleur entière.
  */
-:is(input, select, textarea).border-border {
-  border-bottom-color: var(--n-400);
-}
-input[type='checkbox'],
-input[type='radio'],
-input[type='range'],
-progress {
-  accent-color: var(--sel);
-}
+  :is(input, select, textarea).border-border {
+    border-bottom-color: var(--n-400);
+  }
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'],
+  progress {
+    accent-color: var(--sel);
+  }
 
-/*
+  /*
  * FINITIONS À LA WINDOWS 11, POUR TOUS LES ÉCRANS D'UN COUP (2026-09-23).
  *
  * Les écrans composent leurs encadrés, tableaux et boutons en utilitaires,
@@ -434,40 +717,40 @@ progress {
  * la finition. Limité à <main> : la barre de titre, les menus et la barre
  * d'état ont leur propre dessin.
  */
-:where(main section.border, main div.border.bg-surface) {
-  border-radius: 8px;
-}
-:where(main section.border.bg-surface) {
-  box-shadow: var(--ombre-plate);
-}
+  :where(main section.border, main div.border.bg-surface) {
+    border-radius: 8px;
+  }
+  :where(main section.border.bg-surface) {
+    box-shadow: var(--ombre-plate);
+  }
 
-/* Boutons · une réaction au survol pour ceux qui n'en avaient aucune. */
-:where(main button) {
-  transition:
-    background-color 0.12s var(--t-doux),
-    border-color 0.12s var(--t-doux),
-    filter 0.12s var(--t-doux);
-}
-:where(main button.border:not(.bg-sel)) {
-  background-color: var(--surface);
-}
-:where(main button.border:not(.bg-sel):not(:disabled):hover) {
-  background-color: var(--chrome-alt);
-  border-color: var(--border-dark);
-}
-/* Bouton principal en pilule, comme le « + Créer » de Sage Active. Hors
+  /* Boutons · une réaction au survol pour ceux qui n'en avaient aucune. */
+  :where(main button) {
+    transition:
+      background-color 0.12s var(--t-doux),
+      border-color 0.12s var(--t-doux),
+      filter 0.12s var(--t-doux);
+  }
+  :where(main button.border:not(.bg-sel)) {
+    background-color: var(--surface);
+  }
+  :where(main button.border:not(.bg-sel):not(:disabled):hover) {
+    background-color: var(--chrome-alt);
+    border-color: var(--border-dark);
+  }
+  /* Bouton principal en pilule, comme le « + Créer » de Sage Active. Hors
    :where() · il doit l'emporter sur l'arrondi posé par l'écran. */
-main button.bg-sel {
-  border-radius: 999px;
-}
-:where(main button.bg-sel:not(:disabled):hover) {
-  filter: brightness(1.08);
-}
-:where(main button:not(:disabled):active) {
-  filter: brightness(0.96);
-}
+  main button.bg-sel {
+    border-radius: 999px;
+  }
+  :where(main button.bg-sel:not(:disabled):hover) {
+    filter: brightness(1.08);
+  }
+  :where(main button:not(:disabled):active) {
+    filter: brightness(0.96);
+  }
 
-/*
+  /*
  * TABLEAUX · UN SEUL DESSIN POUR TOUT LE LOGICIEL (2026-09-24).
  *
  * Quarante et un tableaux et des dizaines de grilles de colonnes avaient
@@ -483,146 +766,65 @@ main button.bg-sel {
  * gris. Pas de capitales, pas de couleur, pas de zébrure. Les grilles faites
  * en `div` portent la classe `entete-colonnes` et reçoivent le même dessin.
  */
-main table {
-  font-variant-numeric: tabular-nums;
-  /* Grille BLANCHE sur la fenêtre, comme les listes de Sage Active : en-tête
+  main table {
+    font-variant-numeric: tabular-nums;
+    /* Grille BLANCHE sur la fenêtre, comme les listes de Sage Active : en-tête
      plein à la couleur de la marque, texte blanc, lignes séparées par un
      filet, sans quadrillage vertical ni zébrure (2026-09-25). */
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-collapse: collapse;
-}
-main table thead th,
-main .entete-colonnes {
-  background-color: var(--a-700) !important;
-  color: #ffffff !important;
-  font-size: 11.5px !important;
-  font-weight: 600 !important;
-  text-transform: none !important;
-  letter-spacing: 0 !important;
-  border-bottom: 0 !important;
-}
-/* Ce que l'en-tête contient hérite du blanc · un libellé en encre grise sur
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-collapse: collapse;
+  }
+  main table thead th,
+  main .entete-colonnes {
+    background-color: var(--a-700) !important;
+    color: #ffffff !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    border-bottom: 0 !important;
+  }
+  /* Ce que l'en-tête contient hérite du blanc · un libellé en encre grise sur
    le bleu tomberait sous le plancher de contraste. Les champs gardent le leur. */
-main table thead th :where(span, a, button, abbr, div, label, svg),
-main .entete-colonnes :where(span, a, button, abbr, div, label, svg) {
-  color: inherit !important;
-}
-main table thead th + th {
-  border-left: 1px solid color-mix(in srgb, #ffffff 18%, transparent);
-}
-main table thead th {
-  vertical-align: bottom;
-}
-main table tbody td {
-  border-bottom: 1px solid var(--border);
-}
-main table tfoot td,
-main table tfoot th {
-  font-weight: 600;
-  color: var(--a-900);
-  background-color: var(--a-50);
-  border-top: 1px solid var(--a-200);
-}
-:where(main tbody tr:hover) {
-  background-color: color-mix(in srgb, var(--sel) 7%, transparent);
-}
+  main table thead th :where(span, a, button, abbr, div, label, svg),
+  main .entete-colonnes :where(span, a, button, abbr, div, label, svg) {
+    color: inherit !important;
+  }
+  main table thead th + th {
+    border-left: 1px solid color-mix(in srgb, #ffffff 18%, transparent);
+  }
+  main table thead th {
+    vertical-align: bottom;
+  }
+  main table tbody td {
+    border-bottom: 1px solid var(--border);
+  }
+  main table tfoot td,
+  main table tfoot th {
+    font-weight: 600;
+    color: var(--a-900);
+    background-color: var(--a-50);
+    border-top: 1px solid var(--a-200);
+  }
+  :where(main tbody tr:hover) {
+    background-color: color-mix(in srgb, var(--sel) 7%, transparent);
+  }
 
-/* Une surface posée ou flottante est arrondie et clippe son contenu · les
+  /* Une surface posée ou flottante est arrondie et clippe son contenu · les
    en-têtes carrés suivent le coin automatiquement. */
-@layer components {
-  .shadow-posee,
-  .shadow-flottante {
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  /* ---------------------------------------------------------------- */
-  /* Boutons · trois registres. Les pages plus anciennes composent      */
-  /* encore leurs boutons en utilitaires Tailwind ; ces classes sont la */
-  /* cible vers laquelle elles convergent.                              */
-  /* ---------------------------------------------------------------- */
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 px-3 h-[30px] text-[11.5px] font-semibold;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    white-space: nowrap;
-    transition:
-      background-color 0.14s var(--t-doux),
-      border-color 0.14s var(--t-doux),
-      color 0.14s var(--t-doux),
-      box-shadow 0.18s var(--t-doux),
-      transform 0.1s var(--t-ressort);
-  }
-  .btn:active:not(:disabled) {
-    transform: scale(0.975);
-  }
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-principal {
-    background: linear-gradient(180deg, var(--a-500), var(--a-600));
-    color: #fff;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      0 1px 2px rgba(21, 26, 34, 0.16);
-  }
-  /* Le survol FONCE (a-600 à a-700, blanc à 8,32 puis 10,28:1) · il
-     éclaircissait vers a-400, où le texte blanc de 11,5 px tombait à 3,63:1,
-     sous le plancher AA (mesuré le 2026-10-15). */
-  .btn-principal:hover:not(:disabled) {
-    background: linear-gradient(180deg, var(--a-600), var(--a-700));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 3px 10px -2px color-mix(in srgb, var(--a-600) 45%, transparent);
-  }
-
-  .btn-neutre {
-    background: var(--surface);
-    border-color: var(--border);
-    color: var(--text);
-    box-shadow: var(--ombre-plate);
-  }
-  .btn-neutre:hover:not(:disabled) {
-    background: var(--surface-alt);
-    border-color: var(--border-dark);
-  }
-
-  .btn-fantome {
-    background: transparent;
-    color: var(--text-dim);
-  }
-  .btn-fantome:hover:not(:disabled) {
-    background: var(--n-100);
-    color: var(--text);
-  }
-
-  /* Onglets · le trait actif glisse au lieu de sauter. */
-  .onglet {
-    @apply relative px-3 py-1.5 text-[11.5px] font-semibold;
-    color: var(--text-dim);
-    transition: color 0.14s var(--t-doux);
-  }
-  .onglet:hover {
-    color: var(--text);
-  }
-  .onglet-actif {
-    color: var(--sel);
-  }
-  .onglet-actif::after {
-    content: '';
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: -1px;
-    height: 2px;
-    border-radius: 2px 2px 0 0;
-    background: var(--sel);
-    animation: trait-onglet 0.24s var(--t-sortie) both;
-  }
 }
+
+/*
+  LA SUITE GARDE SA PLACE DE LA VERSION 3 (2026-10-29). Elle venait APRÈS
+  `@tailwind utilities`, hors de toute couche, et ne l'emportait sur un
+  utilitaire qu'à spécificité supérieure ou égale. En Tailwind 4 les couches
+  sont celles du navigateur, et une règle HORS couche bat TOUTE couche · le
+  trait d'accent du focus effaçait l'anneau `focus:ring-2` des champs (vu sur
+  la porte d'ouverture). Rangée dans `utilities`, après les utilitaires
+  engendrés, elle retrouve le jeu de la version 3.
+*/
+@layer utilities {
 
 /* Fluidité : transitions uniformes sur tout l'interactif. */
 button,
@@ -1323,3 +1525,4 @@ summary:focus-visible {
 .cadre-public-pied a:hover{color:#fff}
 @media (max-width:640px){.cadre-public-entete nav{display:none}.cadre-public-entete{justify-content:space-between}}
 @media print{.cadre-public-tete{background:#fff!important;color:#000;padding:0 0 8mm}.cadre-public-tete h1{color:#000}.cadre-public-tete h1::after{border-color:#000}.cadre-public-tete p{color:#000}.cadre-public-corps{padding:0}}
+}

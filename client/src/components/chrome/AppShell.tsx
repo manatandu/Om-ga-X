@@ -798,7 +798,7 @@ export function AppShell() {
         versions web actuelles de Sage. Le symbole y passe en BLANC, le rendu
         que la charte prévoit sur fond sombre (logo-omegax-signe-blanc.svg).
       */}
-      <div className="ecran-seul h-[38px] flex items-center justify-between px-3 bg-[var(--bandeau)] text-white text-[11.5px] shrink-0 relative">
+      <div className="ecran-seul h-[38px] flex items-center justify-between px-3 bg-(--bandeau) text-white text-[11.5px] shrink-0 relative">
         <div className="flex items-center gap-2.5 min-w-0">
           <SymboleOmegaX taille={18} className="text-white" />
           {/*
@@ -811,7 +811,7 @@ export function AppShell() {
           <span className="hidden sm:inline text-white/40">/</span>
           <span className="truncate text-white">{utilisateur?.tenant.nom}</span>
           {exerciceAffiche && (
-            <span className="shrink-0 rounded-full bg-white/15 px-2 py-[1px] text-[11px] font-semibold text-white">
+            <span className="shrink-0 rounded-full bg-white/15 px-2 py-px text-[11px] font-semibold text-white">
               Exercice {exerciceAffiche}
             </span>
           )}
@@ -878,7 +878,7 @@ export function AppShell() {
             fenêtres le reprennent. Même géométrie que `main` (inset-0) · le
             bornage des fenêtres lit `parentElement`, inchangé en taille. */}
         <div
-          className="absolute inset-0 z-0 pointer-events-none [&>*]:pointer-events-auto"
+          className="absolute inset-0 z-0 pointer-events-none *:pointer-events-auto"
           {...(ecranAffiche ? { inert: '' } : {})}
         >
           {fenetres.map((f) => (

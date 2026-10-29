@@ -88,7 +88,7 @@ export function ChampPaie({ libelle, children }: { libelle: string; children: Re
   );
 }
 
-export const CHAMP_PAIE = 'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-none focus:border-accent';
+export const CHAMP_PAIE = 'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
 
 /**
  * L'ENVOI D'UNE MODALE · un seul envoi à la fois, le refus du serveur dit tel

@@ -1676,7 +1676,7 @@ export function SaisiePage() {
                                     setErreur(null);
                                   }}
                                   className={`w-full min-w-[30px] h-[22px] text-[10.5px] font-bold ${c ? ETATS_JOURNAL[c.etat].classe : ''} ${
-                                    choisie ? 'outline outline-2 outline-sel -outline-offset-2' : ''
+                                    choisie ? 'outline-solid outline-2 outline-sel -outline-offset-2' : ''
                                   }`}
                                 >
                                   {c ? sigleCase(c) : ''}
@@ -1808,7 +1808,7 @@ export function SaisiePage() {
       )}
       {peutEcrire && modeles.length > 0 && (
         <div className="flex items-center gap-2 mb-2 bg-chrome border border-border px-2.5 py-1.5">
-          <span className="text-[11.5px] text-text-dim flex-shrink-0">Appeler un modèle</span>
+          <span className="text-[11.5px] text-text-dim shrink-0">Appeler un modèle</span>
           {sequencesDesModeles.length > 0 && (
             <select
               value={sequenceEffective}
@@ -1819,7 +1819,7 @@ export function SaisiePage() {
               }}
               aria-label="Séquence de saisie"
               title="Séquence de saisie · les modèles qu'elle range"
-              className="w-[170px] flex-shrink-0 border border-border bg-surface px-2 py-1 text-[11.5px]"
+              className="w-[170px] shrink-0 border border-border bg-surface px-2 py-1 text-[11.5px]"
             >
               <option value="">Toutes les séquences</option>
               {sequencesDesModeles.map((q) => (
@@ -1859,7 +1859,7 @@ export function SaisiePage() {
             const m = modeles.find((x) => x.id === modeleChoisi);
             return m
               ? lignesASaisir(m.lignes).map((l) => (
-                  <label key={l.ordre} className="flex items-center gap-1 text-[11.5px] flex-shrink-0">
+                  <label key={l.ordre} className="flex items-center gap-1 text-[11.5px] shrink-0">
                     <span className="text-text-dim">{l.compteNumero}</span>
                     <input
                       inputMode="decimal"
@@ -1879,7 +1879,7 @@ export function SaisiePage() {
             type="button"
             onClick={appliquerModele}
             disabled={!modeleChoisi}
-            className="flex-shrink-0 border border-border-dark bg-chrome-alt hover:bg-sel-soft disabled:opacity-40 px-3 py-1 text-[11.5px]"
+            className="shrink-0 border border-border-dark bg-chrome-alt hover:bg-sel-soft disabled:opacity-40 px-3 py-1 text-[11.5px]"
           >
             Appliquer
           </button>
@@ -1937,7 +1937,7 @@ export function SaisiePage() {
               type="button"
               disabled={rangAffiche === 0}
               onClick={() => setRangPiece(rangAffiche - 1)}
-              className="border border-border-dark bg-chrome px-2 py-[1px] disabled:opacity-40"
+              className="border border-border-dark bg-chrome px-2 py-px disabled:opacity-40"
             >
               ◀ Précédent
             </button>
@@ -1948,7 +1948,7 @@ export function SaisiePage() {
               type="button"
               disabled={rangAffiche >= ecritures.length - 1}
               onClick={() => setRangPiece(rangAffiche + 1)}
-              className="border border-border-dark bg-chrome px-2 py-[1px] disabled:opacity-40"
+              className="border border-border-dark bg-chrome px-2 py-px disabled:opacity-40"
             >
               Suivant ▶
             </button>
@@ -2051,13 +2051,13 @@ export function SaisiePage() {
           </div>
         )}
         {renvoiDuCompte && (
-          <div className="border-t border-border/50 bg-surface-2 px-3 py-1.5 text-[11px] leading-[1.5]">
+          <div className="border-t border-border/50 bg-surface-2 px-3 py-1.5 text-[11px] leading-normal">
             <span className="font-bold">Compte {renvoiDuCompte.numero} · renvoi [{renvoiDuCompte.renvoi}] du plan : </span>
             {renvoiDuCompte.texte}
           </div>
         )}
         {regleDuCompte?.exclusions && (
-          <div className="border-t border-warning/40 bg-warning-soft px-3 py-1.5 text-[11px] leading-[1.5]">
+          <div className="border-t border-warning/40 bg-warning-soft px-3 py-1.5 text-[11px] leading-normal">
             <span className="font-bold">Compte {regleDuCompte.numero} · exclusions du référentiel : </span>
             {regleDuCompte.exclusions}
             {compteChoisi && remplacementsProposes(regleDuCompte.comptesAUtiliser, compteChoisi.numero).length > 0 && (
@@ -2213,7 +2213,7 @@ export function SaisiePage() {
                   type="button"
                   onClick={() => retirerLigne(i)}
                   title="Retirer cette ligne"
-                  className="text-danger/70 hover:text-danger text-[11.5px] leading-none"
+                  className="text-danger hover:text-danger text-[11.5px] leading-none"
                 >
                   ✕
                 </button>
@@ -2233,7 +2233,7 @@ export function SaisiePage() {
                     setModeDOffice(null);
                     setAnnonceEcheance(`${m.numero} · mode ${m.code} retiré de la ligne.`);
                   }}
-                  className="border border-sel/40 bg-surface px-2 py-[1px]"
+                  className="border border-sel/40 bg-surface px-2 py-px"
                 >
                   Retirer le mode {modeDOffice.code}
                 </button>
@@ -2244,7 +2244,7 @@ export function SaisiePage() {
                   setAnnonceEcheance(null);
                   setModeDOffice(null);
                 }}
-                className="border border-sel/40 bg-surface px-2 py-[1px]"
+                className="border border-sel/40 bg-surface px-2 py-px"
               >
                 Compris
               </button>
@@ -2260,7 +2260,7 @@ export function SaisiePage() {
                 échéances
                 {fenetresAttendues.length > 1 ? ` · ${fenetresAttendues.length - 1} autre${fenetresAttendues.length > 2 ? 's' : ''} ligne${fenetresAttendues.length > 2 ? 's' : ''} en attente` : ''}.
               </span>
-              <button type="button" onClick={() => setFenetreOuverte(true)} className="border border-warning/40 bg-surface px-2 py-[1px]">
+              <button type="button" onClick={() => setFenetreOuverte(true)} className="border border-warning/40 bg-surface px-2 py-px">
                 Ouvrir les échéances
               </button>
               <button
@@ -2270,7 +2270,7 @@ export function SaisiePage() {
                   setFileEcheances((file) => file.filter((x) => x.cle !== f.cle));
                   setAnnonceEcheance(`${f.compte} · ligne gardée entière, sans échéance.`);
                 }}
-                className="border border-warning/40 bg-surface px-2 py-[1px]"
+                className="border border-warning/40 bg-surface px-2 py-px"
               >
                 Garder la ligne entière
               </button>
@@ -2320,7 +2320,7 @@ export function SaisiePage() {
                   la nature de CETTE opération. Le retrait se fait en un clic,
                   sur la dernière ligne de taxe posée d'office, et seulement
                   elle. */}
-              <button type="button" onClick={retirerTvaAjoutee} className="border border-sel/40 bg-surface px-2 py-[1px] font-semibold">
+              <button type="button" onClick={retirerTvaAjoutee} className="border border-sel/40 bg-surface px-2 py-px font-semibold">
                 Opération exonérée · retirer la TVA
               </button>
             </div>
@@ -2629,7 +2629,7 @@ export function SaisiePage() {
                 className="border border-border-dark px-1.5 py-0.5 font-mono text-[11.5px]"
               />
             </label>
-            <span className="text-[11px] text-text-dim leading-[1.5] flex-1 min-w-[260px]">
+            <span className="text-[11px] text-text-dim leading-normal flex-1 min-w-[260px]">
               {versement && periode && versement.slice(0, 7) === moisDeLaPeriode
                 ? 'Ce versement tombe dans le mois de l’écriture · laissez le champ vide, la date de l’écriture fait foi.'
                 : 'À ne remplir que si le versement, ou la mise à disposition, tombe dans un autre mois que l’écriture · l’échéance de la retenue se compte sur le mois du versement (loi n° 004/2003, art. 18).'}

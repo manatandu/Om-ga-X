@@ -135,7 +135,7 @@ export function AuthPage() {
   // Même gabarit de champ que l'assistant de création : un dialogue et son
   // assistant ne doivent pas avoir deux styles de saisie.
   const champClasse =
-    'w-full rounded-[4px] border border-border bg-surface px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-sel/25 focus:border-sel';
+    'w-full rounded-[4px] border border-border bg-surface px-2.5 py-1.5 text-[12px] focus:outline-hidden focus:ring-2 focus:ring-sel/25 focus:border-sel';
 
   return (
     // `font-marque` sur TOUT l'écran d'ouverture, et sur lui seul parmi les
@@ -161,7 +161,7 @@ export function AuthPage() {
         {/* Barre de titre CLAIRE, comme toute fenêtre de Windows 11 : le
             signe porte la couleur, la barre ne la porte plus. */}
         <div className="h-[32px] flex items-center gap-2 px-3 bg-surface text-text text-[11.5px] border-b border-border">
-          <SymboleOmegaX taille={14} className="text-[var(--a-900)]" />
+          <SymboleOmegaX taille={14} className="text-(--a-900)" />
           <span>Ouverture du dossier comptable</span>
         </div>
 
@@ -182,7 +182,7 @@ export function AuthPage() {
             l'encre, au-dessus du plancher AA de 4,5:1.
           */}
           <div
-            className="porte-marque w-full sm:w-[168px] sm:flex-shrink-0 p-4 flex flex-row sm:flex-col items-center sm:items-stretch gap-3 sm:gap-0 justify-between"
+            className="porte-marque w-full sm:w-[168px] sm:shrink-0 p-4 flex flex-row sm:flex-col items-center sm:items-stretch gap-3 sm:gap-0 justify-between"
           >
             <div className="min-w-0">
               <div className="w-[38px] h-[38px] rounded-[4px] bg-sel flex items-center justify-center text-white">
@@ -201,7 +201,7 @@ export function AuthPage() {
                   (charte § 9) · il clôt le panneau comme un trait sous une
                   colonne, et jamais un filigrane du logo. */}
               <hr aria-hidden className="filet-cloture hidden sm:block text-white" />
-              <div className="text-[11px] text-[var(--chrome-text-dim)]">© 2026</div>
+              <div className="text-[11px] text-(--chrome-text-dim)">© 2026</div>
             </div>
           </div>
 

@@ -412,7 +412,7 @@ export function AssistantReglement({
                   </div>
                 )}
                 {etape === 'recapitulatif' && (
-                  <table ref={recapitulatif} tabIndex={-1} aria-label="Récapitulatif du règlement" className="w-full focus:outline-none">
+                  <table ref={recapitulatif} tabIndex={-1} aria-label="Récapitulatif du règlement" className="w-full focus:outline-hidden">
                     <tbody>
                       {recap.map(([libelle, valeur]) => (
                         <tr key={libelle}>

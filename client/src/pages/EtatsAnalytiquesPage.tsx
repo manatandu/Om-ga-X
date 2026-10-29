@@ -331,7 +331,7 @@ export function EtatsAnalytiquesPage() {
                   <button
                     type="button"
                     onClick={() => void effacerVentilation(l.ligneEcritureId!)}
-                    className="text-danger/70 hover:text-danger"
+                    className="text-danger hover:text-danger"
                   >
                     Effacer
                   </button>

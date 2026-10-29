@@ -198,7 +198,7 @@ function formInitial(): Form {
 }
 
 const champ =
-  'mt-1 w-full border border-border rounded-[3px] bg-surface px-2.5 py-1.5 text-[12px] font-normal focus:outline-none focus:ring-2 focus:ring-sel/25 focus:border-sel';
+  'mt-1 w-full border border-border rounded-[3px] bg-surface px-2.5 py-1.5 text-[12px] font-normal focus:outline-hidden focus:ring-2 focus:ring-sel/25 focus:border-sel';
 
 /**
  * LIGNE DE FORMULAIRE, au modèle Sage · étiquette ALIGNÉE À DROITE dans une
@@ -222,8 +222,8 @@ function Ligne({
 }) {
   return (
     <div className="flex items-center gap-3 mb-1.5">
-      <span className="w-[132px] flex-shrink-0 text-right text-[11.5px] text-text leading-tight">{label}</span>
-      <div className={large ? 'flex-1 min-w-0' : 'w-[190px] flex-shrink-0'}>{children}</div>
+      <span className="w-[132px] shrink-0 text-right text-[11.5px] text-text leading-tight">{label}</span>
+      <div className={large ? 'flex-1 min-w-0' : 'w-[190px] shrink-0'}>{children}</div>
     </div>
   );
 }
@@ -340,7 +340,7 @@ export function NouveauFichierWizard({
             className="h-[32px] flex items-center justify-between px-3 bg-surface text-text border-b border-border text-[11.5px]"
           >
             <div className="flex items-center gap-2">
-              <SymboleOmegaX taille={14} className="text-[var(--a-900)]" />
+              <SymboleOmegaX taille={14} className="text-(--a-900)" />
               <span>Assistant de création de fichier comptable</span>
             </div>
             {!envoi && (
@@ -387,13 +387,13 @@ export function NouveauFichierWizard({
           ) : (
             <div className="flex flex-1 min-h-0">
               <div
-                className="w-[172px] flex-shrink-0 p-4 overflow-y-auto bg-chrome border-r border-border"
+                className="w-[172px] shrink-0 p-4 overflow-y-auto bg-chrome border-r border-border"
               >
                 <div className="text-[11.5px] font-bold text-text mb-4 leading-snug">Nouveau dossier</div>
                 {etapes.map((c, i) => (
                   <div key={c} className="flex items-center gap-2 py-1">
                     <span
-                      className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                      className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
                         i < rang
                           ? 'bg-sel text-white'
                           : i === rang
@@ -580,7 +580,7 @@ export function NouveauFichierWizard({
                         form.jeuEtatsFinanciersSycebnl === 'SYSTEME_MINIMAL_TRESORERIE') ||
                         (form.referentiel === 'SYSCOHADA' &&
                           form.systemeComptableSyscohada === 'MINIMAL_TRESORERIE')) && (
-                        <p className="mt-2 text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-[1.5]">
+                        <p className="mt-2 text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 leading-normal">
                           Le Système minimal de trésorerie est une exception liée à la taille. C'est à l'entité de
                           vérifier qu'elle reste sous le seuil, exercice après exercice.
                         </p>

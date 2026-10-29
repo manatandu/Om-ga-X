@@ -216,26 +216,26 @@ export function TitresPlacementSection(p: {
                   </td>
                   <td className="px-2 py-1">
                     <div className="flex flex-wrap gap-1">
-                      <button type="button" onClick={() => setHistorique(t)} className="px-2 py-[1px] border border-border">
+                      <button type="button" onClick={() => setHistorique(t)} className="px-2 py-px border border-border">
                         Historique
                       </button>
                       {p.peutEcrire && ouvert && (
-                        <button type="button" onClick={() => setMouvement({ titre: t, nature: 'ACQUISITION' })} className="px-2 py-[1px] border border-border">
+                        <button type="button" onClick={() => setMouvement({ titre: t, nature: 'ACQUISITION' })} className="px-2 py-px border border-border">
                           Acquérir
                         </button>
                       )}
                       {p.peutEcrire && ouvert && (t.position.quantite ?? 0) > 0 && (
-                        <button type="button" onClick={() => setMouvement({ titre: t, nature: 'CESSION' })} className="px-2 py-[1px] border border-border">
+                        <button type="button" onClick={() => setMouvement({ titre: t, nature: 'CESSION' })} className="px-2 py-px border border-border">
                           Céder
                         </button>
                       )}
                       {p.peutValider && ouvert && t.revueProposee && (
-                        <button type="button" onClick={() => setRevue(t)} className="px-2 py-[1px] border border-border">
+                        <button type="button" onClick={() => setRevue(t)} className="px-2 py-px border border-border">
                           Revoir
                         </button>
                       )}
                       {p.peutEcrire && t.mouvements.length === 0 && t.evaluations.length === 0 && (
-                        <button type="button" disabled={retrait !== null} onClick={() => void retirer(t)} className="px-2 py-[1px] border border-border text-danger disabled:opacity-40">
+                        <button type="button" disabled={retrait !== null} onClick={() => void retirer(t)} className="px-2 py-px border border-border text-danger disabled:opacity-40">
                           {retrait === t.id ? '…' : 'Retirer'}
                         </button>
                       )}
@@ -676,7 +676,7 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
                   </td>
                   <td className="px-2 py-1">
                     {p.peutValider && dernierMouvement?.id === m.id && !aAnnuler && (
-                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/mouvements/${m.id}/annuler`, resume: `${m.libelle} du ${date(m.date)}` })} className="px-2 py-[1px] border border-border text-danger">
+                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/mouvements/${m.id}/annuler`, resume: `${m.libelle} du ${date(m.date)}` })} className="px-2 py-px border border-border text-danger">
                         Annuler
                       </button>
                     )}
@@ -719,7 +719,7 @@ function ModaleHistorique(p: { titre: Titre; peutValider: boolean; onFermer: () 
                   </td>
                   <td className="px-2 py-1">
                     {p.peutValider && derniereRevue?.id === e.id && !aAnnuler && (
-                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/revues/${e.id}/annuler`, resume: `La revue du ${date(e.date)}` })} className="px-2 py-[1px] border border-border text-danger">
+                      <button type="button" onClick={() => choisir({ chemin: `/titres-placement/${p.titre.id}/revues/${e.id}/annuler`, resume: `La revue du ${date(e.date)}` })} className="px-2 py-px border border-border text-danger">
                         Annuler
                       </button>
                     )}

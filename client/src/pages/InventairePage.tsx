@@ -348,7 +348,7 @@ export function InventairePage() {
             >
               <div className="text-[11.5px] font-semibold leading-tight">{c.libelle}</div>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={`text-[10px] px-1.5 py-[1px] rounded ${COULEUR_STATUT[c.statut]}`}>
+                <span className={`text-[10px] px-1.5 py-px rounded ${COULEUR_STATUT[c.statut]}`}>
                   {LIBELLE_STATUT[c.statut]}
                 </span>
                 <span className="text-[10.5px] text-text-dim">{jour(c.dateInventaire)}</span>

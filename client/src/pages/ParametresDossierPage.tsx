@@ -1765,7 +1765,7 @@ export function ParametresDossierPage() {
                         />
                         <span className="min-w-0">
                           <span className="block text-[11.5px] font-semibold">{f.titre}</span>
-                          <span className="block text-[11.5px] text-text-dim mt-0.5 leading-[1.5]">{f.detail}</span>
+                          <span className="block text-[11.5px] text-text-dim mt-0.5 leading-normal">{f.detail}</span>
                         </span>
                       </label>
                     );
@@ -1879,7 +1879,7 @@ export function ParametresDossierPage() {
                       } Un dossier à un seul comptable peut la laisser décochée, ou la cocher et porter à la validation le NOM du second regard exercé hors logiciel et son motif · les deux s’impriment alors au journal. L’activer ou la retirer ne dévalide rien de ce qui est déjà entré.`}
                       source={params.referentiel === 'SYCEBNL' ? 'AUDCIF art. 22, 2° · SYCEBNL art. 16, 2)' : 'AUDCIF art. 22, 2° et 69'}
                     />
-                    <span className="block text-[11px] text-text-dim leading-[1.5] mt-0.5">
+                    <span className="block text-[11px] text-text-dim leading-normal mt-0.5">
                       {params.referentiel === 'SYCEBNL'
                         ? 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (SYCEBNL art. 16, 2) ; l’art. 69 de l’AUDCIF est exclu par l’art. 3 du SYCEBNL).'
                         : 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (AUDCIF art. 69).'}
@@ -1969,10 +1969,10 @@ export function ParametresDossierPage() {
                     value={seuilSaisi ?? montantPourChamp(params.seuilEcartReglement)}
                     placeholder="Aucun"
                     onChange={(e) => setSeuilSaisi(e.target.value)}
-                    className="w-[110px] border border-border px-1.5 py-[1px] text-right"
+                    className="w-[110px] border border-border px-1.5 py-px text-right"
                   />
                   {estAdmin && seuilSaisi !== null && (
-                    <button type="button" disabled={envoi} onClick={() => void enregistrerSeuilEcart()} className="border border-border px-2 py-[1px]">
+                    <button type="button" disabled={envoi} onClick={() => void enregistrerSeuilEcart()} className="border border-border px-2 py-px">
                       Enregistrer
                     </button>
                   )}
@@ -2001,7 +2001,7 @@ export function ParametresDossierPage() {
                     value={versReponse(params.assujettissementTva)}
                     disabled={!estAdmin || envoi}
                     onChange={(e) => changerRegime({ reponseAssujettissementTva: e.target.value as ReponseFait })}
-                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   >
                     <option value="PAS_ENCORE_DIT">Pas encore dit</option>
                     <option value="OUI">Oui</option>
@@ -2027,7 +2027,7 @@ export function ParametresDossierPage() {
                       defaultValue={params.dateOptionTva ? params.dateOptionTva.slice(0, 10) : ''}
                       disabled={!estAdmin || envoi}
                       onBlur={(e) => quitterDate('dateOptionTva', e.target)}
-                      className="mt-1 block w-44 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                      className="mt-1 block w-44 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                     />
                   </label>
                 )}
@@ -2042,7 +2042,7 @@ export function ParametresDossierPage() {
                     value={versReponse(params.venteBiensServices)}
                     disabled={!estAdmin || envoi}
                     onChange={(e) => changerRegime({ venteBiensServices: e.target.value as ReponseFait })}
-                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   >
                     <option value="PAS_ENCORE_DIT">Pas encore dit</option>
                     <option value="OUI">Oui</option>
@@ -2067,7 +2067,7 @@ export function ParametresDossierPage() {
                       value={params.regimeExigibiliteTva}
                       disabled={!estAdmin || envoi}
                       onChange={(e) => changerRegime({ regimeExigibiliteTva: e.target.value as RegimeExigibiliteTva })}
-                      className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                      className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                     >
                       <option value="LIVRAISONS" title="O.-L. n° 10/001, art. 25, 1°">Livraisons · taxe exigible à la date de la facture</option>
                       <option value="ENCAISSEMENTS" title="O.-L. n° 10/001, art. 25, 2°">Encaissements · taxe exigible à l’encaissement</option>
@@ -2094,7 +2094,7 @@ export function ParametresDossierPage() {
                       defaultValue={params.dateAutorisationDebitsTva ? params.dateAutorisationDebitsTva.slice(0, 10) : ''}
                       disabled={!estAdmin || envoi}
                       onBlur={(e) => quitterDate('dateAutorisationDebitsTva', e.target)}
-                      className="mt-1 block w-44 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                      className="mt-1 block w-44 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                     />
                   </label>
                 )}
@@ -2120,7 +2120,7 @@ export function ParametresDossierPage() {
                         changerRegime({ effectifPermanent: Math.max(0, Math.trunc(valeur)) });
                       }
                     }}
-                    className="mt-1 w-32 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 w-32 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   />
                 </label>
 
@@ -2145,7 +2145,7 @@ export function ParametresDossierPage() {
                         changerRegime({ numeroAffiliationCnssEmployeur: valeur });
                       }
                     }}
-                    className="mt-1 w-64 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 w-64 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   />
                 </label>
 
@@ -2164,7 +2164,7 @@ export function ParametresDossierPage() {
                       const v = e.target.value;
                       if (v === 'PERMANENT' || v === 'INTERMITTENT') changerMethodeInventaireStocks(v);
                     }}
-                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   >
                     <option value="" disabled>
                       Non déclarée
@@ -2194,7 +2194,7 @@ export function ParametresDossierPage() {
                           const v = e.target.value;
                           if (v === 'APPEL' || v === 'ENCAISSEMENT') changerMethodeCotisations(v);
                         }}
-                        className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                        className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                       >
                         <option value="" disabled>
                           À trancher · lire les statuts
@@ -2238,7 +2238,7 @@ export function ParametresDossierPage() {
                           {c.titre}
                           <Aide sujet="systemeSyscohada" />
                         </span>
-                        <span className="block text-[11.5px] text-text-dim mt-1 leading-[1.5]">{c.description}</span>
+                        <span className="block text-[11.5px] text-text-dim mt-1 leading-normal">{c.description}</span>
                       </span>
                     </label>
                   );

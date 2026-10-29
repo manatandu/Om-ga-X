@@ -1516,7 +1516,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   };
 
   const champ =
-    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-none focus:border-accent';
+    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
   const cell = 'px-2 py-1 border border-border';
   const etiquette = 'text-[10.5px] text-text-dim uppercase tracking-wide';
   const choisi = salaries.find((s) => s.id === selection) ?? null;

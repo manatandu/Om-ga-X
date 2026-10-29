@@ -74,11 +74,11 @@ export function EssaiPage() {
     <div className="porte-fond min-h-screen flex items-center justify-center px-4 py-8 font-marque">
       <div className="w-full max-w-[460px] bg-surface border border-border rounded-[8px] overflow-hidden shadow-dominante anim-modale">
         <div className="h-[32px] flex items-center gap-2 px-3 text-text text-[11.5px] border-b border-border">
-          <SymboleOmegaX taille={14} className="text-[var(--a-900)]" />
+          <SymboleOmegaX taille={14} className="text-(--a-900)" />
           <span>Essai gratuit</span>
         </div>
         <div className="p-5">
-          <LogotypeOmegaX hauteur={20} className="text-[var(--a-900)] mb-4" />
+          <LogotypeOmegaX hauteur={20} className="text-(--a-900) mb-4" />
           {etat === null && <p role="status" className="text-[12px] text-text-dim">Chargement…</p>}
           {etat === 'fermee' && (
             <p role="status" className="text-[12px]">
@@ -138,7 +138,7 @@ export function EssaiPage() {
             </form>
           )}
           {message !== null && (
-            <p ref={confirmation} tabIndex={-1} role="status" className="text-[12px] outline-none">
+            <p ref={confirmation} tabIndex={-1} role="status" className="text-[12px] outline-hidden">
               {message}
             </p>
           )}

@@ -313,7 +313,7 @@ export function FiscalitePage() {
             <select
               value={exerciceId ?? ''}
               onChange={(e) => setExerciceId(e.target.value)}
-              className="border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+              className="border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
             >
               {exercices.map((ex) => (
                 <option key={ex.id} value={ex.id}>
@@ -501,7 +501,7 @@ export function FiscalitePage() {
                       <td className="py-1 pr-2">
                         {a.libelle}
                         <span className="text-text-dim"> · {a.source}</span>
-                        <span className="block text-[11px] text-text-dim leading-[1.5] mt-0.5">{a.motif}</span>
+                        <span className="block text-[11px] text-text-dim leading-normal mt-0.5">{a.motif}</span>
                       </td>
                       <td className="py-1 font-mono text-right whitespace-nowrap text-text-dim">
                         mouvement {nombre(a.mouvement)}
@@ -580,7 +580,7 @@ export function FiscalitePage() {
                       setMontant('');
                       setChargeEngagee('');
                     }}
-                    className="mt-1 block w-full border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
+                    className="mt-1 block w-full border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-hidden focus:border-sel"
                   >
                     <option value="">Choisir dans le catalogue</option>
                     <optgroup label="Réintégrations">
@@ -651,7 +651,7 @@ export function FiscalitePage() {
                           inputMode="decimal"
                           className="mt-1 block w-full border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] font-mono"
                         />
-                        <span className="block text-[11px] text-text-dim mt-1 leading-[1.5]">
+                        <span className="block text-[11px] text-text-dim mt-1 leading-normal">
                           Plafond : {plafond.enonce}
                           {plafond.montantAdmis !== null ? ` · soit ${nombre(plafond.montantAdmis)} ${devise} admis` : ''}.
                           {excedentCalcule !== null

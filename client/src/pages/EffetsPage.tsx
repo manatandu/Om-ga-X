@@ -583,17 +583,17 @@ function Onglet(p: {
                       <td className="px-2 py-1">{dernier ? `${dernier.libelle} · ${date(dernier.date)} · ${dernier.ecriture ? piece(dernier.ecriture) : 'sans pièce'}` : '·'}</td>
                       <td className="px-2 py-1">
                         <div className="flex flex-wrap gap-1">
-                          <button type="button" onClick={() => setDetail(e)} className="px-2 py-[1px] border border-border" aria-label={`Actes de l'effet ${e.reference}`}>
+                          <button type="button" onClick={() => setDetail(e)} className="px-2 py-px border border-border" aria-label={`Actes de l'effet ${e.reference}`}>
                             Actes
                           </button>
                           {p.peutEcrire &&
                             proposes.map((n) => (
-                              <button key={n} type="button" onClick={() => setActe({ effet: e, nature: n })} className="px-2 py-[1px] border border-border" aria-label={`${LIBELLES_ACTE[n]} · effet ${e.reference}`}>
+                              <button key={n} type="button" onClick={() => setActe({ effet: e, nature: n })} className="px-2 py-px border border-border" aria-label={`${LIBELLES_ACTE[n]} · effet ${e.reference}`}>
                                 {LIBELLES_ACTE[n]}
                               </button>
                             ))}
                           {p.peutValider && dernier && (
-                            <button type="button" onClick={() => setAAnnuler({ effet: e, acte: dernier })} className="px-2 py-[1px] border border-danger/40 text-danger" aria-label={`Annuler ${dernier.libelle} · effet ${e.reference}`}>
+                            <button type="button" onClick={() => setAAnnuler({ effet: e, acte: dernier })} className="px-2 py-px border border-danger/40 text-danger" aria-label={`Annuler ${dernier.libelle} · effet ${e.reference}`}>
                               Annuler le dernier acte
                             </button>
                           )}

@@ -35,7 +35,7 @@ export function StatusBar() {
       <span className="flex items-center gap-2 min-w-0">
         {/* Pastille de veille · le halo dit « connecté » sans clignoter. */}
         <span className="relative flex w-1.5 h-1.5 shrink-0">
-          <span className="absolute -inset-[2.5px] rounded-full bg-positive/25" />
+          <span className="absolute inset-[-2.5px] rounded-full bg-positive/25" />
           <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-positive" />
         </span>
         <span className="font-medium text-text truncate">{titreFenetre}</span>

@@ -2217,7 +2217,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                               {motifAucunCompteRetenu(comptesClasse2.filter((c) => c.numero.startsWith('29')), 'de dépréciation (29)')}
                             </span>
                           )}
-                          <span className="text-[11px] text-text-dim leading-[1.5]">
+                          <span className="text-[11px] text-text-dim leading-normal">
                             Ce bien porte une dépréciation. Le compte n’est pas déduit du nouveau compte
                             d’immobilisation : le logiciel ne connaît pas la subdivision que votre dossier a ouverte,
                             et un 29 deviné serait un compte faux dans une balance juste.
@@ -2250,7 +2250,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                             className="border border-border rounded-[3px] bg-surface px-2 py-1 text-[11.5px]"
                           />
                         </label>
-                        <span className="text-[11px] text-text-dim leading-[1.5]">
+                        <span className="text-[11px] text-text-dim leading-normal">
                           Obligatoire · le § 1.2 qualifie un immeuble de placement par l’USAGE, que nul solde ne
                           porte, et le § 4.2 en fait une information de Notes annexes.
                         </span>

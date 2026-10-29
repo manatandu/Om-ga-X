@@ -75,7 +75,7 @@ const ancre = (id: IdSection) => `politique-${id}`;
 
 function Titre({ id, children }: { id: IdSection; children: React.ReactNode }) {
   return (
-    <h2 id={ancre(id)} tabIndex={-1} className="text-[12px] font-bold mt-5 mb-1.5 scroll-mt-4 outline-none">
+    <h2 id={ancre(id)} tabIndex={-1} className="text-[12px] font-bold mt-5 mb-1.5 scroll-mt-4 outline-hidden">
       {children}
     </h2>
   );
@@ -158,7 +158,7 @@ export function ContenuConfidentialite() {
           données décrites ci-dessous.
         </P>
 
-        <div className="border-l-4 border-[var(--a-700)] bg-[var(--a-50)] px-3 py-2 mb-3">
+        <div className="border-l-4 border-(--a-700) bg-(--a-50) px-3 py-2 mb-3">
           <p className="text-[11.5px] font-bold mb-1">Notre engagement</p>
           <p className="text-[11.5px] leading-relaxed">
             Vos dossiers comptables vous appartiennent. Nous ne vendons ni ne louons aucune donnée, nous n’en faisons

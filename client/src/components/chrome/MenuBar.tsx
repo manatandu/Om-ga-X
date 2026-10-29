@@ -93,7 +93,7 @@ function CommandeMenu({
       // commande repliée se lit à l'aplomb du titre qui la contient.
       className={`w-full flex items-center text-left rounded-[3px] ${
         retrait ? 'pl-[27px] pr-3' : 'px-3'
-      } h-[24px] text-[12px] hover:enabled:bg-chrome-alt focus-visible:bg-chrome-alt outline-none disabled:opacity-40 disabled:cursor-not-allowed`}
+      } h-[24px] text-[12px] hover:enabled:bg-chrome-alt focus-visible:bg-chrome-alt outline-hidden disabled:opacity-40 disabled:cursor-not-allowed`}
     >
       <span className="min-w-0 truncate">{item.label}</span>
     </button>
@@ -248,7 +248,7 @@ export function MenuBar({
                 setGroupeDeplie(entree.titre);
               }
             }}
-            className={`w-full flex items-center gap-2 text-left rounded-[3px] px-3 h-[24px] text-[12px] outline-none focus-visible:bg-chrome-alt ${
+            className={`w-full flex items-center gap-2 text-left rounded-[3px] px-3 h-[24px] text-[12px] outline-hidden focus-visible:bg-chrome-alt ${
               deplie ? 'bg-chrome-alt' : 'hover:bg-chrome-alt'
             }`}
           >
@@ -364,7 +364,7 @@ export function MenuBar({
             }}
             onMouseEnter={() => survolerTitre(m.titre)}
             className={`rounded-[3px] px-2.5 h-[24px] text-[12px] transition-colors duration-100 ${
-              ouvert === m.titre ? 'bg-sel-soft text-sel' : 'text-text/85 hover:bg-sel-soft hover:text-sel'
+              ouvert === m.titre ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
             }`}
           >
             {m.titre}

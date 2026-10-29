@@ -348,7 +348,7 @@ function BoitePieces({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titreId}
-          className="anim-modale w-full max-w-[520px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[11.5px] outline-none"
+          className="anim-modale w-full max-w-[520px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[11.5px] outline-hidden"
         >
           <div className="h-[32px] flex items-center justify-between px-2.5 border-b border-border">
             <span id={titreId}>{titre}</span>

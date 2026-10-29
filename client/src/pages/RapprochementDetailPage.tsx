@@ -644,7 +644,7 @@ function BlocReleve(props: {
                       <td className="px-2 py-1">
                         {rapprochee(r) ? (
                           <span className="inline-flex items-center gap-2">
-                            <span className="rounded-full bg-positive-soft text-positive px-2 py-[1px] font-semibold">Rapprochée</span>
+                            <span className="rounded-full bg-positive-soft text-positive px-2 py-px font-semibold">Rapprochée</span>
                             {modifiable && (
                               <button onClick={() => props.onDissocier(r.id)} className="text-text-dim underline">
                                 défaire
@@ -664,13 +664,13 @@ function BlocReleve(props: {
                                 props.setRetenues(n);
                               }}
                             />
-                            <span className="rounded-full bg-sel-soft text-sel px-2 py-[1px] font-semibold">
+                            <span className="rounded-full bg-sel-soft text-sel px-2 py-px font-semibold">
                               Proposée · {p.motif === 'REFERENCE' ? 'référence' : 'montant et date'}
                             </span>
                           </label>
                         ) : (
                           <span className="inline-flex items-center gap-2">
-                            <span className="rounded-full bg-warning-soft text-warning px-2 py-[1px] font-semibold">À comptabiliser</span>
+                            <span className="rounded-full bg-warning-soft text-warning px-2 py-px font-semibold">À comptabiliser</span>
                             {modifiable && (
                               <button onClick={() => props.onAssocier(r.id)} className="text-text-dim underline">
                                 associer
@@ -819,7 +819,7 @@ function BlocOuverture(props: {
                       aria-label="Date de l'en-cours"
                       value={dateEncours}
                       onChange={(e) => setDateEncours(e.target.value)}
-                      className="w-full border border-border px-1 py-[1px]"
+                      className="w-full border border-border px-1 py-px"
                     />
                   </td>
                   <td className="px-2 py-1">
@@ -828,7 +828,7 @@ function BlocOuverture(props: {
                       value={libelle}
                       onChange={(e) => setLibelle(e.target.value)}
                       maxLength={200}
-                      className="w-full border border-border px-1.5 py-[1px]"
+                      className="w-full border border-border px-1.5 py-px"
                     />
                   </td>
                   <td className="px-2 py-1" colSpan={2}>
@@ -837,7 +837,7 @@ function BlocOuverture(props: {
                         aria-label="Sens de l'en-cours"
                         value={sens}
                         onChange={(e) => setSens(e.target.value as 'DEBIT' | 'CREDIT')}
-                        className="border border-border px-1 py-[1px]"
+                        className="border border-border px-1 py-px"
                       >
                         <option value="CREDIT">Sortie</option>
                         <option value="DEBIT">Entrée</option>
@@ -849,7 +849,7 @@ function BlocOuverture(props: {
                         aria-label="Montant de l'en-cours"
                         value={montantEncours}
                         onChange={(e) => setMontantEncours(e.target.value)}
-                        className="w-full border border-border px-1.5 py-[1px] text-right"
+                        className="w-full border border-border px-1.5 py-px text-right"
                       />
                     </div>
                   </td>

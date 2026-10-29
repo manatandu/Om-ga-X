@@ -852,7 +852,13 @@ aucun accès aux données d'un dossier, décision du 2026-10-09).
   et construction des deux côtés en 7 ; TypeScript 6 garde ts-jest, ts-node et
   la CLI de NestJS (ts-jest exige `<7`, l'API du compilateur a quitté la 7) ;
   `@swc/jest` essayé et écarté (exports non redéfinissables, onze suites à
-  `jest.spyOn` tombées).
+  `jest.spyOn` tombées). TAILWIND 4 FAIT le même jour · thème dans le bloc
+  `@theme` de `client/src/index.css` (`tailwind.config.js` retiré), règles hors
+  couche de la v3 rangées dans `@layer utilities`, défauts de la v3 rétablis
+  (bordure grise, main sur les boutons, texte indicatif, champ de date, marge
+  des cellules) ; captures v3 et v4 comparées sur la connexion, la page
+  publique et douze écrans connectés, sans écart visible ; les opacités
+  passent par `color-mix` (navigateurs d'au moins 2023, exigés par la v4).
 
 ## Relevés de la ligne lettrage-verrou (2026-10-29), antérieurs au changement
 

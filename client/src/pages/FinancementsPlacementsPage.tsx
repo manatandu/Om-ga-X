@@ -269,27 +269,27 @@ export function FinancementsPlacementsPage() {
                         </td>
                         <td className="px-2 py-1">
                           <div className="flex flex-wrap gap-1">
-                            <button type="button" onClick={() => setDetail(o)} className="px-2 py-[1px] border border-border">
+                            <button type="button" onClick={() => setDetail(o)} className="px-2 py-px border border-border">
                               Actes
                             </button>
                             {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.contrePassationProposee && (
-                              <button type="button" disabled={envoiContre !== null} onClick={() => void contrePasser(o)} className="px-2 py-[1px] border border-border disabled:opacity-40">
+                              <button type="button" disabled={envoiContre !== null} onClick={() => void contrePasser(o)} className="px-2 py-px border border-border disabled:opacity-40">
                                 {envoiContre === o.id ? '…' : reportContre === o.id ? 'Contre-passer au premier jour ouvert' : 'Contre-passer'}
                               </button>
                             )}
                             {peutValider && !exerciceClos && o.statut === 'EN_COURS' && o.regularisationProposee && (
-                              <button type="button" onClick={() => setRegul(o)} className="px-2 py-[1px] border border-border">
+                              <button type="button" onClick={() => setRegul(o)} className="px-2 py-px border border-border">
                                 Régulariser
                               </button>
                             )}
                             {/* L'échéance attend la contre-passation, et ne se passe pas dans un exercice clôturé · le serveur le refuserait. */}
                             {peutEcrire && !exerciceClos && o.statut === 'EN_COURS' && !o.contrePassationProposee && (
-                              <button type="button" onClick={() => setEcheance(o)} className="px-2 py-[1px] border border-border">
+                              <button type="button" onClick={() => setEcheance(o)} className="px-2 py-px border border-border">
                                 Échéance
                               </button>
                             )}
                             {peutValider && !exerciceClos && dernier && o.statut !== 'ANNULEE' && (
-                              <button type="button" onClick={() => setAAnnuler({ op: o, acte: dernier })} className="px-2 py-[1px] border border-border text-danger">
+                              <button type="button" onClick={() => setAAnnuler({ op: o, acte: dernier })} className="px-2 py-px border border-border text-danger">
                                 Annuler « {dernier.libelle} »
                               </button>
                             )}

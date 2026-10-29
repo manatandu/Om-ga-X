@@ -63,7 +63,8 @@ plus ; `scripts/lier-tsc-7.cjs` (postinstall) relie la commande `tsc` à la 7,
 `tsc-7.spec.ts` le tient. Côté client, `typescript` est la 7 et
 `@typescript/typescript6` sert les deux tests qui lisent le code source
 (`client/scripts/lier-tsc-7.cjs`, même raison).
-**Client** · React 18, Vite, TypeScript, Tailwind, react-router-dom 7 en
+**Client** · React 18, Vite, TypeScript, Tailwind 4 (thème dans le bloc `@theme`
+de `client/src/index.css`, aucun fichier de configuration), react-router-dom 7 en
 **HashRouter** (les URL sont de la forme `oomega.web.app/#/comptes`).
 
 Racine = serveur. `client/` = interface. Un seul dépôt. L'arborescence

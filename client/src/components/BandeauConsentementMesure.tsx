@@ -112,7 +112,7 @@ export function BandeauConsentementMesure() {
       ref={hauteur}
       role="region"
       aria-label="Préférences relatives aux témoins"
-      className="ecran-seul fixed bottom-0 inset-x-0 z-[60] border-t border-border bg-surface shadow-dominante"
+      className="ecran-seul fixed bottom-0 inset-x-0 z-60 border-t border-border bg-surface shadow-dominante"
     >
       <div className="mx-auto max-w-[920px] px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-[11.5px]">
         <p className="flex-1 leading-relaxed">
@@ -135,14 +135,14 @@ export function BandeauConsentementMesure() {
             ref={premier}
             type="button"
             onClick={() => choisir('refuse')}
-            className="px-4 py-1.5 rounded-full border border-border bg-surface font-semibold hover:bg-[var(--a-50)]"
+            className="px-4 py-1.5 rounded-full border border-border bg-surface font-semibold hover:bg-(--a-50)"
           >
             Refuser
           </button>
           <button
             type="button"
             onClick={() => choisir('accepte')}
-            className="px-4 py-1.5 rounded-full border border-border bg-surface font-semibold hover:bg-[var(--a-50)]"
+            className="px-4 py-1.5 rounded-full border border-border bg-surface font-semibold hover:bg-(--a-50)"
           >
             Accepter
           </button>

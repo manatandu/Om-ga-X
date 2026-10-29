@@ -183,7 +183,7 @@ export function EmballagesPage() {
   };
 
   const champ =
-    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-none focus:border-accent';
+    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
   const cell = 'px-2 py-1 border border-border';
 
   return (

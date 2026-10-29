@@ -556,7 +556,7 @@ export function CircularisationPage() {
                                   <button
                                     type="button"
                                     onClick={() => ouvrirClassement(d)}
-                                    className="border border-border rounded-[3px] px-2 py-[1px] text-[10.5px]"
+                                    className="border border-border rounded-[3px] px-2 py-px text-[10.5px]"
                                   >
                                     Classer la réponse
                                   </button>
@@ -566,7 +566,7 @@ export function CircularisationPage() {
                                   <button
                                     type="button"
                                     onClick={() => agir(() => api.delete(`/circularisation/demandes/${d.id}`))}
-                                    className="border border-border rounded-[3px] px-2 py-[1px] text-[10.5px]"
+                                    className="border border-border rounded-[3px] px-2 py-px text-[10.5px]"
                                   >
                                     Retirer
                                   </button>
@@ -782,7 +782,7 @@ export function CircularisationPage() {
                                     }),
                                   )
                                 }
-                                className="border border-border rounded-[3px] px-2 py-[1px] text-[10.5px]"
+                                className="border border-border rounded-[3px] px-2 py-px text-[10.5px]"
                               >
                                 Retenir
                               </button>

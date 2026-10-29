@@ -594,7 +594,7 @@ export function DeclarationTvaPage() {
                         type="button"
                         disabled={comptabilisation}
                         onClick={() => void annulerLiquidation(l)}
-                        className="text-danger/80 hover:text-danger disabled:opacity-50"
+                        className="text-danger hover:text-danger disabled:opacity-50"
                       >
                         Annuler
                       </button>

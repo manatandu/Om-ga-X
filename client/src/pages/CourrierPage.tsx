@@ -68,7 +68,7 @@ function Pastille({ statut }: { statut: StatutMessage }) {
   return (
     <span
       title={etat.explication}
-      className={`inline-block rounded-[3px] px-1.5 py-[1px] text-[11px] font-semibold truncate ${CLASSES_TON[etat.ton]}`}
+      className={`inline-block rounded-[3px] px-1.5 py-px text-[11px] font-semibold truncate ${CLASSES_TON[etat.ton]}`}
     >
       {etat.libelle}
     </span>
@@ -201,7 +201,7 @@ export function CourrierPage() {
           {transport.manques.length > 0 && (
             <div className="mt-1.5 text-[11.5px] text-text">
               <span className="font-semibold">Ce qui manque au service :</span>
-              <ul className="mt-0.5 space-y-[1px]">
+              <ul className="mt-0.5 space-y-px">
                 {transport.manques.map((m) => (
                   <li key={m.variable} className="font-mono text-[11px]">
                     {m.variable} <span className="font-sans text-text-dim">· {m.raison}</span>
@@ -210,7 +210,7 @@ export function CourrierPage() {
               </ul>
             </div>
           )}
-          <p className="mt-1.5 text-[11px] leading-[1.5] text-text-dim">{PHRASE_OU_SE_POSE_LE_COURRIEL}</p>
+          <p className="mt-1.5 text-[11px] leading-normal text-text-dim">{PHRASE_OU_SE_POSE_LE_COURRIEL}</p>
         </section>
       )}
       {transport?.configure && (
@@ -394,7 +394,7 @@ function FicheMessage({ message, onFermer }: { message: MessageComplet; onFermer
             un refus d'authentification et un domaine qui n'existe pas.
           */}
           <div className="text-[11px] font-bold text-danger">DERNIÈRE ERREUR RENDUE PAR LE SERVEUR DE MESSAGERIE</div>
-          <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-[1.5]">{message.erreur}</pre>
+          <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-normal">{message.erreur}</pre>
         </div>
       )}
 

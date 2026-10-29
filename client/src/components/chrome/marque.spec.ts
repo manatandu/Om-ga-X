@@ -218,7 +218,7 @@ describe("la marque est employée là où l'identité se joue", () => {
     // dans la police du système, il changerait de dessin d'un poste à
     // l'autre · exactement ce que le tracé sert à éviter.
     expect(lire('src/components/chrome/AppShell.tsx')).toContain('font-marque');
-    expect(lire('tailwind.config.js')).toContain("marque: ['\"IBM Plex Sans\"'");
+    expect(lire('src/index.css')).toContain("--font-marque: 'IBM Plex Sans'");
   });
 });
 

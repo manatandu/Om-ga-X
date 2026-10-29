@@ -223,7 +223,7 @@ function EtatsSyscohadaSystemeNormal() {
     <div className="pl-12 pr-4 py-1.5 bg-surface-alt border-y border-border">
       {comptes.map((c) => (
         <div key={c.numero} className="flex justify-between gap-3 text-[11px] font-mono text-text-dim py-0.5">
-          <span className="min-w-0 break-words">
+          <span className="min-w-0 wrap-break-word">
             {c.numero} · {c.intitule}
           </span>
           <span className="shrink-0">{montant(c.montant)}</span>
@@ -580,7 +580,7 @@ function EtatsSyscohadaSystemeNormal() {
                   height={14}
                   className={`mt-0.5 shrink-0 ${bilan.equilibre ? 'text-positive' : 'text-danger'}`}
                 />
-                <span className="font-mono text-[11.5px] font-medium min-w-0 break-words">
+                <span className="font-mono text-[11.5px] font-medium min-w-0 wrap-break-word">
                   {bilan.equilibre
                     ? `LE BILAN EST ÉQUILIBRÉ · BZ = DZ = ${montant(bilan.totalActif)}`
                     : `DÉSÉQUILIBRE DÉTECTÉ · total actif BZ ${montant(bilan.totalActif)} contre total passif DZ ${montant(
@@ -604,7 +604,7 @@ function EtatsSyscohadaSystemeNormal() {
                   </div>
                   {bilan.comptesASolderALaCloture.map((c) => (
                     <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-                      <span className="min-w-0 break-words">
+                      <span className="min-w-0 wrap-break-word">
                         {c.numero} · {c.intitule}
                       </span>
                       <span className="shrink-0">{montant(c.montant)}</span>
@@ -625,7 +625,7 @@ function EtatsSyscohadaSystemeNormal() {
                   </div>
                   {bilan.comptesNonRattaches.map((c) => (
                     <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-                      <span className="min-w-0 break-words">
+                      <span className="min-w-0 wrap-break-word">
                         {c.numero} · {c.intitule}
                       </span>
                       <span className="shrink-0">{montant(c.montant)}</span>
@@ -677,7 +677,7 @@ function EtatsSyscohadaSystemeNormal() {
                   height={14}
                   className={`mt-0.5 shrink-0 ${cr.controle.coherent ? 'text-positive' : 'text-danger'}`}
                 />
-                <span className="font-mono text-[11.5px] font-medium min-w-0 break-words">
+                <span className="font-mono text-[11.5px] font-medium min-w-0 wrap-break-word">
                   {cr.controle.coherent
                     ? `L'ÉTAT BOUCLE · résultat net XI ${montant(cr.soldes.resultatNet)} (${
                         cr.soldes.resultatNet < 0 ? 'perte' : 'bénéfice'
@@ -702,7 +702,7 @@ function EtatsSyscohadaSystemeNormal() {
                   </div>
                   {cr.comptesNonRattaches.map((c) => (
                     <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-                      <span className="min-w-0 break-words">
+                      <span className="min-w-0 wrap-break-word">
                         {c.numero} · {c.intitule}
                       </span>
                       <span className="shrink-0">{montant(c.montant)}</span>
@@ -779,7 +779,7 @@ function EtatsSyscohadaSystemeNormal() {
                     height={14}
                     className={`mt-0.5 shrink-0 ${STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].icone}`}
                   />
-                  <span className="font-mono text-[11.5px] font-medium min-w-0 break-words">
+                  <span className="font-mono text-[11.5px] font-medium min-w-0 wrap-break-word">
                     {issueDuControleDesFlux(tft.controle.coherent) === 'NON_EFFECTUE'
                       ? motifDuControleNonEffectue(tft.controle.motifNonControlable)
                       : tft.controle.coherent
@@ -787,7 +787,7 @@ function EtatsSyscohadaSystemeNormal() {
                         : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA à FQ ne couvre pas tout le mouvement de trésorerie`}
                   </span>
                 </div>
-                <div className="pl-[22px] font-mono text-[11px] text-text-dim break-words">
+                <div className="pl-[22px] font-mono text-[11px] text-text-dim wrap-break-word">
                   ZA {montant(tft.controle.tresorerieOuverture)} + ZG {montant(tft.controle.variation)} = ZH{' '}
                   {montant(tft.controle.tresorerieClotureParFlux)} (par les flux) · contrôle par le bilan :{' '}
                   {montant(tft.controle.tresorerieClotureParBilan)}
@@ -832,7 +832,7 @@ function EtatsSyscohadaSystemeNormal() {
                   </div>
                   {(tft.comptesTropAgreges ?? []).map((c) => (
                     <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-                      <span className="min-w-0 break-words">
+                      <span className="min-w-0 wrap-break-word">
                         {c.numero} · {c.intitule} · lu en {c.subdivisions.join(', ')}
                       </span>
                       <span className="shrink-0">{montant(c.montant)}</span>
@@ -848,7 +848,7 @@ function EtatsSyscohadaSystemeNormal() {
                   </div>
                   {tft.comptesNonVentiles.map((c) => (
                     <div key={c.numero} className="flex justify-between gap-3 text-[11.5px] font-mono">
-                      <span className="min-w-0 break-words">
+                      <span className="min-w-0 wrap-break-word">
                         {c.numero} · {c.intitule}
                       </span>
                       <span className="shrink-0">{montant(c.montant)}</span>

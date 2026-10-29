@@ -75,9 +75,9 @@ export function AProposModale({ onFermer }: { onFermer: () => void }) {
               dans leur rapport figé. Ailleurs le signe suffit, le nom étant
               déjà écrit à côté.
             */}
-            <BlocMarqueOmegaX hauteur={26} className="text-[color:var(--a-900)] mb-3" />
+            <BlocMarqueOmegaX hauteur={26} className="text-(--a-900) mb-3" />
             {/* Le filet de clôture · il sépare la marque de ce qui la décrit. */}
-            <hr className="filet-cloture text-text-dim !mb-3" />
+            <hr className="filet-cloture text-text-dim mb-3!" />
             <p className="text-text-dim">
               Logiciel de comptabilité OHADA
               {referentiel && LIBELLE_REFERENTIEL[referentiel] ? ` · ${LIBELLE_REFERENTIEL[referentiel]}` : ''}.

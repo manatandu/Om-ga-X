@@ -84,7 +84,7 @@ export function EcranLogiciels({
       {...{ [ATTRIBUT_COUCHE_ECRAN]: '' }}
       // Au-dessus des fenêtres, qui vivent dans leur propre contexte
       // d'empilement (AppShell) · leur rang ne peut jamais passer devant.
-      className="absolute inset-0 z-10 overflow-auto bg-[var(--fenetre)] p-4"
+      className="absolute inset-0 z-10 overflow-auto bg-(--fenetre) p-4"
     >
       <div className="mx-auto max-w-[860px]">
         {servis.length === 0 && (
