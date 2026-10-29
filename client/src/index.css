@@ -1395,6 +1395,23 @@ summary:focus-visible {
     overflow: visible !important;
   }
 
+  /* UN FORMULAIRE S'IMPRIME SEUL (`lib/impression-formulaire.ts`) · tout se
+     masque, sauf le formulaire marqué, posé en haut de la page. */
+  body.imprime-formulaire * {
+    visibility: hidden !important;
+  }
+  body.imprime-formulaire .formulaire-imprime,
+  body.imprime-formulaire .formulaire-imprime * {
+    visibility: visible !important;
+  }
+  body.imprime-formulaire .formulaire-imprime {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    border: none !important;
+  }
+
   /* Les bulles d'aide « ? » n'ont aucun sens sur du papier : on ne clique pas
      une feuille imprimée. */
   button[aria-label^='Aide'] {
@@ -1403,6 +1420,7 @@ summary:focus-visible {
 
   /* Un état imprimé occupe la largeur de la page, pas celle d'une fenêtre. */
   .max-w-\[1180px\],
+  .max-w-\[1000px\],
   .max-w-\[960px\],
   .max-w-\[900px\] {
     max-width: none !important;

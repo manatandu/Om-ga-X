@@ -82,19 +82,24 @@ async function main() {
     const s8 = await salarie('HUIT', 'MASCULIN', null);
     await contrat(s8, { type: 'DUREE_DETERMINEE', dateEntreeEnVigueur: '2025-12-01', dateFinPrevue: '2026-11-30' });
 
+    // Le cas de la relecture · un CDI jamais clos, puis un CDD plus récent · permanent aux trois dates, nommé.
+    const s9 = await salarie('NEUF', 'MASCULIN', 'Congolaise');
+    await contrat(s9, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2020-01-01', classeProfessionnelle: 5 });
+    await contrat(s9, { type: 'DUREE_DETERMINEE', dateEntreeEnVigueur: '2025-03-01', dateFinPrevue: '2026-02-28' });
+
     const lire = async (ex) => (await A.get(`/personnel/declaration-main-oeuvre/${ex}`));
     const controler = (d, quand) => {
       const f = d.formulaire;
       const l = (cle) => f.effectifs.lignes.find((x) => x.cle === cle).cellules;
       verifier(d.exercice === 2026 && d.au === '2026-01-01' && d.dateLimite === '2026-01-31', `${quand} · exercice lu au 1er janvier, déposé au 31 janvier (${d.au} ${d.dateLimite})`);
-      verifier(f.permanents.annee === 4 && f.permanents.anneePrecedente === 2 && f.permanents.anneeAnterieure === 1, `${quand} · permanents 4 / 2 / 1 (${JSON.stringify(f.permanents)})`);
+      verifier(f.permanents.annee === 5 && f.permanents.anneePrecedente === 3 && f.permanents.anneeAnterieure === 2, `${quand} · permanents 5 / 3 / 2, une seule règle aux trois dates (${JSON.stringify(f.permanents)})`);
       verifier(JSON.stringify(l('I')) === JSON.stringify({ congolais: { h: 0, f: 1, total: 1 }, etrangers: { h: 0, f: 0, total: 0 }, totaux: { h: 0, f: 1, total: 1 } }), `${quand} · catégorie I, la classe 1 entrée le 1er janvier`);
-      verifier(l('III').totaux.h === 1 && l('III').totaux.total === 1 && l('II').totaux.total === 0, `${quand} · classe 5 en catégorie III, le CDI fini le 31 décembre hors du 1er janvier`);
+      verifier(l('III').totaux.h === 2 && l('III').totaux.total === 2 && l('II').totaux.total === 0, `${quand} · classe 5 en catégorie III, le CDI fini le 31 décembre hors du 1er janvier`);
       verifier(l('MAITRISE').etrangers.f === 1 && l('DIRECTION') === null && l('HORS_CADRES') === null, `${quand} · classe 11 en agent de maîtrise, direction et hors cadres non calculés`);
       verifier(f.effectifs.sansClasse.length === 1 && /TROIS/.test(f.effectifs.sansClasse[0]), `${quand} · permanent sans classe nommé (${f.effectifs.sansClasse})`);
-      verifier(f.effectifs.totaux.totaux.total === 4 && f.effectifs.totaux.congolais.total === 3 && f.effectifs.totaux.etrangers.f === 1, `${quand} · totaux par nationalité (${JSON.stringify(f.effectifs.totaux)})`);
+      verifier(f.effectifs.totaux.totaux.total === 5 && f.effectifs.totaux.congolais.total === 4 && f.effectifs.totaux.etrangers.f === 1, `${quand} · totaux par nationalité (${JSON.stringify(f.effectifs.totaux)})`);
       verifier(f.nonPermanents.temporaires === 2 && f.nonPermanents.journaliers === 1, `${quand} · deux temporaires, un journalier (${JSON.stringify(f.nonPermanents)})`);
-      verifier(f.manquants.some((m) => /1 salarié\(s\) sans nationalité/.test(m)) && f.manquants.some((m) => /1 permanent\(s\) sans classe/.test(m)), `${quand} · manquants nommés`);
+      verifier(f.manquants.some((m) => /1 salarié\(s\) sans nationalité/.test(m)) && f.manquants.some((m) => /1 permanent\(s\) sans classe/.test(m)) && f.manquants.some((m) => /Plusieurs contrats en vigueur au 2026-01-01 pour NEUF/.test(m)), `${quand} · manquants nommés`);
       const id = (n) => f.identification.find((c) => c.numero === n).valeur;
       verifier(id(1) === 'Rejeu DASMO SARL' && id(11) === 'CD/KIN/RCCM/25-B-001' && id(16) === 'CNSS-E-77' && id(18) === null, `${quand} · identification recopiée, l'ONEM vide`);
     };
@@ -108,7 +113,7 @@ async function main() {
     controler(await lire(2026), 'après clôture');
 
     const d25 = await lire(2025);
-    verifier(d25.formulaire.permanents.annee === 2 && d25.formulaire.nonPermanents.temporaires === 0, `exercice 2025 · lu au 1er janvier 2025 (${JSON.stringify(d25.formulaire.permanents)})`);
+    verifier(d25.formulaire.permanents.annee === 3 && d25.formulaire.nonPermanents.temporaires === 0, `exercice 2025 · lu au 1er janvier 2025 (${JSON.stringify(d25.formulaire.permanents)})`);
     let s = await A.statut('GET', '/personnel/declaration-main-oeuvre/abc');
     verifier(s.statut === 400, `exercice illisible refusé (${s.statut})`);
 

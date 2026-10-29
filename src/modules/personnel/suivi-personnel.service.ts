@@ -548,7 +548,7 @@ export class SuiviPersonnelService {
       nationaux: sansNationalite > 0 ? null : somme((g) => avec(g) && g.sexe === sexe && estNationaliteCongolaise(g.nationalite)),
       etrangers: sansNationalite > 0 ? null : somme((g) => avec(g) && g.sexe === sexe && !estNationaliteCongolaise(g.nationalite)),
     });
-    const formulaire = await this.formulaireSituationMainOeuvre(tenantId, exercice, premierJanvier, enVigueurAu);
+    const formulaire = await this.formulaireSituationMainOeuvre(tenantId, exercice);
     return {
       exercice,
       annee: exercice - 1,
@@ -574,24 +574,15 @@ export class SuiviPersonnelService {
   }
 
   /**
-   * Le formulaire de l'ONEM rempli · un contrat par salarié en vigueur au
-   * 1er janvier (le plus récent s'il en a plusieurs), et les permanents
-   * (contrats à durée indéterminée) au 1er janvier des deux années d'avant.
-   * Au-delà de dix mille contrats, refus nommé plutôt qu'un formulaire amputé.
+   * Le formulaire de l'ONEM rempli · les contrats en vigueur à l'un des trois
+   * 1er janvier (E, E-1, E-2), lus par UNE requête et jugés par une seule
+   * règle (`contratsRetenusAu`). Au-delà de dix mille contrats, refus nommé
+   * plutôt qu'un formulaire amputé.
    */
-  private async formulaireSituationMainOeuvre(
-    tenantId: string,
-    exercice: number,
-    premierJanvier: Date,
-    enVigueurAu: (d: Date) => Prisma.ContratTravailWhereInput,
-  ) {
+  private async formulaireSituationMainOeuvre(tenantId: string, exercice: number) {
     const PLAFOND = 10_000;
     const dates = datesDeLExercice(exercice);
-    const permanentsAu = (d: string) =>
-      this.prisma.salarie.count({
-        where: { tenantId, contrats: { some: { ...enVigueurAu(new Date(`${d}T00:00:00.000Z`)), type: 'DUREE_INDETERMINEE' } } },
-      });
-    const [t, contrats, anneePrecedente, anneeAnterieure] = await Promise.all([
+    const [t, contrats] = await Promise.all([
       this.prisma.tenant.findFirst({
         where: { id: tenantId },
         select: {
@@ -600,31 +591,23 @@ export class SuiviPersonnelService {
         },
       }),
       this.prisma.contratTravail.findMany({
-        where: enVigueurAu(premierJanvier),
+        where: {
+          tenantId,
+          dateEntreeEnVigueur: { lte: new Date(`${dates.au}T00:00:00.000Z`) },
+          OR: [{ dateFin: null }, { dateFin: { gte: new Date(`${dates.anneeAnterieure}T00:00:00.000Z`) } }],
+        },
         select: {
-          salarieId: true, type: true, classeProfessionnelle: true, dateEntreeEnVigueur: true,
+          salarieId: true, type: true, classeProfessionnelle: true, dateEntreeEnVigueur: true, dateFin: true, dateFinPrevue: true,
           salarie: { select: { nom: true, postNom: true, prenoms: true, sexe: true, nationalite: true } },
         },
-        orderBy: [{ dateEntreeEnVigueur: 'desc' }, { id: 'desc' }],
+        orderBy: { id: 'asc' },
         take: PLAFOND + 1,
       }),
-      permanentsAu(dates.anneePrecedente),
-      permanentsAu(dates.anneeAnterieure),
     ]);
     if (!t) throw new NotFoundException('Dossier introuvable.');
     if (contrats.length > PLAFOND) {
-      throw new BadRequestException(`Plus de ${PLAFOND} contrats en vigueur au ${dates.au} · le formulaire ne se remplit pas en entier, il n'est pas servi.`);
+      throw new BadRequestException(`Plus de ${PLAFOND} contrats en vigueur entre le ${dates.anneeAnterieure} et le ${dates.au} · le formulaire ne se remplit pas en entier, il n'est pas servi.`);
     }
-    const vus = new Set<string>();
-    const auPremierJanvier = contrats
-      .filter((c) => (vus.has(c.salarieId) ? false : (vus.add(c.salarieId), true)))
-      .map((c) => ({
-        salarie: [c.salarie.nom, c.salarie.postNom, c.salarie.prenoms].filter(Boolean).join(' '),
-        sexe: c.salarie.sexe,
-        nationalite: c.salarie.nationalite,
-        type: c.type,
-        classeProfessionnelle: c.classeProfessionnelle,
-      }));
     const forme = t.referentiel === 'SYSCOHADA' ? t.formeJuridiqueSyscohada : t.formeJuridique;
     return formulaireSituationMainOeuvre({
       exercice,
@@ -633,8 +616,17 @@ export class SuiviPersonnelService {
         activite: t.activite, idNat: t.idNat, numeroAffiliationCnssEmployeur: t.numeroAffiliationCnssEmployeur,
         formeJuridique: forme ? (LIBELLE_FORME[forme] ?? null) : null,
       },
-      auPremierJanvier,
-      permanentsPrecedents: { anneePrecedente, anneeAnterieure },
+      contrats: contrats.map((c) => ({
+        salarieId: c.salarieId,
+        salarie: [c.salarie.nom, c.salarie.postNom, c.salarie.prenoms].filter(Boolean).join(' '),
+        sexe: c.salarie.sexe,
+        nationalite: c.salarie.nationalite,
+        type: c.type,
+        classeProfessionnelle: c.classeProfessionnelle,
+        dateEntreeEnVigueur: iso(c.dateEntreeEnVigueur),
+        dateFin: c.dateFin ? iso(c.dateFin) : null,
+        dateFinPrevue: c.dateFinPrevue ? iso(c.dateFinPrevue) : null,
+      })),
     });
   }
 

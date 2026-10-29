@@ -4,7 +4,8 @@ import {
   identificationDasmo,
   ligneDeLaClasse,
   LIGNES_DASMO,
-  type ContratAuPremierJanvier,
+  contratsRetenusAu,
+  type ContratLu,
   type IdentiteDasmo,
 } from './situation-main-oeuvre';
 
@@ -24,8 +25,12 @@ const identite: IdentiteDasmo = {
   numeroAffiliationCnssEmployeur: '123456',
 };
 
-const c = (p: Partial<ContratAuPremierJanvier>): ContratAuPremierJanvier => ({
+const c = (p: Partial<ContratLu>): ContratLu => ({
+  salarieId: p.salarie ?? 'X',
   salarie: 'X',
+  dateEntreeEnVigueur: '2020-01-01',
+  dateFin: null,
+  dateFinPrevue: null,
   sexe: 'MASCULIN',
   nationalite: 'Congolaise',
   type: 'DUREE_INDETERMINEE',
@@ -62,7 +67,7 @@ describe('déclaration annuelle de la situation de la main-d’œuvre (modèle a
     const f = formulaireSituationMainOeuvre({
       exercice: 2025,
       identite,
-      auPremierJanvier: [
+      contrats: [
         c({ salarie: 'A', classeProfessionnelle: 1 }),
         c({ salarie: 'B', classeProfessionnelle: 2, sexe: 'FEMININ' }),
         c({ salarie: 'C', classeProfessionnelle: 15, nationalite: 'Belge' }),
@@ -70,8 +75,9 @@ describe('déclaration annuelle de la situation de la main-d’œuvre (modèle a
         c({ salarie: 'E', type: 'DUREE_DETERMINEE', classeProfessionnelle: 1 }),
         c({ salarie: 'F', type: 'JOUR_LE_JOUR' }),
         c({ salarie: 'G', type: 'APPRENTISSAGE' }),
+        // Entré en 2024 · permanent au 1er janvier 2024 et 2025, pas en 2023.
+        c({ salarie: 'H', classeProfessionnelle: 1, dateEntreeEnVigueur: '2024-01-01', dateFin: '2024-12-31' }),
       ],
-      permanentsPrecedents: { anneePrecedente: 3, anneeAnterieure: 2 },
     });
     const ligne = (cle: string) => f.effectifs.lignes.find((l) => l.cle === cle)!.cellules;
     expect(ligne('I')).toEqual({ congolais: { h: 1, f: 1, total: 2 }, etrangers: { h: 0, f: 0, total: 0 }, totaux: { h: 1, f: 1, total: 2 } });
@@ -80,7 +86,7 @@ describe('déclaration annuelle de la situation de la main-d’œuvre (modèle a
     expect(ligne('HORS_CADRES')).toBeNull();
     expect(f.effectifs.totaux.totaux).toEqual({ h: 3, f: 1, total: 4 });
     expect(f.effectifs.sansClasse).toEqual(['D']);
-    expect(f.permanents).toEqual({ annee: 4, anneePrecedente: 3, anneeAnterieure: 2 });
+    expect(f.permanents).toEqual({ annee: 4, anneePrecedente: 5, anneeAnterieure: 4 });
     expect(f.nonPermanents).toMatchObject({ journaliers: 1, temporaires: 1, apprentis: 1 });
     expect(f.manquants.join(' ')).toContain('1 permanent(s) sans classe');
   });
@@ -89,8 +95,7 @@ describe('déclaration annuelle de la situation de la main-d’œuvre (modèle a
     const f = formulaireSituationMainOeuvre({
       exercice: 2025,
       identite,
-      auPremierJanvier: [c({ salarie: 'A' }), c({ salarie: 'B', nationalite: null })],
-      permanentsPrecedents: { anneePrecedente: 0, anneeAnterieure: 0 },
+      contrats: [c({ salarie: 'A' }), c({ salarie: 'B', nationalite: null })],
     });
     const i = f.effectifs.lignes.find((l) => l.cle === 'I')!.cellules!;
     expect(i.congolais).toBeNull();
@@ -100,10 +105,34 @@ describe('déclaration annuelle de la situation de la main-d’œuvre (modèle a
   });
 
   it('nomme les rubriques laissées au cabinet, masse salariale comprise', () => {
-    const f = formulaireSituationMainOeuvre({ exercice: 2025, identite, auPremierJanvier: [], permanentsPrecedents: { anneePrecedente: 0, anneeAnterieure: 0 } });
+    const f = formulaireSituationMainOeuvre({ exercice: 2025, identite, contrats: [] });
     expect(f.nonRemplies.join(' ')).toMatch(/Masse salariale.*34 à 44/);
     expect(f.nonRemplies.join(' ')).toMatch(/Besoins en main-d’œuvre \(47 à 61\)/);
     expect(f.fondement).toContain('087/02/2023 du 24 février 2023');
     expect(f.fondement).toContain('n° 10 du 15 mai 2023');
+  });
+
+  it('une règle pour les trois 1er janvier · le CDI en vigueur fait le permanent, même sous un CDD plus récent (relecture, bloquant)', () => {
+    const contrats = [
+      c({ salarieId: 'S', salarie: 'S', type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2020-03-01' }),
+      c({ salarieId: 'S', salarie: 'S', type: 'DUREE_DETERMINEE', dateEntreeEnVigueur: '2024-06-01', dateFinPrevue: '2026-05-31' }),
+    ];
+    const f = formulaireSituationMainOeuvre({ exercice: 2026, identite, contrats });
+    expect(f.permanents).toEqual({ annee: 1, anneePrecedente: 1, anneeAnterieure: 1 });
+    expect(f.nonPermanents.temporaires).toBe(0);
+    expect(f.manquants.join(' ')).toContain('Plusieurs contrats en vigueur au 2026-01-01 pour S');
+  });
+
+  it("nomme le CDD échu sans fin posée, et la réserve des requalifications", () => {
+    const r = contratsRetenusAu([c({ salarie: 'T', type: 'DUREE_DETERMINEE', dateFinPrevue: '2025-06-30' })], '2026-01-01');
+    expect(r.echusNonClos).toEqual(['T']);
+    const f = formulaireSituationMainOeuvre({ exercice: 2026, identite, contrats: [c({ salarie: 'T', type: 'DUREE_DETERMINEE', dateFinPrevue: '2025-06-30' })] });
+    expect(f.manquants.join(' ')).toContain('échu sans fin posée');
+    expect(f.reserveRequalifications).toMatch(/art\. 40 à 45/);
+  });
+
+  it("un champ enregistré vide n'est pas rempli", () => {
+    const champs = identificationDasmo({ ...identite, adresse: '  ' });
+    expect(champs.find((x) => x.numero === 3)!.valeur).toBeNull();
   });
 });

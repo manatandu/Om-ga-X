@@ -94,6 +94,46 @@ export interface ContratAuPremierJanvier {
   classeProfessionnelle: number | null;
 }
 
+/** Un contrat lu au registre, avec ce qu'il faut pour le dater. */
+export interface ContratLu extends ContratAuPremierJanvier {
+  salarieId: string;
+  dateEntreeEnVigueur: string;
+  dateFin: string | null;
+  dateFinPrevue: string | null;
+}
+
+/**
+ * LES CONTRATS RETENUS AU 1er JANVIER D, UNE RÈGLE POUR LES TROIS DATES
+ * (relecture « échecs silencieux », bloquant · l'année E gardait le contrat
+ * le plus récent quand E-1 et E-2 comptaient tout salarié qui avait un CDI,
+ * et un salarié passait de permanent à temporaire sans départ). Un salarié
+ * compte une fois · PERMANENT dès qu'un contrat à durée indéterminée est en
+ * vigueur à la date, sinon par son contrat le plus récent. Deux contrats en
+ * vigueur le même jour ne sont jamais tranchés en silence · le salarié est
+ * nommé. Un contrat à durée déterminée dont la fin prévue est passée sans
+ * fin posée au registre est compté comme le registre le porte, et nommé.
+ */
+export function contratsRetenusAu(contrats: ContratLu[], d: string) {
+  const enVigueur = contrats.filter((c) => c.dateEntreeEnVigueur <= d && (c.dateFin === null || c.dateFin >= d));
+  const parSalarie = new Map<string, ContratLu[]>();
+  for (const c of enVigueur) parSalarie.set(c.salarieId, [...(parSalarie.get(c.salarieId) ?? []), c]);
+  const retenus: ContratAuPremierJanvier[] = [];
+  const plusieurs: string[] = [];
+  for (const liste of parSalarie.values()) {
+    const tries = [...liste].sort((a, b) => b.dateEntreeEnVigueur.localeCompare(a.dateEntreeEnVigueur));
+    const choisi = tries.find((c) => c.type === 'DUREE_INDETERMINEE') ?? tries[0];
+    retenus.push({ salarie: choisi.salarie, sexe: choisi.sexe, nationalite: choisi.nationalite, type: choisi.type, classeProfessionnelle: choisi.classeProfessionnelle });
+    if (liste.length > 1) plusieurs.push(choisi.salarie);
+  }
+  const echusNonClos = enVigueur
+    .filter((c) => c.type === 'DUREE_DETERMINEE' && c.dateFin === null && c.dateFinPrevue !== null && c.dateFinPrevue < d)
+    .map((c) => c.salarie);
+  return { retenus, plusieurs, echusNonClos };
+}
+
+export const RESERVE_REQUALIFICATIONS =
+  "Un contrat à durée déterminée requalifié de plein droit en contrat à durée indéterminée (Code du travail, art. 40 à 45) est compté ici selon son type au registre · le contrôle des contrats du registre nomme ces requalifications, à reporter sur le formulaire.";
+
 export interface Cellules {
   congolais: { h: number; f: number; total: number } | null;
   etrangers: { h: number; f: number; total: number } | null;
@@ -137,7 +177,11 @@ export interface IdentiteDasmo {
 }
 
 /** Les rubriques 1 à 19 · celles que le dossier ne tient pas restent vides et nommées. */
-export function identificationDasmo(t: IdentiteDasmo): ChampDasmo[] {
+export function identificationDasmo(brut: IdentiteDasmo): ChampDasmo[] {
+  // Un champ enregistré vide n'est pas rempli · sans cela la case sortait
+  // blanche, ni en pointillés ni nommée parmi les manquants.
+  const v = (x: string | null) => ((x ?? '').trim() || null);
+  const t = Object.fromEntries(Object.entries(brut).map(([k, x]) => [k, v(x)])) as Record<keyof IdentiteDasmo, string | null>;
   return [
     { numero: 1, libelle: 'Nom ou raison sociale', valeur: t.nom },
     { numero: 2, libelle: 'Province', valeur: null },
@@ -172,19 +216,16 @@ export const NOTE_TEMPORAIRES =
   "Temporaires · tous les contrats à durée déterminée en vigueur. Le registre ne distingue ni les consultants (prestation intellectuelle) ni les saisonniers, que le formulaire compte à part · à reporter à la main.";
 
 /**
- * Le formulaire rempli pour l'exercice E. `auPremierJanvier` · les contrats
- * en vigueur au 1er janvier E, un par salarié (le plus récent s'il en a
- * plusieurs) ; `permanentsPrecedents` · le nombre de contrats à durée
- * indéterminée en vigueur au 1er janvier E-1 et E-2, lu de même.
+ * Le formulaire rempli pour l'exercice E. `contrats` · les contrats du
+ * registre en vigueur à l'un des trois 1er janvier (E, E-1, E-2), lus par
+ * `contratsRetenusAu`, une règle pour les trois dates.
  */
-export function formulaireSituationMainOeuvre(entree: {
-  exercice: number;
-  identite: IdentiteDasmo;
-  auPremierJanvier: ContratAuPremierJanvier[];
-  permanentsPrecedents: { anneePrecedente: number; anneeAnterieure: number };
-}) {
+export function formulaireSituationMainOeuvre(entree: { exercice: number; identite: IdentiteDasmo; contrats: ContratLu[] }) {
   const dates = datesDeLExercice(entree.exercice);
-  const permanents = entree.auPremierJanvier.filter((c) => c.type === 'DUREE_INDETERMINEE');
+  const au = contratsRetenusAu(entree.contrats, dates.au);
+  const auPremierJanvier = au.retenus;
+  const permanentsAu = (d: string) => contratsRetenusAu(entree.contrats, d).retenus.filter((c) => c.type === 'DUREE_INDETERMINEE').length;
+  const permanents = auPremierJanvier.filter((c) => c.type === 'DUREE_INDETERMINEE');
   const lignes = LIGNES_DASMO.map((l) => ({
     cle: l.cle,
     libelle: l.libelle,
@@ -194,7 +235,8 @@ export function formulaireSituationMainOeuvre(entree: {
   const sansClasse = permanents.filter((c) => ligneDeLaClasse(c.classeProfessionnelle) === null).map((c) => c.salarie);
   const totaux = compter(permanents);
   const identification = identificationDasmo(entree.identite);
-  const sansNationalite = entree.auPremierJanvier.filter((c) => !(c.nationalite ?? '').trim()).length;
+  const sansNationalite = auPremierJanvier.filter((c) => !(c.nationalite ?? '').trim()).length;
+  const temporaires = auPremierJanvier.filter((c) => c.type === 'DUREE_DETERMINEE').length;
   return {
     exercice: entree.exercice,
     ...dates,
@@ -202,20 +244,23 @@ export function formulaireSituationMainOeuvre(entree: {
     effectifs: { lignes, totaux, sansClasse },
     permanents: {
       annee: permanents.length,
-      anneePrecedente: entree.permanentsPrecedents.anneePrecedente,
-      anneeAnterieure: entree.permanentsPrecedents.anneeAnterieure,
+      anneePrecedente: permanentsAu(dates.anneePrecedente),
+      anneeAnterieure: permanentsAu(dates.anneeAnterieure),
     },
     nonPermanents: {
-      journaliers: entree.auPremierJanvier.filter((c) => c.type === 'JOUR_LE_JOUR').length,
-      temporaires: entree.auPremierJanvier.filter((c) => c.type === 'DUREE_DETERMINEE').length,
-      apprentis: entree.auPremierJanvier.filter((c) => c.type === 'APPRENTISSAGE').length,
+      journaliers: auPremierJanvier.filter((c) => c.type === 'JOUR_LE_JOUR').length,
+      temporaires,
+      apprentis: auPremierJanvier.filter((c) => c.type === 'APPRENTISSAGE').length,
       noteTemporaires: NOTE_TEMPORAIRES,
     },
     manquants: [
       ...identification.filter((c) => c.valeur === null).map((c) => `${c.numero}. ${c.libelle}`),
       ...(sansClasse.length ? [`${sansClasse.length} permanent(s) sans classe du décret n° 25/22 au contrat · à ranger à la main (cadre de direction, hors cadres, ou classe à renseigner)`] : []),
       ...(sansNationalite ? [`${sansNationalite} salarié(s) sans nationalité au registre · la répartition congolaise et étrangère n'est pas calculée`] : []),
+      ...(au.plusieurs.length ? [`Plusieurs contrats en vigueur au ${dates.au} pour ${au.plusieurs.join(', ')} · compté(s) une fois, permanent(s) dès qu'un contrat à durée indéterminée est en vigueur, à vérifier au registre`] : []),
+      ...(au.echusNonClos.length ? [`Contrat à durée déterminée échu sans fin posée au registre · ${au.echusNonClos.join(', ')} · compté parmi les temporaires, fin à poser au registre ou renouvellement à vérifier`] : []),
     ],
+    reserveRequalifications: temporaires > 0 ? RESERVE_REQUALIFICATIONS : null,
     nonRemplies: RUBRIQUES_NON_REMPLIES,
     modele: MODELE_DASMO,
     fondement: FONDEMENT_DASMO,

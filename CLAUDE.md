@@ -289,7 +289,13 @@ remplis depuis le registre, délai de quinze jours de l'art. 217 (loi n° 16/010
 qui prime sur les quarante-huit heures de l'arrêté ; services et exemplaires de
 l'arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, qui
 remplace sur ces points les arrêtés de 2010 (son modèle annexé, non lu, reste au
-suivi).
+suivi) ; et le même jour la DÉCLARATION ANNUELLE DE LA SITUATION DE LA
+MAIN-D'ŒUVRE (« Oui »), le modèle de l'ONEM « vu pour être annexé » à cet
+arrêté rempli depuis le registre (`personnel/situation-main-oeuvre.ts`) ·
+l'exercice E lu au 1er janvier E et déposé au plus tard le 31 janvier E
+(art. 3), un salarié compté une fois, permanent dès qu'un contrat à durée
+indéterminée est en vigueur, la même règle aux trois 1er janvier du
+formulaire ; ce que le registre ne tient pas est nommé, jamais deviné.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

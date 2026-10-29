@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { Aide } from '../chrome/Aide';
 import { libelleListeBornee } from '../../lib/liste-bornee-personnel';
 import { montant as fc } from '../../lib/montants';
 import { lireNombre } from '../../lib/conditions-bancaires-saisie';
+import { CLASSE_FORMULAIRE_IMPRIME, imprimerLeFormulaire } from '../../lib/impression-formulaire';
 
 /**
  * LIGNE MICROFINA-M3, LOT 2 · QUATRE ONGLETS DE LA FENÊTRE PERSONNEL ·
@@ -38,13 +39,27 @@ function coutSaisi(v: string, objet: string): { valeur?: number } | { refus: str
 function useLecture<T>(lire: (() => Promise<T>) | null, cle: string) {
   const [donnees, setDonnees] = useState<T | null>(null);
   const [erreur, setErreur] = useState('');
+  // Une lecture par jeton · la réponse d'une clé dépassée est jetée, et une
+  // clé nouvelle vide d'abord ce que l'ancienne avait servi (relecture DASMO,
+  // le formulaire de 2025 restait affiché, et imprimable, sous « 2026 »).
+  const jeton = useRef(0);
+  const derniereCle = useRef<string | null>(null);
   const relire = useCallback(() => {
+    const n = ++jeton.current;
+    if (derniereCle.current !== cle) {
+      derniereCle.current = cle;
+      setDonnees(null);
+    }
     if (!lire) return;
     setErreur('');
-    lire().then(setDonnees, (e: ApiError) => {
-      setDonnees(null);
-      setErreur(e.message);
-    });
+    lire().then(
+      (d) => { if (n === jeton.current) setDonnees(d); },
+      (e: ApiError) => {
+        if (n !== jeton.current) return;
+        setDonnees(null);
+        setErreur(e.message);
+      },
+    );
     // `lire` change à chaque rendu · la clé seule dit quand relire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cle]);
@@ -556,6 +571,7 @@ type FormulaireDasmo = {
   permanents: { annee: number; anneePrecedente: number; anneeAnterieure: number };
   nonPermanents: { journaliers: number; temporaires: number; apprentis: number; noteTemporaires: string };
   manquants: string[];
+  reserveRequalifications: string | null;
   nonRemplies: string[];
   modele: string;
   fondement: string;
@@ -580,14 +596,21 @@ type Declaration = {
   formulaire: FormulaireDasmo;
 };
 
-const vide = <span className="text-text-dim">……</span>;
+/** Une case laissée au cabinet · des pointillés, à remplir à la main sur le papier, dite aux lecteurs d'écran. */
+function Vide() {
+  return (
+    <span className="text-text-dim" aria-label="non renseigné">
+      ……
+    </span>
+  );
+}
 
 /** Une ligne du tableau des effectifs · une cellule non calculée reste en pointillés, jamais à zéro. */
 function CellulesDasmo({ c }: { c: Cellules | null }) {
   const trois = (v: { h: number; f: number; total: number } | null | undefined) =>
     [v?.h, v?.f, v?.total].map((x, i) => (
       <td key={i} className="px-1.5 py-0.5 text-right">
-        {x === undefined || x === null ? vide : x}
+        {x === undefined || x === null ? <Vide /> : x}
       </td>
     ));
   return (
@@ -608,42 +631,55 @@ function CellulesDasmo({ c }: { c: Cellules | null }) {
  */
 export function OngletDeclarationMainOeuvre() {
   const [exercice, setExercice] = useState(String(new Date().getFullYear()));
+  const lisible = /^\d{4}$/.test(exercice);
   const { donnees, erreur } = useLecture(
-    /^\d{4}$/.test(exercice) ? () => api.get<Declaration>(`/personnel/declaration-main-oeuvre/${exercice}`) : null,
+    lisible ? () => api.get<Declaration>(`/personnel/declaration-main-oeuvre/${exercice}`) : null,
     `declaration-${exercice}`,
   );
   const f = donnees?.formulaire;
+  const aCompleter = f ? [...f.manquants, ...f.nonRemplies] : [];
+  const td = 'px-2 py-0.5';
+  const thLigne = 'px-2 py-0.5 text-left font-normal';
   return (
     <div className="max-w-[1000px] text-[11.5px] space-y-3">
       <div className="ecran-seul space-y-2">
         <Erreur m={erreur} />
         <div className="font-semibold flex items-center gap-1.5">
-          Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice
-          <input aria-label="Exercice du formulaire" value={exercice} onChange={(e) => setExercice(e.target.value)} className={`${champ} w-[60px] font-normal`} />
+          Déclaration annuelle de la situation de la main-d&apos;œuvre
           <Aide
             titre="Déclaration annuelle de la situation de la main-d'œuvre"
-            texte="Toute entreprise dépose chaque année, au plus tard le 31 janvier, la déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, sur le formulaire de l'ONEM annexé à l'arrêté de 2023, en quatre exemplaires. L'exercice est l'année du 1er janvier, comme sur le formulaire. OmegaX le remplit pour ce que le registre porte · l'identification, l'effectif permanent (contrats à durée indéterminée) par catégorie de la grille du décret n° 25/22, nationalité et sexe, et les non-permanents. Le reste se remplit à la main, et il est nommé."
-            source="Code du travail, art. 218 et 219 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 1er à 5, et son modèle annexé"
+            texte="Toute entreprise dépose chaque année, au plus tard le 31 janvier, la déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, sur le formulaire de l'ONEM annexé à l'arrêté de 2023, en quatre exemplaires. L'exercice est l'année du 1er janvier, comme sur le formulaire. OmegaX le remplit pour ce que le registre porte · l'identification, l'effectif permanent (un salarié compte une fois, permanent dès qu'un contrat à durée indéterminée est en vigueur) par catégorie de la grille du décret n° 25/22, nationalité et sexe, et les non-permanents. Les rubriques III à V (masse salariale, durée du travail, besoins en main-d'œuvre et en formation) se remplissent à la main, et tout ce qui manque est nommé."
+            source={f?.fondement ?? "Code du travail, art. 218 et 219 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 1er à 5, et son modèle annexé"}
+          />
+          <label htmlFor="dasmo-exercice" className="font-normal ml-2">
+            Exercice
+          </label>
+          <input
+            id="dasmo-exercice"
+            value={exercice}
+            inputMode="numeric"
+            maxLength={4}
+            onChange={(e) => setExercice(e.target.value)}
+            className={`${champ} w-[60px] font-normal`}
           />
           {f && (
-            <button type="button" onClick={() => window.print()} className="bg-sel text-white font-semibold px-3 py-1 ml-auto">
+            <button type="button" onClick={imprimerLeFormulaire} className="bg-sel text-white font-semibold px-3 py-1 ml-auto">
               Imprimer le formulaire
             </button>
           )}
         </div>
-        {donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}
+        {!lisible && <div className="text-warning">Exercice illisible · quatre chiffres (AAAA).</div>}
+        {lisible && donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}
         {donnees && (
           <>
             <div className="text-warning">{donnees.reserve}</div>
             {donnees.reserveNationalite && <div className="text-warning">{donnees.reserveNationalite}</div>}
-            {f && f.manquants.length > 0 && (
+            {f?.reserveRequalifications && <div className="text-warning">{f.reserveRequalifications}</div>}
+            {aCompleter.length > 0 && (
               <div>
                 <div className="font-semibold">À compléter avant le dépôt</div>
                 <ul className="list-disc pl-5">
-                  {f.manquants.map((m) => (
-                    <li key={m}>{m}</li>
-                  ))}
-                  {f.nonRemplies.map((m) => (
+                  {aCompleter.map((m) => (
                     <li key={m}>{m}</li>
                   ))}
                 </ul>
@@ -662,42 +698,55 @@ export function OngletDeclarationMainOeuvre() {
               )}
             </div>
             <div>
-              Situation au {donnees.au}, à déposer au plus tard le {donnees.dateLimite}.
+              Situation au {donnees.au} · dépôt au plus tard le {donnees.dateLimite} · destinataires · {donnees.destinataires}
             </div>
-            <div className="text-text-dim">À adresser {donnees.destinataires}</div>
           </>
         )}
       </div>
       {f && (
-        <div className="border border-border px-4 py-3 space-y-2" aria-label="Déclaration annuelle de la situation de la main-d'œuvre">
-          <div className="font-semibold">Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice {f.exercice}</div>
-          <div className="text-text-dim">{f.fondement}</div>
-          <div className="font-semibold">I. Identification de l&apos;entreprise</div>
-          <table className="w-full eviter-coupure">
+        <section className={`${CLASSE_FORMULAIRE_IMPRIME} border border-border px-4 py-3 space-y-2`} aria-labelledby="dasmo-titre">
+          <div id="dasmo-titre" className="font-semibold">
+            Déclaration annuelle de la situation de la main-d&apos;œuvre · exercice {f.exercice}
+          </div>
+          <div className="impression-seul text-text-dim">{f.fondement}</div>
+          <div id="dasmo-identification" className="font-semibold">
+            I. Identification de l&apos;entreprise
+          </div>
+          <table className="w-full eviter-coupure" aria-labelledby="dasmo-identification">
             <tbody>
               {f.identification.map((c) => (
                 <tr key={c.numero}>
-                  <td className="px-2 py-0.5 w-[40px] text-right">{c.numero}</td>
-                  <td className="px-2 py-0.5 w-[240px]">{c.libelle}</td>
-                  <td className="px-2 py-0.5">{c.valeur ?? <span className="text-text-dim">……………………</span>}</td>
+                  <td className={`${td} w-[40px] text-right`}>{c.numero}</td>
+                  <th scope="row" className={`${thLigne} w-[240px]`}>
+                    {c.libelle}
+                  </th>
+                  <td className={td}>{c.valeur ?? <Vide />}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="font-semibold">II. Effectif des travailleurs et répartition du personnel · personnel permanent au {f.au}</div>
-          <table className="w-full eviter-coupure" aria-label="Personnel permanent par catégorie">
+          <div id="dasmo-effectifs" className="font-semibold">
+            II. Effectif des travailleurs et répartition du personnel · personnel permanent au {f.au}
+          </div>
+          <table className="w-full eviter-coupure" aria-labelledby="dasmo-effectifs">
             <thead>
               <tr>
-                <th rowSpan={2} className="text-left px-1.5 py-0.5">
+                <th scope="col" rowSpan={2} className="text-left px-1.5 py-0.5">
                   Catégories professionnelles
                 </th>
-                <th colSpan={3} className="px-1.5 py-0.5">Congolaise</th>
-                <th colSpan={3} className="px-1.5 py-0.5">Étrangère</th>
-                <th colSpan={3} className="px-1.5 py-0.5">Totaux</th>
+                <th scope="colgroup" colSpan={3} className="px-1.5 py-0.5">
+                  Congolaise
+                </th>
+                <th scope="colgroup" colSpan={3} className="px-1.5 py-0.5">
+                  Étrangère
+                </th>
+                <th scope="colgroup" colSpan={3} className="px-1.5 py-0.5">
+                  Totaux
+                </th>
               </tr>
               <tr>
                 {['H', 'F', 'Total', 'H', 'F', 'Total', 'H', 'F', 'Total'].map((x, i) => (
-                  <th key={i} className="text-right px-1.5 py-0.5">
+                  <th key={i} scope="col" className="text-right px-1.5 py-0.5">
                     {x}
                   </th>
                 ))}
@@ -706,54 +755,71 @@ export function OngletDeclarationMainOeuvre() {
             <tbody>
               {f.effectifs.lignes.map((l) => (
                 <tr key={l.cle}>
-                  <td className="px-1.5 py-0.5">{l.libelle}</td>
+                  <th scope="row" className="px-1.5 py-0.5 text-left font-normal">
+                    {l.libelle}
+                  </th>
                   <CellulesDasmo c={l.cellules} />
                 </tr>
               ))}
               <tr className="font-semibold">
-                <td className="px-1.5 py-0.5">Totaux</td>
+                <th scope="row" className="px-1.5 py-0.5 text-left">
+                  Totaux
+                </th>
                 <CellulesDasmo c={f.effectifs.totaux} />
               </tr>
             </tbody>
           </table>
+          {f.effectifs.sansClasse.length > 0 && (
+            // Sur le papier aussi · sans elle, la somme des lignes diffère du total sans un mot.
+            <div>Permanents comptés au total, non rangés par catégorie · {f.effectifs.sansClasse.length}</div>
+          )}
           <table className="w-full eviter-coupure" aria-label="Permanents et non-permanents">
             <tbody>
+              {(
+                [
+                  [`Personnel permanent au ${f.au}`, f.permanents.annee],
+                  [`Personnel permanent au ${f.anneePrecedente}`, f.permanents.anneePrecedente],
+                  [`Personnel permanent au ${f.anneeAnterieure}`, f.permanents.anneeAnterieure],
+                  [`Journaliers en service au ${f.au}`, f.nonPermanents.journaliers],
+                ] as const
+              ).map(([libelle, n]) => (
+                <tr key={libelle}>
+                  <th scope="row" className={thLigne}>
+                    {libelle}
+                  </th>
+                  <td className={`${td} text-right`}>{n}</td>
+                </tr>
+              ))}
               <tr>
-                <td className="px-2 py-0.5">Personnel permanent au {f.au}</td>
-                <td className="px-2 py-0.5 text-right">{f.permanents.annee}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-0.5">Personnel permanent au {f.anneePrecedente}</td>
-                <td className="px-2 py-0.5 text-right">{f.permanents.anneePrecedente}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-0.5">Personnel permanent au {f.anneeAnterieure}</td>
-                <td className="px-2 py-0.5 text-right">{f.permanents.anneeAnterieure}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-0.5">Journaliers en service au {f.au}</td>
-                <td className="px-2 py-0.5 text-right">{f.nonPermanents.journaliers}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-0.5">
+                <th scope="row" className={thLigne}>
                   Temporaires en service au {f.au} <Aide titre="Temporaires" texte={f.nonPermanents.noteTemporaires} source={f.modele} />
+                </th>
+                <td className={`${td} text-right`}>{f.nonPermanents.temporaires}</td>
+              </tr>
+              <tr>
+                <th scope="row" className={thLigne}>
+                  Consultants · saisonniers
+                </th>
+                <td className={`${td} text-right`}>
+                  <Vide />
                 </td>
-                <td className="px-2 py-0.5 text-right">{f.nonPermanents.temporaires}</td>
               </tr>
               <tr>
-                <td className="px-2 py-0.5">Consultants · saisonniers</td>
-                <td className="px-2 py-0.5 text-right">{vide}</td>
-              </tr>
-              <tr>
-                <td className="px-2 py-0.5">Effectif maximum de chaque catégorie de non-permanents, et sa période</td>
-                <td className="px-2 py-0.5 text-right">{vide}</td>
+                <th scope="row" className={thLigne}>
+                  Effectif maximum de chaque catégorie de non-permanents, et sa période
+                </th>
+                <td className={`${td} text-right`}>
+                  <Vide />
+                </td>
               </tr>
             </tbody>
           </table>
           <div className="font-semibold">III à V. Masse salariale, durée du travail, besoins en main-d&apos;œuvre et en formation</div>
-          <div className="text-text-dim">À remplir sur le formulaire de l&apos;ONEM.</div>
+          <div>
+            <Vide />
+          </div>
           <div>Fait à ……………………, le …………………… · signature du déclarant</div>
-        </div>
+        </section>
       )}
     </div>
   );
