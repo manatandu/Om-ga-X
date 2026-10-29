@@ -105,8 +105,8 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -245,11 +245,11 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Le Node de la production (Dockerfile) · `prisma migrate deploy`
       # s'exécute ici contre la base réelle (F194).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -267,11 +267,11 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.API_DATABASE_URL }}
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
       # PLAFOND D'INSTANCES · `--max-instances 4` avec `--concurrency 80`
       # (la valeur par défaut de Cloud Run, posée ICI pour qu'elle cesse

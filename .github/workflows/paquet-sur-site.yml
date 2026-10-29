@@ -29,7 +29,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Exiger la clé publique de l'éditeur
         run: |
@@ -38,7 +38,7 @@ jobs:
             throw "La clé publique de l'éditeur n'est pas posée dans cle-publique-editeur.ts · un paquet sans elle ne peut vérifier aucune licence (voir docs/installation-sur-site.md)."
           }
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -123,7 +123,7 @@ jobs:
           & $iscc installation/windows/omegax.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC a échoué ($LASTEXITCODE)" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: OmegaX-installation-${{ steps.version.outputs.date }}-${{ steps.version.outputs.commit }}
           path: installation/windows/sortie/*.exe
