@@ -24,7 +24,10 @@ type Sdk = SdkSentry & {
   flush(delai: number): Promise<boolean>;
   close(delai: number): Promise<boolean>;
 };
-const SECRETS = ['5000', 'dupont', 'Dupont', 'kabila', '41.243.1.7', 'loyer', '__session', 'jeton-csrf'];
+// Un montant de dix chiffres · « 5000 » se trouvait parfois tel quel dans un
+// horodatage décimal ou une pile du SDK, et le test tombait sans fuite
+// (portillon du 2026-10-29).
+const SECRETS = ['7319428461', 'dupont', 'Dupont', 'kabila', '41.243.1.7', 'loyer', '__session', 'jeton-csrf'];
 
 describe('le vrai @sentry/node · ce qui sort dans l’enveloppe', () => {
   const envoyes: string[] = [];
@@ -58,11 +61,11 @@ describe('le vrai @sentry/node · ce qui sort dans l’enveloppe', () => {
 
   it('ni utilisateur, ni IP, ni données libres, ni console, ni texte de la cause', async () => {
     sdk.setUser({ email: 'dupont@exemple.cd', ip_address: '41.243.1.7', username: 'Dupont' });
-    sdk.setExtra('corps', { libelle: 'loyer janvier', montant: 5000 });
+    sdk.setExtra('corps', { libelle: 'loyer janvier', montant: 7319428461 });
     sdk.setTag('nom', 'kabila');
     sdk.addBreadcrumb({ category: 'console', message: 'compte loyer janvier du tiers dupont kabila' });
-    sdk.addBreadcrumb({ category: 'http', data: { method: 'GET', url: '/ecritures/recherche?montant=5000', status_code: 500 } });
-    const cause = new Error('compte loyer janvier du tiers dupont kabila 5000');
+    sdk.addBreadcrumb({ category: 'http', data: { method: 'GET', url: '/ecritures/recherche?montant=7319428461', status_code: 500 } });
+    const cause = new Error('compte loyer janvier du tiers dupont kabila 7319428461');
     const erreur = Object.assign(new Error('échec pour dupont'), { cause });
     signalerPanneServeur(erreur, { route: '/ecritures/recherche', statut: '500', methode: 'GET' });
     await sdk.flush(2000);
