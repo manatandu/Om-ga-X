@@ -17,10 +17,11 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 | 56 | Grand livre avec ou sans les écritures lettrées (vue de travail de l'écran) | `client/src/lib/grand-livre-sans-lettrees.ts`, onglet Grand livre de `JournalPage` |
 | 64 | Révision par écriture · marquer revue (auteur, date, commentaire), retirer, filtrer revues ou à revoir | `RevueEcriture` (`revues_ecritures`), `comptabilite/revue-ecritures.service.ts`, `POST /revues-ecritures`, `DELETE /revues-ecritures/:ecritureId`, `GET /ecritures?revue=oui\|non` (et son export), fenêtre Journal |
 | 33 | Recouvrement · exclure UNE ligne de la relance (motif), décaler son échéance (motif) ; pénalités et frais écartés | `DecisionRelanceLigne` (`decisions_relance_lignes`), `relances/decision-relance-ligne.ts`, `PATCH /relances/lignes/:ligneId/exclusion` et `/echeance`, fenêtre Rappel et relevé |
+| 34 | Alertes sur les échéances proches des tiers au tableau de bord · à encaisser, à payer dans trente jours, déjà échu | `comptabilite/echeances-tiers.service.ts`, `GET /echeances-tiers`, panneau « Échéances des tiers » de `DashboardPage` |
 
 ## Reste
 
-34, 35.
+35.
 
 ## Décisions, avec leur fondement
 
@@ -39,6 +40,7 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 - **56 · une vue de travail, jamais le livre** · le grand livre porte tous les mouvements de l'exercice (AUDCIF art. 19) ; la case retire les seules lignes lettrées (groupe soldé), les dit avec leurs montants sous chaque compte, garde les totaux du livre entier et le vrai solde progressif. L'export Excel reste le livre entier · aucune version filtrée d'un livre obligatoire ne sort en fichier. Devise et regroupement par mois écartés au tri.
 - **64 · une marque à côté de l'écriture validée, jamais en elle** · l'écriture validée est irréversible (AUDCIF art. 22, 2°) et la marque ne touche ni origine, ni contenu, ni imputation (art. 22, 1°) ; le brouillard est ÉCARTÉ et nommé, jamais revu (sa pièce change encore) ; la première revue ne se réécrit pas ; une création et un retrait unitaires, au journal d'audit ; revoir est le geste du comptable (`@ReserveAuComptable`, fonction REVISION). Un journal filtré sur la revue est une RECHERCHE · il ne s'enregistre pas comme imprimé (`estUneRecherche`).
 - **33 · la décision vit à côté de la ligne, seule la relance la lit** · la ligne validée ne se réécrit pas (AUDCIF art. 22, 2°) ; EXCLURE porte sur le courrier, jamais sur la créance (la ligne se montre, dite exclue, hors du dû, du retard et de la lettre) ; DÉCALER recule le terme accordé au débiteur, « ce qui n'est dû qu'à terme ne peut être exigé avant l'échéance du terme » (Code civil, Livre III, art. 84), jamais ne l'avance, le terme étant présumé en faveur du débiteur (art. 85). Balance âgée, notes et échéancier gardent l'échéance de la pièce (limite écrite). Sur une facture VALIDÉE, non lettrée, d'un 40 ou d'un 41 ; motif exigé, auteur et date posés par le serveur ; la décision SUIT LE REPORT (pièce d'origine retrouvée par `originesDesReports`). Pénalités de retard et frais d'impayés écartés au tri (aucun taux au corpus).
+- **34 · deux alertes, aucune affirmation** · factures ouvertes des 40 et 41 au sens normal (`estEcheanceAReglerSur`), une facture réglée en partie pour son reste (`poidsDesLignesLues`, la lecture de l'échéancier) ; à échoir dans trente jours (convention d'OmegaX, comme le panneau fiscal) et déjà échu, comptés sur tout le périmètre, la liste bornée aux vingt plus proches et dite ; une ligne sans échéance n'alerte pas, elle est comptée à part ; jour de Kinshasa pris par le serveur ; jamais « à jour ».
 
 ## Commandes de vérification
 
