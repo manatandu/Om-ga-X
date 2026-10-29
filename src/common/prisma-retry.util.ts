@@ -61,6 +61,25 @@ export function estConflitDeSerialisation(err: unknown): boolean {
   return false;
 }
 
+/**
+ * LE DOUBLON DU CODE D'UN LETTRAGE SUR SON COMPTE (`@@unique([compteId, code])`)
+ * EST UN CONFLIT, JAMAIS UNE DONNÉE FAUSSE (relecture de la ligne
+ * lettrage-verrou, 2026-10-29, M1). Une transaction qui lit la lettre suivante
+ * sur une image ancienne (clôture, module qui lettre dans sa propre
+ * transaction) heurte le code qu'un lettrage, validé entre-temps sous le
+ * verrou du dossier, vient de poser · la reprise relit le code suivant. Aucune
+ * autre unicité de la table (le groupe reconduit, `lettrageReconduitId`), ni
+ * `[compteId, code]` d'une autre table · un doublon de donnée ne se déguise pas
+ * en concurrence.
+ */
+export function estDoublonDeCodeDeLettrage(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const meta = err.meta as { modelName?: unknown; target?: unknown } | undefined;
+  const cible = meta?.target;
+  if (Array.isArray(cible)) return meta?.modelName === 'Lettrage' && cible.length === 2 && cible.includes('compteId') && cible.includes('code');
+  return cible === 'lettrages_compteId_code_key';
+}
+
 function attendre(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -76,8 +95,10 @@ function attendre(ms: number) {
  * cette garantie, deux requêtes concurrentes peuvent lire le même état et
  * produire un doublon silencieux. Introduit après un bug réel de ce type
  * trouvé dans la numérotation des pièces de journal (voir
- * EcritureService.creer) · le lettrage a exactement le même risque avec le
- * calcul de la prochaine lettre, d'où ce partage.
+ * EcritureService.creer). Le lettrage, qui a le même risque avec la prochaine
+ * lettre, l'a quitté le 2026-10-29 pour le verrou du dossier
+ * (`lettrage/transaction-sous-verrou-du-dossier.ts`) · ses conflits venaient
+ * des pages d'index partagées par tous les cabinets.
  *
  * `messageConflit` est utilisé pour le message renvoyé à l'utilisateur si
  * toutes les tentatives échouent (jamais un 500 brut).
@@ -119,7 +140,7 @@ export async function avecRetrySerialisable<T>(
         ...(options.operations === undefined ? {} : { maxWait: 10_000, timeout: delaiSelonVolume(options.operations) }),
       });
     } catch (err) {
-      const estConflit = estConflitDeSerialisation(err);
+      const estConflit = estConflitDeSerialisation(err) || estDoublonDeCodeDeLettrage(err);
       if (!estConflit) throw err;
       if (tentative === TENTATIVES_MAX) throw new ConflictException({ message: messageConflit, code: CODE_CONFLIT_SERIALISATION });
       await attendre(delaiDeReprise(tentative));

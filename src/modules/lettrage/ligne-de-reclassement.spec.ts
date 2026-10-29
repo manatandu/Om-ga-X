@@ -99,6 +99,8 @@ function monter(lignes: Ligne[]) {
     });
   const prisma: any = {
     $transaction: (fn: (tx: unknown) => unknown) => fn(prisma),
+    // Le verrou du dossier que le lettrage prend en premier (transaction-sous-verrou-du-dossier.ts).
+    $executeRaw: jest.fn(async () => 0),
     // Un seul exercice, ouvert (ligne lettrage-cloture) · aucun lettrage partiel d'un
     // exercice clôturé n'est à reconduire.
     exercice: { findMany: jest.fn().mockResolvedValue([{ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' }]) },

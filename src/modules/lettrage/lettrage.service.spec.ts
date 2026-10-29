@@ -5,7 +5,7 @@ import { PrismaService } from '../../common/prisma.service';
 
 /**
  * Doublure Prisma en mémoire · le lettrage écrit dans une transaction
- * sérialisable, et son comportement (statut du groupe, pose de la lettre,
+ * sous le verrou du dossier, et son comportement (statut du groupe, pose de la lettre,
  * écart de change) ne se voit qu'après écriture. Une doublure qui ne ferait
  * que renvoyer des listes ne testerait rien.
  */
@@ -115,6 +115,8 @@ function service(
 
   const prisma = {
     $transaction: <R>(fn: (tx: unknown) => Promise<R>) => fn(prisma),
+    // Le verrou du dossier que le lettrage prend en premier (transaction-sous-verrou-du-dossier.ts).
+    $executeRaw: jest.fn(async () => 0),
     // Un seul exercice, ouvert (ligne lettrage-cloture) · aucun lettrage partiel d'un
     // exercice clôturé n'est à reconduire.
     exercice: { findMany: jest.fn().mockResolvedValue([{ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' }]) },

@@ -2857,6 +2857,26 @@ réécrite (`dejaEmises`) ; une relance du jour sans lettre ou à lettre abandon
 ne bloque rien. Jour tranché par `jourDeKinshasa`. `mettreEnFile` reste la voie
 des messages isolés.
 
+**Le lettrage se sérialise par DOSSIER, jamais par prédicat (ligne
+lettrage-verrou, 2026-10-29, test de charge § 4.4).** En SERIALIZABLE, les
+verrous de lecture par page d'index faisaient refuser le lettrage d'un cabinet
+parce qu'un AUTRE travaillait (banc k6 · 24 refus, 6 lettrages incomplets ;
+rejeu local · 43 refus avant, 0 après). Les six gestes de `lettrage.service.ts`
+passent par `transactionSousVerrouDuDossier` · READ COMMITTED, attente bornée
+(`lock_timeout`, 409 `DOSSIER_OCCUPE`), le verrou consultatif du dossier pris
+EN PREMIER, celui que l'audit prend à chaque écriture auditée (lettrage,
+clôture, exercice, créance douteuse). TROIS RÈGLES À NE PAS DÉFAIRE. (1) Le
+lettrage RÉÉCRIT, sans en changer une valeur, la ligne de chaque exercice
+OUVERT du dossier (`marquerLesExercicesOuverts`) · PostgreSQL ne détecte les
+conflits qu'entre transactions sérialisables, et la clôture restée
+sérialisable reportait en N+1, comme ouvertes, des lignes lettrées pendant sa
+lecture ; elle tombe désormais en 40001 et se rejoue
+(`scripts/rejouer-cloture-contre-lettrage.cjs`). (2) Le doublon du CODE d'un
+lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
+`avecRetrySerialisable` · aucune autre unicité. (3) Une ligne ne se lettre que
+LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
+`scripts/rejouer-lettrage-concurrent.cjs`.
+
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit
 final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par
 `estTenueParUnLettrage` (`lettrage/ligne-lettree.ts`), qui lit aussi

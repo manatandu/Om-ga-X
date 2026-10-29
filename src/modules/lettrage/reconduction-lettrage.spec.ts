@@ -629,6 +629,8 @@ describe('groupesNonReconduits · ce qui reste à relettrer d’un dossier clôt
     const prisma: Record<string, unknown> = {
       ...lecture,
       $transaction: (fn: (tx: unknown) => unknown) => fn(prisma),
+      // Le verrou du dossier que le lettrage prend en premier (transaction-sous-verrou-du-dossier.ts).
+      $executeRaw: jest.fn(async () => 0),
       compte: { findFirst: jest.fn(async ({ where }: { where: Rangee }) => (where.id === '411' && where.tenantId === 't' ? { ...compte, tenantId: 't', lettrable: true } : null)) },
       lettrage: {
         ...lecture.lettrage,

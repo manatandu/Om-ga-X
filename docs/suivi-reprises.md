@@ -773,3 +773,13 @@ aucun accès aux données d'un dossier, décision du 2026-10-09).
   ts-node déclaré ; les mises à jour MAJEURES (Vite 8, React Router 7,
   TypeScript 7, Tailwind 4, NestJS 12, actions GitHub) restent ouvertes, une
   ligne chacune.
+
+## Relevés de la ligne lettrage-verrou (2026-10-29), antérieurs au changement
+
+Relevés par les deux relectures indépendantes du passage du lettrage sous le verrou du dossier ; aucun n'est introduit par ce changement, aucun n'est corrigé par lui.
+
+- **Écrivains des lignes qui jugent le lettrage hors de leur transaction** · `EcritureService.supprimer` (contrôle `trouverEnBrouillard` hors transaction, puis `deleteMany` sans filtre sur `lettrageId`), `modifier` (même forme), `reimputer` (contrôle hors transaction, `updateMany` du compte sans filtre). Un lettrage validé entre le contrôle et la transaction laisse un groupe amputé ou déplacé, son solde stocké faux. À fermer par un filtre `lettrageId: null` relu dans la transaction (ou le verrou du dossier pris en premier).
+- **Règlement à plusieurs tiers derrière une opération longue** · le lettrage du second tiers rend `DOSSIER_OCCUPE` et la pièce reste au brouillard sans lettrage, dit au seul journal du serveur.
+- **À-nouveau provisoire** (`genererANouveauxProvisoires`) · même angle que le BLOQUANT 1 corrigé pour la clôture, sans écriture de l'exercice · peut reprendre ouverte une ligne lettrée pendant sa génération ; la clôture le remplace ensuite.
+- **Lettrage automatique** · tient le verrou du dossier pendant tout son calcul ; les autres écritures auditées du même dossier attendent (409 `DOSSIER_OCCUPE` au bout de 3 s hors transaction, délai Prisma dans une transaction). Voie · calculer sans verrou, puis relire sous verrou le gel et les reclassements des seules lignes retenues.
+- **Interblocages non rejoués** · `delettrer` et `declarerAuBrouillard` verrouillent des lignes avant leur première écriture auditée et passent par `transactionJournalisee` sans reprise · victimes d'un 40P01, elles rendent un 500.

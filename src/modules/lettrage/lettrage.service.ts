@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PrismaService } from '../../common/prisma.service';
 import { OrigineLettrage, Prisma, StatutEcriture, StatutExercice, StatutLettrage } from '@prisma/client';
 import { lettreBienFormee, motifLettreDejaEmployee, MOTIF_FORMAT_LETTRE, normaliserLettre } from './lettre-choisie';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
+import { transactionSousVerrouDuDossier } from './transaction-sous-verrou-du-dossier';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { lignesFigees, refuserSiLignesFigees } from '../exercice/gel-cloture';
 import { comptesPrescrits, ecartDuGroupe, natureDuCompte } from '../reglements/ecart-change-realise';
@@ -404,7 +404,9 @@ export class LettrageService {
    * Prochain code disponible pour ce compte · même risque de condition de
    * course que le numéro de pièce des journaux (deux lettrages simultanés sur
    * le même compte pourraient lire le même « dernier code »), donc toujours
-   * appelé DANS la transaction sérialisable de l'appelant.
+   * appelé DANS la transaction de l'appelant, sous le verrou du dossier
+   * (`transaction-sous-verrou-du-dossier.ts`) · le code unique par compte
+   * (`@@unique([compteId, code])`) reste le dernier mot.
    *
    * Lit la table des lettrages ET les lettres posées sur les lignes : la
    * seconde source couvre les dossiers repris avant l'introduction du modèle
@@ -457,7 +459,8 @@ export class LettrageService {
    * compte à chaque groupe coûtait un aller-retour et une liste qui grandit
    * par groupe · un lettrage automatique de milliers de groupes dépassait le
    * délai de sa transaction. Le code suivant est lu UNE fois, puis
-   * incrémenté · juste dans la transaction sérialisable qui pose le lot.
+   * incrémenté · juste dans la transaction qui pose le lot, sous le verrou du
+   * dossier.
    */
   private async lettresDuLot(tx: Prisma.TransactionClient, tenantId: string, compteId: string): Promise<() => string> {
     let index = lettreVersIndex(await this.prochaineLettre(tx, tenantId, compteId));
@@ -662,8 +665,9 @@ export class LettrageService {
     const lettreChoisie = options.lettre ? normaliserLettre(options.lettre) : null;
     if (lettreChoisie !== null && !lettreBienFormee(lettreChoisie)) throw new BadRequestException(MOTIF_FORMAT_LETTRE);
 
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       async (tx) => {
         const lignes = await tx.ligneEcriture.findMany({
           where: { id: { in: ligneIds } },
@@ -707,7 +711,7 @@ export class LettrageService {
           );
         }
 
-        // Relue DANS la transaction sérialisable · deux lettrages simultanés
+        // Relue DANS la transaction, sous le verrou du dossier · deux lettrages simultanés
         // qui choisiraient la même lettre ne passent pas tous les deux.
         if (lettreChoisie !== null) await this.refuserLettreEmployee(tx, tenantId, compte, lettreChoisie);
         const groupe = await this.creerGroupe(
@@ -788,8 +792,9 @@ export class LettrageService {
     } = {},
   ) {
     const tolere = (options.groupeTolere ?? null) !== null && options.groupeTolere === lettrageId;
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       async (tx) => {
         const groupe = await tx.lettrage.findFirst({ where: { id: lettrageId, tenantId } });
         if (!groupe) throw new NotFoundException('Lettrage introuvable pour ce dossier');
@@ -867,7 +872,12 @@ export class LettrageService {
         await refuserSiLignesFigees(tx, tenantId, tolere ? ligneIds : [...ligneIds, ...dejaDuGroupe.map((l) => l.id)], 'compléter ce lettrage');
         const dExerciceClos = dejaDuGroupe.filter((l) => l.ecriture.exercice?.statut === StatutExercice.CLOTURE).map((l) => l.id);
 
-        await tx.ligneEcriture.updateMany({ where: { id: { in: ligneIds } }, data: { lettrageId } });
+        // Sur des lignes LIBRES seulement, nombre relu, comme `creerGroupe`
+        // (relecture de la ligne lettrage-verrou, m2) · la garantie ne tient
+        // plus seulement à ce que tout autre écrivain du lettrage prenne le
+        // verrou du dossier.
+        const { count: ajoutees } = await tx.ligneEcriture.updateMany({ where: { id: { in: ligneIds }, lettrageId: null }, data: { lettrageId } });
+        if (ajoutees !== new Set(ligneIds).size) throw lignesPrisesEntreTemps();
 
         const toutes = await tx.ligneEcriture.findMany({
           where: { lettrageId },
@@ -1644,8 +1654,9 @@ export class LettrageService {
       }
     }
 
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       async (tx) => {
         const lettres: string[] = [];
         const prochaine = await this.lettresDuLot(tx, tenantId, compteId);
@@ -1718,8 +1729,9 @@ export class LettrageService {
    */
   async reconduire(tenantId: string, compteId: string, lettrageId: string, userId: string) {
     await this.trouverCompteLettrable(tenantId, compteId);
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       async (tx) => {
         const { groupes } = await groupesNonReconduits(tx, { tenantId, compteId });
         const g = groupes.find((x) => x.lettrageId === lettrageId);
@@ -1758,8 +1770,9 @@ export class LettrageService {
     // Les lignes que le calcul peut apparier · jamais une simulation (ligne
     // sage-l1, fonction 12), que `calculerPropositions` écarte aussi.
     const ouvertes = await this.prisma.ligneEcriture.count({ where: { compteId, lettrageId: null, ecriture: { tenantId, ...HORS_SITUATION } } });
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       async (tx) => {
         const { parPiece, parMontant, ecarteesReclassement, passesParMontantSuspendues } = await this.calculerPropositions(tenantId, compte, tx);
         const parPieceGroupes = parPiece;
@@ -1829,8 +1842,9 @@ export class LettrageService {
     if (!compte.lettrable) {
       return { motif: `Le compte ${compte.numero} n'est pas déclaré lettrable · ses lignes ne sont pas lettrées.` };
     }
-    return avecRetrySerialisable(
+    return transactionSousVerrouDuDossier(
       this.prisma,
+      tenantId,
       (tx) => this.poserGroupeDuModule(tx, tenantId, compteId, ligneIds, userId),
       'Trop de lettrages effectués au même instant sur ce compte · veuillez réessayer.',
     );
