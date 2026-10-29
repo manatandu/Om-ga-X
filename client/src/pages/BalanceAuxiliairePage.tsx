@@ -14,6 +14,7 @@ import {
   famillesDeLaBalanceTous,
   type FamilleTiers,
 } from '../lib/export-livres';
+import { LIBELLE_FILTRE, filtrerBalance, totalDesRetenus, type FiltreBalanceTiers } from '../lib/filtre-balance-tiers';
 
 /**
  * BALANCE AUXILIAIRE · la balance des comptes de tiers, tiers par tiers.
@@ -81,6 +82,10 @@ export function BalanceAuxiliairePage() {
   const [type, setType] = useState<TypeTiers>('TOUS');
   const [donnees, setDonnees] = useState<BalanceAuxiliaire | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Ligne gl-saisie, fonction 57 · mouvementés, soldés, non soldés (lib/filtre-balance-tiers.ts).
+  const [filtre, setFiltre] = useState<FiltreBalanceTiers>('TOUS');
+  const retenus = useMemo(() => (donnees ? filtrerBalance(donnees.comptes, filtre) : []), [donnees, filtre]);
+  const totalRetenus = useMemo(() => totalDesRetenus(retenus), [retenus]);
 
   useEffect(() => {
     if (!exerciceCourant) return;
@@ -136,7 +141,10 @@ export function BalanceAuxiliairePage() {
 
   return (
     <div className="p-2">
-      <EnteteImpression titre="Balance auxiliaire" />
+      <EnteteImpression
+        titre="Balance auxiliaire"
+        sousTitre={filtre === 'TOUS' || !donnees ? undefined : `${LIBELLE_FILTRE[filtre]} · ${retenus.length} compte${retenus.length > 1 ? 's' : ''} sur ${donnees.comptes.length}`}
+      />
       <div className="flex items-end justify-end mb-1.5 gap-3 flex-wrap">
         <div className="flex items-end gap-3 flex-wrap">
           <label className="flex flex-col gap-1">
@@ -149,6 +157,20 @@ export function BalanceAuxiliairePage() {
               {(Object.keys(libelle) as TypeTiers[]).map((t) => (
                 <option key={t} value={t}>
                   {libelle[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-text-dim">Comptes affichés</span>
+            <select
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value as FiltreBalanceTiers)}
+              className="border border-border-dark bg-surface px-2 py-1 text-[11.5px] min-w-[170px]"
+            >
+              {(Object.keys(LIBELLE_FILTRE) as FiltreBalanceTiers[]).map((f) => (
+                <option key={f} value={f}>
+                  {LIBELLE_FILTRE[f]}
                 </option>
               ))}
             </select>
@@ -203,7 +225,7 @@ export function BalanceAuxiliairePage() {
           <span className="pb-1">
             <Aide
               titre="Lecture de la balance auxiliaire"
-              texte="Les colonnes « solde débit » et « solde crédit » s'excluent : un compte est débiteur ou créditeur, jamais les deux. Leur somme se rapproche de la balance générale. Un compte de tiers sans tiers rattaché reste affiché · c'est lui qui échappera à la circularisation. L'export porte une seule famille de tiers : la balance, un sous-total par compte collectif, le total général et son contrôle contre la balance générale, puis une feuille par tiers avec son grand livre, ouverte par le numéro de compte (« Balance seule » ne porte que la balance). Double-cliquez une ligne pour ouvrir le grand livre du tiers à l'écran."
+              texte="Les colonnes « solde débit » et « solde crédit » s'excluent : un compte est débiteur ou créditeur, jamais les deux. Leur somme se rapproche de la balance générale. Un compte de tiers sans tiers rattaché reste affiché · c'est lui qui échappera à la circularisation. L'export porte une seule famille de tiers : la balance, un sous-total par compte collectif, le total général et son contrôle contre la balance générale, puis une feuille par tiers avec son grand livre, ouverte par le numéro de compte (« Balance seule » ne porte que la balance). Double-cliquez une ligne pour ouvrir le grand livre du tiers à l'écran. « Comptes affichés » filtre l'écran seul · mouvementé veut dire un débit ou un crédit dans la période (le report seul ne mouvemente pas), soldé un solde nul au centime ; le total des comptes retenus s'affiche sous son nom, le total de tous les comptes reste, et l'export porte toujours la balance entière."
               source="Présentation des balances du cabinet"
             />
           </span>
@@ -235,7 +257,11 @@ export function BalanceAuxiliairePage() {
           </div>
         )}
 
-        {donnees?.comptes.map((c) => (
+        {donnees && donnees.comptes.length > 0 && retenus.length === 0 && (
+          <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Aucun compte {LIBELLE_FILTRE[filtre].toLowerCase()} sur cet exercice.</div>
+        )}
+
+        {retenus.map((c) => (
           <div
             key={c.compteId}
             // DOUBLE-CLIC · le grand livre du tiers, onglet Grand livre de la
@@ -258,9 +284,20 @@ export function BalanceAuxiliairePage() {
           </div>
         ))}
 
+        {donnees && filtre !== 'TOUS' && retenus.length > 0 && (
+          <div className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
+            <span className="col-span-3">Total des comptes retenus</span>
+            <span className="font-mono text-right">{montant(totalRetenus.reportDebit)}</span>
+            <span className="font-mono text-right">{montant(totalRetenus.reportCredit)}</span>
+            <span className="font-mono text-right">{montant(totalRetenus.mouvementDebit)}</span>
+            <span className="font-mono text-right">{montant(totalRetenus.mouvementCredit)}</span>
+            <span className="font-mono text-right">{montant(totalRetenus.soldeDebit)}</span>
+            <span className="font-mono text-right">{montant(totalRetenus.soldeCredit)}</span>
+          </div>
+        )}
         {donnees && donnees.comptes.length > 0 && (
           <div className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
-            <span>SOLDE</span>
+            <span title={filtre === 'TOUS' ? undefined : 'Tous les comptes, filtre ou non'}>SOLDE</span>
             <span />
             <span />
             <span className="font-mono text-right">{montant(donnees.totaux.reportDebit)}</span>
