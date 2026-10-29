@@ -585,10 +585,22 @@ jobs:
       # joint sa base. /health renvoie 503 sinon (voir sante.controller.ts) ·
       # le déploiement échoue alors en rouge au lieu de laisser croire que
       # tout va bien.
+      #
+      # PAR LE RELAIS DU SITE (2026-10-29) · c'est le chemin des clients, et
+      # le seul qui réponde une fois le service fermé au trafic du site
+      # (essai-ingress-cloud-run.yml). L'accès entrant que l'essai a posé
+      # n'est jamais retouché ici · `gcloud run deploy` sans `--ingress`
+      # garde celui du service, et l'étape le dit.
+      - name: Accès entrant du service
+        continue-on-error: true
+        run: |
+          acces=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
+            --format='value(metadata.annotations["run.googleapis.com/ingress"])' 2>/dev/null || true)
+          echo "Accès entrant · ${acces:-non lu}"
       - name: Contrôle de santé du service déployé
         run: |
           for i in 1 2 3 4 5 6; do
-            if curl -sf "https://comptaflow-api-968832127045.us-east1.run.app/health"; then
+            if curl -sf "https://oomega.web.app/api/health"; then
               echo " · service vivant, base joignable"; exit 0
             fi
             echo "tentative $i · pas encore prêt, nouvelle tentative dans 10 s"

@@ -25,7 +25,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  URL_SANTE: https://comptaflow-api-968832127045.us-east1.run.app/health
+  # L'ADRESSE DIRECTE DE CLOUD RUN N'EST PLUS SONDÉE (2026-10-29, essai de
+  # fermeture décidé par Manasse) · fermé au seul trafic du site
+  # (essai-ingress-cloud-run.yml), le service refuse `*.run.app` par
+  # construction, et la sonde ouvrirait une panne qui n'en est pas une. Le
+  # relais ci-dessous interroge le même /health, par le chemin des clients.
   # LE CHEMIN DES CLIENTS · le site relaie /api vers le service (firebase.json).
   # Le service peut répondre en direct et le relais être cassé : c'est ce
   # chemin-là que les navigateurs empruntent, c'est lui qui doit répondre.
@@ -48,7 +52,7 @@ jobs:
         id: sonde
         run: |
           echec=""
-          for cible in "$URL_SANTE" "$URL_SANTE_RELAIS" "$URL_SITE" "$URL_PAGE_PUBLIQUE"; do
+          for cible in "$URL_SANTE_RELAIS" "$URL_SITE" "$URL_PAGE_PUBLIQUE"; do
             ok=0
             for essai in 1 2 3; do
               # /health répond 503 quand la base est injoignable · -f en fait un échec.
