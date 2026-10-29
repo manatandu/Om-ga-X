@@ -56,7 +56,7 @@ reste à lui.
 
 **Serveur** · NestJS 10, Prisma 5, PostgreSQL (Neon, PG 18), Jest, ExcelJS,
 passport-jwt, bcryptjs. Node 22.
-**Client** · React 18, Vite, TypeScript, Tailwind, react-router-dom 6 en
+**Client** · React 18, Vite, TypeScript, Tailwind, react-router-dom 7 en
 **HashRouter** (les URL sont de la forme `oomega.web.app/#/comptes`).
 
 Racine = serveur. `client/` = interface. Un seul dépôt. L'arborescence

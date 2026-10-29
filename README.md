@@ -14,7 +14,7 @@ entreprises de RDC. Propriété de son éditeur, qui l'exploite et le vend.
 - **Serveur** (racine) · NestJS 10, Prisma 5, PostgreSQL (Neon), Jest,
   ExcelJS, passport-jwt, bcryptjs. Node 22, image du `Dockerfile`.
 - **Client** (`client/`) · React 18, Vite, TypeScript, Tailwind,
-  react-router-dom 6 en `HashRouter`.
+  react-router-dom 7 en `HashRouter`.
 - **Tests navigateur** (`e2e/`) · Playwright.
 
 ```
