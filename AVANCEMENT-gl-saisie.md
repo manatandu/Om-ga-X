@@ -19,10 +19,11 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 | 33 | Recouvrement · exclure UNE ligne de la relance (motif), décaler son échéance (motif) ; pénalités et frais écartés | `DecisionRelanceLigne` (`decisions_relance_lignes`), `relances/decision-relance-ligne.ts`, `PATCH /relances/lignes/:ligneId/exclusion` et `/echeance`, fenêtre Rappel et relevé |
 | 34 | Alertes sur les échéances proches des tiers au tableau de bord · à encaisser, à payer dans trente jours, déjà échu | `comptabilite/echeances-tiers.service.ts`, `GET /echeances-tiers`, panneau « Échéances des tiers » de `DashboardPage` |
 | 35 | Avis de règlement envoyé au tiers par la messagerie existante | `reglements/envoi-avis-reglement.service.ts`, `POST /ordres-virement/:id/avis-reglement/envoi`, origine `AVIS_REGLEMENT` de la file, bouton « Envoyer par courriel » des ordres de virement |
+| rejeu | Rejeu sur vraie base à travers la clôture de 2026 (fonctions 2, 13, 33, 34, 64) | `scripts/rejouer-gl-saisie.cjs` · seize contrôles, tous conformes |
 
 ## Reste
 
-Rejeu sur vraie base à travers une clôture, relecture adverse (deux tours).
+Relecture adverse (deux tours), puis intégration par Manasse.
 
 ## Décisions, avec leur fondement
 
