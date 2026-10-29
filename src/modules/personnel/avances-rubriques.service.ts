@@ -1,6 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutBulletinPaie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { nommerUtilisateur } from '../tiers/visa-rib';
+import {
+  AVERTISSEMENT_PLAN_AUTEUR_INCONNU,
+  MOTIF_VISA_PLAN_PAR_SON_AUTEUR,
+  motifPlanNonPropose,
+  motifRefusVisaPlan,
+  planChange,
+  planVise,
+  saisieDuPlan,
+} from './visa-plan-etalement';
 import { AvanceSalaireDto, EtalementAvanceDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
 import { motifRefusModele, normaliserLignes } from './modeles-bulletin';
 import { NATURES_DES_RUBRIQUES, motifRefusRubrique } from './rubriques-paie';
@@ -139,8 +150,8 @@ export class AvancesRubriquesService {
    * avances du même jour pour que la frontière d'une tranche pleine ne change
    * pas d'un appel à l'autre.
    */
-  async listerAvances(tenantId: string, salarieId?: string, moisDePaie?: string) {
-    const [avances, total] = await Promise.all([
+  async listerAvances(tenantId: string, utilisateurId: string, salarieId?: string, moisDePaie?: string) {
+    const [avances, total, dossier] = await Promise.all([
       this.prisma.avanceSalaire.findMany({
         where: { tenantId, ...(salarieId ? { salarieId } : {}) },
         orderBy: [{ dateOctroi: 'desc' }, { id: 'desc' }],
@@ -151,7 +162,17 @@ export class AvancesRubriquesService {
         },
       }),
       this.prisma.avanceSalaire.count({ where: { tenantId, ...(salarieId ? { salarieId } : {}) } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaPlansEtalement: true } }),
     ]);
+    // Un dossier introuvable n'est pas « aucun visa exigé » · on ne présente rien.
+    if (!dossier) throw new NotFoundException('Dossier introuvable.');
+    const exige = dossier.visaPlansEtalement === true;
+    // Les auteurs en courriel · un auditeur ne lit pas un identifiant.
+    const ids = [...new Set(avances.flatMap((a) => [a.planSaisiPar, a.planVisePar]).filter((x): x is string => !!x))];
+    const utilisateurs = ids.length
+      ? await this.prisma.user.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, email: true }, take: ids.length })
+      : [];
+    const courriels = new Map(utilisateurs.map((u) => [u.id, u.email]));
     const lignes = avances.map((a) => {
       const retenues = a.retenues.map((r) => ({
         montantFc: Number(r.montantFc),
@@ -179,10 +200,22 @@ export class AvancesRubriquesService {
         dateFin: a.dateFin,
         retenues,
         soldeFc: soldeAvance(Number(a.montantFc), retenues),
-        ...etalementDeLAvance(a, soldeAvance(Number(a.montantFc), retenues), moisDePaie),
+        ...etalementDeLAvanceVisee(a, soldeAvance(Number(a.montantFc), retenues), moisDePaie, exige),
+        // Ligne paie-suite · le visa du plan, auteurs en courriel.
+        visaPlan: a.premierMoisRetenue
+          ? {
+              exige,
+              vise: planVise(a),
+              visePar: nommerUtilisateur(a.planVisePar, courriels),
+              viseLe: a.planViseLe,
+              saisiPar: nommerUtilisateur(a.planSaisiPar, courriels),
+              saisiLe: a.planSaisiLe,
+              saisiParVous: a.planSaisiPar !== null && a.planSaisiPar === utilisateurId,
+            }
+          : null,
       };
     });
-    return { avances: lignes, total, plafond: PLAFOND_LISTES_PAIE, tronque: total > lignes.length };
+    return { avances: lignes, total, plafond: PLAFOND_LISTES_PAIE, tronque: total > lignes.length, visaPlansExige: exige };
   }
 
   /**
@@ -191,7 +224,7 @@ export class AvancesRubriquesService {
    * des deux plans), que le cabinet passe au journal. Le registre en tient le
    * remboursement, bulletin après bulletin.
    */
-  async creerAvance(tenantId: string, email: string, salarieId: string, dto: AvanceSalaireDto) {
+  async creerAvance(tenantId: string, email: string, utilisateurId: string, salarieId: string, dto: AvanceSalaireDto) {
     const salarie = await this.prisma.salarie.findFirst({ where: { id: salarieId, tenantId }, select: { id: true } });
     if (!salarie) throw new NotFoundException('Salarié introuvable dans ce dossier.');
     const refus = motifRefusAvance(dto) ?? motifRefusEtalement(dto);
@@ -207,6 +240,8 @@ export class AvancesRubriquesService {
         retenueMensuelleFc: dto.retenueMensuelleFc ?? null,
         premierMoisRetenue: dto.premierMoisRetenue?.trim() || null,
         nombreEcheances: dto.premierMoisRetenue?.trim() ? (dto.nombreEcheances ?? null) : null,
+        // Ligne paie-suite · un plan déclaré à la création est une saisie du plan (règle 2).
+        ...saisieDuPlan(utilisateurId, new Date(), !!dto.premierMoisRetenue?.trim()),
         objet: dto.objet.trim(),
         pieceJustificative: dto.pieceJustificative.trim(),
         // La saisie-arrêt seule les porte · `motifRefusAvance` les refuse
@@ -245,10 +280,10 @@ export class AvancesRubriquesService {
    * à chaque mois par le solde. Une opération unitaire, que le journal
    * d'audit garde avec l'état antérieur.
    */
-  async modifierEtalement(tenantId: string, id: string, dto: EtalementAvanceDto) {
+  async modifierEtalement(tenantId: string, utilisateurId: string, id: string, dto: EtalementAvanceDto) {
     const a = await this.prisma.avanceSalaire.findFirst({
       where: { id, tenantId },
-      select: { id: true, type: true, montantFc: true, dateOctroi: true, retenueMensuelleFc: true },
+      select: { id: true, type: true, montantFc: true, dateOctroi: true, retenueMensuelleFc: true, premierMoisRetenue: true, nombreEcheances: true },
     });
     if (!a) throw new NotFoundException('Avance introuvable dans ce dossier.');
     const premier = dto.premierMoisRetenue?.trim() || null;
@@ -277,10 +312,52 @@ export class AvancesRubriquesService {
         ? 'La retenue mensuelle ne peut dépasser le montant consenti.'
         : null);
     if (refus) throw new BadRequestException(refus);
+    // LIGNE PAIE-SUITE · UNE SAISIE DU PLAN FAIT TOMBER SON VISA (règle 2 de
+    // `visa-plan-etalement.ts`) · seulement si le plan change, sans quoi un
+    // second envoi identique effacerait un visa juste.
+    const change = planChange(
+      {
+        premierMoisRetenue: a.premierMoisRetenue,
+        nombreEcheances: a.nombreEcheances,
+        retenueMensuelleFc: a.retenueMensuelleFc === null ? null : Number(a.retenueMensuelleFc),
+      },
+      { premierMoisRetenue: premier, nombreEcheances: plan.nombreEcheances, retenueMensuelleFc: retenue },
+    );
     return this.prisma.avanceSalaire.update({
       where: { id: a.id },
-      data: { premierMoisRetenue: premier, nombreEcheances: plan.nombreEcheances, retenueMensuelleFc: retenue },
+      data: {
+        premierMoisRetenue: premier,
+        nombreEcheances: plan.nombreEcheances,
+        retenueMensuelleFc: retenue,
+        ...(change ? saisieDuPlan(utilisateurId, new Date(), premier !== null) : {}),
+      },
     });
+  }
+
+  /**
+   * LIGNE PAIE-SUITE · VISER LE PLAN D'ÉTALEMENT (`visa-plan-etalement.ts`) ·
+   * relu sous le verrou de la ligne, dans la transaction · deux visas
+   * simultanés ne passent pas tous les deux, et un plan changé entre la
+   * lecture et le visa est refusé (409). L'auteur qui se vise reçoit un 403.
+   */
+  async viserPlan(tenantId: string, id: string, utilisateurId: string, saisiLeLu: string | null) {
+    const vise = await transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "avances_salaire" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const a = await tx.avanceSalaire.findFirst({
+        where: { id, tenantId },
+        select: { id: true, premierMoisRetenue: true, planSaisiPar: true, planSaisiLe: true, planVisePar: true, planViseLe: true },
+      });
+      if (!a) throw new NotFoundException('Avance introuvable dans ce dossier.');
+      const refus = motifRefusVisaPlan(a, utilisateurId, saisiLeLu);
+      if (refus === MOTIF_VISA_PLAN_PAR_SON_AUTEUR) throw new ForbiddenException(refus);
+      if (refus) throw new ConflictException(refus);
+      return tx.avanceSalaire.update({
+        where: { id: a.id },
+        data: { planVisePar: utilisateurId, planViseLe: new Date() },
+        select: { id: true, planSaisiPar: true, planViseLe: true },
+      });
+    });
+    return { vise: true, viseLe: vise.planViseLe, avertissement: vise.planSaisiPar === null ? AVERTISSEMENT_PLAN_AUTEUR_INCONNU : null };
   }
 
   /** Une avance saisie par erreur se retire tant qu'aucun bulletin n'y a retenu · après, elle est l'histoire des bulletins. */
@@ -325,4 +402,21 @@ export function etalementDeLAvance(
     },
     proposition: moisDePaie ? retenueProposee(plan, moisDePaie, soldeFc) : null,
   };
+}
+
+/**
+ * LIGNE PAIE-SUITE · le plan et sa proposition, la proposition RETIRÉE quand
+ * le dossier exige le visa des plans et que celui-ci manque · la phrase dit
+ * pourquoi (`motifPlanNonPropose`), jamais un « soldé » en silence.
+ */
+export function etalementDeLAvanceVisee(
+  a: Parameters<typeof etalementDeLAvance>[0] & { planVisePar: string | null; planViseLe: Date | null },
+  soldeFc: number,
+  moisDePaie: string | undefined,
+  exige: boolean,
+): ReturnType<typeof etalementDeLAvance> & { planNonPropose: string | null } {
+  const e = etalementDeLAvance(a, soldeFc, moisDePaie);
+  if (!e.plan) return { ...e, planNonPropose: null };
+  const motif = motifPlanNonPropose(exige, a, 'Plan non visé');
+  return motif ? { ...e, proposition: null, planNonPropose: motif } : { ...e, planNonPropose: null };
 }

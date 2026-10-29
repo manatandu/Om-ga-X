@@ -5,9 +5,17 @@ import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
+import { AccesRolesCantonnes, ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { AvancesRubriquesService } from './avances-rubriques.service';
-import { AvanceSalaireDto, EtalementAvanceDto, FinSaisieArretDto, ModeleBulletinDto, ModifierRubriquePaieDto, RubriquePaieDto } from './dto/personnel.dto';
+import {
+  AvanceSalaireDto,
+  EtalementAvanceDto,
+  FinSaisieArretDto,
+  ModeleBulletinDto,
+  ModifierRubriquePaieDto,
+  RubriquePaieDto,
+  VisaPlanEtalementDto,
+} from './dto/personnel.dto';
 
 /**
  * Rubriques de paie du cabinet et registre des avances · mêmes droits que le
@@ -63,20 +71,33 @@ export class AvancesRubriquesController {
     @Query('salarieId') salarieId?: string,
     @Query('moisDePaie') moisDePaie?: string,
   ) {
-    return this.service.listerAvances(user.tenantId, salarieId || undefined, moisDePaie || undefined);
+    return this.service.listerAvances(user.tenantId, user.userId, salarieId || undefined, moisDePaie || undefined);
   }
 
   /** Ligne microfina-m3, idée 6 · le plan d'étalement, déclaré ou retiré. */
   @Patch('avances/:id/etalement')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   modifierEtalement(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: EtalementAvanceDto) {
-    return this.service.modifierEtalement(user.tenantId, id, dto);
+    return this.service.modifierEtalement(user.tenantId, user.userId, id, dto);
+  }
+
+  /**
+   * Ligne paie-suite · viser le plan d'étalement (`visa-plan-etalement.ts`) ·
+   * l'administrateur ou le comptable autre que l'auteur, refusé aux deux rôles
+   * cantonnés · le gestionnaire de paie prépare les retenues, il ne vise pas
+   * ce que le bulletin proposera, comme pour le RIB d'un salarié.
+   */
+  @Post('avances/:id/viser-plan')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  viserPlan(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: VisaPlanEtalementDto) {
+    return this.service.viserPlan(user.tenantId, id, user.userId, dto.saisiLeLu);
   }
 
   @Post('salaries/:salarieId/avances')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   creerAvance(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string, @Body() dto: AvanceSalaireDto) {
-    return this.service.creerAvance(user.tenantId, user.email, salarieId, dto);
+    return this.service.creerAvance(user.tenantId, user.email, user.userId, salarieId, dto);
   }
 
   /** Mainlevée d'une saisie-arrêt (AUPSRVE, art. 201) · déclarée une fois. */

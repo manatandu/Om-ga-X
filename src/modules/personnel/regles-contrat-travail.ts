@@ -444,6 +444,21 @@ export function joursEntre(debut: Date, fin: Date): number {
   return Math.floor((fin.getTime() - debut.getTime()) / MS_PAR_JOUR);
 }
 
+/**
+ * LE DERNIER JOUR QUE L'ART. 41, AL. 1er, PERMET À UN CDD · « ne peut excéder
+ * deux ans », un an pour le travailleur séparé de sa famille. Compté DE DATE
+ * À DATE, jamais en 730 jours (5 janvier 2027 au 5 janvier 2029 · 731 jours,
+ * deux ans) · le texte raisonne en années, et la règle ne dépend pas du
+ * nombre de jours de février. Une seule écriture du calcul, lue par le
+ * contrôle des contrats (`requalifications`) et par l'échéancier des
+ * contrats (`suivi-personnel.ts`, ligne paie-suite, fonction 81).
+ */
+export function plafondDureeCdd(debut: Date, separeDeSaFamille: boolean): Date {
+  const plafond = new Date(debut.getTime());
+  plafond.setUTCFullYear(plafond.getUTCFullYear() + (separeDeSaFamille ? 1 : 2));
+  return plafond;
+}
+
 /** L'art. 41, alinéas 2 et 3, EN ENTIER · exception comprise. */
 export const FORMULE_ARTICLE_41_ALINEAS_2_ET_3 =
   "Aucun travailleur ne peut conclure avec le même employeur ou avec la même entreprise plus de deux contrats à durée déterminée ni renouveler plus d'une fois un contrat à durée déterminée, sauf dans le cas d'exécution des travaux saisonniers, d'ouvrages bien définis et autres travaux déterminés par arrêté du Ministre ayant le Travail et la Prévoyance Sociale dans ses attributions, pris après avis du Conseil National du Travail. L'exécution de tout contrat conclu en violation des dispositions du présent article ou la continuation de service en dehors des cas prévus à l'alinéa précédent constituent de plein droit l'exécution d'un contrat de travail à durée indéterminée.";
@@ -594,9 +609,8 @@ export function requalifications(
     const jours = joursEntre(debut, fin);
     // DEUX ANS, OU UN AN. Le texte raisonne en années, pas en jours · on
     // compare de date à date pour ne pas faire dépendre la règle du nombre de
-    // jours de février.
-    const plafond = new Date(debut.getTime());
-    plafond.setFullYear(plafond.getFullYear() + (contrat.separeDeSaFamille ? 1 : 2));
+    // jours de février (`plafondDureeCdd`, une écriture du calcul).
+    const plafond = plafondDureeCdd(debut, contrat.separeDeSaFamille);
     if (fin.getTime() > plafond.getTime()) {
       sorties.push(
         contrat.separeDeSaFamille

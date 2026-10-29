@@ -40,6 +40,15 @@ export interface RepartitionsLues {
   versions: VersionDeRepartition[];
   total: number;
   tronque: boolean;
+  /**
+   * Ligne paie-suite · la section que l'unité de l'organigramme du salarié
+   * PROPOSE au jour, avec son motif · null sans rattachement.
+   */
+  propositionOrganigramme?: {
+    unite: { code: string; intitule: string };
+    section: { id: string; code: string; intitule: string; planId: string } | null;
+    motif: string;
+  } | null;
 }
 
 /**

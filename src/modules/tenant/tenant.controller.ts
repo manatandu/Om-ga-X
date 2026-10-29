@@ -12,6 +12,8 @@ import {
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
   ModifierVisaRibsDto,
+  ModifierVisaPlansEtalementDto,
+  ModifierComptesIndividuelsSalariesDto,
   ModifierCircuitVisaDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
@@ -189,6 +191,26 @@ export class TenantController {
     @Body() dto: ModifierVisaRibsDto,
   ) {
     return this.tenantService.modifierVisaRibs(user.tenantId, dto.visaRibs);
+  }
+
+  /** Ligne paie-suite · visa des plans d'étalement · voir `personnel/visa-plan-etalement.ts`. */
+  @Patch('visa-plans-etalement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierVisaPlansEtalement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierVisaPlansEtalementDto,
+  ) {
+    return this.tenantService.modifierVisaPlansEtalement(user.tenantId, dto.visaPlansEtalement);
+  }
+
+  /** Ligne paie-suite, fonction 76 · comptes individuels des salariés · voir `personnel/compte-salarie.ts`. */
+  @Patch('comptes-individuels-salaries')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierComptesIndividuelsSalaries(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierComptesIndividuelsSalariesDto,
+  ) {
+    return this.tenantService.modifierComptesIndividuelsSalaries(user.tenantId, dto.comptesIndividuelsSalaries);
   }
 
   /** Circuit de visa avant validation · voir `comptabilite/circuit-visa.ts`. */

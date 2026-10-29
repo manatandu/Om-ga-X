@@ -148,6 +148,10 @@ export type BulletinVentile = BulletinAComptabiliser & { readonly salarieId: str
 export function cleDeLaLigne(l: LigneDuMois, referentiel: Referentiel): string | null {
   if (l.bloc === 'REPRISE_EN_NEGATIF') return null;
   const total = TOTAL_DU_BLOC[l.bloc];
+  // Ligne paie-suite, fonction 76 · le total du 422 éclaté par compte de
+  // salarié reste une ligne de total · ses parts sont celles de SES bulletins
+  // (`bulletinIds`, filtrées par l'appelant).
+  if (l.bulletinIds) return `${l.bloc}|TOTAL`;
   if (!l.negatif && l.compte === compteDuRole(total.role, referentiel) && l.sens === total.sens) return `${l.bloc}|TOTAL`;
   return `${l.bloc}|${l.compte}|${l.sens}`;
 }
@@ -443,8 +447,10 @@ export function ventilerLaPaie(params: {
       }
 
       const cle = cleDeLaLigne(l, referentiel) as string;
-      const positives = l.negatif ? new Map<string, number>() : (parts.get(cle) ?? new Map<string, number>());
-      const negatives = l.negatif || cle.endsWith('|TOTAL') ? (partsRejouees.get(cle) ?? new Map<string, number>()) : new Map<string, number>();
+      // Fonction 76 · une part du total du 422 ne lit que ses bulletins.
+      const siens = (m: Map<string, number>) => (l.bulletinIds ? new Map([...m].filter(([id]) => l.bulletinIds!.includes(id))) : m);
+      const positives = l.negatif ? new Map<string, number>() : siens(parts.get(cle) ?? new Map<string, number>());
+      const negatives = l.negatif || cle.endsWith('|TOTAL') ? siens(partsRejouees.get(cle) ?? new Map<string, number>()) : new Map<string, number>();
       const somme = [...positives.values()].reduce((n, c) => n + c, 0) - [...negatives.values()].reduce((n, c) => n + c, 0);
       if (somme !== total || total === 0) {
         nonVentilee('PART_ILLISIBLE', 'les parts des bulletins ne refont pas la ligne au centime');

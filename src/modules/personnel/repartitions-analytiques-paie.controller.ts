@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-paie.service';
+import { OrganigrammeService } from './organigramme.service';
 import { RepartitionAnalytiquePaieDto, RetraitRepartitionAnalytiqueDto } from './dto/repartition-analytique-paie.dto';
 
 /**
@@ -19,12 +20,20 @@ import { RepartitionAnalytiquePaieDto, RetraitRepartitionAnalytiqueDto } from '.
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('personnel')
 export class RepartitionsAnalytiquesPaieController {
-  constructor(private readonly repartitions: RepartitionsAnalytiquesPaieService) {}
+  constructor(
+    private readonly repartitions: RepartitionsAnalytiquesPaieService,
+    private readonly organigramme: OrganigrammeService,
+  ) {}
 
+  /**
+   * La répartition du salarié, et (ligne paie-suite) la section que son unité
+   * de l'organigramme PROPOSE · l'écran la préremplit, jamais la déclare.
+   */
   @Get('salaries/:salarieId/repartitions-analytiques')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
-  lire(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string) {
-    return this.repartitions.lire(user.tenantId, salarieId);
+  async lire(@CurrentUser() user: AuthenticatedUser, @Param('salarieId') salarieId: string) {
+    const lu = await this.repartitions.lire(user.tenantId, salarieId);
+    return { ...lu, propositionOrganigramme: await this.organigramme.propositionAnalytique(user.tenantId, salarieId) };
   }
 
   @Post('salaries/:salarieId/repartitions-analytiques')

@@ -130,6 +130,7 @@ export function RepartitionAnalytique({ salarieId }: { salarieId: string }) {
         <ModaleDeclarer
           salarieId={salarieId}
           plans={plansDeLaPaie}
+          proposition={lu.propositionOrganigramme ?? null}
           onFermer={() => setDeclarer(false)}
           onFait={() => {
             setDeclarer(false);
@@ -154,18 +155,26 @@ export function RepartitionAnalytique({ salarieId }: { salarieId: string }) {
 function ModaleDeclarer({
   salarieId,
   plans,
+  proposition,
   onFermer,
   onFait,
 }: {
   salarieId: string;
   plans: PlanDeRepartition[];
+  proposition: RepartitionsLues['propositionOrganigramme'] | null;
   onFermer: () => void;
   onFait: () => void;
 }) {
-  // Un choix unique se présélectionne.
-  const [planId, setPlanId] = useState(plans.length === 1 ? plans[0].id : '');
+  // LIGNE PAIE-SUITE · la section de l'unité de l'organigramme se PROPOSE ·
+  // préremplie quand son plan est l'un de ceux qui ventilent la paie, jamais
+  // déclarée sans le clic. Sinon, un choix unique se présélectionne.
+  const sectionProposee =
+    proposition?.section && plans.some((p) => p.id === proposition.section!.planId && p.sections.some((x) => x.id === proposition.section!.id))
+      ? proposition.section
+      : null;
+  const [planId, setPlanId] = useState(sectionProposee ? sectionProposee.planId : plans.length === 1 ? plans[0].id : '');
   const [moisEffet, setMoisEffet] = useState('');
-  const [lignes, setLignes] = useState<{ sectionId: string; pourcentage: string }[]>([{ sectionId: '', pourcentage: '100' }]);
+  const [lignes, setLignes] = useState<{ sectionId: string; pourcentage: string }[]>([{ sectionId: sectionProposee?.id ?? '', pourcentage: '100' }]);
   const { envoi, erreur, setErreur, envoyer } = useEnvoiPaie(onFait);
   const plan = plans.find((p) => p.id === planId) ?? null;
   const total = totalEnPointsDeBase(lignes.map((l) => l.pourcentage));
@@ -207,6 +216,11 @@ function ModaleDeclarer({
           ))}
         </select>
       </ChampPaie>
+      {proposition && (
+        <div className={sectionProposee ? 'text-text-dim' : 'text-warning'}>
+          {sectionProposee ? `Proposée par l’unité ${proposition.unite.code} · ${sectionProposee.code} ${sectionProposee.intitule}, à 100 %.` : proposition.motif}
+        </div>
+      )}
       <ChampPaie libelle="À partir du mois de paie">
         <input type="month" value={moisEffet} onChange={(e) => setMoisEffet(e.target.value)} className={CHAMP_PAIE} />
       </ChampPaie>

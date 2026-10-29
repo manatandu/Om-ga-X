@@ -304,11 +304,16 @@ export class SuiviPersonnelService {
     const jour = 24 * 3600 * 1000;
     const limite = new Date(aujourdhui.getTime() + h * jour);
     const plusAncienEssai = new Date(aujourdhui.getTime() - (h + 186) * jour);
+    // Fonction 81 · le plafond de l'art. 41 tombe un an (séparé de sa famille)
+    // ou deux ans après l'entrée en vigueur · un CDD en vigueur depuis moins
+    // d'un an à l'horizon ne peut l'atteindre.
+    const plafondLePlusProche = new Date(Date.UTC(limite.getUTCFullYear() - 1, limite.getUTCMonth(), limite.getUTCDate()));
     const where: Prisma.ContratTravailWhereInput = {
       tenantId,
       dateFin: null,
       OR: [
         { type: 'DUREE_DETERMINEE', dateFinPrevue: { not: null, lte: limite } },
+        { type: 'DUREE_DETERMINEE', dateEntreeEnVigueur: { lte: plafondLePlusProche } },
         { clauseEssai: true, dateEntreeEnVigueur: { gte: plusAncienEssai, lte: limite } },
       ],
     };
@@ -325,6 +330,7 @@ export class SuiviPersonnelService {
           dateFin: true,
           dateFinPrevue: true,
           emploiPermanent: true,
+          separeDeSaFamille: true,
           clauseEssai: true,
           essaiDureeJours: true,
           manoeuvreSansSpecialite: true,

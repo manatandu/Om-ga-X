@@ -47,7 +47,7 @@ export class ComptabilisationPaieService {
   async proposition(tenantId: string, mois: string) {
     this.verifierMois(mois);
     const [tenant, bulletins] = await Promise.all([
-      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true, comptesIndividuelsSalaries: true } }),
       this.prisma.bulletinPaie.findMany({
         where: { tenantId, moisDePaie: mois },
         orderBy: { numero: 'asc' },
@@ -62,6 +62,8 @@ export class ComptabilisationPaieService {
           entree: true,
           calcul: true,
           ecritureNegatifId: true,
+          // Fonction 76 · le compte individuel du salarié sous le 422.
+          salarie: { select: { compte: { select: { numero: true, intitule: true } } } },
         },
         // Un mois de paie ne dépasse pas l'effectif du dossier · la borne
         // est là pour qu'aucune route ne rende une collection sans limite.
@@ -124,6 +126,11 @@ export class ComptabilisationPaieService {
       calcul: b.calcul,
       ecritureNegatifId: b.ecritureNegatifId,
       origine: b.statut === 'ANNULE' && b.ecritureId ? (origineDe.get(b.ecritureId) ?? null) : null,
+      // FONCTION 76 · un bulletin à passer va au compte du salarié quand le
+      // dossier tient l'option ; une reprise le lit TOUJOURS, l'option fût-elle
+      // retirée depuis · la passation décide sur l'écriture d'origine
+      // (`compte422DeLOrigine`) si le net y a été inscrit.
+      compte422: b.salarie?.compte && (b.statut === 'ANNULE' || tenant.comptesIndividuelsSalaries) ? b.salarie.compte : null,
     }));
     const proposition = propositionPaieDuMois(mois, tenant.referentiel as Referentiel, lus);
 

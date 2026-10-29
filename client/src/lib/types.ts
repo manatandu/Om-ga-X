@@ -1834,6 +1834,10 @@ export interface ParametresDossier {
   doubleRegardValidation: boolean;
   /** Visa des RIB par un second utilisateur avant tout ordre de virement (option, faux par défaut). */
   visaRibs: boolean;
+  /** Ligne paie-suite · visa des plans d'étalement par un second utilisateur. */
+  visaPlansEtalement?: boolean;
+  /** Ligne paie-suite, fonction 76 · comptes individuels des salariés sous le 422 (option, faux par défaut). */
+  comptesIndividuelsSalaries?: boolean;
   /** Circuit de visa avant validation (ligne microfina-m1) · option du dossier, fausse par défaut. */
   circuitVisa?: boolean;
   /** Ligne sage-l1, fonction 60 · refus de clôturer un journal non imprimé (option, faux par défaut). */
