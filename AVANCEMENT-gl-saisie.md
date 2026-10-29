@@ -15,10 +15,11 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 | 57 | Filtres de la balance des tiers · tous, mouvementés dans la période, soldés, non soldés | `client/src/lib/filtre-balance-tiers.ts`, `BalanceAuxiliairePage` |
 | 58 | Filtre du rapprochement · toutes les lignes, rapprochées, non rapprochées | `client/src/lib/filtre-rapprochement.ts`, `RapprochementDetailPage` |
 | 56 | Grand livre avec ou sans les écritures lettrées (vue de travail de l'écran) | `client/src/lib/grand-livre-sans-lettrees.ts`, onglet Grand livre de `JournalPage` |
+| 64 | Révision par écriture · marquer revue (auteur, date, commentaire), retirer, filtrer revues ou à revoir | `RevueEcriture` (`revues_ecritures`), `comptabilite/revue-ecritures.service.ts`, `POST /revues-ecritures`, `DELETE /revues-ecritures/:ecritureId`, `GET /ecritures?revue=oui\|non` (et son export), fenêtre Journal |
 
 ## Reste
 
-33, 34, 35, 64.
+33, 34, 35.
 
 ## Décisions, avec leur fondement
 
@@ -35,6 +36,7 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 - **57 · le filtre se dit, le total général reste** · « mouvementé » = un débit ou un crédit dans la période, le report seul ne mouvemente pas ; « soldé » = solde nul au centime (définitions d'OmegaX, dites dans la bulle). Le total des comptes retenus s'affiche à part sous son nom, le total de tous les comptes demeure, l'en-tête imprimé nomme le filtre ; l'export porte toujours la balance entière.
 - **58 · la liste se restreint, les soldes non** · lignes du compte et en-cours d'ouverture, le nombre caché dit ; sur une liste déjà tronquée par le serveur, le filtre ne lit que la tranche servie, et c'est dit.
 - **56 · une vue de travail, jamais le livre** · le grand livre porte tous les mouvements de l'exercice (AUDCIF art. 19) ; la case retire les seules lignes lettrées (groupe soldé), les dit avec leurs montants sous chaque compte, garde les totaux du livre entier et le vrai solde progressif. L'export Excel reste le livre entier · aucune version filtrée d'un livre obligatoire ne sort en fichier. Devise et regroupement par mois écartés au tri.
+- **64 · une marque à côté de l'écriture validée, jamais en elle** · l'écriture validée est irréversible (AUDCIF art. 22, 2°) et la marque ne touche ni origine, ni contenu, ni imputation (art. 22, 1°) ; le brouillard est ÉCARTÉ et nommé, jamais revu (sa pièce change encore) ; la première revue ne se réécrit pas ; une création et un retrait unitaires, au journal d'audit ; revoir est le geste du comptable (`@ReserveAuComptable`, fonction REVISION). Un journal filtré sur la revue est une RECHERCHE · il ne s'enregistre pas comme imprimé (`estUneRecherche`).
 
 ## Commandes de vérification
 

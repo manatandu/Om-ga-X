@@ -35,6 +35,8 @@ export const CRITERES_PAR_EDITION: Record<EditionSelection, Record<string, Regle
     numeroPiece: 'chaine',
     reference: 'chaine',
     inclureBrouillard: 'booleen',
+    // Ligne gl-saisie, fonction 64 · les écritures revues, ou à revoir.
+    revue: ['oui', 'non'],
   },
   // Le formulaire des impressions différées.
   IMPRESSION_DIFFEREE: {

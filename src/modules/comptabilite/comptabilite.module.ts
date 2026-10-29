@@ -12,14 +12,16 @@ import { CircuitVisaController } from './circuit-visa.controller';
 import { CircuitVisaService } from './circuit-visa.service';
 import { InterrogationCompteController } from './interrogation-compte.controller';
 import { InterrogationCompteService } from './interrogation-compte.service';
+import { RevueEcrituresController } from './revue-ecritures.controller';
+import { RevueEcrituresService } from './revue-ecritures.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, JournauxModule, ExerciceModule, AnalytiqueModule, PiecesJointesModule],
   // Ligne sage-l6 · les pièces justificatives des écritures (fonction 22).
   // Ligne microfina-m1 · le circuit de visa avant validation et la fiche d'imputation.
-  // Ligne gl-saisie, fonction 13 · interroger le compte depuis la saisie.
-  controllers: [EcritureController, PiecesJointesEcritureController, CircuitVisaController, InterrogationCompteController],
-  providers: [EcritureService, CircuitVisaService, InterrogationCompteService],
+  // Ligne gl-saisie, fonctions 13 et 64 · interroger le compte depuis la saisie, revoir les écritures.
+  controllers: [EcritureController, PiecesJointesEcritureController, CircuitVisaController, InterrogationCompteController, RevueEcrituresController],
+  providers: [EcritureService, CircuitVisaService, InterrogationCompteService, RevueEcrituresService],
   exports: [EcritureService, CircuitVisaService],
 })
 export class ComptabiliteModule {}

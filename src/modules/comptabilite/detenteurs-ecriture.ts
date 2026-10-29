@@ -231,6 +231,10 @@ export const ECRITURE_LAISSEE_PARTIR: Readonly<Record<string, string>> = {
     "SET NULL · le chèque n'est pas l'écriture, il en est le moyen de paiement · la pièce au brouillard se retire (AUDCIF " +
     "art. 22, 2°) et le chèque reste au registre, émis « sans pièce », sa description figée (`pieceDecrite`), à relier à la " +
     'pièce repassée ; une pièce validée est indélébile et ne part jamais',
+  // Ligne gl-saisie, fonction 64.
+  'RevueEcriture.ecritureId':
+    "CASCADE · la revue ne se pose que sur une écriture VALIDÉE, qui ne se supprime jamais (AUDCIF art. 22, 2°) ; elle " +
+    "n'est qu'une marque du cabinet à côté de la pièce, et la retenir ne protégerait rien",
   'Facture.ecritureId':
     "la facture est la pièce, l'écriture son enregistrement · retirer au brouillard une écriture passée depuis une facture " +
     "rend la facture « à comptabiliser », ce qui est exactement l'état qu'elle retrouve, et elle se repasse depuis la fenêtre Facturation",

@@ -229,6 +229,7 @@ export class EcritureController {
     @Query('numeroPiece') numeroPiece?: string,
     @Query('reference') reference?: string,
     @Query('plusRecentes') plusRecentes?: string,
+    @Query('revue') revue?: string,
   ) {
     const limiteN = limite ? Math.min(Math.max(parseInt(limite, 10) || 0, 0), 500) : undefined;
     return this.ecritureService.lister(user.tenantId, {
@@ -237,7 +238,7 @@ export class EcritureController {
       dateDebut,
       dateFin,
       recherche,
-      ...criteresOuRefus({ compte, montant, montantMax, numeroPiece, reference }),
+      ...criteresOuRefus({ compte, montant, montantMax, numeroPiece, reference, revue }),
       inclureBrouillard: inclureBrouillard !== 'false',
       ...(limiteN ? { limite: limiteN } : {}),
       ...(plusRecentes === '1' ? { plusRecentesDAbord: true } : {}),

@@ -77,6 +77,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   // Ligne microfina-m1 · le visa précède la validation, il en suit la fonction ·
   // un profil sans « Validation » ne vise pas plus qu'il ne valide.
   CircuitVisaController: FonctionMetier.VALIDATION,
+  // Ligne gl-saisie, fonction 64 · revoir une écriture est un geste de révision.
+  RevueEcrituresController: FonctionMetier.REVISION,
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,

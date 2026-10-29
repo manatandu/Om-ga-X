@@ -958,6 +958,8 @@ model Tenant {
   annulationsActesRemise               AnnulationActeRemise[]
   impressionsJournaux                  ImpressionJournal[]
   sequencesSaisie                      SequenceSaisie[]
+  /// Ligne gl-saisie, fonction 64 · les écritures revues par le cabinet.
+  revuesEcritures                      RevueEcriture[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   reprisesConges                       RepriseCongesSalarie[]
   congesSalaries                       CongeSalarie[]
@@ -2001,6 +2003,8 @@ enum StatutEcriture {
 
 model Ecriture {
   id                            String                             @id @default(uuid())
+  /// Ligne gl-saisie, fonction 64 · la revue de l'écriture par le cabinet, s'il l'a marquée.
+  revue                         RevueEcriture?
   repriseSubvention             RepriseSubventionImmobilisation?
   reductionSubvention           ReductionSubventionImmobilisation?
   revisionPlanAmortissement     RevisionPlanAmortissement?
@@ -13207,4 +13211,32 @@ model ParticipantFormation {
   @@unique([formationId, salarieId])
   @@index([tenantId, salarieId])
   @@map("participants_formation")
+}
+
+/// LA REVUE D'UNE ÉCRITURE PAR LE CABINET (ligne gl-saisie, fonction 64 ·
+/// Sage i7, « registre de révision » et filtres de révision). Le cabinet qui
+/// révise le journal marque chaque écriture qu'il a relue · auteur, date,
+/// commentaire facultatif · et filtre ce qui reste à revoir.
+///
+/// À CÔTÉ DE L'ÉCRITURE, JAMAIS EN ELLE · une écriture validée est
+/// irréversible (AUDCIF art. 22, 2°) ; la marque ne touche ni son origine, ni
+/// son contenu, ni son imputation (art. 22, 1°). Sur une écriture VALIDÉE
+/// seulement · le brouillard change encore, une revue y vaudrait pour un
+/// contenu qui n'existe plus. Une par écriture (clé unique) ; retirée, elle
+/// disparaît, et le journal d'audit garde qui l'avait posée et qui l'a
+/// retirée. `Cascade` · une écriture validée ne se supprime jamais, et la
+/// purge d'un dossier les emporte ensemble.
+model RevueEcriture {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  ecritureId  String   @unique
+  ecriture    Ecriture @relation(fields: [ecritureId], references: [id], onDelete: Cascade)
+  /// L'utilisateur qui a revu · son adresse se lit à l'affichage.
+  revuePar    String
+  revueLe     DateTime @default(now())
+  commentaire String?
+
+  @@index([tenantId, revueLe])
+  @@map("revues_ecritures")
 }

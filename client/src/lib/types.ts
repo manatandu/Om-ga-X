@@ -278,6 +278,8 @@ export interface Ecriture {
   motifCorrection: string | null;
   correction?: { id: string; numeroPiece: number | null; date: string } | null;
   corrigeEcriture?: { id: string; numeroPiece: number | null; date: string; libelle: string } | null;
+  /** Ligne gl-saisie, fonction 64 · la revue du cabinet, son auteur en courriel ; `null` à revoir. */
+  revue?: { revueLe: string; commentaire: string | null; auteur: string } | null;
 }
 
 export type StatutLettrage = 'PARTIEL' | 'SOLDE';

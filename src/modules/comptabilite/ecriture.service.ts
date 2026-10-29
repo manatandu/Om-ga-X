@@ -3643,6 +3643,8 @@ export class EcritureService {
         // donc déjà renvoyés · seul le lien inverse doit être demandé.
         correction: { select: { id: true, numeroPiece: true, date: true } },
         corrigeEcriture: { select: { id: true, numeroPiece: true, date: true, libelle: true } },
+        // Ligne gl-saisie, fonction 64 · la revue du cabinet, son auteur résolu plus bas.
+        revue: { select: { revuePar: true, revueLe: true, commentaire: true } },
       },
       // Départage explicite : à date égale, l'ordre de sortie serait sinon
       // laissé au plan d'exécution PostgreSQL et pourrait changer d'un export
@@ -3668,8 +3670,24 @@ export class EcritureService {
       this.prisma.ecriture.count({ where: { ...where, tenantId } }),
     ]);
 
+    // L'AUTEUR DE LA REVUE EN COURRIEL (ligne gl-saisie, fonction 64) · un
+    // réviseur ne lit pas un identifiant ; un utilisateur retiré du dossier se
+    // nomme comme tel, jamais une case vide.
+    const auteursRevue = [...new Set(ecritures.flatMap((e) => (e.revue ? [e.revue.revuePar] : [])))];
+    const courriels = new Map(
+      auteursRevue.length
+        ? (await this.prisma.user.findMany({ where: { tenantId, id: { in: auteursRevue } }, select: { id: true, email: true } })).map(
+            (u) => [u.id, u.email] as const,
+          )
+        : [],
+    );
     return {
-      ecritures,
+      ecritures: ecritures.map(({ revue, ...e }) => ({
+        ...e,
+        revue: revue
+          ? { revueLe: revue.revueLe, commentaire: revue.commentaire, auteur: courriels.get(revue.revuePar) ?? 'utilisateur retiré du dossier' }
+          : null,
+      })),
       totaux: { debit: Number(agg._sum.debit ?? 0), credit: Number(agg._sum.credit ?? 0) },
       /** Nombre d'écritures du périmètre, tranche ou pas. */
       total,

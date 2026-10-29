@@ -70,12 +70,15 @@ export function estUneRecherche(criteres: CriteresRecherche): boolean {
     criteres.montantMin !== undefined ||
     criteres.montantMax !== undefined ||
     criteres.numeroPiece !== undefined ||
-    !!criteres.reference?.trim()
+    !!criteres.reference?.trim() ||
+    // Ligne gl-saisie, fonction 64 · les seules écritures revues, ou à revoir,
+    // ne sont pas le journal.
+    criteres.revue !== undefined
   );
 }
 
 export const MOTIF_RECHERCHE_NON_IMPRIMABLE =
-  "Une recherche (compte, montant, libellé, pièce ou référence) n'est pas le journal · retirez les critères pour imprimer le journal de la période.";
+  "Une recherche (compte, montant, libellé, pièce, référence ou revue) n'est pas le journal · retirez les critères pour imprimer le journal de la période.";
 
 /**
  * Le jour est-il couvert · une impression du même journal (ou de tous les

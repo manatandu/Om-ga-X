@@ -64,6 +64,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   SelectionEdition: "Sélection d'une édition",
   ModeleEdition: "Modèle d'édition",
   SequenceSaisie: 'Séquence de saisie',
+  RevueEcriture: "Revue d'une écriture",
   ModeReglement: 'Mode de règlement',
   LieuLivraison: 'Lieu de livraison',
   ModeleImpressionTiers: "Modèle d'impression",

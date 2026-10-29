@@ -170,6 +170,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'ExtraitPeriode',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
+  // Ligne gl-saisie, fonction 64 · les revues d'écritures.
+  'RevueEcriture',
   // Ligne sage-l2, fonction 1 · les modes de règlement.
   'ModeReglement',
   // Ligne sage-l2, fonction 31 · les lieux de livraison des clients.
