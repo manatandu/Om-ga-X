@@ -159,7 +159,9 @@ export async function poserGroupeSoldeDuModule(
       soldeAt: new Date(),
     },
   });
-  const { count } = await tx.ligneEcriture.updateMany({ where: { id: { in: p.ligneIds }, lettrageId: null }, data: { lettrageId: groupe.id, lettre: p.code } });
+  // Sur SON compte aussi · une réimputation au brouillard validée entre la lecture et l'écriture déplace la ligne,
+  // et le groupe se poserait sur deux comptes (relecture lettrage-verrou, M3).
+  const { count } = await tx.ligneEcriture.updateMany({ where: { id: { in: p.ligneIds }, compteId: p.compteId, lettrageId: null }, data: { lettrageId: groupe.id, lettre: p.code } });
   if (count !== lignes.length) throw lignesPrisesEntreTemps();
   return p.code;
 }
@@ -585,7 +587,8 @@ export class LettrageService {
     const { count } = await tx.ligneEcriture.updateMany({
       // Encore libres AU MOMENT D'ÉCRIRE · un lettrage qui a pris la ligne
       // entre la lecture et l'écriture la sort du filtre, et tout est défait.
-      where: { id: { in: params.ligneIds }, lettrageId: null },
+      // et sur SON compte (une réimputation concurrente déplace la ligne).
+      where: { id: { in: params.ligneIds }, compteId: params.compteId, lettrageId: null },
       // `lettre` n'est servie QUE si le groupe est soldé · voir le
       // commentaire de LigneEcriture.lettre dans le schéma.
       data: { lettrageId: groupe.id, lettre: soldeNul ? code : null },
@@ -876,7 +879,10 @@ export class LettrageService {
         // (relecture de la ligne lettrage-verrou, m2) · la garantie ne tient
         // plus seulement à ce que tout autre écrivain du lettrage prenne le
         // verrou du dossier.
-        const { count: ajoutees } = await tx.ligneEcriture.updateMany({ where: { id: { in: ligneIds }, lettrageId: null }, data: { lettrageId } });
+        const { count: ajoutees } = await tx.ligneEcriture.updateMany({
+          where: { id: { in: ligneIds }, compteId: groupe.compteId, lettrageId: null },
+          data: { lettrageId },
+        });
         if (ajoutees !== new Set(ligneIds).size) throw lignesPrisesEntreTemps();
 
         const toutes = await tx.ligneEcriture.findMany({

@@ -41,6 +41,7 @@ import { AnalytiqueService } from '../analytique/analytique.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
+import { FILTRE_LIGNE_LIBRE, retenirLesLignesLibres, retirerLesLignesLibres } from './lignes-libres';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
 import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
@@ -1658,7 +1659,9 @@ export class EcritureService {
           // sur VentilationAnalytique.ligne) : remplacer les lignes remplace
           // aussi l'ANCIENNE ventilation, et la nouvelle vient avec les lignes
           // reçues, par le même constructeur que la création.
-          await tx.ligneEcriture.deleteMany({ where: { ecritureId } });
+          // Libres seulement, nombre relu (lignes-libres.ts) · une ligne lettrée
+          // ou pointée depuis `trouverEnBrouillard` arrête tout.
+          await retirerLesLignesLibres(tx, tenantId, ecritureId);
         }
         const numeroPiece = changeDeMois
           ? await this.journalService.prochainNumeroPiece(tenantId, ecriture.journal, ecriture.exerciceId, date, tx)
@@ -1840,10 +1843,9 @@ export class EcritureService {
     // la pièce ne perd aucune ligne (filtre sur le brouillard), et l'ajout des
     // nouvelles lui donnait DEUX FOIS l'acquisition. Une pièce au brouillard
     // porte au moins deux lignes · aucune retirée, la pièce a changé de statut.
-    const retirees = await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
-    if (retirees.count === 0) {
-      throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
-    }
+    // Relecture lettrage-verrou, M3 · une ligne lettrée ou pointée pendant la
+    // modification ne part pas non plus (`retirerLesLignesLibres`, 409 nommé).
+    await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD });
     await tx.ecriture.update({
       where: { id: ecritureId },
       data: {
@@ -1922,7 +1924,9 @@ export class EcritureService {
       // description refaite une dernière fois, et le geste le DIT (relecture
       // « échecs silencieux » de la ligne sage-l6, mineur 1).
       const detachees = await preparerLesPiecesADetacher(tx, tenantId, ecritureId);
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: supprimable } } });
+      // Libres seulement, nombre relu (lignes-libres.ts) · lettrée ou pointée
+      // depuis `trouverEnBrouillard`, ou validée, rien ne part.
+      await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: supprimable });
       const { count } = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: supprimable } });
       if (count !== 1) {
         throw new ConflictException(
@@ -1963,7 +1967,9 @@ export class EcritureService {
       const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { id: true } });
       if (!ecriture) return;
       if (liberer) await liberer(tx);
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId } });
+      // Ce que le module a posé est défait par `liberer` · une ligne qu'un autre
+      // poste a lettrée ou pointée entre-temps garde la pièce (409 nommé).
+      await retirerLesLignesLibres(tx, tenantId, ecritureId);
       await tx.ecriture.delete({ where: { id: ecritureId } });
     });
   }
@@ -3048,12 +3054,12 @@ export class EcritureService {
           // ligne validée se réimpute par l'inscription en négatif, au geste
           // suivant.
           const deplacees = await tx.ligneEcriture.updateMany({
-            where: { id: { in: auBrouillard.map((l) => l.id) }, ecriture: { tenantId, statut: { not: StatutEcriture.VALIDEE } } },
+            where: { id: { in: auBrouillard.map((l) => l.id) }, ecriture: { tenantId, statut: { not: StatutEcriture.VALIDEE } }, ...FILTRE_LIGNE_LIBRE },
             data: { compteId: cible.id },
           });
           if (deplacees.count !== auBrouillard.length) {
             throw new ConflictException(
-              `${auBrouillard.length - deplacees.count} ligne(s) au brouillard ont été validées pendant la réimputation · rien n'est ` +
+              `${auBrouillard.length - deplacees.count} ligne(s) au brouillard ont été validées, lettrées ou pointées pendant la réimputation · rien n'est ` +
                 'réimputé. Relancez le geste · une ligne validée se réimpute par une inscription en négatif (AUDCIF art. 20, al. 2).',
             );
           }
@@ -3082,6 +3088,10 @@ export class EcritureService {
             }
           }
         }
+        // Les lignes VALIDÉES ne s'écrivent pas (négatif puis exact, ci-dessous) ·
+        // relues libres dans la transaction, sans quoi une ligne lettrée ou
+        // pointée pendant le geste se réimputait quand même (lignes-libres.ts).
+        await retenirLesLignesLibres(tx, tenantId, validees.map((l) => l.id));
         const passees: { numeroPiece: number | null; journal: string }[] = [];
         for (const groupe of parEcriture.values()) {
           const origine = groupe[0].ecriture;

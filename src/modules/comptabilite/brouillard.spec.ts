@@ -134,11 +134,11 @@ describe('brouillard · ce qui se modifie et ce qui ne se modifie plus', () => {
 describe('modifier · les mêmes contrôles et les mêmes champs que creer', () => {
   function monde(tenus: Record<string, number> = {}, ecritureEnPlace: Faux = ecriture()) {
     const update = jest.fn().mockResolvedValue({ id: 'e1' });
-    const deleteMany = jest.fn().mockResolvedValue({});
+    const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
     // La transaction RELIT l'écriture et son exercice (constat 10 de la
     // relecture de la dissolution) · la doublure les rend.
     const tx = {
-      ligneEcriture: { deleteMany },
+      ligneEcriture: { deleteMany, count: jest.fn().mockResolvedValue(2) },
       ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
       pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
@@ -203,7 +203,9 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
   it('recrée les lignes AVEC la devise, le cours et la ventilation', async () => {
     const { svc, update, deleteMany } = monde();
     await svc.modifier('t1', 'e1', { lignes: LIGNES });
-    expect(deleteMany).toHaveBeenCalledWith({ where: { ecritureId: 'e1' } });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { ecritureId: 'e1', ecriture: { tenantId: 't1' }, lettrageId: null, lettre: null, rapprochementId: null },
+    });
     const cree = update.mock.calls[0][0].data.lignes.create;
     expect(['ligne en devise', cree[0]]).toEqual([
       'ligne en devise',

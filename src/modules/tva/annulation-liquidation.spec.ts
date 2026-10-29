@@ -35,7 +35,13 @@ function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: 
         return { count: 1 };
       }),
     },
-    ligneEcriture: { deleteMany: jest.fn().mockImplementation(async () => ordre.push('lignes')) },
+    ligneEcriture: {
+      count: jest.fn().mockResolvedValue(1),
+      deleteMany: jest.fn().mockImplementation(async () => {
+        ordre.push('lignes');
+        return { count: 1 };
+      }),
+    },
     // La suppression verrouille l'écriture puis compte ses pièces jointes,
     // qui se détachent avec elle (ligne sage-l6) · la doublure les rend.
     $queryRaw: jest.fn().mockResolvedValue([]),

@@ -53,6 +53,11 @@ function service(
 ) {
   const tx = {
     ligneEcriture: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // Relecture lettrage-verrou, M3 · les lignes validées sont retenues libres dans la transaction ; la doublure les
+    // rend toutes libres (le refus a son propre test dans `lignes-libres.spec.ts`).
+    $executeRaw: jest.fn(async (_texte: TemplateStringsArray, ...valeurs: unknown[]) =>
+      new Set(valeurs.find((v): v is string[] => Array.isArray(v)) ?? []).size,
+    ),
     // `update` · la tête de chaque pièce du brouillard réimputée nomme son
     // auteur (ligne microfina-m1).
     ecriture: { create: jest.fn().mockResolvedValue({ numeroPiece: 7 }), update: jest.fn().mockResolvedValue({ id: 'e' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -82,10 +87,19 @@ describe('Réimputation · le service', () => {
     const { s, tx } = service([ligne('b', StatutEcriture.BROUILLARD), ligne('v', StatutEcriture.VALIDEE)]);
     const r = await s.reimputer('t', 'u', { ligneIds: ['b', 'v'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['b'] }, ecriture: { tenantId: 't', statut: { not: StatutEcriture.VALIDEE } } },
+      where: {
+        id: { in: ['b'] },
+        ecriture: { tenantId: 't', statut: { not: StatutEcriture.VALIDEE } },
+        lettrageId: null,
+        lettre: null,
+        rapprochementId: null,
+      },
       data: { compteId: 'c604' },
     });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledTimes(1);
+    // Relecture lettrage-verrou, M3 · la ligne validée est retenue libre dans la transaction.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw.mock.calls[0].slice(1)).toEqual(['t', ['v']]);
     // LA FAILLE DE L'AUDIT DE SÉCURITÉ (ligne microfina-m1) · l'auteur de la
     // réimputation au brouillard devient l'auteur du dernier contenu de la
     // pièce, et son visa tombe · sans quoi il la validait ensuite sous le
@@ -115,7 +129,7 @@ describe('Réimputation · le service', () => {
     tx.ligneEcriture.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(
       s.reimputer('t', 'u', { ligneIds: ['b'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' }),
-    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/validées pendant la réimputation/) });
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/validées, lettrées ou pointées pendant la réimputation/) });
     expect(tx.ecriture.updateMany).not.toHaveBeenCalled();
     expect(tx.ecriture.create).not.toHaveBeenCalled();
   });

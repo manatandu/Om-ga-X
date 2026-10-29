@@ -23,7 +23,7 @@ function monter(ecriture: { exerciceId: string; estGenereeParCloture: boolean },
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: premierId }) },
-    ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({}) },
+    ligneEcriture: { count: jest.fn().mockResolvedValue(1), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
     $queryRaw: jest.fn().mockResolvedValue([]),
   } as Record<string, unknown>;

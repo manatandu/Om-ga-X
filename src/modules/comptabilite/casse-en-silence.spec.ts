@@ -64,7 +64,8 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     // Le verrou de l'écriture, pris avant ses pièces (second tour, MAJEUR).
     $queryRaw: jest.fn().mockResolvedValue([]),
     ligneEcriture: {
-      deleteMany: jest.fn().mockResolvedValue({}),
+      count: jest.fn().mockResolvedValue(1),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       // La ligne que la réimputation déplace · son écriture est « e1 », celle
       // que les comptages de détenteurs visent.
       findMany: jest.fn().mockResolvedValue([
@@ -415,7 +416,9 @@ describe('3 · une écriture qu’un module tient ne se supprime pas', () => {
     const prisma = (s as any).prisma;
     await s.supprimer('t1', 'e1');
     expect(prisma.ecriture.deleteMany).toHaveBeenLastCalledWith({ where: { id: 'e1', tenantId: 't1', statut: 'BROUILLARD' } });
-    expect(prisma.ligneEcriture.deleteMany).toHaveBeenLastCalledWith({ where: { ecritureId: 'e1', ecriture: { tenantId: 't1', statut: 'BROUILLARD' } } });
+    expect(prisma.ligneEcriture.deleteMany).toHaveBeenLastCalledWith({
+      where: { ecritureId: 'e1', ecriture: { tenantId: 't1', statut: 'BROUILLARD' }, lettrageId: null, lettre: null, rapprochementId: null },
+    });
     expect(prisma.ecriture.delete).not.toHaveBeenCalled();
     prisma.ecriture.deleteMany.mockResolvedValue({ count: 0 });
     await expect(s.supprimer('t1', 'e1')).rejects.toBeInstanceOf(ConflictException);

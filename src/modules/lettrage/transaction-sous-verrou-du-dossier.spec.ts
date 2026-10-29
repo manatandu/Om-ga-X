@@ -95,6 +95,16 @@ describe('le lettrage sous le verrou du dossier', () => {
     expect(source).not.toMatch(/avecRetrySerialisable\(/);
     expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(6);
   });
+
+  // Relecture lettrage-verrou, M3 · la réimputation ne prend pas le verrou du dossier · chaque écriture qui pose un
+  // groupe sur des lignes exige la ligne libre ET sur le compte du groupe, sans quoi une ligne déplacée entre la
+  // lecture et l'écriture posait le groupe sur deux comptes.
+  it('toute pose de lignes dans un groupe exige la ligne libre sur le compte du groupe', () => {
+    const source = readFileSync(join(__dirname, 'lettrage.service.ts'), 'utf-8');
+    const poses = [...source.matchAll(/ligneEcriture\.updateMany\(\{[\s\S]*?data:\s*\{\s*lettrageId(?::\s*groupe\.id)?\s*[,}]/g)].map((m) => m[0]);
+    expect(poses).toHaveLength(3);
+    for (const pose of poses) expect(pose).toMatch(/where:\s*\{\s*id:\s*\{\s*in:\s*\w+(?:\.\w+)?\s*\},\s*compteId:\s*[\w.]+,\s*lettrageId:\s*null\s*\}/);
+  });
 });
 
 describe('la clôture et les modules restés sérialisables (relecture lettrage-verrou, M1)', () => {

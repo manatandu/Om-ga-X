@@ -162,6 +162,9 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'viserEcritures', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'retirerVisas', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'ficheImputation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Relecture lettrage-verrou, M3 · le décompte des lignes d'UNE écriture désignée par son identifiant, confronté à
+  // ce que le retrait sous filtre des lignes libres a emporté.
+  { fichier: 'src/modules/comptabilite/lignes-libres.ts', fonction: 'retirerLesLignesLibres', appel: 'ligneEcriture.count', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'verifierComptesCollectifs', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'trouverEnBrouillard', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },

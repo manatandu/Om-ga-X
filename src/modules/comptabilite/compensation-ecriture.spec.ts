@@ -24,10 +24,12 @@ function monter(options: { echecLignes?: boolean } = {}) {
       }),
     },
     ligneEcriture: {
+      count: jest.fn().mockResolvedValue(2),
       deleteMany: jest.fn().mockImplementation(async () => {
         if (options.echecLignes) throw new Error('base indisponible');
         lignesPresentes = false;
         ordre.push('lignes');
+        return { count: 2 };
       }),
     },
   };

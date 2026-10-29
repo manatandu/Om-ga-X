@@ -37,7 +37,8 @@ describe('EcritureService.modifierPieceDuModule', () => {
           statut: 'OUVERT',
         }),
       },
-      ligneEcriture: { deleteMany: async () => ({ count: retirees }) },
+      // Une pièce de deux lignes · « validée entre-temps », aucune ne part du filtre sur le brouillard.
+      ligneEcriture: { count: async () => 2, deleteMany: async () => ({ count: retirees }) },
       // Aucune pièce jointe · la description n'a rien à suivre (ligne sage-l6).
       pieceJointeEcriture: { count: async () => 0 },
     };
