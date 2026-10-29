@@ -33,7 +33,12 @@
  *     SALARIÉ (`comptabilisation-paie.ts`), le PAIEMENT le débite du net ·
  *     sur le compte où son bulletin a été PASSÉ, collectif compris pour un
  *     bulletin passé avant l'ouverture · une reprise en négatif suit la même
- *     règle (AUDCIF art. 20, al. 2, « ce qui a été passé »).
+ *     règle (AUDCIF art. 20, al. 2, « ce qui a été passé »). LIMITE ÉCRITE ·
+ *     un bulletin PAYÉ AVANT D'ÊTRE PASSÉ suit l'option du jour du paiement,
+ *     et sa passation celle du jour de la passation · l'option changée entre
+ *     les deux laisse le compte du salarié et le collectif de sens contraires,
+ *     la balance générale bouclée. Passez la paie avant de la payer, ou ne
+ *     changez pas l'option entre les deux.
  * (4) UNE FOIS UN COMPTE OUVERT, LA SAISIE MANUELLE NE VA PLUS AU COLLECTIF
  *     (règle des collectifs, `verifierComptesCollectifs`) · un paiement de
  *     salaire saisi à la main se passe sur le compte du salarié ; un solde

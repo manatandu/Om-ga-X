@@ -27,7 +27,8 @@ Excel), départements et directions, visa d'un plan d'étalement.
 - [x] 82 · import du personnel · `personnel/import-personnel.ts` (lecture des colonnes par leur nom, valeurs illisibles refusées, « 500.000 » ambigu), `import-personnel.service.ts` (chaque ligne jugée par `SalarieDto`, `ContratTravailDto`, la monnaie exigée et le matricule unique ; simulation, puis import tout ou rien rejouant la simulation), modèle Excel, onglet Import. Les colonnes écrites sont celles de la saisie (`champsDuSalarie`, `champsDuContrat`, extraits de `personnel.service.ts`).
 - [x] 87 · rappel de salaires · `personnel/rappel-salaire.ts` (calcul proportionnel au salaire figé, exclusions nommées), `rappels-salaire.service.ts`, table `RappelSalaire` (calcul figé, porteur RESTRICT), routes de simulation, déclaration, annulation et « à payer » ; le bulletin d'un mois postérieur PORTE le rappel (`rappelsPortes`), un élément « Salaire ou traitement » par mois rappelé, lié à l'émission sous verrou. Onglet Rappels de salaire, bloc « Rappels de salaire à payer » de la simulation.
 - [x] compte individuel du salarié sous le 422 (option du dossier, passation éclatée, paiement et reprise sur le compte où le net a été inscrit, ouverture au geste ou à la création)
-- [ ] Rejeu sur vraie base à travers une clôture, relecture en deux tours.
+- [x] Rejeu sur vraie base · `scripts/rejouer-paie-suite.cjs`, à travers la clôture de 2026, tout vert. Il a trouvé un défaut (paiement de décembre en 2027 · le second salarié d'une même passation débité au collectif, la lecture des lignes de la passation bornée sans `distinct`), corrigé et gelé par un test du service.
+- [x] Relecture · premier tour personnel (aucun agent de relecture disponible dans ce contexte) · une limite écrite (bulletin payé avant d'être passé, option changée entre les deux), aucun BLOQUANT restant.
 
 ## Décisions prises, avec leur fondement
 
@@ -53,7 +54,7 @@ Excel), départements et directions, visa d'un plan d'étalement.
   proportionnel (convention d'OmegaX, dite) · salaire figé × (nouvelle base −
   base figée) ÷ base figée. Baisse refusée (art. 112, liste fermée). Mois en
   dollars, mois sans bulletin, mois déjà rappelés · exclus et nommés.
-Option désactivée par défaut · la fiche du compte 42 ne dit pas si le 422 se tient par salarié (subdivision admise, AUDCIF art. 18 al. 3 ; SYCEBNL Partie 2 ch. 2) ; le compte individuel met au journal le nom et le net de chacun. Reprise et paiement sur le compte de la passation (AUDCIF art. 20, al. 2).
+- Compte individuel (76) · option désactivée par défaut · la fiche du compte 42 ne dit pas si le 422 se tient par salarié (subdivision admise, AUDCIF art. 18 al. 3 ; SYCEBNL Partie 2 ch. 2) ; le compte individuel met au journal le nom et le net de chacun. Reprise et paiement sur le compte de la passation (AUDCIF art. 20, al. 2).
 
 ## Vérification
 
@@ -61,4 +62,5 @@ Option désactivée par défaut · la fiche du compte 42 ne dit pas si le 422 se
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 bash <scratchpad>/paie-suite/diff.sh   # prisma migrate diff, base jetable
+DATABASE_URL=<base jetable locale> node scripts/rejouer-paie-suite.cjs   # après npm run build
 ```
