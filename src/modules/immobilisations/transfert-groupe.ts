@@ -79,6 +79,10 @@ export function estDepreciationAnterieure(
   exercice: { dateFin: Date },
 ): boolean {
   if (d.nature === 'TRANSFERT_GROUPE' && d.sens === 'DOTATION') return true;
+  // Ligne immos, n° 65 · la part des unités sorties d'un lot ne pèse plus sur
+  // le lot dès l'exercice de la sortie · son plan se ré-étale sur la seule
+  // dépréciation des unités qui restent (`cession-partielle.ts`).
+  if (d.nature === 'CESSION_PARTIELLE') return d.exercice.dateFin <= exercice.dateFin;
   return d.exercice.dateFin < exercice.dateFin;
 }
 

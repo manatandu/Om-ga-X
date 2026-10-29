@@ -242,6 +242,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [iNumeroInventaire, setINumeroInventaire] = useState('');
   // Ligne immos, n° 71 · le numéro de série du fabricant.
   const [iNumeroSerie, setINumeroSerie] = useState('');
+  // Ligne immos, n° 65 · le nombre d'unités identiques du lot · vide vaut un.
+  const [iQuantite, setIQuantite] = useState('');
   const [iDateAcquisition, setIDateAcquisition] = useState(() => new Date().toISOString().slice(0, 10));
   // Vide, le bien est acquis et pas encore en état de fonctionner (AUDCIF
   // art. 45) · aucune dotation tant que la mise en service n'est pas posée.
@@ -319,6 +321,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [sDateSortie, setSDateSortie] = useState(() => new Date().toISOString().slice(0, 10));
   const [sType, setSType] = useState<'CESSION' | 'MISE_HORS_SERVICE'>('MISE_HORS_SERVICE');
   const [sPrixCession, setSPrixCession] = useState('');
+  // Ligne immos, n° 65 · les unités qui sortent d'un lot · vide, le lot entier.
+  const [sQuantite, setSQuantite] = useState('');
   const [sCompteContrepartie, setSCompteContrepartie] = useState('');
   // AUDCIF, Titre VII, compte 81, Exclusions · une cession « fréquente et
   // récurrente » est courante (654 / 754), une qualification de fait que le
@@ -669,6 +673,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
         designation: iDesignation,
         numeroInventaire: iNumeroInventaire || undefined,
         numeroSerie: iNumeroSerie.trim() || undefined,
+        ...(iQuantite.trim() ? { quantite: Number(iQuantite.trim()) } : {}),
         lieuId: iLieuId || undefined,
         dateAcquisition: iDateAcquisition,
         // Vide · bien non encore mis en service, la date se pose plus tard.
@@ -815,15 +820,24 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     }
   };
 
-  const onSortir = async (e: FormEvent, immoId: string, natureSortie: NatureSortie | '') => {
+  const onSortir = async (e: FormEvent, immoId: string, natureSortie: NatureSortie | '', quantiteDuLot = 1) => {
     e.preventDefault();
     if (!exerciceCourant) return;
     setErreur(null);
+    // Ligne immos, n° 65 · une partie des unités d'un lot sort par sa route ;
+    // une quantité illisible ne part jamais.
+    const unites = sQuantite.trim() === '' ? null : Number(sQuantite.trim());
+    if (unites !== null && (!Number.isInteger(unites) || unites < 1 || unites > quantiteDuLot)) {
+      setErreur(`Unités qui sortent · un entier de 1 à ${quantiteDuLot}.`);
+      return;
+    }
+    const partielle = unites !== null && unites < quantiteDuLot;
     setEnvoi(true);
     try {
       const resultat = await api.post<{
         ecartReevaluation?: { transfereReserve: number; compteReserve: string | null; repris861: number } | null;
-      }>(`/immobilisations/${immoId}/sortie`, {
+      }>(partielle ? `/immobilisations/${immoId}/sortie-partielle` : `/immobilisations/${immoId}/sortie`, {
+        ...(partielle ? { quantiteSortie: unites } : {}),
         dateSortie: sDateSortie,
         type: sType,
         natureSortie,
@@ -835,6 +849,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
         compteContrepartieId: sType === 'CESSION' ? sCompteContrepartie : undefined,
         ...(sType === 'CESSION' && syscohada ? { cessionCourante: sCessionCourante } : {}),
         ...(projetDeveloppement ? { compteFondsProjetId: sCompteFonds } : {}),
+        // Partielle, le matériel récupéré part quand même · le serveur le refuse en le nommant, jamais l'écran en silence.
         ...(sType === 'MISE_HORS_SERVICE' && Number(sValeurRecuperee) > 0
           ? { valeurMaterielRecupere: Number(sValeurRecuperee), compteStockRecupereId: sCompteStock, sourceMaterielRecupere: sSourceRecuperee }
           : {}),
@@ -843,6 +858,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
       setSortieOuvertePour(null);
       setSCompteReserve('');
       setSPrixCession('');
+      setSQuantite('');
       setSValeurRecuperee('');
       setSSourceRecuperee('');
       setSNature('');
@@ -850,7 +866,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
       setSDatePiece('');
       // Ce que la sortie a fait de l'écart de réévaluation se DIT · 106 vers la
       // réserve choisie, 154 repris au 861 (lignes A15 et A15 bis).
-      setInfo(messageSortieEcart(resultat?.ecartReevaluation ?? null));
+      setInfo(partielle ? `${unites} unité(s) sorties du lot · une fiche à part, sortie avec sa part au centime ; le lot garde le reste.` : messageSortieEcart(resultat?.ecartReevaluation ?? null));
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Impossible de sortir cette immobilisation');
@@ -1251,6 +1267,10 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               <label className="text-[11.5px] font-semibold text-text-dim">
                 N° de série
                 <input value={iNumeroSerie} maxLength={100} onChange={(e) => setINumeroSerie(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal" />
+              </label>
+              <label className="text-[11.5px] font-semibold text-text-dim" title="Le nombre d'unités identiques acquises ensemble · vide pour un bien seul">
+                Quantité
+                <input value={iQuantite} inputMode="numeric" placeholder="1" onChange={(e) => setIQuantite(e.target.value)} className="mt-1 w-full border border-border-dark px-2.5 py-1.5 text-[12px] font-normal tabular-nums" />
               </label>
               <div>
                 <label className="block text-[11.5px] font-semibold text-text-dim">
@@ -1896,6 +1916,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 >
                   <span className="truncate">
                     {immo.designation}{immo.numeroInventaire ? ` (${immo.numeroInventaire})` : ''}
+                    {(immo.quantite ?? 1) > 1 && <span className="ml-1 text-text-dim">× {immo.quantite}</span>}
                     {/* Le rattachement est ce qui manquait · le montrer sur la ligne
                         évite qu'un composant se lise comme un bien autonome. */}
                     {immo.immobilisationPrincipaleId && (
@@ -2607,8 +2628,21 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                   const natureRetenue: NatureSortie | '' =
                     sNature && naturesOffertes.includes(sNature) ? sNature : naturesOffertes.length === 1 ? naturesOffertes[0] : '';
                   return (
-                  <form onSubmit={(e) => onSortir(e, immo.id, natureRetenue)} className="bg-chrome border-b border-border px-4 py-3">
+                  <form onSubmit={(e) => onSortir(e, immo.id, natureRetenue, immo.quantite ?? 1)} className="bg-chrome border-b border-border px-4 py-3">
                     <div className="grid grid-cols-4 gap-3 items-end">
+                      {(immo.quantite ?? 1) > 1 && (
+                        <label className="text-[11.5px] font-semibold text-text-dim">
+                          <span className="flex items-center gap-1.5">
+                            Unités qui sortent
+                            <Aide
+                              titre="Sortie d'une partie du lot"
+                              texte="Vide, le lot entier sort. Une partie des unités sort par une fiche à part, née du lot, qui emporte sa part de la valeur, des amortissements, du complément de l'exercice et de la dépréciation, au centime · le lot garde le reste, la dernière unité prenant ce qui reste. La dotation de l'exercice du lot se passe après."
+                              source="Fiche du compte 81 des deux plans · « éléments sortis »"
+                            />
+                          </span>
+                          <input value={sQuantite} inputMode="numeric" placeholder={`toutes (${immo.quantite})`} onChange={(e) => setSQuantite(e.target.value)} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px] tabular-nums" />
+                        </label>
+                      )}
                       <label className="text-[11.5px] font-semibold text-text-dim">
                         Type
                         <select value={sType} onChange={(e) => setSType(e.target.value as 'CESSION' | 'MISE_HORS_SERVICE')} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]">

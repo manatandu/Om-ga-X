@@ -33,7 +33,7 @@ function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivante
     immobilisation: {
       findFirst: jest.fn().mockResolvedValue({ id: 'bien-1' }),
       findMany: jest.fn().mockImplementation(({ where }) =>
-        Promise.resolve(where?.immobilisationPrincipaleId ? [] : [{ id: 'bien-1', designation: 'Camion', statut: 'EN_SERVICE', dateSortie: null }]),
+        Promise.resolve(where?.immobilisationPrincipaleId || where?.fractionDeId ? [] : [{ id: 'bien-1', designation: 'Camion', statut: 'EN_SERVICE', dateSortie: null }]),
       ),
     },
     dotationAmortissement: {

@@ -13,6 +13,7 @@ const valeurs: ValeursFiche = {
   natureFiscaleCle: null,
   numeroSerie: 'SN-001',
   sectionAnalytiqueId: null,
+  quantite: 1,
   compteImmobilisationId: 'c1',
   compteContrepartieId: 'c521',
   dateAcquisition: '2026-01-01',
@@ -56,6 +57,12 @@ describe('le corps de la modification', () => {
   it('le numéro de série (n° 71) est un champ libre · changé il part seul, vidé il part en null', () => {
     expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: ' SN-002 ' }).corps).toEqual({ numeroSerie: 'SN-002' });
     expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), numeroSerie: '' }).corps).toEqual({ numeroSerie: null });
+  });
+
+  it('la quantité (n° 65) part en entier, champ libre · zéro ou une fraction est nommée, jamais envoyée', () => {
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), quantite: '20' }).corps).toEqual({ quantite: 20 });
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), quantite: '0' })).toEqual({ corps: {}, illisibles: ['Quantité'] });
+    expect(corpsModification(valeurs, { ...saisieDepuis(valeurs), quantite: '2,5' }).illisibles).toEqual(['Quantité']);
   });
 
   it('la section analytique (n° 70) se pose et se retire seule, champ libre', () => {

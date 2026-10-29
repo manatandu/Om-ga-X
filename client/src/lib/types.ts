@@ -1137,6 +1137,10 @@ export interface Immobilisation {
   numeroInventaire: string | null;
   /** Ligne immos, n° 71 · le numéro de série du fabricant · null si non renseigné. */
   numeroSerie?: string | null;
+  /** Ligne immos, n° 65 · le nombre d'unités identiques que la fiche porte (1 pour un bien seul). */
+  quantite?: number;
+  /** Ligne immos, n° 65 · la fiche du lot dont ces unités ont été sorties. */
+  fractionDeId?: string | null;
   /** Lieu du bien (référentiel des lieux du dossier) · null si non placé. */
   lieuId?: string | null;
   lieu?: { id: string; code: string; intitule: string } | null;

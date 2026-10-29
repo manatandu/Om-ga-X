@@ -115,6 +115,13 @@ export class CreerImmobilisationDto {
   @MaxLength(100)
   numeroSerie?: string;
 
+  /** Ligne immos, n° 65 · le nombre d'unités identiques de la fiche · 1 à défaut. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  quantite?: number;
+
   /** Ligne immos, n° 70 · la section analytique de la dotation du bien. */
   @IsOptional()
   @IsUUID('4')
@@ -613,6 +620,22 @@ export class SortirImmobilisationDto {
   @IsOptional()
   @IsUUID('4')
   compteReserveEcartId?: string;
+}
+
+/**
+ * Ligne immos, n° 65 · la sortie d'une partie des unités d'un lot · les
+ * champs de la sortie ordinaire, le nombre d'unités qui sortent, et la
+ * désignation de leur fiche (à défaut, celle du lot et le compte des unités).
+ */
+export class SortiePartielleDto extends SortirImmobilisationDto {
+  @IsInt()
+  @Min(1)
+  quantiteSortie!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  designationPartie?: string;
 }
 
 /** Ligne immos, n° 69 · un bien du lot, et son prix pour une cession. */

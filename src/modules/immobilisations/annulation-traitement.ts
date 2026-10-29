@@ -48,7 +48,9 @@ export type NatureActe =
   | 'RECLASSEMENT'
   | 'TRANSFERT_DEPRECIATION'
   | 'REMPLACEMENT_IMPREVU'
-  | 'REDUCTION_SUBVENTION';
+  | 'REDUCTION_SUBVENTION'
+  /** Ligne immos, n° 65 · des unités sorties du lot · leur part a lu le cumul et la dépréciation. */
+  | 'CESSION_PARTIELLE';
 
 /** Un acte lu sur le bien · `nature` dit sa table, `exerciceFin` et `creeLe` son rang. */
 export interface ActeDuBien {
@@ -125,6 +127,7 @@ const DEPENDANTS: Record<NatureTraitement, Partial<Record<NatureActe, { strict: 
     SORTIE: { strict: false },
     RECLASSEMENT: { strict: false },
     REMPLACEMENT_IMPREVU: { strict: false },
+    CESSION_PARTIELLE: { strict: false },
   },
   DEPRECIATION: {
     DOTATION: { strict: true },
@@ -137,6 +140,7 @@ const DEPENDANTS: Record<NatureTraitement, Partial<Record<NatureActe, { strict: 
     RECLASSEMENT: { strict: false },
     TRANSFERT_DEPRECIATION: { strict: false },
     REMPLACEMENT_IMPREVU: { strict: false },
+    CESSION_PARTIELLE: { strict: false },
   },
   REVISION_PLAN: {
     DOTATION: { strict: false },
@@ -149,6 +153,7 @@ const DEPENDANTS: Record<NatureTraitement, Partial<Record<NatureActe, { strict: 
     SORTIE: { strict: false },
     RECLASSEMENT: { strict: false },
     REMPLACEMENT_IMPREVU: { strict: false },
+    CESSION_PARTIELLE: { strict: false },
   },
   DEROGATOIRE: {
     DEROGATOIRE: { strict: false },
@@ -174,6 +179,7 @@ const DEPENDANTS: Record<NatureTraitement, Partial<Record<NatureActe, { strict: 
     SORTIE: { strict: false },
     RECLASSEMENT: { strict: false },
     REMPLACEMENT_IMPREVU: { strict: false },
+    CESSION_PARTIELLE: { strict: false },
   },
   REPRISE_SUBVENTION: {
     REPRISE_SUBVENTION: { strict: false },
@@ -226,7 +232,7 @@ export function actesQuiEnDependent(cible: ActeDuBien & { soldeDerogatoire?: boo
 }
 
 /** Les gestes qu'OmegaX n'annule pas · le refus le dit, au lieu de promettre une issue. */
-const NON_ANNULABLES = new Set<NatureActe>(['SORTIE', 'RECLASSEMENT', 'TRANSFERT_DEPRECIATION', 'REMPLACEMENT_IMPREVU', 'REDUCTION_SUBVENTION']);
+const NON_ANNULABLES = new Set<NatureActe>(['SORTIE', 'RECLASSEMENT', 'TRANSFERT_DEPRECIATION', 'REMPLACEMENT_IMPREVU', 'REDUCTION_SUBVENTION', 'CESSION_PARTIELLE']);
 
 /**
  * LE MOTIF DU REFUS, OU `null` · dans l'ordre où le cabinet doit lire les
@@ -240,6 +246,8 @@ export function motifRefusAnnulation(entree: {
   transfertMiseEnService?: boolean;
   /** Dotation ou dépréciation née d'un transfert dans le groupe · elle s'annule avec lui. */
   transfertGroupe?: boolean;
+  /** Ligne immos, n° 65 · la reprise de la dépréciation des unités sorties d'un lot. */
+  cessionPartielle?: boolean;
   /** Révision posée par une réévaluation libre (méthode 2) · elle suit son opération. */
   revisionDeReevaluation?: boolean;
   dependants: readonly ActeDuBien[];
@@ -254,6 +262,12 @@ export function motifRefusAnnulation(entree: {
       "pour l'erreur « commise et découverte sur l'exercice en cours » (AUDCIF art. 20, al. 2). Significative, elle se " +
       'corrige par ajustement du report à nouveau (al. 3) ; dans tous les cas, elle fait l’objet d’une information dans les ' +
       'Notes annexes (al. 4).'
+    );
+  }
+  if (entree.cessionPartielle) {
+    return (
+      'Cette reprise est la part de dépréciation des unités sorties du lot · elle fait partie de la sortie partielle et ne ' +
+      's’annule pas seule. Les unités sont sorties par leur propre fiche ; leur sortie ne s’annule pas dans OmegaX.'
     );
   }
   if (entree.transfertGroupe) {

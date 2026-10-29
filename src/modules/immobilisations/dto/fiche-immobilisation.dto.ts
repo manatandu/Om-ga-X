@@ -27,6 +27,13 @@ export class ModifierImmobilisationDto {
   @MaxLength(10)
   natureFiscaleCle?: string | null;
 
+  /** Ligne immos, n° 65 · le nombre d'unités identiques · un champ libre, au moins 1. */
+  @FacultatifNonNul('La quantité ne s’efface pas · 1 pour un bien seul.')
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  quantite?: number;
+
   /** Ligne immos, n° 70 · `null` retire la section (la famille vaut alors). */
   @IsOptional()
   @IsUUID('4')

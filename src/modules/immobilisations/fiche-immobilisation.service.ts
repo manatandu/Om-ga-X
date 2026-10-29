@@ -55,6 +55,7 @@ export class FicheImmobilisationService {
         natureFiscaleCle: f.natureFiscaleCle,
         numeroSerie: f.numeroSerie,
         sectionAnalytiqueId: f.sectionAnalytiqueId,
+        quantite: f.quantite,
         compteImmobilisationId: f.compteImmobilisationId,
         compteContrepartieId: lu.contrepartieId,
         dateAcquisition: jourIso(f.dateAcquisition),
@@ -95,6 +96,10 @@ export class FicheImmobilisationService {
     // Les libres que la branche à effet ne recompose pas · ils passent tels quels avec elle.
     const libresAjoutes: Prisma.ImmobilisationUpdateInput = {};
     if (dto.numeroSerie !== undefined) libresAjoutes.numeroSerie = dto.numeroSerie?.trim() || null;
+    // Ligne immos, n° 65 · la quantité · sans effet comptable tant que rien ne
+    // sort, elle se déclare à tout moment ; le lot d'unités se vérifie sur la
+    // fiche, jamais deviné.
+    if (dto.quantite !== undefined) libresAjoutes.quantite = dto.quantite;
     // Ligne immos, n° 70 · la section se juge comme à la pose (`motifSectionImpropre`).
     if (dto.sectionAnalytiqueId !== undefined) {
       if (dto.sectionAnalytiqueId) await this.immobilisations.verifierSectionDuBien(tenantId, dto.sectionAnalytiqueId, f.compteDotationId);

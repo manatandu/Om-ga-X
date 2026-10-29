@@ -16,6 +16,8 @@ export interface ValeursFiche {
   numeroSerie: string | null;
   /** Ligne immos, n° 70 · la section de la dotation · null, celle de la famille vaut. */
   sectionAnalytiqueId: string | null;
+  /** Ligne immos, n° 65 · le nombre d'unités identiques. */
+  quantite: number;
   compteImmobilisationId: string;
   compteContrepartieId: string | null;
   dateAcquisition: string;
@@ -37,6 +39,7 @@ export type SaisieFiche = Record<
   | 'natureFiscaleCle'
   | 'numeroSerie'
   | 'sectionAnalytiqueId'
+  | 'quantite'
   | 'compteImmobilisationId'
   | 'compteContrepartieId'
   | 'dateAcquisition'
@@ -58,6 +61,7 @@ export function saisieDepuis(v: ValeursFiche): SaisieFiche {
     natureFiscaleCle: v.natureFiscaleCle ?? '',
     numeroSerie: v.numeroSerie ?? '',
     sectionAnalytiqueId: v.sectionAnalytiqueId ?? '',
+    quantite: String(v.quantite),
     compteImmobilisationId: v.compteImmobilisationId,
     compteContrepartieId: v.compteContrepartieId ?? '',
     dateAcquisition: v.dateAcquisition,
@@ -100,6 +104,12 @@ export function corpsModification(v: ValeursFiche, s: SaisieFiche): { corps: Rec
   effacable('natureFiscaleCle', s.natureFiscaleCle);
   effacable('numeroSerie', s.numeroSerie);
   effacable('sectionAnalytiqueId', s.sectionAnalytiqueId);
+  // La quantité est un ENTIER d'au moins 1 · illisible, elle est nommée.
+  if (s.quantite.trim() !== String(v.quantite)) {
+    const q = Number(s.quantite.replace(/\s/g, ''));
+    if (Number.isInteger(q) && q >= 1) corps.quantite = q;
+    else illisibles.push('Quantité');
+  }
   effacable('dateMiseEnService', s.dateMiseEnService);
   for (const cle of ['compteImmobilisationId', 'dateAcquisition', 'modeAmortissement'] as const) {
     if (s[cle] && s[cle] !== v[cle]) corps[cle] = s[cle];

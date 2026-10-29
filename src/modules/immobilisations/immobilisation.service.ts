@@ -65,6 +65,7 @@ import {
   SaisirConsommationDto,
   SortieImmobilisation,
   SortieGlobaleDto,
+  SortiePartielleDto,
   TypeSortie,
   MiseEnServiceDto,
   TransfertDepreciationDto,
@@ -164,6 +165,7 @@ import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-r
 import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
 import { motifSectionImpropre, sectionDuBien, ventilationDeLaDotation } from './analytique-des-biens';
 import { messageRefusDuLot, motifRefusLot } from './sortie-globale';
+import { motifRefusSortiePartielle, partDesUnites } from './cession-partielle';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -2540,6 +2542,7 @@ export class ImmobilisationService {
           // Ligne immos, n° 71 · vide n'est pas un numéro.
           numeroSerie: dto.numeroSerie?.trim() || null,
           sectionAnalytiqueId: dto.sectionAnalytiqueId ?? null,
+          quantite: dto.quantite ?? 1,
           lieuId: dto.lieuId ?? null,
           compteImmobilisationId: famille.compteImmobilisationId,
           compteAmortissementId: famille.compteAmortissementId,
@@ -5814,6 +5817,239 @@ export class ImmobilisationService {
       await this.defaireSortie(tenantId, id, immo.designation, ecrituresPosees, dotationPoseeId);
       throw err;
     }
+  }
+
+  /**
+   * LIGNE IMMOS, FONCTION N° 65 · LA SORTIE D'UNE PARTIE DES UNITÉS D'UN LOT
+   * (`cession-partielle.ts`). Le lot est d'abord jugé comme s'il sortait en
+   * entier (`simulerSortie` · pièce, nature, comptes, cession courante,
+   * fonds), ce qui donne aussi son cumul, son complément et sa dépréciation ;
+   * les unités sortantes en prennent leur part au centime, le lot garde le
+   * reste. Puis, dans l'ordre · la fiche des unités naît du lot (même compte,
+   * même plan, `fractionDeId`) et le lot est réduit, dans une transaction ;
+   * la part de dépréciation se reprend sur le lot (D 29 / C 79) ; la fiche des
+   * unités sort par `sortir`, complément imposé. Un échec en route défait ce
+   * qui précède.
+   */
+  async sortirUnePartie(tenantId: string, userId: string, id: string, dto: SortiePartielleDto) {
+    const lot = await this.trouver(tenantId, id);
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: dto.exerciceId, tenantId } });
+    if (!exercice) throw new BadRequestException('Exercice introuvable pour ce dossier');
+    const regime = await this.regimeComptable(tenantId);
+    const n = (x: unknown) => Number(x ?? 0);
+    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts, repriseCetExercice] = await Promise.all([
+      this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
+      this.prisma.amortissementDerogatoire.count({ where: { tenantId, immobilisationId: id } }),
+      this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
+      this.prisma.ligneReevaluationBilan.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
+      this.prisma.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
+      this.prisma.exercice.findMany({
+        where: { tenantId, dateFin: { lt: exercice.dateDebut }, statut: StatutExercice.OUVERT },
+        select: { id: true, dateFin: true },
+        orderBy: { dateFin: 'asc' },
+      }),
+      this.prisma.depreciationImmobilisation.findFirst({
+        where: { immobilisationId: id, exerciceId: exercice.id, nature: NatureMouvementDepreciation.CESSION_PARTIELLE },
+        select: { id: true },
+      }),
+    ]);
+    const financeeParUnFonds = nombreSubventions > 0 || (await this.lotEntreParUnFonds(tenantId, lot.ecritureAcquisitionId, regime.referentiel));
+    const amortissable =
+      !!lot.dateMiseEnService &&
+      !lot.dureeNonLimitee &&
+      !motifNonAmortissable(lot.compteImmobilisation.numero, regime.referentiel) &&
+      !motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl);
+    // Un exercice antérieur ouvert, finissant après la mise en service, sans la dotation du lot.
+    const nonDote = amortissable
+      ? anterieursOuverts.find((e) => lot.dateMiseEnService! <= e.dateFin && !lot.dotations.some((d) => d.exerciceId === e.id))
+      : undefined;
+    const depreciationNette = this.cumulDepreciation(lot.depreciations.map((d) => ({ sens: d.sens, montant: n(d.montant) })));
+    const refus = motifRefusSortiePartielle({
+      enService: lot.statut === StatutImmobilisation.EN_SERVICE,
+      quantite: lot.quantite,
+      quantiteSortie: dto.quantiteSortie,
+      estComposant: !!lot.immobilisationPrincipaleId,
+      composantsEnService,
+      unitesOeuvre: lot.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE,
+      degressifFiscal: lot.degressifFiscal,
+      derogatoires: nombreDerogatoires,
+      financeeParUnFonds,
+      reevaluee: !!reevaluee || n(lot.amortissementsReevaluation) !== 0,
+      locationAcquisition: !!contrat,
+      acquisitionAleatoire: !!lot.natureAcquisitionAleatoire,
+      demantelement: lot.coutFuturDemantelement !== null && lot.coutFuturDemantelement !== undefined,
+      dotationDejaPassee: lot.dotations.some((d) => d.exercice.dateDebut >= exercice.dateDebut),
+      exerciceAnterieurNonDote: nonDote ? nonDote.dateFin.toISOString().slice(0, 10) : null,
+      repriseDejaPasseeCetExercice: !!repriseCetExercice,
+      deprecie: depreciationNette > EPSILON,
+    });
+    if (refus) throw new BadRequestException(refus);
+
+    // Le lot jugé comme s'il sortait en entier · mêmes refus, et ses montants.
+    const sortie: SortieImmobilisation = {
+      dateSortie: dto.dateSortie,
+      type: dto.type,
+      exerciceId: dto.exerciceId,
+      journalId: dto.journalId,
+      prixCession: dto.prixCession,
+      compteContrepartieId: dto.compteContrepartieId,
+      cessionCourante: dto.cessionCourante,
+      compteFondsProjetId: dto.compteFondsProjetId,
+      natureSortie: dto.natureSortie,
+      referencePieceSortie: dto.referencePieceSortie,
+      datePieceSortie: dto.datePieceSortie,
+    };
+    if (dto.valeurMaterielRecupere !== undefined || dto.compteStockRecupereId) {
+      throw new BadRequestException('Le matériel récupéré ne se déclare pas sur une sortie partielle · sortez les unités, puis passez la reprise en stock à la main.');
+    }
+    const lu = await this.simulerSortie(tenantId, id, { ...sortie, prixCession: undefined, type: TypeSortie.MISE_HORS_SERVICE, natureSortie: undefined, referencePieceSortie: undefined, datePieceSortie: undefined });
+    // La pièce, la nature et le prix se jugent sur les unités, à leur sortie ;
+    // ici, le lot ne donne que ses montants.
+    const montantsDuLot = {
+      brut: n(lot.valeurOrigine),
+      valeurResiduelle: n(lot.valeurResiduelle),
+      cumulOuverture: lu.cumulAvantComplement,
+      depreciation: lu.cumulDepreciation,
+      complement: lu.montantComplement,
+      quantite: lot.quantite,
+    };
+    const partie = partDesUnites(montantsDuLot, dto.quantiteSortie);
+    if (partie.depreciation > EPSILON && !lu.repriseDepreciation) {
+      throw new BadRequestException('La dépréciation du lot ne se lit sur aucun compte 29 · reprenez-la sur la fiche, puis sortez les unités.');
+    }
+
+    // 1 · la fiche des unités naît du lot, et le lot se réduit, ensemble ·
+    // sous le verrou de la fiche, la quantité et la valeur RELUES (un second
+    // geste concurrent ne passe pas) ; une mise à jour UNITAIRE, pour que le
+    // journal d'audit garde l'avant et l'après du lot.
+    const designation = (dto.designationPartie?.trim() || `${lot.designation} · ${dto.quantiteSortie} unité(s) sur ${lot.quantite}`).slice(0, 200);
+    const unites = await transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const relu = await tx.immobilisation.findFirst({ where: { id, tenantId }, select: { statut: true, quantite: true, valeurOrigine: true, amortissementsDetaches: true } });
+      if (
+        !relu ||
+        relu.statut !== StatutImmobilisation.EN_SERVICE ||
+        relu.quantite !== lot.quantite ||
+        Number(relu.valeurOrigine) !== Number(lot.valeurOrigine) ||
+        Number(relu.amortissementsDetaches) !== Number(lot.amortissementsDetaches)
+      ) {
+        throw new ConflictException('Le lot a changé pendant la sortie (un autre geste en cours) · rien n’est passé. Relancez.');
+      }
+      await tx.immobilisation.update({
+        where: { id },
+        data: {
+          quantite: { decrement: dto.quantiteSortie },
+          valeurOrigine: { decrement: partie.brut },
+          valeurResiduelle: { decrement: partie.valeurResiduelle },
+          amortissementsDetaches: { increment: partie.cumulOuverture },
+        },
+      });
+      return tx.immobilisation.create({
+        data: {
+          tenantId,
+          familleId: lot.familleId,
+          designation,
+          quantite: dto.quantiteSortie,
+          fractionDeId: lot.id,
+          lieuId: lot.lieuId,
+          sectionAnalytiqueId: lot.sectionAnalytiqueId,
+          compteImmobilisationId: lot.compteImmobilisationId,
+          compteAmortissementId: lot.compteAmortissementId,
+          compteDotationId: lot.compteDotationId,
+          compteEnCoursId: lot.compteEnCoursId,
+          dateAcquisition: lot.dateAcquisition,
+          dateMiseEnService: lot.dateMiseEnService,
+          dateEntreeGroupe: lot.dateEntreeGroupe,
+          natureFiscaleCle: lot.natureFiscaleCle,
+          valeurOrigine: partie.brut,
+          valeurResiduelle: partie.valeurResiduelle,
+          dureeAmortissementAns: lot.dureeAmortissementAns,
+          modeAmortissement: lot.modeAmortissement,
+          amortissementAnterieur: partie.cumulOuverture,
+          dateDebutAmortissement: lot.dateDebutAmortissement,
+          dateEffetRevisionPlan: lot.dateEffetRevisionPlan,
+          dureeResiduelleRevisee: lot.dureeResiduelleRevisee,
+          createdBy: userId,
+        },
+      });
+    });
+    const defaireLeFractionnement = async () => {
+      await transactionJournalisee(this.prisma, async (tx) => {
+        await tx.immobilisation.delete({ where: { id: unites.id } });
+        await tx.immobilisation.update({
+          where: { id },
+          data: {
+            quantite: { increment: dto.quantiteSortie },
+            valeurOrigine: { increment: partie.brut },
+            valeurResiduelle: { increment: partie.valeurResiduelle },
+            amortissementsDetaches: { decrement: partie.cumulOuverture },
+          },
+        });
+      });
+    };
+
+    // 2 · la part de dépréciation reprise sur le lot · D 29 / C 79, la même
+    // paire que la sortie entière porte sur ses lignes.
+    let reprise: { ecritureId: string; ligneId: string } | null = null;
+    try {
+      if (partie.depreciation > EPSILON && lu.repriseDepreciation) {
+        const ecriture = await this.ecritureService.creer(tenantId, userId, {
+          exerciceId: dto.exerciceId,
+          journalId: dto.journalId,
+          date: dto.dateSortie,
+          libelle: `Reprise de dépréciation (sortie de ${dto.quantiteSortie} unité(s)) · ${lot.designation}`.slice(0, 200),
+          reference: dto.referencePieceSortie?.trim() || undefined,
+          lignes: [
+            { compteId: lu.repriseDepreciation.compteDepreciationId, debit: partie.depreciation, credit: 0 },
+            { compteId: lu.repriseDepreciation.compteRepriseId, debit: 0, credit: partie.depreciation },
+          ],
+        });
+        try {
+          const ligne = await this.prisma.depreciationImmobilisation.create({
+            data: {
+              immobilisationId: id,
+              exerciceId: dto.exerciceId,
+              sens: SensDepreciation.REPRISE,
+              montant: partie.depreciation,
+              compteDepreciationId: lu.repriseDepreciation.compteDepreciationId,
+              compteContrepartieId: lu.repriseDepreciation.compteRepriseId,
+              indice: `Sortie de ${dto.quantiteSortie} unité(s) sur ${lot.quantite} · « ${designation} » (pièce ${dto.referencePieceSortie?.trim() ?? '·'})`.slice(0, 1000),
+              ecritureId: ecriture.id,
+              createdBy: userId,
+              nature: NatureMouvementDepreciation.CESSION_PARTIELLE,
+            },
+          });
+          reprise = { ecritureId: ecriture.id, ligneId: ligne.id };
+        } catch (err) {
+          await this.annulerEcritureOrpheline(ecriture.id);
+          throw err;
+        }
+      }
+      // 3 · les unités sortent par le chemin ordinaire, leur complément imposé.
+      const sorties = await this.sortir(tenantId, userId, unites.id, { ...sortie }, { complementImpose: partie.complement });
+      return {
+        unites: sorties,
+        lot: { id, quantite: lot.quantite - dto.quantiteSortie, valeurOrigine: Math.round((montantsDuLot.brut - partie.brut) * 100) / 100 },
+        part: partie,
+      };
+    } catch (err) {
+      if (reprise) {
+        await this.prisma.depreciationImmobilisation.delete({ where: { id: reprise.ligneId } });
+        await this.annulerEcritureOrpheline(reprise.ecritureId);
+      }
+      await defaireLeFractionnement();
+      throw err;
+    }
+  }
+
+  /** Le lot est-il entré par un fonds (14, 167, 171, 172) · sa reprise ne se répartit pas d'office. */
+  private async lotEntreParUnFonds(tenantId: string, ecritureAcquisitionId: string | null, referentiel: Referentiel) {
+    if (!ecritureAcquisitionId) return false;
+    const lignes = await this.prisma.ligneEcriture.findMany({
+      where: { ecritureId: ecritureAcquisitionId, ecriture: { tenantId, ...HORS_SITUATION } },
+      select: { credit: true, compte: { select: { numero: true } } },
+    });
+    return lignes.some((l) => Number(l.credit) > 0 && !!fondsDuCompte(referentiel as 'SYSCOHADA' | 'SYCEBNL', l.compte.numero));
   }
 
   /**

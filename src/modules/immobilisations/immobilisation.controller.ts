@@ -12,6 +12,7 @@ import {
   EchangerImmobilisationDto,
   SectionFamilleDto,
   SortieGlobaleDto,
+  SortiePartielleDto,
   SimulerLocationAcquisitionDto,
   AffecterLieuDto,
   LieuBienDto,
@@ -530,5 +531,23 @@ export class ImmobilisationController {
     @Body() dto: SortirImmobilisationDto,
   ) {
     return this.immobilisationService.sortir(user.tenantId, user.userId, id, dto);
+  }
+
+  /** Ligne immos, n° 65 · la sortie d'une partie des unités d'un lot (`cession-partielle.ts`). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post(':id/sortie-partielle')
+  async sortirUnePartie(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SortiePartielleDto,
+  ) {
+    return this.immobilisationService.sortirUnePartie(user.tenantId, user.userId, id, dto);
+  }
+
+  /** Ligne immos, n° 69 · la sortie globale de plusieurs biens (`sortie-globale.ts`). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post('sortie-globale')
+  async sortirPlusieurs(@CurrentUser() user: AuthenticatedUser, @Body() dto: SortieGlobaleDto) {
+    return this.immobilisationService.sortirPlusieurs(user.tenantId, user.userId, dto);
   }
 }

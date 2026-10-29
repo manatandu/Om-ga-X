@@ -4925,6 +4925,19 @@ model Immobilisation {
   /// Ni code-barres ni étiquette (écartés, plan du 2026-10-29).
   numeroSerie      String?   @db.VarChar(100)
 
+  /// LIGNE IMMOS, FONCTION N° 65 · le nombre d'UNITÉS IDENTIQUES que la fiche
+  /// porte (un lot de chaises, d'ordinateurs du même achat) · 1 pour un bien
+  /// seul, ce qu'était toute fiche avant la ligne. Sans effet comptable tant
+  /// que rien ne sort ; une partie des unités sort au prorata
+  /// (`cession-partielle.ts`). Au moins 1, tenu par la base.
+  quantite         Int       @default(1)
+  /// Ligne immos, n° 65 · la fiche du LOT dont ces unités ont été sorties.
+  /// RESTRICT · le lot garde la trace de chaque partie sortie, et ne se
+  /// supprime plus.
+  fractionDeId     String?
+  fractionDe       Immobilisation?  @relation("ImmoFraction", fields: [fractionDeId], references: [id], onDelete: Restrict)
+  fractions        Immobilisation[] @relation("ImmoFraction")
+
   /// LIGNE IMMOS, FONCTION N° 70 · la section analytique où se ventile la
   /// dotation de CE bien · elle prime sur celle de sa famille
   /// (`analytique-des-biens.ts`). Information de fiche, sans effet sur les
@@ -5504,6 +5517,10 @@ enum NatureMouvementDepreciation {
   /// groupe à l'autre · reprise chez celui qui cède, constatée chez celui qui
   /// reçoit, par le compte de liaison et jamais par le résultat.
   TRANSFERT_GROUPE
+  /// Ligne immos, n° 65 · la part de dépréciation des unités sorties d'un
+  /// lot, reprise sur le lot (D 29 / C 79) · elle ré-étale le plan du lot dès
+  /// l'exercice de la sortie (`estDepreciationAnterieure`).
+  CESSION_PARTIELLE
 }
 
 //

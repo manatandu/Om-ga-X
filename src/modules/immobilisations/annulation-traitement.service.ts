@@ -65,6 +65,8 @@ interface Cible {
   repriseALaSortie?: boolean;
   transfertMiseEnService?: boolean;
   transfertGroupe?: boolean;
+  /** Ligne immos, n° 65 · la reprise de dépréciation des unités sorties d'un lot. */
+  cessionPartielle?: boolean;
   revisionDeReevaluation?: boolean;
 }
 
@@ -309,6 +311,7 @@ export class AnnulationTraitementService {
       exerciceClos: c.exercice.statut === StatutExercice.CLOTURE,
       transfertMiseEnService: c.transfertMiseEnService,
       transfertGroupe: c.transfertGroupe,
+      cessionPartielle: c.cessionPartielle,
       revisionDeReevaluation: c.revisionDeReevaluation,
       dependants,
     });
@@ -364,8 +367,10 @@ export class AnnulationTraitementService {
           montant: n(d.montant),
           ecritureId: d.ecritureId,
           libelle: `${d.sens === 'DOTATION' ? 'Dépréciation' : 'Reprise de dépréciation'} de l'exercice clos le ${jour(d.exercice.dateFin)}`,
-          transfertMiseEnService: d.nature !== NatureMouvementDepreciation.CLOTURE && d.nature !== NatureMouvementDepreciation.TRANSFERT_GROUPE,
+          transfertMiseEnService:
+            d.nature === NatureMouvementDepreciation.TRANSFERT_REPRISE || d.nature === NatureMouvementDepreciation.TRANSFERT_DOTATION,
           transfertGroupe: d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE,
+          cessionPartielle: d.nature === NatureMouvementDepreciation.CESSION_PARTIELLE,
           acte: {
             id: d.id,
             immobilisationId: d.immobilisationId,
@@ -580,7 +585,7 @@ export class AnnulationTraitementService {
   private async actesDesBiens(db: Db, tenantId: string, ids: string[]): Promise<ActeDuBien[]> {
     if (ids.length === 0) return [];
     const ex = { select: { dateFin: true } };
-    const [biens, dotations, depreciations, revisions, derogatoires, lignesReev, reprises, reprisesProvision, reductions, reclassements, parties, exercices] =
+    const [biens, dotations, depreciations, revisions, derogatoires, lignesReev, reprises, reprisesProvision, reductions, reclassements, parties, exercices, fractions] =
       await Promise.all([
         db.immobilisation.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, designation: true, statut: true, dateSortie: true } }),
         db.dotationAmortissement.findMany({ where: { immobilisationId: { in: ids }, immobilisation: { tenantId } }, select: { id: true, immobilisationId: true, createdAt: true, exercice: ex }, take: PLAFOND_ACTES }),
@@ -600,6 +605,11 @@ export class AnnulationTraitementService {
           take: PLAFOND_ACTES,
         }),
         db.exercice.findMany({ where: { tenantId }, select: { dateDebut: true, dateFin: true }, take: PLAFOND_ACTES }),
+        db.immobilisation.findMany({
+          where: { tenantId, fractionDeId: { in: ids } },
+          select: { id: true, fractionDeId: true, createdAt: true, dateSortie: true },
+          take: PLAFOND_ACTES,
+        }),
       ]);
     const nom = new Map(biens.map((b) => [b.id, b.designation]));
     // Ligne sage-l4, n° 73 · un bien sorti par un transfert dans le groupe se
@@ -620,7 +630,12 @@ export class AnnulationTraitementService {
     const actes: ActeDuBien[] = [
       ...dotations.map((d) => ({ nature: 'DOTATION' as const, id: d.id, exerciceFin: d.exercice.dateFin, creeLe: d.createdAt, libelle: `la dotation de l'exercice clos le ${jour(d.exercice.dateFin)}`, bien: nom.get(d.immobilisationId) })),
       ...depreciations.map((d) => ({
-        nature: d.nature === NatureMouvementDepreciation.CLOTURE ? ('DEPRECIATION' as const) : ('TRANSFERT_DEPRECIATION' as const),
+        nature:
+          d.nature === NatureMouvementDepreciation.CLOTURE
+            ? ('DEPRECIATION' as const)
+            : d.nature === NatureMouvementDepreciation.CESSION_PARTIELLE
+              ? ('CESSION_PARTIELLE' as const)
+              : ('TRANSFERT_DEPRECIATION' as const),
         id: d.id,
         exerciceFin: d.exercice.dateFin,
         creeLe: d.createdAt,
@@ -631,7 +646,9 @@ export class AnnulationTraitementService {
               ? // Ligne sage-l4, n° 73 · la dépréciation qui a suivi le bien,
                 // défaite seulement avec le transfert (fenêtre Groupe).
                 'la dépréciation reçue avec le bien par le transfert dans le groupe'
-              : 'le transfert de la dépréciation à la mise en service',
+              : d.nature === NatureMouvementDepreciation.CESSION_PARTIELLE
+                ? `la sortie d'une partie des unités du lot (exercice clos le ${jour(d.exercice.dateFin)})`
+                : 'le transfert de la dépréciation à la mise en service',
         bien: nom.get(d.immobilisationId),
         ...(d.nature === NatureMouvementDepreciation.TRANSFERT_GROUPE ? { issue: ISSUE_TRANSFERT_GROUPE } : {}),
       })),
@@ -675,6 +692,16 @@ export class AnnulationTraitementService {
         creeLe: p.createdAt,
         libelle: 'le remplacement imprévu d’une partie de la structure',
         bien: p.immobilisationPrincipaleId ? nom.get(p.immobilisationPrincipaleId) : undefined,
+      })),
+      // Ligne immos, n° 65 · les unités sorties d'un lot ont pris leur part
+      // de son cumul · tout traitement antérieur du lot en dépend.
+      ...fractions.map((f) => ({
+        nature: 'CESSION_PARTIELLE' as const,
+        id: f.id,
+        exerciceFin: f.dateSortie ? finALaDate(f.dateSortie) : finALaDate(f.createdAt),
+        creeLe: f.createdAt,
+        libelle: `la sortie d'une partie des unités du lot${f.dateSortie ? ` le ${jour(f.dateSortie)}` : ''}`,
+        bien: f.fractionDeId ? nom.get(f.fractionDeId) : undefined,
       })),
       ...biens
         .filter((b) => b.statut !== StatutImmobilisation.EN_SERVICE)

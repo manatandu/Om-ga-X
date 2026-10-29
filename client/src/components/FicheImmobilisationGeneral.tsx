@@ -254,6 +254,17 @@ export function FicheImmobilisationGeneral({
           <input value={saisie.numeroInventaire} disabled={!peutEcrire} onChange={(e) => poser('numeroInventaire', e.target.value)} className={champ} />
         </label>
         <label className={etiquette}>
+          <span className="flex items-center gap-1">
+            Quantité
+            <Aide
+              titre="Quantité d'un lot"
+              texte="Le nombre d'unités IDENTIQUES que la fiche porte, acquises ensemble (vingt chaises, dix ordinateurs du même achat). Une partie des unités peut ensuite sortir · chacune emporte sa part de la valeur, des amortissements et de la dépréciation du lot, au centime, la fiche gardant le reste. Des biens qui ne sont pas identiques ont chacun leur fiche."
+              source="Fiche du compte 81 des deux plans · « éléments sortis »"
+            />
+          </span>
+          <input value={saisie.quantite} inputMode="numeric" disabled={!peutEcrire} onChange={(e) => poser('quantite', e.target.value)} className={champ} />
+        </label>
+        <label className={etiquette}>
           N° de série
           <input value={saisie.numeroSerie} maxLength={100} disabled={!peutEcrire} onChange={(e) => poser('numeroSerie', e.target.value)} className={champ} />
         </label>

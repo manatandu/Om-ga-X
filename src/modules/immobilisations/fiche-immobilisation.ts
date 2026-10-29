@@ -27,7 +27,7 @@
 import { motifRefusEntreeApresDetention } from './detention-bien';
 
 /** Les champs sans effet comptable. */
-export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle', 'numeroSerie', 'sectionAnalytiqueId'] as const;
+export const CHAMPS_LIBRES = ['designation', 'numeroInventaire', 'natureFiscaleCle', 'numeroSerie', 'sectionAnalytiqueId', 'quantite'] as const;
 
 /** Les champs qui fondent l'écriture d'acquisition et le plan. */
 export const CHAMPS_A_EFFET = [
@@ -69,6 +69,7 @@ const LIBELLES_USAGES: Record<string, string> = {
   'ContratLocationAcquisition.immobilisationId': 'contrat de location-acquisition',
   'Immobilisation.immobilisationPrincipaleId': 'composants rattachés',
   'Immobilisation.composantRemplaceId': 'composant qui le remplace',
+  'Immobilisation.fractionDeId': 'unités sorties du lot',
   'AnnulationTraitementImmobilisation.immobilisationId': 'annulations de traitements',
   'DetentionBien.immobilisationId': 'détentions par un salarié',
   'RecuDetentionBien.immobilisationId': 'reçus de détention',
