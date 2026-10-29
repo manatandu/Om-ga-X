@@ -14,10 +14,11 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 | 97 | Aller à une fonction par son nom · F7, ou Fenêtre > Aller à une fonction… | `client/src/components/chrome/commandes-du-menu.ts`, `AllerAFonction.tsx`, `AppShell.tsx` |
 | 57 | Filtres de la balance des tiers · tous, mouvementés dans la période, soldés, non soldés | `client/src/lib/filtre-balance-tiers.ts`, `BalanceAuxiliairePage` |
 | 58 | Filtre du rapprochement · toutes les lignes, rapprochées, non rapprochées | `client/src/lib/filtre-rapprochement.ts`, `RapprochementDetailPage` |
+| 56 | Grand livre avec ou sans les écritures lettrées (vue de travail de l'écran) | `client/src/lib/grand-livre-sans-lettrees.ts`, onglet Grand livre de `JournalPage` |
 
 ## Reste
 
-33, 34, 35, 56, 64.
+33, 34, 35, 64.
 
 ## Décisions, avec leur fondement
 
@@ -33,6 +34,7 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 - **97 · la liste est celle du menu affiché**, jamais une seconde table · tirée des menus déjà filtrés (référentiel, profil, modules, rôle, logiciel), ouverte par le même geste que le menu, donc par le même aiguillage (masquer n'est pas refuser). Le menu Fenêtre n'y est pas. Le Ctrl+J de Sage (tiers suivant) est écarté · la fiche du tiers n'a pas de parcours séquentiel à servir.
 - **57 · le filtre se dit, le total général reste** · « mouvementé » = un débit ou un crédit dans la période, le report seul ne mouvemente pas ; « soldé » = solde nul au centime (définitions d'OmegaX, dites dans la bulle). Le total des comptes retenus s'affiche à part sous son nom, le total de tous les comptes demeure, l'en-tête imprimé nomme le filtre ; l'export porte toujours la balance entière.
 - **58 · la liste se restreint, les soldes non** · lignes du compte et en-cours d'ouverture, le nombre caché dit ; sur une liste déjà tronquée par le serveur, le filtre ne lit que la tranche servie, et c'est dit.
+- **56 · une vue de travail, jamais le livre** · le grand livre porte tous les mouvements de l'exercice (AUDCIF art. 19) ; la case retire les seules lignes lettrées (groupe soldé), les dit avec leurs montants sous chaque compte, garde les totaux du livre entier et le vrai solde progressif. L'export Excel reste le livre entier · aucune version filtrée d'un livre obligatoire ne sort en fichier. Devise et regroupement par mois écartés au tri.
 
 ## Commandes de vérification
 

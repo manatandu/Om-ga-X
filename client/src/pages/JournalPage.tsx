@@ -15,6 +15,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
 import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
+import { masquerLesLettrees } from '../lib/grand-livre-sans-lettrees';
 import { montant, montantOuVide } from '../lib/montants';
 import {
   cheminBalance,
@@ -421,6 +422,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           : []
         : (grandLivre ?? []).filter((c) => !compteGrandLivreId || c.compte.id === compteGrandLivreId),
     [grandLivre, compteGrandLivreId, refusGrandLivre, sectionSeule],
+  );
+  // Ligne gl-saisie, fonction 56 · le grand livre sans les écritures lettrées,
+  // une vue de travail (lib/grand-livre-sans-lettrees.ts).
+  const [masquerLettrees, setMasquerLettrees] = useState(false);
+  const vueGrandLivre = useMemo(
+    () =>
+      masquerLettrees
+        ? masquerLesLettrees(sectionsAffichees)
+        : { sections: sectionsAffichees.map((section) => ({ section, cachees: 0, debitCache: 0, creditCache: 0 })), comptesEntierementLettres: 0 },
+    [sectionsAffichees, masquerLettrees],
   );
 
   // Les comptes que la liste du grand livre propose, et le nom des comptes
@@ -1185,6 +1196,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 </option>
               ))}
             </select>
+            <label className="flex items-center gap-1.5 text-[11.5px]">
+              <input type="checkbox" checked={masquerLettrees} onChange={(e) => setMasquerLettrees(e.target.checked)} />
+              Masquer les écritures lettrées
+            </label>
             {(grandLivre || sectionSeule) && (
               <span className="text-[11px] text-text-dim">
                 {sectionsAffichees.length} compte{sectionsAffichees.length > 1 ? 's' : ''} ·{' '}
@@ -1230,7 +1245,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             progressif ·, et un pied qui totalise les mouvements du compte et
             donne son solde final.
           */}
-          {sectionsAffichees.map((section) => (
+          {masquerLettrees && (grandLivre || sectionSeule) && (
+            <div role="status" className="px-3.5 py-1.5 text-[11.5px] text-warning border-b border-border">
+              Vue de travail · les lignes lettrées sont masquées, ce n’est pas le grand livre de l’exercice. Les totaux de chaque compte restent ceux du livre entier
+              {vueGrandLivre.comptesEntierementLettres > 0
+                ? ` · ${vueGrandLivre.comptesEntierementLettres} compte${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''} entièrement lettré${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''} masqué${vueGrandLivre.comptesEntierementLettres > 1 ? 's' : ''}`
+                : ''}
+              .
+            </div>
+          )}
+          {vueGrandLivre.sections.map(({ section, cachees, debitCache, creditCache }) => (
             <div key={section.compte.id}>
               <div className="px-3.5 py-1 border-y border-border-dark bg-chrome font-bold text-[11.5px]">
                 <span className="font-mono">{section.compte.numero}</span> · {section.compte.intitule}
@@ -1297,6 +1321,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 <span />
                 <span />
               </div>
+              {cachees > 0 && (
+                <div className="px-3.5 py-1 border-b border-border text-[11px] text-text-dim">
+                  dont {cachees} ligne{cachees > 1 ? 's' : ''} lettrée{cachees > 1 ? 's' : ''} masquée{cachees > 1 ? 's' : ''} · débit {montant(debitCache)}, crédit {montant(creditCache)}
+                </div>
+              )}
             </div>
           ))}
         </div>
