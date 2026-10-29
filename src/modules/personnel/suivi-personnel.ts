@@ -267,7 +267,18 @@ export function suiviFormation(
 // fournit chaque année son bilan social aux services précités. » ART. 219 ·
 // le Ministre « détermine, par arrêté, les modalités des déclarations ».
 //
-// L'ARRÊTÉ DE L'ART. 219 EST L'ARRÊTÉ MINISTÉRIEL n° 005/CAB/PVPM/ETPS/2010
+// L'ARRÊTÉ DU 24 FÉVRIER 2023 (n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023,
+// lu le 2026-10-29, `docs/sources/arrete-087-2023-declarations.md`) REMPLACE
+// SUR LES SERVICES ET LES EXEMPLAIRES celui de 2010 (art. 10, « dispositions
+// antérieures contraires ») · art. 2, Direction de l'Emploi (Kinshasa) ou
+// Division provinciale de l'Emploi et du Travail, et Direction provinciale de
+// l'ONEM ; art. 3, déclaration annuelle ET bilan social au plus tard le
+// 31 janvier ; art. 4, deux exemplaires au service de l'emploi, un à l'ONEM,
+// un conservé ; art. 9, peines de l'art. 321. Son formulaire annexé n'est pas
+// au scan reçu · ce qui suit sur le formulaire de 2010 reste une lecture des
+// rubriques, sous cette réserve.
+//
+// L'ARRÊTÉ DE 2010 EST L'ARRÊTÉ MINISTÉRIEL n° 005/CAB/PVPM/ETPS/2010
 // du 1er avril 2010 (J.O. RDC, première partie, n° 7 ; lu sur le scan fourni
 // le 2026-10-29, `docs/sources/arretes-005-006-008-2010-declarations-main-oeuvre.md`).
 // Art. 1er · à la Division provinciale de l'Inspection du travail et au Bureau
@@ -298,7 +309,7 @@ export function suiviFormation(
 // ──────────────────────────────────────────────────────────────────────────
 
 export const RESERVE_DECLARATION_MAIN_OEUVRE =
-  "Chiffres de l'effectif seuls · le formulaire annexé à l'arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010 demande aussi la répartition par catégorie professionnelle, le personnel non permanent, la masse salariale, la durée hebdomadaire et les besoins en main-d'œuvre et en formation, que le registre ne porte pas. Tous les contrats en vigueur sont comptés, permanents ou non. Le bilan social de l'art. 218, al. 2 du Code du travail n'est pas servi, et l'arrêté n'en fixe aucune modalité.";
+  "Chiffres de l'effectif seuls · le formulaire annexé à l'arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010 demande aussi la répartition par catégorie professionnelle, le personnel non permanent, la masse salariale, la durée hebdomadaire et les besoins en main-d'œuvre et en formation, que le registre ne porte pas. Tous les contrats en vigueur sont comptés, permanents ou non. Le bilan social de l'art. 218, al. 2 du Code du travail, dû lui aussi au plus tard le 31 janvier (arrêté du 24 février 2023, art. 3), n'est pas servi.";
 
 /**
  * L'ÉCHÉANCE ET LES EXEMPLAIRES · arrêté n° 005/CAB/PVPM/ETPS/2010, art. 1er
@@ -310,7 +321,7 @@ export function dateLimiteDeclarationMainOeuvre(annee: number): string {
 }
 
 export const DESTINATAIRES_DECLARATION_MAIN_OEUVRE =
-  "en quatre exemplaires datés et signés sur le formulaire officiel · deux à l'Inspecteur du travail du ressort (Division provinciale de l'Inspection du travail), par pli recommandé avec accusé de réception ou déposés contre accusé de réception, un au Bureau provincial de l'Office national de l'emploi, le quatrième conservé pour le contrôle (arrêté n° 005/CAB/PVPM/ETPS/2010, art. 1er et 2 ; le NB du formulaire, qui inverse la répartition, cède devant l'article). Infraction punie des peines de l'art. 321 du Code du travail (art. 4).";
+  "en quatre exemplaires sur le formulaire officiel (modèle annexé à l'arrêté du 24 février 2023, retiré à la Direction provinciale de l'ONEM) · à Kinshasa, deux à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail ; dans les autres provinces, deux à la Division provinciale de l'Emploi et du Travail ; un à la Direction provinciale de l'Office national de l'emploi ; le quatrième conservé par le déclarant (arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2 à 5, qui remplace sur ces points l'arrêté n° 005/CAB/PVPM/ETPS/2010). Infraction punie des peines de l'art. 321 du Code du travail (art. 9) ; droits, taxes et redevances dus (art. 7), non calculés.";
 
 /**
  * La règle des mouvements, dite à l'écran avec les chiffres · l'art. 218 ne

@@ -483,8 +483,10 @@ describe('les déclarations de l’article 217 · quinze jours, deux fois', () =
     expect(JOURS_DECLARATION_ARTICLE_217).toBe(15);
     // Le texte en vise DEUX, et n'en servir qu'un ferait manquer la moitié de
     // l'obligation.
-    expect(d[0].destinataires).toContain('ministère');
-    expect(d[0].destinataires).toContain("Office national de l'emploi");
+    // Arrêté du 24 février 2023, art. 2 · le service de l'emploi ET l'ONEM.
+    expect(d[0].destinataires).toContain("Division provinciale de l'Emploi et du Travail");
+    expect(d[0].destinataires).toContain("Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail (Kinshasa)");
+    expect(d[0].destinataires).toContain("Direction provinciale de l'Office national de l'emploi");
   });
 
   it('signale le retard tant que la déclaration n’est pas faite', () => {

@@ -20,6 +20,20 @@
  * une dérogation, restent. Pour l'ouverture et la fermeture, la loi et
  * l'arrêté n° 008 disent la même chose · « dans la quinzaine qui précède ».
  *
+ * L'ARRÊTÉ DU 24 FÉVRIER 2023 PRIME SUR CEUX DE 2010 LÀ OÙ IL LES CONTREDIT
+ * (arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du
+ * 24 février 2023, pris sur les art. 216 à 219 · lu sur le scan fourni le
+ * 2026-10-29, `docs/sources/arrete-087-2023-declarations.md` ; art. 10, « sont
+ * abrogées toutes les dispositions antérieures contraires » ; art. 11, en
+ * vigueur à la signature). Il change les SERVICES (art. 2 · à Kinshasa, la
+ * Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail et la
+ * Direction provinciale de l'ONEM ; ailleurs, la Division provinciale de
+ * l'Emploi et du Travail et la Direction provinciale de l'ONEM) et la
+ * RÉPARTITION des quatre exemplaires (art. 4). Il ne dit aucun délai pour
+ * l'embauche, le départ, l'ouverture ni la fermeture · la loi et l'arrêté n° 008
+ * restent. Son modèle annexé n'est pas au scan reçu (trois pages) · OmegaX
+ * remplit le formulaire de 2010, et le dit (`FORMULAIRE_2023_NON_LU`).
+ *
  * OmegaX REMPLIT, il n'envoie rien · le formulaire se tire, se date, se signe
  * et se dépose. Un champ que le registre ne tient pas est rendu VIDE et
  * NOMMÉ parmi les manquants, jamais deviné. Le motif du mouvement se CHOISIT
@@ -28,13 +42,24 @@
  */
 
 export const FONDEMENT_MOUVEMENT =
-  'Code du travail, art. 217 (loi n° 16/010 du 15 juillet 2016) ; arrêté ministériel n° 006/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 1er à 4 et formulaire annexé';
+  "Code du travail, art. 217 (loi n° 16/010 du 15 juillet 2016) ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 1er, 2, 4 et 9 ; arrêté ministériel n° 006/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 4 et formulaire annexé, en ce qu'il n'est pas contraire";
 
 export const PRIMAUTE_DELAI_LOI =
-  "Délai de quinze jours de l'art. 217 du Code du travail, tel que réécrit par la loi n° 16/010 du 15 juillet 2016. L'arrêté n° 006/CAB/PVPM/ETPS/2010, pris sur l'ancienne rédaction, disait quarante-huit heures · la loi, postérieure et supérieure, prime. Le formulaire, les exemplaires et la dérogation de l'arrêté restent.";
+  "Délai de quinze jours de l'art. 217 du Code du travail, tel que réécrit par la loi n° 16/010 du 15 juillet 2016. L'arrêté n° 006/CAB/PVPM/ETPS/2010, pris sur l'ancienne rédaction, disait quarante-huit heures · la loi, postérieure et supérieure, prime. Le formulaire et la dérogation de l'arrêté restent ; services et exemplaires sont ceux de l'arrêté du 24 février 2023.";
 
-export const EXEMPLAIRES_MOUVEMENT =
-  "Quatre exemplaires datés et signés · deux à l'Inspection du travail du ressort, adressés ou déposés sous pli fermé avec accusé de réception, un au Bureau provincial de l'Office national de l'emploi, le quatrième conservé pour le contrôle (arrêté n° 006, art. 2 ; le nota du formulaire, qui inverse la répartition, cède devant l'article). Infraction punie des peines de l'art. 321 du Code du travail (art. 5).";
+export const ARRETE_2023 =
+  'arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023';
+
+/** Les services et les exemplaires de l'arrêté de 2023 (art. 2 et 4), qui remplacent ceux de 2010. */
+export const DEPOT_ARRETE_2023 =
+  "À déposer, en quatre exemplaires, à Kinshasa à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail (deux exemplaires) et à la Direction provinciale de l'Office national de l'emploi (un exemplaire) ; dans les autres provinces, à la Division provinciale de l'Emploi et du Travail (deux exemplaires) et à la Direction provinciale de l'Office national de l'emploi (un exemplaire) ; le quatrième est conservé par le déclarant (" +
+  ARRETE_2023 +
+  ', art. 2 et 4). Infraction punie des peines de l\'art. 321 du Code du travail (art. 9). Les droits, taxes et redevances de la déclaration sont dus (art. 7 · arrêté interministériel du 2 août 2022), leur montant n\'est pas calculé.';
+
+export const FORMULAIRE_2023_NON_LU =
+  "Le formulaire officiel est celui annexé à l'arrêté du 24 février 2023, que les employeurs retirent à la Direction provinciale de l'ONEM (art. 4 et 5) · ce modèle n'a pas été lu, OmegaX remplit les rubriques du formulaire de 2010, à reporter sur celui de l'ONEM s'il diffère.";
+
+export const EXEMPLAIRES_MOUVEMENT = DEPOT_ARRETE_2023;
 
 export const DEROGATION_JOUR_LE_JOUR =
   "Ne fait pas l'objet d'une déclaration d'embauche ou de départ le travailleur engagé au jour le jour qui n'a pas accompli vingt-deux journées de travail sur une période de deux mois (arrêté n° 006, art. 4) · OmegaX ne compte pas ces journées, la dérogation se juge par le cabinet.";
@@ -185,10 +210,9 @@ export const NATURES_ETABLISSEMENT = [
 export type NatureEtablissement = (typeof NATURES_ETABLISSEMENT)[number]['code'];
 
 export const FONDEMENT_ETABLISSEMENT =
-  'Code du travail, art. 216 (loi n° 16/010 du 15 juillet 2016) ; arrêté ministériel n° 008/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 1er à 6 et formulaire annexé';
+  "Code du travail, art. 216 (loi n° 16/010 du 15 juillet 2016) ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 1er, 2, 4 et 9 ; arrêté ministériel n° 008/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 1er et 2 et formulaire annexé, en ce qu'il n'est pas contraire";
 
-export const EXEMPLAIRES_ETABLISSEMENT =
-  "Quatre exemplaires datés et signés · deux à l'Inspecteur du travail du ressort, par pli recommandé avec accusé de réception, un au Bureau provincial de l'Office national de l'emploi, le quatrième conservé pour le contrôle (arrêté n° 008, art. 3 ; le N.B. du formulaire, qui inverse la répartition, cède devant l'article). Infraction punie des peines de l'art. 321 du Code du travail (art. 6).";
+export const EXEMPLAIRES_ETABLISSEMENT = DEPOT_ARRETE_2023;
 
 /**
  * « DANS LA QUINZAINE QUI PRÉCÈDE l'ouverture ou la fermeture » (art. 216 ;

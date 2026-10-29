@@ -271,7 +271,10 @@ Puis, le 2026-10-29, les DÉCLARATIONS D'EMBAUCHE ET DE DÉPART, D'OUVERTURE ET
 DE FERMETURE (« Lève le gel pour les déclarations d'embauche et de départ,
 d'ouverture et fermeture ») · formulaires des arrêtés n° 006 et 008 de 2010
 remplis depuis le registre, délai de quinze jours de l'art. 217 (loi n° 16/010),
-qui prime sur les quarante-huit heures de l'arrêté.
+qui prime sur les quarante-huit heures de l'arrêté ; services et exemplaires de
+l'arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, qui
+remplace sur ces points les arrêtés de 2010 (son modèle annexé, non lu, reste au
+suivi).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

@@ -117,10 +117,14 @@ describe("Déclaration de la main-d'œuvre (art. 218, 219 ; arrêté n° 005/CAB
     // 31 janvier 2027 · un dimanche, que l'arrêté ne reporte pas.
     expect(new Date(Date.UTC(2027, 0, 31)).getUTCDay()).toBe(0);
   });
-  it("quatre exemplaires · deux à l'Inspection, un à l'ONEM, l'article primant sur le NB du formulaire (art. 2)", () => {
-    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("deux à l'Inspecteur du travail du ressort");
-    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("un au Bureau provincial de l'Office national de l'emploi");
+  it("quatre exemplaires et services de l'arrêté du 24 février 2023 (art. 2 à 5), qui remplace l'arrêté n° 005 sur ces points", () => {
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("deux à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail");
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("deux à la Division provinciale de l'Emploi et du Travail");
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain("un à la Direction provinciale de l'Office national de l'emploi");
+    expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('087/02/2023 du 24 février 2023');
     expect(DESTINATAIRES_DECLARATION_MAIN_OEUVRE).toContain('art. 321');
+    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('bilan social');
+    expect(RESERVE_DECLARATION_MAIN_OEUVRE).toContain('31 janvier (arrêté du 24 février 2023, art. 3)');
   });
   it("rappelle la déclaration d'embauche et de départ dans les quinze jours de la loi, qui prime sur l'arrêté (art. 217 ; arrêté n° 006, art. 4)", () => {
     expect(REGLE_MOUVEMENTS_MAIN_OEUVRE).toContain('dans les quinze jours');

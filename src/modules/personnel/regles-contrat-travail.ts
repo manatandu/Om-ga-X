@@ -758,11 +758,12 @@ export function declarationsDues(
   aujourdhui: Date,
 ): DeclarationDue[] {
   const dues: DeclarationDue[] = [];
-  // Les deux services de l'art. 217, nommés comme l'arrêté n° 006/CAB/PVPM/
-  // ETPS/2010, art. 1er, les désigne (le délai, lui, reste celui de la loi ·
+  // Les services de l'art. 217, nommés par l'arrêté ministériel n° CAB.MIN/
+  // ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2, qui remplace
+  // ceux de l'arrêté n° 006 de 2010 (le délai, lui, reste celui de la loi ·
   // voir `declarations-travail.ts`).
   const destinataires =
-    "à la Division provinciale de l'Inspection du travail (service du ministère ayant l'emploi, le travail et la prévoyance sociale) ET au Bureau provincial de l'Office national de l'emploi";
+    "à la Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail (Kinshasa) ou à la Division provinciale de l'Emploi et du Travail (autres provinces), ET à la Direction provinciale de l'Office national de l'emploi";
 
   const poser = (
     objet: ObjetDeclaration,
@@ -781,7 +782,7 @@ export function declarationsDues(
       // sa date, que la fiche porte.
       enRetard: faiteLe === null && aujourdhui.getTime() > echeance.getTime(),
       destinataires,
-      article: 'art. 217 ; arrêté n° 006/CAB/PVPM/ETPS/2010',
+      article: 'art. 217 ; arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2 ; arrêté n° 006/CAB/PVPM/ETPS/2010, art. 4',
     });
   };
 

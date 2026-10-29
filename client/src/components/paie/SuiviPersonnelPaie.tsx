@@ -572,7 +572,7 @@ export function OngletDeclarationMainOeuvre() {
         <Aide
           titre="Déclaration annuelle de la main-d'œuvre"
           texte="Toute entreprise fait parvenir chaque année, au plus tard le 31 janvier, à l'Inspection du travail et à l'Office national de l'emploi, une déclaration de la situation de la main-d'œuvre nationale et étrangère qu'elle emploie, en quatre exemplaires sur le formulaire officiel. Le formulaire compte le personnel permanent au 1er janvier. OmegaX en sert les chiffres de l'effectif tirés du registre ; le reste du formulaire et le bilan social ne sont pas servis."
-          source="Code du travail, art. 218 et 219 ; arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010, art. 1er et 2"
+          source="Code du travail, art. 218 et 219 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, art. 2 à 5 ; arrêté ministériel n° 005/CAB/PVPM/ETPS/2010 du 1er avril 2010"
         />
       </div>
       {donnees === null && !erreur && <div className="text-text-dim">Lecture du registre…</div>}

@@ -215,4 +215,4 @@ N.B. · « à adresser en 1 exemplaire à l'Inspection du travail du ressort et 
 
 - Aucun ne reporte une échéance tombant un jour non ouvrable.
 - Le bilan social annuel de l'art. 218, al. 2 du Code n'a aucune modalité ici.
-- L'arrêté « CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 » cité sur le formulaire « DASMO » de l'ONEM n'est pas dans ce Journal officiel · non lu, il pourrait modifier l'arrêté n° 005 (formulaire, date). Les arrêtés de 2010 se lisent sous cette réserve.
+- L'arrêté n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, LU le 2026-10-29 (`arrete-087-2023-declarations.md`), remplace sur les services et la répartition des exemplaires les trois arrêtés de 2010, contraires sur ces points (art. 10) ; leurs délais, leur dérogation des journaliers et leurs rubriques de formulaire restent, sous réserve du modèle annexé à l'arrêté de 2023, non lu.

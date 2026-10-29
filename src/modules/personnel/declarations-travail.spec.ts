@@ -2,6 +2,7 @@ import {
   DEROGATION_JOUR_LE_JOUR,
   EXEMPLAIRES_ETABLISSEMENT,
   EXEMPLAIRES_MOUVEMENT,
+  FORMULAIRE_2023_NON_LU,
   MOTIFS_MOUVEMENT,
   PRIMAUTE_DELAI_LOI,
   fenetreDeclarationEtablissement,
@@ -114,8 +115,11 @@ describe('le formulaire de mouvement (arrêté n° 006, annexe)', () => {
     expect(f.manquants).toContain('Salaire');
   });
 
-  it('exemplaires de l’art. 2 et dérogation des journaliers de l’art. 4, tels que l’arrêté les écrit', () => {
-    expect(EXEMPLAIRES_MOUVEMENT).toContain("deux à l'Inspection du travail du ressort");
+  it('exemplaires de l’arrêté du 24 février 2023 (art. 2 et 4) et dérogation des journaliers de l’arrêté n° 006 (art. 4)', () => {
+    expect(EXEMPLAIRES_MOUVEMENT).toContain("Direction de l'Emploi du Secrétariat général de l'Emploi et du Travail (deux exemplaires)");
+    expect(EXEMPLAIRES_MOUVEMENT).toContain("Division provinciale de l'Emploi et du Travail (deux exemplaires)");
+    expect(EXEMPLAIRES_MOUVEMENT).toContain("Direction provinciale de l'Office national de l'emploi (un exemplaire)");
+    expect(EXEMPLAIRES_MOUVEMENT).toContain('le quatrième est conservé par le déclarant');
     expect(EXEMPLAIRES_MOUVEMENT).toContain('art. 321');
     expect(DEROGATION_JOUR_LE_JOUR).toContain('vingt-deux journées de travail sur une période de deux mois');
   });
@@ -132,6 +136,14 @@ describe('la déclaration d’établissement (art. 216 ; arrêté n° 008)', () 
     const f = formulaireEtablissement(employeur);
     expect(f.declarant.find((c) => c.libelle === 'Adresse, B.P., téléphone')?.valeur).toBe('Av. du Port 4, Kinshasa');
     expect(f.manquants).toEqual(['Forme du déclarant · à cocher sur le formulaire']);
-    expect(EXEMPLAIRES_ETABLISSEMENT).toContain('arrêté n° 008, art. 3');
+    expect(EXEMPLAIRES_ETABLISSEMENT).toContain('087/02/2023 du 24 février 2023');
+    expect(EXEMPLAIRES_ETABLISSEMENT).toContain('art. 2 et 4');
+  });
+});
+
+describe('l’arrêté du 24 février 2023 · son modèle annexé n’est pas lu, et c’est dit', () => {
+  it('renvoie au formulaire de l’ONEM, sans prétendre le remplir', () => {
+    expect(FORMULAIRE_2023_NON_LU).toContain('Direction provinciale de l\'ONEM (art. 4 et 5)');
+    expect(FORMULAIRE_2023_NON_LU).toContain('ce modèle n\'a pas été lu');
   });
 });

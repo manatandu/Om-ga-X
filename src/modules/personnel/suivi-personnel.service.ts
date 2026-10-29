@@ -9,6 +9,7 @@ import {
   DEROGATION_JOUR_LE_JOUR,
   EXEMPLAIRES_ETABLISSEMENT,
   EXEMPLAIRES_MOUVEMENT,
+  FORMULAIRE_2023_NON_LU,
   FONDEMENT_ETABLISSEMENT,
   FONDEMENT_MOUVEMENT,
   NATURES_ETABLISSEMENT,
@@ -670,6 +671,7 @@ export class SuiviPersonnelService {
       destinataires: due.destinataires,
       delai: PRIMAUTE_DELAI_LOI,
       exemplaires: EXEMPLAIRES_MOUVEMENT,
+      formulaire: FORMULAIRE_2023_NON_LU,
       derogation: contrat.type === 'JOUR_LE_JOUR' ? DEROGATION_JOUR_LE_JOUR : null,
       fondement: FONDEMENT_MOUVEMENT,
     };
@@ -697,6 +699,7 @@ export class SuiviPersonnelService {
       // « Dans la quinzaine qui précède » · avant, dedans ou après, dit, jamais un refus.
       position: fenetre ? (aujourdhui < fenetre.du ? 'AVANT' : aujourdhui > fenetre.au ? 'APRES' : 'DANS') : null,
       exemplaires: EXEMPLAIRES_ETABLISSEMENT,
+      formulaire: FORMULAIRE_2023_NON_LU,
       fondement: FONDEMENT_ETABLISSEMENT,
     };
   }

@@ -789,14 +789,18 @@ son serveur pour tous les cabinets de 14:10 à 14:23 UTC, jusqu'au geste
 « rouvrir » (run n° 2, vert, accès à `all`). La fermeture est retirée du
 workflow, qui ne garde que « rouvrir ». Voie restante, à décider par Manasse
 (coût) · un équilibreur de charge HTTPS Google devant le service (NEG sans
-serveur), le relais du site pointé sur lui, puis l'ingress fermé. (5) ARRÊTÉ ONEM
-DE 2023 · référence et date lues sur le formulaire « DASMO » de l'ONEM et sa page
-de téléchargements (corroboration, texte non lu) · arrêté ministériel
-n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023, qui porterait les
-déclarations d'ouverture, de mouvement du personnel, de la situation annuelle de
-la main-d'œuvre et le bilan social. S'il remplace les arrêtés de 2010, les
-formulaires de l'onglet Déclarations (embauche, départ, ouverture, fermeture,
-situation annuelle) sont à revoir · rien n'est touché avant d'avoir le texte.
+serveur), le relais du site pointé sur lui, puis l'ingress fermé. (5) ARRÊTÉ DU
+24 FÉVRIER 2023 · LU sur le scan fourni (`docs/sources/arrete-087-2023-declarations.md`),
+arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023. Il remplace sur les
+SERVICES et les EXEMPLAIRES les arrêtés n° 005, 006 et 008 de 2010 (art. 2, 4 et 10) ·
+Direction de l'Emploi du Secrétariat général (Kinshasa) ou Division provinciale de
+l'Emploi et du Travail, et Direction provinciale de l'ONEM ; deux exemplaires au
+service de l'emploi, un à l'ONEM, un conservé. Codé dans les trois déclarations
+(`DEPOT_ARRETE_2023`, `DESTINATAIRES_DECLARATION_MAIN_OEUVRE`, `declarationsDues`).
+Restent au suivi · son MODÈLE ANNEXÉ (art. 4, retiré à l'ONEM, art. 5), absent du
+scan, qui seul dira si les rubriques de 2010 tiennent (`FORMULAIRE_2023_NON_LU`) ;
+le BILAN SOCIAL, dû au 31 janvier (art. 3), non servi ; les DROITS, TAXES ET
+REDEVANCES (art. 7, arrêté interministériel du 2 août 2022, non lu).
 
 ## Audit de sécurité du 2026-10-25 · pistes 1, 2 et 4 corrigées (2026-10-28)
 

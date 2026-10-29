@@ -4,7 +4,8 @@ import { Aide } from '../chrome/Aide';
 
 /**
  * LES DÉCLARATIONS DE MOUVEMENT DU TRAVAILLEUR ET D'ÉTABLISSEMENT (art. 216
- * et 217 du Code du travail ; arrêtés n° 006 et 008/CAB/PVPM/ETPS/2010),
+ * et 217 du Code du travail ; arrêté du 24 février 2023, arrêtés n° 006 et
+ * 008/CAB/PVPM/ETPS/2010),
  * remplies par le serveur (`declarations-travail.ts`), rien n'est recalculé
  * ici. Le formulaire s'imprime · les réglages ne s'impriment pas
  * (`ecran-seul`). Un champ que le registre ne tient pas reste vide et nommé.
@@ -25,6 +26,7 @@ type Mouvement = {
   destinataires: string;
   delai: string;
   exemplaires: string;
+  formulaire: string;
   derogation: string | null;
   fondement: string;
 };
@@ -38,6 +40,7 @@ type Etablissement = {
   fenetre: { du: string; au: string } | null;
   position: 'AVANT' | 'DANS' | 'APRES' | null;
   exemplaires: string;
+  formulaire: string;
   fondement: string;
 };
 
@@ -110,8 +113,8 @@ export function DeclarationMouvementTravailleur({
           Déclaration de mouvement du travailleur
           <Aide
             titre="Embauche et départ"
-            texte="Chaque engagement et chaque départ, pour quelque cause que ce soit, se déclarent dans les quinze jours à l'Inspection du travail et à l'Office national de l'emploi, sur le formulaire officiel, en quatre exemplaires. OmegaX remplit le formulaire depuis le registre ; il se date, se signe et se dépose. La date de la déclaration faite s'enregistre sur la fiche du salarié."
-            source="Code du travail, art. 217 ; arrêté ministériel n° 006/CAB/PVPM/ETPS/2010 du 1er avril 2010"
+            texte="Chaque engagement et chaque départ, pour quelque cause que ce soit, se déclarent dans les quinze jours, à Kinshasa à la Direction de l'Emploi, ailleurs à la Division provinciale de l'Emploi et du Travail, et à la Direction provinciale de l'Office national de l'emploi, sur le formulaire officiel, en quatre exemplaires. OmegaX remplit le formulaire depuis le registre ; il se date, se signe et se dépose. La date de la déclaration faite s'enregistre sur la fiche du salarié."
+            source="Code du travail, art. 217 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023 ; arrêté ministériel n° 006/CAB/PVPM/ETPS/2010 du 1er avril 2010"
           />
         </div>
         {salaries === null && <div className="text-text-dim">Lecture du registre…</div>}
@@ -193,6 +196,7 @@ export function DeclarationMouvementTravailleur({
               {donnees.faiteLe ? ` Déclaration faite le ${donnees.faiteLe}.` : donnees.enRetard ? ' Délai couru, non déclarée au registre.' : ''}
             </div>
             {donnees.etatNonTenu && <div className="text-text-dim">{donnees.etatNonTenu}</div>}
+            <div className="text-text-dim">{donnees.formulaire}</div>
             <div className="text-text-dim">{donnees.delai}</div>
             {donnees.derogation && <div className="text-text-dim">{donnees.derogation}</div>}
             {donnees.manquants.length > 0 && <div className="text-warning">À compléter à la main · {donnees.manquants.join(' ; ')}.</div>}
@@ -239,8 +243,8 @@ export function DeclarationEtablissement() {
           Déclaration d’établissement
           <Aide
             titre="Ouverture, fermeture, changement"
-            texte="Exercer ou cesser une activité qui emploie des travailleurs se déclare à l'Inspection du travail et à l'Office national de l'emploi dans la quinzaine qui précède l'ouverture ou la fermeture ; une modification des éléments déclarés, dans le même délai. Le formulaire officiel se dépose en quatre exemplaires. OmegaX remplit l'identité du déclarant depuis la fiche du dossier ; le reste se complète à la main."
-            source="Code du travail, art. 216 ; arrêté ministériel n° 008/CAB/PVPM/ETPS/2010 du 1er avril 2010"
+            texte="Exercer ou cesser une activité qui emploie des travailleurs se déclare à la Direction de l'Emploi (Kinshasa) ou à la Division provinciale de l'Emploi et du Travail, et à la Direction provinciale de l'Office national de l'emploi, dans la quinzaine qui précède l'ouverture ou la fermeture ; une modification des éléments déclarés, dans le même délai. Le formulaire officiel se dépose en quatre exemplaires. OmegaX remplit l'identité du déclarant depuis la fiche du dossier ; le reste se complète à la main."
+            source="Code du travail, art. 216 ; arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 du 24 février 2023 ; arrêté ministériel n° 008/CAB/PVPM/ETPS/2010 du 1er avril 2010"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -306,6 +310,7 @@ export function DeclarationEtablissement() {
           <div>À ……………………, le ……………………</div>
           <div className="text-text-dim">{donnees.exemplaires}</div>
           <div className="ecran-seul space-y-1 pt-1">
+            <div className="text-text-dim">{donnees.formulaire}</div>
             {donnees.fenetre ? (
               <div>
                 À déposer du {donnees.fenetre.du} au {donnees.fenetre.au}, dans la quinzaine qui précède l’événement.
