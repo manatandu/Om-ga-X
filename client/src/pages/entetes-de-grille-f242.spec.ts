@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import * as ts from 'typescript';
+import * as ts from '@typescript/typescript6';
 
 // AUCUN import de « vitest » (globales) · convention du dépôt, le fichier est
 // exécuté par les DEUX lanceurs.

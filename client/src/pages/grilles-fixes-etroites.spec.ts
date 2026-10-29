@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import * as ts from 'typescript';
+import * as ts from '@typescript/typescript6';
 
 // AUCUN import de « vitest » ici, volontairement · même raison que
 // chrome-etroit.spec.ts : describe/it/expect arrivent par les globales, ce qui
