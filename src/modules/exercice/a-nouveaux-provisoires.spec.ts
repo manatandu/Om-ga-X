@@ -102,6 +102,8 @@ function service(
 ) {
   const lecture = lectureDuReport(COMPTES);
   const tx = {
+    // La marque de l'exercice relue contre le lettrage (point 7 de la relecture lettrage-verrou).
+    $executeRaw: jest.fn(async () => 1),
     compte: {
       findMany: lecture.compte.findMany,
       findUnique: jest.fn().mockResolvedValue({ id: '131', numero: '13100000' }),
@@ -146,6 +148,11 @@ describe('À-nouveaux provisoires', () => {
     const r = await s.genererANouveauxProvisoires('t', 'n', 'u');
     const data = tx.ecriture.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ exerciceId: 'n1', estANouveauProvisoire: true, estGenereeParCloture: true, numeroPiece: 99 });
+    // Point 7 · la ligne de N est réécrite EN DERNIER, après l'écriture du provisoire · un lettrage validé après
+    // l'image fait tomber la transaction sérialisable, rejouée sur une image qui le voit.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect((tx.$executeRaw.mock.calls[0] as unknown[]).slice(1)).toEqual(['n', 't']);
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeGreaterThan(tx.ecriture.create.mock.invocationCallOrder[0]);
     expect(data.statut).toBeUndefined(); // brouillard par défaut, jamais validé d'office
     const lignes = data.lignes.create as { compteId: string; debit: number; credit: number }[];
     expect(lignes.find((l) => l.compteId === '131')).toMatchObject({ credit: 500 });

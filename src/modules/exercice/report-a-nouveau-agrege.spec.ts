@@ -268,6 +268,8 @@ function base(
     lignes: lignes.filter((l) => l.lettrageId === g.id),
   });
   const tx = {
+    // La marque de l'exercice relue contre le lettrage (point 7 de la relecture lettrage-verrou).
+    $executeRaw: jest.fn(async () => 1),
     lettrage: {
       findMany: jest.fn(async (a: { where: unknown; select?: Record<string, unknown>; orderBy?: unknown; take?: number; cursor?: { id: string }; skip?: number }) => {
         let r = groupes.map(groupeVu).filter((g) => groupeCorrespond(g as never, a.where)).sort((x, y) => (x.id < y.id ? -1 : 1));

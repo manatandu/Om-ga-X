@@ -2897,6 +2897,15 @@ export class ExerciceService {
             },
           });
         }
+        // LA MARQUE DU LETTRAGE (point 7 de la relecture lettrage-verrou) · le
+        // lettrage, en lecture validée sous le verrou du dossier, réécrit la
+        // ligne de chaque exercice OUVERT (`marquerLesExercicesOuverts`). La
+        // clôture écrit la sienne ; le provisoire ne l'écrivait pas, et un
+        // lettrage validé après son image laissait au Détail de N+1 des lignes
+        // que N venait de lettrer. Réécrite ici, EN DERNIER (après tout geste
+        // audité, qui prend le verrou du dossier), elle fait tomber le
+        // provisoire en 40001 sur une image périmée, et la reprise relit.
+        await tx.$executeRaw`UPDATE "exercices" SET "statut" = "statut" WHERE "id" = ${exerciceId} AND "tenantId" = ${tenantId}`;
         return {
           exerciceSuivantId: exerciceSuivant.id,
           lignes: lignes.length,
