@@ -787,9 +787,11 @@ suivront.
 Firebase Hosting, qui l'appelle par `*.run.app` sans équilibreur ; le site a perdu
 son serveur pour tous les cabinets de 14:10 à 14:23 UTC, jusqu'au geste
 « rouvrir » (run n° 2, vert, accès à `all`). La fermeture est retirée du
-workflow, qui ne garde que « rouvrir ». Voie restante, à décider par Manasse
-(coût) · un équilibreur de charge HTTPS Google devant le service (NEG sans
-serveur), le relais du site pointé sur lui, puis l'ingress fermé. (5) ARRÊTÉ DU
+workflow, qui ne garde que « rouvrir ». Voie restante · un équilibreur de
+charge HTTPS Google devant le service (NEG sans serveur), le relais du site
+pointé sur lui, puis l'ingress fermé. ÉCARTÉE par Manasse le 2026-10-29
+(« laisse le 2e site […] c'est pas une priorité ») · l'adresse directe reste
+ouverte, sous les mêmes gardes que le relais. (5) ARRÊTÉ DU
 24 FÉVRIER 2023 · LU sur le scan fourni (`docs/sources/arrete-087-2023-declarations.md`),
 arrêté ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023. Il remplace sur les
 SERVICES et les EXEMPLAIRES les arrêtés n° 005, 006 et 008 de 2010 (art. 2, 4 et 10) ·

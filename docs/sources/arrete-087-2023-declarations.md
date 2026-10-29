@@ -7,6 +7,26 @@ l'original (« 087 », « 02 », « 24 / 02 »), le cachet de signature porte
 général de l'Emploi et du Travail porte « 24.04.23 ». Le modèle de formulaire
 annexé (art. 4) n'est PAS dans le scan.
 
+**Deux pièces reçues ensuite (2026-10-29).** (1) La PUBLICATION au Journal
+officiel de la RDC, première partie, n° 10 du 15 mai 2023 · même texte, articles 1
+à 11 identiques au scan, signé Claudine Ndusi M'kembe, « Fait à Kinshasa, le 24
+février 2023 » (l'année coupée du cachet est donc 2023). (2) Le formulaire de
+l'ONEM « Déclaration annuelle de la situation de la main-d'œuvre » (DASMO,
+exercice 2024, document Word de l'ONEM, cinq pages), qui porte « Vu pour être
+annexé à arrêté Ministériel n° CAB.MIN/ETPS/CNM/NTA-MKH/JBI/087/02/2023 de
+24/02/2023 » · c'est le modèle annexé pour la SEULE situation annuelle (art. 3 et
+4). Rubriques · identification de l'entreprise (1 à 19, dont RCCM, numéro impôt,
+IDN, CNSS, INPP, ONEM), effectif permanent au 1er janvier par catégorie, sexe et
+nationalité (20 à 30, neuf lignes de catégorie I à V, agent de maîtrise, cadres de
+collaboration, cadres de direction, hors cadres), permanents des années n, n-1 et
+n-2 et non-permanents (journaliers, temporaires, consultants, saisonniers, effectif
+maximum et période, 31 à 33), masse salariale brute au 1er janvier par catégorie
+et nationalité (34 à 44), durée hebdomadaire moyenne du travail (45, 46), besoins
+en main-d'œuvre (47 à 61) et en formation (62 à 71). Les définitions de sa note
+(« journalier · 22 jours », « saisonnier · 2 ans ») sont de l'ONEM, pas d'un texte ·
+jamais codées comme règle. Les modèles de l'ouverture, du mouvement et du bilan
+social ne sont toujours pas reçus.
+
 ---
 
 République Démocratique du Congo · Ministère de l'Emploi, Travail et Prévoyance
@@ -143,8 +163,10 @@ Claudine NDUSI M'KEMBE
   31 janvier vaut pour la situation annuelle ET pour le bilan social (art. 3),
   que l'arrêté n° 005 ne réglait pas.
 - **Formulaire** · « conforme au modèle annexé » (art. 4), retiré à l'ONEM
-  (art. 5) · le modèle n'est pas lu. Les formulaires de 2010 ne sont abrogés
-  que s'ils sont contraires au modèle de 2023, ce qui ne se juge pas sans lui.
+  (art. 5) · le modèle de la situation annuelle est lu (formulaire DASMO de
+  l'ONEM, ci-dessus) ; ceux de l'ouverture, du mouvement et du bilan social ne
+  le sont pas, et les formulaires de 2010 ne sont abrogés que s'ils sont
+  contraires aux leurs, ce qui ne se juge pas sans eux.
 - **Dérogation des journaliers** (arrêté n° 006, art. 4) · non contraire, elle reste.
 - **Droits, taxes et redevances** (art. 7) · au taux de l'arrêté
   interministériel du 2 août 2022, lu (`arrete-interministeriel-2022-taux-emploi.md`) ·
