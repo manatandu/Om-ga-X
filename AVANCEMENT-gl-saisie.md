@@ -10,10 +10,11 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
 |---|---|---|
 | 2 | Échéance obligatoire sur la ligne d'une facture de tiers, option du dossier (faux par défaut) | `comptabilite/echeance-obligatoire.ts`, `Tenant.echeanceObligatoireTiers`, `PATCH /dossier/echeance-obligatoire`, Paramètres du dossier |
 | 13 | Interroger le compte depuis la saisie · solde (livre-journal, brouillard, à-nouveau provisoire) et dernières lignes | `comptabilite/interrogation-compte.service.ts`, `GET /interrogation-compte/:compteId`, `ModaleInterrogationCompte` (F2 ou double-clic dans la saisie) |
+| 15 | Créer un modèle de saisie depuis la pièce en cours | `client/src/lib/modele-depuis-piece.ts`, `ModaleModeleDepuisPiece` (bouton « Créer un modèle… » de la saisie), route existante `POST /modeles-saisie` |
 
 ## Reste
 
-15, 33, 34, 35, 56, 57, 58, 64, 97.
+33, 34, 35, 56, 57, 58, 64, 97.
 
 ## Décisions, avec leur fondement
 
@@ -25,6 +26,7 @@ sauvegarde `travail/gl-saisie`, partie de `origin/main` (92c8b5810).
   19) · option d'organisation, fausse par défaut. Jugée à la SAISIE seule, au
   contrôleur, comme le collectif · ni modules, ni clôture, ni imports.
 - **13 · trois sommes, jamais fondues sans le dire** · livre-journal (validées, AUDCIF art. 22, 2°), brouillard, à-nouveau provisoire ; simulations et solde des comptes de gestion hors de tout (balance à trois colonnes) ; bornée aux quinze lignes les plus récentes, le total dit. Ce n'est pas le grand livre.
+- **15 · aucune règle à part** · la pièce se traduit en modèle (taxe en « Calculer » avec son taux, dernière ligne hors taxe en « Équilibrer » sur demande, montants figés sur demande seulement) et part par la route des modèles, qui garde ses refus ; un spec rejoue la traduction contre `motifRefusFonctions` du serveur.
 
 ## Commandes de vérification
 
