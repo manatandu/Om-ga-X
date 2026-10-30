@@ -241,6 +241,8 @@ export class TiersService {
         modeReglement: t.modeReglement ? { id: t.modeReglement.id, estActif: t.modeReglement.estActif } : null,
         representant: representant ? { id: representant.id, refus: motifRefusRepresentant(t.type, representant) } : null,
         devise,
+        representantIntrouvable: !!t.representantId && !representant,
+        deviseIntrouvable: !!t.deviseId && !devise,
       },
       { ribs, documents, lieux },
     );

@@ -59,6 +59,12 @@ export interface TiersADupliquer {
   representant: { id: string; refus: string | null } | null;
   /** La devise habituelle (ligne commercial-l8), avec son état. */
   devise: { id: string; code: string; estActive: boolean } | null;
+  /**
+   * Relecture indépendante, m2 · un représentant ou une devise POSÉS sur le
+   * tiers mais introuvables dans le dossier · nommés, jamais tus.
+   */
+  representantIntrouvable?: boolean;
+  deviseIntrouvable?: boolean;
   /** L'encours maximum (ligne commercial-l8) · jamais repris, seulement nommé. */
   encoursMaximum: unknown;
 }
@@ -112,8 +118,10 @@ export function copieDuTiers(t: TiersADupliquer, decomptes: { ribs: number; docu
   }
   if (t.representant && t.representant.refus === null) corps.representantId = t.representant.id;
   else if (t.representant) nonRepris.push({ champ: 'Représentant', motif: t.representant.refus as string });
+  else if (t.representantIntrouvable) nonRepris.push({ champ: 'Représentant', motif: 'introuvable dans le dossier' });
   if (t.devise?.estActive) corps.deviseId = t.devise.id;
   else if (t.devise) nonRepris.push({ champ: 'Devise habituelle', motif: `${t.devise.code} en sommeil` });
+  else if (t.deviseIntrouvable) nonRepris.push({ champ: 'Devise habituelle', motif: 'introuvable dans le dossier' });
   if (t.encoursMaximum !== null && t.encoursMaximum !== undefined) {
     nonRepris.push({ champ: 'Encours maximum', motif: 'crédit consenti à ce client · il ne s’ouvre pas au nouveau tiers sans décision' });
   }

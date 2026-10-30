@@ -135,6 +135,19 @@ describe('la copie d’un tiers', () => {
     expect(c.nonRepris.map((n) => n.champ)).not.toContain('Encours maximum');
   });
 
+  // Relecture indépendante, m2 · posé mais introuvable · nommé, jamais tu.
+  it('un représentant ou une devise introuvables dans le dossier sont nommés', () => {
+    const c = copieDuTiers(source({ representantIntrouvable: true, deviseIntrouvable: true }), { ribs: 0, documents: 0, lieux: 0 });
+    expect(c.corps).not.toHaveProperty('representantId');
+    expect(c.corps).not.toHaveProperty('deviseId');
+    expect(c.nonRepris).toEqual(
+      expect.arrayContaining([
+        { champ: 'Représentant', motif: 'introuvable dans le dossier' },
+        { champ: 'Devise habituelle', motif: 'introuvable dans le dossier' },
+      ]),
+    );
+  });
+
   it('le corps de la copie passe le DTO de création, une fois le code saisi', async () => {
     const c = copieDuTiers(
       source({ representant: { id: '8f1c2a9e-1b2c-4d3e-8f9a-0b1c2d3e4f5a', refus: null }, devise: { id: '9f1c2a9e-1b2c-4d3e-8f9a-0b1c2d3e4f5a', code: 'USD', estActive: true } }),
@@ -198,5 +211,25 @@ describe('le service · la copie se lit, rien ne s’écrit', () => {
     expect(lireCollaborateur).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'col1', tenantId: 'd' } }));
     expect(lireDevise).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'usd', tenantId: 'd' } }));
     expect(c.corps).toEqual(expect.objectContaining({ representantId: 'col1', deviseId: 'usd' }));
+  });
+
+  it('un représentant ou une devise qui ne se lisent plus dans ce dossier se disent introuvables', async () => {
+    const prisma = {
+      tiers: {
+        findFirst: jest.fn(async () => ({ ...source(), id: 't1', representantId: 'col1', deviseId: 'usd', encoursMaximum: null, comptesRattaches: [] })),
+      },
+      ribTiers: { count: jest.fn(async () => 0) },
+      documentTiers: { count: jest.fn(async () => 0) },
+      lieuLivraison: { count: jest.fn(async () => 0) },
+      collaborateur: { findFirst: jest.fn(async () => null) },
+      devise: { findFirst: jest.fn(async () => null) },
+    };
+    const c = await new TiersService(prisma as never).duplication('d', 't1');
+    expect(c.nonRepris.map((n) => [n.champ, n.motif])).toEqual(
+      expect.arrayContaining([
+        ['Représentant', 'introuvable dans le dossier'],
+        ['Devise habituelle', 'introuvable dans le dossier'],
+      ]),
+    );
   });
 });

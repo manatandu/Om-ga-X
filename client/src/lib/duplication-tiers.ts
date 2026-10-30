@@ -35,15 +35,28 @@ export interface CopieDuTiers {
   nonRepris: Array<{ champ: string; motif: string }>;
 }
 
+/**
+ * Le représentant suit le TYPE de la copie · un vendeur représente un client,
+ * un acheteur un fournisseur (`commercial/collaborateurs.ts`). Le type changé
+ * dans le formulaire, le représentant n'est plus envoyé · la création le
+ * refuserait sur un champ que le formulaire ne montre pas (relecture
+ * indépendante, m1), et la ligne « Non repris » le dit.
+ */
+const representantTombe = (c: CopieDuTiers, typeChoisi: TypeTiers | undefined) =>
+  !!c.corps.representantId && typeChoisi !== undefined && typeChoisi !== c.corps.type;
+
 /** Les champs repris qui n'ont pas de place dans le formulaire · envoyés tels quels à la création. */
-export function champsReprisHorsFormulaire(c: CopieDuTiers): Record<string, string | boolean> {
-  const { type: _type, code: _code, nom: _nom, modeleReglementId: _modele, modeReglementId: _mode, ...reste } = c.corps;
-  return reste;
+export function champsReprisHorsFormulaire(c: CopieDuTiers, typeChoisi?: TypeTiers): Record<string, string | boolean> {
+  const { type: _type, code: _code, nom: _nom, modeleReglementId: _modele, modeReglementId: _mode, representantId, ...reste } = c.corps;
+  return representantId && !representantTombe(c, typeChoisi) ? { ...reste, representantId } : reste;
 }
 
 /** La ligne qui dit ce que la copie ne reprend pas. */
-export function nonReprisEnClair(c: CopieDuTiers): string {
-  return c.nonRepris.map((n) => `${n.champ} (${n.motif})`).join(' ; ');
+export function nonReprisEnClair(c: CopieDuTiers, typeChoisi?: TypeTiers): string {
+  const non = representantTombe(c, typeChoisi)
+    ? [...c.nonRepris, { champ: 'Représentant', motif: 'le type du tiers a changé · à choisir sur la fiche créée' }]
+    : c.nonRepris;
+  return non.map((n) => `${n.champ} (${n.motif})`).join(' ; ');
 }
 
 /**
@@ -51,13 +64,13 @@ export function nonReprisEnClair(c: CopieDuTiers): string {
  * 10) · les modèles d'impression et l'échéancier appliqué d'office partaient
  * avec la création sans être nommés.
  */
-export function reprisEnClair(c: CopieDuTiers): string {
+export function reprisEnClair(c: CopieDuTiers, typeChoisi?: TypeTiers): string {
   const repris = ['nom', 'qualité', 'coordonnées', 'règlement'];
   if (c.corps.validationAutomatiqueEcheances) repris.push('échéancier appliqué d’office');
   if (c.corps.modeleImpressionExtraitId || c.corps.modeleImpressionReglementId || c.corps.modeleImpressionRappelId) {
     repris.push('modèles d’impression');
   }
-  if (c.corps.representantId) repris.push('représentant');
+  if (c.corps.representantId && !representantTombe(c, typeChoisi)) repris.push('représentant');
   if (c.corps.deviseId) repris.push('devise habituelle');
   return `${repris.slice(0, -1).join(', ')} et ${repris[repris.length - 1]}`;
 }
