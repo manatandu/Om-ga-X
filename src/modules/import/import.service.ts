@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { PrismaService } from '../../common/prisma.service';
 import { randomUUID } from 'node:crypto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -734,6 +735,10 @@ export class ImportService {
       // (audit final F2) · une balance de mille comptes faisait mille
       // allers-retours dans une transaction bornée à cinq secondes.
       await transactionJournalisee(this.prisma, async (tx) => {
+        // Le verrou du dossier EN TÊTE · les contrôles de `creer` lus plus bas
+        // (période close comprise) voient tout ce que les autres gestes du
+        // dossier ont validé (saisie-serialisable, second tour, point 5).
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         if (comptesACreer.length > 0) {
           await tx.compte.createMany({ data: comptesACreer, skipDuplicates: true });
         }
@@ -1028,6 +1033,7 @@ export class ImportService {
       await transactionJournalisee(
         this.prisma,
         async (tx) => {
+          await this.ecritureService.relirePeriodesClosesSousVerrou(tx, tenantId, valides);
           const numeroter = numeroteurDeLot(tx, tenantId, exercice.id);
           const pieces: Array<(typeof valides)[number] & { id: string; numeroPiece: number | null }> = [];
           for (const piece of valides) {

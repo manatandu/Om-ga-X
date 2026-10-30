@@ -85,6 +85,28 @@ Fusion d'`origin/main` (`c6215eb46`), puis commit `3645563e0` et suivants.
 Comparaison locale `main` / branche, 20 dossiers × 20 pièces · p50 762 à 869
 contre 846 à 865 ms, p95 2,2 à 2,3 s contre 1,1 s, 5 et 6 refus contre 0.
 
+## Second tour de relecture (2026-10-30)
+
+1. Fiches d'immobilisation (modification, suppression), annulation d'une
+   sortie, créances douteuses · verrou du dossier puis lignes libres seules ;
+   au brouillard un groupe figé ne se tolère pas (A7 ter, B2), d'où aucun
+   paramètre de tolérance.
+2. Liasse du groupe · purge et création dans une transaction, sous le verrou
+   du dossier de combinaison.
+3. Rapprochement · clôture, départ, en-cours (déclarer, retirer, pointer,
+   dépointer) lus et écrits sous le verrou, `obtenir` et `depart` sur la
+   transaction.
+4. Caisse provisionnée rejugée dans la transaction · règlement, virement de
+   fonds, paiement des salaires, réimputation.
+5. Pointage sans doublon ; statut de N relu sous le verrou (clôture, provisoire,
+   mesure 11) ; lettrage borné au seul verrou, sans réécrire les exercices ;
+   période close relue sous le verrou (imports, canevas, déclaration de devise) ;
+   effets et retrait de compensation sous le verrou.
+
+Rejeu · treize mesures vertes (11 · deux clôtures, une passe, l'autre refus
+nommé ; 12 · deux sorties de 700 d'une caisse de 1 000, une seule passe ;
+13 · une ligne nommée deux fois se pointe).
+
 ## Reste
 
 - Banc `charge-k6.yml` à relancer sur la branche corrigée.

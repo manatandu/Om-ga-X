@@ -21,13 +21,15 @@ et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 - Le banc `charge-k6.yml` a tourné sur `089c965cb` (avant la relecture) · aucun
   409, p50 de 15 % au-dessus de `main`. À relancer sur la branche corrigée,
   qui a retiré la marque des exercices (p50 local revenu à celui de `main`).
-- La marque des exercices du lettrage (`marquerLesExercicesOuverts`) n'a plus
-  d'objet, aucune transaction n'étant plus sérialisable · gardée sans effet,
-  à retirer avec une relecture du lettrage.
 - `avecRetrySerialisable` n'a plus d'appelant · gardée avec ses tests.
-- Les retraits de brouillard qui tolèrent un groupe (`annulation-sortie`,
-  `fiche-immobilisation`, créances douteuses) n'ont pas été mis au filtre des
-  lignes libres · leur tolérance est à relire à part.
+- Non rejoués sur vraie base, couverts par les tests unitaires seuls · la
+  liasse du groupe générée deux fois au même instant (il faut un siège et ses
+  cellules), la modification d'une fiche d'immobilisation et l'annulation
+  d'une sortie contre un lettrage, la clôture d'un rapprochement contre un
+  pointage.
+- Limite écrite · un écrivain qui pose des verrous de lignes avant son premier
+  acte audité peut encore s'interbloquer avec la clôture ; la clôture est
+  rejouée, l'autre geste peut finir en 500.
 
 ## Questions à Manasse · saisie, ligne sage-l1
 

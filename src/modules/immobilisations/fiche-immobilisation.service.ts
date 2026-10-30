@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { reporterLesPieces } from '../comptabilite/pieces-jointes-ecriture';
 import { ActionAudit, ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -194,6 +196,7 @@ export class FicheImmobilisationService {
           });
     try {
       await transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         // Relue dans la transaction · un traitement passé entre-temps refuse.
         const relu = await this.lire(tx, tenantId, id);
         const encore = motifRefusModificationAEffet(relu.etat) ?? motifRefusEntreeSousLesDetentions(relu.etat, dto.dateAcquisition);
@@ -241,9 +244,9 @@ export class FicheImmobilisationService {
           // neuve partait sans justificatif (AUDCIF art. 17, 3° ; art. 22, 7°).
           if (nouvelle) await reporterLesPieces(tx, tenantId, relu.acquisition.id, nouvelle.id);
           // Une et une seule, ENCORE au brouillard, sinon rien ne part (409).
-          await tx.ligneEcriture.deleteMany({
-            where: { ecritureId: relu.acquisition.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } },
-          });
+          // Lignes libres seulement, sous le verrou du dossier (saisie-serialisable, second tour, point 1) · une ligne lettrée ou
+          // pointée pendant le geste ne part plus avec son écriture, le groupe amputé en silence.
+          await retirerLesLignesLibres(tx, tenantId, relu.acquisition.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
           const r = await tx.ecriture.deleteMany({ where: { id: relu.acquisition.id, tenantId, statut: StatutEcriture.BROUILLARD } });
           if (r.count !== 1) {
             throw new ConflictException("L'écriture d'acquisition a été validée ou retirée pendant la modification · rien n'est modifié.");
@@ -264,6 +267,7 @@ export class FicheImmobilisationService {
    */
   async supprimer(tenantId: string, id: string) {
     await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       const lu = await this.lire(tx, tenantId, id);
       const motif = motifRefusSuppression(lu.etat);
       if (motif) throw new BadRequestException(motif);
@@ -299,7 +303,9 @@ export class FicheImmobilisationService {
       // Née d'une écriture déjà passée (n° 68), la fiche part seule · l'écriture
       // était au journal avant elle et y reste, sa ligne revient à la liste.
       if (lu.acquisition && !lu.etat.neeDUneEcriturePassee) {
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: lu.acquisition.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        // Lignes libres seulement, sous le verrou du dossier (saisie-serialisable, second tour, point 1) · une ligne lettrée ou
+        // pointée pendant le geste ne part plus avec son écriture, le groupe amputé en silence.
+        await retirerLesLignesLibres(tx, tenantId, lu.acquisition.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const e = await tx.ecriture.deleteMany({ where: { id: lu.acquisition.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (e.count !== 1) {
           throw new ConflictException("L'écriture d'acquisition a été validée pendant la suppression · la fiche est gardée.");

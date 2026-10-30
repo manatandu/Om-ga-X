@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { NatureMouvementDepreciation, NatureTraitementImmobilisation, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -107,6 +109,8 @@ export class AnnulationSortieService {
     if (avant.motifRefus) throw new BadRequestException(avant.motifRefus);
 
     return transactionJournalisee(this.prisma, async (tx) => {
+      // Le dossier avant toute ligne ou fiche (saisie-serialisable, second tour, point 1).
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       // LE VERROU DES FICHES, dans un ordre fixe · celui que prennent la
       // dotation et l'annulation des traitements.
       const ids = [id, ...(avant.fiche.fractionDeId ? [avant.fiche.fractionDeId] : [])].sort();
@@ -202,7 +206,9 @@ export class AnnulationSortieService {
       // 6 · les écritures du brouillard, une et une seule chacune, ENCORE au
       // brouillard, sinon rien ne part (409).
       for (const t of traitees.filter((x) => !x.negatif)) {
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: t.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        // Lignes libres seulement, sous le verrou du dossier (saisie-serialisable, second tour, point 1) · une ligne lettrée ou
+        // pointée pendant le geste ne part plus avec son écriture, le groupe amputé en silence.
+        await retirerLesLignesLibres(tx, tenantId, t.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const r = await tx.ecriture.deleteMany({ where: { id: t.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (r.count !== 1) {
           throw new ConflictException(

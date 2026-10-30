@@ -195,7 +195,7 @@ describe('F49 · l’import d’écritures porte la devise', () => {
       $transaction: jest.fn().mockImplementation((f: (t: unknown) => unknown) => f(tx)),
     } as unknown as PrismaService;
     const controlesDEntree = jest.fn().mockResolvedValue({});
-    return { svc: new ImportService(prisma, { controlesDEntree } as never), tx, prisma, controlesDEntree };
+    return { svc: new ImportService(prisma, { controlesDEntree, relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined) } as never), tx, prisma, controlesDEntree };
   }
 
   const fichier = (lignes: string[]) =>

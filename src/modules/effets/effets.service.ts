@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { NatureActeEffet, Prisma, SensEffet, StatutEcriture, StatutEffet, StatutExercice, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -737,6 +738,8 @@ export class EffetsService {
   }
 
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, e: EffetLu) {
+    // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, second tour, point 5).
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT id FROM "effets_de_commerce" WHERE id = ${e.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
     const vivants = await tx.acteEffet.findMany({ where: { tenantId, effetId: e.id, annuleLe: null }, select: { id: true } });
     const lus = e.actes.filter((a) => !a.annuleLe).map((a) => a.id).sort();

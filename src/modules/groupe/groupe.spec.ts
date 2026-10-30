@@ -345,6 +345,7 @@ describe('GroupeService · canevas de trésorerie', () => {
   // Les contrôles d'entrée de la saisie · ils laissent passer par défaut, et
   // le test « journal en sommeil » plus bas les fait refuser.
   const ecritureCanevas = (refus?: Error) => ({
+    relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined),
     controlesDEntree: jest.fn().mockImplementation(async () => {
       if (refus) throw refus;
       return {};

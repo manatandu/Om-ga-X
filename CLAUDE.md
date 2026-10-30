@@ -2916,15 +2916,13 @@ verrous de lecture par page d'index faisaient refuser le lettrage d'un cabinet
 parce qu'un AUTRE travaillait (banc k6 · 24 refus, 6 lettrages incomplets ;
 rejeu local · 43 refus avant, 0 après). Les six gestes de `lettrage.service.ts`
 passent par `transactionSousVerrouDuDossier` · READ COMMITTED, attente bornée
-(`lock_timeout`, 409 `DOSSIER_OCCUPE`), le verrou consultatif du dossier pris
+au seul verrou (409 `DOSSIER_OCCUPE`), le verrou consultatif du dossier pris
 EN PREMIER, celui que l'audit prend à chaque écriture auditée (lettrage,
-clôture, exercice, créance douteuse). TROIS RÈGLES À NE PAS DÉFAIRE. (1) Le
-lettrage RÉÉCRIT, sans en changer une valeur, la ligne de chaque exercice
-OUVERT du dossier (`marquerLesExercicesOuverts`) · PostgreSQL ne détecte les
-conflits qu'entre transactions sérialisables, et la clôture restée
-sérialisable reportait en N+1, comme ouvertes, des lignes lettrées pendant sa
-lecture ; elle tombe désormais en 40001 et se rejoue
-(`scripts/rejouer-cloture-contre-lettrage.cjs`). (2) Le doublon du CODE d'un
+clôture, exercice, créance douteuse). TROIS RÈGLES À NE PAS DÉFAIRE. (1) La
+clôture et le provisoire prennent ce même verrou en tête, en lecture validée
+(ligne saisie-serialisable) · ils attendent le lettrage en cours et lisent ce
+qu'il a validé ; la réécriture des exercices ouverts qui faisait tomber la
+clôture sérialisable en 40001 est RETIRÉE avec elle. (2) Le doublon du CODE d'un
 lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
 `avecRetrySerialisable` · aucune autre unicité. (3) Une ligne ne se lettre que
 LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
@@ -2938,29 +2936,42 @@ clôture de N tombait huit fois en 40001 pendant la saisie de N+1 (MAJEUR) ;
 après, aucun refus ni rejeu. `transactionDeSaisie`
 (`common/transaction-de-saisie.ts`) · READ COMMITTED, verrou du dossier EN
 TÊTE, attente bornée à lui seul (`prendreLeVerrouDuDossierBorne`, 409
-`DOSSIER_OCCUPE`). La prennent la saisie et ses variantes (création, modules
-par `creerAvec`, modification, transfert d'une situation, réimputation,
-correction en négatif), les titres et opérations de trésorerie, la clôture,
-les à-nouveaux provisoires, la dissolution, le rapprochement et le pointage ;
-le lettrage prend le même verrou (`transactionSousVerrouDuDossier`). CINQ
-RÈGLES À NE PAS DÉFAIRE. (1) UN SEUL ORDRE · le verrou du dossier, PUIS les
-lignes · toute transaction qui prend des écritures ou des exercices `FOR
-UPDATE` ou `FOR SHARE` (validation par période, visa, pièces jointes,
-ventilation) le prend avant (`transaction-de-saisie.spec.ts`). (2) Le numéro
-de pièce se lit sous ce verrou, l'exercice relu OUVERT, DANS TOUS LES MODES,
-MANUELLE comprise (`prochainNumeroPiece`, `numeroteurDeLot`) · un import ou
-un module qui avait lu l'exercice ouvert avant le verrou n'entre plus dans
-celui qu'une clôture vient de fermer. (3) Un écrivain qui ne passe par aucune
-écriture auditée prend le verrou lui-même (pointage, confirmation,
-dissociation et annulation d'un rapprochement, délettrage d'héritage) · sans
-quoi la clôture en lecture validée le lirait à moitié. (4) Relus sous le
-verrou · le brouillard dans la clôture, la clôture de période et l'exercice
-dans la saisie, la caisse provisionnée, « déjà corrigée » et le lettrage de la
-correction (P2002 rendu en 409 nommé). (5) Un brouillard retiré par un module
-ne retire que des lignes libres (`retirerLesLignesLibres`, nombre relu ;
-l'écriture changée reste nommée par le module). `avecRetrySerialisable`
-n'a plus d'appelant. Rejeu · `scripts/rejouer-saisie-concurrente.cjs`
-(dix mesures, clôture comprise).
+`DOSSIER_OCCUPE`, puis `lock_timeout` rendu à son défaut). La prennent la
+saisie et ses variantes (création, modules par `creerAvec`, modification,
+transfert d'une situation, réimputation, correction en négatif), les titres et
+opérations de trésorerie, la clôture, les à-nouveaux provisoires, la
+dissolution, le rapprochement (ouverture, réouverture, clôture, départ et
+en-cours, pointage, confirmation, dissociation, annulation) ; le lettrage
+prend le même verrou (`transactionSousVerrouDuDossier`), sans plus réécrire
+les exercices. SIX RÈGLES À NE PAS DÉFAIRE. (1) UN SEUL ORDRE · le verrou du
+dossier, PUIS les lignes · la validation par période, le visa, les pièces
+jointes, la ventilation, les effets le prennent avant leurs `FOR UPDATE` ou
+`FOR SHARE` (`transaction-de-saisie.spec.ts`), les transferts du groupe
+prennent les deux dossiers dans un ordre fixe. (2) Le numéro de pièce se lit
+sous ce verrou, l'exercice relu OUVERT, DANS TOUS LES MODES, MANUELLE comprise
+(`prochainNumeroPiece`, `numeroteurDeLot`) · un import ou un module qui avait
+lu l'exercice ouvert avant le verrou n'entre plus dans celui qu'une clôture
+vient de fermer. (3) Un écrivain qui ne passe par aucune écriture auditée
+prend le verrou lui-même (pointage, rapprochement, délettrage d'héritage,
+retrait d'une pièce de compensation) · sans quoi la clôture en lecture
+validée le lirait à moitié. (4) Relus sous le verrou · le brouillard et le
+statut de N dans la clôture (une double clôture rend un refus nommé), le
+statut de N dans le provisoire, la clôture de période et l'exercice dans la
+saisie, les imports, le canevas du groupe et la déclaration de devise d'un
+à-nouveau (`relirePeriodesClosesSousVerrou`), « déjà corrigée » et le
+lettrage de la correction (P2002 rendu en 409 nommé), l'écart d'un
+rapprochement qui se clôt. (5) LA CAISSE PROVISIONNÉE SE JUGE DANS LA
+TRANSACTION, sous le verrou · saisie, modification, règlement, virement de
+fonds, paiement des salaires (`jugerLaCaisse`), réimputation ; le contrôle
+d'avant ne fait que refuser tôt. (6) Un brouillard retiré par un module ne
+retire que des lignes libres (`retirerLesLignesLibres`, nombre relu ;
+l'écriture changée reste nommée par le module) · les fiches
+d'immobilisation, l'annulation d'une sortie et les créances douteuses
+comprises ; au brouillard un groupe figé ne se tolère pas (A7 ter, B2). La
+liasse du groupe purge et recrée ses pièces dans UNE transaction, sous le
+verrou du dossier de combinaison. `avecRetrySerialisable` n'a plus
+d'appelant. Rejeu · `scripts/rejouer-saisie-concurrente.cjs` (treize
+mesures, clôture comprise).
 
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit
 final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par

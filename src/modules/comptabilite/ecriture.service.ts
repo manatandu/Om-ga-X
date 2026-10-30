@@ -784,6 +784,27 @@ export class EcritureService {
    * INSCRITE. Jamais la clôture, le report ni les annulations, qui ne paient
    * personne.
    */
+  /**
+   * LES CLÔTURES DE PÉRIODE RELUES SOUS LE VERROU DU DOSSIER, pour un lot de
+   * pièces que l'appelant a contrôlées avant sa transaction (imports, canevas
+   * du groupe · saisie-serialisable, second tour, point 5). Une clôture de
+   * période posée entre le contrôle et l'écriture, sous ce même verrou (la
+   * `Cloture` est auditée), laissait entrer la pièce dans la période figée
+   * (AUDCIF art. 22, 3°). Une lecture par journal.
+   */
+  async relirePeriodesClosesSousVerrou(tx: Prisma.TransactionClient, tenantId: string, pieces: ReadonlyArray<{ journalId: string; date: Date }>) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
+    const parJournal = new Map<string, Awaited<ReturnType<ExerciceService['cloturesApplicables']>>>();
+    for (const p of pieces) {
+      let clotures = parJournal.get(p.journalId);
+      if (!clotures) {
+        clotures = await this.exerciceService.cloturesApplicables(tenantId, p.journalId, tx);
+        parJournal.set(p.journalId, clotures);
+      }
+      refuserSiPeriodeClose(clotures, p.journalId, p.date);
+    }
+  }
+
   async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string) {
     await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
   }
@@ -2020,6 +2041,8 @@ export class EcritureService {
     liberer?: (tx: Prisma.TransactionClient) => Promise<unknown>,
   ) {
     await transactionJournalisee(this.prisma, async (tx) => {
+      // Le dossier avant les lignes (saisie-serialisable, second tour, point 5).
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { id: true } });
       if (!ecriture) return;
       if (liberer) await liberer(tx);
@@ -3088,6 +3111,7 @@ export class EcritureService {
     // de la pièce exacte. Débits et crédits partent ensemble · la fusion de
     // deux caisses ne doit pas lire les sorties de l'absorbée sans ses entrées.
     // Jugé avant la simulation, qu'une fusion joue exercice par exercice.
+    let piecesDeCaisse: PieceProposee[] | null = null;
     if (cible.numero.startsWith(RACINE_CAISSE)) {
       const versLaCaisse = (l: (typeof lignes)[number]) => ({
         compteId: cible.id,
@@ -3096,14 +3120,17 @@ export class EcritureService {
         deviseId: l.deviseId ?? null,
         montantDevise: l.montantDevise == null ? null : Number(l.montantDevise),
       });
-      await this.verifierCaisseProvisionnee(tenantId, exercice.id, [
+      piecesDeCaisse = [
         // Une simulation ne fait entrer ni sortir aucun billet (la lecture
         // l'écarte) · seul le brouillard se juge (seconde relecture, m2).
         ...auBrouillard
           .filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD)
           .map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
         ...(validees.length ? [{ date, lignes: validees.map(versLaCaisse) }] : []),
-      ]);
+      ];
+      // Refus tôt, avant la simulation d'une fusion ; rejugé dans la
+      // transaction, sous le verrou du dossier (saisie-serialisable, second tour, point 4).
+      await this.verifierCaisseProvisionnee(tenantId, exercice.id, piecesDeCaisse);
     }
 
     // Une fusion vérifie TOUS ses exercices avant d'en écrire un seul.
@@ -3114,6 +3141,7 @@ export class EcritureService {
       this.prisma,
       tenantId,
       async (tx) => {
+        if (piecesDeCaisse) await verifierCaisseProvisionnee(tx, tenantId, exercice.id, piecesDeCaisse);
         // Les clôtures de période se relisent sous le verrou (point 7) · au
         // brouillard à la date de chaque pièce, validée à la date de la pièce exacte.
         for (const id of brouillardsVus) {

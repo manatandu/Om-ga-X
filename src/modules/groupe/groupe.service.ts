@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { verifierClasseurBorne } from '../../common/borne-classeur';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { fondementEliminationGroupe } from './fondement-elimination';
@@ -2030,6 +2031,11 @@ export class GroupeService {
     }
 
     await transactionJournalisee(this.prisma, async (tx) => {
+      await this.ecritureService.relirePeriodesClosesSousVerrou(
+        tx,
+        celluleId,
+        piecesCanevas.map(({ l }) => ({ journalId: journalParCode.get(l.journal)!.id, date: l.date })),
+      );
       for (const { l, lignes } of piecesCanevas) {
         // Le canevas alimente les journaux de trésorerie de la cellule · ses
         // pièces se numérotent comme celles saisies à la main dans ces mêmes
@@ -2251,11 +2257,11 @@ export class GroupeService {
 
     // 3 · Régénération COMPLÈTE : le contenu du dossier de combinaison est
     // dérivé, jamais source · on repart de zéro à chaque génération, aucune
-    // trace d'un agrégat précédent ne peut subsister.
-    await this.prisma.ligneEcriture.deleteMany({
-      where: { ecriture: { tenantId: combinaisonId, exerciceId: exercice.id } },
-    });
-    await this.prisma.ecriture.deleteMany({ where: { tenantId: combinaisonId, exerciceId: exercice.id } });
+    // trace d'un agrégat précédent ne peut subsister. La purge se fait DANS la
+    // transaction qui recrée les pièces, plus bas, sous le verrou du dossier
+    // de combinaison (saisie-serialisable, second tour, point 2) · faite à
+    // part, deux générations simultanées purgeaient l'une après l'autre puis
+    // créaient chacune ses pièces · la liasse du groupe sortait doublée.
 
     // 4 · Les comptes de l'agrégat (créés au fil des générations · un compte
     // déjà présent est réutilisé, son intitulé n'est pas réécrit).
@@ -2352,6 +2358,11 @@ export class GroupeService {
     // hors transaction relâchait aussitôt pris · deux générations simultanées
     // de la liasse du groupe lisaient le même maximum.
     await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, combinaisonId);
+      await tx.ligneEcriture.deleteMany({
+        where: { ecriture: { tenantId: combinaisonId, exerciceId: exercice.id } },
+      });
+      await tx.ecriture.deleteMany({ where: { tenantId: combinaisonId, exerciceId: exercice.id } });
       for (const piece of pieces) {
         const lignes = colonnes[piece.cle];
         if (lignes.length === 0) continue;

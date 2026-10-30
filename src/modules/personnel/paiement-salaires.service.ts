@@ -542,6 +542,9 @@ export class PaiementSalairesService {
             select: { id: true, total: true, piecePassee: true, ordreVirement: { select: { numero: true } } },
           });
         },
+        // Rejugée DANS la transaction, sous le verrou du dossier (saisie-serialisable, second tour, point 4) · le contrôle d'avant
+        // ne fait que refuser tôt ; deux sorties simultanées de la même caisse y lisaient le même solde.
+        { jugerLaCaisse: true },
       );
       return { ...r.suite, total: nombre(r.suite.total), billetage };
     } catch (e) {

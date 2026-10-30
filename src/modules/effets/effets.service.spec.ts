@@ -51,6 +51,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
     actes: options.actes ?? [{ id: 'a1', nature: 'ACCEPTATION', date: new Date('2026-03-01T00:00:00.000Z'), montant: 1160000, detail: null, annuleLe: null, compte: COMPTES.c412, ecriture: { id: 'e1', numeroPiece: 1, statut: 'VALIDEE' }, ecritureNegatif: null }],
   };
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(1),
     // Le verrou de l'effet (`FOR UPDATE`) et la relecture des actes vivants
     // dans la transaction · par défaut ceux de la lecture, sauf `actesRelus`.
     $queryRaw: jest.fn(async () => {
@@ -95,7 +96,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
       }),
     },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: options.referentiel ?? 'SYSCOHADA' })) },
     journal: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => (where.id === 'jbq' ? BQ : where.id === 'jod' ? OD : null)) },
     compte: {

@@ -315,6 +315,12 @@ async function main() {
         const e = await d7.c.appeler('POST', '/ecritures', { exerciceId: d7.ex26.id, journalId: d7.od.id, date: '2026-09-10', libelle: `Banque ${k}`,
           lignes: [{ compteId: banque.id, libelle: 'B', debit: 50 + k, credit: 0 }, { compteId: d7.capital.id, libelle: 'B', debit: 0, credit: 50 + k }] }, [201]);
         const ligneBanque = e.corps.lignes.find((l) => l.compteId === banque.id).id;
+        if (k === 0) {
+          // 13 · une ligne nommée deux fois se pointe une fois, sans 409 à tort (second tour, point 5).
+          const double = await d7.c.appeler('POST', `/rapprochements/${rap.corps.id}/pointer`, { ligneIds: [ligneBanque, ligneBanque] }, ACCEPTES);
+          verifier(double.statut < 300, `13. pointage d'une ligne nommée deux fois · ${double.statut}`);
+          await d7.c.appeler('POST', `/rapprochements/${rap.corps.id}/depointer`, { ligneIds: [ligneBanque] }, ACCEPTES);
+        }
         const [p, sup] = await Promise.all([
           d7.c.appeler('POST', `/rapprochements/${rap.corps.id}/pointer`, { ligneIds: [ligneBanque] }, ACCEPTES.concat([404])),
           d7.c.appeler('DELETE', `/ecritures/${e.corps.id}`, undefined, ACCEPTES.concat([404])),
@@ -325,7 +331,38 @@ async function main() {
       verifier(deuxGagnes === 0 && issues10.every((r) => r.statut < 500), `pointage contre suppression · jamais les deux, aucun 5xx (${JSON.stringify(compter(issues10))}, ${deuxGagnes} doubles)`);
     }
 
-    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues, ...m6.issues, ...m7.issues, ...m8.issues, ...m9.issues];
+    // 11. DEUX CLÔTURES DU MÊME EXERCICE AU MÊME INSTANT (second tour, point 5) ·
+    // une passe, l'autre est refusée nommée, jamais un 500 ni un 403 trompeur.
+    const d8 = dossiers[8];
+    await d8.c.post('/ecritures/valider-jusqua', { exerciceId: d8.ex26.id, dateLimite: '2026-12-31' });
+    if (!(await d8.c.get('/exercices')).find((e) => e.dateDebut.startsWith('2027'))) await d8.c.post('/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
+    const m11 = await mesurer('11. deux clôtures du même exercice au même instant', () => Promise.all(
+      [0, 1].map(() => d8.c.appeler('POST', `/exercices/${d8.ex26.id}/cloturer`, {}, ACCEPTES)),
+    ));
+    const reports = await prisma.ecriture.count({ where: { tenantId: d8.tenantId, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false, exercice: { dateDebut: { gte: new Date('2027-01-01') } } } });
+    verifier(m11.issues.filter((r) => r.statut < 300).length === 1 && m11.issues.every((r) => r.statut < 500 && r.statut !== 403) && reports === 1,
+      `deux clôtures · une seule passe, l'autre refusée nommée, un seul report en 2027 (${JSON.stringify(compter(m11.issues))}, ${reports}) · ${JSON.stringify(m11.issues.find((r) => r.statut >= 300)?.corps ?? '').slice(0, 120)}`);
+
+    // 12. DEUX SORTIES DE LA MÊME CAISSE AU MÊME INSTANT (second tour, point 4) ·
+    // chacune tient dans la caisse, les deux ensemble non · une seule passe.
+    const d9 = dossiers[9];
+    const caisse = (await d9.c.get('/comptes?typeCompte=DETAIL')).find((k) => k.numero.startsWith('571'));
+    if (!caisse) {
+      console.log('  12 non joué · aucun compte de caisse semé');
+    } else {
+      await d9.c.patch(`/comptes/${caisse.id}`, { estRetenu: true });
+      await d9.c.appeler('POST', '/ecritures', { exerciceId: d9.ex26.id, journalId: d9.od.id, date: '2026-10-01', libelle: 'Approvisionnement',
+        lignes: [{ compteId: caisse.id, libelle: 'A', debit: 1000, credit: 0 }, { compteId: d9.capital.id, libelle: 'A', debit: 0, credit: 1000 }] }, [201]);
+      const m12 = await mesurer('12. deux sorties de 700 d\'une caisse de 1 000 au même instant', () => Promise.all(
+        [0, 1, 2].map((k) => d9.c.appeler('POST', '/ecritures', { exerciceId: d9.ex26.id, journalId: d9.od.id, date: '2026-10-02', libelle: `Sortie ${k}`,
+          lignes: [{ compteId: d9.charge.id, libelle: 'S', debit: 700, credit: 0 }, { compteId: caisse.id, libelle: 'S', debit: 0, credit: 700 }] }, ACCEPTES)),
+      ));
+      const solde = await prisma.ligneEcriture.aggregate({ where: { compteId: caisse.id }, _sum: { debit: true, credit: true } });
+      const reste = Number(solde._sum.debit) - Number(solde._sum.credit);
+      verifier(m12.issues.filter((r) => r.statut < 300).length === 1 && reste >= 0, `caisse · une seule sortie passe, la caisse n'est jamais créditrice (${JSON.stringify(compter(m12.issues))}, reste ${reste})`);
+    }
+
+    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues, ...m6.issues, ...m7.issues, ...m8.issues, ...m9.issues, ...m11.issues];
     const pannes = toutes.filter((r) => r.statut >= 500).length;
     verifier(pannes === 0, `aucune réponse 5xx sur l'ensemble (${pannes})`);
     verifier(!/Maillon d'audit NON écrit/.test(journal), 'aucun maillon d\'audit manqué au journal du serveur');

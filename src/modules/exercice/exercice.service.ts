@@ -2276,6 +2276,13 @@ export class ExerciceService {
       this.prisma,
       tenantId,
       async (tx) => {
+        // LE STATUT DE N RELU SOUS LE VERROU DU DOSSIER (saisie-serialisable,
+        // second tour, point 5) · deux clôtures du même exercice passaient
+        // toutes deux le contrôle d'entrée · la seconde rend un refus nommé.
+        const statutRelu = await tx.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { statut: true } });
+        if (statutRelu?.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException("Cet exercice vient d'être clôturé par un autre geste · rien n'est refait. Rechargez la liste des exercices.");
+        }
         await refuserLeBrouillard(tx);
         // LA DÉPRÉCIATION D'UNE CRÉANCE SE REPREND À LA CLÔTURE (ligne A7,
         // relecture adverse B1 · fiche du compte 49) · une créance perdue ou
@@ -2834,6 +2841,13 @@ export class ExerciceService {
       this.prisma,
       tenantId,
       async (tx) => {
+        // LE STATUT DE N RELU SOUS LE VERROU DU DOSSIER (saisie-serialisable,
+        // second tour, point 5) · le provisoire ne se calcule pas sur un exercice
+        // qu'une clôture vient de fermer · refus nommé.
+        const statutRelu = await tx.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { statut: true } });
+        if (statutRelu?.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException("Cet exercice vient d'être clôturé · son report définitif remplace le provisoire, rien n'est relancé. Rechargez la liste des exercices.");
+        }
         // Le livre-journal seul · ce qui reste au brouillard est compté à
         // part (`brouillardNonRepris`), jamais lu. Même lecture que la clôture
         // (audit final F185, `lireComptesDuReport`).

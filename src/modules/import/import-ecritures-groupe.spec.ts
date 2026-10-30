@@ -53,7 +53,8 @@ function service() {
     },
     $transaction: jest.fn().mockImplementation((f: (t: unknown) => unknown) => f(tx)),
   } as unknown as PrismaService;
-  const ecritureService = { controlesDEntree: jest.fn().mockResolvedValue({}) } as unknown as EcritureService;
+  // La période close se relit sous le verrou, dans la transaction de l'import (saisie-serialisable, second tour).
+  const ecritureService = { controlesDEntree: jest.fn().mockResolvedValue({}), relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined) } as unknown as EcritureService;
   return { svc: new ImportService(prisma, ecritureService), tx, prisma };
 }
 
