@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Writable } from 'node:stream';
 import { PayloadTooLargeException } from '@nestjs/common';
-import { EtatImpressionDifferee, NatureImpressionDifferee } from '@prisma/client';
+import { EtatImpressionDifferee, NatureImpressionDifferee, Prisma } from '@prisma/client';
 import { ImpressionDiffereeService } from './impression-differee.service';
 import {
   DELAI_PRODUCTION_MS,
@@ -180,7 +180,7 @@ function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' 
   };
   const exportFpm = { grandLivreEnFlux: moteur('grand-livre-fpm'), balanceGeneraleEnFlux: moteur('balance') };
   const service = new ImpressionDiffereeService(prisma as never, exportService as never, exportFpm as never);
-  return { service, demandes, appels, impressionsJournal };
+  return { service, demandes, appels, impressionsJournal, prisma };
 }
 
 /** L'instant que le moteur du journal rend de sa lecture · antérieur à toute production. */
@@ -234,6 +234,28 @@ describe('impression différée · demande, production, fichier', () => {
     expect(r2.traitee).toMatchObject({ numero: 2, etat: EtatImpressionDifferee.PRETE });
     expect(f.appels[1].moteur).toBe('grand-livre-plat');
     expect((await f.service.traiter(DOSSIER)).traitee).toBeNull();
+  });
+
+  it('un dossier tenu plus de trois secondes pendant la production n’empêche pas de ranger le fichier · PRÊTE (relecture saisie-suites, M1)', async () => {
+    // La doublure joue PostgreSQL · une fois la production lancée, une
+    // validation par période tient le dossier ; une attente BORNÉE
+    // (`SET LOCAL lock_timeout`) tombe en 55P03, une attente sans borne finit
+    // par l'obtenir. Borné à trois secondes, le rangement tombait en 409, son
+    // repli aussi, et le fichier était perdu.
+    const f = nouveauFaux({ contenu: 'BALANCE' });
+    await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.BALANCE, { exerciceId: EXERCICE, grandsLivres: false });
+    let borne = false;
+    f.prisma.$executeRaw = async (t: TemplateStringsArray | Prisma.Sql) => {
+      const sql = Array.isArray(t) ? (t as TemplateStringsArray).join('?') : (t as Prisma.Sql).sql;
+      if (/SET LOCAL lock_timeout = /.test(sql)) borne = true;
+      if (/SET LOCAL lock_timeout TO DEFAULT/.test(sql)) borne = false;
+      if (/pg_advisory_xact_lock/.test(sql) && f.appels.length > 0 && borne) {
+        throw new Prisma.PrismaClientKnownRequestError('canceling statement due to lock timeout 55P03', { code: 'P2010', clientVersion: 'x', meta: { code: '55P03' } });
+      }
+      return 0;
+    };
+    const r = await f.service.traiter(DOSSIER);
+    expect(r.traitee).toMatchObject({ numero: 1, etat: EtatImpressionDifferee.PRETE, nomFichier: 'balance.xlsx' });
   });
 
   it('le journal produit s’enregistre comme imprimé au nom de qui l’a demandé, une fois son fichier RANGÉ (M4)', async () => {

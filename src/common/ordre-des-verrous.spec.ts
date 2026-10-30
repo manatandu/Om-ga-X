@@ -22,6 +22,16 @@ import { join, relative } from 'node:path';
  * fonction d'aide qui verrouille), par la prise du verrou du dossier. Le
  * verrou consultatif est réentrant · le reprendre dans une aide appelée sous
  * lui ne coûte qu'un aller-retour.
+ *
+ * CE QUE LA GARDE NE VOIT PAS · ce n'est pas une garantie complète.
+ * (1) Un verrou de ligne posé par une mise à jour Prisma d'un modèle NON
+ * audité (`update`, `updateMany`, `delete`) avant le premier acte audité
+ * n'est pas relevé · seuls les `FOR UPDATE` et `FOR SHARE` écrits le sont ;
+ * le filtre des pannes (`exceptionRendue`) rend alors l'interblocage en 409
+ * nommé. (2) La clé prise n'est pas confrontée au dossier des lignes · un
+ * verrou du dossier A avant une ligne du dossier B passe. (3) Le relevé
+ * s'arrête à la fonction qui écrit la requête · une aide qui verrouille,
+ * appelée sous le verrou, doit le reprendre elle-même (réentrant).
  */
 
 const RACINE = join(__dirname, '..');
