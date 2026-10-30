@@ -185,6 +185,9 @@ export const LIBELLES_ORIGINE: Record<string, string> = {
   // Le rappel qui précède la suppression d'un dossier d'essai échu, envoyé par la
   // console de l'éditeur à l'administrateur du dossier.
   RAPPEL_SUPPRESSION_ESSAI: 'Rappel avant suppression du dossier d’essai',
+  // L'avis de règlement d'un ordre de virement, envoyé au tiers payé (ligne
+  // gl-saisie, fonction 35) · le texte de l'avis imprimé, mot pour mot.
+  AVIS_REGLEMENT: 'Avis de règlement',
 };
 
 export function libelleOrigine(origine: string): string {

@@ -404,7 +404,7 @@ describe('date d’origine des reports · le branchement dans les relances', () 
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'relances.service.ts'), 'utf8') as string;
   it('l’échéance de repli, la pièce la plus ancienne et la ligne imprimée lisent la date d’origine', () => {
     expect(src).toMatch(/const datePiece = datesOrigine\.get\(l\.id\) \?\? l\.ecriture\.date;/);
-    expect(src).toMatch(/const echeance = l\.dateEcheance \?\? datePiece;/);
+    // L'échéance accordée (ligne gl-saisie, fonction 33) prime ; la date d'origine reste le repli.\n    expect(src).toMatch(/const echeance = decision\?\.echeanceAccordee \?\? l\.dateEcheance \?\? datePiece;/);
     expect(src).toMatch(/piecePlusAncienne\.set\(l\.compte\.id, datePiece\)/);
     expect(src).toMatch(/date: datePiece\.toISOString\(\)\.slice\(0, 10\)/);
   });
@@ -480,6 +480,7 @@ describe('date d’origine des reports · un report AVEC échéance garde la dat
       },
       lettrage: { findMany: jest.fn(async () => []) },
       imputationPaiement: { findMany: jest.fn(async () => []) },
+      decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
       niveauRelance: {
         findMany: jest.fn(async () => [
           { id: 'n3', niveau: 3, joursApresEcheance: 45, type: TypeRelance.RAPPEL },

@@ -489,6 +489,8 @@ export class OrdresVirementService {
         );
         return {
           ligneId: l.id,
+          // Le tiers payé · l'envoi de l'avis par la messagerie lit son adresse (ligne gl-saisie, fonction 35).
+          tiersId: l.tiersId,
           beneficiaire: l.beneficiaire,
           montant: Number(l.montant),
           montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),

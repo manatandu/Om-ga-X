@@ -147,6 +147,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
     "budget d'un compte déjà choisi sur un exercice (ligne analytique, fonction n° 51), l'annuel et ses mois, jamais une liste",
   '/analytique/etats/budget-comptes':
     'état du budget des comptes (fonction n° 51), les comptes dotés ou mouvementés des classes 6 et 7 lus pour être comparés, jamais une liste de choix',
+  '/interrogation-compte/:compteId':
+    "interrogation du compte déjà choisi dans la saisie (ligne gl-saisie, fonction 13), son solde et ses dernières lignes, jamais une liste",
   '/personnel/compteurs-heures':
     "compteurs libres d'heures de la paie (ligne sage-l5, fonction 78), des heures nommées par le dossier, aucun compte comptable",
   '/comptes/:id/sous-compte-propose':

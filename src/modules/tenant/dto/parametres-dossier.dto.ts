@@ -585,6 +585,16 @@ export class ModifierCreationCompteEnSaisieDto {
   creationCompteEnSaisie!: boolean;
 }
 
+/**
+ * L'ÉCHÉANCE OBLIGATOIRE SUR LA LIGNE D'UNE FACTURE DE TIERS (ligne gl-saisie,
+ * fonction 2) · une option du dossier, fausse par défaut. Voir
+ * `comptabilite/echeance-obligatoire.ts`.
+ */
+export class ModifierEcheanceObligatoireDto {
+  @IsBoolean()
+  echeanceObligatoireTiers!: boolean;
+}
+
 /** La borne du seuil · sous la colonne DECIMAL(18,2) et sous la précision exacte d'un double. */
 export const SEUIL_ECART_REGLEMENT_MAX = 999_999_999_999_999;
 

@@ -206,6 +206,11 @@ export const RELATIONS_VERS_UNE_LIGNE: Readonly<Record<string, string>> = {
     'viendrait à la supprimer est refusé par la base au lieu de faire disparaître l’imputation de la déclaration de TVA',
   'ImputationPaiement.ligneFactureId':
     'RESTRICT · seule une facture VALIDÉE se désigne dans une imputation (`motifRefusDeclaration`) · même raison que le paiement',
+  // Ligne gl-saisie, fonction 33.
+  'DecisionRelanceLigne.ligneEcritureId':
+    'RESTRICT · une décision de relance ne se pose que sur une facture VALIDÉE (`motifRefusLigne` de ' +
+    '`decision-relance-ligne.ts`), donc une ligne indélébile · un chemin qui viendrait à la supprimer est refusé par la ' +
+    'base au lieu de remettre en silence une facture exclue dans la relance',
   // Ligne sage-l4, n° 68 · le bien né d'une ligne d'acquisition déjà passée.
   'Immobilisation.ligneAcquisitionId':
     'RESTRICT · seule une ligne VALIDÉE fait naître un bien (`motifRefusLigneACreer`), donc une ligne indélébile ; son ' +
@@ -231,6 +236,10 @@ export const ECRITURE_LAISSEE_PARTIR: Readonly<Record<string, string>> = {
     "SET NULL · le chèque n'est pas l'écriture, il en est le moyen de paiement · la pièce au brouillard se retire (AUDCIF " +
     "art. 22, 2°) et le chèque reste au registre, émis « sans pièce », sa description figée (`pieceDecrite`), à relier à la " +
     'pièce repassée ; une pièce validée est indélébile et ne part jamais',
+  // Ligne gl-saisie, fonction 64.
+  'RevueEcriture.ecritureId':
+    "CASCADE · la revue ne se pose que sur une écriture VALIDÉE, qui ne se supprime jamais (AUDCIF art. 22, 2°) ; elle " +
+    "n'est qu'une marque du cabinet à côté de la pièce, et la retenir ne protégerait rien",
   'Facture.ecritureId':
     "la facture est la pièce, l'écriture son enregistrement · retirer au brouillard une écriture passée depuis une facture " +
     "rend la facture « à comptabiliser », ce qui est exactement l'état qu'elle retrouve, et elle se repasse depuis la fenêtre Facturation",

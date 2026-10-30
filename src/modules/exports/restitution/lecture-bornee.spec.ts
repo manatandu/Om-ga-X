@@ -149,11 +149,13 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // microfina-m3, idée 3) ; 219 avec les demandes de congé, les formations
     // et leurs participants, chacun borné par son tenantId (même ligne, lot 2).
     // 221 avec les détentions de biens et leurs reçus, bornés par leur
-    // tenantId (ligne Microfina M4) ; 222 avec le bilan social de l'ONEM ;
-    // 224 avec les grilles analytiques des comptes et leurs lignes, bornées
-    // par leur tenantId (ligne analytique, fonction n° 48) ; 225 avec les
-    // budgets des comptes généraux, bornés par leur tenantId (fonction n° 51).
-    expect(modeles).toHaveLength(225);
+    // tenantId (ligne Microfina M4) ; 222 avec le bilan social de l'ONEM ; 223
+    // avec la revue des écritures (ligne gl-saisie, fonction 64), bornée par son tenantId ;
+    // 224 avec les décisions de relance sur une ligne (fonction 33), idem.
+    // 227 avec les grilles analytiques des comptes et leurs lignes, et les
+    // budgets des comptes généraux, bornés par leur tenantId (ligne
+    // analytique, fonctions n° 48 et 51).
+    expect(modeles).toHaveLength(227);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

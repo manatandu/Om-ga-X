@@ -15,7 +15,14 @@ import {
   type GroupesLusLigneALigne,
 } from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
-import { datesOrigineDesReports } from './date-origine-des-reports';
+import { originesDesReports } from './date-origine-des-reports';
+import {
+  decisionDeLaLigne,
+  motifRefusDecalage,
+  motifRefusLigne as motifRefusLigneDeRelance,
+  motifRefusMotif,
+  type DecisionLue,
+} from './decision-relance-ligne';
 import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { cadresDesTiers } from '../tiers/modeles-impression.service';
@@ -227,12 +234,23 @@ export interface PositionRelance {
   niveauSuggere: number | null;
   derniereRelance: { niveau: number; date: string } | null;
   lignes: {
+    /** La ligne d'écriture lue · celle sur laquelle une décision de relance se pose. */
+    ligneId: string;
     date: string;
     echeance: string | null;
+    /** L'échéance de la pièce quand la relance compte depuis une échéance ACCORDÉE (ligne gl-saisie, fonction 33). */
+    echeanceDeLaPiece: string | null;
+    motifEcheance: string | null;
     libelle: string;
     montant: number;
     retardJours: number;
   }[];
+  /**
+   * LES LIGNES EXCLUES DE LA RELANCE (ligne gl-saisie, fonction 33) · montrées,
+   * jamais réclamées ni comptées dans le dû · l'exclusion porte sur le
+   * courrier, jamais sur la créance (`decision-relance-ligne.ts`).
+   */
+  lignesExclues: { ligneId: string; date: string; echeance: string | null; libelle: string; montant: number; motif: string }[];
   /**
    * LES FACTURES SOLDÉES DANS LEUR DEVISE dont l'écart de change réalisé
    * n'est pas passé (paquet 1, B6 ; AUDCIF art. 55) · leurs lignes ne sont
@@ -486,13 +504,16 @@ export class RelancesService {
       (l) => l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true),
     );
     let datesOrigine = new Map<string, Date>();
+    // La pièce d'origine de chaque report · la décision de relance posée sur
+    // l'origine suit le report (ligne gl-saisie, fonction 33).
+    let lignesOrigine = new Map<string, string>();
     if (reports.length) {
       const exercice = await this.prisma.exercice.findFirst({
         where: { id: params.exerciceId, tenantId },
         select: { dateDebut: true },
       });
       if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier');
-      datesOrigine = await datesOrigineDesReports(
+      const { origines } = await originesDesReports(
         this.prisma as unknown as Prisma.TransactionClient,
         tenantId,
         exercice.dateDebut,
@@ -508,6 +529,8 @@ export class RelancesService {
           provisoire: l.ecriture.estANouveauProvisoire === true,
         })),
       );
+      datesOrigine = new Map([...origines].map(([id, o]) => [id, o.date]));
+      lignesOrigine = new Map([...origines].map(([id, o]) => [id, o.id]));
     }
 
     // UNE FACTURE RÉGLÉE EN PARTIE SE RÉCLAME POUR SON RESTE (relecture
@@ -533,6 +556,17 @@ export class RelancesService {
       tenantId,
       new Map([...poids.motifs].filter(([id]) => !soldesEnDevise.has(id))),
     );
+    // LES DÉCISIONS DE RELANCE (ligne gl-saisie, fonction 33) · celles des lignes
+    // lues et de leurs pièces d'origine, par tranches bornées.
+    const decisions = new Map<string, DecisionLue>();
+    const clesDecision = [...new Set([...lues.map((l) => l.id), ...lignesOrigine.values()])];
+    for (let k = 0; k < clesDecision.length; k += 1000) {
+      const tranche = await this.prisma.decisionRelanceLigne.findMany({
+        where: { tenantId, ligneEcritureId: { in: clesDecision.slice(k, k + 1000) } },
+        select: { ligneEcritureId: true, exclue: true, motifExclusion: true, echeanceAccordee: true, motifEcheance: true },
+      });
+      for (const d of tranche) decisions.set(d.ligneEcritureId, d);
+    }
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
@@ -552,7 +586,10 @@ export class RelancesService {
       const net = paires?.reste.get(l.id)?.francs ?? bloc?.net ?? poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) return;
       const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
-      const echeance = l.dateEcheance ?? datePiece;
+      const decision = decisionDeLaLigne(l.id, lignesOrigine.get(l.id), decisions);
+      // L'ÉCHÉANCE ACCORDÉE PRIME · « ce qui n'est dû qu'à terme ne peut être
+      // exigé avant l'échéance du terme » (Code civil, Livre III, art. 84).
+      const echeance = decision?.echeanceAccordee ?? l.dateEcheance ?? datePiece;
       const retard = Math.floor((ref.getTime() - echeance.getTime()) / JOUR);
 
       // Sélection selon l'état demandé.
@@ -588,16 +625,35 @@ export class RelancesService {
           niveauSuggere: null,
           derniereRelance: null,
           lignes: [],
+          lignesExclues: [],
           ecartsChangeNonPasses: [],
           groupesLusLigneALigne: lusLigneALigne.get(l.compte.id) ?? { total: 0, groupes: [], tronque: false },
         } satisfies PositionRelance);
 
+      // UNE LIGNE EXCLUE SE MONTRE, ELLE NE SE RÉCLAME PAS · ni dans le dû, ni
+      // dans le retard, ni dans la lettre (ligne gl-saisie, fonction 33).
+      if (decision?.exclue) {
+        acc.lignesExclues.push({
+          ligneId: l.id,
+          date: datePiece.toISOString().slice(0, 10),
+          echeance: echeance.toISOString().slice(0, 10),
+          libelle: l.libelle ?? l.ecriture.libelle,
+          montant: net,
+          motif: decision.motifExclusion ?? 'Ligne exclue de la relance.',
+        });
+        parCompte.set(l.compte.id, acc);
+        return;
+      }
       acc.montantDu += net;
       const vue = piecePlusAncienne.get(l.compte.id);
       if (!vue || datePiece < vue) piecePlusAncienne.set(l.compte.id, datePiece);
       acc.lignes.push({
+        ligneId: l.id,
         date: datePiece.toISOString().slice(0, 10),
-        echeance: l.dateEcheance?.toISOString().slice(0, 10) ?? null,
+        // L'échéance que la relance compte · l'accordée, sinon celle de la pièce.
+        echeance: decision?.echeanceAccordee?.toISOString().slice(0, 10) ?? l.dateEcheance?.toISOString().slice(0, 10) ?? null,
+        echeanceDeLaPiece: decision?.echeanceAccordee ? (l.dateEcheance ?? datePiece).toISOString().slice(0, 10) : null,
+        motifEcheance: decision?.echeanceAccordee ? decision.motifEcheance : null,
         libelle: l.libelle ?? l.ecriture.libelle,
         montant: net,
         retardJours: retard,
@@ -626,7 +682,9 @@ export class RelancesService {
     // l'échéance, et lu ainsi il serait resuggéré chaque jour. La lecture est
     // bornée aux comptes retenus et à cette date, au lieu de tout l'historique
     // du dossier.
-    const comptesRetenus = [...parCompte.keys()];
+    // Seuls les comptes qui réclament quelque chose · un compte dont toutes les
+    // lignes sont exclues n'a pas de pièce ouverte à dater.
+    const comptesRetenus = [...parCompte.keys()].filter((id) => piecePlusAncienne.has(id));
     const depuis = comptesRetenus.length
       ? new Date(Math.min(...comptesRetenus.map((id) => piecePlusAncienne.get(id)!.getTime())))
       : null;
@@ -643,7 +701,16 @@ export class RelancesService {
       // Un compte de tiers créditeur n'a rien à devoir : c'est une avance ou
       // un règlement mal imputé, que le contrôle de cohérence signale par
       // ailleurs. On ne le relance pas.
-      if (p.montantDu <= 0.005) continue;
+      if (p.montantDu <= 0.005) {
+        // UN COMPTE DONT LES LIGNES SONT EXCLUES RESTE MONTRÉ (ligne gl-saisie,
+        // fonction 33) · rien à réclamer, aucun niveau, mais l'exclusion se
+        // lit et se lève depuis la fenêtre. Sans ligne exclue, rien n'est dû.
+        if (p.lignesExclues.length === 0) continue;
+        p.montantDu = Math.max(0, Math.round(p.montantDu * 100) / 100);
+        if (!Number.isFinite(p.retardMaxJours)) p.retardMaxJours = 0;
+        resultat.push(p);
+        continue;
+      }
       p.montantDu = Math.round(p.montantDu * 100) / 100;
       p.lignes.sort((a, b) => b.retardJours - a.retardJours);
 
@@ -856,6 +923,16 @@ export class RelancesService {
           compteId,
           tiers: position.tiersNom ?? position.numero,
           motif: position.motifHorsRelance ?? 'Tiers exclu du circuit de relance.',
+        });
+        continue;
+      }
+      // TOUTES SES LIGNES EXCLUES (ligne gl-saisie, fonction 33) · rien à
+      // réclamer, aucune lettre, et le compte rendu le dit.
+      if (position.montantDu <= 0.005) {
+        sansObjet.push({
+          compteId,
+          compte: `${position.numero} · ${position.intitule}`,
+          motif: 'Les lignes ouvertes de ce compte sont exclues de la relance · rien à réclamer.',
         });
         continue;
       }
@@ -1107,6 +1184,120 @@ export class RelancesService {
       where: { id: tiersId },
       data: { horsRelance: true, motifHorsRelance: motif, horsRelanceDepuis: new Date() },
     });
+  }
+
+  /**
+   * LA LIGNE QUI PORTE UNE DÉCISION DE RELANCE (ligne gl-saisie, fonction 33),
+   * lue dans le dossier · introuvable hors de lui, ou en situation.
+   */
+  private async ligneDeRelance(tenantId: string, ligneId: string) {
+    const ligne = await this.prisma.ligneEcriture.findFirst({
+      where: { id: ligneId, ecriture: { tenantId, ...HORS_SITUATION } },
+      select: {
+        id: true,
+        debit: true,
+        credit: true,
+        lettre: true,
+        dateEcheance: true,
+        compte: { select: { numero: true } },
+        ecriture: { select: { statut: true, date: true } },
+        decisionRelance: { select: { id: true, exclue: true, echeanceAccordee: true } },
+      },
+    });
+    if (!ligne) throw new NotFoundException('Ligne introuvable pour ce dossier.');
+    return ligne;
+  }
+
+  private motifLigne(ligne: Awaited<ReturnType<RelancesService['ligneDeRelance']>>) {
+    return motifRefusLigneDeRelance({
+      numero: ligne.compte.numero,
+      debit: Number(ligne.debit),
+      credit: Number(ligne.credit),
+      statut: ligne.ecriture.statut,
+      lettre: ligne.lettre,
+    });
+  }
+
+  /**
+   * Range la décision de la ligne · créée, retouchée ou retirée par une
+   * opération UNITAIRE (journal d'audit) · retirée quand plus rien n'y tient.
+   */
+  private async rangerDecision(
+    tenantId: string,
+    ligneId: string,
+    existante: { id: string; exclue: boolean; echeanceAccordee: Date | null } | null,
+    donnees: {
+      exclue?: boolean;
+      motifExclusion?: string | null;
+      exclueLe?: Date | null;
+      exclueePar?: string | null;
+      echeanceAccordee?: Date | null;
+      motifEcheance?: string | null;
+      accordeeLe?: Date | null;
+      accordeePar?: string | null;
+    },
+  ) {
+    return transactionJournalisee(this.prisma, async (tx) => {
+      if (!existante) {
+        return tx.decisionRelanceLigne.create({ data: { tenantId, ligneEcritureId: ligneId, ...donnees } });
+      }
+      const exclue = donnees.exclue ?? existante.exclue;
+      const accordee = donnees.echeanceAccordee !== undefined ? donnees.echeanceAccordee : existante.echeanceAccordee;
+      if (!exclue && !accordee) {
+        await tx.decisionRelanceLigne.delete({ where: { id: existante.id } });
+        return null;
+      }
+      return tx.decisionRelanceLigne.update({ where: { id: existante.id }, data: donnees });
+    });
+  }
+
+  /** Exclure une ligne de la relance, ou l'y remettre (ligne gl-saisie, fonction 33). */
+  async definirExclusionLigne(tenantId: string, auteur: string, ligneId: string, params: { exclue: boolean; motif?: string }) {
+    const ligne = await this.ligneDeRelance(tenantId, ligneId);
+    if (!params.exclue) {
+      if (!ligne.decisionRelance?.exclue) throw new NotFoundException("Cette ligne n'est pas exclue de la relance.");
+      // La levée efface motif, date et auteur · la trace reste au journal d'audit.
+      await this.rangerDecision(tenantId, ligneId, ligne.decisionRelance, { exclue: false, motifExclusion: null, exclueLe: null, exclueePar: null });
+      return { exclue: false };
+    }
+    const refus = this.motifLigne(ligne) ?? motifRefusMotif(params.motif, "L'exclusion de la ligne");
+    if (refus) throw new BadRequestException(refus);
+    await this.rangerDecision(tenantId, ligneId, ligne.decisionRelance, {
+      exclue: true,
+      motifExclusion: (params.motif ?? '').trim(),
+      // Date et auteur posés par le SERVEUR · une exclusion antidatée masquerait un retard.
+      exclueLe: new Date(),
+      exclueePar: auteur,
+    });
+    return { exclue: true };
+  }
+
+  /** Décaler l'échéance d'une ligne, ou revenir à celle de la pièce (ligne gl-saisie, fonction 33). */
+  async definirEcheanceAccordee(
+    tenantId: string,
+    auteur: string,
+    ligneId: string,
+    params: { echeanceAccordee: string | null; motif?: string },
+  ) {
+    const ligne = await this.ligneDeRelance(tenantId, ligneId);
+    if (params.echeanceAccordee === null) {
+      if (!ligne.decisionRelance?.echeanceAccordee) throw new NotFoundException("Cette ligne n'a pas d'échéance accordée.");
+      await this.rangerDecision(tenantId, ligneId, ligne.decisionRelance, { echeanceAccordee: null, motifEcheance: null, accordeeLe: null, accordeePar: null });
+      return { echeanceAccordee: null };
+    }
+    const accordee = new Date(`${params.echeanceAccordee.slice(0, 10)}T00:00:00Z`);
+    const refus =
+      this.motifLigne(ligne) ??
+      motifRefusMotif(params.motif, "Le décalage de l'échéance") ??
+      motifRefusDecalage(accordee, ligne.dateEcheance ?? ligne.ecriture.date);
+    if (refus) throw new BadRequestException(refus);
+    await this.rangerDecision(tenantId, ligneId, ligne.decisionRelance, {
+      echeanceAccordee: accordee,
+      motifEcheance: (params.motif ?? '').trim(),
+      accordeeLe: new Date(),
+      accordeePar: auteur,
+    });
+    return { echeanceAccordee: accordee.toISOString().slice(0, 10) };
   }
 
   /**

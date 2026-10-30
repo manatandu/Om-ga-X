@@ -53,6 +53,8 @@ import {
   type GrilleAnalytiqueLue,
   type ListeGrillesAnalytiques,
 } from '../lib/grille-analytique';
+import { ModaleInterrogationCompte } from '../components/ModaleInterrogationCompte';
+import { ModaleModeleDepuisPiece } from '../components/ModaleModeleDepuisPiece';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -463,6 +465,15 @@ export function SaisiePage() {
   // reçoit aucun. Un échec de lecture laisse la saisie intacte.
   const [renvoisDuPlan, setRenvoisDuPlan] = useState<RenvoiDuPlan[]>([]);
   const [calculetteOuverte, setCalculetteOuverte] = useState(false);
+  // INTERROGER LE COMPTE (ligne gl-saisie, fonction 13) · double-clic ou F2
+  // sur le compte de la ligne en cours, double-clic sur une ligne de la pièce.
+  const [compteInterroge, setCompteInterroge] = useState<{ id: string; numero: string } | null>(null);
+  // CRÉER UN MODÈLE DEPUIS LA PIÈCE (ligne gl-saisie, fonction 15) · la boîte,
+  // et le rechargement des modèles du journal une fois le modèle créé.
+  const [modeleDepuisPiece, setModeleDepuisPiece] = useState(false);
+  // Le journal ouvert au moment où la relecture des modèles revient · une
+  // réponse d'un autre journal est jetée.
+  const journalRef = useRef<string | null>(null);
   // LES TAUX DE TAXE · chargés une fois, pour proposer la ligne de TVA d'un
   // compte qui porte un code taxe par défaut. Null tant qu'ils ne sont pas lus
   // (reste de l'audit final F255) · un refus lu comme une liste vide faisait
@@ -717,6 +728,7 @@ export function SaisiePage() {
   }, [periodes]);
 
   const journal = journaux.find((j) => j.id === journalId) ?? null;
+  journalRef.current = journal?.id ?? null;
   const periode = periodes[indexPeriode] ?? null;
   // « AAAA-MM » de la période ouverte · sert à dire au comptable qu'une date
   // de versement tombant dans ce mois-là n'a rien à apporter, la date de
@@ -2213,7 +2225,11 @@ export function SaisiePage() {
               </span>
               <span className="font-mono text-text-dim">{i === 0 ? '(auto)' : ''}</span>
               <span className="font-mono text-[11px] text-text-dim truncate">{i === 0 ? reference : ''}</span>
-              <span className="font-mono" title={l.intitule}>
+              <span
+                className="font-mono cursor-default"
+                title={`${l.intitule} · double-clic pour interroger le compte`}
+                onDoubleClick={() => setCompteInterroge({ id: l.compteId, numero: l.numero })}
+              >
                 {l.numero}
               </span>
               {axesGrille.map((p) => {
@@ -2348,6 +2364,40 @@ export function SaisiePage() {
               {motifEcheanciersDecales(echeancesDecalees, dateCourante)}
             </div>
           )}
+          {modeleDepuisPiece && journal && (
+            <ModaleModeleDepuisPiece
+              lignes={lignes}
+              intituleSuggere={libellePiece}
+              journal={{ id: journal.id, code: journal.code }}
+              numeros={Object.fromEntries(lignes.map((l) => [l.compteId, l.numero]))}
+              onCree={(intitule) => {
+                setModeleDepuisPiece(false);
+                setAnnonceEcheance(`Modèle « ${intitule} » créé · il s'appelle par F4 ou « Appeler un modèle ».`);
+                // Les modèles du journal se relisent · un refus garde la liste lue et le dit.
+                const journalLu = journal.id;
+                api.get<ModeleSaisie[]>(`/modeles-saisie?journalId=${journalLu}`).then(
+                  (r) => {
+                    if (journalRef.current === journalLu) setModelesLus(r);
+                  },
+                  (e) => {
+                    if (journalRef.current === journalLu) setErreurModeles(e instanceof Error ? e.message : "Les modèles de saisie n'ont pas pu être relus.");
+                  },
+                );
+              }}
+              onFermer={() => setModeleDepuisPiece(false)}
+            />
+          )}
+          {compteInterroge && exerciceCourant && (
+            <ModaleInterrogationCompte
+              compteId={compteInterroge.id}
+              numero={compteInterroge.numero}
+              exerciceId={exerciceCourant.id}
+              onFermer={() => {
+                setCompteInterroge(null);
+                compteRef.current?.focus();
+              }}
+            />
+          )}
           {fenetreOuverte && fenetresAttendues.length > 0 && (
             <FenetreEcheances
               key={fenetresAttendues[0].cle}
@@ -2450,10 +2500,14 @@ export function SaisiePage() {
                   fermetureListeComptes.current = null;
                   setPickerOuvert(true);
                 }}
+                onDoubleClick={() => compteChoisi && setCompteInterroge({ id: compteChoisi.id, numero: compteChoisi.numero })}
                 onKeyDown={(e) => {
                   if (e.key === 'F4') {
                     e.preventDefault();
                     setPickerOuvert(true);
+                  } else if (e.key === 'F2' && compteChoisi) {
+                    e.preventDefault();
+                    setCompteInterroge({ id: compteChoisi.id, numero: compteChoisi.numero });
                   } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
                     setPickerOuvert(true);
@@ -2525,7 +2579,15 @@ export function SaisiePage() {
               )}
               {compteChoisi && !pickerOuvert && (
                 <div className="absolute left-0 top-full text-[11px] text-positive bg-surface px-1 border border-border border-t-0 truncate max-w-full z-10">
-                  {compteChoisi.intitule}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setCompteInterroge({ id: compteChoisi.id, numero: compteChoisi.numero })}
+                    title="Interroger le compte · son solde et ses dernières lignes (F2 ou double-clic)"
+                    className="hover:underline text-left"
+                  >
+                    {compteChoisi.intitule}
+                  </button>
                 </div>
               )}
             </div>
@@ -2928,6 +2990,15 @@ export function SaisiePage() {
                 Contrepartie trésorerie
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setModeleDepuisPiece(true)}
+              disabled={lignes.length < 2 || !journal}
+              title="Range la pièce en cours en modèle de saisie · elle n'est ni enregistrée ni vidée"
+              className="border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px] disabled:opacity-45"
+            >
+              Créer un modèle…
+            </button>
             <button
               type="button"
               onClick={abandonnerPiece}

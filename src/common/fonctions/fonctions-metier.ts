@@ -77,6 +77,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   // Ligne microfina-m1 · le visa précède la validation, il en suit la fonction ·
   // un profil sans « Validation » ne vise pas plus qu'il ne valide.
   CircuitVisaController: FonctionMetier.VALIDATION,
+  // Ligne gl-saisie, fonction 64 · revoir une écriture est un geste de révision.
+  RevueEcrituresController: FonctionMetier.REVISION,
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,
@@ -93,6 +95,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   OperationsTresorerieController: FonctionMetier.TRESORERIE,
   TitresPlacementController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
+  // Ligne gl-saisie, fonction 35 · l'avis de règlement suit l'ordre qu'il annonce.
+  EnvoiAvisReglementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
   // Ligne microfina-m2 · arrêté de caisse et registre des chèques émis.
   ArretesCaisseController: FonctionMetier.TRESORERIE,

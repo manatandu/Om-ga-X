@@ -18,6 +18,8 @@ import { AccueilPage } from '../../pages/AccueilPage';
 import { LimiteErreur } from './LimiteErreur';
 import { AProposModale } from './AProposModale';
 import { ModaleMonCompte } from '../ModaleMonCompte';
+import { AllerAFonction } from './AllerAFonction';
+import { commandesDuMenu } from './commandes-du-menu';
 import { fenetreOuverteAuRole } from '../../lib/roles-cantonnes';
 import { fenetreOuverteSelonAdmin } from '../../lib/reserve-admin';
 import { cheminAuMenu } from '../../lib/profil-dossier';
@@ -81,6 +83,18 @@ export function AppShell() {
   const { fenetres, cleActive, ouvrir, fermerTout, reorganiser, actualiser } = useFenetres();
   const [aProposOuvert, setAProposOuvert] = useState(false);
   const [monCompteOuvert, setMonCompteOuvert] = useState(false);
+  // ALLER À UNE FONCTION PAR SON NOM (ligne gl-saisie, fonction 97 · Sage i7,
+  // F7) · la liste est celle du menu affiché, voir commandes-du-menu.ts.
+  const [allerOuvert, setAllerOuvert] = useState(false);
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key !== 'F7' || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      setAllerOuvert(true);
+    };
+    window.addEventListener('keydown', surTouche);
+    return () => window.removeEventListener('keydown', surTouche);
+  }, []);
 
   // LE MÊME LIBELLÉ QUE LE SÉLECTEUR DE LA BARRE DE STATUT (audit final F250) ·
   // la barre de titre écrivait l'année de début seule, le sélecteur
@@ -660,8 +674,15 @@ export function AppShell() {
       // Sage grise · une commande inapplicable reste visible mais éteinte.
       titre: 'Fenêtre',
       items: [
+        // Ligne gl-saisie, fonction 97 · la commande vit au menu Fenêtre, que
+        // la recherche ne parcourt pas (elle agit sur l'espace de travail).
+        {
+          label: 'Aller à une fonction… (F7)',
+          onClick: () => setAllerOuvert(true),
+        },
         {
           label: 'Réorganiser (cascade)',
+          separateurAvant: true,
           disabled: fenetres.length === 0,
           onClick: reorganiser,
         },
@@ -918,6 +939,7 @@ export function AppShell() {
       </div>
       {aProposOuvert && <AProposModale onFermer={() => setAProposOuvert(false)} />}
       {monCompteOuvert && <ModaleMonCompte onFermer={() => setMonCompteOuvert(false)} />}
+      {allerOuvert && <AllerAFonction commandes={commandesDuMenu(menus)} onFermer={() => setAllerOuvert(false)} />}
     </div>
     </LogicielActifProvider>
   );

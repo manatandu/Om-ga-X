@@ -314,6 +314,9 @@ describe('saisie sur un compte collectif', () => {
       verifierComptesEnSommeil: jest.fn(async () => {
         appels.push('sommeil');
       }),
+      verifierEcheancesObligatoires: jest.fn(async () => {
+        appels.push('echeance');
+      }),
       verifierCaisseProvisionnee: jest.fn(async () => undefined),
       creer: jest.fn(async () => appels.push('creer')),
       modifier: jest.fn(async () => appels.push('modifier')),
@@ -326,7 +329,7 @@ describe('saisie sur un compte collectif', () => {
     // Le collectif et le compte subdivisé d'abord · leur refus nomme le compte
     // du dossier où la ligne doit aller ; « personnalisez-le » enverrait
     // adopter un compte que la saisie refuserait encore.
-    expect(appels).toEqual(['collectif', 'personnalise', 'sommeil', 'creer', 'collectif', 'personnalise', 'sommeil', 'modifier']);
+    expect(appels).toEqual(['collectif', 'personnalise', 'sommeil', 'echeance', 'creer', 'collectif', 'personnalise', 'sommeil', 'echeance', 'modifier']);
     expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes, 'e1');

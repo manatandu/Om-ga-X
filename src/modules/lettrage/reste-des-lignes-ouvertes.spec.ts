@@ -764,6 +764,7 @@ describe('poids des lignes ouvertes · les relances (relecture, bloquant 6)', ()
       ...lecteur(base),
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
       ligneEcriture: { ...lecteur(base).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+      decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
       niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
       relance: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
@@ -918,6 +919,7 @@ describe('poids des lignes ouvertes · les groupes lus ligne à ligne, servis (p
       ...lecteurDeGroupes(groupe5),
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
       ligneEcriture: { ...lecteur(base5).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+      decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
       niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
       relance: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
@@ -963,6 +965,7 @@ describe('poids des lignes ouvertes · les groupes lus ligne à ligne, servis (p
         ...lecteurDeGroupes(groupe5),
         tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
         ligneEcriture: { ...lecteur(baseM2).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+        decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
         niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
         relance: { findMany: jest.fn().mockResolvedValue([]) },
       } as unknown as PrismaService;

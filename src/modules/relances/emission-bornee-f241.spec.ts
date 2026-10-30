@@ -118,6 +118,7 @@ function service(lignes: ReturnType<typeof ligne>[], options: { lectureLente?: b
       findUnique: jest.fn().mockResolvedValue({ nom: 'SARL Kin' }),
     },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+    decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
     niveauRelance: {
       findFirst: jest.fn(async (args: { where: { id: string } }) => [NIVEAU, AUTRE_NIVEAU].find((x) => x.id === args.where.id) ?? null),
       findMany: jest.fn().mockResolvedValue([NIVEAU, AUTRE_NIVEAU]),

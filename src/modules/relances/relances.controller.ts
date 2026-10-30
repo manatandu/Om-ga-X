@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { RelancesService } from './relances.service';
-import { CreerNiveauDto, EmettreRelancesDto, HorsRelanceDto, ModifierNiveauDto } from './dto/relances.dto';
+import { CreerNiveauDto, EcheanceAccordeeDto, EmettreRelancesDto, ExclusionLigneDto, HorsRelanceDto, ModifierNiveauDto } from './dto/relances.dto';
 import { RoleUtilisateur, TypeRelance } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { COMPTE_FACULTATIF } from '../../common/compte-du-dossier';
@@ -76,6 +76,32 @@ export class RelancesController {
     @Body() dto: HorsRelanceDto,
   ) {
     return this.relances.definirHorsRelance(user.tenantId, tiersId, dto);
+  }
+
+  /**
+   * EXCLURE UNE LIGNE DE LA RELANCE, OU L'Y REMETTRE (ligne gl-saisie,
+   * fonction 33) · mêmes rôles que l'exclusion du tiers. Voir
+   * `decision-relance-ligne.ts`.
+   */
+  @Patch('lignes/:ligneId/exclusion')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  async exclusionLigne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('ligneId', ParseUUIDPipe) ligneId: string,
+    @Body() dto: ExclusionLigneDto,
+  ) {
+    return this.relances.definirExclusionLigne(user.tenantId, user.userId, ligneId, dto);
+  }
+
+  /** DÉCALER L'ÉCHÉANCE D'UNE LIGNE (ligne gl-saisie, fonction 33) · le terme accordé au débiteur. */
+  @Patch('lignes/:ligneId/echeance')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  async echeanceLigne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('ligneId', ParseUUIDPipe) ligneId: string,
+    @Body() dto: EcheanceAccordeeDto,
+  ) {
+    return this.relances.definirEcheanceAccordee(user.tenantId, user.userId, ligneId, dto);
   }
 
   // Le compte en filtre est du dossier ou introuvable (premier tour de

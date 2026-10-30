@@ -12,7 +12,9 @@ import {
   type StatutOrdre,
 } from '../lib/liste-ordres-virement';
 import { montant as fmt } from '../lib/montants';
-import type { AvisReglementOrdre } from '../lib/types';
+import type { AvisReglementOrdre, BilanRepriseCourrier } from '../lib/types';
+import { avisEnAttente, phraseEnvoiAvis, type BilanEnvoiAvis } from '../lib/envoi-avis-reglement';
+import { EVENEMENT_FILE_COURRIER, SUITE_REPRISE_HORS_FILE, cumulerReprises, reprendreEncore, resumeReprise } from '../lib/courrier-file';
 
 interface OrdreResume {
   id: string;
@@ -83,6 +85,10 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
   // composés par le serveur, habillés du modèle de chaque tiers. Tant qu'ils
   // sont affichés, ce sont eux qui s'impriment, pas l'ordre.
   const [avis, setAvis] = useState<AvisReglementOrdre | null>(null);
+  // L'ENVOI DES AVIS PAR LA MESSAGERIE (ligne gl-saisie, fonction 35) · écrits en
+  // file au serveur, partis par la reprise que l'écran enchaîne, comme les relances.
+  const [envoiAvis, setEnvoiAvis] = useState(false);
+  const [infoAvis, setInfoAvis] = useState<string | null>(null);
 
   const recharger = () => {
     const lecture = ++derniereLecture.current;
@@ -108,6 +114,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
   const ouvrir = async (id: string) => {
     setErreur(null);
     setAvis(null);
+    setInfoAvis(null);
     try {
       setOrdre(await api.get<Ordre>(`/ordres-virement/${id}`));
       onSelection(true);
@@ -161,7 +168,44 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
   const fermer = () => {
     setOrdre(null);
     setAvis(null);
+    setInfoAvis(null);
     onSelection(false);
+  };
+
+  const envoyerAvis = async () => {
+    if (!ordre || envoiAvis) return;
+    setEnvoiAvis(true);
+    setErreur(null);
+    setInfoAvis(null);
+    try {
+      const b = await api.post<BilanEnvoiAvis>(`/ordres-virement/${ordre.id}/avis-reglement/envoi`, {});
+      setInfoAvis(phraseEnvoiAvis(b));
+      const enAttente = avisEnAttente(b);
+      if (enAttente > 0) {
+        let cumul: BilanRepriseCourrier | null = null;
+        try {
+          let passages = 0;
+          let bilan: BilanRepriseCourrier;
+          do {
+            bilan = await api.post<BilanRepriseCourrier>('/courrier/reprendre', {});
+            cumul = cumulerReprises(cumul, bilan);
+            passages += 1;
+          } while (reprendreEncore(bilan, passages, enAttente + 1));
+          setInfoAvis(`${phraseEnvoiAvis(b)} ${resumeReprise(cumul, SUITE_REPRISE_HORS_FILE)}`);
+        } catch (e) {
+          // Ce qui est écrit reste en file · un passage refusé ne défait rien.
+          const fait = cumul ? ` ${resumeReprise(cumul, SUITE_REPRISE_HORS_FILE)}` : '';
+          setInfoAvis(
+            `${phraseEnvoiAvis(b)}${fait} La remise s'est interrompue (${e instanceof ApiError ? e.message : 'reprise impossible'}) · ce qui reste en file, ${SUITE_REPRISE_HORS_FILE}.`,
+          );
+        }
+      }
+      window.dispatchEvent(new Event(EVENEMENT_FILE_COURRIER));
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Les avis n’ont pas pu être mis en file.');
+    } finally {
+      setEnvoiAvis(false);
+    }
   };
 
   const lireAvis = async () => {
@@ -324,6 +368,17 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                     Imprimer les avis
                   </button>
                 )}
+                {avisDeLOrdre && avisDeLOrdre.avis.length > 0 && peutEcrire && (
+                  <button
+                    type="button"
+                    disabled={envoiAvis}
+                    onClick={() => void envoyerAvis()}
+                    title="Met en file un courriel par tiers, à l'adresse de sa fiche · le texte de l'avis affiché, un avis déjà parti ne repart pas"
+                    className="border border-border-dark bg-chrome hover:bg-surface px-3 py-1 disabled:opacity-50"
+                  >
+                    {envoiAvis ? 'Mise en file…' : 'Envoyer par courriel'}
+                  </button>
+                )}
                 <Aide
                   titre="Avis de règlement"
                   texte="Une lettre par fournisseur de l'ordre · ce qui lui est viré, à quelle banque, et les factures que le paiement acquitte quand le dossier les a désignées (le débiteur déclare, lorsqu'il paye, quelle dette il entend acquitter). La lettre est habillée du modèle « avis de règlement » choisi sur la fiche du tiers, sinon d'un en-tête par défaut ; elle est signée du dossier et de ses mentions. Un salaire n'a pas d'avis. L'avis suit un ordre imprimé."
@@ -331,6 +386,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                 />
               </div>
             )}
+            {infoAvis && <div role="status" className="text-positive bg-positive-soft border border-positive/30 px-3 py-1.5">{infoAvis}</div>}
             {avisDeLOrdre && (
               <div className="space-y-2">
                 {avisDeLOrdre.avis.length === 0 && <p className="text-text-dim">Aucun avis · cet ordre ne paie aucun fournisseur.</p>}

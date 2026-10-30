@@ -48,6 +48,8 @@ export const ORIGINE_DOUBLE_AUTHENTIFICATION = 'DOUBLE_AUTHENTIFICATION';
 export const ORIGINE_CONDITIONS_LICENCE = 'CONDITIONS_LICENCE';
 /** Le rappel de suppression d'un dossier d'essai échu, envoyé à son administrateur par la console de l'éditeur (plateforme/essais-echus/). */
 export const ORIGINE_RAPPEL_SUPPRESSION_ESSAI = 'RAPPEL_SUPPRESSION_ESSAI';
+/** L'avis de règlement d'un ordre de virement, envoyé au tiers payé (ligne gl-saisie, fonction 35 · reglements/envoi-avis-reglement.service.ts). */
+export const ORIGINE_AVIS_REGLEMENT = 'AVIS_REGLEMENT';
 
 export interface MessageAMettreEnFile {
   destinataire: string;

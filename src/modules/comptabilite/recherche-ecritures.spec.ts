@@ -47,10 +47,10 @@ describe("Recherche d'écritures multicritère", () => {
     // Les deux routes appellent la même lecture des critères.
     const racine = join(__dirname, '..');
     expect(readFileSync(join(racine, 'comptabilite', 'ecriture.controller.ts'), 'utf8')).toMatch(
-      /criteresOuRefus\(\{ compte, montant, montantMax, numeroPiece, reference \}\)/,
+      /criteresOuRefus\(\{ compte, montant, montantMax, numeroPiece, reference, revue \}\)/,
     );
     expect(readFileSync(join(racine, 'exports', 'export.controller.ts'), 'utf8')).toMatch(
-      /criteresOuRefus\(\{ compte, montant, montantMax, numeroPiece, reference \}\)/,
+      /criteresOuRefus\(\{ compte, montant, montantMax, numeroPiece, reference, revue \}\)/,
     );
   });
 });

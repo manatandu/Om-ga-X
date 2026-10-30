@@ -152,6 +152,7 @@ describe('groupes soldés dans leur devise · les positions de relance', () => {
         { id: 'g6c', code: 'AC', compteId: 'c6c', lignesEnBase: 2 },
       ]),
       imputationPaiement: { findMany: jest.fn(async () => []) },
+      decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
       niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
       relance: { findMany: jest.fn().mockResolvedValue([]) },
     }) as unknown as PrismaService;

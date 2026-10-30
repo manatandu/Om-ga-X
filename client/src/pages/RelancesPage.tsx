@@ -89,6 +89,9 @@ function PositionsRelances() {
   // Le motif saisi pour l'exclusion en cours, par compte · un seul champ
   // partagé mêlerait le motif d'un tiers à celui d'un autre.
   const [motifs, setMotifs] = useState<Record<string, string>>({});
+  // LA DÉCISION SUR UNE LIGNE (ligne gl-saisie, fonction 33) · exclure la
+  // ligne de la relance, ou décaler son échéance, motif exigé ; une ligne à la fois.
+  const [decision, setDecision] = useState<{ ligneId: string; geste: 'exclure' | 'decaler'; motif: string; date: string } | null>(null);
 
 
   const charger = async () => {
@@ -202,6 +205,33 @@ function PositionsRelances() {
           ? "Tiers sorti du circuit de relance · sa créance reste due, et elle reste dans tous les états qui recensent l'ouvert."
           : 'Tiers remis dans le circuit de relance.',
       );
+      await charger();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  const deciderSurLigne = async (
+    ligneId: string,
+    corps: { chemin: 'exclusion'; exclue: boolean; motif?: string } | { chemin: 'echeance'; echeanceAccordee: string | null; motif?: string },
+  ) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      const { chemin, ...reste } = corps;
+      await api.patch(`/relances/lignes/${ligneId}/${chemin}`, reste);
+      setInfo(
+        chemin === 'exclusion'
+          ? 'exclue' in reste && reste.exclue
+            ? "Ligne exclue de la relance · la créance reste due, et elle reste dans tous les états qui recensent l'ouvert."
+            : 'Ligne remise dans la relance.'
+          : 'echeanceAccordee' in reste && reste.echeanceAccordee
+            ? 'Échéance accordée · la relance compte le retard depuis cette date.'
+            : "Échéance de la pièce rétablie pour la relance.",
+      );
+      setDecision(null);
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Modification impossible');
@@ -430,16 +460,121 @@ function PositionsRelances() {
               ))}
             {deplie.has(p.compteId) &&
               p.lignes.map((l, i) => (
-                <div key={i} className={`${grille} px-3 py-0.5 text-[11.5px] bg-chrome-alt/50 border-b border-border/30`}>
+                <div key={l.ligneId ?? i}>
+                  <div className={`${grille} px-3 py-0.5 text-[11.5px] bg-chrome-alt/50 border-b border-border/30`}>
+                    <span />
+                    <span
+                      className="font-mono text-text-dim"
+                      title={l.echeanceDeLaPiece ? `Échéance accordée · celle de la pièce était le ${l.echeanceDeLaPiece}${l.motifEcheance ? ` · ${l.motifEcheance}` : ''}` : undefined}
+                    >
+                      {l.echeance ?? l.date}
+                      {l.echeanceDeLaPiece && <span className="ml-1 text-sel">accordée</span>}
+                    </span>
+                    <span className="truncate text-text-dim">{l.libelle}</span>
+                    <span />
+                    <span className="text-right font-mono">{montant(l.montant)}</span>
+                    <span className="text-right font-mono text-text-dim">
+                      {l.retardJours > 0 ? `${l.retardJours} j` : ''}
+                    </span>
+                    <span className="flex gap-1.5 justify-end">
+                      {peutEcrire && l.ligneId && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={envoi}
+                            onClick={() => setDecision({ ligneId: l.ligneId!, geste: 'exclure', motif: '', date: '' })}
+                            className="text-[11px] text-text-dim hover:underline disabled:opacity-50"
+                          >
+                            Exclure
+                          </button>
+                          {l.echeanceDeLaPiece ? (
+                            <button
+                              type="button"
+                              disabled={envoi}
+                              onClick={() => void deciderSurLigne(l.ligneId!, { chemin: 'echeance', echeanceAccordee: null })}
+                              className="text-[11px] text-text-dim hover:underline disabled:opacity-50"
+                            >
+                              Rétablir l'échéance
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={envoi}
+                              onClick={() => setDecision({ ligneId: l.ligneId!, geste: 'decaler', motif: '', date: '' })}
+                              className="text-[11px] text-text-dim hover:underline disabled:opacity-50"
+                            >
+                              Décaler
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  {decision && decision.ligneId === l.ligneId && (
+                    <div className="px-3 py-1.5 bg-surface border-b border-border/30 flex items-center gap-2 flex-wrap text-[11.5px]">
+                      {decision.geste === 'decaler' && (
+                        <label className="flex items-center gap-1.5">
+                          Échéance accordée
+                          <input
+                            type="date"
+                            value={decision.date}
+                            onChange={(e) => setDecision({ ...decision, date: e.target.value })}
+                            className="border border-border-dark bg-surface px-1.5 py-0.5 font-mono"
+                          />
+                        </label>
+                      )}
+                      <input
+                        value={decision.motif}
+                        onChange={(e) => setDecision({ ...decision, motif: e.target.value })}
+                        placeholder={decision.geste === 'exclure' ? 'Pourquoi cette facture sort de la relance (litige, avoir promis…)' : 'Pourquoi ce délai (accord du client, échéancier convenu…)'}
+                        aria-label="Motif"
+                        className="border border-border-dark bg-surface px-2 py-0.5 flex-1 min-w-[220px]"
+                      />
+                      <button
+                        type="button"
+                        disabled={envoi || decision.motif.trim().length < 3 || (decision.geste === 'decaler' && !decision.date)}
+                        onClick={() =>
+                          void deciderSurLigne(
+                            decision.ligneId,
+                            decision.geste === 'exclure'
+                              ? { chemin: 'exclusion', exclue: true, motif: decision.motif }
+                              : { chemin: 'echeance', echeanceAccordee: decision.date, motif: decision.motif },
+                          )
+                        }
+                        className="border border-border-dark bg-chrome hover:bg-surface px-2 py-0.5 disabled:opacity-40"
+                      >
+                        {decision.geste === 'exclure' ? 'Exclure la ligne' : "Accorder l'échéance"}
+                      </button>
+                      <button type="button" onClick={() => setDecision(null)} className="text-text-dim hover:underline">
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            {deplie.has(p.compteId) &&
+              (p.lignesExclues ?? []).map((l) => (
+                <div key={`exclue-${l.ligneId}`} className={`${grille} px-3 py-0.5 text-[11.5px] bg-chrome-alt/50 border-b border-border/30 italic`}>
                   <span />
                   <span className="font-mono text-text-dim">{l.echeance ?? l.date}</span>
-                  <span className="truncate text-text-dim">{l.libelle}</span>
-                  <span />
-                  <span className="text-right font-mono">{montant(l.montant)}</span>
-                  <span className="text-right font-mono text-text-dim">
-                    {l.retardJours > 0 ? `${l.retardJours} j` : ''}
+                  <span className="truncate text-text-dim" title={l.motif}>
+                    {l.libelle} · exclue de la relance · {l.motif}
                   </span>
                   <span />
+                  <span className="text-right font-mono text-text-dim">{montant(l.montant)}</span>
+                  <span />
+                  <span className="flex justify-end">
+                    {peutEcrire && (
+                      <button
+                        type="button"
+                        disabled={envoi}
+                        onClick={() => void deciderSurLigne(l.ligneId, { chemin: 'exclusion', exclue: false })}
+                        className="text-[11px] not-italic text-text-dim hover:underline disabled:opacity-50"
+                      >
+                        Remettre dans la relance
+                      </button>
+                    )}
+                  </span>
                 </div>
               ))}
             {/* ----------------------------------------------------------------

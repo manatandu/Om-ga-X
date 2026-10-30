@@ -26,6 +26,7 @@ function service(referentiel: Referentiel) {
   const prisma = {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel }) },
     ligneEcriture: { findMany },
+    decisionRelanceLigne: { findMany: jest.fn().mockResolvedValue([]) },
     niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
     relance: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
