@@ -30,6 +30,12 @@ try {
   # noms, qui changent avec la langue de Windows (« Administrateurs »).
   function Restreindre([string]$chemin, [string[]]$autres = @()) {
     $droits = @('*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F') + $autres
+    # UN FICHIER N'A NI SOUS-DOSSIER NI ENFANT · (OI)(CI) y fait un droit qui
+    # ne s'applique à rien, et le fichier reste sans AUCUN droit, même pour le
+    # système (essai d'installation sur le coureur Windows, 2026-10-30 ·
+    # omegax.env sans une seule entrée, « accès refusé » au service). Pour un
+    # fichier, les indicateurs d'héritage sont retirés.
+    if (Test-Path -LiteralPath $chemin -PathType Leaf) { $droits = $droits | ForEach-Object { $_ -replace '\(OI\)\(CI\)', '' } }
     & icacls $chemin /inheritance:r /grant:r @droits | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls a échoué sur $chemin ($LASTEXITCODE)" }
   }

@@ -48,6 +48,11 @@ describe('paquet d’installation sur site', () => {
     // Système et administrateurs seulement, et PostgreSQL ne fait que traverser.
     expect(init).toContain("$droits = @('*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F') + $autres");
     expect(init).toContain("& icacls $chemin /inheritance:r /grant:r @droits");
+    // Un FICHIER (omegax.env) ne reçoit pas les indicateurs d'héritage d'un
+    // dossier · avec (OI)(CI), sa liste de droits restait vide et le service,
+    // même sous le compte système, ne pouvait plus le lire.
+    expect(init).toContain("-PathType Leaf");
+    expect(init).toContain("-replace '\\(OI\\)\\(CI\\)', ''");
     // Le service OmegaX tourne sous le compte système, qui garde l'accès · un
     // compte de service déclaré sans droit sur les données le couperait.
     expect(lire('installation/windows/omegax-service.xml')).not.toMatch(/<serviceaccount>/);
