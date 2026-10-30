@@ -40,6 +40,7 @@ describe('la quantité du bien sur la fiche de comptage', () => {
     const corps = source.slice(debut, source.indexOf('\n  async ', debut + 10));
     expect(corps).toContain('quantiteAttendue: b.quantite');
     // Une fiche déjà comptée ne reçoit pas après coup une quantité qu'on ne lui a pas montrée.
-    expect(corps).toMatch(/quantiteAttendue: null, quantiteComptee: null/);
+    expect(corps).toMatch(/where: \{ id: f\.id, tenantId, quantiteComptee: null \}/);
+    expect(corps).toMatch(/quantiteParBien\.get\(f\.immobilisationId\) !== f\.quantiteAttendue/);
   });
 });

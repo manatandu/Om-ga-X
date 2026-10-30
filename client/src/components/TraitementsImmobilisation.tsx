@@ -56,10 +56,13 @@ const date = (d: string) => new Date(d).toLocaleDateString('fr-FR');
 export function TraitementsImmobilisation({
   bien,
   onFait,
+  onSupprime,
   onEtatTravail,
 }: {
   bien: { id: string; designation: string };
   onFait: (message: string) => void;
+  /** La fiche des unités d'un lot disparaît avec l'annulation de leur sortie · la fiche se ferme. */
+  onSupprime?: (message: string) => void;
   /** L'annulation en cours et le motif tapé · la fenêtre de la fiche tient sa fermeture sur eux. */
   onEtatTravail?: (etat: { occupe: boolean; nonEnregistre: boolean }) => void;
 }) {
@@ -147,12 +150,17 @@ export function TraitementsImmobilisation({
         { motif: motif.trim() },
       );
       const negatifs = r.ecritures.filter((x) => x.negatif).map((x) => `n° ${x.negatif?.numeroPiece ?? '·'}`);
-      onFait(
+      const message =
         `Sortie de « ${bien.designation} » annulée${r.partielle ? ' · les unités sont rendues au lot' : ''}` +
-          (negatifs.length ? ` · écritures inscrites en négatif (pièces ${negatifs.join(', ')}).` : ' · écritures retirées du brouillard.'),
-      );
+        (negatifs.length ? ` · écritures inscrites en négatif (pièces ${negatifs.join(', ')}).` : ' · écritures retirées du brouillard.');
       setAnnulerLaSortie(false);
       setMotif('');
+      // La fiche des unités n'existe plus · relue, elle dirait « introuvable ».
+      if (r.partielle) {
+        (onSupprime ?? onFait)(message);
+        return;
+      }
+      onFait(message);
       charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'L’annulation a échoué');

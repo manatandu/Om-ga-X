@@ -45,9 +45,17 @@ Branche de sauvegarde `travail/restes-immos-budgets`, partie de `origin/main`.
    démantèlement, dotation de l'exercice déjà passée (fiche du compte 81),
    exercice antérieur ouvert non doté. Rejoué sur vraie base.
 
+Relecture adverse, deux tours · la fiche de comptage relit la quantité d'un
+lot réduit depuis tant qu'elle n'est pas comptée ; l'annulation d'une sortie
+partielle ferme la fiche des unités, qui n'existe plus ; la défaite d'une
+sortie lâche les liaisons de la fiche AVANT de retirer ses écritures (RESTRICT).
+
 ## Reste
 
-Relecture adverse, deux tours.
+Intégration sur `main` (non faite, à la demande). Limites écrites · l'édition
+du procès-verbal d'inventaire ne porte pas encore la quantité attendue ; une
+sortie ENTIÈRE ne refuse pas un exercice antérieur ouvert non doté (la partielle
+le refuse), relevé pour le suivi.
 
 ## Vérification
 

@@ -119,7 +119,7 @@ export function FicheImmobilisation({
             {onglet === 'general' && (
               <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} onEtatTravail={setTravail} />
             )}
-            {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />}
+            {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onSupprime={onSupprime} onEtatTravail={setTravail} />}
             {onglet === 'detenteur' && detentionsLisibles && (
               <DetenteurImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />
             )}

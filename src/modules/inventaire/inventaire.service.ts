@@ -395,16 +395,22 @@ export class InventaireService {
       });
     }
     // LIGNE RESTES-IMMOS-BUDGETS, POINT 2 · la quantité du registre, même règle ·
-    // recopiée sur une fiche plus ancienne qui n'en porte pas, jamais sur une
-    // fiche déjà comptée (le compteur a confronté ce qu'il voyait à la
-    // quantité qu'on lui montrait, ou à aucune).
+    // recopiée sur une fiche plus ancienne qui n'en porte pas, et RELUE sur une
+    // fiche non comptée dont le lot a changé depuis (une partie des unités
+    // sortie entre-temps, relecture du 2026-10-30) · jamais sur une fiche déjà
+    // comptée (le compteur a confronté ce qu'il voyait à la quantité qu'on lui
+    // montrait, ou à aucune).
     const quantiteParBien = new Map(biens.map((b) => [b.id, b.quantite]));
     const quantitesACompleter = dejaFichees.filter(
-      (f) => f.quantiteAttendue === null && f.quantiteComptee === null && f.immobilisationId && quantiteParBien.has(f.immobilisationId),
+      (f) =>
+        f.quantiteComptee === null &&
+        !!f.immobilisationId &&
+        quantiteParBien.has(f.immobilisationId) &&
+        quantiteParBien.get(f.immobilisationId) !== f.quantiteAttendue,
     );
     for (const f of quantitesACompleter) {
       await this.prisma.ficheInventaire.updateMany({
-        where: { id: f.id, tenantId, quantiteAttendue: null, quantiteComptee: null },
+        where: { id: f.id, tenantId, quantiteComptee: null },
         data: { quantiteAttendue: quantiteParBien.get(f.immobilisationId as string) },
       });
     }
