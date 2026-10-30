@@ -14,8 +14,12 @@ function service(user: Record<string, unknown>, echec?: { code: string }) {
     if (echec) throw echec;
     return {};
   });
+  // L'acte passe dans une transaction · verrou du dossier, ligne du compte
+  // relue sous verrou, puis la mise à jour (`revoquerEtFermerLaSession`).
+  const client: Record<string, unknown> = { $executeRaw: async () => 1, $queryRaw: async () => [{ sessionsFermees: [] }], user: { findUnique: async () => user, update } };
+  client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
   const s = new AuthService(
-    { user: { findUnique: async () => user, update } } as never,
+    client as never,
     { sign: () => 'jeton' } as never,
     ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
   );

@@ -652,10 +652,12 @@ export class AuthService {
       throw new BadRequestException('Code invalide · vérifiez que l’heure du téléphone est à l’heure, puis saisissez le code affiché.');
     }
     const { codes, empreintes } = genererCodesSecours();
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
-    });
+    await this.revoquerEtFermerLaSession(
+      u,
+      session,
+      { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
+      maintenant.getTime(),
+    );
     await this.aviserDoubleAuth(u, 'ACTIVEE', maintenant);
     return { codesSecours: codes, ...this.reemettre(u, session, undefined, true) };
   }
@@ -666,10 +668,12 @@ export class AuthService {
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
     if (!(await bcrypt.compare(motDePasse, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     if (!secondFacteurAccepte(u, code, maintenant.getTime())) throw new UnauthorizedException('Code de vérification invalide');
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
-    });
+    await this.revoquerEtFermerLaSession(
+      u,
+      session,
+      { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
+      maintenant.getTime(),
+    );
     await this.aviserDoubleAuth(u, 'RETIREE', maintenant);
     return { desactivee: true, ...this.reemettre(u, session, undefined, true) };
   }
@@ -732,9 +736,11 @@ export class AuthService {
     if (!actuelValide) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
+    const maintenant = new Date();
+    await this.revoquerEtFermerLaSession(
+      user,
+      session,
+      {
         motDePasse: await bcrypt.hash(nouveauMotDePasse, SALT_ROUNDS),
         doitChangerMotDePasse: false,
         // RÉVOCATION · un mot de passe change souvent PARCE QU'IL A FUITÉ.
@@ -742,12 +748,13 @@ export class AuthService {
         // jusqu'à huit heures, trente jours pour une session « Rester
         // connecté » (audit final F270), et le changement ne servait à rien
         // pour la seule période où il aurait servi.
-        sessionsInvalidesAvant: new Date(),
+        sessionsInvalidesAvant: maintenant,
         // Un mot de passe changé délie aussi le verrou · le titulaire a
         // prouvé qui il est en donnant l'ancien.
         ...DECOMPTE_REMIS_A_ZERO,
       },
-    });
+      maintenant.getTime(),
+    );
     // La session COURANTE est révoquée elle aussi · c'est voulu. Le client
     // redemande un jeton juste après (voir AuthController), et rien ne
     // distingue, côté serveur, la session du titulaire de celle du voleur.
@@ -775,7 +782,8 @@ export class AuthService {
     const adresse = normaliserCourriel(nouvelleAdresse);
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
     try {
-      await this.prisma.user.update({ where: { id: userId }, data: { email: adresse, sessionsInvalidesAvant: new Date() } });
+      const maintenant = new Date();
+      await this.revoquerEtFermerLaSession(user, session, { email: adresse, sessionsInvalidesAvant: maintenant }, maintenant.getTime());
     } catch (e) {
       if ((e as { code?: string })?.code === 'P2002') {
         throw new ConflictException('Cette adresse est déjà utilisée par un autre compte.');
@@ -812,7 +820,7 @@ export class AuthService {
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
-    await this.prisma.user.update({ where: { id: userId }, data: { sessionsInvalidesAvant: maintenant } });
+    await this.revoquerEtFermerLaSession(user, session, { sessionsInvalidesAvant: maintenant }, maintenant.getTime());
     return { autresAppareilsDeconnectes: true, ...this.reemettre(user, session, maintenant.getTime()) };
   }
 
@@ -1010,6 +1018,48 @@ export class AuthService {
    * (cookie httpOnly) et le jeton CSRF que l'écran rejoue en en-tête
    * X-CSRF-Token · voir session.constants.ts et jwt.strategy.ts.
    */
+  /**
+   * LA SESSION QUE L'ACTE REMPLACE SE FERME PAR SON EMPREINTE (ligne
+   * saisie-suites, point 3, 2026-10-30, reproduit sur vraie base par
+   * `scripts/rejouer-dossier-l9.cjs`, un passage sur cinq). Changer son mot de
+   * passe ou son adresse, poser ou retirer la double authentification,
+   * déconnecter ses autres appareils révoquent le compte
+   * (`sessionsInvalidesAvant`) puis reposent une session neuve, sous un jeton
+   * CSRF neuf. La révocation se compare à la SECONDE (`sessionRevoquee`) ·
+   * la session qui présentait l'acte, authentifiée dans la même seconde (la
+   * connexion au mot de passe provisoire suivie aussitôt de son changement),
+   * n'était pas tenue pour antérieure · son jeton restait valable et la
+   * fenêtre des utilisateurs connectés la montrait ouverte après la
+   * déconnexion. Elle est nommée ici, comme la déconnexion la nomme
+   * (`ajouterSessionFermee`) · dans la transaction de l'acte, sous le verrou
+   * du dossier puis de la ligne du compte, l'ordre de `fermerLaSession`. Les
+   * AUTRES sessions de la même seconde restent la limite connue de toute
+   * révocation à la seconde.
+   */
+  private async revoquerEtFermerLaSession(
+    user: { id: string; tenantId: string },
+    session: SessionEnCours | null,
+    data: Prisma.UserUpdateInput,
+    maintenantMs: number,
+  ): Promise<void> {
+    await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossier(tx, user.tenantId);
+      const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
+        SELECT "sessionsFermees" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
+      let fermeture: Prisma.UserUpdateInput = {};
+      if (session?.csrf && lignes.length > 0) {
+        const maintenantS = Math.floor(maintenantMs / 1000);
+        const remplacee = {
+          e: empreinteSession(session.csrf),
+          f: finDeVie(session.origine, session.exp ?? undefined, session.longue),
+        };
+        const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, remplacee, maintenantS);
+        fermeture = debordement ? { sessionsFermees: liste, sessionsInvalidesAvant: new Date(maintenantMs) } : { sessionsFermees: liste };
+      }
+      await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
+    });
+  }
+
   private reemettre(user: { id: string }, session: SessionEnCours | null, instantMs?: number, complete = false): SessionEmise {
     const demande = demandeDeReemission(session);
     return emettreSession(this.jwt, user.id, complete ? { ...demande, connexionComplete: 'maintenant' } : demande, instantMs);
