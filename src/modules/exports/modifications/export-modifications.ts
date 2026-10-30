@@ -60,9 +60,9 @@ import { StatutEcriture } from '@prisma/client';
  * porte que des pièces « Nouvelle » et aucune suppression (le premier export,
  * typiquement), et REFUSE en le nommant tout autre envoi
  * (`motifEnvoiNonRelu`, `import.service.ts`). La relecture complète (remplacer
- * par l'identifiant, retirer les supprimées) est la ligne L9 (échanges avec
- * l'expert-comptable, n° 102), qui partira de ce format et de ce registre
- * sans les refaire.
+ * par l'identifiant, retirer les supprimées) est l'échange d'écritures (ligne
+ * dossier-l9, fonction 102, `exports/echange/`), qui part de ce format et de
+ * ce registre sans les refaire.
  */
 
 /** Les feuilles du classeur d'échange. */
@@ -293,9 +293,9 @@ export function motifHorsPlafond(e: { journal: string; numeroPiece: number | nul
 
 /** Le texte de l'import des écritures pour un envoi qu'il ne sait pas relire · jumeau de l'en-tête ci-dessus. */
 export const MENTION_RELECTURE =
-  "La feuille « Écritures » se relit par Fichier > Importer des données, type Écritures, seulement si toutes ses " +
-  "pièces sont « Nouvelle » et la feuille « Supprimées » vide · un envoi qui remplace ou retire une pièce est refusé " +
-  "par l'import, sa relecture complète viendra avec les échanges du cabinet.";
+  "Ce classeur se relit dans un autre dossier OmegaX par Fichier > Échanger des écritures · chaque écriture y naît, " +
+  "y est remplacée ou retirée au brouillard par son identifiant, jamais deux fois. Fichier > Importer des données " +
+  "n'en relit que les pièces « Nouvelle », sans feuille « Supprimées ».";
 
 /** L'en-tête de la colonne du mouvement, et le mouvement que l'import sait relire. */
 const ENTETE_MOUVEMENT = COLONNES_ECHANGE.find((c) => c.key === 'mouvement')!.header;
@@ -332,8 +332,8 @@ export function motifEnvoiNonRelu(colonnes: string[], lignes: string[][], lignes
   if (motifs.length === 0) return null;
   return (
     `Ce fichier est un export des modifications que l'import ne sait pas relire · ${motifs.join(' ; ')}. ` +
-    "Rien n'est importé. La relecture d'un tel envoi viendra avec les échanges du cabinet ; d'ici là, " +
-    'portez ces modifications à la main dans le dossier qui reçoit.'
+    "Rien n'est importé. Un tel envoi se relit par Fichier > Échanger des écritures, qui remplace et retire les " +
+    'pièces par leur identifiant.'
   );
 }
 

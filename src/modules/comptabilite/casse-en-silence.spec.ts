@@ -105,6 +105,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     // Ligne sage-l4 · l'annulation d'un traitement retient l'origine et le négatif.
     annulationTraitementImmobilisation: { count: compteur('annulationTraitementImmobilisation') },
     transfertImmobilisationGroupe: { count: compteur('transfertImmobilisationGroupe') },
+    ecritureRecue: { count: compteur('ecritureRecue') },
     creanceDouteuse: { count: compteur('creanceDouteuse') },
     ajustementCreanceDouteuse: { count: compteur('ajustementCreanceDouteuse') },
     mouvementCreanceDouteuse: { count: compteur('mouvementCreanceDouteuse') },
@@ -470,7 +471,7 @@ describe('3 bis · une écriture qu’un module tient ne se retouche pas non plu
     'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
     'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
     'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'valeurRecue', 'remiseEnBanque', 'annulationActeRemise', 'acteEffet', 'acteOperationTresorerie', 'mouvementTitre', 'evaluationTitre', 'paiementSalaires',
-    'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe',
+    'annulationTraitementImmobilisation', 'transfertImmobilisationGroupe', 'ecritureRecue',
   ];
   const gestes: Array<[string, string, (s: EcritureService) => Promise<unknown>]> = [
     ['supprimer', 'BROUILLARD', (s) => s.supprimer('t1', 'e1')],

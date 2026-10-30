@@ -411,7 +411,10 @@ export class ExportModificationsService {
    * registre (NOT EXISTS), servie par son index unique (dossier, écriture).
    * Ni à-nouveau provisoire, ni situation, brouillard selon le choix · le
    * statut écrit en clair dans la requête, comme le filet des lectures le
-   * relit (`lectures-hors-situation.spec.ts`).
+   * relit (`lectures-hors-situation.spec.ts`). Ni écriture REÇUE d'un autre
+   * dossier par l'échange (ligne dossier-l9, fonction 102), tenue ou détachée
+   * · elle appartient à son expéditeur, et y retourner la créerait une
+   * seconde fois chez lui.
    */
   private async jamaisPartiesApres(
     tenantId: string,
@@ -428,6 +431,10 @@ export class ExportModificationsService {
         ${borne}
         AND NOT EXISTS (
           SELECT 1 FROM "ecritures_exportees" r WHERE r."tenantId" = e."tenantId" AND r."ecritureId" = e."id"
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "ecritures_recues" rr
+          WHERE rr."tenantId" = e."tenantId" AND (rr."ecritureId" = e."id" OR rr."ecritureDetacheeId" = e."id")
         )
       ORDER BY e."date", e."id"
       LIMIT ${LOT_LECTURE}`;
@@ -450,6 +457,10 @@ export class ExportModificationsService {
         AND (e."date", e."id") >= (${depuis.date}, ${depuis.id})
         AND NOT EXISTS (
           SELECT 1 FROM "ecritures_exportees" r WHERE r."tenantId" = e."tenantId" AND r."ecritureId" = e."id"
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "ecritures_recues" rr
+          WHERE rr."tenantId" = e."tenantId" AND (rr."ecritureId" = e."id" OR rr."ecritureDetacheeId" = e."id")
         )`;
     return (lignes as Array<{ n: number }>)[0]?.n ?? 0;
   }

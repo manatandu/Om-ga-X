@@ -84,6 +84,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ImportController: FonctionMetier.SAISIE,
   // Ligne sage-l7, fonction 99 · l'export des écritures, pendant de l'import.
   ExportModificationsController: FonctionMetier.SAISIE,
+  // Ligne dossier-l9, fonction 102 · l'échange d'écritures, qui pose des pièces au brouillard.
+  EchangeEcrituresController: FonctionMetier.SAISIE,
   LettrageController: FonctionMetier.LETTRAGE,
   RapprochementController: FonctionMetier.TRESORERIE,
   ReglementsController: FonctionMetier.TRESORERIE,

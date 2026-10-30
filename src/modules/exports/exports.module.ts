@@ -23,6 +23,8 @@ import { SelectionsEditionService } from './selections/selections-edition.servic
 import { ModelesEditionController } from './modeles-edition/modeles-edition.controller';
 import { ModelesEditionService } from './modeles-edition/modeles-edition.service';
 import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.service';
+import { EchangeEcrituresController } from './echange/echange-ecritures.controller';
+import { EchangeEcrituresService } from './echange/echange-ecritures.service';
 
 @Module({
   // `EtatsFinanciersSyscohadaModule` fournit les DEUX moteurs SYSCOHADA
@@ -62,6 +64,9 @@ import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.serv
     ImpressionsDiffereesController,
     SelectionsEditionController,
     ModelesEditionController,
+    // Ligne dossier-l9, fonction 102 · l'échange d'écritures, qui relit l'export
+    // des modifications d'un autre dossier par les règles de l'import.
+    EchangeEcrituresController,
   ],
   providers: [
     ExportService,
@@ -72,6 +77,7 @@ import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.serv
     SelectionsEditionService,
     ModelesEditionService,
     ExtraitsPeriodeService,
+    EchangeEcrituresService,
   ],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le

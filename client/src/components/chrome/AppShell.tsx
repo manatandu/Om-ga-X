@@ -238,6 +238,10 @@ export function AppShell() {
         // comptable en lecture seule qui voit sa relance « gardée » doit
         // pouvoir en lire la raison.
         { label: 'Courriers sortants', chemin: '/courrier', separateurAvant: false, onClick: () => navigate('/courrier') },
+        // Ligne dossier-l9, fonction 102 · l'échange d'écritures relit l'export
+        // des modifications d'un AUTRE dossier, à côté de ce qui entre et sort ·
+        // ouvert à tous en lecture, la réception réservée au comptable.
+        { label: 'Échanger des écritures…', chemin: '/echanges-ecritures', onClick: () => navigate('/echanges-ecritures') },
         // Console de l'opérateur de la plateforme (le cabinet exploitant) ·
         // invisible pour tout utilisateur ordinaire, et de toute façon
         // inaccessible : le serveur relit le drapeau en base à chaque requête.

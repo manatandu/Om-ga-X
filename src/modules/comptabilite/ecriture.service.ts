@@ -437,6 +437,9 @@ export const DETENTEUR_IMPOT_RESULTAT: DetenteurEcriture = "l'écriture de l'imp
 export const DETENTEUR_ACQUISITION_IMMOBILISATION: DetenteurEcriture = 'une immobilisation (acquisition)';
 export const DETENTEUR_DONATION: DetenteurEcriture = 'une donation';
 export const DETENTEUR_EXECUTION_ENGAGEMENT: DetenteurEcriture = "l'exécution d'un engagement de dépense";
+// Ligne dossier-l9, fonction 102 · l'écriture reçue d'un autre dossier, tant qu'elle lui appartient.
+export const DETENTEUR_ECHANGE: DetenteurEcriture =
+  "l'échange d'écritures (reçue d'un autre dossier · Fichier > Échanger des écritures, « Détacher » pour la reprendre)";
 
 /**
  * Suppression demandée PAR le module qui tient l'écriture · audit du serveur
@@ -1848,7 +1851,17 @@ export class EcritureService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     ecritureId: string,
-    dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
+    // `reference` et `exigerVentilationObligatoire` (ligne dossier-l9, fonction
+    // 102) · l'échange d'écritures remplace aussi la référence de la pièce, et
+    // juge la pièce reçue comme l'import des écritures, sans exiger une
+    // ventilation que le fichier ne porte pas (`import.service.ts`).
+    dto: {
+      date: string;
+      libelle?: string;
+      reference?: string | null;
+      exigerVentilationObligatoire?: boolean;
+      lignes: LigneEcritureDto[];
+    },
     // L'auteur du geste du module (ligne microfina-m1) · absent, la retouche
     // est marquée d'un auteur INCONNU (circuit-visa.ts, règle 4).
     auteur: string | null = null,
@@ -1868,6 +1881,7 @@ export class EcritureService {
         date: new Date(dto.date),
         lignes: dto.lignes,
         modesDejaPortes: modesPortesPar(ecriture.lignes),
+        ...(dto.exigerVentilationObligatoire === false ? { exigerVentilationObligatoire: false } : {}),
       },
       tx,
     );
@@ -1889,6 +1903,7 @@ export class EcritureService {
       data: {
         date,
         ...(dto.libelle ? { libelle: dto.libelle } : {}),
+        ...(dto.reference !== undefined ? { reference: dto.reference } : {}),
         lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
         ...contenuChange(auteur, new Date()),
       },
@@ -2045,6 +2060,7 @@ export class EcritureService {
       ['une immobilisation (écart de réévaluation soldé à la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
       // Un virement de fonds · ses deux pièces nées ensemble et leurs négatifs ·
       // retirée seule, l'une laisserait le 585 non soldé (virements-fonds/).
+      [DETENTEUR_ECHANGE, this.prisma.ecritureRecue.count({ where: { tenantId, ecritureId } })],
       ['un virement de fonds (journal d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
       ['un virement de fonds (journal de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
       ['un virement de fonds annulé (négatif d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],

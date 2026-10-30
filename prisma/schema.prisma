@@ -993,6 +993,9 @@ model Tenant {
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures                     ExportEcritures[]
   ecrituresExportees                   EcritureExportee[]
+  // Ligne dossier-l9, fonction 102 · les envois reçus d'un autre dossier et leur registre.
+  receptionsEchange                    ReceptionEchange[]
+  ecrituresRecues                      EcritureRecue[]
   // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
   impressionsDifferees                 ImpressionDifferee[]
   selectionsEdition                    SelectionEdition[]
@@ -2251,6 +2254,8 @@ model Ecriture {
   /// Virement de fonds · la pièce du journal d'origine, celle du journal de
   /// destination, et leurs inscriptions en négatif à l'annulation.
   virementFondsOrigine            VirementFonds?                      @relation("VirementFondsEcritureOrigine")
+  /// Ligne dossier-l9, fonction 102 · l'écriture reçue d'un autre dossier par l'échange, tant qu'elle lui appartient.
+  recueParEchange                 EcritureRecue?                      @relation("EcritureRecueParEchange")
   virementFondsDestination        VirementFonds?                      @relation("VirementFondsEcritureDestination")
   virementFondsNegatifOrigine     VirementFonds?                      @relation("VirementFondsNegatifOrigine")
   virementFondsNegatifDestination VirementFonds?                      @relation("VirementFondsNegatifDestination")
@@ -13324,4 +13329,89 @@ model DecisionRelanceLigne {
 
   @@index([tenantId])
   @@map("decisions_relance_lignes")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne dossier-l9 · fonction 102, l'échange d'écritures entre dossiers
+// ---------------------------------------------------------------------------
+
+enum EtatReceptionEchange {
+  EN_COURS
+  TERMINEE
+}
+
+/// UN ENVOI REÇU · l'export des modifications d'un autre dossier OmegaX (ligne
+/// sage-l7, fonction 99) relu ici. Numéroté et daté chez l'expéditeur (AUDCIF
+/// art. 22, 7°), il est cité ici par ce qu'il porte · dossier, numéro, et
+/// l'EMPREINTE de son fichier, qui ferme la porte à une seconde lecture du
+/// même fichier. Une réception interrompue (EN_COURS au-delà de son échéance)
+/// se reprend · chaque écriture est jugée une à une, et une écriture déjà
+/// reçue avec le même contenu ne se recrée jamais.
+model ReceptionEchange {
+  id                 String               @id @default(uuid())
+  tenantId           String
+  tenant             Tenant               @relation(fields: [tenantId], references: [id])
+  etat               EtatReceptionEchange @default(EN_COURS)
+  /// Ce que la feuille « Export » de l'envoi dit de son dossier et de son numéro.
+  dossierSource      String
+  numeroExportSource Int
+  nomFichier         String
+  empreinteFichier   String
+  recuLe             DateTime             @default(now())
+  recuPar            String
+  termineeLe         DateTime?
+  nombreCreees       Int                  @default(0)
+  nombreModifiees    Int                  @default(0)
+  nombreRetirees     Int                  @default(0)
+  nombreIgnorees     Int                  @default(0)
+  nombreRefusees     Int                  @default(0)
+  /// Les pièces refusées ou laissées, nommées · `[{ piece, message }]`, au plus deux cents.
+  compteRendu        Json?
+  premieresRecues    EcritureRecue[]      @relation("EcritureRecuePremiere")
+  dernieresRecues    EcritureRecue[]      @relation("EcritureRecueDerniere")
+
+  @@unique([tenantId, empreinteFichier])
+  @@index([tenantId, recuLe])
+  @@map("receptions_echange")
+}
+
+enum EtatEcritureRecue {
+  /// L'écriture appartient à l'expéditeur · ses envois suivants la remplacent ou la retirent.
+  TENUE
+  /// Le dossier qui reçoit en a pris la main · rien de l'expéditeur ne la touche plus.
+  DETACHEE
+  /// L'expéditeur l'a retirée · retirée ici aussi, au brouillard.
+  RETIREE_PAR_LA_SOURCE
+}
+
+/// LE REGISTRE DE CE QUI EST REÇU · une ligne par écriture de l'expéditeur,
+/// par son IDENTIFIANT d'origine, unique par dossier · une écriture ne se crée
+/// jamais deux fois. Tant qu'elle est TENUE, le lien RETIENT l'écriture
+/// (`detenteurs-ecriture.ts`) · son contenu est celui de l'expéditeur, que ses
+/// envois suivants remplacent au brouillard ; le dossier qui reçoit la valide,
+/// ou la DÉTACHE pour la reprendre à son compte.
+model EcritureRecue {
+  id                  String            @id @default(uuid())
+  tenantId            String
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  identifiantSource   String
+  etat                EtatEcritureRecue @default(TENUE)
+  ecritureId          String?           @unique
+  ecriture            Ecriture?         @relation("EcritureRecueParEchange", fields: [ecritureId], references: [id], onDelete: Restrict)
+  /// L'écriture détachée, nommée sans la retenir.
+  ecritureDetacheeId  String?
+  detacheeLe          DateTime?
+  detacheePar         String?
+  /// L'empreinte du contenu reçu en dernier, et le numéro de l'envoi qui l'a porté.
+  empreinteSource     String
+  numeroExportSource  Int
+  premiereReceptionId String
+  premiereReception   ReceptionEchange  @relation("EcritureRecuePremiere", fields: [premiereReceptionId], references: [id], onDelete: Restrict)
+  derniereReceptionId String
+  derniereReception   ReceptionEchange  @relation("EcritureRecueDerniere", fields: [derniereReceptionId], references: [id], onDelete: Restrict)
+  recueLe             DateTime          @default(now())
+
+  @@unique([tenantId, identifiantSource])
+  @@index([tenantId, ecritureDetacheeId])
+  @@map("ecritures_recues")
 }

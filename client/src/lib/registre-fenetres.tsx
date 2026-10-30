@@ -88,6 +88,7 @@ const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) =
 const ExportModificationsPage = lazy(() =>
   import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
 );
+const EchangeEcrituresPage = lazy(() => import('../pages/EchangeEcrituresPage').then((m) => ({ default: m.EchangeEcrituresPage })));
 const ImpressionsDiffereesPage = lazy(() =>
   import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
 );
@@ -575,6 +576,14 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Exporter les modifications',
     titreCourt: 'Export modif.',
     rendre: () => <ExportModificationsPage />,
+  },
+  {
+    // Ligne dossier-l9, fonction 102 · aucun référentiel · l'AUDCIF art. 22
+    // vaut aux deux, l'art. 3 du SYCEBNL ne l'écarte pas.
+    motif: /^\/echanges-ecritures$/,
+    titre: 'Échanger des écritures',
+    titreCourt: 'Échange',
+    rendre: () => <EchangeEcrituresPage />,
   },
   {
     // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,
