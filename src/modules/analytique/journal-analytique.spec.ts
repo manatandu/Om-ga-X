@@ -2,7 +2,6 @@ import { EtatsAnalytiquesService } from './etats-analytiques.service';
 import { PrismaService } from '../../common/prisma.service';
 import {
   PLAFOND_LIGNES_JOURNAL_ANALYTIQUE,
-  comparerLignesJournal,
   lireOrigineJournal,
   premieresDeLUnion,
   type LigneJournalAnalytique,
@@ -40,12 +39,12 @@ describe('journal analytique · règles pures (fonction n° 52)', () => {
     expect(lireOrigineJournal('reports')).toBeNull();
   });
 
-  it('l’ordre est total · date, journal, pièce, identifiant', () => {
-    const a = ligne('b', '2026-01-05', 'AC', 2);
-    const b = ligne('a', '2026-01-05', 'AC', 2);
-    const c = ligne('z', '2026-01-05', 'AC', 1);
-    const d = ligne('y', '2026-01-04', 'VT', 9);
-    expect([a, b, c, d].sort(comparerLignesJournal).map((l) => l.id)).toEqual(['y', 'z', 'a', 'b']);
+  it('la fusion garde l’ordre de chaque lecture et ne compare que la date', () => {
+    // Lues dans l'ordre de la base · « ac » avant « AB » dans une collation qui
+    // ignore la casse, et la fusion ne les remet pas dans l'ordre de JavaScript.
+    const ventilations = [ligne('v1', '2026-01-05', 'ac', 1), ligne('v2', '2026-01-05', 'AB', 1)];
+    const od = [ligne('o1', '2026-01-05', 'OD ANA', null), ligne('o2', '2026-01-04', 'OD ANA', null)].reverse();
+    expect(premieresDeLUnion(ventilations, od, 10).map((l) => l.id)).toEqual(['o2', 'v1', 'v2', 'o1']);
   });
 
   it('la tranche est faite des premières lignes de l’union', () => {

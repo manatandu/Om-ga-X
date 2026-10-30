@@ -5,6 +5,7 @@ import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import type { Compte, PlanAnalytique, SectionAnalytique } from '../lib/types';
 import { enPointsDeBase, resumeDeLaGrille, type ListeGrillesAnalytiques } from '../lib/grille-analytique';
+import { montantSaisi } from '../lib/montant-saisi';
 
 /**
  * GRILLES ANALYTIQUES DES COMPTES (fonction n° 48) · Structure → Grilles
@@ -80,7 +81,7 @@ export function GrillesAnalytiquesPage() {
     return comptes.filter((c) => classes.includes(c.classe.replace('CLASSE_', '')));
   }, [plan, comptes]);
 
-  const totalPoints = lignes.reduce((t, l) => t + (enPointsDeBase(Number(l.pourcentage.replace(',', '.'))) ?? 0), 0);
+  const totalPoints = lignes.reduce((t, l) => t + (enPointsDeBase(montantSaisi(l.pourcentage) ?? 0) ?? 0), 0);
 
   const modifier = (id: string) => {
     const g = liste?.grilles.find((x) => x.id === id);
@@ -95,12 +96,23 @@ export function GrillesAnalytiquesPage() {
   const enregistrer = async () => {
     setErreur(null);
     setInfo(null);
+    // Une ligne à moitié remplie se dit ici · vide, un pourcentage ne vaut pas
+    // zéro (`montantSaisi`), et la ligne n'est jamais retirée en silence.
+    const remplies = lignes.filter((l) => l.sectionId || l.pourcentage.trim());
+    for (const [i, l] of remplies.entries()) {
+      if (!l.sectionId) {
+        setErreur(`Ligne ${i + 1} · choisissez la section.`);
+        return;
+      }
+      if (montantSaisi(l.pourcentage) === null) {
+        setErreur(`Ligne ${i + 1} · le pourcentage est à saisir.`);
+        return;
+      }
+    }
     const corps = {
       compteId,
       planId,
-      lignes: lignes
-        .filter((l) => l.sectionId || l.pourcentage)
-        .map((l) => ({ sectionId: l.sectionId, pourcentage: Number(l.pourcentage.replace(',', '.')) })),
+      lignes: remplies.map((l) => ({ sectionId: l.sectionId, pourcentage: montantSaisi(l.pourcentage) as number })),
     };
     setEnvoi(true);
     try {

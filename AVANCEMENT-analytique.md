@@ -59,9 +59,24 @@ réalisé lu en mouvement hors écriture qui solde les comptes de gestion
   et « hors budget ». Structure → Analytique → Budgets des comptes
   (dotation), État → Suivi et prévision → Budget des comptes.
 
+- Rejeu sur vraie base (`scripts/rejouer-analytique.cjs`, serveur compilé,
+  base jetable) à travers la clôture de 2025 · vert. Lus contre le calcul à
+  la main · réalisé 2025 de la charge 1 000 après clôture (ni 0 ni 2 000),
+  non ventilées 2025 · le seul produit de 2 000, journal 1 000, budget
+  1 200 puis mars à 250 (1 350), clôturé figé ; 2026 · réalisé 800, N-1
+  1 000, janvier 125 / 800 / 0, journal trois lignes 900 / 100, OD seules
+  deux, balance P1 700, P2 100, P3 masquée, totaux inchangés.
+- Relecture adverse (deux tours, aucun agent relecteur dans cette session) ·
+  la fusion du journal ne re-trie plus en JavaScript (collation de la base
+  gardée, `NULLS LAST`) ; messages des DTO en français ; pourcentage ou
+  montant vide refusé à l'écran au lieu de partir à zéro.
+
 ## Reste
 
-- relecture, rejeu sur vraie base à travers une clôture
+- Report des budgets des comptes sur l'exercice suivant (les budgets des
+  sections ont le leur), non demandé par la ligne.
+- Tests navigateur (`e2e/`) non lancés dans cette copie · les fenêtres
+  nouvelles s'ouvrent par les chemins du menu, que le job relit.
 
 ## Vérification
 

@@ -3006,6 +3006,29 @@ un seul prédicat (`longueur-sections.ts`) pour l'aperçu
 Bornes 2 à 13, convention d'OmegaX, tenues aussi par la base. Au PLAN et non
 au dossier comme chez Sage (P_DOSSIER) · question posée à Manasse.
 
+**Grille, budget par compte, journal et filtres analytiques (ligne
+analytique, 2026-10-29, fonctions 48, 51, 52 et 53, gel levé).** Aucun texte
+ne les régit (classe 9, « laissé à l'initiative des entités », SYCEBNL Partie
+2 ch. 3 ; AUDCIF Titre VII) · conventions d'OmegaX, dites dans la bulle. (1)
+LA GRILLE DU COMPTE EST PROPOSÉE, JAMAIS IMPOSÉE (`grille-analytique.ts`) · une
+par compte et par axe, 100 % au point de base, sections Détail actives ; la
+saisie montre « Grille », répartie à l'envoi au centime par le plus fort reste,
+règle recopiée à l'écran et tenue en MIROIR (`cas-grille-analytique.json`) ;
+ni le serveur, ni les modules, ni les imports ne l'appliquent ; suspendue
+(section ou plan en sommeil), elle le dit. (2) LE BUDGET D'UN COMPTE
+(`budget-compte.ts`) · détail des classes 6 et 7, annuel réparti sur les mois
+de calendrier au centime, reliquat au dernier ; réalisé en MOUVEMENT
+(`filtresDesTroisColonnes`), charge au débit net, produit au crédit net ; non
+doté = `null` et « hors budget », jamais zéro ; N-1 · l'exercice qui précède,
+au même mois. Il n'entre dans aucun état financier, et le tableau d'exécution
+des projets ne lit que les sections. (3) JOURNAL ANALYTIQUE ET LIGNES NON
+VENTILÉES · écrans de travail, tranche de deux mille dite, totaux par la
+base ; les non ventilées sont celles du contrôle des cumuls, par un seul
+périmètre (`perimetreDuPlan`, `sansRepartitionSur`) ; la fusion des deux
+lectures ne compare que la date, l'ordre de la base gardé. (4) LE FILTRE DE
+LA BALANCE MASQUE, IL NE RECALCULE PAS · totaux de toutes les feuilles, nombre
+masqué dit, zéro au centime.
+
 **Tableau emplois ressources · trois colonnes.** « REF | DESIGNATION | SOLDE
 CUMULE DEBUT EXERCICE N | EXERCICE N | SOLDE CUMULE FIN EXERCICE N » (SYCEBNL,
 Partie 4 ch. 3, Section 1) · un projet se finance sur une CONVENTION (le

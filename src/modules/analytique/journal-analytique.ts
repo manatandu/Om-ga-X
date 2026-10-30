@@ -96,29 +96,25 @@ export type LigneJournalAnalytique = {
 };
 
 /**
- * L'ordre du journal · date, puis journal, puis pièce, puis identifiant. Il
- * est TOTAL · la date seule laisserait deux lignes du même jour dans l'ordre
- * du plan d'exécution, et la tranche montrée changerait d'un appel à l'autre.
- */
-export function comparerLignesJournal(a: LigneJournalAnalytique, b: LigneJournalAnalytique): number {
-  const d = a.date.getTime() - b.date.getTime();
-  if (d !== 0) return d;
-  if (a.journal !== b.journal) return a.journal < b.journal ? -1 : 1;
-  const p = (a.numeroPiece ?? 0) - (b.numeroPiece ?? 0);
-  if (p !== 0) return p;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-}
-
-/**
  * Les `plafond` premières lignes de l'union de deux lectures déjà bornées au
- * même plafond. Chaque lecture rend SES premières lignes dans l'ordre du
- * journal · les `plafond` premières de l'union sont donc parmi elles, et la
- * tranche est exacte sans rapatrier le reste.
+ * même plafond et TRIÉES PAR LA BASE · les ventilations par date, journal,
+ * pièce et identifiant, les lignes d'OD par date et identifiant. La fusion ne
+ * compare que la DATE et garde l'ordre de chaque lecture · re-trier en
+ * JavaScript comparerait des codes de journal autrement que la collation de
+ * la base, et la tranche ne serait plus faite des premières lignes. À date
+ * égale, les ventilations passent avant les OD, qui les corrigent.
  */
 export function premieresDeLUnion(
-  a: readonly LigneJournalAnalytique[],
-  b: readonly LigneJournalAnalytique[],
+  ventilations: readonly LigneJournalAnalytique[],
+  od: readonly LigneJournalAnalytique[],
   plafond: number,
 ): LigneJournalAnalytique[] {
-  return [...a, ...b].sort(comparerLignesJournal).slice(0, plafond);
+  const rendues: LigneJournalAnalytique[] = [];
+  let i = 0;
+  let j = 0;
+  while (rendues.length < plafond && (i < ventilations.length || j < od.length)) {
+    const prendreOd = i >= ventilations.length || (j < od.length && od[j].date.getTime() < ventilations[i].date.getTime());
+    rendues.push(prendreOd ? od[j++] : ventilations[i++]);
+  }
+  return rendues;
 }

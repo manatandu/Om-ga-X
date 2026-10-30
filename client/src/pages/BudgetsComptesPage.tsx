@@ -85,6 +85,10 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
       setErreur('Le montant annuel est à saisir · zéro se tape.');
       return;
     }
+    if (m < 0) {
+      setErreur("Un budget n'est pas négatif.");
+      return;
+    }
     setErreur(null);
     setInfo(null);
     setEnvoi(true);
@@ -119,6 +123,10 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
     const v = montantSaisi(moisSaisis[m] ?? '');
     if (v === null) {
       setErreur(`Le montant de ${NOMS_DES_MOIS[m - 1]} est à saisir · zéro se tape.`);
+      return;
+    }
+    if (v < 0) {
+      setErreur("Un budget n'est pas négatif.");
       return;
     }
     setErreur(null);
