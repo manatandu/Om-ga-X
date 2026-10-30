@@ -109,6 +109,7 @@ jobs:
           Write-Host "SHA-256 de WinSW : $((Get-FileHash "$P/omegax-service.exe" -Algorithm SHA256).Hash)"
           Copy-Item installation/windows/omegax-service.xml "$P/omegax-service.xml"
           Copy-Item installation/windows/ouvrir-omegax.cmd "$P/ouvrir-omegax.cmd"
+          Copy-Item installation/windows/omegax.ico "$P/omegax.ico"
           Copy-Item installation/windows/initialiser.ps1, installation/windows/desinstaller.ps1 "$P/installation"
           Copy-Item -Recurse client/dist "$P/client"
 
@@ -122,6 +123,36 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
           & $iscc installation/windows/omegax.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC a échoué ($LASTEXITCODE)" }
+
+      # L'INSTALLATION S'ESSAIE AVANT D'ÊTRE PUBLIÉE (poste de Manasse,
+      # 2026-10-30 · initdb refusé par le dossier des données, fermé avant la
+      # création de la base, et aucun service installé · constaté à la main,
+      # sur un poste réel, au premier paquet). Le coureur est administrateur,
+      # comme le poste du client : l'installeur y tourne en silence, puis le
+      # service doit répondre sur /health, qui joint aussi la base. Un
+      # installeur qui n'aboutit pas n'est pas publié, et le journal de
+      # l'installation s'affiche. Le code de sortie de l'installeur ne dit
+      # rien (l'échec de l'initialisation n'est qu'une boîte de message) ·
+      # seule la réponse du service compte.
+      - name: Essayer l'installation sur ce poste
+        run: |
+          $exe = Get-ChildItem installation/windows/sortie/*.exe | Select-Object -First 1
+          Start-Process -FilePath $exe.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $donnees = Join-Path $env:ProgramData 'OmegaX'
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            try { $ok = (Invoke-WebRequest 'http://localhost:8080/health' -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200 } catch { Start-Sleep -Seconds 5 }
+          }
+          if (-not $ok) {
+            Write-Host '--- installation.log'
+            Get-Content (Join-Path $donnees 'installation.log') -ErrorAction SilentlyContinue
+            Write-Host '--- services'
+            Get-Service 'OmegaX', 'OmegaX-PostgreSQL' -ErrorAction SilentlyContinue | Format-Table Name, Status
+            Write-Host '--- journaux du service'
+            Get-ChildItem (Join-Path $donnees 'journaux') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "== $($_.Name)"; Get-Content $_.FullName -Tail 40 }
+            throw "Le service OmegaX ne répond pas sur /health après l'installation."
+          }
+          Write-Host 'Service OmegaX installé, /health répond.'
 
       - uses: actions/upload-artifact@v7
         with:

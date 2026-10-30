@@ -38,6 +38,10 @@ MinVersion=10.0
 WizardStyle=modern
 SetupLogging=yes
 UninstallDisplayName=OmegaX
+; Le logo d'OmegaX, et non les engrenages génériques de Windows (le raccourci
+; pointe sur un script .cmd, qui n'a aucune icône propre).
+SetupIconFile=omegax.ico
+UninstallDisplayIcon={app}\omegax.ico
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
@@ -55,8 +59,8 @@ Type: filesandordirs; Name: "{app}\node"
 Source: "{#Paquet}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{autodesktop}\OmegaX"; Filename: "{app}\ouvrir-omegax.cmd"; WorkingDir: "{app}"; Flags: runminimized
-Name: "{autoprograms}\OmegaX\OmegaX"; Filename: "{app}\ouvrir-omegax.cmd"; WorkingDir: "{app}"; Flags: runminimized
+Name: "{autodesktop}\OmegaX"; Filename: "{app}\ouvrir-omegax.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\omegax.ico"; Flags: runminimized
+Name: "{autoprograms}\OmegaX\OmegaX"; Filename: "{app}\ouvrir-omegax.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\omegax.ico"; Flags: runminimized
 Name: "{autoprograms}\OmegaX\Désinstaller OmegaX"; Filename: "{uninstallexe}"
 
 [Run]

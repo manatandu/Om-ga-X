@@ -4701,7 +4701,23 @@ poste hors couverture bloque ; sans licence lisible, démarrage ; refus avec l'�
 `omegax-AAAAMMJJ-HHMMSS-avant-mise-a-jour-<version de la base>.dump`, tournée à part
 (cinq, `SAUVEGARDES_AVANT_MISE_A_JOUR_A_GARDER`), recopiée hors du poste, gardée
 avant une migration non aboutie ; règles chargées par `moduleCompile`, sinon arrêt.
-Specs de `src/modules/sur-site/` ; `icacls` et WinSW à constater au premier paquet.
+Specs de `src/modules/sur-site/`. PREMIER PAQUET CONSTATÉ (poste de Manasse,
+2026-10-30) · `initdb` échouait en « Permission denied », aucun service
+installé. PostgreSQL retire les droits d'administrateur à `initdb` (jeton
+restreint), même lancé en administrateur, et le script avait fermé le dossier
+des données au seul groupe des administrateurs AVANT de créer la base ;
+`initialiser.ps1` crée désormais le dossier de la base d'avance, avec un droit
+pour le compte qui installe, que `Restreindre` retire aussitôt après. Un
+dossier de base à moitié fait est retiré à l'échec (une relance le prendrait
+pour une base existante), et la SORTIE d'un programme qui échoue est gardée
+au journal, jamais jetée (`Executer`). `paquet-sur-site.yml` ESSAIE l'INSTALLATION sur le coureur
+Windows, administrateur comme le poste d'un client, avant de publier le
+paquet · le service doit répondre sur `/health` (qui joint la base), sinon le
+journal s'affiche et rien n'est publié ; le code de sortie de l'installeur ne
+prouve rien, l'échec de l'initialisation n'étant qu'une boîte de message.
+Le raccourci porte le logo (`omegax.ico`, engendré depuis `icone-512.png`).
+Reste à constater sur un poste réel · WinSW sous le compte système et le
+pare-feu.
 
 **Abonnements des cabinets (2026-09-26, grille décidée par Manasse).** Essentiel,
 Standard, Cabinet, option Groupe, paie en option de l'Essentiel, mensuel ou annuel,

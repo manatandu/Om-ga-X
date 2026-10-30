@@ -51,6 +51,21 @@ try {
   # sauvegardes et les journaux, qui héritent, le sont.
   Restreindre $Donnees @('*S-1-5-20:(X)')
 
+  # LA SORTIE D'UN PROGRAMME QUI ÉCHOUE SE GARDE AU JOURNAL (poste de Manasse,
+  # 2026-10-30 · « initdb a échoué (1) » sans un mot de plus, la sortie étant
+  # jetée, et la cause, un refus d'accès, ne se lisait nulle part). Les
+  # lignes d'erreur d'un programme natif deviennent des erreurs bloquantes
+  # sous `Stop` · la préférence est donc relâchée le temps de l'appel.
+  function Executer([string]$exe, [string[]]$arguments) {
+    $ancienne = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $sortie = & $exe @arguments 2>&1 | ForEach-Object { "$_" }
+      $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $ancienne }
+    return [pscustomobject]@{ Code = $code; Sortie = (($sortie | Select-Object -Last 15) -join ' | ') }
+  }
+
   # Un mot de passe et un secret de session se tirent au générateur
   # cryptographique · Get-Random est prévisible et ne sert pas à cela.
   function Aleatoire([int]$octets) {
@@ -64,9 +79,26 @@ try {
     $mdp = Aleatoire 16
     $pw = Join-Path $env:TEMP ("omegax-" + [guid]::NewGuid() + '.txt')
     Set-Content -Path $pw -Value $mdp -NoNewline -Encoding ascii
+    # PostgreSQL retire les droits d'administrateur à initdb, même lancé en
+    # administrateur (jeton restreint) · le groupe des administrateurs ne lui
+    # sert plus à rien, et le dossier des données, fermé plus haut, ne lui
+    # laisse pas créer son sous-dossier (« Permission denied », constaté sur
+    # un poste réel). Le dossier de la base est donc créé d'avance, avec un
+    # droit pour le compte qui installe, que ce jeton garde ; Restreindre le
+    # referme aussitôt après, sans ce compte.
+    if (Test-Path $PgData) { Remove-Item $PgData -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $PgData | Out-Null
+    $moi = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    & icacls $PgData /grant "*${moi}:(OI)(CI)F" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls a échoué sur $PgData ($LASTEXITCODE)" }
     try {
-      & (Join-Path $PgBin 'initdb.exe') -D $PgData -U omegax -A scram-sha-256 --pwfile=$pw -E UTF8 --locale=C | Out-Null
-      if ($LASTEXITCODE -ne 0) { throw "initdb a échoué ($LASTEXITCODE)" }
+      $r = Executer (Join-Path $PgBin 'initdb.exe') @('-D', $PgData, '-U', 'omegax', '-A', 'scram-sha-256', "--pwfile=$pw", '-E', 'UTF8', '--locale=C')
+      if ($r.Code -ne 0) {
+        # Un dossier à moitié fait ne se garde pas · la relance de l'installation
+        # le prendrait pour une base existante, et n'installerait aucun service.
+        Remove-Item $PgData -Recurse -Force -ErrorAction SilentlyContinue
+        throw "initdb a échoué ($($r.Code)) · $($r.Sortie)"
+      }
     } finally { Remove-Item $pw -Force -ErrorAction SilentlyContinue }
     # Le port 5433 et la seule adresse locale · la base ne s'ouvre jamais au
     # réseau, seul le serveur OmegaX, sur ce poste, la joint.
@@ -78,8 +110,8 @@ try {
     & (Join-Path $PgBin 'pg_ctl.exe') register -N $ServicePg -D $PgData -S auto | Out-Null
     Start-Service $ServicePg
     $env:PGPASSWORD = $mdp
-    & (Join-Path $PgBin 'createdb.exe') -h 127.0.0.1 -p $Port -U omegax omegax
-    if ($LASTEXITCODE -ne 0) { throw "createdb a échoué ($LASTEXITCODE)" }
+    $r = Executer (Join-Path $PgBin 'createdb.exe') @('-h', '127.0.0.1', '-p', "$Port", '-U', 'omegax', 'omegax')
+    if ($r.Code -ne 0) { throw "createdb a échoué ($($r.Code)) · $($r.Sortie)" }
     Remove-Item Env:\PGPASSWORD
 
     $secret = Aleatoire 32
