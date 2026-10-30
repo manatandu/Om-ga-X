@@ -40,6 +40,14 @@ export type EcartEnUnites = {
    * compteur ayant confronté ce qu'il voyait à la quantité montrée, et c'est dit.
    */
   quantiteRegistre: number | null;
+  /**
+   * Relecture indépendante, M3 · ce qui reste d'un manquant à traduire au
+   * registre · le manquant moins les unités sorties du registre depuis le
+   * comptage. Zéro · déjà traduit, rien à sortir de nouveau ; `null` hors
+   * manquant. Sans quoi l'écran et le PV réédité invitaient à sortir deux
+   * fois les mêmes unités.
+   */
+  manquantATraduire: number | null;
 };
 
 const unites = (k: number) => `${k.toLocaleString('fr-FR')} unité${Math.abs(k) > 1 ? 's' : ''}`;
@@ -63,22 +71,24 @@ export function ecartEnUnites(fiche: {
     ? ` Le registre porte depuis ${unites(quantiteRegistre as number)} (une partie du lot sortie ou rendue après l'engendrement) · la fiche garde la quantité qui a été montrée au comptage.`
     : '';
   if (fiche.quantiteComptee === null || fiche.quantiteComptee === undefined) {
-    return { attendue, comptee: null, ecart: null, sens: null, mention: `Registre · ${unites(attendue)} · non compté.${suite}`, quantiteRegistre };
+    return { attendue, comptee: null, ecart: null, sens: null, mention: `Registre · ${unites(attendue)} · non compté.${suite}`, quantiteRegistre, manquantATraduire: null };
   }
   const comptee = Number(fiche.quantiteComptee);
   const ecart = comptee - attendue;
-  if (ecart === 0) return { attendue, comptee, ecart, sens: 'CONFORME', mention: `${unites(comptee)} comptée(s), conforme au registre.${suite}`, quantiteRegistre };
+  if (ecart === 0) return { attendue, comptee, ecart, sens: 'CONFORME', mention: `${unites(comptee)} comptée(s), conforme au registre.${suite}`, quantiteRegistre, manquantATraduire: null };
   if (ecart < 0) {
-    return {
-      attendue,
-      comptee,
-      ecart,
-      sens: 'MANQUANT',
-      mention:
-        `Manquant de ${unites(-ecart)} sur ${unites(attendue)} au registre · la sous-commission qualifie (sortie, vol, ` +
-        `disparition, rebut) ; rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.${suite}`,
-      quantiteRegistre,
-    };
+    const dejaSorties = quantiteRegistre !== null ? Math.max(0, attendue - quantiteRegistre) : 0;
+    const manquantATraduire = Math.max(0, -ecart - dejaSorties);
+    const mention =
+      dejaSorties === 0
+        ? `Manquant de ${unites(-ecart)} sur ${unites(attendue)} au registre · la sous-commission qualifie (sortie, vol, ` +
+          `disparition, rebut) ; rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.${suite}`
+        : manquantATraduire === 0
+          ? `Manquant de ${unites(-ecart)} sur ${unites(attendue)} montrées au comptage · déjà traduit au registre, qui porte ` +
+            `depuis ${unites(quantiteRegistre as number)} · rien à sortir de nouveau.`
+          : `Manquant de ${unites(-ecart)} sur ${unites(attendue)} montrées au comptage · ${unites(dejaSorties)} déjà sortie(s) du ` +
+            `registre depuis, ${unites(manquantATraduire)} encore à qualifier ; rien n'est passé d'office, la sortie se fait depuis la fiche du bien.`;
+    return { attendue, comptee, ecart, sens: 'MANQUANT', mention, quantiteRegistre, manquantATraduire };
   }
   return {
     attendue,
@@ -87,6 +97,7 @@ export function ecartEnUnites(fiche: {
     sens: 'EXCEDENT',
     mention: `Excédent de ${unites(ecart)} sur ${unites(attendue)} au registre · ${MENTION_EXCEDENT_UNITES}${suite}`,
     quantiteRegistre,
+    manquantATraduire: null,
   };
 }
 

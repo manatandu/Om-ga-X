@@ -221,16 +221,28 @@ export class TiersService {
    */
   async duplication(tenantId: string, tiersId: string): Promise<CopieDuTiers> {
     const t = await this.trouver(tenantId, tiersId);
-    const [ribs, documents, lieux] = await Promise.all([
+    const [ribs, documents, lieux, representant, devise] = await Promise.all([
       this.prisma.ribTiers.count({ where: { tenantId, tiersId } }),
       this.prisma.documentTiers.count({ where: { tenantId, tiersId } }),
       this.prisma.lieuLivraison.count({ where: { tenantId, tiersId } }),
+      // Le représentant et la devise (ligne commercial-l8), lus avec ce que la création en jugerait.
+      t.representantId
+        ? this.prisma.collaborateur.findFirst({
+            where: { id: t.representantId, tenantId },
+            select: { id: true, nom: true, prenom: true, actif: true, vendeur: true, caissier: true, acheteur: true, controleur: true, financier: true, recouvrement: true },
+          })
+        : null,
+      t.deviseId ? this.prisma.devise.findFirst({ where: { id: t.deviseId, tenantId }, select: { id: true, code: true, estActive: true } }) : null,
     ]);
     return copieDuTiers(
       {
         ...t,
         modeleReglement: t.modeleReglement ? { id: t.modeleReglement.id, estActif: t.modeleReglement.estActif } : null,
         modeReglement: t.modeReglement ? { id: t.modeReglement.id, estActif: t.modeReglement.estActif } : null,
+        representant: representant ? { id: representant.id, refus: motifRefusRepresentant(t.type, representant) } : null,
+        devise,
+        representantIntrouvable: !!t.representantId && !representant,
+        deviseIntrouvable: !!t.deviseId && !devise,
       },
       { ribs, documents, lieux },
     );

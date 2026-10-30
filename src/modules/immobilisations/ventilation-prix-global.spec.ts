@@ -276,7 +276,9 @@ describe('le service · prix global, une pièce par bien', () => {
 });
 
 describe('le service · remplacement imprévu (D-19)', () => {
-  function monter(o: { renouvelerEchoue?: boolean; dotationPassee?: boolean; fonds?: boolean; enCours?: 'non-achevé' | 'achevé' } = {}) {
+  function monter(
+    o: { renouvelerEchoue?: boolean; dotationPassee?: boolean; fonds?: boolean; enCours?: 'non-achevé' | 'achevé'; sans2025?: boolean; ouverts?: string[] } = {},
+  ) {
     const structure = {
       id: 's',
       tenantId: 't',
@@ -300,10 +302,12 @@ describe('le service · remplacement imprévu (D-19)', () => {
       degressifFiscal: false,
       immobilisationPrincipaleId: null,
       // Cinq annuités de 5 000 000, 2021 à 2025.
-      dotations: [2021, 2022, 2023, 2024, 2025, ...(o.dotationPassee ? [2026] : [])].map((a) => ({
+      dotations: [2021, 2022, 2023, 2024, ...(o.sans2025 ? [] : [2025]), ...(o.dotationPassee ? [2026] : [])].map((a) => ({
         montant: 5_000_000,
-        exercice: { dateDebut: new Date(`${a}-01-01`) },
+        exerciceId: `ex${a}`,
+        exercice: { dateDebut: new Date(`${a}-01-01`), dateFin: new Date(`${a}-12-31`) },
       })),
+      ecritureAcquisitionId: 'acq',
       depreciations: [],
       derogatoires: [],
       compteImmobilisation: { numero: '23110000', intitule: 'Bâtiments administratifs' },
@@ -320,7 +324,14 @@ describe('le service · remplacement imprévu (D-19)', () => {
     const prisma = {
       immobilisation: { findFirst: jest.fn().mockResolvedValue(structure) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
-      exercice: { findFirst: jest.fn().mockResolvedValue({ dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
+      exercice: {
+        findFirst: jest.fn().mockResolvedValue({ dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }),
+        // Ligne restes-l8-immos · les exercices antérieurs encore ouverts (2025 par défaut).
+        findMany: jest.fn().mockResolvedValue(
+          (o.ouverts ?? ['2025']).map((a) => ({ id: `ex${a}`, dateDebut: new Date(`${a}-01-01`), dateFin: new Date(`${a}-12-31`) })),
+        ),
+      },
+      ligneReevaluationBilan: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn((fn: (t: unknown) => unknown) => fn(tx)),
     };
     const svc = new ImmobilisationService(prisma as never, {} as never);
@@ -360,7 +371,8 @@ describe('le service · remplacement imprévu (D-19)', () => {
       methodeEstimationPartie: 'COUT_ACTUEL_A_NEUF',
       sourceEstimationPartie: 'Fiche technique',
     });
-    expect(renouveler).toHaveBeenCalledWith('t', 'u', 'p', dto);
+    // La partie, née dans l'opération, n'est pas jugée elle-même · sa structure l'a été.
+    expect(renouveler).toHaveBeenCalledWith('t', 'u', 'p', dto, { sansJugerAnterieurs: true });
     expect(r.partie).toEqual({ id: 'p', valeurOrigine: 30_000_000, amortissements: 5_000_000 });
   });
 
@@ -385,6 +397,20 @@ describe('le service · remplacement imprévu (D-19)', () => {
     const acheve = monter({ enCours: 'achevé' });
     await acheve.svc.remplacerPartieNonIdentifiee('t', 'u', 's', dto);
     expect(acheve.tx.immobilisation.create.mock.calls[0][0].data).toMatchObject({ compteEnCoursId: 'c239', dateMiseEnService: new Date('2021-01-02') });
+  });
+
+  // LIGNE RESTES-L8-IMMOS, B1 · la partie détachée naît sans ligne de dotation ·
+  // jugée elle-même, elle refusait tout remplacement tant que 2025 restait
+  // ouvert. C'est la STRUCTURE qui porte l'annuité de 2025.
+  it('structure sans l’annuité de 2025 encore ouvert · refus nommé avant tout détachement ; dotée, le remplacement passe', async () => {
+    const sans = monter({ sans2025: true });
+    await expect(sans.svc.remplacerPartieNonIdentifiee('t', 'u', 's', dto)).rejects.toThrow(
+      'L’exercice clos le 2025-12-31 n’a pas reçu la dotation du bien · passez-la d’abord',
+    );
+    expect(sans.tx.immobilisation.update).not.toHaveBeenCalled();
+    expect(sans.renouveler).not.toHaveBeenCalled();
+    const dotee = monter();
+    await expect(dotee.svc.remplacerPartieNonIdentifiee('t', 'u', 's', dto)).resolves.toBeDefined();
   });
 
   it('refus avant tout détachement · dotation de l’exercice passée, structure financée par un fonds', async () => {

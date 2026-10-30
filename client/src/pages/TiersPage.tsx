@@ -493,7 +493,7 @@ export function TiersPage() {
         ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
         ...(modeReglementId ? { modeReglementId } : {}),
-        ...(copie ? champsReprisHorsFormulaire(copie) : {}),
+        ...(copie ? champsReprisHorsFormulaire(copie, type) : {}),
       });
       // LA PROPOSITION PRISE ENTRE-TEMPS SE DIT · le serveur a ouvert le
       // premier libre, qui n'est plus le numéro que la fenêtre montrait.
@@ -1638,7 +1638,7 @@ export function TiersPage() {
                 </div>
                 {copie && (
                   <p className="mt-3 text-[11px] text-text-dim">
-                    Repris de {copie.origine} · {reprisEnClair(copie)}. Non repris · {nonReprisEnClair(copie)}.
+                    Repris de {copie.origine} · {reprisEnClair(copie, type)}. Non repris · {nonReprisEnClair(copie, type)}.
                   </p>
                 )}
                 {erreurCreation && (

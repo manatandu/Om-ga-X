@@ -51,3 +51,22 @@ describe('la quantité du bien sur la fiche de comptage', () => {
     expect(corps).toMatch(/quantiteParBien\.get\(f\.immobilisationId\) !== f\.quantiteAttendue/);
   });
 });
+
+describe('un manquant déjà traduit au registre (relecture indépendante, M3)', () => {
+  it('lot de 10, 8 comptées, 2 sorties depuis · rien à sortir de nouveau', () => {
+    const e = ecartEnUnites({ quantiteAttendue: 10, quantiteComptee: 8, quantiteRegistre: 8 });
+    expect(e).toMatchObject({ ecart: -2, sens: 'MANQUANT', manquantATraduire: 0 });
+    expect(e?.mention).toContain('déjà traduit au registre');
+    expect(e?.mention).not.toContain('la sortie des unités se fait');
+  });
+
+  it('une seule des deux sortie depuis · une reste à qualifier', () => {
+    const e = ecartEnUnites({ quantiteAttendue: 10, quantiteComptee: 8, quantiteRegistre: 9 });
+    expect(e).toMatchObject({ manquantATraduire: 1 });
+    expect(e?.mention).toContain('encore à qualifier');
+  });
+
+  it('registre inchangé · le manquant entier reste à qualifier', () => {
+    expect(ecartEnUnites({ quantiteAttendue: 10, quantiteComptee: 8, quantiteRegistre: 10 })).toMatchObject({ manquantATraduire: 2 });
+  });
+});

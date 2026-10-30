@@ -3537,7 +3537,10 @@ DE LIVRAISON d'un client (`LieuLivraison`, un principal, jugé sous un verrou
 du client, que la fusion prend aussi pour les deux clients, un renommé déjà
 pris recevant un rang) ; DUPLICATION vers le formulaire de création, sans
 Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux débits ni
-exclusion des relances, nommés. MODÈLES D'IMPRESSION
+exclusion des relances, nommés ; le représentant et la devise habituelle
+repris comme à la fusion (le représentant retiré si le type change dans le
+formulaire, introuvable nommé), l'ENCOURS MAXIMUM JAMAIS (un crédit que
+personne n'a consenti au nouveau tiers), et c'est dit (ligne restes-l8-immos). MODÈLES D'IMPRESSION
 (`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
 règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
 modèle HABILLE le document ({document} exigé une fois, tout ce qui est entre
@@ -3931,7 +3934,22 @@ dérogatoire (loi n° 23/053, art. 31 à 35 ; fiche du compte 68), fonds ou
 subvention rattachée (ch. 17), réévaluation (ch. 28 § 6), location-acquisition,
 prix aléatoire et démantèlement (bien entier), dotation de l'exercice déjà
 passée (fiche du compte 81, le complément ne court que jusqu'à la sortie ·
-annuler, sortir, repasser), exercice antérieur ouvert non doté.
+annuler, sortir, repasser), exercice antérieur ouvert non doté. LA SORTIE
+ENTIÈRE REFUSE DE MÊME l'exercice antérieur encore ouvert à qui manque
+l'ANNUITÉ du bien, simulation de la sortie globale et remplacement d'une
+partie non identifiée compris (jugé sur la STRUCTURE, la partie née dans
+l'opération ne l'est pas), ligne restes-l8-immos · `anterieurNonDote`, une
+règle pour les deux · l'annuité rejouée par le calcul de la dotation
+(`calculerDotation`, `debutAmortissement`, relevé, détention), jamais la
+seule absence d'une ligne ; aux unités d'œuvre sans relevé, rien ; un bien
+sans écriture d'acquisition (repris, partie détachée) ne se juge qu'après sa
+première dotation dans OmegaX ; réévalué après, l'issue nommée est de passer
+la dotation à la main et de clôturer l'exercice. Le PROCÈS-VERBAL
+d'inventaire imprime la quantité attendue au comptage, le registre
+d'aujourd'hui quand il diffère et l'écart EN UNITÉS, par la règle de l'écran
+(`ecartEnUnites`) · un manquant déjà traduit au registre ne se présente plus
+à sortir, une fiche d'un bien non recopiée se dit telle, jamais un excédent
+créé (AUDCIF art. 43).
 
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,

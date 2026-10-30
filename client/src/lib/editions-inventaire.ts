@@ -103,15 +103,53 @@ export function tableFichesVierges(
 
 // --- Procès-verbal d'inventaire ---------------------------------------------
 
+/**
+ * L'écart EN UNITÉS d'un bien du registre (ligne restes-l8-immos), servi par
+ * le serveur · « non compté » tant que rien n'est compté, jamais un manquant
+ * de tout le lot ; « · » pour une fiche qui n'est pas celle d'un bien ;
+ * « Quantité non recopiée » pour la fiche d'un bien engendrée avant la règle.
+ * Un manquant déjà traduit au registre (unités sorties depuis le comptage) le
+ * dit, pour qu'on ne sorte pas deux fois les mêmes unités.
+ */
+export function ecartUnitesImprime(u: EditionPvInventaire['releve'][number]['unites']): string {
+  if (!u) return ABSENT;
+  if (u.nonRecopiee) return 'Quantité non recopiée';
+  if (u.ecart === null) return 'Non compté';
+  if (u.ecart === 0) return 'Conforme';
+  const n = Math.abs(u.ecart).toLocaleString('fr-FR');
+  if (u.ecart > 0) return `Excédent ${n}`;
+  if (u.manquantATraduire === 0) return `Manquant ${n} · déjà sorti du registre`;
+  if (u.manquantATraduire !== null && u.manquantATraduire < -u.ecart) {
+    return `Manquant ${n} · ${u.manquantATraduire.toLocaleString('fr-FR')} encore à sortir`;
+  }
+  return `Manquant ${n}`;
+}
+
 export function tableReleve(e: EditionPvInventaire): Table {
   return {
-    colonnes: ['Désignation', 'Compte', 'Lieu', 'Unité', 'Quantité', 'Valeur d’inventaire', 'Pièce', 'Sous-commission'],
+    colonnes: [
+      'Désignation',
+      'Compte',
+      'Lieu',
+      'Unité',
+      'Quantité',
+      'Quantité attendue au comptage',
+      'Registre aujourd’hui',
+      'Écart en unités',
+      'Valeur d’inventaire',
+      'Pièce',
+      'Sous-commission',
+    ],
     lignes: e.releve.map((l) => [
       l.designation,
       l.compte,
       l.lieu,
       texte(l.unite),
       quantiteImprimee(l.quantite),
+      l.unites ? quantiteImprimee(l.unites.attendue) : ABSENT,
+      // Le registre d'aujourd'hui, seulement quand il diffère de ce qui a été montré au comptage.
+      l.unites ? quantiteImprimee(l.unites.quantiteRegistre) : ABSENT,
+      ecartUnitesImprime(l.unites),
       montant(l.valeur),
       texte(l.piece),
       texte(l.sousCommission),

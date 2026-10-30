@@ -165,7 +165,7 @@ import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-r
 import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
 import { motifSectionImpropre, sectionDuBien, ventilationDeLaDotation } from './analytique-des-biens';
 import { messageRefusDuLot, motifRefusLot } from './sortie-globale';
-import { motifRefusSortiePartielle, partDesUnites } from './cession-partielle';
+import { motifDotationAnterieureHorsModule, motifExerciceAnterieurNonDote, motifRefusSortiePartielle, partDesUnites } from './cession-partielle';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -4150,6 +4150,91 @@ export class ImmobilisationService {
     });
   }
 
+  /**
+   * LIGNE RESTES-L8-IMMOS · L'ANNUITÉ QUI MANQUE À UN EXERCICE ANTÉRIEUR
+   * ENCORE OUVERT, jugée avant la sortie, entière ou partielle, et avant le
+   * remplacement d'une partie non identifiée (`cession-partielle.ts`).
+   *
+   * Ce qui se juge est l'annuité, rejouée par le calcul même de
+   * `passerDotation` (`calculerDotation`, `debutAmortissement`, relevé
+   * d'unités d'œuvre, début de détention, dépréciations antérieures), jamais
+   * la seule présence d'une ligne de dotation · un incorporel passé en durée
+   * limitée après cet exercice, un bien amorti en entier, un bien mis en
+   * service après lui n'ont rien à y doter, et le refus serait inventé.
+   *
+   * QUATRE BORNES, chacune contre un enfermement ou un double compte.
+   *  1. Non amortissable (projet, compte, durée non limitée) · rien.
+   *  2. Aux unités d'œuvre sans relevé pour l'exercice · rien n'est réclamé ·
+   *     le relevé ne peut pas porter zéro (`@IsPositive`), et un exercice sans
+   *     usage n'a rien à doter ; le relevé saisi, l'annuité se calcule.
+   *  3. Un bien SANS ÉCRITURE D'ACQUISITION dans OmegaX (repris par le bilan
+   *     d'ouverture, partie détachée d'une structure) porte un amortissement
+   *     antérieur dont l'exercice de reprise n'est gardé nulle part · un
+   *     exercice ouvert gardé pour les comparatifs serait déjà couvert, et le
+   *     doter doublerait le 28. Seuls les exercices qui suivent sa première
+   *     dotation passée dans OmegaX se jugent ; sans dotation, aucun.
+   *  4. Réévalué à la clôture de cet exercice ou d'un postérieur · la
+   *     dotation n'y est plus passable (`passerDotation`, AUDCIF art. 63) ·
+   *     `horsModule`, et le refus nomme l'issue réelle (la passer à la main,
+   *     clôturer l'exercice), jamais « passez-la d'abord ».
+   */
+  private async anterieurNonDote(
+    tenantId: string,
+    immo: Awaited<ReturnType<ImmobilisationService['trouver']>>,
+    exerciceSortie: { dateDebut: Date },
+    regime: Awaited<ReturnType<ImmobilisationService['regimeComptable']>>,
+  ): Promise<{ fin: string; horsModule: boolean } | null> {
+    if (!debutAmortissement(immo)) return null;
+    const nonAmortissable =
+      motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl) ??
+      motifNonAmortissable(immo.compteImmobilisation.numero, regime.referentiel) ??
+      (immo.dureeNonLimitee ? MOTIF_NON_AMORTI : null);
+    if (nonAmortissable) return null;
+    let candidats = await this.prisma.exercice.findMany({
+      where: { tenantId, dateFin: { lt: exerciceSortie.dateDebut }, statut: StatutExercice.OUVERT },
+      select: { id: true, dateDebut: true, dateFin: true },
+      orderBy: { dateFin: 'asc' },
+    });
+    candidats = candidats.filter((e) => !immo.dotations.some((d) => d.exerciceId === e.id));
+    if (!immo.ecritureAcquisitionId) {
+      const premiere = immo.dotations[0]?.exercice?.dateFin;
+      candidats = premiere ? candidats.filter((e) => e.dateFin.getTime() > premiere.getTime()) : [];
+    }
+    const sansProrata = this.sansProrataTemporis(regime);
+    for (const e of candidats) {
+      if (immo.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE) {
+        const releve = await this.prisma.consommationUniteOeuvre.findFirst({
+          where: { tenantId, immobilisationId: immo.id, exerciceId: e.id },
+          select: { id: true },
+        });
+        if (!releve) continue;
+      }
+      const montant = this.calculerDotation(
+        Number(immo.valeurOrigine),
+        Number(immo.valeurResiduelle),
+        immo.dureeAmortissementAns,
+        debutAmortissement(immo),
+        immo.dotations.map((d) => ({ montant: Number(d.montant) })),
+        e,
+        amortissementsHorsDotations(immo),
+        this.cumulDepreciation(
+          immo.depreciations.filter((d) => estDepreciationAnterieure(d, e)).map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
+        ),
+        sansProrata,
+        await this.unitesOeuvreDe(tenantId, immo, e.id, e.dateFin),
+        planDuBien(immo),
+        debutDeDetention(immo.dateEntreeGroupe),
+      );
+      if (montant <= EPSILON) continue;
+      const reevalueApres = await this.prisma.ligneReevaluationBilan.findFirst({
+        where: { tenantId, immobilisationId: immo.id, reevaluation: { exercice: { dateFin: { gte: e.dateFin } } } },
+        select: { id: true },
+      });
+      return { fin: e.dateFin.toISOString().slice(0, 10), horsModule: !!reevalueApres };
+    }
+    return null;
+  }
+
   async passerDotation(tenantId: string, userId: string, id: string, dto: PasserDotationDto) {
     const immo = await this.trouver(tenantId, id);
     if (immo.statut !== StatutImmobilisation.EN_SERVICE) {
@@ -4661,7 +4746,14 @@ export class ImmobilisationService {
     };
   }
 
-  async renouveler(tenantId: string, userId: string, composantId: string, dto: RenouvelerComposantDto) {
+  async renouveler(
+    tenantId: string,
+    userId: string,
+    composantId: string,
+    dto: RenouvelerComposantDto,
+    /** Ligne restes-l8-immos · la partie détachée dans la même opération, jugée sur sa structure. */
+    optsRenouvellement: { sansJugerAnterieurs?: boolean } = {},
+  ) {
     const ancien = await this.trouver(tenantId, composantId);
     if (!ancien.immobilisationPrincipaleId) {
       throw new BadRequestException(
@@ -4726,7 +4818,7 @@ export class ImmobilisationService {
         journalId: dto.journalId,
         cessionCourante: dto.cessionCourante,
         compteReserveEcartId: dto.compteReserveEcartId,
-      } as SortieImmobilisation);
+      } as SortieImmobilisation, { sansJugerAnterieurs: optsRenouvellement.sansJugerAnterieurs });
     } catch (err) {
       await this.retirerRemplacant(tenantId, remplacant.id, dto.designation);
       throw err;
@@ -5285,7 +5377,7 @@ export class ImmobilisationService {
     userId: string,
     id: string,
     dto: SortieImmobilisation,
-    opts: { depuisEchange?: boolean; complementImpose?: number } = {},
+    opts: { depuisEchange?: boolean; complementImpose?: number; sansJugerAnterieurs?: boolean } = {},
   ) {
     const r = await this.sortieDuBien(tenantId, userId, id, dto, { ...opts, simuler: false });
     if ('simulee' in r) throw new InternalServerErrorException('La sortie a été simulée au lieu d’être passée · rien n’est écrit.');
@@ -5310,7 +5402,7 @@ export class ImmobilisationService {
     userId: string,
     id: string,
     dto: SortieImmobilisation,
-    opts: { depuisEchange?: boolean; complementImpose?: number; simuler: boolean },
+    opts: { depuisEchange?: boolean; complementImpose?: number; sansJugerAnterieurs?: boolean; simuler: boolean },
   ) {
     const immo = await this.trouver(tenantId, id);
     if (immo.statut !== StatutImmobilisation.EN_SERVICE) {
@@ -5375,6 +5467,21 @@ export class ImmobilisationService {
     // « cession courante ».
     const regime = await this.regimeComptable(tenantId);
     const { referentiel } = regime;
+    // LIGNE RESTES-L8-IMMOS · ON DOTE DANS L'ORDRE AVANT DE SORTIR · un exercice
+    // antérieur encore ouvert à qui manque l'annuité du bien refuse la sortie,
+    // comme la sortie partielle (fiche du compte 81, « sous déduction des
+    // amortissements pratiqués », jusqu'à la date de la cession ;
+    // `anterieurNonDote`). Les unités d'un lot (`complementImpose`) ont été
+    // jugées sur le lot, dont elles ne portent pas les dotations ; la partie
+    // détachée d'une structure (`sansJugerAnterieurs`) l'a été sur la structure.
+    if (opts.complementImpose === undefined && !opts.sansJugerAnterieurs) {
+      const manque = await this.anterieurNonDote(tenantId, immo, exercice, regime);
+      if (manque) {
+        throw new BadRequestException(
+          manque.horsModule ? motifDotationAnterieureHorsModule(manque.fin, 'BIEN') : motifExerciceAnterieurNonDote(manque.fin, 'BIEN'),
+        );
+      }
+    }
     const nature = natureImmobilisation(immo.compteImmobilisation.numero, referentiel);
     // L'usufruit temporaire se RÉTROCÈDE au donateur, il ne se vend pas · le
     // texte ne lui donne ni cession ni compte 81 (SYCEBNL Partie 3 ch. 2
@@ -5853,28 +5960,16 @@ export class ImmobilisationService {
     if (!exercice) throw new BadRequestException('Exercice introuvable pour ce dossier');
     const regime = await this.regimeComptable(tenantId);
     const n = (x: unknown) => Number(x ?? 0);
-    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts] = await Promise.all([
+    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, manque] = await Promise.all([
       this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
       this.prisma.amortissementDerogatoire.count({ where: { tenantId, immobilisationId: id } }),
       this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
       this.prisma.ligneReevaluationBilan.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
       this.prisma.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id }, select: { id: true } }),
-      this.prisma.exercice.findMany({
-        where: { tenantId, dateFin: { lt: exercice.dateDebut }, statut: StatutExercice.OUVERT },
-        select: { id: true, dateFin: true },
-        orderBy: { dateFin: 'asc' },
-      }),
+      // L'annuité d'un exercice antérieur encore ouvert, jugée comme la sortie entière (`anterieurNonDote`).
+      this.anterieurNonDote(tenantId, lot, exercice, regime),
     ]);
     const financeeParUnFonds = nombreSubventions > 0 || (await this.lotEntreParUnFonds(tenantId, lot.ecritureAcquisitionId, regime.referentiel));
-    const amortissable =
-      !!lot.dateMiseEnService &&
-      !lot.dureeNonLimitee &&
-      !motifNonAmortissable(lot.compteImmobilisation.numero, regime.referentiel) &&
-      !motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl);
-    // Un exercice antérieur ouvert, finissant après la mise en service, sans la dotation du lot.
-    const nonDote = amortissable
-      ? anterieursOuverts.find((e) => lot.dateMiseEnService! <= e.dateFin && !lot.dotations.some((d) => d.exerciceId === e.id))
-      : undefined;
     const refus = motifRefusSortiePartielle({
       enService: lot.statut === StatutImmobilisation.EN_SERVICE,
       quantite: lot.quantite,
@@ -5889,7 +5984,8 @@ export class ImmobilisationService {
       acquisitionAleatoire: !!lot.natureAcquisitionAleatoire,
       demantelement: lot.coutFuturDemantelement !== null && lot.coutFuturDemantelement !== undefined,
       dotationDejaPassee: lot.dotations.some((d) => d.exercice.dateDebut >= exercice.dateDebut),
-      exerciceAnterieurNonDote: nonDote ? nonDote.dateFin.toISOString().slice(0, 10) : null,
+      exerciceAnterieurNonDote: manque?.fin ?? null,
+      anterieurHorsModule: manque?.horsModule ?? false,
     });
     if (refus) throw new BadRequestException(refus);
 
@@ -6467,6 +6563,17 @@ export class ImmobilisationService {
       { valeurEstimee: dto.valeurOrigineEstimee, methode: dto.methodeEstimation, source: dto.sourceEstimation },
     );
     if ('motif' in detache) throw new BadRequestException(detache.motif);
+    // LIGNE RESTES-L8-IMMOS · la partie naît dans l'opération, sans dotation ·
+    // elle ne se juge pas elle-même (rien n'y serait passable), c'est la
+    // STRUCTURE qui doit porter l'annuité des exercices antérieurs encore
+    // ouverts, sans quoi la partie emporterait un cumul qui l'ignore (fiche du
+    // compte 81). Même règle, même phrase que la sortie.
+    const manque = await this.anterieurNonDote(tenantId, await this.trouver(tenantId, structureId), exercice, await this.regimeComptable(tenantId));
+    if (manque) {
+      throw new BadRequestException(
+        manque.horsModule ? motifDotationAnterieureHorsModule(manque.fin, 'BIEN') : motifExerciceAnterieurNonDote(manque.fin, 'BIEN'),
+      );
+    }
 
     // Le détachement, dans une transaction · la structure réduite et la
     // partie née ensemble, jamais l'une sans l'autre.
@@ -6509,7 +6616,7 @@ export class ImmobilisationService {
     });
 
     try {
-      const remplacant = await this.renouveler(tenantId, userId, partie.id, dto);
+      const remplacant = await this.renouveler(tenantId, userId, partie.id, dto, { sansJugerAnterieurs: true });
       return { partie: { id: partie.id, valeurOrigine: detache.valeurPartie, amortissements: detache.amortissementsPartie }, remplacant, avertissement: detache.avertissement };
     } catch (err) {
       // Le renouvellement refusé défait le détachement · la structure

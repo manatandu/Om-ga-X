@@ -149,3 +149,38 @@ describe('la sortie de trois chaises sur dix', () => {
     expect(prisma.immobilisation.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * LIGNE RESTES-L8-IMMOS · LA PARTIELLE JUGE L'ANNUITÉ, COMME L'ENTIÈRE
+ * (`anterieurNonDote`) · la seule absence d'une ligne de dotation sur 2025
+ * encore ouvert refusait aussi un lot qui n'avait rien à y doter.
+ */
+describe('la sortie partielle et l’exercice antérieur encore ouvert', () => {
+  const ouvert2025 = [{ id: 'ex25', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') }];
+  const monter = (lot: Record<string, unknown>) => {
+    const s = service();
+    s.prisma.immobilisation.findFirst.mockResolvedValue({ ...LOT, ecritureAcquisitionId: 'acq', ...lot });
+    s.prisma.exercice.findMany.mockResolvedValue(ouvert2025);
+    (s.prisma as Record<string, unknown>).ligneEcriture = { findMany: jest.fn().mockResolvedValue([]) };
+    return s;
+  };
+
+  it('acquis dans OmegaX, 2025 ouvert sans son annuité · refus nommé', async () => {
+    const { svc } = monter({ dotations: [] });
+    await expect(svc.sortirUnePartie('t', 'u', 'lot', DTO as never)).rejects.toThrow(
+      'L’exercice clos le 2025-12-31 n’a pas reçu la dotation du lot · passez-la d’abord',
+    );
+  });
+
+  it('B3 · amortissement qui ne commence qu’en 2026 · aucune annuité en 2025, aucun refus de ce chef', async () => {
+    const { svc } = monter({ dotations: [], dateDebutAmortissement: new Date('2026-01-01') });
+    jest.spyOn(svc, 'simulerSortie').mockRejectedValue(new Error('suite du geste'));
+    await expect(svc.sortirUnePartie('t', 'u', 'lot', DTO as never)).rejects.toThrow('suite du geste');
+  });
+
+  it('B2 · lot repris (sans écriture d’acquisition) sans dotation dans OmegaX · l’antérieur le couvre, aucun refus de ce chef', async () => {
+    const { svc } = monter({ dotations: [], ecritureAcquisitionId: null, amortissementAnterieur: 200_000 });
+    jest.spyOn(svc, 'simulerSortie').mockRejectedValue(new Error('suite du geste'));
+    await expect(svc.sortirUnePartie('t', 'u', 'lot', DTO as never)).rejects.toThrow('suite du geste');
+  });
+});

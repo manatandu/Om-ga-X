@@ -38,13 +38,31 @@ describe('la copie d’un tiers', () => {
     );
   });
 
+  // Ligne restes-l8-immos · le représentant et la devise partent avec la création, et se disent.
+  it('le représentant et la devise habituelle partent avec la création et se disent repris', () => {
+    const avec = { ...copie, corps: { ...copie.corps, validationAutomatiqueEcheances: undefined, representantId: 'col1', deviseId: 'usd' } };
+    expect(champsReprisHorsFormulaire(avec)).toEqual(expect.objectContaining({ representantId: 'col1', deviseId: 'usd' }));
+    expect(reprisEnClair(avec)).toBe('nom, qualité, coordonnées, règlement, représentant et devise habituelle');
+  });
+
+  // Relecture indépendante, m1 · le type changé dans le formulaire, le représentant partait
+  // toujours et la création le refusait sur un champ invisible.
+  it('le type changé dans le formulaire · le représentant ne part plus, et la ligne le dit', () => {
+    const avec = { ...copie, corps: { ...copie.corps, validationAutomatiqueEcheances: undefined, representantId: 'col1', deviseId: 'usd' } };
+    expect(champsReprisHorsFormulaire(avec, 'FOURNISSEUR')).toEqual(expect.objectContaining({ representantId: 'col1' }));
+    expect(champsReprisHorsFormulaire(avec, 'CLIENT')).not.toHaveProperty('representantId');
+    expect(champsReprisHorsFormulaire(avec, 'CLIENT')).toEqual(expect.objectContaining({ deviseId: 'usd' }));
+    expect(reprisEnClair(avec, 'CLIENT')).toBe('nom, qualité, coordonnées, règlement et devise habituelle');
+    expect(nonReprisEnClair(avec, 'CLIENT')).toContain('Représentant (le type du tiers a changé · à choisir sur la fiche créée)');
+  });
+
   it('ce qui n’est pas repris se dit, avec son motif', () => {
     expect(nonReprisEnClair(copie)).toBe('Code (unique dans le dossier · à saisir) ; Numéro Impôt (identifiant propre à chaque contribuable)');
   });
 
   it('la forme de la copie est celle du serveur', () => {
     const serveur = readFileSync(join(__dirname, '../../../src/modules/tiers/duplication-tiers.ts'), 'utf8');
-    for (const champ of ['qualite?: string;', 'contact?: string;', 'modeReglementId?: string;', 'validationAutomatiqueEcheances?: true;', 'modeleImpressionRappelId?: string;', "code: '';"]) {
+    for (const champ of ['qualite?: string;', 'contact?: string;', 'modeReglementId?: string;', 'validationAutomatiqueEcheances?: true;', 'modeleImpressionRappelId?: string;', 'representantId?: string;', 'deviseId?: string;', "code: '';"]) {
       expect(serveur).toContain(champ);
     }
   });
