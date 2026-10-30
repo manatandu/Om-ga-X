@@ -93,12 +93,17 @@ describe('F43 · les services normalisent aussi', () => {
   it('le changement d’adresse écrit l’adresse normalisée', async () => {
     const ecrites: Array<{ data: { email: string } }> = [];
     const hache = await bcrypt.hash('actuel-123456', 4);
-    const s = auth({
+    // L'acte passe dans une transaction · verrou du dossier, ligne du compte relue sous verrou.
+    const client: Record<string, unknown> = {
+      $executeRaw: async () => 1,
+      $queryRaw: async () => [{ sessionsFermees: [] }],
       user: {
-        findUnique: async () => ({ id: 'u1', email: 'ancienne@exemple.cd', motDePasse: hache }),
+        findUnique: async () => ({ id: 'u1', tenantId: 't1', email: 'ancienne@exemple.cd', motDePasse: hache }),
         update: async (a: { data: { email: string } }) => (ecrites.push(a), a),
       },
-    });
+    };
+    client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
+    const s = auth(client);
     const r = await s.changerAdresse('u1', 'actuel-123456', BRUTE);
     expect(r.adresse).toBe(NETTE);
     expect(ecrites[0].data.email).toBe(NETTE);

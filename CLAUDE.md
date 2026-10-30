@@ -5521,7 +5521,12 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   longue RECOPIE · sans quoi un jeton prolongé dans la seconde d'une
   révocation lui échappait (audit final F270). Un jeton plus ancien retombe
   sur son `iat`. Elle tronque à la SECONDE · sans quoi le titulaire est
-  éjecté par son propre geste.
+  éjecté par son propre geste. La session qui PRÉSENTE l'acte (mot de passe,
+  adresse, double authentification, autres appareils) est en plus nommée
+  fermée par son empreinte, dans la transaction de l'acte
+  (`revoquerEtFermerLaSession`, ligne saisie-suites) · authentifiée dans la
+  même seconde (connexion au mot de passe provisoire suivie aussitôt de son
+  changement), elle survivait à la révocation.
   **« SE DÉCONNECTER » FERME LA SESSION SUR LE SERVEUR** (relevé de
   sécurité du 2026-10-23, `auth/sessions-fermees.ts`) · la déconnexion
   n'effaçait que le cookie, et une copie prise avant ouvrait encore le

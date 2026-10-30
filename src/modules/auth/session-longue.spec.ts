@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { empreinteSession } from './sessions-fermees';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
@@ -420,7 +421,10 @@ describe('4 · déconnecter mes autres appareils', () => {
     const capture: { data?: Record<string, unknown> } = {};
     const hash = await bcrypt.hash('le-bon', 4);
     const r = await service(capture, hash).deconnecterAutresAppareils('u1', 'le-bon', SESSION, MAINTENANT);
-    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT });
+    // La session qui présentait l'acte est nommée fermée · le jeton neuf
+    // porte un jeton CSRF neuf, et l'ancien, authentifié dans la même seconde
+    // que la révocation, ne lui survit plus (ligne saisie-suites, point 3).
+    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT, sessionsFermees: [{ e: empreinteSession('ancien'), f: S0 + DUREE_MAXIMALE_SESSION_LONGUE_S }] });
     const neuf = lireJeton(r.accessToken);
     expect(neuf).toMatchObject({ longue: true, origine: S0 });
     // Le jeton neuf n'est pas tenu pour antérieur à sa propre révocation, à

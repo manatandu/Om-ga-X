@@ -10,17 +10,23 @@ import { AuthService } from './auth.service';
  * connaissait le mot de passe.
  */
 describe('AuthService · changement de mot de passe', () => {
-  const service = (capture: { data?: Record<string, unknown> }, motDePasseStocke: string) =>
-    new AuthService(
-      {
-        user: {
-          findUnique: async () => ({ id: 'u1', motDePasse: motDePasseStocke }),
-          update: async ({ data }: { data: Record<string, unknown> }) => {
-            capture.data = data;
-            return {};
-          },
+  const service = (capture: { data?: Record<string, unknown> }, motDePasseStocke: string) => {
+    // L'acte passe dans une transaction · verrou du dossier, ligne du compte
+    // relue sous verrou, puis la mise à jour (`revoquerEtFermerLaSession`).
+    const client: Record<string, unknown> = {
+      $executeRaw: async () => 1,
+      $queryRaw: async () => [{ sessionsFermees: [] }],
+      user: {
+        findUnique: async () => ({ id: 'u1', tenantId: 't1', motDePasse: motDePasseStocke }),
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          capture.data = data;
+          return {};
         },
-      } as never,
+      },
+    };
+    client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
+    return new AuthService(
+      client as never,
       // Le changement RESIGNE une session · il révoque toutes les sessions du
       // compte, celle du titulaire comprise.
       { sign: () => 'jeton-neuf' } as never,
@@ -33,6 +39,7 @@ describe('AuthService · changement de mot de passe', () => {
       undefined as never,
       undefined as never,
     );
+  };
 
   it('refuse sans le mot de passe actuel correct, et ne touche à rien', async () => {
     const capture: { data?: Record<string, unknown> } = {};
@@ -72,5 +79,17 @@ describe('AuthService · changement de mot de passe', () => {
     // Une session neuve est rendue, sans quoi le titulaire serait éjecté par
     // son propre geste.
     expect(resultat).toMatchObject({ change: true, accessToken: 'jeton-neuf' });
+  });
+
+  it('ferme la session qui présentait le changement · authentifiée dans la même seconde, la révocation à la seconde ne la tenait pas pour antérieure', async () => {
+    // Reproduit sur vraie base (`scripts/rejouer-dossier-l9.cjs`, un passage
+    // sur cinq) · connexion au mot de passe provisoire puis changement dans la
+    // même seconde, la session provisoire restait valable et « connectée ».
+    const capture: { data?: Record<string, unknown> } = {};
+    const hash = await bcrypt.hash('bon-mot-de-passe', 4);
+    const session = { longue: false, origine: 1_800_000_000, iat: 1_800_000_000, exp: 1_800_028_800, csrf: 'csrf-provisoire' };
+    await service(capture, hash).changerMotDePasse('u1', 'bon-mot-de-passe', 'nouveau-tres-long', session);
+    const { empreinteSession } = await import('./sessions-fermees');
+    expect(capture.data!.sessionsFermees).toEqual([{ e: empreinteSession('csrf-provisoire'), f: 1_800_028_800 }]);
   });
 });
