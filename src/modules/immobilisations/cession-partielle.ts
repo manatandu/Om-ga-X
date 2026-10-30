@@ -87,12 +87,70 @@ export function resteDuLot(lot: LotAFractionner, p: PartSortie) {
   };
 }
 
+/**
+ * LES CAS REFUSÉS DE LA SORTIE PARTIELLE, TRANCHÉS PAR LA LOI (ligne
+ * restes-immos-budgets, point 4, 2026-10-30). Chacun a été relu dans son texte ·
+ * servi quand la part des unités se déduit du texte et des règles déjà codées
+ * pour la sortie entière du même cas ; gardé sinon, le motif et l'issue dits.
+ *
+ *  · COMPOSANT EN LOT · SERVI. AUDCIF Titre VIII ch. 4 § 3.1.4 · il est
+ *    « possible, et même souhaitable, de regrouper les éléments ainsi
+ *    décomposés au sein d'une même immobilisation corporelle, par échéance de
+ *    renouvellement » · un lot de moteurs identiques est un composant, et la
+ *    sortie entière d'un composant est déjà servie. Les unités sortent avec la
+ *    part de 1/n de chacun, et leur fiche reste un composant du même principal
+ *    (§ 1, « sous-compte de l'immobilisation principale »).
+ *  · PRINCIPAL QUI PORTE DES COMPOSANTS EN SERVICE · GARDÉ. Ch. 4 § 1 · chaque
+ *    composant a « un plan d'amortissement propre » · rien ne dit quels
+ *    composants suivent les unités sorties de la structure, et la sortie
+ *    entière refuse déjà un principal dont les composants sont en service
+ *    (audit final F127).
+ *  · UNITÉS D'ŒUVRE · GARDÉ. AUDCIF art. 45 · « AD = base amortissable ×
+ *    (nombre d'unités d'œuvre consommées) / (total d'unités d'œuvre
+ *    prévues) » · le total prévu et les relevés portent sur le lot ; aucun
+ *    relevé ne dit ce que les unités sorties ont consommé, et le prorata des
+ *    unités n'est pas celui des unités d'œuvre.
+ *  · DÉGRESSIF FISCAL ET DÉROGATOIRE · GARDÉ. Loi n° 23/053, art. 31 à 35, et
+ *    fiche du compte 68 (le complément fiscal « au débit du compte 85, par le
+ *    crédit du compte 151 ») · le plan fiscal et le cumul du 151 se tiennent
+ *    par bien, exercice par exercice ; la sortie entière exige d'abord la
+ *    reprise du solde (D 151 / C 861), que le module ne passe qu'en entier.
+ *  · FONDS OU SUBVENTION RATTACHÉE · GARDÉ. Ch. 17 · « la fraction de
+ *    subvention non encore rapportée aux résultats est […] reprise par le
+ *    compte 799 de l'exercice de cession » · la reprise est prospective et
+ *    tenue par rattachement (`SubventionImmobilisation`), les fonds du SYCEBNL
+ *    (167, 171, 172) par leur propre rythme · aucune répartition du
+ *    rattachement entre le lot et les unités n'est codée.
+ *  · RÉÉVALUATION · GARDÉ. Ch. 28 § 6 · « le solde de l'écart de réévaluation
+ *    d'un bien cédé […] doit faire l'objet d'un transfert à un poste de
+ *    réserve non distribuable » · les lignes de réévaluation (106, 154,
+ *    supplément d'annuité, reprise de la provision spéciale) sont tenues par
+ *    bien et ne se scindent pas.
+ *  · LOCATION-ACQUISITION, PRIX ALÉATOIRE, DÉMANTÈLEMENT · GARDÉ. Le contrat
+ *    (ch. 8), la dette de rente ou de redevances et la provision pour
+ *    démantèlement (ch. 6) portent sur le bien entier · aucun texte ne les
+ *    fractionne entre des unités.
+ *  · DOTATION DE L'EXERCICE DÉJÀ PASSÉE · GARDÉ. Fiche du compte 81 · le
+ *    complément ne court que « pour la période écoulée entre l'ouverture de
+ *    l'exercice et la date de cession » · une annuité entière déjà passée
+ *    amortirait les unités au-delà de leur sortie. L'issue existe et donne le
+ *    montant exact · annuler la dotation (art. 20, al. 2), sortir, repasser.
+ *  · EXERCICE ANTÉRIEUR OUVERT NON DOTÉ · GARDÉ. Même fiche · « sous
+ *    déduction des amortissements pratiqués » · la part figée sans l'annuité
+ *    de cet exercice serait fausse ; l'issue est de la passer d'abord.
+ *  · SECONDE REPRISE DE DÉPRÉCIATION DANS L'EXERCICE · SERVI. Fiche du compte
+ *    81, exclusions (« les dépréciations afférentes aux éléments d'actif
+ *    immobilisé cédés → 29 ») et ch. 12 · chaque sortie reprend la part de
+ *    ses unités dans la dépréciation que le lot porte encore · deux sorties du
+ *    même exercice en reprennent chacune la leur, la clé de la base n'est plus
+ *    unique pour ce seul mouvement (migration `20270243000000`).
+ */
+
 /** Ce que la fiche du lot porte, lu par le service, pour juger le geste. */
 export interface FaitsDuLot {
   enService: boolean;
   quantite: number;
   quantiteSortie: number;
-  estComposant: boolean;
   composantsEnService: number;
   unitesOeuvre: boolean;
   degressifFiscal: boolean;
@@ -106,10 +164,6 @@ export interface FaitsDuLot {
   dotationDejaPassee: boolean;
   /** La fin (AAAA-MM-JJ) d'un exercice antérieur encore ouvert qui n'a pas reçu la dotation du lot, ou null. */
   exerciceAnterieurNonDote: string | null;
-  /** Une reprise de dépréciation de cession partielle est déjà passée sur le lot dans cet exercice. */
-  repriseDejaPasseeCetExercice: boolean;
-  /** Le lot porte une dépréciation nette non nulle. */
-  deprecie: boolean;
 }
 
 /** Pourquoi une partie des unités ne sort pas, ou null · le premier motif, avec son issue. */
@@ -122,32 +176,52 @@ export function motifRefusSortiePartielle(f: FaitsDuLot): string | null {
   if (f.quantiteSortie >= f.quantite) {
     return `La fiche porte ${f.quantite} unités · les sortir toutes, c’est sortir le bien en entier, par « Sortir ».`;
   }
-  if (f.estComposant || f.composantsEnService > 0) {
-    return 'Un composant, ou un bien qui porte des composants, ne se fractionne pas · chaque composant a son propre plan (AUDCIF Titre VIII ch. 4) et sort par sa propre fiche.';
+  if (f.composantsEnService > 0) {
+    return (
+      'Le lot porte des composants en service · chacun a son propre plan d’amortissement (AUDCIF Titre VIII ch. 4 § 1), et rien ne dit ' +
+      'lesquels suivent les unités qui sortent. Sortez d’abord, de chaque composant, la part qui suit ces unités, puis passez la sortie à la main.'
+    );
   }
   if (f.unitesOeuvre) {
-    return 'Un bien amorti aux unités d’œuvre ne se fractionne pas · son total d’unités prévues et ses relevés portent sur le lot entier. Sortez-le en entier, ou passez l’opération à la main.';
+    return (
+      'Un bien amorti aux unités d’œuvre ne se fractionne pas · l’amortissement se lit sur les unités d’œuvre consommées et prévues du lot ' +
+      '(AUDCIF art. 45), et aucun relevé ne dit ce que les unités sorties ont consommé. Sortez-le en entier, ou passez l’opération à la main.'
+    );
   }
   if (f.degressifFiscal || f.derogatoires > 0) {
-    return 'Le lot est au dégressif fiscal ou porte un amortissement dérogatoire (151) · sa part ne se répartit pas d’office. Passez l’opération à la main.';
+    return (
+      'Le lot est au dégressif fiscal ou porte un amortissement dérogatoire (151) · le plan fiscal et le cumul du 151 se tiennent par bien ' +
+      '(loi n° 23/053, art. 31 à 35 ; fiche du compte 68), et le solde ne se reprend qu’en entier (D 151 / C 861). Passez l’opération à la main.'
+    );
   }
   if (f.financeeParUnFonds) {
-    return 'Le lot est financé par un fonds ou porte une subvention rattachée · la reprise de la part sortie ne se répartit pas d’office. Passez l’opération à la main.';
+    return (
+      'Le lot est financé par un fonds ou porte une subvention rattachée · la fraction non rapportée aux résultats de la part sortie se ' +
+      'reprend au 799 de l’exercice de cession (AUDCIF Titre VIII ch. 17), et le rattachement ne se répartit pas d’office entre le lot et ' +
+      'les unités. Passez l’opération à la main.'
+    );
   }
   if (f.reevaluee) {
-    return 'Le lot a été réévalué · l’écart de réévaluation de la part sortie (AUDCIF Titre VIII ch. 28 § 6) ne se répartit pas d’office. Passez l’opération à la main.';
+    return (
+      'Le lot a été réévalué · le solde de l’écart de la part sortie se transfère à une réserve non distribuable (AUDCIF Titre VIII ch. 28 ' +
+      '§ 6), et les lignes de réévaluation, tenues par bien, ne se scindent pas d’office. Passez l’opération à la main.'
+    );
   }
   if (f.locationAcquisition || f.acquisitionAleatoire || f.demantelement) {
-    return 'Le lot porte un contrat de location-acquisition, une dette à prix aléatoire ou un démantèlement · ces engagements portent sur le bien entier et ne se fractionnent pas.';
+    return (
+      'Le lot porte un contrat de location-acquisition, une dette à prix aléatoire ou une provision pour démantèlement (AUDCIF Titre VIII ' +
+      'ch. 6 et 8) · ces engagements portent sur le bien entier, et aucun texte ne les fractionne entre des unités.'
+    );
   }
   if (f.dotationDejaPassee) {
-    return 'La dotation de l’exercice de la sortie, ou d’un exercice postérieur, est déjà passée sur le lot · les unités sortent avant elle, sinon leur annuité serait comptée deux fois. Annulez la dotation (onglet Traitements de la fiche), sortez les unités, puis repassez-la.';
+    return (
+      'La dotation de l’exercice de la sortie, ou d’un exercice postérieur, est déjà passée sur le lot · le complément des unités ne court ' +
+      'que de l’ouverture de l’exercice à leur sortie (fiche du compte 81), et l’annuité entière les amortirait au-delà. Annulez la dotation ' +
+      '(onglet Traitements de la fiche), sortez les unités, puis repassez-la.'
+    );
   }
   if (f.exerciceAnterieurNonDote) {
-    return `L’exercice clos le ${f.exerciceAnterieurNonDote} n’a pas reçu la dotation du lot · passez-la d’abord, sinon les unités sortiraient sans l’amortissement de cet exercice.`;
-  }
-  if (f.deprecie && f.repriseDejaPasseeCetExercice) {
-    return 'Une sortie partielle de ce lot a déjà repris sa part de dépréciation dans cet exercice · une seconde se passe à l’exercice suivant, ou sortez le reste du lot en entier.';
+    return `L’exercice clos le ${f.exerciceAnterieurNonDote} n’a pas reçu la dotation du lot · passez-la d’abord, sinon les unités sortiraient sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`;
   }
   return null;
 }

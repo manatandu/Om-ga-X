@@ -2248,6 +2248,7 @@ model Ecriture {
   immobilisationMiseEnService           Immobilisation?             @relation("ImmoEcritureMiseEnService")
   immobilisationSoldeDette              Immobilisation?             @relation("ImmoEcritureSoldeDette")
   immobilisationSortieEcartReevaluation Immobilisation?             @relation("ImmoEcritureSortieEcartReevaluation")
+  immobilisationComplementSortie        Immobilisation?             @relation("ImmoEcritureComplementSortie")
   dotationAmortissement                 DotationAmortissement?
   depreciationImmobilisation            DepreciationImmobilisation? @relation("DepreciationEcriture")
 
@@ -5224,6 +5225,28 @@ model Immobilisation {
   ecritureSortieEcartReevaluationId String?   @unique
   ecritureSortieEcartReevaluation   Ecriture? @relation("ImmoEcritureSortieEcartReevaluation", fields: [ecritureSortieEcartReevaluationId], references: [id], onDelete: Restrict)
 
+  /// LIGNE RESTES-IMMOS-BUDGETS, POINT 3 · la DOTATION COMPLÉMENTAIRE passée
+  /// par la sortie (fiche du compte 81, « amortissement complémentaire pour la
+  /// période écoulée entre l'ouverture de l'exercice et la date de cession »)
+  /// · reconnue par sa LIAISON, jamais par son libellé, pour que l'annulation
+  /// de la sortie la retire et elle seule. RETENUE · retirée seule, le bien
+  /// sorti garderait un cumul que le journal ne porte plus. Nulle sur une
+  /// sortie d'avant la ligne (l'annulation le dit) ou sans complément.
+  ecritureComplementSortieId String?   @unique
+  ecritureComplementSortie   Ecriture? @relation("ImmoEcritureComplementSortie", fields: [ecritureComplementSortieId], references: [id], onDelete: Restrict)
+  /// Point 3 · la part de CHAQUE ligne de réévaluation soldée par la sortie
+  /// (`{ ligneId, traitement, montant }`, ligne A15 bis) · sans elle,
+  /// l'annulation ne rendrait pas aux lignes ce que la sortie leur a pris.
+  passesEcartSortie          Json?
+  /// Point 3 · sur la fiche des UNITÉS sorties d'un lot, la reprise de leur
+  /// part de dépréciation passée sur le LOT (`CESSION_PARTIELLE`) · l'annulation
+  /// de la sortie la retire avec elle. SANS CLÉ ÉTRANGÈRE, et c'est voulu · la
+  /// reprise vise déjà le lot par une clé obligatoire, et un cycle de clés dont
+  /// l'une est obligatoire ne se purge plus (`purger-dossier.ts`). La reprise
+  /// ne s'annule pas seule (`annulation-traitement.ts`, `cessionPartielle`) ;
+  /// introuvable, l'annulation de la sortie le dit et s'arrête.
+  repriseDepreciationLotId   String?   @unique
+
   // LOT 15 · RÉSERVE DE PROPRIÉTÉ, une INFORMATION de fiche. Le bien entre à
   // l'actif comme si l'entité en était propriétaire (AUDCIF Titre VIII ch. 9,
   // « l'achat-vente est enregistré comme une vente ordinaire et en produit
@@ -5678,7 +5701,11 @@ model DepreciationImmobilisation {
   /// en service ajoute au plus une reprise et une dotation à côté de lui.
   nature NatureMouvementDepreciation @default(CLOTURE)
 
-  @@unique([immobilisationId, exerciceId, nature])
+  /// Point 4 de la ligne restes-immos-budgets · la clé reste UNIQUE pour
+  /// toute nature sauf la reprise d'une sortie partielle (deux sorties du même
+  /// exercice reprennent chacune leur part) · index partiel écrit dans la
+  /// migration `20270243000000`, que le schéma ne sait pas dire.
+  @@index([immobilisationId, exerciceId, nature])
   @@index([exerciceId])
   @@map("depreciations_immobilisation")
 }
@@ -6448,14 +6475,21 @@ model FicheInventaire {
   immobilisationId String?
   immobilisation   Immobilisation? @relation(fields: [immobilisationId], references: [id])
 
-  designation String
-  emplacement String?
-  uniteMesure String?
+  designation      String
+  emplacement      String?
+  uniteMesure      String?
   /// LIGNE IMMOS, FONCTION N° 71 · le numéro de série du bien, recopié du
   /// registre quand la fiche est engendrée (et complété au geste suivant sur
   /// une fiche plus ancienne qui n'en avait pas) · le compteur vérifie l'objet
   /// qu'il a devant lui. Une saisie sur la fiche prime, comme l'emplacement.
-  numeroSerie String? @db.VarChar(100)
+  numeroSerie      String? @db.VarChar(100)
+  /// LIGNE RESTES-IMMOS-BUDGETS, POINT 2 · le nombre d'unités que le registre
+  /// porte pour le bien (`Immobilisation.quantite`, un lot de chaises), recopié
+  /// quand la fiche est engendrée, comme le numéro de série · la quantité
+  /// comptée s'y confronte en UNITÉS (`ecart-en-unites.ts`). Null pour une
+  /// fiche saisie à la main ou un bien d'avant la ligne non encore recopié.
+  /// Aucune unité trouvée en plus n'est jamais créée (AUDCIF art. 43).
+  quantiteAttendue Int?
 
   /// Étape 2. Null tant que la fiche n'a pas été servie · une fiche imprimée
   /// à blanc pour aller compter n'a pas de quantité, et zéro n'est pas la même
@@ -12090,6 +12124,11 @@ enum NatureTraitementImmobilisation {
   REEVALUATION
   REPRISE_SUBVENTION
   REPRISE_PROVISION_REEVALUATION
+  /// Ligne restes-immos-budgets, point 3 · une écriture de la SORTIE du bien
+  /// (dotation complémentaire, sortie, produit de cession, écart de
+  /// réévaluation, reprise de la part de dépréciation du lot), une ligne par
+  /// écriture, l'instantané de la fiche dans `acte`.
+  SORTIE
 }
 
 /// L'ACTE D'ANNULATION, GARDÉ ENTIER. Le traitement annulé est RETIRÉ de sa

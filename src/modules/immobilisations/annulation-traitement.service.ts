@@ -17,6 +17,8 @@ import {
   ActeDuBien,
   actesQuiEnDependent,
   etatDuPlanApres,
+  ISSUE_ANNULER_SORTIE,
+  ISSUE_ANNULER_SORTIE_UNITES,
   ISSUE_TRANSFERT_GROUPE,
   motifRefusAnnulation,
   motifRefusMotifAnnulation,
@@ -582,7 +584,11 @@ export class AnnulationTraitementService {
    * son enregistrement. Le refus les relit pour dire lequel dépend de la
    * cible (`actesQuiEnDependent`).
    */
-  private async actesDesBiens(db: Db, tenantId: string, ids: string[]): Promise<ActeDuBien[]> {
+  /**
+   * Les actes des biens, lus aussi par l'annulation d'une sortie (ligne
+   * restes-immos-budgets, point 3) · une seule lecture de ce qui a suivi.
+   */
+  async actesDesBiens(db: Db, tenantId: string, ids: string[]): Promise<ActeDuBien[]> {
     if (ids.length === 0) return [];
     const ex = { select: { dateFin: true } };
     const [biens, dotations, depreciations, revisions, derogatoires, lignesReev, reprises, reprisesProvision, reductions, reclassements, parties, exercices, fractions] =
@@ -702,6 +708,8 @@ export class AnnulationTraitementService {
         creeLe: f.createdAt,
         libelle: `la sortie d'une partie des unités du lot${f.dateSortie ? ` le ${jour(f.dateSortie)}` : ''}`,
         bien: f.fractionDeId ? nom.get(f.fractionDeId) : undefined,
+        // Point 3 de la ligne restes-immos-budgets · elle s'annule, depuis la fiche des unités.
+        issue: ISSUE_ANNULER_SORTIE_UNITES,
       })),
       ...biens
         .filter((b) => b.statut !== StatutImmobilisation.EN_SERVICE)
@@ -714,7 +722,7 @@ export class AnnulationTraitementService {
             ? `le transfert du bien dans le groupe${b.dateSortie ? ` le ${jour(b.dateSortie)}` : ''}`
             : `la sortie du bien${b.dateSortie ? ` le ${jour(b.dateSortie)}` : ''}`,
           bien: b.designation,
-          ...(transferes.has(b.id) ? { issue: ISSUE_TRANSFERT_GROUPE } : {}),
+          ...(transferes.has(b.id) ? { issue: ISSUE_TRANSFERT_GROUPE } : { issue: ISSUE_ANNULER_SORTIE }),
         })),
     ];
     return actes;

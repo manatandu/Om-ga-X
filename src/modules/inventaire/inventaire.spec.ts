@@ -62,7 +62,7 @@ function service(etat: Etat = {}) {
       findFirst: jest.fn().mockImplementation((a?: { include?: { pvComptageCaisse?: unknown; exercice?: unknown } }) =>
         Promise.resolve(
           etat.campagne && a?.include?.pvComptageCaisse
-            ? { ...etat.campagne, exercice: { dateFin: EXERCICE.dateFin }, pvComptageCaisse: [] }
+            ? { ...etat.campagne, exercice: { dateFin: EXERCICE.dateFin }, pvComptageCaisse: [], fiches: etat.fiches ?? [] }
             : (etat.campagne ?? null),
         ),
       ),

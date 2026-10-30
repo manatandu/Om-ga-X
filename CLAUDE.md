@@ -310,6 +310,13 @@ vingt-sept « Plus tard » GARDÉS au tri du même jour (trente-quatre écartés
 `docs/plan-gel-leve-2026-10-29.md`), le visa d'un plan d'étalement et les
 départements et directions (organigramme libre du dossier, aucun niveau
 imposé) ; le bon de commande au SYSCOHADA ÉCARTÉ.
+Puis, le 2026-10-30, les RESTES DES IMMOBILISATIONS ET DES BUDGETS, gel levé
+expressément par Manasse pour eux seuls (ligne `restes-immos-budgets`) · le
+report des budgets par compte sur l'exercice suivant, jamais un budget déjà
+posé écrasé ; la quantité du bien sur la fiche de comptage, l'écart dit en
+unités, jamais un excédent créé (AUDCIF art. 43) ; l'annulation d'une sortie
+d'immobilisation, partielle comprise (art. 20, al. 2 et 3 ; art. 22, 2° et
+4°) ; et les cas refusés de la sortie partielle, chacun tranché par son texte.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -3866,6 +3873,42 @@ s'annule avant la réévaluation (relecture B1) ; la révision posée par une
 réévaluation méthode 2 se reconnaît à sa LIAISON (`reevaluationBilanId`,
 RESTRICT), jamais à sa date ; dotation et annulation prennent le verrou de la
 fiche (`SELECT … FOR UPDATE`, ordre fixe).
+
+**Annuler une sortie, entière ou partielle (ligne restes-immos-budgets, point
+3).** AUDCIF art. 20, al. 2 et 3 ; art. 22, 2° et 4° (`immobilisations/annulation-sortie.ts`,
+`AnnulationSortieService`, `POST /immobilisations/:id/annuler-sortie`,
+`@ReserveAuComptable`, onglet Traitements de la fiche) · motif exigé, verrou des
+fiches, au brouillard les écritures de la sortie retirées, validées inscrites en
+négatif, une ligne d'historique par écriture (`AnnulationTraitementImmobilisation`,
+nature `SORTIE`, origine et négatif RETENUS) ; jamais dans un exercice clôturé.
+La sortie garde ce que son annulation relit · la dotation complémentaire par sa
+LIAISON (`ecritureComplementSortieId`, retenue), la part de chaque ligne de
+réévaluation (`passesEcartSortie`, TOUJOURS une liste, vide sans écart · nulle,
+c'est une sortie d'avant la ligne), et la reprise de la part de dépréciation sur
+le lot (`repriseDepreciationLotId`, sans clé étrangère · un cycle à clé
+obligatoire ne se purge pas). La fiche revient en service telle qu'avant ; une
+sortie partielle rend ses unités au lot au centime (quantité, brut, valeur
+résiduelle, amortissements détachés), retire la reprise sur le lot, et la fiche
+des unités disparaît. Refus nommés · transfert dans le groupe, échange,
+renouvellement, ligne lettrée ou pointée, écriture tenue par un autre module,
+acte enregistré après la sortie sur le bien ou sur le lot (« annulez-le
+d'abord »), et pour une sortie d'avant la ligne un complément, un écart ou une
+reprise qui ne se rattachent pas d'office (rien n'est deviné).
+
+**Sortie partielle · les cas refusés tranchés par la loi (ligne
+restes-immos-budgets, point 4).** `cession-partielle.ts`, en tête · SERVIS ·
+le COMPOSANT EN LOT (AUDCIF Titre VIII ch. 4 § 3.1.4, « regrouper les éléments
+ainsi décomposés au sein d'une même immobilisation corporelle », les unités
+restant un composant du même principal) et la SECONDE REPRISE DE DÉPRÉCIATION
+du même exercice (fiche du compte 81, exclusions · chaque sortie reprend la
+part de ses unités, clé unique partielle hors `CESSION_PARTIELLE`, migration
+`20270243000000`). GARDÉS, motif et texte dits · principal qui porte des
+composants en service (ch. 4 § 1), unités d'œuvre (art. 45), dégressif et
+dérogatoire (loi n° 23/053, art. 31 à 35 ; fiche du compte 68), fonds ou
+subvention rattachée (ch. 17), réévaluation (ch. 28 § 6), location-acquisition,
+prix aléatoire et démantèlement (bien entier), dotation de l'exercice déjà
+passée (fiche du compte 81, le complément ne court que jusqu'à la sortie ·
+annuler, sortir, repasser), exercice antérieur ouvert non doté.
 
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,

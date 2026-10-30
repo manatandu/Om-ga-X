@@ -869,6 +869,23 @@ function LigneFiche({ fiche, saisissable, agir }: { fiche: FicheInventaire; sais
           ) : (
             Number(fiche.quantiteComptee).toLocaleString('fr-FR')
           )}
+          {/* Point 2 de la ligne restes-immos-budgets · la quantité du registre et l'écart en unités, servis. */}
+          {fiche.ecartUnites && (
+            <span
+              title={fiche.ecartUnites.mention}
+              className={`block text-[11px] ${
+                fiche.ecartUnites.sens === 'MANQUANT' || fiche.ecartUnites.sens === 'EXCEDENT' ? 'text-warning' : 'text-text-dim'
+              }`}
+            >
+              Registre {fiche.ecartUnites.attendue.toLocaleString('fr-FR')}
+              {fiche.ecartUnites.ecart !== null && fiche.ecartUnites.ecart !== 0
+                ? ` · ${fiche.ecartUnites.ecart > 0 ? 'excédent' : 'manquant'} ${Math.abs(fiche.ecartUnites.ecart).toLocaleString('fr-FR')}`
+                : ''}
+              {fiche.ecartUnites.quantiteRegistre !== null
+                ? ` · registre passé à ${fiche.ecartUnites.quantiteRegistre.toLocaleString('fr-FR')} depuis`
+                : ''}
+            </span>
+          )}
         </td>
         <td className="px-2.5 py-1 text-right tabular-nums">
           {fiche.valeurInventaire === null ? (

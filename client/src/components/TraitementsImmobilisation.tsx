@@ -29,6 +29,16 @@ interface AnnulationLue {
   annuleeLe: string;
 }
 
+/** L'aperçu de l'annulation de la sortie (`GET /immobilisations/:id/annulation-sortie`, point 3 de la ligne restes-immos-budgets). */
+interface ApercuSortie {
+  sortie: boolean;
+  annulable: boolean;
+  motifRefus: string | null;
+  partielle: boolean;
+  lot: { id: string; designation: string } | null;
+  ecritures: { role: string; libelle: string; numeroPiece: number | null; statut: string; montant: number; traitement: string }[];
+}
+
 const LIBELLE_TRAITEMENT: Record<string, string> = {
   SUPPRIMEE: 'écriture retirée du brouillard',
   INSCRITE_EN_NEGATIF: 'écriture inscrite en négatif',
@@ -46,10 +56,13 @@ const date = (d: string) => new Date(d).toLocaleDateString('fr-FR');
 export function TraitementsImmobilisation({
   bien,
   onFait,
+  onSupprime,
   onEtatTravail,
 }: {
   bien: { id: string; designation: string };
   onFait: (message: string) => void;
+  /** La fiche des unités d'un lot disparaît avec l'annulation de leur sortie · la fiche se ferme. */
+  onSupprime?: (message: string) => void;
   /** L'annulation en cours et le motif tapé · la fenêtre de la fiche tient sa fermeture sur eux. */
   onEtatTravail?: (etat: { occupe: boolean; nonEnregistre: boolean }) => void;
 }) {
@@ -60,10 +73,13 @@ export function TraitementsImmobilisation({
   const [historique, setHistorique] = useState<{ annulations: AnnulationLue[]; total: number; tronque: boolean } | null>(null);
   const [erreurHistorique, setErreurHistorique] = useState<string | null>(null);
   const [choisi, setChoisi] = useState<TraitementLu | null>(null);
+  const [sortie, setSortie] = useState<ApercuSortie | null>(null);
+  const [erreurSortie, setErreurSortie] = useState<string | null>(null);
+  const [annulerLaSortie, setAnnulerLaSortie] = useState(false);
   const [motif, setMotif] = useState('');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const motifTape = !!choisi && motif.trim().length > 0;
+  const motifTape = (!!choisi || annulerLaSortie) && motif.trim().length > 0;
   // AVANT TOUT ÉVÉNEMENT SUIVANT (tests navigateur, WebKit, 2026-10-21) ·
   // signalé par un useEffect, l'état « non enregistré » arrivait à la fiche un
   // tour plus tard, et un Échap tapé aussitôt après la saisie la fermait sans
@@ -85,15 +101,21 @@ export function TraitementsImmobilisation({
       .get<{ annulations: AnnulationLue[]; total: number; tronque: boolean }>(`/immobilisations/annulations-traitements?immobilisationId=${bien.id}`)
       .then((r) => mien === jeton.current && setHistorique(r))
       .catch((e) => mien === jeton.current && setErreurHistorique(e instanceof ApiError ? e.message : 'Historique illisible'));
+    setErreurSortie(null);
+    api
+      .get<ApercuSortie>(`/immobilisations/${bien.id}/annulation-sortie`)
+      .then((r) => mien === jeton.current && setSortie(r))
+      .catch((e) => mien === jeton.current && setErreurSortie(e instanceof ApiError ? e.message : 'Sortie illisible'));
   }, [bien.id]);
 
   useEffect(() => charger(), [charger]);
   useEffect(() => {
-    if (choisi) champMotif.current?.focus({ preventScroll: true });
-  }, [choisi]);
+    if (choisi || annulerLaSortie) champMotif.current?.focus({ preventScroll: true });
+  }, [choisi, annulerLaSortie]);
 
   const annuler = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (annulerLaSortie) return annulerSortie();
     if (!choisi) return;
     setEnvoi(true);
     setErreur(null);
@@ -110,6 +132,35 @@ export function TraitementsImmobilisation({
       );
       setChoisi(null);
       setMotif('');
+      charger();
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'L’annulation a échoué');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  // La sortie annulée · une fiche d'unités sorties d'un lot disparaît, ses unités rendues au lot.
+  const annulerSortie = async () => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      const r = await api.post<{ partielle: boolean; ecritures: { libelle: string; traitement: string; negatif: { numeroPiece: number | null } | null }[] }>(
+        `/immobilisations/${bien.id}/annuler-sortie`,
+        { motif: motif.trim() },
+      );
+      const negatifs = r.ecritures.filter((x) => x.negatif).map((x) => `n° ${x.negatif?.numeroPiece ?? '·'}`);
+      const message =
+        `Sortie de « ${bien.designation} » annulée${r.partielle ? ' · les unités sont rendues au lot' : ''}` +
+        (negatifs.length ? ` · écritures inscrites en négatif (pièces ${negatifs.join(', ')}).` : ' · écritures retirées du brouillard.');
+      setAnnulerLaSortie(false);
+      setMotif('');
+      // La fiche des unités n'existe plus · relue, elle dirait « introuvable ».
+      if (r.partielle) {
+        (onSupprime ?? onFait)(message);
+        return;
+      }
+      onFait(message);
       charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'L’annulation a échoué');
@@ -163,6 +214,7 @@ export function TraitementsImmobilisation({
                         title={t.motifRefus ?? 'Annuler ce traitement'}
                         onClick={() => {
                           setChoisi(t);
+                          setAnnulerLaSortie(false);
                           setErreur(null);
                         }}
                         className="text-[11px] text-sel hover:underline disabled:opacity-40 disabled:no-underline"
@@ -178,9 +230,48 @@ export function TraitementsImmobilisation({
         </div>
       )}
 
-      {choisi && peutValider && (
+      {erreurSortie && <div className="text-danger mt-3">{erreurSortie}</div>}
+      {sortie?.sortie && (
+        <div className="mt-3 border border-border p-2.5">
+          <div className="font-semibold flex items-center gap-1.5 mb-1.5">
+            Sortie du bien{sortie.partielle && sortie.lot ? ` · unités du lot « ${sortie.lot.designation} »` : ''}
+            <Aide
+              titre="Annuler la sortie"
+              texte="La sortie s'annule avec un motif, dans l'exercice de la sortie seulement. Au brouillard ses écritures sont retirées ; validées, elles sont inscrites en négatif. La fiche revient en service telle qu'avant la sortie ; des unités sorties d'un lot reviennent au lot, et leur fiche disparaît. Ce qui a lu la sortie depuis s'annule d'abord."
+              source="AUDCIF, art. 20 et 22"
+            />
+          </div>
+          {sortie.ecritures.map((x) => (
+            <div key={x.role} className="flex gap-3">
+              <span className="flex-1">{x.libelle}</span>
+              <span>n° {x.numeroPiece ?? '·'} · {x.statut === 'BROUILLARD' ? 'brouillard' : 'validée'}</span>
+              <span className="w-[110px] text-right">{montant(x.montant)}</span>
+            </div>
+          ))}
+          {sortie.motifRefus && <div className="text-[11px] text-text-dim mt-1">{sortie.motifRefus}</div>}
+          {peutValider && (
+            <div className="mt-1.5 text-right">
+              <button
+                type="button"
+                disabled={!sortie.annulable || envoi}
+                title={sortie.motifRefus ?? 'Annuler la sortie'}
+                onClick={() => {
+                  setChoisi(null);
+                  setAnnulerLaSortie(true);
+                  setErreur(null);
+                }}
+                className="text-[11px] text-sel hover:underline disabled:opacity-40 disabled:no-underline"
+              >
+                Annuler la sortie
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(choisi || annulerLaSortie) && peutValider && (
         <form onSubmit={annuler} className="mt-3 border border-border bg-surface-alt p-3">
-          <div className="font-semibold mb-1.5">Annuler · {choisi.libelle}</div>
+          <div className="font-semibold mb-1.5">Annuler · {annulerLaSortie ? `la sortie de ${bien.designation}` : choisi?.libelle}</div>
           <label className="block text-[11.5px] font-semibold text-text-dim">
             Motif
             <textarea
@@ -196,7 +287,15 @@ export function TraitementsImmobilisation({
           </label>
           {erreur && <div className="mt-2 text-danger">{erreur}</div>}
           <div className="mt-2 flex gap-2 justify-end">
-            <button type="button" onClick={() => setChoisi(null)} disabled={envoi} className="px-3 py-[3px] border border-border-dark rounded-[3px]">
+            <button
+              type="button"
+              onClick={() => {
+                setChoisi(null);
+                setAnnulerLaSortie(false);
+              }}
+              disabled={envoi}
+              className="px-3 py-[3px] border border-border-dark rounded-[3px]"
+            >
               Fermer
             </button>
             <button type="submit" disabled={envoi || motif.trim().length < 3} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">

@@ -145,6 +145,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
   '/analytique/comptes/:compteId/budget':
     "budget d'un compte déjà choisi sur un exercice (ligne analytique, fonction n° 51), l'annuel et ses mois, jamais une liste",
+  '/analytique/budgets-comptes/report':
+    "aperçu du report des budgets des comptes sur l'exercice suivant (ligne restes-immos-budgets, point 1), ce qui serait repris et ce qui ne le serait pas, jamais une liste de choix",
   '/analytique/etats/budget-comptes':
     'état du budget des comptes (fonction n° 51), les comptes dotés ou mouvementés des classes 6 et 7 lus pour être comparés, jamais une liste de choix',
   '/interrogation-compte/:compteId':

@@ -1584,8 +1584,8 @@ export class ImmobilisationService {
     dotationId: string | null,
   ) {
     try {
-      if (dotationId) await this.prisma.dotationAmortissement.delete({ where: { id: dotationId } });
-      for (const ecritureId of [...ecritures].reverse()) await this.annulerEcritureOrpheline(ecritureId);
+      // La fiche lâche ses écritures AVANT qu'elles partent · ses liaisons sont
+      // en RESTRICT, une écriture encore nommée par la fiche ne se retire pas.
       await this.prisma.immobilisation.updateMany({
         where: { id, tenantId },
         data: {
@@ -1598,8 +1598,12 @@ export class ImmobilisationService {
           ecritureSortieId: null,
           ecritureProduitCessionId: null,
           ecritureSortieEcartReevaluationId: null,
+          ecritureComplementSortieId: null,
+          passesEcartSortie: Prisma.DbNull,
         },
       });
+      if (dotationId) await this.prisma.dotationAmortissement.delete({ where: { id: dotationId } });
+      for (const ecritureId of [...ecritures].reverse()) await this.annulerEcritureOrpheline(ecritureId);
     } catch {
       throw new InternalServerErrorException(
         `La sortie de « ${designation} » a échoué et n'a pas pu être entièrement défaite · vérifiez au journal ` +
@@ -5689,6 +5693,9 @@ export class ImmobilisationService {
 
     const ecrituresPosees: string[] = [];
     let dotationPoseeId: string | null = null;
+    // Point 3 de la ligne restes-immos-budgets · le complément RETENU par sa
+    // liaison, pour que l'annulation de la sortie le retire et lui seul.
+    let ecritureComplementId: string | null = null;
     try {
       if (montantComplement > EPSILON) {
         // Ligne immos, n° 70 · le complément se ventile comme la dotation.
@@ -5710,6 +5717,7 @@ export class ImmobilisationService {
           ],
         });
         ecrituresPosees.push(ecritureComplement.id);
+        ecritureComplementId = ecritureComplement.id;
         // Conflit théorique seulement ici : le verrou ci-dessus garantit déjà
         // qu'aucune autre sortie ne peut être en cours sur ce bien, mais
         // passerDotation() reste appelable en parallèle sur le même exercice.
@@ -5798,6 +5806,12 @@ export class ImmobilisationService {
             ecritureSortieId: ecritureSortie.id,
             ecritureProduitCessionId: ecritureProduitId,
             ecritureSortieEcartReevaluationId: ecritureEcartId,
+            // Point 3 · ce que l'annulation de la sortie devra rendre ou retirer.
+            // La liste des parts est TOUJOURS posée, vide sans écart · c'est
+            // elle qui distingue une sortie de la ligne d'une sortie d'avant
+            // (`annulation-sortie.ts`, nulle sur celle-ci).
+            ecritureComplementSortieId: ecritureComplementId,
+            passesEcartSortie: sortEcart.passes.map((x) => ({ ligneId: x.ligneId, traitement: x.traitement, montant: x.montant })) as Prisma.InputJsonValue,
             // Lot 15 · la reprise en stock se garde avec sa source, sur la fiche.
             ...(compteStockRecupere && valeurRecuperee > 0
               ? { valeurMaterielRecupere: valeurRecuperee, sourceMaterielRecupere: dto.sourceMaterielRecupere!.trim().slice(0, 1000) }
@@ -5837,7 +5851,7 @@ export class ImmobilisationService {
     if (!exercice) throw new BadRequestException('Exercice introuvable pour ce dossier');
     const regime = await this.regimeComptable(tenantId);
     const n = (x: unknown) => Number(x ?? 0);
-    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts, repriseCetExercice] = await Promise.all([
+    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts] = await Promise.all([
       this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
       this.prisma.amortissementDerogatoire.count({ where: { tenantId, immobilisationId: id } }),
       this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
@@ -5847,10 +5861,6 @@ export class ImmobilisationService {
         where: { tenantId, dateFin: { lt: exercice.dateDebut }, statut: StatutExercice.OUVERT },
         select: { id: true, dateFin: true },
         orderBy: { dateFin: 'asc' },
-      }),
-      this.prisma.depreciationImmobilisation.findFirst({
-        where: { immobilisationId: id, exerciceId: exercice.id, nature: NatureMouvementDepreciation.CESSION_PARTIELLE },
-        select: { id: true },
       }),
     ]);
     const financeeParUnFonds = nombreSubventions > 0 || (await this.lotEntreParUnFonds(tenantId, lot.ecritureAcquisitionId, regime.referentiel));
@@ -5863,12 +5873,10 @@ export class ImmobilisationService {
     const nonDote = amortissable
       ? anterieursOuverts.find((e) => lot.dateMiseEnService! <= e.dateFin && !lot.dotations.some((d) => d.exerciceId === e.id))
       : undefined;
-    const depreciationNette = this.cumulDepreciation(lot.depreciations.map((d) => ({ sens: d.sens, montant: n(d.montant) })));
     const refus = motifRefusSortiePartielle({
       enService: lot.statut === StatutImmobilisation.EN_SERVICE,
       quantite: lot.quantite,
       quantiteSortie: dto.quantiteSortie,
-      estComposant: !!lot.immobilisationPrincipaleId,
       composantsEnService,
       unitesOeuvre: lot.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE,
       degressifFiscal: lot.degressifFiscal,
@@ -5880,8 +5888,6 @@ export class ImmobilisationService {
       demantelement: lot.coutFuturDemantelement !== null && lot.coutFuturDemantelement !== undefined,
       dotationDejaPassee: lot.dotations.some((d) => d.exercice.dateDebut >= exercice.dateDebut),
       exerciceAnterieurNonDote: nonDote ? nonDote.dateFin.toISOString().slice(0, 10) : null,
-      repriseDejaPasseeCetExercice: !!repriseCetExercice,
-      deprecie: depreciationNette > EPSILON,
     });
     if (refus) throw new BadRequestException(refus);
 
@@ -5951,6 +5957,11 @@ export class ImmobilisationService {
           designation,
           quantite: dto.quantiteSortie,
           fractionDeId: lot.id,
+          // Point 4 · les unités d'un composant en lot restent un composant du
+          // même principal (AUDCIF Titre VIII ch. 4 § 1 et § 3.1.4).
+          immobilisationPrincipaleId: lot.immobilisationPrincipaleId,
+          typeComposant: lot.typeComposant,
+          justificationDecomposition: lot.justificationDecomposition,
           lieuId: lot.lieuId,
           sectionAnalytiqueId: lot.sectionAnalytiqueId,
           compteImmobilisationId: lot.compteImmobilisationId,
@@ -6020,6 +6031,9 @@ export class ImmobilisationService {
             },
           });
           reprise = { ecritureId: ecriture.id, ligneId: ligne.id };
+          // Point 3 · la fiche des unités nomme sa reprise sur le lot · c'est par
+          // ce lien, jamais par le libellé, que l'annulation la retrouve.
+          await this.prisma.immobilisation.update({ where: { id: unites.id }, data: { repriseDepreciationLotId: ligne.id } });
         } catch (err) {
           await this.annulerEcritureOrpheline(ecriture.id);
           throw err;
@@ -6034,6 +6048,7 @@ export class ImmobilisationService {
       };
     } catch (err) {
       if (reprise) {
+        await this.prisma.immobilisation.updateMany({ where: { id: unites.id, tenantId }, data: { repriseDepreciationLotId: null } });
         await this.prisma.depreciationImmobilisation.delete({ where: { id: reprise.ligneId } });
         await this.annulerEcritureOrpheline(reprise.ecritureId);
       }

@@ -1,4 +1,4 @@
-import { TypeCompteDetailTotal } from '@prisma/client';
+import { Prisma, TypeCompteDetailTotal } from '@prisma/client';
 import type { PrismaService } from '../../common/prisma.service';
 import { estCompteDePassage, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 
@@ -18,7 +18,7 @@ import { estCompteDePassage, racineDuCompteSeme, racinesSousLeCompteSeme } from 
  * sous-compte à doter.
  */
 export async function motifCompteHorsSaisie(
-  prisma: PrismaService,
+  prisma: Pick<PrismaService, 'tenant' | 'compte'> | Prisma.TransactionClient,
   tenantId: string,
   compte: { id: string; numero: string; estActif: boolean },
   geste: string,
