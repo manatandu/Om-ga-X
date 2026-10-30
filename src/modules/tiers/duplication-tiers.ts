@@ -21,6 +21,16 @@ import type { TypeTiers } from '@prisma/client';
  * Un modèle ou un mode de règlement en sommeil n'est pas repris non plus ·
  * la création le refuserait. Les modèles d'impression (fonction 27) sont
  * repris · un choix de présentation, qui ne nomme personne.
+ *
+ * LE REPRÉSENTANT ET LA DEVISE HABITUELLE SONT REPRIS, L'ENCOURS MAXIMUM
+ * JAMAIS (ligne restes-l8-immos · la règle déjà écrite pour la fusion,
+ * `fusion-tiers.ts`) · le représentant et la devise sont des choix de
+ * gestion, qui comblent les vides de la fiche conservée à la fusion et
+ * remplissent ici le formulaire ; un représentant que la création refuserait
+ * (en sommeil, ou sans le rôle que le type exige) ou une devise en sommeil ne
+ * sont pas repris, et c'est dit. L'encours maximum est un crédit consenti À
+ * CE CLIENT · recopié, il ouvrirait au nouveau un crédit que personne ne lui
+ * a consenti.
  */
 
 export interface TiersADupliquer {
@@ -45,6 +55,12 @@ export interface TiersADupliquer {
   modeleImpressionExtraitId: string | null;
   modeleImpressionReglementId: string | null;
   modeleImpressionRappelId: string | null;
+  /** Le représentant (ligne commercial-l8) et le refus que la création lui opposerait, ou null. */
+  representant: { id: string; refus: string | null } | null;
+  /** La devise habituelle (ligne commercial-l8), avec son état. */
+  devise: { id: string; code: string; estActive: boolean } | null;
+  /** L'encours maximum (ligne commercial-l8) · jamais repris, seulement nommé. */
+  encoursMaximum: unknown;
 }
 
 export interface CopieDuTiers {
@@ -67,6 +83,8 @@ export interface CopieDuTiers {
     modeleImpressionExtraitId?: string;
     modeleImpressionReglementId?: string;
     modeleImpressionRappelId?: string;
+    representantId?: string;
+    deviseId?: string;
   };
   nonRepris: Array<{ champ: string; motif: string }>;
 }
@@ -91,6 +109,13 @@ export function copieDuTiers(t: TiersADupliquer, decomptes: { ribs: number; docu
   for (const c of ['modeleImpressionExtraitId', 'modeleImpressionReglementId', 'modeleImpressionRappelId'] as const) {
     const v = t[c];
     if (v) corps[c] = v;
+  }
+  if (t.representant && t.representant.refus === null) corps.representantId = t.representant.id;
+  else if (t.representant) nonRepris.push({ champ: 'Représentant', motif: t.representant.refus as string });
+  if (t.devise?.estActive) corps.deviseId = t.devise.id;
+  else if (t.devise) nonRepris.push({ champ: 'Devise habituelle', motif: `${t.devise.code} en sommeil` });
+  if (t.encoursMaximum !== null && t.encoursMaximum !== undefined) {
+    nonRepris.push({ champ: 'Encours maximum', motif: 'crédit consenti à ce client · il ne s’ouvre pas au nouveau tiers sans décision' });
   }
   if (t.numeroImpot) nonRepris.push({ champ: 'Numéro Impôt', motif: 'identifiant propre à chaque contribuable' });
   if (decomptes.ribs > 0) nonRepris.push({ champ: 'Coordonnées bancaires', motif: 'un RIB recopié ferait payer le mauvais tiers' });

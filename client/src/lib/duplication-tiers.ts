@@ -28,6 +28,9 @@ export interface CopieDuTiers {
     modeleImpressionExtraitId?: string;
     modeleImpressionReglementId?: string;
     modeleImpressionRappelId?: string;
+    /** Le représentant et la devise habituelle (ligne restes-l8-immos) · repris ; l'encours maximum jamais. */
+    representantId?: string;
+    deviseId?: string;
   };
   nonRepris: Array<{ champ: string; motif: string }>;
 }
@@ -54,5 +57,7 @@ export function reprisEnClair(c: CopieDuTiers): string {
   if (c.corps.modeleImpressionExtraitId || c.corps.modeleImpressionReglementId || c.corps.modeleImpressionRappelId) {
     repris.push('modèles d’impression');
   }
+  if (c.corps.representantId) repris.push('représentant');
+  if (c.corps.deviseId) repris.push('devise habituelle');
   return `${repris.slice(0, -1).join(', ')} et ${repris[repris.length - 1]}`;
 }
