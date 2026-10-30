@@ -26,6 +26,7 @@ import { horsCloisonnement } from '../../common/cloisonnement/contexte-cloisonne
 import { normaliserCourriel } from '../../common/courriel';
 import { dansContexteAudit, acteurCourant, ACTEUR_SYSTEME } from '../../common/audit/contexte-audit';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { avisDoubleAuth, EvenementDoubleAuth } from './avis-double-authentification';
 import { CourrierService, ORIGINE_DOUBLE_AUTHENTIFICATION } from '../courrier/courrier.service';
 import { modulesServis } from '../tenant/modules-optionnels';
@@ -874,7 +875,8 @@ export class AuthService {
         // clé est celle du DOSSIER du compte · sans elle, la mise à jour
         // retombait sur la clé « plateforme », et les déconnexions de tous
         // les cabinets s'attendaient l'une l'autre.
-        await prendreLeVerrouDuDossier(tx, tenantId);
+        // Borné, même motif que `revoquerEtFermerLaSession` (M2).
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
           SELECT "sessionsFermees" FROM "users" WHERE "id" = ${userId} FOR UPDATE`;
         if (lignes.length === 0) return { fermee: false };
@@ -1043,7 +1045,11 @@ export class AuthService {
     maintenantMs: number,
   ): Promise<void> {
     await transactionJournalisee(this.prisma, async (tx) => {
-      await prendreLeVerrouDuDossier(tx, user.tenantId);
+      // BORNÉ (relecture de la ligne saisie-suites, M2) · la transaction a le
+      // délai ordinaire de cinq secondes ; une clôture longue faisait attendre
+      // au-delà, P2028 rendu en 500, une connexion du pool retenue jusqu'à sa
+      // fin. Passé trois secondes, le 409 nommé `DOSSIER_OCCUPE`, rien écrit.
+      await prendreLeVerrouDuDossierBorne(tx, user.tenantId);
       const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
         SELECT "sessionsFermees" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
       let fermeture: Prisma.UserUpdateInput = {};

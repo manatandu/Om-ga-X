@@ -4,6 +4,7 @@ import { EtatImpressionDifferee, NatureImpressionDifferee, Prisma } from '@prism
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossier } from '../../../common/audit/extension-audit';
 import { ExportService, type LectureDuJournal } from '../export.service';
 import { ExportFpmService } from '../export-fpm.service';
 import { produireEnMemoire } from '../fichier-en-memoire';
@@ -313,7 +314,14 @@ export class ImpressionDiffereeService {
     return transactionJournalisee(
       this.prisma,
       async (tx) => {
-        await prendreLeVerrouDuDossierBorne(tx, tenantId);
+        // LE DOSSIER AVANT LA LIGNE, SANS LA BORNE DE TROIS SECONDES (relecture
+        // de la ligne saisie-suites, M1) · le fichier est DÉJÀ produit, et une
+        // validation par période ou une clôture qui tient le dossier plus de
+        // trois secondes faisait tomber le rangement en 409, son repli ÉCHOUÉE
+        // aussi · la demande restait EN COURS, le fichier perdu, la file
+        // bloquée jusqu'au délai d'interruption. L'attente est couverte par la
+        // transaction (`DELAI_RANGEMENT_MS`), comme elle l'était avant.
+        await prendreLeVerrouDuDossier(tx, tenantId);
         const [ligne] = await tx.$queryRaw<{ etat: string; commenceLe: Date | null }[]>`
           SELECT "etat"::text AS "etat", "commenceLe" FROM "impressions_differees"
           WHERE "id" = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
@@ -369,6 +377,9 @@ export class ImpressionDiffereeService {
     });
     for (const a of anciennes) {
       await transactionJournalisee(this.prisma, async (tx) => {
+        // Borné ici · aucun fichier n'est en jeu, et la transaction a le délai
+        // ordinaire de cinq secondes · un dossier occupé rend le 409 nommé
+        // `DOSSIER_OCCUPE`, et la demande suivante de la fenêtre redéclare.
         await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const [ligne] = await tx.$queryRaw<{ etat: string; commenceLe: Date | null }[]>`
           SELECT "etat"::text AS "etat", "commenceLe" FROM "impressions_differees"

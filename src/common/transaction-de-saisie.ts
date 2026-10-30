@@ -62,7 +62,13 @@ import {
  * juste tombait en 409 derrière une ligne tenue une seconde de trop. Au-delà
  * de la borne, le 409 nommé `DOSSIER_OCCUPE`, que l'écran rejoue et dont le
  * message dit ce qui tient le dossier (validation par période, import,
- * clôture) · la connexion n'attend pas plus que la borne.
+ * clôture) · la connexion n'attend pas plus que la borne. VOULU (relecture de
+ * la ligne saisie-suites, m1) · une attente de trois à cinq secondes, qui
+ * passait quand la transaction de cinq secondes la couvrait, rend désormais
+ * ce 409 · un geste court ne retient pas une connexion du pool derrière une
+ * clôture. Un geste dont le travail est DÉJÀ fait (le rangement d'une
+ * impression différée) prend le verrou sans borne, sous le délai long de sa
+ * transaction.
  *
  * À PRENDRE EN TÊTE DE TOUTE TRANSACTION QUI VERROUILLE DES ÉCRITURES OU DES
  * EXERCICES (point 1) · la validation par période, le visa, les pièces jointes,

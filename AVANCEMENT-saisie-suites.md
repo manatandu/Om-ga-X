@@ -60,6 +60,34 @@ unique · les deux passent.
 - Rien de la ligne. Le banc de charge et les tests navigateur tournent au
   portillon de l'intégration.
 
+## Relecture indépendante (deux MAJEURS, deux mineurs)
+
+- **M1** · `ranger` (impression différée) prend le verrou du dossier SANS la
+  borne de trois secondes · le fichier est déjà produit, et la transaction
+  (`DELAI_RANGEMENT_MS`, 120 s) couvre l'attente. `declarerInterrompues`
+  garde la borne · aucun fichier en jeu, transaction de cinq secondes, un
+  409 `DOSSIER_OCCUPE` laisse la fenêtre redéclarer au passage suivant.
+  Test · `impression-differee.spec.ts`, dossier tenu pendant la production,
+  la demande finit PRÊTE (le test tombe si la borne revient).
+- **M2** · `revoquerEtFermerLaSession` et `fermerLaSession` prennent le
+  verrou BORNÉ (409 `DOSSIER_OCCUPE`, rien écrit ; la déconnexion efface le
+  cookie quoi qu'il arrive et dit `sessionFermee: false`). `FiltrePannes`
+  rend une transaction EXPIRÉE (P2028 · « Transaction already closed »,
+  « expired transaction », transaction déjà fermée) en 503 nommé
+  `ETAPE_EXPIREE` · dans ces formes le moteur a annulé la transaction, rien
+  n'est validé ; toute autre forme de P2028 n'est pas traduite. Tests ·
+  `changer-mot-de-passe.spec.ts` (attente expirée, 409, rien écrit),
+  `telemetrie-serveur.spec.ts` (trois formes rendues, une non traduite).
+  Non traité · la connexion (`sousVerrouDuCompte`, l. 484) prend encore le
+  verrou sans borne ; une attente au-delà de cinq secondes y est désormais
+  un 503 nommé par le filtre, plus une 500 muette.
+- **m1** · VOULU · une attente de trois à cinq secondes, qui passait sous la
+  transaction de cinq secondes, rend maintenant le 409 `DOSSIER_OCCUPE` ;
+  écrit au commentaire de `prendreLeVerrouDuDossierBorne`.
+- **m2** · les limites de `ordre-des-verrous.spec.ts` sont écrites en tête
+  (mise à jour Prisma d'un modèle non audité non vue, clé non confrontée au
+  dossier des lignes, aide appelée sous le verrou).
+
 ## Décisions
 
 - Le 409 du dernier rempart porte un code PROPRE (`GESTE_CONCURRENT`) et non

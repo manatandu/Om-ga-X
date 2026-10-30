@@ -2,7 +2,7 @@ import { ArgumentsHost, BadRequestException, ForbiddenException, ServiceUnavaila
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { Prisma } from '@prisma/client';
-import { CODE_GESTE_CONCURRENT, exceptionRendue, FiltrePannes, statutDe } from './filtre-pannes';
+import { CODE_ETAPE_EXPIREE, CODE_GESTE_CONCURRENT, exceptionRendue, FiltrePannes, statutDe } from './filtre-pannes';
 import { demarrerTelemetrieServeur, signalerPanneServeur } from './telemetrie-serveur';
 
 /**
@@ -140,6 +140,28 @@ describe('filtre des pannes · un 5xx part, un refus jamais', () => {
     expect(exceptionRendue(unicite)).toBe(unicite);
     const refus = new BadRequestException('x');
     expect(exceptionRendue(refus)).toBe(refus);
+  });
+
+  it('une transaction EXPIRÉE (P2028, annulée par le moteur) rend un refus nommé, signalé ; une autre forme de P2028 n’est pas traduite (relecture M2)', () => {
+    const { sdk, appels } = doublure();
+    demarrerTelemetrieServeur({ SENTRY_DSN: DSN }, () => sdk);
+    const formes = [
+      'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5012 ms passed since the start of the transaction.',
+      'Transaction API error: Transaction already closed: A commit cannot be executed on an expired transaction.',
+      'Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn\'t have information about anymore, or was obtained before disconnecting.',
+    ];
+    for (const message of formes) {
+      const reponses: { corps: unknown; statut: number }[] = [];
+      const f = new FiltrePannes();
+      (f as any).httpAdapterHost = {
+        httpAdapter: { isHeadersSent: () => false, reply: (_r: unknown, corps: unknown, statut: number) => reponses.push({ corps, statut }), end: () => undefined },
+      };
+      f.catch(new Prisma.PrismaClientKnownRequestError(message, { code: 'P2028', clientVersion: 'x' }), hote());
+      expect(reponses).toEqual([{ statut: 503, corps: expect.objectContaining({ code: CODE_ETAPE_EXPIREE, message: expect.stringMatching(/n'a pas été enregistrée/) }) }]);
+    }
+    expect(appels.capture).toHaveLength(formes.length);
+    const autre = new Prisma.PrismaClientKnownRequestError('Transaction API error: something else', { code: 'P2028', clientVersion: 'x' });
+    expect(exceptionRendue(autre)).toBe(autre);
   });
 
   it('un refus (4xx) ne part pas', () => {

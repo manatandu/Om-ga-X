@@ -1,4 +1,5 @@
-import { ArgumentsHost, Catch, ConflictException, HttpException, Logger } from '@nestjs/common';
+import { ArgumentsHost, Catch, ConflictException, HttpException, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { estConflitDeSerialisation } from '../prisma-retry.util';
 import { signalerPanneServeur } from './telemetrie-serveur';
@@ -23,11 +24,43 @@ export const CODE_GESTE_CONCURRENT = 'GESTE_CONCURRENT';
 export const MESSAGE_GESTE_CONCURRENT =
   "Un autre geste du dossier était en cours sur les mêmes données · cette étape n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez, puis réessayez.";
 
-/** L'exception que le filtre rendra · l'interblocage ou le conflit d'écriture traduit, tout le reste tel quel. */
+/**
+ * UNE TRANSACTION EXPIRÉE EST UN REFUS NOMMÉ, JAMAIS UNE 500 MUETTE (relecture
+ * de la ligne saisie-suites, M2). Prisma annule une transaction interactive qui
+ * dépasse son délai et rend `P2028` · « Transaction already closed », « expired
+ * transaction », ou la transaction introuvable parce que déjà fermée. Dans ces
+ * trois formes, le moteur a fait le ROLLBACK avant de répondre, et un commit
+ * demandé sur une transaction expirée n'est pas exécuté · rien de CETTE étape
+ * n'est validé, d'où le même texte que l'interblocage. Le P2028 qui n'a pas pu
+ * OUVRIR la transaction est déjà un 503 nommé (`SERVEUR_SATURE`,
+ * `transaction-journalisee.ts`). Toute autre forme de P2028 n'est pas
+ * traduite · sans preuve que rien n'a été validé, on ne le dit pas. Le statut
+ * reste un 5xx (la cause est un geste trop long, pas un refus du métier), et
+ * le défaut reste signalé à Sentry.
+ */
+export const CODE_ETAPE_EXPIREE = 'ETAPE_EXPIREE';
+export const MESSAGE_ETAPE_EXPIREE =
+  "Cette étape a dépassé son délai et a été annulée · elle n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez, puis réessayez dans un instant.";
+
+export function estTransactionExpiree(exception: unknown): boolean {
+  for (let e: unknown = exception, n = 0; e && n < 5; e = (e as { cause?: unknown }).cause, n++) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === 'P2028' &&
+      /Transaction already closed|expired transaction|old closed transaction/i.test(e.message)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** L'exception que le filtre rendra · l'interblocage, le conflit d'écriture ou la transaction expirée traduits, tout le reste tel quel. */
 export function exceptionRendue(exception: unknown): unknown {
   if (exception instanceof HttpException) return exception;
-  if (!estConflitDeSerialisation(exception)) return exception;
-  return new ConflictException({ message: MESSAGE_GESTE_CONCURRENT, code: CODE_GESTE_CONCURRENT });
+  if (estConflitDeSerialisation(exception)) return new ConflictException({ message: MESSAGE_GESTE_CONCURRENT, code: CODE_GESTE_CONCURRENT });
+  if (estTransactionExpiree(exception)) return new ServiceUnavailableException({ message: MESSAGE_ETAPE_EXPIREE, code: CODE_ETAPE_EXPIREE });
+  return exception;
 }
 
 const journal = new Logger('FiltrePannes');
@@ -53,7 +86,7 @@ export class FiltrePannes extends BaseExceptionFilter {
     const rendue = exceptionRendue(exception);
     if (hote.getType() === 'http') {
       const statut = statutDe(exception);
-      if (rendue !== exception) journal.warn(`Interblocage ou conflit d'écriture rendu en 409 · ${exception instanceof Error ? exception.message.split('\n')[0] : String(exception)}`);
+      if (rendue !== exception) journal.warn(`Interblocage, conflit d'écriture ou transaction expirée rendu en refus nommé · ${exception instanceof Error ? exception.message.split('\n')[0] : String(exception)}`);
       if (statut >= 500) {
         const requete = hote.switchToHttp().getRequest<{ method?: string; route?: { path?: unknown }; path?: string }>();
         const motif = typeof requete?.route?.path === 'string' ? requete.route.path : requete?.path ?? '/';

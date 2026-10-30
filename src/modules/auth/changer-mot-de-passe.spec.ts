@@ -92,4 +92,33 @@ describe('AuthService · changement de mot de passe', () => {
     const { empreinteSession } = await import('./sessions-fermees');
     expect(capture.data!.sessionsFermees).toEqual([{ e: empreinteSession('csrf-provisoire'), f: 1_800_028_800 }]);
   });
+
+  it('sous un dossier tenu par une clôture, l’attente est BORNÉE · 409 DOSSIER_OCCUPE nommé, jamais une transaction expirée en 500, rien écrit (relecture M2)', async () => {
+    const capture: { data?: Record<string, unknown> } = {};
+    const hash = await bcrypt.hash('bon-mot-de-passe', 4);
+    const { Prisma } = await import('@prisma/client');
+    const sqls: string[] = [];
+    const client: Record<string, unknown> = {
+      // La borne posée, puis le verrou du dossier qui expire (55P03), comme PostgreSQL sous une clôture longue.
+      $executeRaw: async (t: TemplateStringsArray | { sql: string }) => {
+        const sql = Array.isArray(t) ? (t as TemplateStringsArray).join('?') : (t as { sql: string }).sql;
+        sqls.push(sql);
+        if (/pg_advisory_xact_lock/.test(sql)) {
+          throw new Prisma.PrismaClientKnownRequestError('canceling statement due to lock timeout 55P03', { code: 'P2010', clientVersion: 'x', meta: { code: '55P03' } });
+        }
+        return 1;
+      },
+      $queryRaw: async () => [{ sessionsFermees: [] }],
+      user: {
+        findUnique: async () => ({ id: 'u1', tenantId: 't1', motDePasse: hash }),
+        update: async ({ data }: { data: Record<string, unknown> }) => ((capture.data = data), {}),
+      },
+    };
+    client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
+    const s = new AuthService(client as never, { sign: () => 'jeton' } as never, ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]));
+    const e = await s.changerMotDePasse('u1', 'bon-mot-de-passe', 'nouveau-tres-long').catch((x: unknown) => x);
+    expect((e as { getResponse?: () => unknown }).getResponse?.()).toMatchObject({ code: 'DOSSIER_OCCUPE' });
+    expect(sqls[0]).toMatch(/SET LOCAL lock_timeout = \d+/);
+    expect(capture.data).toBeUndefined();
+  });
 });
