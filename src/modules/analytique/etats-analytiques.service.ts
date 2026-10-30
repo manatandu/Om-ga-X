@@ -527,7 +527,7 @@ export class EtatsAnalytiquesService {
               ligne: {
                 include: {
                   compte: { select: { numero: true, intitule: true } },
-                  ecriture: { select: { date: true, libelle: true, numeroPiece: true, journal: { select: { code: true } } } },
+                  ecriture: { select: { date: true, libelle: true, numeroPiece: true, statut: true, journal: { select: { code: true } } } },
                 },
               },
             },
@@ -563,6 +563,7 @@ export class EtatsAnalytiquesService {
       date: v.ligne.ecriture.date,
       journal: v.ligne.ecriture.journal.code,
       numeroPiece: v.ligne.ecriture.numeroPiece,
+      statut: v.ligne.ecriture.statut,
       sectionCode: v.section.code,
       sectionIntitule: v.section.intitule,
       compteNumero: v.ligne.compte.numero,
@@ -579,6 +580,7 @@ export class EtatsAnalytiquesService {
       date: l.od.date,
       journal: 'OD ANA',
       numeroPiece: null,
+      statut: null,
       sectionCode: l.section.code,
       sectionIntitule: l.section.intitule,
       compteNumero: l.od.compte.numero,

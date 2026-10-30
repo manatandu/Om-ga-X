@@ -67,8 +67,9 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
   useEffect(() => {
     if (!modifiable || onglet !== 'dotation') return;
     api
-      .get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true')
-      .then((cs) => setComptes(cs.filter((c) => c.classe === 'CLASSE_6' || c.classe === 'CLASSE_7')), (e) =>
+      .get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true&usage=true')
+      // Un compte du plan subdivisé ne reçoit pas d'écriture · le serveur refuse le budget, la liste ne l'offre pas.
+      .then((cs) => setComptes(cs.filter((c) => (c.classe === 'CLASSE_6' || c.classe === 'CLASSE_7') && !c.subdivise)), (e) =>
         echec(e, "Les comptes n'ont pas pu être lus."),
       );
   }, [modifiable, onglet]);

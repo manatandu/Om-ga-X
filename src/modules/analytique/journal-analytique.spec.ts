@@ -22,6 +22,7 @@ function ligne(id: string, jour: string, journal = 'AC', numeroPiece: number | n
     date: new Date(`${jour}T00:00:00Z`),
     journal,
     numeroPiece,
+    statut: journal === 'OD ANA' ? null : 'VALIDEE',
     sectionCode: 'P1',
     sectionIntitule: 'Projet',
     compteNumero: '60400000',
@@ -116,6 +117,9 @@ describe('grand livre des lignes non ventilées (fonction n° 52)', () => {
     expect(duLivre).toEqual(duControle);
     // Ni écriture de situation, ni écriture qui solde les comptes de gestion.
     expect(JSON.stringify(duLivre[0])).toContain('"estSoldeDesComptesDeGestion":false');
+    // Ni report de clôture ni à-nouveau provisoire (§ 10 bis · une anomalie fabriquée).
+    expect(JSON.stringify(duLivre[0])).toContain('"estGenereeParCloture":false');
+    expect(JSON.stringify(duLivre[0])).toContain('"estANouveauProvisoire":false');
     expect(JSON.stringify(duLivre[0])).toContain('SITUATION');
   });
 

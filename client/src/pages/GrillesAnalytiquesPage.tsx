@@ -56,8 +56,9 @@ export function GrillesAnalytiquesPage() {
     );
     if (estAdmin) {
       api
-        .get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true')
-        .then(setComptes, (e) => echec(e, 'Les comptes n’ont pas pu être lus.'));
+        .get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true&usage=true')
+        // Un compte du plan subdivisé ne reçoit pas d'écriture · le serveur refuse la grille, la liste ne l'offre pas.
+        .then((cs) => setComptes(cs.filter((c) => !c.subdivise)), (e) => echec(e, 'Les comptes n’ont pas pu être lus.'));
     }
   }, [estAdmin]);
 

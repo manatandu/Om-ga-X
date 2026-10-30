@@ -201,6 +201,20 @@ async function main() {
     await A.del(`/analytique/grilles/${grilles.grilles[0].id}`);
     grilles = await A.get('/analytique/grilles');
     verifier(grilles.total === 0, 'la grille retirée, la liste est vide');
+    r = await A.statut('DELETE', `/analytique/grilles/${grilles.grilles[0]?.id ?? '00000000-0000-0000-0000-000000000000'}`);
+    verifier(r.statut === 404 || r.statut === 409, `une grille déjà retirée · refus nommé (${r.statut})`);
+
+    console.log('relecture · le compte du plan subdivisé ne reçoit ni budget ni grille');
+    const sous = await A.post('/comptes', { numero: `${charge.numero.slice(0, 7)}1`, intitule: 'Matières · projet eau' });
+    r = await A.statut('POST', `/analytique/comptes/${charge.id}/budget`, { exerciceId: e2026.id, montantAnnuel: 10 });
+    verifier(r.statut === 400 && new RegExp(`subdivisé.*${sous.numero}`).test(JSON.stringify(r.corps)), `budget refusé, le sous-compte nommé (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+    r = await A.statut('POST', '/analytique/grilles', { compteId: charge.id, planId: axe.id, lignes: [{ sectionId: s1.id, pourcentage: 100 }] });
+    verifier(r.statut === 400 && /subdivisé/.test(JSON.stringify(r.corps)), `grille refusée sur le compte subdivisé (${r.statut})`);
+    await A.patch(`/comptes/${sous.id}`, { estRetenu: true }).catch(() => undefined);
+    const bs = await A.post(`/analytique/comptes/${sous.id}/budget`, { exerciceId: e2026.id, montantAnnuel: 120 });
+    verifier(egal(bs.annuel, 120), 'le sous-compte, lui, se dote');
+    const nonRetenu = await prisma.compte.findUnique({ where: { id: sous.id }, select: { estRetenu: true } });
+    console.log(`   sous-compte retenu · ${nonRetenu.estRetenu}`);
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

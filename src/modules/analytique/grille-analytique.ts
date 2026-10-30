@@ -101,9 +101,17 @@ export function motifRefusGrille(params: {
  */
 export function motifGrilleInapplicable(params: {
   readonly plan: PlanDeGrille;
+  readonly compte: CompteDeGrille & { readonly estActif: boolean };
   readonly sections: readonly (SectionDeGrille & { readonly pourcentage: number })[];
 }): string | null {
   if (!params.plan.estActif) return `Le plan ${params.plan.code} est en sommeil.`;
+  // Le compte et le plan relus tels qu'ils sont aujourd'hui (relecture du
+  // 2026-10-30) · un compte endormi, devenu regroupement, ou une classe que
+  // le plan ne ventile plus suspendent la grille comme une section.
+  if (!params.compte.estActif) return `Le compte ${params.compte.numero} est en sommeil.`;
+  if (params.compte.estTotal) return `Le compte ${params.compte.numero} est devenu un compte de regroupement.`;
+  const refusClasse = motifRefusClasseVentilee(params.compte.classe, params.plan.classesVentilees);
+  if (refusClasse) return `Plan ${params.plan.code} · ${refusClasse}`;
   for (const s of params.sections) {
     if (s.planId !== params.plan.id) return `La section ${s.code} n'est plus du plan ${params.plan.code}.`;
     if (s.estTotal) return `La section ${s.code} est devenue une rubrique · elle ne reçoit plus de ventilation.`;

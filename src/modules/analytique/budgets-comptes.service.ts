@@ -17,6 +17,8 @@ import {
   type LigneBudgetCompte,
 } from './budget-compte';
 import type { DoterBudgetCompteDto, ModifierBudgetCompteMoisDto } from './dto/budget-compte.dto';
+import { motifCompteHorsSaisie } from './compte-de-saisie';
+import { evaluerComparabilite } from '../etats-financiers/comparabilite-exercices';
 
 /** Le doublon d'une clé unique, même enveloppé par la transaction. */
 function estDoublon(e: unknown): boolean {
@@ -47,7 +49,7 @@ export class BudgetsComptesService {
     const [compte, exercice] = await Promise.all([
       this.prisma.compte.findFirst({
         where: { id: compteId, tenantId },
-        select: { id: true, numero: true, intitule: true, classe: true, typeCompte: true },
+        select: { id: true, numero: true, intitule: true, classe: true, typeCompte: true, estActif: true },
       }),
       this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } }),
     ]);
@@ -58,6 +60,8 @@ export class BudgetsComptesService {
       estTotal: compte.typeCompte === TypeCompteDetailTotal.TOTAL,
     });
     if (refus) throw new BadRequestException(refus);
+    const horsSaisie = await motifCompteHorsSaisie(this.prisma, tenantId, compte, 'le budget');
+    if (horsSaisie) throw new BadRequestException(horsSaisie);
     if (!exercice) throw new NotFoundException('Exercice introuvable dans ce dossier.');
     return { compte, exercice, mois: moisDeLExercice(exercice.dateDebut, exercice.dateFin), exerciceLong: moisEntre(exercice.dateDebut, exercice.dateFin) > 12 };
   }
@@ -213,7 +217,17 @@ export class BudgetsComptesService {
     if (!precedent) {
       motifN1 = "Le dossier n'a pas d'exercice précédent.";
     } else if (params.mois === undefined) {
-      n1 = { du: precedent.dateDebut, au: precedent.dateFin };
+      // DEUX EXERCICES DE DURÉES DIFFÉRENTES NE SE COMPARENT PAS TERME À TERME
+      // (relecture du 2026-10-30) · même règle que la colonne N-1 des états
+      // (`COMPARATIF_N1_NON_COMPARABLE`, `comparabilite-exercices.ts`). Le
+      // réalisé de N-1 n'est pas servi, le motif le dit, et rien n'est
+      // proratisé · l'adaptation appartient au cabinet.
+      const dossier = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
+      const comparabilite = dossier ? evaluerComparabilite(dossier.referentiel, exercice, precedent) : null;
+      if (!comparabilite) motifN1 = 'Dossier introuvable · N-1 non lu.';
+      else if (!comparabilite.comparable) {
+        motifN1 = `${comparabilite.motifs.map((m) => m.phrase).join(' ')} Le réalisé N-1 n'est pas présenté comme comparable (${comparabilite.article}).`;
+      } else n1 = { du: precedent.dateDebut, au: precedent.dateFin };
     } else if (moisEntre(precedent.dateDebut, precedent.dateFin) > 12) {
       motifN1 = "L'exercice précédent dure plus de douze mois · le même mois y revient deux fois, il n'est pas lu.";
     } else if (!moisDeLExercice(precedent.dateDebut, precedent.dateFin).includes(params.mois)) {

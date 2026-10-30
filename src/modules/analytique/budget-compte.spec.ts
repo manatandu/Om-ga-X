@@ -65,7 +65,7 @@ describe('budget par compte · règles pures', () => {
   });
 });
 
-function serviceBudget(options: { exerciceLong?: boolean; sansPrecedent?: boolean } = {}) {
+function serviceBudget(options: { exerciceLong?: boolean; sansPrecedent?: boolean; precedentCourt?: boolean; sousComptes?: string[] } = {}) {
   const appels: { modele: string; args: Record<string, unknown> }[] = [];
   const exercice = {
     id: 'e2',
@@ -73,8 +73,14 @@ function serviceBudget(options: { exerciceLong?: boolean; sansPrecedent?: boolea
     dateFin: options.exerciceLong ? new Date('2027-06-30T00:00:00Z') : new Date('2026-12-31T00:00:00Z'),
     statut: StatutExercice.OUVERT,
   };
-  const precedent = { id: 'e1', dateDebut: new Date('2025-01-01T00:00:00Z'), dateFin: new Date('2025-12-31T00:00:00Z'), statut: StatutExercice.CLOTURE };
+  const precedent = {
+    id: 'e1',
+    dateDebut: new Date(options.precedentCourt ? '2025-07-01T00:00:00Z' : '2025-01-01T00:00:00Z'),
+    dateFin: new Date('2025-12-31T00:00:00Z'),
+    statut: StatutExercice.CLOTURE,
+  };
   const prisma = {
+    tenant: { findFirst: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     exercice: {
       findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) => {
         if (where.id === 'e2') return Promise.resolve(exercice);
@@ -103,11 +109,12 @@ function serviceBudget(options: { exerciceLong?: boolean; sansPrecedent?: boolea
       }),
     },
     compte: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'c604', numero: '60400000', intitule: 'Achats', classe: ClasseCompte.CLASSE_6, typeCompte: TypeCompteDetailTotal.DETAIL }),
-      findMany: jest.fn().mockResolvedValue([
+      findFirst: jest.fn().mockResolvedValue({ id: 'c604', numero: '60410000', intitule: 'Achats', classe: ClasseCompte.CLASSE_6, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true }),
+      findMany: jest.fn(({ where }: { where: { numero?: unknown } }) =>
+        where.numero !== undefined ? Promise.resolve((options.sousComptes ?? []).map((numero) => ({ numero }))) : Promise.resolve([
         { id: 'c604', numero: '60400000', intitule: 'Achats', classe: ClasseCompte.CLASSE_6 },
         { id: 'c701', numero: '70100000', intitule: 'Ventes', classe: ClasseCompte.CLASSE_7 },
-      ]),
+      ])),
     },
   } as unknown as PrismaService;
   return { service: new BudgetsComptesService(prisma), appels };
@@ -146,6 +153,20 @@ describe('budget par compte · l’état', () => {
     expect((appels.find((a) => a.modele === 'budgetCompte.findMany')!.args as { where: { mois: number } }).where.mois).toBe(3);
     expect(e.periode).toEqual({ du: '2026-03-01', au: '2026-03-31', mois: 3 });
     expect(e.exercicePrecedent).toEqual({ id: 'e1', du: '2025-03-01', au: '2025-03-31' });
+  });
+
+  it('un N-1 de durée différente n’est jamais servi comme comparable', async () => {
+    const { service } = serviceBudget({ precedentCourt: true });
+    const e = await service.etat('t1', { exerciceId: 'e2' });
+    expect(e.lignes.every((l) => l.realiseN1 === null)).toBe(true);
+    expect(e.exercicePrecedent).toBeNull();
+    expect(e.motifN1).toMatch(/12 mois et le précédent 6/);
+    expect(e.motifN1).toMatch(/AUDCIF art. 34/);
+  });
+
+  it('un compte du plan subdivisé ne se dote pas · le motif nomme le sous-compte', async () => {
+    const { service } = serviceBudget({ sousComptes: ['60410001'] });
+    await expect(service.doter('t1', 'c604', { exerciceId: 'e2', montantAnnuel: 100 })).rejects.toThrow(/subdivisé.*60410001/);
   });
 
   it('un mois sur un exercice de plus de douze mois est refusé', async () => {

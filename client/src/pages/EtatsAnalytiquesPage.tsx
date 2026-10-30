@@ -372,18 +372,24 @@ export function EtatsAnalytiquesPage() {
               Libellé
               <Aide
                 titre="Journal analytique"
-                texte="Les ventilations des lignes du grand livre et les OD analytiques de l'axe, dans l'ordre des dates, sur l'exercice. « OD analytiques seules » ne montre que les corrections passées par la saisie des OD analytiques, au journal « OD ANA », qui ne sont pas des pièces du livre-journal. Au-delà de deux mille lignes, la liste n'en montre que les premières et le dit · les totaux portent toujours sur tout l'exercice."
+                texte="Les ventilations des lignes du grand livre et les OD analytiques de l'axe, dans l'ordre des dates, sur l'exercice. « OD analytiques seules » ne montre que les corrections passées par la saisie des OD analytiques, au journal « OD ANA », qui ne sont pas des pièces du livre-journal. Les écritures au brouillard sont en italique. Au-delà de deux mille lignes, la liste n'en montre que les premières et le dit · les totaux portent toujours sur tout l'exercice."
                 source="Convention d'OmegaX (Sage, journal analytique)"
               />
             </span>
             <span className="text-right">Débit</span>
             <span className="text-right">Crédit</span>
           </div>
-          {!journal && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {/* Un échec de lecture se dit (bandeau du haut), jamais « Chargement… » à vie. */}
+          {!journal && !erreur && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {!journal && erreur && <div className="px-4 py-4 text-[11.5px] text-danger">Journal analytique non lu · {erreur}</div>}
           {journal?.lignes.map((l) => (
             <div
               key={l.id}
-              className="grid grid-cols-[90px_60px_70px_110px_110px_1fr_120px_120px] min-w-[960px] gap-2 px-4 py-1 text-[11.5px] border-b border-border/40"
+              // Le brouillard en italique, comme au grand livre des non ventilées (AUDCIF art. 22, 2°).
+              title={l.statut === 'BROUILLARD' ? 'Écriture au brouillard · pas encore au livre-journal' : undefined}
+              className={`grid grid-cols-[90px_60px_70px_110px_110px_1fr_120px_120px] min-w-[960px] gap-2 px-4 py-1 text-[11.5px] border-b border-border/40 ${
+                l.statut === 'BROUILLARD' ? 'italic' : ''
+              }`}
             >
               <span className="font-mono">{l.date}</span>
               <span className="font-mono">{l.journal}</span>
@@ -449,7 +455,8 @@ export function EtatsAnalytiquesPage() {
             <span className="text-right">Crédit</span>
             <span className="text-right">SOLDE</span>
           </div>
-          {!nonVentilees && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {!nonVentilees && !erreur && <div className="px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {!nonVentilees && erreur && <div className="px-4 py-4 text-[11.5px] text-danger">Lignes non ventilées non lues · {erreur}</div>}
           {nonVentilees?.lignes.map((l) => (
             <div
               key={l.ligneEcritureId}

@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { motifGrilleInapplicable, motifRefusGrille } from './grille-analytique';
 import type { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
+import { motifCompteHorsSaisie } from './compte-de-saisie';
 
 /**
  * Lecture bornée (§ 8 bis du règlement) · une grille par compte et par plan,
@@ -13,12 +14,15 @@ import type { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
 export const PLAFOND_GRILLES_LUES = 5_000;
 
 /** Le doublon d'une clé unique, même enveloppé par la transaction. */
-function estDoublon(e: unknown): boolean {
+function estErreurPrisma(e: unknown, code: string): boolean {
   for (let x: unknown = e, n = 0; x && n < 5; x = (x as { cause?: unknown }).cause, n++) {
-    if (x instanceof Prisma.PrismaClientKnownRequestError && x.code === 'P2002') return true;
+    if (x instanceof Prisma.PrismaClientKnownRequestError && x.code === code) return true;
   }
   return false;
 }
+const estDoublon = (e: unknown) => estErreurPrisma(e, 'P2002');
+/** La ligne visée n'existe plus · même enveloppée par la transaction. */
+export const estDisparue = (e: unknown) => estErreurPrisma(e, 'P2025');
 
 const chiffreDeClasse = (classe: string) => classe.replace('CLASSE_', '');
 
@@ -44,7 +48,7 @@ export class GrillesAnalytiquesService {
         orderBy: [{ compte: { numero: 'asc' } }, { plan: { code: 'asc' } }],
         take: PLAFOND_GRILLES_LUES,
         include: {
-          compte: { select: { id: true, numero: true, intitule: true } },
+          compte: { select: { id: true, numero: true, intitule: true, classe: true, typeCompte: true, estActif: true } },
           plan: { select: { id: true, code: true, intitule: true, classesVentilees: true, estActif: true } },
           lignes: {
             orderBy: { rang: 'asc' },
@@ -64,11 +68,17 @@ export class GrillesAnalytiquesService {
         }));
         return {
           id: g.id,
-          compte: g.compte,
+          compte: { id: g.compte.id, numero: g.compte.numero, intitule: g.compte.intitule },
           plan: { id: g.plan.id, code: g.plan.code, intitule: g.plan.intitule },
           lignes,
           inapplicable: motifGrilleInapplicable({
             plan: g.plan,
+            compte: {
+              numero: g.compte.numero,
+              classe: chiffreDeClasse(g.compte.classe),
+              estTotal: g.compte.typeCompte === TypeCompteDetailTotal.TOTAL,
+              estActif: g.compte.estActif,
+            },
             sections: g.lignes.map((l) => ({
               id: l.section.id,
               planId: l.section.planId,
@@ -97,7 +107,7 @@ export class GrillesAnalytiquesService {
     const [compte, plan, sections] = await Promise.all([
       this.prisma.compte.findFirst({
         where: { id: dto.compteId, tenantId },
-        select: { id: true, numero: true, classe: true, typeCompte: true },
+        select: { id: true, numero: true, classe: true, typeCompte: true, estActif: true },
       }),
       this.prisma.planAnalytique.findFirst({
         where: { id: dto.planId, tenantId },
@@ -123,6 +133,8 @@ export class GrillesAnalytiquesService {
       lignes: dto.lignes,
     });
     if (refus) throw new BadRequestException(refus);
+    const horsSaisie = compte ? await motifCompteHorsSaisie(this.prisma, tenantId, compte, 'la grille') : null;
+    if (horsSaisie) throw new BadRequestException(horsSaisie);
 
     try {
       await transactionJournalisee(this.prisma, async (tx) => {
@@ -170,7 +182,7 @@ export class GrillesAnalytiquesService {
       await transactionJournalisee(this.prisma, (tx) => tx.grilleAnalytique.delete({ where: { id: grille.id } }));
     } catch (e) {
       // Retirée ou remplacée entre la lecture et la suppression · dit, jamais une erreur technique.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      if (estDisparue(e)) {
         throw new ConflictException('La grille vient d’être retirée ou remplacée · relisez la liste.');
       }
       throw e;

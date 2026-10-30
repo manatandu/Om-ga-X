@@ -2009,6 +2009,8 @@ export interface JournalAnalytique {
     date: string;
     journal: string;
     numeroPiece: number | null;
+    /** Statut de l'écriture ventilée · `null` sur une ligne d'OD. */
+    statut: string | null;
     sectionCode: string;
     sectionIntitule: string;
     compteNumero: string;

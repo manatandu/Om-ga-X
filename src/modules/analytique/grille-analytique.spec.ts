@@ -76,9 +76,18 @@ describe('refus d’une grille déclarée', () => {
 describe('une grille enregistrée qui ne s’applique plus se dit', () => {
   it('section passée en sommeil ou devenue rubrique, plan en sommeil', () => {
     const avec = (s: Partial<SectionDeGrille>) => [{ ...SECTIONS[0], ...s, pourcentage: 100 }];
-    expect(motifGrilleInapplicable({ plan: PLAN, sections: avec({}) })).toBeNull();
-    expect(motifGrilleInapplicable({ plan: PLAN, sections: avec({ estActive: false }) })).toMatch(/sommeil/);
-    expect(motifGrilleInapplicable({ plan: PLAN, sections: avec({ estTotal: true }) })).toMatch(/rubrique/);
-    expect(motifGrilleInapplicable({ plan: { ...PLAN, estActif: false }, sections: avec({}) })).toMatch(/plan PROJ est en sommeil/);
+    const compte = { ...COMPTE, estActif: true };
+    expect(motifGrilleInapplicable({ plan: PLAN, compte, sections: avec({}) })).toBeNull();
+    expect(motifGrilleInapplicable({ plan: PLAN, compte, sections: avec({ estActive: false }) })).toMatch(/sommeil/);
+    expect(motifGrilleInapplicable({ plan: PLAN, compte, sections: avec({ estTotal: true }) })).toMatch(/rubrique/);
+    expect(motifGrilleInapplicable({ plan: { ...PLAN, estActif: false }, compte, sections: avec({}) })).toMatch(/plan PROJ est en sommeil/);
+  });
+
+  it('le compte en sommeil ou devenu regroupement, la classe que le plan ne ventile plus', () => {
+    const avec = [{ ...SECTIONS[0], pourcentage: 100 }];
+    const compte = { ...COMPTE, estActif: true };
+    expect(motifGrilleInapplicable({ plan: PLAN, compte: { ...compte, estActif: false }, sections: avec })).toMatch(/compte 60400000 est en sommeil/);
+    expect(motifGrilleInapplicable({ plan: PLAN, compte: { ...compte, estTotal: true }, sections: avec })).toMatch(/regroupement/);
+    expect(motifGrilleInapplicable({ plan: { ...PLAN, classesVentilees: '2,7' }, compte, sections: avec })).toMatch(/ne ventile pas la classe 6/);
   });
 });

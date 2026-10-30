@@ -60,6 +60,14 @@ export function perimetreDuPlan(params: FenetreDuPlan): Prisma.LigneEcritureWher
       exerciceId: params.exerciceId,
       date: { gte: params.du, lte: params.au },
       estSoldeDesComptesDeGestion: false,
+      // NI LES REPORTS DE CLÔTURE, NI L'À-NOUVEAU PROVISOIRE (relecture du
+      // 2026-10-30, § 10 bis du règlement) · l'à-nouveau des immobilisations
+      // (classe 2) n'est l'objet d'aucune ventilation · le compter « à
+      // ventiler » fabriquait un écart au contrôle des cumuls à chaque
+      // ouverture, que le cabinet aurait « corrigé » par une ventilation
+      // sans objet.
+      estGenereeParCloture: false,
+      estANouveauProvisoire: false,
       ...HORS_SITUATION,
     },
     compte: { classe: { in: params.classes } },
@@ -86,6 +94,8 @@ export type LigneJournalAnalytique = {
   date: Date;
   journal: string;
   numeroPiece: number | null;
+  /** Statut de l'écriture ventilée · `null` sur une ligne d'OD, qui n'est pas une pièce du livre-journal. */
+  statut: string | null;
   sectionCode: string;
   sectionIntitule: string;
   compteNumero: string;

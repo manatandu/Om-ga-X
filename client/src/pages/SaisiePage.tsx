@@ -603,9 +603,11 @@ export function SaisiePage() {
 
   /*
     LA GRILLE DU COMPTE SE PROPOSE QUAND LE COMPTE EST CHOISI (fonction n° 48) ·
-    l'axe passe à « Grille », que le comptable garde, remplace par une section
-    ou efface ; un compte sans grille retire la marque laissée par le compte
-    d'avant, jamais une section choisie à la main.
+    PROPOSÉE, JAMAIS IMPOSÉE · un axe vide passe à « Grille », que le
+    comptable garde, remplace par une section ou efface ; une section déjà
+    choisie (à la main, ou gardée de la ligne d'avant) n'est jamais écrasée,
+    et « Grille » reste offerte dans la liste de l'axe. Un compte sans grille
+    retire la seule marque « Grille » laissée par le compte d'avant.
   */
   useEffect(() => {
     setSectionsSaisie((prev) => {
@@ -613,7 +615,7 @@ export function SaisiePage() {
       const suite = { ...prev };
       for (const p of axesGrille) {
         const proposee = grilleProposee(grillesLues, compteChoisi?.id, p.id);
-        if (proposee && prev[p.id] !== SECTION_GRILLE) {
+        if (proposee && !prev[p.id]) {
           suite[p.id] = SECTION_GRILLE;
           change = true;
         } else if (!proposee && prev[p.id] === SECTION_GRILLE) {
