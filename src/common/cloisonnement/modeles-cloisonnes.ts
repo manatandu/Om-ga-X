@@ -167,6 +167,10 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne dossier-l9, fonction 102 · les envois reçus d'un autre dossier et leur registre.
   'ReceptionEchange',
   'EcritureRecue',
+  // Ligne dossier-l9, fonction 95 · les sessions vues et la messagerie interne.
+  'PresenceSession',
+  'MessageInterne',
+  'DestinataireMessage',
   'SelectionEdition',
   'ModeleEdition',
   // Ligne export-periode · les extraits de période numérotés et datés.

@@ -193,6 +193,9 @@ export function AppShell() {
         // Le journal d'audit n'avait qu'une tuile d'accueil · or la barre de
         // menus est la carte complète du logiciel. Réservé comme sa route.
         ...(estAdmin ? [{ label: "Journal d'audit", chemin: '/journal-audit', onClick: () => navigate('/journal-audit') }] : []),
+        // Ligne dossier-l9, fonction 95 · Sage range la liste des utilisateurs
+        // connectés avec les accès du fichier · réservée comme sa route.
+        ...(estAdmin ? [{ label: 'Utilisateurs connectés', chemin: '/utilisateurs-connectes', onClick: () => navigate('/utilisateurs-connectes') }] : []),
         // Sage : Fichier → Importer. C'est par là qu'une association arrive
         // avec son tableur ou l'export de son logiciel précédent.
         ...(estAdmin ? [{ label: 'Importer des données…', separateurAvant: true, chemin: '/import', onClick: () => navigate('/import') }] : []),
@@ -263,6 +266,9 @@ export function AppShell() {
         // leurs routes. Ils ne vivaient que dans la fenêtre des utilisateurs,
         // réservée à l'administrateur (audit de l'interface, F3).
         { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
+        // Ligne dossier-l9, fonction 95 · la messagerie entre utilisateurs du
+        // dossier, à côté du compte de chacun · ouverte à tous les rôles.
+        { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
         { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
       ],
     },
@@ -725,6 +731,7 @@ export function AppShell() {
               { label: 'Registre du personnel', chemin: '/personnel', onClick: () => navigate('/personnel') },
               { label: 'Devises et réévaluation', chemin: '/devises', onClick: () => navigate('/devises') },
               { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
+              { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
               { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
             ],
           },

@@ -995,6 +995,10 @@ model Tenant {
   ecrituresExportees                   EcritureExportee[]
   // Ligne dossier-l9, fonction 102 · les envois reçus d'un autre dossier et leur registre.
   receptionsEchange                    ReceptionEchange[]
+  // Ligne dossier-l9, fonction 95 · les sessions vues en activité et la messagerie interne.
+  presencesSessions                    PresenceSession[]
+  messagesInternes                     MessageInterne[]
+  destinatairesMessages                DestinataireMessage[]
   ecrituresRecues                      EcritureRecue[]
   // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
   impressionsDifferees                 ImpressionDifferee[]
@@ -1207,6 +1211,10 @@ enum RoleUtilisateur {
 
 model User {
   id                     String          @id @default(uuid())
+  // Ligne dossier-l9, fonction 95 · ses sessions vues et ses messages.
+  presences              PresenceSession[]     @relation("PresenceDeLUtilisateur")
+  messagesEnvoyes        MessageInterne[]      @relation("MessagesEnvoyes")
+  messagesRecus          DestinataireMessage[] @relation("MessagesRecus")
   tenantId               String
   tenant                 Tenant          @relation(fields: [tenantId], references: [id])
   email                  String          @unique
@@ -13414,4 +13422,85 @@ model EcritureRecue {
   @@unique([tenantId, identifiantSource])
   @@index([tenantId, ecritureDetacheeId])
   @@map("ecritures_recues")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne dossier-l9 · fonction 95, utilisateurs connectés et messagerie interne
+// ---------------------------------------------------------------------------
+
+/// UNE SESSION VUE EN ACTIVITÉ · ce que l'administrateur du dossier lit dans
+/// « Utilisateurs connectés ». Jamais le jeton · la session est nommée par
+/// l'EMPREINTE de son jeton CSRF (celle que la déconnexion ferme,
+/// `sessions-fermees.ts`), que l'écran ne reçoit pas. Données réduites à ce
+/// que la fenêtre sert (Code du numérique, art. 194 · « adéquates,
+/// pertinentes […] et non excessives ») · ni adresse IP, ni empreinte du
+/// navigateur, un appareil résumé (navigateur et système) seulement ; gardées
+/// trente et un jours après la dernière activité, puis retirées (art. 193,
+/// 3°). Écrite au plus une fois par minute et par session, hors du journal
+/// d'audit (engendrée par chaque requête).
+model PresenceSession {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+  userId             String
+  user               User     @relation("PresenceDeLUtilisateur", fields: [userId], references: [id], onDelete: Cascade)
+  empreinteSession   String   @unique
+  /// La connexion d'origine de la session (claim `origine`).
+  ouverteLe          DateTime
+  /// Sa dernière authentification explicite (claim `authentification`) · c'est
+  /// elle qu'une révocation des sessions du compte compare, comme `JwtStrategy`.
+  authentifieeLe     DateTime
+  derniereActiviteLe DateTime
+  sessionLongue      Boolean
+  /// « Chrome · Windows » · jamais la chaîne complète du navigateur.
+  appareil           String?  @db.VarChar(60)
+  /// Posée par « Se déconnecter » · la session n'est plus listée.
+  fermeeLe           DateTime?
+
+  @@index([tenantId, derniereActiviteLe])
+  @@map("presences_sessions")
+}
+
+/// UN MESSAGE ENTRE UTILISATEURS D'UN MÊME DOSSIER · jamais au-delà, ni vers
+/// l'éditeur. La correspondance est CONFIDENTIELLE (Code du numérique,
+/// art. 193, 2° · « traitées de manière confidentielle et protégée ») · lue
+/// par son expéditeur et ses destinataires seulement, l'administrateur
+/// compris qui n'en est ni l'un ni l'autre ; son objet et son corps ne
+/// passent pas au journal d'audit, qui en garde l'envoi, l'auteur et la date.
+model MessageInterne {
+  id                    String                @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                @relation(fields: [tenantId], references: [id])
+  expediteurId          String
+  expediteur            User                  @relation("MessagesEnvoyes", fields: [expediteurId], references: [id])
+  objet                 String                @db.VarChar(150)
+  corps                 String                @db.VarChar(5000)
+  envoyeLe              DateTime              @default(now())
+  /// Le message auquel celui-ci répond, s'il y en a un.
+  repondAId             String?
+  repondA               MessageInterne?       @relation("ReponsesAuMessage", fields: [repondAId], references: [id], onDelete: SetNull)
+  reponses              MessageInterne[]      @relation("ReponsesAuMessage")
+  /// L'expéditeur l'a retiré de ses envoyés · les destinataires le gardent.
+  retireParExpediteurLe DateTime?
+  destinataires         DestinataireMessage[]
+
+  @@index([tenantId, expediteurId, envoyeLe])
+  @@map("messages_internes")
+}
+
+/// UN DESTINATAIRE D'UN MESSAGE · sa lecture et son retrait de la boîte.
+model DestinataireMessage {
+  id             String         @id @default(uuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  messageId      String
+  message        MessageInterne @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  destinataireId String
+  destinataire   User           @relation("MessagesRecus", fields: [destinataireId], references: [id])
+  luLe           DateTime?
+  retireLe       DateTime?
+
+  @@unique([messageId, destinataireId])
+  @@index([tenantId, destinataireId, retireLe])
+  @@map("destinataires_messages")
 }

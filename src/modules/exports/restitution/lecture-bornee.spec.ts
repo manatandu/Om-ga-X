@@ -153,8 +153,10 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // avec la revue des écritures (ligne gl-saisie, fonction 64), bornée par son tenantId ;
     // 224 avec les décisions de relance sur une ligne (fonction 33), idem ;
     // 226 avec les envois reçus d'un autre dossier et leur registre, bornés
-    // par leur tenantId (ligne dossier-l9, fonction 102).
-    expect(modeles).toHaveLength(226);
+    // par leur tenantId (ligne dossier-l9, fonction 102) ; 229 avec les
+    // sessions vues, les messages internes et leurs destinataires, bornés par
+    // leur tenantId (même ligne, fonction 95).
+    expect(modeles).toHaveLength(229);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

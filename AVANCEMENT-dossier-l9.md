@@ -32,6 +32,26 @@ Branche de sauvegarde `travail/dossier-l9`, partie de `origin/main`
   dossiers SYSCOHADA, quatre envois, clôture de 2026 chez celui qui reçoit ·
   conforme.
 
+### 95 · Utilisateurs connectés et messagerie interne
+
+- `src/modules/messagerie/` · `presence.ts` (écrite par `JwtStrategy`, au
+  plus une fois par minute et par session, jamais bloquante), messagerie
+  (`/messages`), utilisateurs connectés (`/utilisateurs-connectes`, à
+  l'administrateur seul). Tables `presences_sessions`, `messages_internes`,
+  `destinataires_messages` (migration `20270220000200_presence_et_messagerie`).
+- La session se nomme par l'empreinte de son jeton CSRF, jamais rendue ;
+  appareil résumé (navigateur et système), ni IP ni chaîne du navigateur ;
+  retirée trente et un jours après sa dernière activité ; la déconnexion la
+  retire de la liste dans la transaction de sa trace.
+- Messages entre utilisateurs ACTIFS du même dossier, relus par le serveur ;
+  lus par l'expéditeur et les destinataires seuls (l'administrateur non) ;
+  objet et corps hors du journal d'audit ; chacun retire de sa boîte, retiré
+  par tous il est supprimé. Ouverts au gestionnaire de paie route par route
+  (`roles-cantonnes.spec.ts`).
+- Écrans `UtilisateursConnectesPage` (Fichier > Utilisateurs connectés) et
+  `MessagesPage` (Fichier > Messages).
+- Rejeu sur vraie base · `scripts/rejouer-dossier-l9.cjs` · conforme.
+
 ## Décisions et fondement
 
 - 102 · AUDCIF art. 22, 7° (ce qui entre par transmission s'appuie sur une
@@ -40,10 +60,16 @@ Branche de sauvegarde `travail/dossier-l9`, partie de `origin/main`
   reçoit · tout naît au brouillard ; une écriture validée ici ne se remplace
   plus) ; art. 20, al. 2 (la correction d'une validée passe par une
   inscription en négatif).
+- 95 · Code du numérique (ordonnance-loi n° 23/10 du 13 mars 2023), art. 194
+  (données non excessives · ni IP ni empreinte du navigateur pour la
+  présence) ; art. 193, 3° (conservation bornée · trente et un jours pour la
+  présence, suppression d'un message retiré par tous) ; art. 193, 2°
+  (traitement confidentiel · la correspondance ne se lit que par ses
+  correspondants, et son objet et son corps ne passent pas au journal
+  d'audit, que d'autres lisent).
 
 ## Reste
 
-- 95 utilisateurs connectés et messagerie interne.
 - 100 préférences d'affichage, notifications, aide à la formule des états
   personnalisés.
 - 96 langue de l'interface (infrastructure, anglais du cadre commun).
