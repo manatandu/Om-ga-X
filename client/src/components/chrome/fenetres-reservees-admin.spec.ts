@@ -85,6 +85,7 @@ function cheminsReserves(): string[] {
  */
 const CONTROLEURS: Record<string, string> = {
   '/journal-audit': 'src/common/audit/journal-audit.controller.ts',
+  '/utilisateurs-connectes': 'src/modules/messagerie/utilisateurs-connectes.controller.ts',
 };
 
 const ADMIN = '@Roles(RoleUtilisateur.ADMIN_CABINET)';

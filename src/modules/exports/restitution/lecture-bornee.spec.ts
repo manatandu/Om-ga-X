@@ -156,8 +156,12 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // tenantId (ligne paie-suite) ; 227 avec les rappels de salaire, bornés
     // par leur tenantId (même ligne, fonction 87) ; 230 avec les grilles
     // analytiques des comptes et leurs lignes, et les budgets des comptes
-    // généraux, bornés par leur tenantId (ligne analytique, n° 48 et 51).
-    expect(modeles).toHaveLength(230);
+    // généraux, bornés par leur tenantId (ligne analytique, n° 48 et 51) ;
+    // puis les envois reçus d'un autre dossier et leur registre (ligne
+    // dossier-l9, fonction 102), les sessions vues, les messages internes et
+    // leurs destinataires (fonction 95), les préférences et les notifications
+    // des utilisateurs (fonctions 96 et 100), tous bornés par leur tenantId.
+    expect(modeles).toHaveLength(237);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

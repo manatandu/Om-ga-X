@@ -59,6 +59,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   ImpressionJournal: 'Impression du journal',
   ExportEcritures: 'Export des écritures',
   ImpressionDifferee: 'Impression différée',
+  ReceptionEchange: "Écritures reçues d'un autre dossier",
+  MessageInterne: 'Message interne',
   ExtraitPeriode: 'Extrait de période',
   DossierEssaiSupprime: 'Dossier d’essai supprimé',
   SelectionEdition: "Sélection d'une édition",

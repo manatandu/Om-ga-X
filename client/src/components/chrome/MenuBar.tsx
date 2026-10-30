@@ -9,6 +9,8 @@ import {
   type MenuItemDef,
 } from './menu-groupes';
 import { ecouterEchap } from '../../lib/echap';
+import { useLangue } from '../../lib/langue';
+import { attributLang } from '../../lib/traduction';
 
 // Les types du menu vivent dans `menu-groupes.ts` (un module sans JSX, donc
 // exécutable par le jest de la racine) · ils continuent de s'importer d'ici,
@@ -77,6 +79,7 @@ function CommandeMenu({
   apresClic: () => void;
   auSurvol?: () => void;
 }) {
+  const { tr } = useLangue();
   return (
     <button
       type="button"
@@ -95,7 +98,7 @@ function CommandeMenu({
         retrait ? 'pl-[27px] pr-3' : 'px-3'
       } h-[24px] text-[12px] hover:enabled:bg-chrome-alt focus-visible:bg-chrome-alt outline-hidden disabled:opacity-40 disabled:cursor-not-allowed`}
     >
-      <span className="min-w-0 truncate">{item.label}</span>
+      <span className="min-w-0 truncate">{tr(item.label)}</span>
     </button>
   );
 }
@@ -126,6 +129,9 @@ export function MenuBar({
   apres?: React.ReactNode;
 }) {
   const [ouvert, setOuvert] = useState<string | null>(null);
+  // Ligne dossier-l9, fonction 96 · les titres se traduisent au rendu, les
+  // clés d'état (`ouvert`, `groupeDeplie`) restent le titre français.
+  const { langue, tr } = useLangue();
   // Lu par l'écouteur d'Échap, posé une fois pour toute la vie de la barre.
   const ouvertRef = useRef<string | null>(null);
   ouvertRef.current = ouvert;
@@ -252,13 +258,13 @@ export function MenuBar({
               deplie ? 'bg-chrome-alt' : 'hover:bg-chrome-alt'
             }`}
           >
-            <span className="min-w-0 flex-1 truncate">{entree.titre}</span>
+            <span className="min-w-0 flex-1 truncate">{tr(entree.titre)}</span>
             <Chevron vers="droite" />
           </button>
           {deplie && (
             <div
               role="menu"
-              aria-label={entree.titre}
+              aria-label={tr(entree.titre)}
               onMouseEnter={annulerSous}
               onKeyDown={(e) => {
                 if (e.key === 'ArrowLeft') setGroupeDeplie(null);
@@ -303,7 +309,7 @@ export function MenuBar({
               <span aria-hidden className="w-[10px] shrink-0 text-[10px] text-text-dim">
                 {ligne.deplie ? '▾' : '▸'}
               </span>
-              <span className="min-w-0 truncate">{ligne.groupe.titre}</span>
+              <span className="min-w-0 truncate">{tr(ligne.groupe.titre)}</span>
             </button>
           ) : (
             <CommandeMenu item={ligne.item} retrait={ligne.retrait} apresClic={fermer} />
@@ -315,6 +321,7 @@ export function MenuBar({
   return (
     <div
       ref={ref}
+      lang={attributLang(langue)}
       onMouseLeave={quitterBarre}
       onMouseEnter={() => {
         // Revenir sur la barre ou le menu annule une fermeture en cours.
@@ -367,13 +374,13 @@ export function MenuBar({
               ouvert === m.titre ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
             }`}
           >
-            {m.titre}
+            {tr(m.titre)}
           </button>
           {ouvert === m.titre && (
             <div
               ref={refPanneau}
               role="menu"
-              aria-label={m.titre}
+              aria-label={tr(m.titre)}
               // En mode volant, le panneau ne défile pas : un conteneur qui
               // défile rogne tout ce qui en dépasse, sous-menu compris. Il
               // n'en a plus besoin, les groupes gardant sa hauteur fixe.

@@ -84,6 +84,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ImportController: FonctionMetier.SAISIE,
   // Ligne sage-l7, fonction 99 · l'export des écritures, pendant de l'import.
   ExportModificationsController: FonctionMetier.SAISIE,
+  // Ligne dossier-l9, fonction 102 · l'échange d'écritures, qui pose des pièces au brouillard.
+  EchangeEcrituresController: FonctionMetier.SAISIE,
   LettrageController: FonctionMetier.LETTRAGE,
   RapprochementController: FonctionMetier.TRESORERIE,
   ReglementsController: FonctionMetier.TRESORERIE,
@@ -214,6 +216,11 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
     "Modèles des éditions de travail (ligne sage-l7, fonction 59) · la présentation d'une liste imprimée, sans effet sur les livres, que le profil ne ferme pas.",
   SelectionsEditionController:
     "Sélections enregistrées des éditions (ligne sage-l7, fonction 59) · des critères de lecture rappelés, sans effet sur les livres, que le profil ne ferme pas.",
+  MessagerieController:
+    "Messagerie interne (ligne dossier-l9, fonction 95) · chacun écrit, lit et retire ses propres messages, sans effet sur les livres, que le profil ne ferme pas.",
+  UtilisateursConnectesController: "Utilisateurs connectés (ligne dossier-l9, fonction 95) · une lecture de l'administrateur, que le profil ne restreint jamais.",
+  PreferencesController: "Préférences d'affichage (ligne dossier-l9, fonctions 96 et 100) · chacun règle les siennes, sans effet sur les livres, que le profil ne ferme pas.",
+  NotificationsController: "Notifications dans l'interface (ligne dossier-l9, fonction 100) · chacun marque les siennes lues, sans effet sur les livres.",
   ImpressionsDiffereesController:
     "Impression différée (ligne sage-l7, fonction 59) · demander et faire produire une édition est une lecture des livres, ouverte à qui peut les exporter, que le profil ne ferme pas.",
 };

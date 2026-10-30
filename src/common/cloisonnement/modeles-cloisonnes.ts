@@ -164,6 +164,16 @@ export const MODELES_CLOISONNES = new Set<string>([
   'EcritureExportee',
   // Ligne sage-l7, fonction 59 · l'impression différée et les sélections enregistrées.
   'ImpressionDifferee',
+  // Ligne dossier-l9, fonction 102 · les envois reçus d'un autre dossier et leur registre.
+  'ReceptionEchange',
+  'EcritureRecue',
+  // Ligne dossier-l9, fonction 95 · les sessions vues et la messagerie interne.
+  'PresenceSession',
+  'MessageInterne',
+  'DestinataireMessage',
+  // Ligne dossier-l9, fonctions 96 et 100 · préférences et notifications.
+  'PreferenceUtilisateur',
+  'NotificationUtilisateur',
   'SelectionEdition',
   'ModeleEdition',
   // Ligne export-periode · les extraits de période numérotés et datés.

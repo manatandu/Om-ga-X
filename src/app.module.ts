@@ -24,6 +24,8 @@ import { TvaModule } from './modules/tva/tva.module';
 import { RapprochementModule } from './modules/rapprochement/rapprochement.module';
 import { ImmobilisationsModule } from './modules/immobilisations/immobilisations.module';
 import { ExportsModule } from './modules/exports/exports.module';
+import { MessagerieModule } from './modules/messagerie/messagerie.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { BailleursModule } from './modules/bailleurs/bailleurs.module';
 import { NotesAnnexesModule } from './modules/notes-annexes/notes-annexes.module';
 import { RegistreDonateursModule } from './modules/registre-donateurs/registre-donateurs.module';
@@ -109,6 +111,10 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     EtatsFinanciersSyscohadaModule,
     ExportsModule,
     UtilisateursModule,
+    // Ligne dossier-l9, fonction 95 · utilisateurs connectés et messagerie interne.
+    MessagerieModule,
+    // Ligne dossier-l9, fonctions 96 et 100 · préférences et notifications.
+    NotificationsModule,
     BailleursModule,
     NotesAnnexesModule,
     RegistreDonateursModule,

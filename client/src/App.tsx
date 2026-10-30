@@ -5,6 +5,7 @@ import { BandeauConsentementMesure } from './components/BandeauConsentementMesur
 import { AuthProvider, useAuth } from './lib/auth';
 import { ExerciceProvider } from './lib/exercice';
 import { FenetresProvider } from './lib/fenetres';
+import { LangueProvider } from './lib/langue';
 import { AppShell } from './components/chrome/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -69,7 +70,10 @@ function Routage() {
           <ZoneProtegee>
             <ExerciceProvider>
               <FenetresProvider>
-                <AppShell />
+                {/* Ligne dossier-l9, fonction 96 · la langue du cadre, lue sur les préférences du titulaire. */}
+                <LangueProvider>
+                  <AppShell />
+                </LangueProvider>
               </FenetresProvider>
             </ExerciceProvider>
           </ZoneProtegee>

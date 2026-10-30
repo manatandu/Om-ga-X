@@ -83,6 +83,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
       '/conventions-financement',
       '/parametres-dossier',
       '/exports-ecritures',
+      '/echanges-ecritures',
       '/balance-fonctionnelle',
       '/justificatif-solde',
       '/evolution-soldes',
@@ -179,9 +180,11 @@ export const LOGICIELS: readonly LogicielDef[] = [
     chemins: [
       '/utilisateurs',
       '/journal-audit',
+      '/utilisateurs-connectes',
       '/import',
       '/restitution',
       '/exports-ecritures',
+      '/echanges-ecritures',
       '/parametres-dossier',
       '/mandat-auditeur',
       '/accord-cadre',
@@ -197,7 +200,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
  * l'aide (« ? »). Les commandes sans fenêtre (Mon compte, Fermer le dossier,
  * Imprimer, menu Fenêtre) n'ont pas de chemin et ne se filtrent jamais.
  */
-export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/impressions-differees', '/plateforme'];
+export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/impressions-differees', '/plateforme', '/messages', '/notifications', '/preferences'];
 export const PREFIXES_COMMUNS: readonly string[] = ['/aide/'];
 
 /** Le chemin sans sa chaîne de requête · `/journal?onglet=balance` devient `/journal`. */

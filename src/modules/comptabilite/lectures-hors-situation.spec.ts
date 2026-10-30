@@ -253,6 +253,11 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/tva/taux-tva.service.ts', fonction: 'modifier', appel: 'ligneEcriture.count', nombre: 1, motif: 'USAGE' },
   { fichier: 'src/modules/tva/taux-tva.service.ts', fonction: 'calculerProrata', appel: 'ligneEcriture.aggregate', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'creer', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne dossier-l9, fonction 102 · l'échange compte les identifiants de l'envoi qui seraient des écritures de ce
+  // dossier (tout statut · l'envoi viendrait d'ici), et relit l'écriture reçue désignée par son registre.
+  { fichier: 'src/modules/exports/echange/echange-ecritures.service.ts', fonction: 'recevoir', appel: 'ecriture.count', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/exports/echange/echange-ecritures.service.ts', fonction: 'motifRefusRemplacement', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/exports/echange/echange-ecritures.service.ts', fonction: 'remplacer', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },

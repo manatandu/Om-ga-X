@@ -871,6 +871,12 @@ export class AuthService {
           SELECT "sessionsFermees" FROM "users" WHERE "id" = ${userId} FOR UPDATE`;
         if (lignes.length === 0) return { fermee: false };
         const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, nouvelle, maintenantS);
+        // La session fermée quitte la liste des utilisateurs connectés (ligne
+        // dossier-l9, fonction 95) · dans la même transaction que sa trace.
+        await tx.presenceSession.updateMany({
+          where: { tenantId, userId, empreinteSession: nouvelle.e, fermeeLe: null },
+          data: { fermeeLe: new Date(maintenantMs) },
+        });
         await tx.user.update({
           where: { id: userId, tenantId },
           data: debordement

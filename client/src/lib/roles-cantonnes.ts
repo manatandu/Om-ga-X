@@ -22,7 +22,7 @@ export const ADRESSES_PAIE = ['/personnel'] as const;
  * `ADRESSES_PAIE`, qui sert aussi à FERMER le personnel à l'aide-comptable ·
  * y ajouter Devises la lui aurait retirée. Une liste se nomme par sa fin.
  */
-export const ADRESSES_UTILES_A_LA_PAIE = ['/devises'] as const;
+export const ADRESSES_UTILES_A_LA_PAIE = ['/devises', '/messages', '/notifications', '/preferences'] as const;
 
 /** La seule devise que la paie convertit, et le seul cours que le gestionnaire cote. */
 export const DEVISE_COTEE_PAR_LA_PAIE = 'USD';

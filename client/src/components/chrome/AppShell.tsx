@@ -8,7 +8,7 @@ import { definitionPour } from '../../lib/registre-fenetres';
 import { fenetreDisponible } from '../../lib/referentiel-fenetre';
 import { SymboleOmegaX } from './Logo';
 import { MenuBar, type MenuDef } from './MenuBar';
-import { CalculetteChrome, ClocheChrome, NavigationChrome } from './OutilsChrome';
+import { CalculetteChrome, ClocheChrome, NavigationChrome, NotificationsChrome } from './OutilsChrome';
 import { StatusBar } from './StatusBar';
 import { BandeauDemonstration } from './BandeauDemonstration';
 import { BandeauConditions } from './BandeauConditions';
@@ -193,6 +193,9 @@ export function AppShell() {
         // Le journal d'audit n'avait qu'une tuile d'accueil · or la barre de
         // menus est la carte complète du logiciel. Réservé comme sa route.
         ...(estAdmin ? [{ label: "Journal d'audit", chemin: '/journal-audit', onClick: () => navigate('/journal-audit') }] : []),
+        // Ligne dossier-l9, fonction 95 · Sage range la liste des utilisateurs
+        // connectés avec les accès du fichier · réservée comme sa route.
+        ...(estAdmin ? [{ label: 'Utilisateurs connectés', chemin: '/utilisateurs-connectes', onClick: () => navigate('/utilisateurs-connectes') }] : []),
         // Sage : Fichier → Importer. C'est par là qu'une association arrive
         // avec son tableur ou l'export de son logiciel précédent.
         ...(estAdmin ? [{ label: 'Importer des données…', separateurAvant: true, chemin: '/import', onClick: () => navigate('/import') }] : []),
@@ -238,6 +241,10 @@ export function AppShell() {
         // comptable en lecture seule qui voit sa relance « gardée » doit
         // pouvoir en lire la raison.
         { label: 'Courriers sortants', chemin: '/courrier', separateurAvant: false, onClick: () => navigate('/courrier') },
+        // Ligne dossier-l9, fonction 102 · l'échange d'écritures relit l'export
+        // des modifications d'un AUTRE dossier, à côté de ce qui entre et sort ·
+        // ouvert à tous en lecture, la réception réservée au comptable.
+        { label: 'Échanger des écritures…', chemin: '/echanges-ecritures', onClick: () => navigate('/echanges-ecritures') },
         // Console de l'opérateur de la plateforme (le cabinet exploitant) ·
         // invisible pour tout utilisateur ordinaire, et de toute façon
         // inaccessible : le serveur relit le drapeau en base à chaque requête.
@@ -259,6 +266,13 @@ export function AppShell() {
         // leurs routes. Ils ne vivaient que dans la fenêtre des utilisateurs,
         // réservée à l'administrateur (audit de l'interface, F3).
         { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
+        // Ligne dossier-l9, fonction 95 · la messagerie entre utilisateurs du
+        // dossier, à côté du compte de chacun · ouverte à tous les rôles.
+        { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
+        // Ligne dossier-l9, fonctions 96 et 100 · les notifications de chacun
+        // et ses préférences (langue du cadre, événements notifiés).
+        { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
+        { label: 'Préférences…', chemin: '/preferences', onClick: () => navigate('/preferences') },
         { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
       ],
     },
@@ -734,6 +748,9 @@ export function AppShell() {
               { label: 'Registre du personnel', chemin: '/personnel', onClick: () => navigate('/personnel') },
               { label: 'Devises et réévaluation', chemin: '/devises', onClick: () => navigate('/devises') },
               { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
+              { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
+              { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
+              { label: 'Préférences…', chemin: '/preferences', onClick: () => navigate('/preferences') },
               { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
             ],
           },
@@ -878,6 +895,8 @@ export function AppShell() {
                   qui la fenêtre est fermée (gestionnaire de paie), c'était un
                   403 par minute et un clic renvoyé ailleurs. */}
               {fenetreOuverteAuRole('/courrier', utilisateur?.role) && <ClocheChrome />}
+              {/* Ligne dossier-l9, fonction 100 · les notifications, à tous les rôles. */}
+              <NotificationsChrome />
               <CalculetteChrome />
             </>
           }
