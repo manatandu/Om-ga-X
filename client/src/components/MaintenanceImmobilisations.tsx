@@ -127,7 +127,7 @@ function TableRapprochement({
       {lignes.length === 0 ? (
         <div className="text-text-dim">Aucun solde au registre ni à la balance.</div>
       ) : (
-        <table className="w-full">
+        <table className="w-full" aria-label={titre}>
           <thead>
             <tr>
               <th className="text-left">Compte</th>

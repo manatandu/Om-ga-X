@@ -51,7 +51,9 @@ test('SYSCOHADA · la maintenance nomme l’écart du registre, la renumérotati
 
   await page.goto('/#/immobilisations');
   await page.getByRole('tab', { name: 'Opérations' }).click();
-  const ligne2451 = page.getByRole('row').filter({ hasText: '24510000' }).first();
+  // La table porte son nom · l'onglet a aussi la section analytique des
+  // familles (ligne immos, n° 70), dont une ligne porte le même compte.
+  const ligne2451 = page.getByRole('table', { name: 'Comptes de biens' }).getByRole('row').filter({ hasText: '24510000' }).first();
   await expect(ligne2451).toContainText(/6\s000\s000,00/);
   await expect(ligne2451).toContainText(/7\s000\s000,00/);
   await expect(ligne2451).toContainText('1 ligne(s) sans fiche');
