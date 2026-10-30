@@ -580,15 +580,20 @@ export class RapprochementService {
     // en lecture validée lisait un pointage changé pendant elle. Lignes relues
     // dans la transaction, mise à jour filtrée sur les lignes encore libres ou
     // déjà à ce rapprochement, nombre relu.
+    // La règle d'ouverture se lit AVANT la transaction · lue dedans par
+    // `this.prisma`, elle prenait une seconde connexion du pool pendant que la
+    // transaction tenait la première (audit final F2 · un pool épuisé gèle tous
+    // les cabinets). Elle ne dépend que des rapprochements clos du compte.
+    const { regle } = await this.depart(tenantId, await this.assurerEnCours(tenantId, id));
     return transactionDeSaisie(
       this.prisma,
       tenantId,
-      (tx) => this.pointerDans(tx, tenantId, id, ligneIds),
+      (tx) => this.pointerDans(tx, tenantId, id, ligneIds, regle),
       'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.',
     );
   }
 
-  private async pointerDans(tx: Prisma.TransactionClient, tenantId: string, id: string, ligneIds: string[]) {
+  private async pointerDans(tx: Prisma.TransactionClient, tenantId: string, id: string, ligneIds: string[], regle: RegleOuverture) {
     const rapprochement = await this.assurerEnCours(tenantId, id, tx);
 
     const lignes = await tx.ligneEcriture.findMany({
@@ -610,7 +615,6 @@ export class RapprochementService {
     // F205) · un appel direct pointerait sinon ce que la liste écarte.
     const libres = lignes.filter((l) => l.rapprochementId !== id);
     if (libres.length > 0) {
-      const { regle } = await this.depart(tenantId, rapprochement);
       for (const l of libres) {
         const motif = motifRefusPointage(l.ecriture, regle);
         if (motif) throw new BadRequestException(motif);
