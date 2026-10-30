@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { NaturePieceVirement, OperationVirementFonds, Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -274,6 +275,9 @@ export class VirementsFondsService {
           },
         });
       },
+      // Rejugée DANS la transaction, sous le verrou du dossier (saisie-serialisable, second tour, point 4) · le contrôle d'avant
+      // ne fait que refuser tôt ; deux sorties simultanées de la même caisse y lisaient le même solde.
+      { jugerLaCaisse: true },
     );
     return { ...r.suite, montant: Number(r.suite.montant), comptePassage: passage };
   }
@@ -333,7 +337,7 @@ export class VirementsFondsService {
           });
           const tenue = motifLignesTenues(relues, 'une pièce du virement', 'annuler le virement');
           if (tenue) throw new BadRequestException(tenue);
-          await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+          await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
           const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
           if (r.count !== 1) {
             throw new ConflictException(

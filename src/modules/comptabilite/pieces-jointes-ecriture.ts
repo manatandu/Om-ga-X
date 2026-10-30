@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { Prisma, StatutEcriture } from '@prisma/client';
 import type { LecteurDesPieces, ObjetLu, RegleDesPieces } from '../../common/pieces-jointes/table-des-pieces';
 import { acteurCourant } from '../../common/audit/contexte-audit';
@@ -137,6 +138,8 @@ export async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: stri
  * deux ordres inverses s'interbloquaient.
  */
 export async function verrouillerEcriture(db: LecteurDesPieces, tenantId: string, ecritureId: string): Promise<void> {
+  // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, point 1).
+  await prendreLeVerrouDuDossierBorne(db as Prisma.TransactionClient, tenantId);
   await db.$queryRaw`SELECT "id", "statut" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
 }
 

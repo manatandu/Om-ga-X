@@ -1838,6 +1838,10 @@ export interface ParametresDossier {
   doubleRegardValidation: boolean;
   /** Visa des RIB par un second utilisateur avant tout ordre de virement (option, faux par défaut). */
   visaRibs: boolean;
+  /** Ligne paie-suite · visa des plans d'étalement par un second utilisateur. */
+  visaPlansEtalement?: boolean;
+  /** Ligne paie-suite, fonction 76 · comptes individuels des salariés sous le 422 (option, faux par défaut). */
+  comptesIndividuelsSalaries?: boolean;
   /** Circuit de visa avant validation (ligne microfina-m1) · option du dossier, fausse par défaut. */
   circuitVisa?: boolean;
   /** Ligne sage-l1, fonction 60 · refus de clôturer un journal non imprimé (option, faux par défaut). */
@@ -1962,9 +1966,16 @@ export interface LigneBalanceAnalytique {
   solde: number;
 }
 
+/** Fonction n° 53 · les sections montrées par la balance analytique. */
+export type FiltreBalanceAnalytique = 'TOUTES' | 'MOUVEMENTEES' | 'NON_SOLDEES';
+
 export interface BalanceAnalytique {
   lignes: LigneBalanceAnalytique[];
+  /** Totaux de TOUTES les sections Détail, quel que soit le filtre. */
   totaux: { debit: number; credit: number; solde: number };
+  filtre: FiltreBalanceAnalytique;
+  /** Sections masquées par le filtre · leurs montants restent aux totaux. */
+  masquees: number;
 }
 
 export interface LigneGrandLivreAnalytique {
@@ -1991,6 +2002,56 @@ export interface GrandLivreAnalytique {
     dateFin: string | null;
   };
   lignes: LigneGrandLivreAnalytique[];
+  totaux: { debit: number; credit: number; solde: number };
+}
+
+/** Fonction n° 52 · le journal analytique d'un axe, toutes lignes ou OD seules. */
+export type OrigineJournalAnalytique = 'TOUTES' | 'OD';
+
+export interface JournalAnalytique {
+  plan: { id: string; code: string; intitule: string };
+  origine: OrigineJournalAnalytique;
+  lignes: {
+    id: string;
+    origine: 'VENTILATION' | 'OD';
+    date: string;
+    journal: string;
+    numeroPiece: number | null;
+    /** Statut de l'écriture ventilée · `null` sur une ligne d'OD. */
+    statut: string | null;
+    sectionCode: string;
+    sectionIntitule: string;
+    compteNumero: string;
+    compteIntitule: string;
+    libelle: string;
+    debit: number;
+    credit: number;
+  }[];
+  /** Nombre de lignes de toute la fenêtre · la liste n'en montre peut-être qu'une tranche. */
+  total: number;
+  tronque: boolean;
+  /** Totaux de toute la fenêtre, pris par la base. */
+  totaux: { debit: number; credit: number };
+}
+
+/** Fonction n° 52 · les lignes restées sans répartition sur un axe, en grand livre. */
+export interface LignesNonVentilees {
+  plan: { id: string; code: string; intitule: string; classesVentilees: string };
+  lignes: {
+    ligneEcritureId: string;
+    date: string;
+    journal: string;
+    numeroPiece: number | null;
+    statut: string;
+    compteNumero: string;
+    compteIntitule: string;
+    libelle: string;
+    debit: number;
+    credit: number;
+    soldeProgressif: number;
+  }[];
+  total: number;
+  tronque: boolean;
   totaux: { debit: number; credit: number; solde: number };
 }
 
@@ -4611,6 +4672,18 @@ export interface FicheInventaire {
   numeroSerie?: string | null;
   uniteMesure: string | null;
   quantiteComptee: string | null;
+  /** Ligne restes-immos-budgets, point 2 · la quantité du registre recopiée, `null` hors bien du registre. */
+  quantiteAttendue?: number | null;
+  /** L'écart en unités servi par le serveur (`ecart-en-unites.ts`), `null` sans quantité du registre. */
+  ecartUnites?: {
+    attendue: number;
+    comptee: number | null;
+    ecart: number | null;
+    sens: 'CONFORME' | 'MANQUANT' | 'EXCEDENT' | null;
+    mention: string;
+    /** La quantité du registre aujourd'hui, quand elle a changé depuis la fiche. */
+    quantiteRegistre: number | null;
+  } | null;
   valeurInventaire: string | null;
   referencePiece: string | null;
   compte: { numero: string; intitule: string };

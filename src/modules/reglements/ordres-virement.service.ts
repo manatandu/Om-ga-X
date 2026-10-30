@@ -275,7 +275,7 @@ export class OrdresVirementService {
   /**
    * L'ORDRE DANS UNE TRANSACTION DÉJÀ OUVERTE · le paiement des salaires
    * (ligne sage-l5) le fait naître avec sa pièce et sa fiche, dans la même
-   * transaction sérialisable, qui rejoue tout sur un conflit. Une seule
+   * transaction, sous le verrou du dossier, qui rejoue tout sur un conflit. Une seule
    * écriture de l'ordre, que `creer` appelle aussi.
    */
   async creerDans(

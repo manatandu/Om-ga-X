@@ -109,6 +109,13 @@ const LIBELLES: Record<string, string> = {
   // Ligne sage-l5, fonction 88 · la répartition analytique d'un salarié retient sa section et son plan.
   'LigneRepartitionAnalytiquePaie.sectionId': 'répartitions analytiques de la paie',
   'RepartitionAnalytiquePaie.planId': 'répartitions analytiques de la paie',
+  // Ligne analytique, fonction n° 48 · la grille d'un compte retient le compte, son plan et ses sections.
+  'GrilleAnalytique.compteId': 'grilles analytiques',
+  // Ligne analytique, fonction n° 51 · un budget retient son compte et son exercice.
+  'BudgetCompte.compteId': 'budgets du compte',
+  'BudgetCompte.exerciceId': 'budgets des comptes',
+  'GrilleAnalytique.planId': 'grilles analytiques des comptes',
+  'LigneGrilleAnalytique.sectionId': 'grilles analytiques des comptes',
   // Ligne microfina-m2 · le bon de commande retient son fournisseur et ses
   // sections, l'arrêté et le plafond leur caisse, le chéquier son RIB.
   'BonCommandeFournisseur.tiersId': 'bons de commande fournisseur',

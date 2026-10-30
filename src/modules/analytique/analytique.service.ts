@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { PrismaService } from '../../common/prisma.service';
 import { refuserBailleurHorsSycebnl } from '../../common/bailleur-referentiel';
 import { refuserSiLignesFigees } from '../exercice/gel-cloture';
@@ -743,6 +744,8 @@ export class AnalytiqueService {
     ecritureId: string,
     userId: string | null,
   ) {
+    // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, point 1).
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     const [tete] = await tx.$queryRaw<{ statut: string }[]>`
       SELECT "statut"::text AS "statut" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
     if (tete?.statut !== StatutEcriture.BROUILLARD) return;

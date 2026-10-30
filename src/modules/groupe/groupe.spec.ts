@@ -63,7 +63,7 @@ function lectureDesBalances(parDossier: Record<string, { exerciceId: string; lig
       sommes: { debit: l.totalDebit, credit: l.totalCredit },
     })),
   );
-  return {
+  return { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: {
       findMany: async ({ where }: { where: { tenantId: { in: string[] } } }) =>
         comptes.filter((c) => where.tenantId.in.includes(c.tenantId)).sort((a, b) => (a.numero < b.numero ? -1 : 1)),
@@ -157,7 +157,7 @@ describe('GroupeService · balance agrégée', () => {
 
   it('refuse un dossier sans cellule · la fenêtre ne doit pas afficher un agrégat vide trompeur', async () => {
     const s = new GroupeService(
-      {
+      { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
         exercice: { findFirst: async () => EX_MERE },
         tenant: { findUnique: async () => ({ id: 'seul', nom: 'Dossier seul' }), findMany: async () => [] },
         tiersCompte: { findMany: async () => [] },
@@ -331,6 +331,8 @@ describe('GroupeService · canevas de trésorerie', () => {
       },
       $transaction: async (fn: (tx: unknown) => Promise<void>) =>
         fn({
+          $executeRaw: async () => 0,
+          $queryRaw: async () => [{ statut: 'OUVERT' }],
           ecriture: {
             create: async (args: unknown) => {
               creees.push(args);
@@ -343,6 +345,7 @@ describe('GroupeService · canevas de trésorerie', () => {
   // Les contrôles d'entrée de la saisie · ils laissent passer par défaut, et
   // le test « journal en sommeil » plus bas les fait refuser.
   const ecritureCanevas = (refus?: Error) => ({
+    relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined),
     controlesDEntree: jest.fn().mockImplementation(async () => {
       if (refus) throw refus;
       return {};
@@ -462,7 +465,7 @@ describe('GroupeService · liasse du groupe en un clic', () => {
     balanceC1: (typeof BALANCES)['c1'] = BALANCES.c1,
   ) => {
     const lecture = lectureDuGroupe(balanceC1);
-    return {
+    return { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ligneEcriture: {
         groupBy: lecture.ligneEcriture.groupBy,
         deleteMany: async () => {

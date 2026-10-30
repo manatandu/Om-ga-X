@@ -17,7 +17,8 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 const PIECES = 300;
 
 function service() {
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: {
       // Le maximum existant de chaque série · OD en continu sur le fichier,
       // ACH en continu sur le journal.
@@ -28,7 +29,7 @@ function service() {
     },
     ligneEcriture: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't', longueurCompte: 8, referentiel: 'SYSCOHADA' }) },
     exercice: {
       findFirst: jest.fn().mockResolvedValue({
@@ -52,7 +53,8 @@ function service() {
     },
     $transaction: jest.fn().mockImplementation((f: (t: unknown) => unknown) => f(tx)),
   } as unknown as PrismaService;
-  const ecritureService = { controlesDEntree: jest.fn().mockResolvedValue({}) } as unknown as EcritureService;
+  // La période close se relit sous le verrou, dans la transaction de l'import (saisie-serialisable, second tour).
+  const ecritureService = { controlesDEntree: jest.fn().mockResolvedValue({}), relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined) } as unknown as EcritureService;
   return { svc: new ImportService(prisma, ecritureService), tx, prisma };
 }
 

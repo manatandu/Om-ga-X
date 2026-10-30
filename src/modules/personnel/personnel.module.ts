@@ -33,6 +33,13 @@ import { SuiviPersonnelController } from './suivi-personnel.controller';
 import { BilanSocialController } from './bilan-social.controller';
 import { BilanSocialService } from './bilan-social.service';
 import { SuiviPersonnelService } from './suivi-personnel.service';
+import { OrganigrammeController } from './organigramme.controller';
+import { OrganigrammeService } from './organigramme.service';
+import { PersonnelSuiteController } from './personnel-suite.controller';
+import { FicheIndividuelleService } from './fiche-individuelle.service';
+import { ImportPersonnelService } from './import-personnel.service';
+import { RappelsSalaireService } from './rappels-salaire.service';
+import { ComptesSalariesService } from './comptes-salaries.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -56,6 +63,10 @@ import { SuiviPersonnelService } from './suivi-personnel.service';
     // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
     SuiviPersonnelController,
     BilanSocialController,
+    // Ligne paie-suite · départements et directions.
+    OrganigrammeController,
+    // Ligne paie-suite · fiche individuelle (89), import (82), rappels (87).
+    PersonnelSuiteController,
   ],
   providers: [
     PersonnelService,
@@ -73,6 +84,11 @@ import { SuiviPersonnelService } from './suivi-personnel.service';
     MissionsService,
     SuiviPersonnelService,
     BilanSocialService,
+    OrganigrammeService,
+    FicheIndividuelleService,
+    ImportPersonnelService,
+    RappelsSalaireService,
+    ComptesSalariesService,
   ],
   exports: [PersonnelService],
 })

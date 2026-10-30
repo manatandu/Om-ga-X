@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { PrismaService } from '../../common/prisma.service';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import {
@@ -27,7 +28,6 @@ import {
   reconnaitreColonnes,
   type ChampReleve,
 } from './releve-bancaire';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { motifLigneFigee, type ClotureActive } from '../exercice/gel-cloture';
 
@@ -307,8 +307,9 @@ export class RapprochementService {
   async depart(
     tenantId: string,
     r: { compteId: string; clotureAt: Date | null; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<{ soldeDepart: number | null; regle: RegleOuverture; premier: boolean }> {
-    const clos = await this.prisma.rapprochementBancaire.findMany({
+    const clos = await db.rapprochementBancaire.findMany({
       where: { tenantId, compteId: r.compteId, statut: StatutRapprochement.CLOTURE },
       select: { clotureAt: true, soldeReleve: true, dateDepart: true },
       orderBy: { clotureAt: 'asc' },
@@ -333,8 +334,9 @@ export class RapprochementService {
   private async ouverture(
     tenantId: string,
     r: { id: string; compteId: string; soldeDepartDeclare?: Prisma.Decimal | number | null; dateDepart?: Date | null },
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<OuvertureRapprochement> {
-    const declares = await this.prisma.encoursOuvertureRapprochement.findMany({
+    const declares = await db.encoursOuvertureRapprochement.findMany({
       where: { tenantId, declareSurId: r.id },
       select: { debit: true, credit: true },
     });
@@ -347,12 +349,12 @@ export class RapprochementService {
     }
     const veille = new Date(dateDepart.getTime() - JOUR_MS);
     const exercice =
-      (await this.prisma.exercice.findFirst({ where: { tenantId, dateDebut: { lte: veille }, dateFin: { gte: veille } } })) ??
-      (await this.prisma.exercice.findFirst({ where: { tenantId, dateDebut: { lte: dateDepart }, dateFin: { gte: dateDepart } } }));
+      (await db.exercice.findFirst({ where: { tenantId, dateDebut: { lte: veille }, dateFin: { gte: veille } } })) ??
+      (await db.exercice.findFirst({ where: { tenantId, dateDebut: { lte: dateDepart }, dateFin: { gte: dateDepart } } }));
     if (!exercice) {
       return { ...base, soldeLivre: null, ecart: null, motif: `Aucun exercice du dossier ne couvre le ${jour(dateDepart)}.` };
     }
-    const livre = await this.prisma.ligneEcriture.aggregate({
+    const livre = await db.ligneEcriture.aggregate({
       where: {
         compteId: r.compteId,
         ecriture: {
@@ -369,8 +371,8 @@ export class RapprochementService {
     return { ...base, soldeLivre, ecart: ecartDOuverture(soldeLivre, soldeDepart, encours), motif: null };
   }
 
-  private async trouverRapprochement(tenantId: string, id: string) {
-    const r = await this.prisma.rapprochementBancaire.findFirst({ where: { id, tenantId } });
+  private async trouverRapprochement(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const r = await db.rapprochementBancaire.findFirst({ where: { id, tenantId } });
     if (!r) {
       throw new NotFoundException('Rapprochement introuvable pour ce tenant');
     }
@@ -394,8 +396,9 @@ export class RapprochementService {
     // ouvertures simultanées sur le même compte pourraient toutes deux lire
     // "aucun EN_COURS" et créer chacune leur rapprochement, violant la
     // règle "un seul EN_COURS par compte" sans qu'aucune ne le remarque.
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const enCours = await tx.rapprochementBancaire.findFirst({
           where: { tenantId, compteId: dto.compteId, statut: StatutRapprochement.EN_COURS },
@@ -420,9 +423,9 @@ export class RapprochementService {
   }
 
   /** Détail d'un rapprochement : lignes déjà pointées ici + lignes encore pointables sur ce compte. */
-  async obtenir(tenantId: string, id: string) {
-    const rapprochement = await this.trouverRapprochement(tenantId, id);
-    const { soldeDepart, regle, premier } = await this.depart(tenantId, rapprochement);
+  async obtenir(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const rapprochement = await this.trouverRapprochement(tenantId, id, db);
+    const { soldeDepart, regle, premier } = await this.depart(tenantId, rapprochement, db);
 
     // UNE TRANCHE QUI SE DIT, DES SOLDES ENTIERS (audit final F185) · un
     // compte jamais rapproché portait toutes ses lignes non pointées, tous
@@ -437,23 +440,23 @@ export class RapprochementService {
       OR: [{ rapprochementId: id }, { rapprochementId: null, NOT: { ecriture: ecartees } }],
     };
     const [lignes, total, pointe, aNouveauEcartes, fonduesDansLeDepart, encours] = await Promise.all([
-      this.prisma.ligneEcriture.findMany({
+      db.ligneEcriture.findMany({
         where: whereLignes,
         include: { ecriture: { include: { journal: true } } },
         orderBy: [{ ecriture: { date: 'asc' } }, { id: 'asc' }],
         take: PLAFOND_LIGNES_RAPPROCHEMENT,
       }),
-      this.prisma.ligneEcriture.count({ where: whereLignes }),
-      this.prisma.ligneEcriture.aggregate({
+      db.ligneEcriture.count({ where: whereLignes }),
+      db.ligneEcriture.aggregate({
         where: { compteId: rapprochement.compteId, ecriture: { tenantId }, rapprochementId: id },
         _sum: { debit: true, credit: true },
       }),
-      this.prisma.ligneEcriture.count({
+      db.ligneEcriture.count({
         where: { compteId: rapprochement.compteId, rapprochementId: null, ecriture: { tenantId, ...filtreANouveauEcarte() } },
       }),
       regle.dateDepart === null
         ? Promise.resolve(0)
-        : this.prisma.ligneEcriture.count({
+        : db.ligneEcriture.count({
             where: {
               compteId: rapprochement.compteId,
               rapprochementId: null,
@@ -464,7 +467,7 @@ export class RapprochementService {
             },
           }),
       // Les en-cours d'ouverture de la chaîne encore libres, et ceux pointés ici.
-      this.prisma.encoursOuvertureRapprochement.findMany({
+      db.encoursOuvertureRapprochement.findMany({
         where: { tenantId, declareSur: { compteId: rapprochement.compteId }, OR: [{ pointeSurId: id }, { pointeSurId: null }] },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
       }),
@@ -479,14 +482,14 @@ export class RapprochementService {
         : arrondi(soldeDepart + Number(pointe._sum.debit ?? 0) - Number(pointe._sum.credit ?? 0) + encoursPointes);
     const ecart = soldePointe === null ? null : arrondi(soldePointe - Number(rapprochement.soldeReleve));
 
-    const releve = await this.prisma.ligneReleveBancaire.findMany({
+    const releve = await db.ligneReleveBancaire.findMany({
       where: { tenantId, rapprochementId: id },
       orderBy: { rang: 'asc' },
     });
     const correspondances =
       releve.length === 0
         ? []
-        : await this.prisma.ligneEcriture.findMany({
+        : await db.ligneEcriture.findMany({
             where: { ecriture: { tenantId }, ligneReleveId: { in: releve.map((r) => r.id) } },
             select: { id: true, ligneReleveId: true },
           });
@@ -514,7 +517,7 @@ export class RapprochementService {
       equilibre: ecart !== null && Math.abs(ecart) < EPSILON,
       ecartReleve,
       /** L'écart d'ouverture du premier rapprochement · null sur un rapprochement suivant. */
-      ouverture: premier ? await this.ouverture(tenantId, rapprochement) : null,
+      ouverture: premier ? await this.ouverture(tenantId, rapprochement, db) : null,
       releve: releve.map((r) => ({
         id: r.id,
         rang: r.rang,
@@ -564,18 +567,40 @@ export class RapprochementService {
     };
   }
 
-  private async assurerEnCours(tenantId: string, id: string) {
-    const rapprochement = await this.trouverRapprochement(tenantId, id);
+  private async assurerEnCours(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const rapprochement = await this.trouverRapprochement(tenantId, id, db);
     if (rapprochement.statut !== StatutRapprochement.EN_COURS) {
       throw new BadRequestException('Ce rapprochement est déjà clôturé · plus aucun pointage possible');
     }
     return rapprochement;
   }
 
-  async pointer(tenantId: string, id: string, ligneIds: string[]) {
-    const rapprochement = await this.assurerEnCours(tenantId, id);
+  async pointer(tenantId: string, id: string, ligneIdsRecus: string[]) {
+    // Sans doublon · une ligne nommée deux fois faisait manquer le nombre relu (409 à tort).
+    const ligneIds = [...new Set(ligneIdsRecus)];
+    // SOUS LE VERROU DU DOSSIER (ligne saisie-serialisable, relecture, point 2) ·
+    // le pointage écrivait ses lignes sans le prendre · une ligne pointée entre
+    // la lecture et le retrait d'un brouillard partait en silence, et la clôture
+    // en lecture validée lisait un pointage changé pendant elle. Lignes relues
+    // dans la transaction, mise à jour filtrée sur les lignes encore libres ou
+    // déjà à ce rapprochement, nombre relu.
+    // La règle d'ouverture se lit AVANT la transaction · lue dedans par
+    // `this.prisma`, elle prenait une seconde connexion du pool pendant que la
+    // transaction tenait la première (audit final F2 · un pool épuisé gèle tous
+    // les cabinets). Elle ne dépend que des rapprochements clos du compte.
+    const { regle } = await this.depart(tenantId, await this.assurerEnCours(tenantId, id));
+    return transactionDeSaisie(
+      this.prisma,
+      tenantId,
+      (tx) => this.pointerDans(tx, tenantId, id, ligneIds, regle),
+      'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.',
+    );
+  }
 
-    const lignes = await this.prisma.ligneEcriture.findMany({
+  private async pointerDans(tx: Prisma.TransactionClient, tenantId: string, id: string, ligneIds: string[], regle: RegleOuverture) {
+    const rapprochement = await this.assurerEnCours(tenantId, id, tx);
+
+    const lignes = await tx.ligneEcriture.findMany({
       where: { id: { in: ligneIds } },
       include: { ecriture: true },
     });
@@ -594,27 +619,37 @@ export class RapprochementService {
     // F205) · un appel direct pointerait sinon ce que la liste écarte.
     const libres = lignes.filter((l) => l.rapprochementId !== id);
     if (libres.length > 0) {
-      const { regle } = await this.depart(tenantId, rapprochement);
       for (const l of libres) {
         const motif = motifRefusPointage(l.ecriture, regle);
         if (motif) throw new BadRequestException(motif);
       }
     }
 
-    await this.prisma.ligneEcriture.updateMany({ where: { id: { in: ligneIds } }, data: { rapprochementId: id } });
+    const { count } = await tx.ligneEcriture.updateMany({
+      where: { id: { in: ligneIds }, ecriture: { tenantId }, OR: [{ rapprochementId: null }, { rapprochementId: id }] },
+      data: { rapprochementId: id },
+    });
+    if (count !== ligneIds.length) throw new ConflictException('Une des lignes a été pointée ailleurs pendant le geste · rien n\'est pointé, relisez le rapprochement.');
     return { nombreLignes: ligneIds.length };
   }
 
   async depointer(tenantId: string, id: string, ligneIds: string[]) {
-    await this.assurerEnCours(tenantId, id);
-    const resultat = await this.prisma.ligneEcriture.updateMany({
-      where: { id: { in: ligneIds }, rapprochementId: id, ecriture: { tenantId } },
-      // Dépointer dénoue aussi la correspondance avec le relevé · une ligne
-      // dépointée restée rattachée à une ligne du relevé la ferait passer pour
-      // rapprochée à l'écran sans compter dans le solde pointé.
-      data: { rapprochementId: null, ligneReleveId: null },
-    });
-    return { nombreLignes: resultat.count };
+    return transactionDeSaisie(
+      this.prisma,
+      tenantId,
+      async (tx) => {
+        await this.assurerEnCours(tenantId, id, tx);
+        const resultat = await tx.ligneEcriture.updateMany({
+          where: { id: { in: ligneIds }, rapprochementId: id, ecriture: { tenantId } },
+          // Dépointer dénoue aussi la correspondance avec le relevé · une ligne
+          // dépointée restée rattachée à une ligne du relevé la ferait passer pour
+          // rapprochée à l'écran sans compter dans le solde pointé.
+          data: { rapprochementId: null, ligneReleveId: null },
+        });
+        return { nombreLignes: resultat.count };
+      },
+      'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.',
+    );
   }
 
   // =========================================================================
@@ -623,9 +658,9 @@ export class RapprochementService {
   // =========================================================================
 
   /** Le rapprochement est-il EN_COURS et premier de son compte ? Refuse sinon, en disant pourquoi. */
-  private async assurerPremierEnCours(tenantId: string, id: string) {
-    const r = await this.assurerEnCours(tenantId, id);
-    const { premier } = await this.depart(tenantId, r);
+  private async assurerPremierEnCours(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const r = await this.assurerEnCours(tenantId, id, db);
+    const { premier } = await this.depart(tenantId, r, db);
     if (!premier) {
       throw new BadRequestException(
         "Un rapprochement clos précède celui-ci sur ce compte · son solde de relevé sert de départ, et l'ouverture ne se déclare que sur le premier rapprochement du compte.",
@@ -642,134 +677,158 @@ export class RapprochementService {
    * définition).
    */
   async declarerDepart(tenantId: string, id: string, dto: DeclarerDepartDto) {
-    const r = await this.assurerPremierEnCours(tenantId, id);
-    const dateDepart = new Date(dto.dateDepart);
-    if (dateDepart.getTime() > r.dateReleve.getTime()) {
-      throw new BadRequestException(
-        `La date de départ (${jour(dateDepart)}) est postérieure à la date du relevé (${jour(r.dateReleve)}) · le relevé couvre la période qui suit le départ.`,
-      );
-    }
-    const [anterieuresPointees, encoursTardifs] = await Promise.all([
-      this.prisma.ligneEcriture.count({
-        where: { compteId: r.compteId, rapprochementId: id, ecriture: { tenantId, date: { lt: dateDepart } } },
-      }),
-      this.prisma.encoursOuvertureRapprochement.count({ where: { tenantId, declareSurId: id, date: { gte: dateDepart } } }),
-    ]);
-    if (anterieuresPointees > 0) {
-      throw new BadRequestException(
-        `${anterieuresPointees} ligne(s) pointée(s) sur ce rapprochement précèdent le ${jour(dateDepart)} · elles seraient fondues dans le solde de départ et comptées deux fois. Dépointez-les, et déclarez en en-cours d'ouverture celles que la banque n'avait pas encore passées.`,
-      );
-    }
-    if (encoursTardifs > 0) {
-      throw new BadRequestException(
-        `${encoursTardifs} en-cours d'ouverture ne précède(nt) pas le ${jour(dateDepart)} · un en-cours est une opération du livre antérieure au départ. Retirez-le ou choisissez une date de départ plus tardive.`,
-      );
-    }
-    return this.prisma.rapprochementBancaire.update({
-      where: { id: r.id },
-      data: { soldeDepartDeclare: dto.soldeDepart, dateDepart },
-    });
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const r = await this.assurerPremierEnCours(tenantId, id, tx);
+      const dateDepart = new Date(dto.dateDepart);
+      if (dateDepart.getTime() > r.dateReleve.getTime()) {
+        throw new BadRequestException(
+          `La date de départ (${jour(dateDepart)}) est postérieure à la date du relevé (${jour(r.dateReleve)}) · le relevé couvre la période qui suit le départ.`,
+        );
+      }
+      const [anterieuresPointees, encoursTardifs] = await Promise.all([
+        tx.ligneEcriture.count({
+          where: { compteId: r.compteId, rapprochementId: id, ecriture: { tenantId, date: { lt: dateDepart } } },
+        }),
+        tx.encoursOuvertureRapprochement.count({ where: { tenantId, declareSurId: id, date: { gte: dateDepart } } }),
+      ]);
+      if (anterieuresPointees > 0) {
+        throw new BadRequestException(
+          `${anterieuresPointees} ligne(s) pointée(s) sur ce rapprochement précèdent le ${jour(dateDepart)} · elles seraient fondues dans le solde de départ et comptées deux fois. Dépointez-les, et déclarez en en-cours d'ouverture celles que la banque n'avait pas encore passées.`,
+        );
+      }
+      if (encoursTardifs > 0) {
+        throw new BadRequestException(
+          `${encoursTardifs} en-cours d'ouverture ne précède(nt) pas le ${jour(dateDepart)} · un en-cours est une opération du livre antérieure au départ. Retirez-le ou choisissez une date de départ plus tardive.`,
+        );
+      }
+      return tx.rapprochementBancaire.update({
+        where: { id: r.id },
+        data: { soldeDepartDeclare: dto.soldeDepart, dateDepart },
+      });
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /** DÉCLARE un en-cours d'ouverture · aucune écriture n'est créée. */
   async declarerEncours(tenantId: string, userId: string, id: string, dto: DeclarerEncoursDto) {
-    const r = await this.assurerPremierEnCours(tenantId, id);
-    if (!r.dateDepart) {
-      throw new BadRequestException("Déclarez d'abord le solde de départ et sa date · un en-cours se situe avant elle.");
-    }
-    const date = new Date(dto.date);
-    if (date.getTime() >= r.dateDepart.getTime()) {
-      throw new BadRequestException(
-        `L'en-cours du ${jour(date)} ne précède pas la date de départ du ${jour(r.dateDepart)} · une opération postérieure se pointe comme une écriture du compte.`,
-      );
-    }
-    const libelle = dto.libelle.trim();
-    if (!libelle) throw new BadRequestException("Le libellé de l'en-cours est obligatoire.");
-    if (!(dto.montant > 0)) throw new BadRequestException("Le montant de l'en-cours doit être positif · le sens dit s'il entre ou sort.");
-    return this.prisma.encoursOuvertureRapprochement.create({
-      data: {
-        tenantId,
-        declareSurId: id,
-        libelle,
-        date,
-        debit: dto.sens === 'DEBIT' ? dto.montant : 0,
-        credit: dto.sens === 'CREDIT' ? dto.montant : 0,
-        createdBy: userId,
-      },
-    });
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const r = await this.assurerPremierEnCours(tenantId, id, tx);
+      if (!r.dateDepart) {
+        throw new BadRequestException("Déclarez d'abord le solde de départ et sa date · un en-cours se situe avant elle.");
+      }
+      const date = new Date(dto.date);
+      if (date.getTime() >= r.dateDepart.getTime()) {
+        throw new BadRequestException(
+          `L'en-cours du ${jour(date)} ne précède pas la date de départ du ${jour(r.dateDepart)} · une opération postérieure se pointe comme une écriture du compte.`,
+        );
+      }
+      const libelle = dto.libelle.trim();
+      if (!libelle) throw new BadRequestException("Le libellé de l'en-cours est obligatoire.");
+      if (!(dto.montant > 0)) throw new BadRequestException("Le montant de l'en-cours doit être positif · le sens dit s'il entre ou sort.");
+      return tx.encoursOuvertureRapprochement.create({
+        data: {
+          tenantId,
+          declareSurId: id,
+          libelle,
+          date,
+          debit: dto.sens === 'DEBIT' ? dto.montant : 0,
+          credit: dto.sens === 'CREDIT' ? dto.montant : 0,
+          createdBy: userId,
+        },
+      });
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /** RETIRE un en-cours déclaré sur ce rapprochement, s'il n'est pas pointé. */
   async retirerEncours(tenantId: string, id: string, encoursId: string) {
-    await this.assurerEnCours(tenantId, id);
-    const e = await this.prisma.encoursOuvertureRapprochement.findFirst({ where: { id: encoursId, tenantId, declareSurId: id } });
-    if (!e) throw new NotFoundException("En-cours d'ouverture introuvable sur ce rapprochement.");
-    if (e.pointeSurId) throw new BadRequestException("Cet en-cours est pointé · dépointez-le avant de le retirer.");
-    await this.prisma.encoursOuvertureRapprochement.delete({ where: { id: e.id } });
-    return { supprime: true };
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      await this.assurerEnCours(tenantId, id, tx);
+      const e = await tx.encoursOuvertureRapprochement.findFirst({ where: { id: encoursId, tenantId, declareSurId: id } });
+      if (!e) throw new NotFoundException("En-cours d'ouverture introuvable sur ce rapprochement.");
+      if (e.pointeSurId) throw new BadRequestException("Cet en-cours est pointé · dépointez-le avant de le retirer.");
+      await tx.encoursOuvertureRapprochement.delete({ where: { id: e.id } });
+      return { supprime: true };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /** POINTE des en-cours d'ouverture de la chaîne, comme des lignes du compte. */
   async pointerEncours(tenantId: string, id: string, encoursIds: string[]) {
-    const r = await this.assurerEnCours(tenantId, id);
-    const encours = await this.prisma.encoursOuvertureRapprochement.findMany({
-      where: { id: { in: encoursIds }, tenantId, declareSur: { compteId: r.compteId } },
-    });
-    if (encours.length !== encoursIds.length) {
-      throw new NotFoundException("Un en-cours d'ouverture est introuvable sur ce compte.");
-    }
-    if (encours.some((e) => e.pointeSurId && e.pointeSurId !== id)) {
-      throw new BadRequestException("Un des en-cours est déjà pointé sur un autre rapprochement.");
-    }
-    await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { id: { in: encoursIds }, tenantId, pointeSurId: null },
-      data: { pointeSurId: id },
-    });
-    return { nombreEncours: encoursIds.length };
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const r = await this.assurerEnCours(tenantId, id, tx);
+      const encours = await tx.encoursOuvertureRapprochement.findMany({
+        where: { id: { in: encoursIds }, tenantId, declareSur: { compteId: r.compteId } },
+      });
+      if (encours.length !== encoursIds.length) {
+        throw new NotFoundException("Un en-cours d'ouverture est introuvable sur ce compte.");
+      }
+      if (encours.some((e) => e.pointeSurId && e.pointeSurId !== id)) {
+        throw new BadRequestException("Un des en-cours est déjà pointé sur un autre rapprochement.");
+      }
+      await tx.encoursOuvertureRapprochement.updateMany({
+        where: { id: { in: encoursIds }, tenantId, pointeSurId: null },
+        data: { pointeSurId: id },
+      });
+      return { nombreEncours: new Set(encoursIds).size };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   async depointerEncours(tenantId: string, id: string, encoursIds: string[]) {
-    await this.assurerEnCours(tenantId, id);
-    const r = await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { id: { in: encoursIds }, tenantId, pointeSurId: id },
-      data: { pointeSurId: null, ligneReleveId: null },
-    });
-    return { nombreEncours: r.count };
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      await this.assurerEnCours(tenantId, id, tx);
+      const r = await tx.encoursOuvertureRapprochement.updateMany({
+        where: { id: { in: encoursIds }, tenantId, pointeSurId: id },
+        data: { pointeSurId: null, ligneReleveId: null },
+      });
+      return { nombreEncours: r.count };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   async cloturer(tenantId: string, id: string) {
-    const rapprochement = await this.assurerEnCours(tenantId, id);
-    const { ecart, equilibre, premier, ouverture } = await this.obtenir(tenantId, id);
-    // LE PREMIER RAPPROCHEMENT NE SE CLÔT QUE SUR UNE OUVERTURE COHÉRENTE ·
-    // décision d'éditeur, comme QuickBooks qui bloque la continuité. Un écart
-    // d'ouverture non nul dit que le solde déclaré, les en-cours ou le livre
-    // ne racontent pas la même ouverture · clos quand même, chaque
-    // rapprochement suivant en hériterait sans que rien ne le dise.
-    if (premier && ouverture) {
-      if (ouverture.soldeDepart === null || ouverture.dateDepart === null) {
+    // Lu et écrit sous le verrou du dossier (saisie-serialisable, second tour, point 3) · lu hors de lui,
+    // un pointage ou un en-cours posé entre la lecture et l'écriture était ignoré.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const rapprochement = await this.assurerEnCours(tenantId, id, tx);
+      const { ecart, equilibre, premier, ouverture } = await this.obtenir(tenantId, id, tx);
+      // LE PREMIER RAPPROCHEMENT NE SE CLÔT QUE SUR UNE OUVERTURE COHÉRENTE ·
+      // décision d'éditeur, comme QuickBooks qui bloque la continuité. Un écart
+      // d'ouverture non nul dit que le solde déclaré, les en-cours ou le livre
+      // ne racontent pas la même ouverture · clos quand même, chaque
+      // rapprochement suivant en hériterait sans que rien ne le dise.
+      if (premier && ouverture) {
+        if (ouverture.soldeDepart === null || ouverture.dateDepart === null) {
+          throw new BadRequestException(
+            "Premier rapprochement de ce compte · déclarez le solde de départ lu sur le relevé et sa date avant de clôturer. Il ne se déduit pas de l'à-nouveau, qui est un solde comptable.",
+          );
+        }
+        if (ouverture.ecart === null) {
+          throw new BadRequestException(`L'écart d'ouverture ne se calcule pas · ${ouverture.motif ?? ''}`.trim());
+        }
+        if (Math.abs(ouverture.ecart) >= EPSILON) {
+          throw new BadRequestException(
+            `L'écart d'ouverture n'est pas nul (${ouverture.ecart.toFixed(2)}) · le solde du compte au livre-journal à la veille du ${jour(ouverture.dateDepart)} ` +
+              `(${(ouverture.soldeLivre ?? 0).toFixed(2)}) doit valoir le solde de départ déclaré (${ouverture.soldeDepart.toFixed(2)}) plus les en-cours d'ouverture (${ouverture.encours.toFixed(2)}).`,
+          );
+        }
+      }
+      if (!equilibre || ecart === null) {
         throw new BadRequestException(
-          "Premier rapprochement de ce compte · déclarez le solde de départ lu sur le relevé et sa date avant de clôturer. Il ne se déduit pas de l'à-nouveau, qui est un solde comptable.",
+          `L'écart n'est pas nul (${(ecart ?? 0).toFixed(2)}) · pointez ou dépointez des lignes jusqu'à ce que le solde pointé corresponde exactement au solde du relevé avant de clôturer`,
         );
       }
-      if (ouverture.ecart === null) {
-        throw new BadRequestException(`L'écart d'ouverture ne se calcule pas · ${ouverture.motif ?? ''}`.trim());
-      }
-      if (Math.abs(ouverture.ecart) >= EPSILON) {
-        throw new BadRequestException(
-          `L'écart d'ouverture n'est pas nul (${ouverture.ecart.toFixed(2)}) · le solde du compte au livre-journal à la veille du ${jour(ouverture.dateDepart)} ` +
-            `(${(ouverture.soldeLivre ?? 0).toFixed(2)}) doit valoir le solde de départ déclaré (${ouverture.soldeDepart.toFixed(2)}) plus les en-cours d'ouverture (${ouverture.encours.toFixed(2)}).`,
-        );
-      }
-    }
-    if (!equilibre || ecart === null) {
-      throw new BadRequestException(
-        `L'écart n'est pas nul (${(ecart ?? 0).toFixed(2)}) · pointez ou dépointez des lignes jusqu'à ce que le solde pointé corresponde exactement au solde du relevé avant de clôturer`,
-      );
-    }
-    return this.prisma.rapprochementBancaire.update({
-      where: { id: rapprochement.id },
-      data: { statut: StatutRapprochement.CLOTURE, clotureAt: new Date() },
-    });
+      return tx.rapprochementBancaire.update({
+        where: { id: rapprochement.id },
+        data: { statut: StatutRapprochement.CLOTURE, clotureAt: new Date() },
+      });
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /**
@@ -786,29 +845,33 @@ export class RapprochementService {
    * couvert d'une erreur d'ouverture. Il se reclôt.
    */
   async annuler(tenantId: string, id: string) {
-    const rapprochement = await this.assurerEnCours(tenantId, id);
-    if (rapprochement.rouvertAt) {
-      throw new BadRequestException(
-        "Ce rapprochement a été clos puis rouvert · il ne s'annule pas, il se reclôt une fois corrigé.",
-      );
-    }
-    await this.prisma.ligneEcriture.updateMany({
-      where: { rapprochementId: rapprochement.id },
-      data: { rapprochementId: null, ligneReleveId: null },
-    });
-    await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { tenantId, pointeSurId: rapprochement.id },
-      data: { pointeSurId: null, ligneReleveId: null },
-    });
-    try {
-      await this.prisma.rapprochementBancaire.delete({ where: { id: rapprochement.id } });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-        throw new NotFoundException('Ce rapprochement a déjà été annulé');
+    // Sous le verrou du dossier (ligne saisie-serialisable, relecture, point 3) · le
+    // dépointage s'écrivait sans lui, et une clôture en lecture validée le lisait à moitié.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const rapprochement = await this.assurerEnCours(tenantId, id, tx);
+      if (rapprochement.rouvertAt) {
+        throw new BadRequestException(
+          "Ce rapprochement a été clos puis rouvert · il ne s'annule pas, il se reclôt une fois corrigé.",
+        );
       }
-      throw err;
-    }
-    return { supprime: true };
+      await tx.ligneEcriture.updateMany({
+        where: { rapprochementId: rapprochement.id },
+        data: { rapprochementId: null, ligneReleveId: null },
+      });
+      await tx.encoursOuvertureRapprochement.updateMany({
+        where: { tenantId, pointeSurId: rapprochement.id },
+        data: { pointeSurId: null, ligneReleveId: null },
+      });
+      try {
+        await tx.rapprochementBancaire.delete({ where: { id: rapprochement.id } });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          throw new NotFoundException('Ce rapprochement a déjà été annulé');
+        }
+        throw err;
+      }
+      return { supprime: true };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /**
@@ -830,8 +893,9 @@ export class RapprochementService {
   async rouvrir(tenantId: string, userId: string, id: string, motif: string) {
     const m = (motif ?? '').trim();
     if (!m) throw new BadRequestException('Le motif de la réouverture est obligatoire · il reste sur le rapprochement.');
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const r = await tx.rapprochementBancaire.findFirst({ where: { id, tenantId } });
         if (!r) throw new NotFoundException('Rapprochement introuvable pour ce tenant');
@@ -1180,13 +1244,18 @@ export class RapprochementService {
         );
       }
     }
-    await transactionJournalisee(this.prisma, async (tx) => {
+    // Sous le verrou du dossier, nombre relu (ligne saisie-serialisable,
+    // relecture, point 2) · comme le pointage à la main.
+    await transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       for (const c of dto.correspondances) {
         if ((c.ligneEcritureIds ?? []).length > 0) {
-          await tx.ligneEcriture.updateMany({
-            where: { id: { in: c.ligneEcritureIds }, ecriture: { tenantId }, ligneReleveId: null },
+          const { count } = await tx.ligneEcriture.updateMany({
+            where: { id: { in: c.ligneEcritureIds }, ecriture: { tenantId }, ligneReleveId: null, OR: [{ rapprochementId: null }, { rapprochementId: id }] },
             data: { rapprochementId: id, ligneReleveId: c.ligneReleveId },
           });
+          if (count !== new Set(c.ligneEcritureIds).size) {
+            throw new ConflictException('Une des lignes a été pointée ou rapprochée pendant la confirmation · rien n\'est confirmé, relisez les propositions.');
+          }
         }
         if ((c.encoursIds ?? []).length > 0) {
           await tx.encoursOuvertureRapprochement.updateMany({
@@ -1195,23 +1264,26 @@ export class RapprochementService {
           });
         }
       }
-    });
+    }, 'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.');
     return { nombreCorrespondances: dto.correspondances.length };
   }
 
   /** Dissocie une ligne du relevé de ses écritures et en-cours, et les dépointe. */
   async dissocier(tenantId: string, id: string, ligneReleveId: string) {
-    await this.assurerEnCours(tenantId, id);
-    const r = await this.prisma.ligneReleveBancaire.findFirst({ where: { id: ligneReleveId, tenantId, rapprochementId: id } });
-    if (!r) throw new NotFoundException('Ligne du relevé introuvable dans ce rapprochement.');
-    const res = await this.prisma.ligneEcriture.updateMany({
-      where: { ligneReleveId, ecriture: { tenantId } },
-      data: { ligneReleveId: null, rapprochementId: null },
-    });
-    const enc = await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { ligneReleveId, tenantId },
-      data: { ligneReleveId: null, pointeSurId: null },
-    });
-    return { nombreLignes: res.count + enc.count };
+    // Sous le verrou du dossier (ligne saisie-serialisable, relecture, point 3).
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      await this.assurerEnCours(tenantId, id, tx);
+      const r = await tx.ligneReleveBancaire.findFirst({ where: { id: ligneReleveId, tenantId, rapprochementId: id } });
+      if (!r) throw new NotFoundException('Ligne du relevé introuvable dans ce rapprochement.');
+      const res = await tx.ligneEcriture.updateMany({
+        where: { ligneReleveId, ecriture: { tenantId } },
+        data: { ligneReleveId: null, rapprochementId: null },
+      });
+      const enc = await tx.encoursOuvertureRapprochement.updateMany({
+        where: { ligneReleveId, tenantId },
+        data: { ligneReleveId: null, pointeSurId: null },
+      });
+      return { nombreLignes: res.count + enc.count };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 }

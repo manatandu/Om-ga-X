@@ -106,6 +106,9 @@ function prismaFactice(opts: {
       ordre.push('verrou');
       return [];
     }),
+    // Le verrou du dossier, pris avant celui de l'écriture (ligne saisie-serialisable, point 1) · compté dans le
+    // même 'verrou' que la ligne, l'ordre relu reste celui des étapes.
+    $executeRaw: jest.fn(async () => 1),
     pieceJointeEcriture: pieces,
     pieceJointeSection: tableFactice([]),
     pieceJointeImmobilisation: tableFactice([]),
@@ -494,6 +497,8 @@ describe('pièces jointes · elles suivent leur écriture (relecture sage-l6, M1
       ecriture: { findFirst: jest.fn(async (a: any) => (a.where.tenantId === 't' ? ecritures[a.where.id] ?? null : null)) },
       // Le verrou de l'écriture · l'ordre et l'écriture visée sont gardés.
       $queryRaw: jest.fn(async (_gabarit: TemplateStringsArray, ...valeurs: unknown[]) => (ordre.push(`verrou ${valeurs[0]}`), [])),
+      // Le verrou du dossier, pris avant celui de l'écriture (ligne saisie-serialisable, point 1) · hors de l'ordre relu.
+      $executeRaw: jest.fn(async () => 1),
     } as any;
   }
   const neuve = { ...ecriture({ numeroPiece: 1, date: new Date('2026-02-10T00:00:00Z'), libelle: 'Acquisition · Camion', journal: { code: 'OD' } }), journalId: 'j-od' };

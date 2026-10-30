@@ -114,6 +114,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ReevaluationBilanController: FonctionMetier.IMMOBILISATIONS,
   DemantelementController: FonctionMetier.IMMOBILISATIONS,
   AnnulationTraitementController: FonctionMetier.IMMOBILISATIONS,
+  AnnulationSortieController: FonctionMetier.IMMOBILISATIONS,
   FicheImmobilisationController: FonctionMetier.IMMOBILISATIONS,
   CreationDepuisEcrituresController: FonctionMetier.IMMOBILISATIONS,
   MaintenanceImmobilisationsController: FonctionMetier.IMMOBILISATIONS,
@@ -152,6 +153,10 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   MissionsController: FonctionMetier.PAIE,
   // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
   SuiviPersonnelController: FonctionMetier.PAIE,
+  // Ligne paie-suite · départements et directions, du registre du personnel.
+  OrganigrammeController: FonctionMetier.PAIE,
+  // Ligne paie-suite · fiche individuelle, import du personnel, rappels de salaire.
+  PersonnelSuiteController: FonctionMetier.PAIE,
   BilanSocialController: FonctionMetier.PAIE,
   // Ligne sage-l5 · le paiement du salarié et des salaires, de la fenêtre Personnel.
   PaiementSalairesController: FonctionMetier.PAIE,

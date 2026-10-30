@@ -54,7 +54,7 @@ function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivante
       findFirst: jest.fn().mockResolvedValue({ id: 'ecr-1', statut: options.statut, numeroPiece: 7, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    ligneEcriture: { count: async () => 2, deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     annulationTraitementImmobilisation: { create: jest.fn().mockResolvedValue({ id: 'ann-1' }) },
     transfertImmobilisationGroupe: {
       findFirst: jest.fn().mockResolvedValue(options.duTransfert ? { id: 'tr-1' } : null),

@@ -77,6 +77,13 @@ export interface ActeDuBien {
 /** Ligne sage-l4, n° 73 · ce que l'onglet Traitements dit d'un acte né d'un transfert dans le groupe. */
 export const ISSUE_TRANSFERT_GROUPE = 'annulez le transfert depuis le siège (fenêtre Groupe, onglet « Transferts de biens »)';
 
+/**
+ * Ligne restes-immos-budgets, point 3 · la sortie s'annule, depuis la fiche du
+ * bien sorti · ce que l'onglet Traitements dit d'un acte qu'elle a suivi.
+ */
+export const ISSUE_ANNULER_SORTIE = 'annulez d’abord la sortie depuis la fiche du bien sorti (« Annuler la sortie »)';
+export const ISSUE_ANNULER_SORTIE_UNITES = 'annulez d’abord la sortie des unités depuis leur fiche (« Annuler la sortie »)';
+
 /** Les natures annulables, dans l'ordre où l'écran les présente. */
 export const NATURES_ANNULABLES: readonly NatureTraitement[] = [
   'DOTATION',
@@ -267,7 +274,7 @@ export function motifRefusAnnulation(entree: {
   if (entree.cessionPartielle) {
     return (
       'Cette reprise est la part de dépréciation des unités sorties du lot · elle fait partie de la sortie partielle et ne ' +
-      's’annule pas seule. Les unités sont sorties par leur propre fiche ; leur sortie ne s’annule pas dans OmegaX.'
+      `s’annule pas seule · elle part avec la sortie des unités, qui s’annule depuis leur fiche (« Annuler la sortie »).`
     );
   }
   if (entree.transfertGroupe) {

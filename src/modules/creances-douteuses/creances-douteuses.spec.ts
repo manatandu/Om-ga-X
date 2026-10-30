@@ -503,6 +503,7 @@ describe('créances douteuses · service', () => {
       });
     };
     const prisma: any = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
       tenant: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           referentiel: options.referentiel ?? Referentiel.SYSCOHADA,
@@ -626,7 +627,7 @@ describe('créances douteuses · service', () => {
               : [{ lettre: null, lettrageId: null, rapprochementId: null }],
           ),
         ),
-        deleteMany: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       creanceDouteuse: {
         // LA DOUBLURE HONORE LE FILTRE DES MOUVEMENTS (K4) · un mouvement

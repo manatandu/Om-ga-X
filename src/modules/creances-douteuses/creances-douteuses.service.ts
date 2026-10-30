@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import {
   ClasseCompte,
   MethodeCotisationsAuReclassement,
@@ -333,8 +335,14 @@ export class CreancesDouteusesService {
   }
 
   /** M1 · supprimée seulement si elle est ENCORE au brouillard, une et une seule, sinon 409. */
+  //
+  // LIGNES LIBRES SEULEMENT, SOUS LE VERROU DU DOSSIER (saisie-serialisable,
+  // second tour, point 1) · au brouillard, un groupe figé ne se tolère pas
+  // (A7 ter, B2 · « au brouillard refus nommé, valider puis annuler ») ; une
+  // ligne lettrée ou pointée pendant le geste fait refuser, jamais partir.
   private async supprimerBrouillardDansTx(tx: Prisma.TransactionClient, tenantId: string, ecritureId: string) {
-    await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
+    await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
     const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
     if (r.count !== 1) {
       throw new ConflictException(

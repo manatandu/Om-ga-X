@@ -343,6 +343,9 @@ export const MODELES_AUDITES = new Set<string>([
   // sur quelles sections la paie portera ses charges · qui l'a déclarée,
   // retirée, et pourquoi.
   'RepartitionAnalytiquePaie',
+  // Ligne analytique, fonction n° 48 · la grille d'un compte dit sur quelles
+  // sections la saisie proposera ses lignes · qui l'a posée, remplacée, retirée.
+  'GrilleAnalytique',
   // Ligne microfina-m3, idée 3 · une mission annulée, un frais ajouté ou
   // retiré changent ce que le bulletin porte · la trace dit qui et quand.
   'MissionSalarie',
@@ -352,6 +355,13 @@ export const MODELES_AUDITES = new Set<string>([
   'DemandeCongeSalarie',
   'FormationPersonnel',
   'ParticipantFormation',
+  // Ligne paie-suite · une unité créée, déplacée ou mise en sommeil, un
+  // rattachement saisi ou annulé · la trace dit qui et quand.
+  'UniteOrganisation',
+  'RattachementUnite',
+  // Ligne paie-suite, fonction 87 · un rappel déclaré, payé ou annulé change
+  // ce qu'un bulletin porte · la trace dit qui et quand.
+  'RappelSalaire',
   // Le bilan social de l'ONEM · qui l'a saisi, quand, et ce qu'il portait.
   'BilanSocial',
 
@@ -506,6 +516,7 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
   LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,
+  LigneGrilleAnalytique: LIGNES_DE_LA_TETE,
   LignePaiementSalaire:
     "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
   LigneOrdreVirement:
@@ -516,6 +527,8 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
     'Relevé importé en masse · la pièce est le relevé de la banque, le pointage se lit sur le rapprochement journalisé.',
   VentilationAnalytique: "Ventilations engendrées ligne à ligne avec les écritures · reconstituables depuis l'écriture.",
   BudgetSection: "Budgets mensuels engendrés en série (dotation, report d'exercice) · la section est journalisée.",
+  BudgetCompte:
+    'Budgets mensuels engendrés en série par la dotation (fonction n° 51) · une prévision, ni écriture ni état financier, que le compte journalisé porte.',
   EcheanceAbonnement: "Échéances engendrées par le modèle d'abonnement, journalisé · chacune pointe vers son écriture.",
   FicheInventaire: "Fiches créées par centaines en une fois · l'écart qu'elles produisent, et sa décision, sont journalisés.",
   LigneBalanceConsolidation: "Balance de filiale importée en masse · l'entité porte la date et le nom du fichier importé.",
@@ -658,6 +671,10 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Ligne microfina-m3 · le montant d'un frais de mission entre au net du
   // salarié (le forfait est même imposable) · masqué comme la rémunération.
   FraisMission: ['montantFc'],
+  // Ligne paie-suite, fonction 87 · la nouvelle base et les arriérés sont la
+  // RÉMUNÉRATION, masquée comme celle du contrat ; mois, motif, pièce et
+  // bulletin porteur restent, c'est ce que la trace doit dire.
+  RappelSalaire: ['nouvelleBase', 'lignes', 'totalFc'],
   // Ligne microfina-m3, idée 7 · l'observation et le motif peuvent dire la
   // raison du congé (même raison que l'absence) · dates, statut et auteurs restent.
   DemandeCongeSalarie: ['observation', 'motifDecision'],

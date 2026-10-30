@@ -11,6 +11,11 @@ import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
 import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
 import { OngletBilanSocial, OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
+import { OngletOrganigramme } from '../components/paie/OrganigrammePaie';
+import { OngletFicheIndividuelle } from '../components/paie/FicheIndividuellePaie';
+import { OngletImportPersonnel } from '../components/paie/ImportPersonnelPaie';
+import { BandeComptesIndividuels } from '../components/paie/ComptesIndividuelsPaie';
+import { OngletRappelsSalaire } from '../components/paie/RappelsSalairePaie';
 import { DeclarationEtablissement, DeclarationMouvementTravailleur } from '../components/paie/DeclarationsTravail';
 import { heuresAffichees, lignesPourLaSimulation, type HeuresDuMois } from '../lib/feuilles-temps';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
@@ -594,7 +599,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // (`@Roles` ADMIN_CABINET, COMPTABLE). Simulation, décompte final et livre
   // de paie restent ouverts à la lecture seule · le serveur les lui ouvre,
   // ils calculent sans rien conserver.
-  const { peutEcrire } = useAuth();
+  const { peutEcrire, estAdmin } = useAuth();
   const [salaries, setSalaries] = useState<Salarie[]>([]);
   // Ce que la liste du registre dit d'elle-même · null tant qu'elle n'est
   // pas lue, et « Aucun salarié » ne se dit que sur une liste LUE (audit
@@ -638,6 +643,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // LUE ; seul l'identifiant part, le serveur rejoue les montants.
   const [missionsDuMois, setMissionsDuMois] = useState<MissionLue[] | null>(null);
   const [missionsPortees, setMissionsPortees] = useState<Record<string, boolean>>({});
+  // LIGNE PAIE-SUITE, FONCTION 87 · les rappels de salaire que le bulletin du
+  // mois peut payer. Null tant que la liste n'est pas LUE ; seul l'identifiant
+  // part, le serveur rejoue les arriérés.
+  const [rappelsDuMois, setRappelsDuMois] = useState<{ id: string; moisDebut: string; moisFin: string; motif: string; totalFc: number }[] | null>(null);
+  const [rappelsPortes, setRappelsPortes] = useState<Record<string, boolean>>({});
   // LIGNE SAGE-L5, FONCTION 78 · les absences du mois et la proposition du
   // serveur · reprise au clic, jamais substituée. La moyenne de l'art. 66 se
   // déclare (zéro est une réponse).
@@ -889,6 +899,26 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   }, [onglet]);
 
   useEffect(() => {
+    setRappelsPortes({});
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setRappelsDuMois(null);
+      return;
+    }
+    let actuel = true;
+    api.get<{ id: string; moisDebut: string; moisFin: string; motif: string; totalFc: number }[]>(`/personnel/salaries/${selection}/rappels/a-payer/${moisDePaie}`).then(
+      (r) => actuel && setRappelsDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setRappelsDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
+
+  useEffect(() => {
     setMissionsPortees({});
     if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
       setMissionsDuMois(null);
@@ -1063,6 +1093,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       // remboursement sont rejoués au serveur.
       ...(Object.values(missionsPortees).some(Boolean)
         ? { missionsPortees: Object.entries(missionsPortees).filter(([, oui]) => oui).map(([missionId]) => ({ missionId })) }
+        : {}),
+      // Ligne paie-suite, fonction 87 · le rappel seul part ; les arriérés sont rejoués au serveur.
+      ...(Object.values(rappelsPortes).some(Boolean)
+        ? { rappelsPortes: Object.entries(rappelsPortes).filter(([, oui]) => oui).map(([rappelId]) => ({ rappelId })) }
         : {}),
       // LIGNE SAGE-L5 · les heures majorées · la majoration et le montant sont
       // relus au serveur ; une ligne incomplète ne part pas (`simuler` la dit).
@@ -1593,6 +1627,14 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Formation'
                       : o === 'declaration'
                       ? 'Main-d’œuvre'
+                      : o === 'organisation'
+                      ? 'Organigramme'
+                      : o === 'fiche'
+                      ? 'Fiche individuelle'
+                      : o === 'import'
+                      ? 'Import'
+                      : o === 'rappels'
+                      ? 'Rappels de salaire'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -1611,6 +1653,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         </span>
       </div>
 
+      {onglet === 'registre' && <BandeComptesIndividuels estAdmin={estAdmin} onOuverts={charger} />}
       {onglet === 'registre' && (
         // LE CONTENEUR QUI DÉFILE, et il n'est pas décoratif · la grille
         // ci-dessous fait 748 px au minimum, et sur un écran de 360 px elle
@@ -3290,6 +3333,40 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {selection && rappelsDuMois && rappelsDuMois.length > 0 && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Rappels de salaire à payer
+                <Aide
+                  titre="Rappels de salaire à payer"
+                  texte="Les rappels déclarés pour ce salarié dont tous les mois précèdent celui-ci. Coché, chaque mois rappelé entre au bulletin comme salaire, sous le libellé du rappel (arriérés de rémunération) ; cotisations et retenue d'impôt se calculent sur ce bulletin. L'émission lie le rappel au bulletin ; annuler le bulletin le libère."
+                  source="Code du travail, art. 213 · arrêté du 8 août 2008, mention 13"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {rappelsDuMois.map((r) => (
+                    <tr key={r.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            disabled={deviseStipulation === 'USD'}
+                            checked={rappelsPortes[r.id] === true}
+                            onChange={(e) => setRappelsPortes((p) => ({ ...p, [r.id]: e.target.checked }))}
+                          />
+                          {r.motif} · {r.moisDebut} à {r.moisFin}
+                        </label>
+                      </td>
+                      <td className="py-1 text-right">{fc(r.totalFc)} FC</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {deviseStipulation === 'USD' && <div className="text-warning mt-1">Les rappels de salaire sont calculés en francs · un bulletin stipulé en dollars ne les porte pas.</div>}
+            </div>
+          )}
+
           {selection && missionsDuMois && missionsDuMois.length > 0 && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
@@ -3937,6 +4014,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'demandes' && <OngletDemandesConge salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'echeances' && <OngletEcheancierContrats />}
       {onglet === 'formation' && <OngletFormation salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'organisation' && <OngletOrganigramme salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'fiche' && <OngletFicheIndividuelle salaries={salaries} />}
+      {onglet === 'import' && <OngletImportPersonnel peutEcrire={peutEcrire} onImporte={charger} />}
+      {onglet === 'rappels' && <OngletRappelsSalaire salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'declaration' && (
         <div className="space-y-5">
           <OngletDeclarationMainOeuvre />

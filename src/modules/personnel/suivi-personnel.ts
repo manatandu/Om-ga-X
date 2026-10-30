@@ -5,6 +5,7 @@
  * modifiée par la loi n° 16/010, compétence `droit-travail-congolais`).
  */
 import { ajouterMois } from '../../common/ajouter-mois';
+import { plafondDureeCdd } from './regles-contrat-travail';
 
 const MS_PAR_JOUR = 86_400_000;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -109,6 +110,20 @@ export const FONDEMENT_TITRE_CONGE =
 // sur un contrat qui court est donc dit avec cette formule, sans requalifier
 // en base (règle du registre, P1).
 //
+// LE PLAFOND DE L'ART. 41, AL. 1er (ligne paie-suite, fonction 81, décision
+// par la loi du 2026-10-29) · « Le contrat à durée déterminée ne peut excéder
+// deux ans », un an pour le travailleur « marié et séparé de sa famille »
+// (ou veuf, séparé de corps ou divorcé, séparé de ses enfants dont il a la
+// garde). Le plafond est celui d'UN contrat, compté de date à date depuis son
+// entrée en vigueur (`plafondDureeCdd`, même calcul que le contrôle des
+// contrats) · l'alinéa 2 compte les contrats et les renouvellements, à part,
+// et le contrôle des contrats les nomme. L'échéance du plafond n'est dite que
+// quand le terme ne la précède pas · terme inconnu (ouvrage, remplacement,
+// art. 40) ou fixé au-delà du plafond (le contrat est déjà requalifiable, et
+// le contrôle le dit) ; un terme qui tombe avant est dit par FIN_CDD. Passé,
+// le plafond reste nommé tant que le contrat court · l'al. 3 fait de la
+// « continuation de service » un contrat à durée indéterminée de plein droit.
+//
 // L'ÉCHÉANCIER DIT, IL NE TRANCHE RIEN · il ne termine aucun contrat ni ne
 // requalifie en base (règle du registre, P1). L'horizon de soixante jours est
 // une convention d'OmegaX.
@@ -124,6 +139,8 @@ export type ContratPourEcheancier = {
   dateFin: Date | null;
   dateFinPrevue: Date | null;
   emploiPermanent: boolean;
+  /** Art. 41, al. 1er · le plafond d'un an au lieu de deux. Absent d'un appelant d'avant la fonction 81 · deux ans. */
+  separeDeSaFamille?: boolean;
   clauseEssai: boolean;
   essaiDureeJours: number | null;
   manoeuvreSansSpecialite: boolean;
@@ -132,7 +149,7 @@ export type ContratPourEcheancier = {
 export type EcheanceContrat = {
   contratId: string;
   salarieId: string;
-  objet: 'FIN_CDD' | 'FIN_ESSAI';
+  objet: 'FIN_CDD' | 'FIN_ESSAI' | 'PLAFOND_ARTICLE_41';
   echeance: string;
   joursRestants: number;
   depassee: boolean;
@@ -174,6 +191,25 @@ export function echeancesDuContrat(c: ContratPourEcheancier, aujourdhui: Date, h
         ? "Le contrat prend fin au terme fixé (art. 69) · mais il est conclu pour un emploi permanent, et l'art. 42 le répute conclu pour une durée indéterminée."
         : 'Le contrat prend fin au terme fixé par les parties (art. 69) · un renouvellement se déclare au registre, dans les limites de l’art. 41.',
     );
+  }
+  if (c.type === 'DUREE_DETERMINEE') {
+    const plafond = plafondDureeCdd(c.dateEntreeEnVigueur, c.separeDeSaFamille === true);
+    // Le terme qui tombe au plus tard au plafond est dit par FIN_CDD · le
+    // plafond n'ajoute rien.
+    if (!c.dateFinPrevue || c.dateFinPrevue.getTime() > plafond.getTime()) {
+      const duree = c.separeDeSaFamille === true ? 'un an' : 'deux ans';
+      const passe = plafond.getTime() < aujourdhui.getTime();
+      poser(
+        'PLAFOND_ARTICLE_41',
+        plafond,
+        passe ? 'art. 41, al. 1er et 3' : 'art. 41, al. 1er',
+        passe
+          ? `Le contrat a dépassé ${duree} de date à date et court encore · un contrat à durée déterminée « ne peut excéder » cette durée (art. 41, al. 1er), et l'exécution d'un contrat conclu en violation de l'article constitue de plein droit l'exécution d'un contrat à durée indéterminée (al. 3). Déclarez la fin ou la conversion au registre.`
+          : `Dernier jour des ${duree} qu'un contrat à durée déterminée ne peut excéder (art. 41, al. 1er), comptés de date à date depuis son entrée en vigueur${
+              c.dateFinPrevue ? ` · le terme fixé au ${iso(c.dateFinPrevue)} va au-delà` : ' · le contrat ne fixe pas de terme'
+            }. Au-delà, le contrat est réputé à durée indéterminée (al. 3).`,
+      );
+    }
   }
   const essai = finEssaiOpposable(c);
   if (essai) {

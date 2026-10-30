@@ -23,6 +23,11 @@ test('SYSCOHADA · export des modifications, impressions différées et modèle 
   const pannes = surveiller(page);
   const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Largeurs sage-l7 e2e', montant: 900 });
   await seConnecter(page, dossier.email);
+  // AU REPOS AVANT LA PREMIÈRE ADRESSE · l'accueil lit encore (cloche,
+  // échéances, démarrage guidé) quand la connexion rend la main, et sous
+  // WebKit la fenêtre demandée pendant ces lectures ne s'est pas montrée
+  // (runs 511 et 516, première fenêtre seule, Chromium vert).
+  await page.waitForLoadState('networkidle');
 
   for (const largeur of [390, 1440]) {
     await page.setViewportSize({ width: largeur, height: 820 });
@@ -33,6 +38,9 @@ test('SYSCOHADA · export des modifications, impressions différées et modèle 
     ];
     for (const [adresse, commande, fermer] of fenetres) {
       await page.goto(adresse);
+      // La fenêtre d'abord, sa commande ensuite · un échec dit lequel des deux
+      // manque, la fenêtre jamais ouverte ou la commande absente d'elle.
+      await expect(page.getByRole('button', { name: fermer })).toBeVisible();
       await dansLEcran(page, commande, largeur);
       await sansDebordement(page, largeur);
       await page.getByRole('button', { name: fermer }).click();

@@ -90,6 +90,7 @@ function fabrique(
   };
   const usages = options.usages ?? {};
   const base: Record<string, any> = {
+    $executeRaw: jest.fn().mockResolvedValue(1),
     immobilisation: {
       findFirst: jest.fn().mockResolvedValue(fiche),
       update: jest.fn().mockResolvedValue(fiche),
@@ -101,7 +102,8 @@ function fabrique(
       findFirst: jest.fn().mockResolvedValue(ecritureAcq),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    // Lignes libres seulement, nombre relu (saisie-serialisable, second tour, point 1).
+    ligneEcriture: { count: jest.fn().mockResolvedValue(2), deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     // Les pièces jointes à l'écriture d'acquisition · aucune, sauf quand le cas en pose.
     // Le verrou de l'écriture d'origine, pris avant ses pièces (second tour, MAJEUR).
     $queryRaw: jest.fn().mockResolvedValue([]),

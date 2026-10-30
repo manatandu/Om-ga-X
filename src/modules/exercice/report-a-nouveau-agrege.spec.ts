@@ -357,6 +357,8 @@ function base(
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      // Aucune au brouillard · relu DANS la transaction de clôture (ligne saisie-serialisable).
+      count: jest.fn().mockResolvedValue(0),
       delete: jest.fn(),
       // Le report de N+1 ENTRE dans la base · la reconduction relit ses
       // lignes (ligne lettrage-cloture). Les écritures de N n'y entrent pas,

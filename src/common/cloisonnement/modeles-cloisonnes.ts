@@ -206,6 +206,11 @@ export const MODELES_CLOISONNES = new Set<string>([
   'DetentionBien',
   'RecuDetentionBien',
   'HeuresCompteurJour',
+  // Ligne paie-suite · l'organigramme et les rattachements datés.
+  'UniteOrganisation',
+  'RattachementUnite',
+  // Ligne paie-suite, fonction 87 · les rappels de salaire.
+  'RappelSalaire',
   // Ligne microfina-m3, idée 3 · ordres et frais de mission.
   'MissionSalarie',
   'FraisMission',
@@ -222,6 +227,11 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne sage-l5 · fonction 88, la répartition analytique de la paie.
   'RepartitionAnalytiquePaie',
   'LigneRepartitionAnalytiquePaie',
+  // Ligne analytique, fonction n° 48 · la grille d'un compte et ses lignes.
+  'GrilleAnalytique',
+  'LigneGrilleAnalytique',
+  // Ligne analytique, fonction n° 51 · le budget d'un compte général.
+  'BudgetCompte',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

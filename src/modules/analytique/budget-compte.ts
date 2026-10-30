@@ -1,0 +1,248 @@
+/**
+ * LIGNE ANALYTIQUE, FONCTION N° 51 · LE BUDGET PAR COMPTE GÉNÉRAL.
+ *
+ * Sage (manuel 1, ligne 29 ; manuel 2, ligne 57) dote un budget sur le compte
+ * général et compare la réalisation à celle de l'exercice précédent. OmegaX
+ * ne dotait que les sections analytiques · une société budgète ses charges et
+ * ses produits par compte. AUCUN TEXTE NE RÉGIT CE BUDGET · ni l'AUDCIF ni le
+ * SYCEBNL n'en demandent un hors du tableau d'exécution des projets de
+ * développement, qui lit les budgets des SECTIONS et ne lit pas celui-ci. Les
+ * règles ci-dessous sont des CONVENTIONS D'OMEGAX, dites dans la bulle. Les
+ * postes budgétaires, la prévision faible ou forte et la devise d'édition de
+ * Sage ne sont pas repris (plan du 2026-10-29).
+ *
+ * QUATRE DÉCISIONS, DÉCLARÉES.
+ *  1. LE BUDGET SE PORTE SUR UN COMPTE DE DÉTAIL DES CLASSES 6 ET 7 · comme le
+ *     simulateur budgétaire, le résultat budgété est celui des activités
+ *     ordinaires (classe 8 et impôt hors champ). Le réalisé d'un compte est
+ *     celui du compte, et d'aucun autre · un sous-compte ouvert sous lui a
+ *     sa propre ligne, « hors budget » s'il n'est pas doté.
+ *  2. LE RÉALISÉ EST UN MOUVEMENT DE L'EXERCICE, écriture qui solde les
+ *     comptes de gestion exclue (`filtresDesTroisColonnes`, audit final F4) ·
+ *     lu au solde, un exercice clos vaudrait zéro partout. Brouillard
+ *     compris, et dit ; jamais une écriture de situation.
+ *  3. UNE CHARGE SE LIT DÉBIT MOINS CRÉDIT, UN PRODUIT CRÉDIT MOINS DÉBIT · une
+ *     remise obtenue enregistrée en déduction d'une charge la diminue (même
+ *     sens que le simulateur). L'écart est budget moins réalisé ; il est
+ *     DÉFAVORABLE quand une charge dépasse son budget ou qu'un produit n'y
+ *     arrive pas.
+ *  4. LA DOTATION SE RÉPARTIT SUR LES MOIS DE L'EXERCICE, au centime, le
+ *     reliquat sur le dernier (même règle que la section), chaque mois
+ *     retouchable ensuite, l'annuel suivant la somme. Un exercice de plus de
+ *     douze mois se dote à l'année, sans répartition (audit final F39).
+ *     N-1 est l'exercice du dossier qui précède immédiatement, lu de la même
+ *     façon, au même mois de calendrier quand un mois est choisi.
+ */
+
+export type NatureBudget = 'CHARGE' | 'PRODUIT';
+
+/** Classes que le budget par compte admet, en chiffre. */
+export const CLASSES_BUDGETABLES = ['6', '7'] as const;
+
+/** La nature d'un compte budgétable par sa classe, ou `null` hors des classes 6 et 7. */
+export function natureDuCompte(classe: string): NatureBudget | null {
+  const chiffre = classe.replace('CLASSE_', '');
+  if (chiffre === '6') return 'CHARGE';
+  if (chiffre === '7') return 'PRODUIT';
+  return null;
+}
+
+/** Le refus d'un compte à doter, ou `null`. */
+export function motifRefusCompteBudgetable(compte: { numero: string; classe: string; estTotal: boolean } | null): string | null {
+  if (!compte) return 'Compte introuvable dans ce dossier.';
+  if (compte.estTotal) {
+    return `Le compte ${compte.numero} est un compte de regroupement · le budget se porte sur le compte de détail qui reçoit les écritures.`;
+  }
+  if (!natureDuCompte(compte.classe)) {
+    return `Le compte ${compte.numero} n'est ni une charge ni un produit des activités ordinaires · le budget par compte porte sur les classes 6 et 7.`;
+  }
+  return null;
+}
+
+/** Le refus d'un montant budgété, ou `null` · positif ou nul, au centime. */
+export function motifRefusMontantBudget(montant: number): string | null {
+  if (!Number.isFinite(montant)) return 'Le montant du budget est un nombre.';
+  if (montant < 0) return "Un budget n'est pas négatif · une charge ou un produit se budgète à sa valeur.";
+  if (Math.abs(Math.round(montant * 100) - montant * 100) > 1e-6) return 'Le montant du budget se donne au centime.';
+  if (montant > 1e15) return 'Montant hors des bornes de la base.';
+  return null;
+}
+
+/**
+ * La dotation annuelle répartie sur `nombre` mois, au centime, le reliquat sur
+ * le dernier · la somme des mois égale l'annuel exactement.
+ */
+export function repartirSurLesMois(montant: number, nombre: number): number[] {
+  if (nombre <= 0) return [];
+  const centimes = Math.round(montant * 100);
+  const part = Math.trunc(centimes / nombre);
+  const reliquat = centimes - part * nombre;
+  return Array.from({ length: nombre }, (_, i) => (part + (i === nombre - 1 ? reliquat : 0)) / 100);
+}
+
+/** Les mois de calendrier (1 à 12) d'un exercice, dans l'ordre, en UTC. */
+export function moisDeLExercice(debut: Date, fin: Date): number[] {
+  const mois: number[] = [];
+  let annee = debut.getUTCFullYear();
+  let m = debut.getUTCMonth();
+  const finA = fin.getUTCFullYear();
+  const finM = fin.getUTCMonth();
+  while (annee < finA || (annee === finA && m <= finM)) {
+    mois.push(m + 1);
+    m += 1;
+    if (m === 12) {
+      m = 0;
+      annee += 1;
+    }
+  }
+  return mois;
+}
+
+/** Le montant d'un compte dans le sens de sa nature. */
+export function realiseDansLeSens(nature: NatureBudget, debit: number, credit: number): number {
+  return nature === 'CHARGE' ? debit - credit : credit - debit;
+}
+
+export type LigneBudgetCompte = {
+  compteId: string;
+  numero: string;
+  intitule: string;
+  nature: NatureBudget;
+  /** `null` · le compte n'est pas doté sur la période · jamais un zéro qui passerait pour un budget. */
+  budget: number | null;
+  realise: number;
+  /** `null` · aucun exercice précédent lisible (dit par `motifN1`). */
+  realiseN1: number | null;
+  /** Budget moins réalisé · `null` sans budget. */
+  ecart: number | null;
+  /** Réalisé en % du budget · `null` sans budget ou à budget nul. */
+  tauxRealisation: number | null;
+  /** Une charge qui dépasse son budget, un produit qui n'y arrive pas. */
+  defavorable: boolean;
+  /** Mouvementé, ou mouvementé en N-1, sans budget. */
+  horsBudget: boolean;
+};
+
+const arrondi = (x: number) => Math.round(x * 100) / 100;
+
+/** Une ligne de l'état, à partir de ses trois lectures. */
+export function ligneDuBudget(params: {
+  compteId: string;
+  numero: string;
+  intitule: string;
+  nature: NatureBudget;
+  budget: number | null;
+  realise: number;
+  realiseN1: number | null;
+}): LigneBudgetCompte {
+  const { budget, nature } = params;
+  const realise = arrondi(params.realise);
+  const realiseN1 = params.realiseN1 === null ? null : arrondi(params.realiseN1);
+  const ecart = budget === null ? null : arrondi(budget - realise);
+  const centimes = (x: number) => Math.round(x * 100);
+  const defavorable =
+    budget !== null && (nature === 'CHARGE' ? centimes(realise) > centimes(budget) : centimes(realise) < centimes(budget));
+  return {
+    ...params,
+    realise,
+    realiseN1,
+    ecart,
+    tauxRealisation: budget !== null && centimes(budget) !== 0 ? (realise / budget) * 100 : null,
+    defavorable,
+    horsBudget: budget === null && (centimes(realise) !== 0 || (realiseN1 !== null && centimes(realiseN1) !== 0)),
+  };
+}
+
+/** Les totaux d’une nature · le budget ne somme que les comptes dotés, le hors budget est compté à part. */
+export function totauxDeLaNature(lignes: readonly LigneBudgetCompte[], nature: NatureBudget) {
+  const de = lignes.filter((l) => l.nature === nature);
+  const budget = arrondi(de.reduce((t, l) => t + (l.budget ?? 0), 0));
+  const realise = arrondi(de.reduce((t, l) => t + l.realise, 0));
+  const n1 = de.some((l) => l.realiseN1 === null) ? null : arrondi(de.reduce((t, l) => t + (l.realiseN1 ?? 0), 0));
+  return { budget, realise, realiseN1: n1, horsBudget: arrondi(de.filter((l) => l.horsBudget).reduce((t, l) => t + l.realise, 0)) };
+}
+
+/**
+ * LE REPORT DES BUDGETS DES COMPTES SUR L'EXERCICE SUIVANT (ligne
+ * restes-immos-budgets, point 1), au modèle du report des budgets des
+ * sections (`budgetsAReporter`, `exercice/report-a-nouveau.ts` · Sage i7,
+ * « demander le report des budgets sur le nouvel exercice »). Convention
+ * d'OmegaX, comme le budget lui-même · aucun texte ne la régit.
+ *
+ * QUATRE RÈGLES.
+ *  1. UN BUDGET DÉJÀ POSÉ SUR L'EXERCICE SUIVANT N'EST JAMAIS ÉCRASÉ · il a
+ *     été décidé, le report n'en est qu'une proposition. Le compte se juge
+ *     ENTIER (annuel et mois ensemble) · compléter les seuls mois manquants
+ *     ferait un annuel qui n'est plus la somme de ses mois.
+ *  2. RIEN NE SE PRORATISE · le report recopie les montants, annuel et mois,
+ *     tels qu'ils sont. Deux exercices qui n'ont pas les mêmes mois de
+ *     calendrier (premier exercice court ou long, AUDCIF art. 7) ne se
+ *     reportent pas · le cabinet dote l'exercice suivant compte par compte,
+ *     comme la colonne N-1 des états ne s'adapte pas d'office.
+ *  3. UN COMPTE QUE LA SAISIE N'ADMET PLUS N'EST PAS DOTÉ · en sommeil ou
+ *     subdivisé depuis (`motifCompteHorsSaisie`), il est NOMMÉ avec son motif
+ *     et sauté · son budget irait à un compte qui ne reçoit plus d'écriture.
+ *  4. CE QUI EST REPRIS ET CE QUI NE L'EST PAS SE DIT, compte par compte.
+ */
+export type BudgetLu = { compteId: string; mois: number | null; montant: number };
+
+export type CompteDuReport = { id: string; numero: string; intitule: string };
+
+export type PlanReportBudgetsComptes = {
+  /** Refus du report entier, ou `null`. */
+  motifRefus: string | null;
+  repris: { compteId: string; numero: string; intitule: string; annuel: number | null; lignes: BudgetLu[] }[];
+  nonRepris: { compteId: string; numero: string; intitule: string; motif: string }[];
+};
+
+export const MOTIF_DEJA_DOTE_EN_N1 =
+  "Déjà doté sur l'exercice suivant · un budget posé n'est jamais écrasé par le report.";
+
+export const MOTIF_MOIS_DIFFERENTS =
+  "Les deux exercices n'ont pas les mêmes mois de calendrier · le report recopie les montants sans rien proratiser, " +
+  "il ne s'applique qu'entre deux exercices de même durée. Dotez l'exercice suivant compte par compte.";
+
+export function planDuReportBudgetsComptes(params: {
+  moisSource: readonly number[];
+  moisDestination: readonly number[];
+  budgets: readonly BudgetLu[];
+  comptes: ReadonlyMap<string, CompteDuReport>;
+  dejaDotes: ReadonlySet<string>;
+  /** Le motif qui écarte un compte (sommeil, subdivision, classe), s'il y en a un. */
+  horsSaisie: ReadonlyMap<string, string>;
+}): PlanReportBudgetsComptes {
+  const memesMois =
+    params.moisSource.length === params.moisDestination.length && params.moisSource.every((m, i) => m === params.moisDestination[i]);
+  if (!memesMois) return { motifRefus: MOTIF_MOIS_DIFFERENTS, repris: [], nonRepris: [] };
+  const parCompte = new Map<string, BudgetLu[]>();
+  for (const b of params.budgets) {
+    const l = parCompte.get(b.compteId) ?? [];
+    l.push(b);
+    parCompte.set(b.compteId, l);
+  }
+  const repris: PlanReportBudgetsComptes['repris'] = [];
+  const nonRepris: PlanReportBudgetsComptes['nonRepris'] = [];
+  const ordonnes = [...parCompte.keys()]
+    .map((id) => params.comptes.get(id) ?? { id, numero: '?', intitule: 'Compte introuvable' })
+    .sort((a, b) => a.numero.localeCompare(b.numero));
+  for (const c of ordonnes) {
+    const base = { compteId: c.id, numero: c.numero, intitule: c.intitule };
+    if (!params.comptes.has(c.id)) {
+      nonRepris.push({ ...base, motif: 'Compte introuvable dans ce dossier.' });
+      continue;
+    }
+    if (params.dejaDotes.has(c.id)) {
+      nonRepris.push({ ...base, motif: MOTIF_DEJA_DOTE_EN_N1 });
+      continue;
+    }
+    const motif = params.horsSaisie.get(c.id);
+    if (motif) {
+      nonRepris.push({ ...base, motif });
+      continue;
+    }
+    const lignes = (parCompte.get(c.id) ?? []).slice().sort((a, b) => (a.mois ?? 0) - (b.mois ?? 0));
+    const annuelle = lignes.find((l) => l.mois === null);
+    repris.push({ ...base, annuel: annuelle ? annuelle.montant : null, lignes });
+  }
+  return { motifRefus: null, repris, nonRepris };
+}

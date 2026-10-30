@@ -533,6 +533,30 @@ Dans un même dossier, la même paire envoyée trois fois en même temps est let
 
 *Banc du 2026-10-29 sur `d81fa8e98`, après les points 3 à 7 de la relecture lettrage-verrou* (`charge-k6.yml`, PostgreSQL 18, profil nominal, coureur GitHub, serveur sur un cœur) · 11 541 requêtes, 347 tours, 92 cabinets menés au bout, 3 680 écritures saisies · **un seul 409** de conflit, aucun refus inattendu, aucune réponse 5xx, aucune fuite entre dossiers, aucune incohérence comptable, aucun maillon d'audit manquant ; p50 379 ms, p95 1 664 ms. Le verdict rouge ne tient qu'à des latences p95 au-delà des seuils de la section 2.5 (contrôles, création d'un tiers, d'un bien et sa dotation, inscription, plan retenu, lettrage, saisie, TVA), dont l'inscription et le plan retenu dépassaient déjà au banc de référence de la section 3 · une capacité d'un cœur, pas un défaut. **La saisie reste en isolation sérialisable (point 8, décision du même jour)** · un conflit sur onze mille requêtes, rejoué par l'interface, ne justifie pas de retirer aux modules sérialisables qui relisent les écritures (clôture, TVA, réévaluation, à-nouveau) la protection qu'ils en tirent, qu'il faudrait reposer module par module et dont un oubli fausserait un état sans un mot.
 
+*La saisie sort de l'isolation sérialisable (ligne saisie-serialisable, 2026-10-30, demande de Manasse).* Le point 8 du 2026-10-29 la gardait sérialisable pour la protection qu'en tirent les transactions qui relisent les écritures ; cette protection se repose autrement (CLAUDE.md, « La saisie se sérialise par DOSSIER »). `transactionDeSaisie` (`src/common/transaction-de-saisie.ts`) · READ COMMITTED, verrou du dossier en tête, lignes des exercices ouverts réécrites avant le geste ; le numéro de pièce sous le verrou et la ligne de son exercice (`prochainNumeroPiece`) ; la clôture relit le brouillard dans sa transaction ; la caisse provisionnée jugée dans la transaction. Rejeu sur vraie base (`scripts/rejouer-saisie-concurrente.cjs`, PostgreSQL 16 local, serveur compilé sur un cœur, pool de 10, base neuve) :
+
+| | avant (deux lancements) | après (vingt dossiers, deux lancements) | après (soixante dossiers) |
+|---|---|---|---|
+| saisies entre dossiers, une à une par dossier | 296 et 293 × 201 sur 300, **4 et 7 × 409** | 300 × 201 sur 300 | 900 × 201 sur 900 |
+| échecs de sérialisation vus par PostgreSQL | 282 et 275 | 0 | 0 |
+| p95 entre dossiers | 2,5 et 2,9 s | 1,1 et 1,3 s | 3,1 s (un cœur saturé) |
+| même dossier, même journal, rafale | 29 et 30 × 201 sur 30 | 30 × 201 sur 30 | 60 × 201 sur 60 |
+| doublon ou trou de numéro, réponse 5xx | 0, 0, 0 | 0, 0, 0 | 0, 0, 0 |
+
+Clôture de 2026 et vingt saisies en 2026 et 2027 au même instant (mesure 6) · avant la relecture du brouillard dans la transaction, la clôture rejouée après son 40001 se validait avec dix pièces au brouillard dans l'exercice clos ; après, elle est refusée (400, brouillard nommé) ou la saisie l'est (exercice clôturé), séquences de 2026 et 2027 sans doublon ni trou. Banc `charge-k6.yml` nominal sur `089c965cb` (run 40992337207, PostgreSQL 18) · aucun 5xx, aucune fuite, aucune incohérence, aucun 409 de conflit (un sur `main`), mêmes neuf seuils de latence tombés que sur `main` (un cœur) ; p50 441 ms contre 379, p95 1 764 ms contre 1 664.
+
+*Relecture indépendante (2026-10-30), quatre MAJEURS.* (1) La validation par période prenait ses écritures `FOR UPDATE` et ses exercices `FOR SHARE` AVANT le verrou du dossier, la saisie le prenait avant de réécrire les exercices · interblocage ; un seul ordre désormais, le dossier puis les lignes (validation, visa, pièces jointes, ventilation). (2) Les retraits de brouillard des modules (`deleteMany` sans filtre) emportaient une ligne pointée entre la lecture et le retrait · ils ne retirent plus que des lignes libres, nombre relu, et le pointage prend le verrou. (3) La clôture, restée sérialisable, tombait en 40001 sur toute saisie de N+1 pendant sa lecture · mesuré (mesure 7), 409 après huit reprises sur la branche et une fois sur deux sur `main` · elle passe en lecture validée sous le verrou du dossier, comme les à-nouveaux provisoires, la dissolution et le rapprochement, une fois vérifié que tout écrivain du dossier le prend (saisie, validation, lettrage, pointage, imports et modules par le numéro de pièce). (4) Un journal MANUELLE ne relisait pas l'exercice · le numéro relit l'exercice ouvert sous le verrou dans tous les modes. Plus aucune transaction sérialisable, plus de marque des exercices.
+
+| rejeu local, 20 dossiers × 20 pièces, deux lancements | `main` (`c6215eb46`) | branche après relecture |
+|---|---|---|
+| saisies entre dossiers | 395 et 394 × 201 sur 400, 5 et 6 × 409 | 400 × 201 sur 400 |
+| p50 / p95 entre dossiers | 869 et 762 ms / 2 346 et 2 224 ms | 865 et 846 ms / 1 162 et 1 123 ms |
+| même journal, rafale de 30, p95 | 2 430 et 2 217 ms | 1 478 et 1 371 ms |
+| clôture de N pendant que quatre postes saisissent N+1 | 409 une fois, 201 une fois | 201 et 201 (375 et 444 ms) |
+| échecs de sérialisation vus par PostgreSQL | 295 à 301, plus 107 à 103 sur la rafale | 0 |
+
+Le p50 local est revenu à celui de `main` · les 15 % du banc tenaient vraisemblablement à la réécriture de tous les exercices ouverts à chaque saisie (une mise à jour et son journal de transactions par geste), retirée ; à confirmer par le banc. Mesures nouvelles, toutes vertes · deux corrections de la même écriture au même instant (une passe, deux refus nommés, un seul négatif), clôture de période et dix saisies dans la période (aucune pièce après la clôture), pointage contre suppression du même brouillard dix fois (jamais les deux).
+
 ### 4.5 [MAJEUR · corrigé pour les maillons, 2026-10-21] Sous saturation, des erreurs 500 et des maillons d'audit manquants
 
 *Symptôme.* À 20 cabinets, un 500 isolé dans un des trois lancements ; à 40 cabinets simultanés les 5xx s'installent (1) ; à 80, 13 ; à 150, 194. Le journal du serveur contient alors « Maillon d'audit NON écrit » (30 fois à 80 cabinets, 85 en pointe, 118 pendant le flux d'inscriptions à 300 par minute) et « Maillon de connexion non écrit ».

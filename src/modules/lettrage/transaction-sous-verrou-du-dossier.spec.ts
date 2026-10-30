@@ -52,9 +52,10 @@ describe('le lettrage sous le verrou du dossier', () => {
     expect(journal).toEqual([
       'SET LOCAL lock_timeout = 3000',
       'verrou SELECT pg_advisory_xact_lock(hashtext(?)) d-1',
+      // La borne d'attente ne vaut que pour le verrou du dossier (saisie-serialisable, second tour, point 5).
+      'verrou SET LOCAL lock_timeout TO DEFAULT ',
       'acte',
-      // BLOQUANT 1 · la ligne de chaque exercice ouvert réécrite, pour que la clôture sérialisable qui a lu avant tombe en 40001.
-      'verrou UPDATE "exercices" SET "statut" = "statut" WHERE "tenantId" = ? AND "statut" = \'OUVERT\'::"StatutExercice" d-1',
+      // Plus de réécriture des exercices ouverts · la clôture tourne sous ce même verrou, en lecture validée.
     ]);
     // Le délai de la transaction couvre l'attente du verrou, jamais les cinq secondes de Prisma.
     expect(options[0]).toMatchObject({ isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 10_000 });
@@ -93,7 +94,7 @@ describe('le lettrage sous le verrou du dossier', () => {
   it('le service de lettrage ne retourne plus à l’isolation sérialisable', () => {
     const source = readFileSync(join(__dirname, 'lettrage.service.ts'), 'utf-8');
     expect(source).not.toMatch(/avecRetrySerialisable\(/);
-    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(7);
+    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(8);
   });
 
   // Point 5 · la déclaration d'un à-nouveau au brouillard réécrit une ligne avant son premier maillon d'audit · elle

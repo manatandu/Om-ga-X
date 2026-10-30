@@ -284,41 +284,30 @@ describe('les requalifications de plein droit (art. 40 à 45)', () => {
     expect(r.map((x) => x.motif)).toEqual(['CDD_SANS_MENTION_DE_SON_TERME']);
   });
 
-  it('DEUX ANS · le plafond se compte de DATE À DATE, et le contrat ENJAMBE UN 29 FÉVRIER', () => {
-    // LE JEU D'ESSAI SE CHERCHE. Un CDD du 5 janvier 2026 au 5 janvier 2028
-    // ne prouve RIEN : il ne contient aucun 29 février, il dure 730 jours, et
-    // un plafond codé « 730 jours » rend exactement le même verdict qu'un
-    // plafond de date à date. Le défaut resterait invisible.
-    //
-    // Du 5 janvier 2027 au 5 janvier 2029, le contrat enjambe le 29 février
-    // 2028 : il dure 731 jours et pourtant exactement DEUX ANS. C'est le seul
-    // cas où les deux lectures divergent, et c'est celui qu'il faut poser.
-    const deuxAnsBissextiles = {
-      ...cdd,
-      dateEntreeEnVigueur: '2027-01-05',
-      dateFinPrevue: '2029-01-05',
-    };
-    expect(joursEntre(new Date('2027-01-05'), new Date('2029-01-05'))).toBe(731);
+  it('DEUX ANS · le plafond se compte de DATE À DATE, le jour d\'entrée compris (décision par la loi du 2026-10-29)', () => {
+    // L'art. 41 mesure une DURÉE · deux ans depuis le 5 janvier 2027 couvrent
+    // le 5 janvier 2027 au 4 janvier 2029 inclus, 29 février 2028 compris
+    // (731 jours de service). Le 5 janvier 2029 excède les deux ans.
+    const deuxAnsBissextiles = { ...cdd, dateEntreeEnVigueur: '2027-01-05', dateFinPrevue: '2029-01-04' };
     expect(requalifications(deuxAnsBissextiles, rien)).toEqual([]);
-
-    // Un jour de plus, et le texte mord.
-    const trop = requalifications({ ...deuxAnsBissextiles, dateFinPrevue: '2029-01-06' }, rien);
+    const trop = requalifications({ ...deuxAnsBissextiles, dateFinPrevue: '2029-01-05' }, rien);
     expect(trop.map((x) => x.motif)).toEqual(['CDD_TROP_LONG']);
     expect(trop[0].formule).toContain('ne peut excéder deux ans');
+
+    // LE JEU D'ESSAI QUI SÉPARE LES DEUX LECTURES · sans 29 février, du
+    // 5 janvier 2026 au 5 janvier 2028 les dates sont à 730 jours l'une de
+    // l'autre. Un plafond « 730 jours » l'admettrait ; le service du
+    // 5 janvier 2028 est pourtant le premier jour de la troisième année.
+    expect(joursEntre(new Date('2026-01-05'), new Date('2028-01-05'))).toBe(730);
+    expect(requalifications({ ...cdd, dateEntreeEnVigueur: '2026-01-05', dateFinPrevue: '2028-01-04' }, rien)).toEqual([]);
+    expect(requalifications({ ...cdd, dateEntreeEnVigueur: '2026-01-05', dateFinPrevue: '2028-01-05' }, rien).map((x) => x.motif)).toEqual(['CDD_TROP_LONG']);
   });
 
   it('UN AN · même épreuve, et le motif distingue le travailleur séparé de sa famille', () => {
-    // Du 1er juin 2027 au 1er juin 2028 : 366 jours, et exactement un an.
-    const unAnBissextile = {
-      ...cdd,
-      separeDeSaFamille: true,
-      dateEntreeEnVigueur: '2027-06-01',
-      dateFinPrevue: '2028-06-01',
-    };
-    expect(joursEntre(new Date('2027-06-01'), new Date('2028-06-01'))).toBe(366);
+    // Du 1er juin 2027 au 31 mai 2028 inclus : un an, 29 février compris.
+    const unAnBissextile = { ...cdd, separeDeSaFamille: true, dateEntreeEnVigueur: '2027-06-01', dateFinPrevue: '2028-05-31' };
     expect(requalifications(unAnBissextile, rien)).toEqual([]);
-
-    const r = requalifications({ ...unAnBissextile, dateFinPrevue: '2028-06-02' }, rien);
+    const r = requalifications({ ...unAnBissextile, dateFinPrevue: '2028-06-01' }, rien);
     expect(r.map((x) => x.motif)).toEqual(['CDD_TROP_LONG_SEPARE_DE_SA_FAMILLE']);
     expect(r[0].formule).toContain('ne peut excéder un an');
   });

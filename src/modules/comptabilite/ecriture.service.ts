@@ -39,7 +39,7 @@ import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
 import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
+import { prendreLeVerrouDuDossierBorne, transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { FILTRE_LIGNE_LIBRE, retenirLesLignesLibres, retirerLesLignesLibres } from './lignes-libres';
@@ -519,8 +519,10 @@ function modesPortesPar(lignes: ReadonlyArray<{ modeReglementId?: string | null 
  * L'EXERCICE SE RELIT DANS LA TRANSACTION QUI ÉCRIT (constat 10 de la
  * relecture de la dissolution) · lu avant, il pouvait être arrêté à la
  * dissolution entre la lecture et l'écriture, et l'écriture entrait datée
- * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous isolation
- * sérialisable, l'arrêt et la saisie se rejouent l'un après l'autre.
+ * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous le verrou du
+ * dossier (`transactionDeSaisie`), que l'arrêt prend aussi en tête, l'arrêt
+ * et la saisie passent l'un après l'autre · la saisie relit l'exercice que
+ * l'arrêt a changé.
  */
 async function relireLExerciceDansLaTransaction(
   tx: Prisma.TransactionClient,
@@ -782,6 +784,27 @@ export class EcritureService {
    * INSCRITE. Jamais la clôture, le report ni les annulations, qui ne paient
    * personne.
    */
+  /**
+   * LES CLÔTURES DE PÉRIODE RELUES SOUS LE VERROU DU DOSSIER, pour un lot de
+   * pièces que l'appelant a contrôlées avant sa transaction (imports, canevas
+   * du groupe · saisie-serialisable, second tour, point 5). Une clôture de
+   * période posée entre le contrôle et l'écriture, sous ce même verrou (la
+   * `Cloture` est auditée), laissait entrer la pièce dans la période figée
+   * (AUDCIF art. 22, 3°). Une lecture par journal.
+   */
+  async relirePeriodesClosesSousVerrou(tx: Prisma.TransactionClient, tenantId: string, pieces: ReadonlyArray<{ journalId: string; date: Date }>) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
+    const parJournal = new Map<string, Awaited<ReturnType<ExerciceService['cloturesApplicables']>>>();
+    for (const p of pieces) {
+      let clotures = parJournal.get(p.journalId);
+      if (!clotures) {
+        clotures = await this.exerciceService.cloturesApplicables(tenantId, p.journalId, tx);
+        parJournal.set(p.journalId, clotures);
+      }
+      refuserSiPeriodeClose(clotures, p.journalId, p.date);
+    }
+  }
+
   async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[], ecritureRemplaceeId?: string) {
     await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces, ecritureRemplaceeId);
   }
@@ -1342,8 +1365,8 @@ export class EcritureService {
    * transactions · entre les deux, l'écriture existait sans son détenteur, et
    * un échec de la seconde laissait au journal une pièce que rien ne tenait
    * si la compensation échouait à son tour. `suite` s'exécute dans la même
-   * transaction sérialisable, après la création · son échec défait
-   * l'écriture.
+   * transaction, sous le verrou du dossier (`transactionDeSaisie`), après la
+   * création · son échec défait l'écriture.
    */
   async creerAvec<T>(
     tenantId: string,
@@ -1384,28 +1407,37 @@ export class EcritureService {
     // reportée au premier jour ouvert (art. 22, 4°), la sortie se juge à ce
     // jour-là, où les entrées intercalées la couvrent. Une simulation ne
     // fait sortir aucun billet.
+    // JUGÉE DANS LA TRANSACTION, SOUS LE VERROU DU DOSSIER (ligne
+    // saisie-serialisable) · lue avant, deux sorties simultanées de la même
+    // caisse y trouvaient chacune le même solde et la rendaient créditrice
+    // ensemble. Une autre saisie du dossier attend désormais la validation de
+    // celle-ci, et relit le solde qu'elle laisse.
+    const caissesAJuger = new Map<string, PieceProposee[]>();
     if (options.jugerLaCaisse) {
-      const parExercice = new Map<string, PieceProposee[]>();
       for (const { dto, journal, date } of controles) {
         if (estJournalDeSituation(journal)) continue;
-        parExercice.set(dto.exerciceId, [...(parExercice.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
+        caissesAJuger.set(dto.exerciceId, [...(caissesAJuger.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
       }
-      for (const [exerciceId, pieces] of parExercice) await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces);
     }
 
     // Le calcul du numéro de pièce (lire le max actuel, l'incrémenter) et la
     // création de l'écriture doivent former une seule opération atomique :
     // sans ça, deux écritures créées au même instant sur le même journal
-    // pourraient lire le même max et recevoir le même numeroPiece. Voir
-    // avecRetrySerialisable pour le détail (transaction Serializable +
-    // reprise automatique). Testé jusqu'à 12 écritures envoyées en parfaite
-    // simultanéité sur le même journal/mois : aucun doublon de numeroPiece.
-    return avecRetrySerialisable(
+    // pourraient lire le même max et recevoir le même numeroPiece. Le verrou
+    // du dossier, pris en tête de `transactionDeSaisie` et par
+    // `prochainNumeroPiece`, les fait passer l'une après l'autre
+    // (`scripts/rejouer-saisie-concurrente.cjs` · trente pièces envoyées au
+    // même instant sur un journal, aucun doublon, aucun trou).
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        for (const [exerciceId, pieces] of caissesAJuger) await verifierCaisseProvisionnee(tx, tenantId, exerciceId, pieces);
         const ecritures = [];
         for (const { dto, journal, date, dateValeur, sectionsParId } of controles) {
           await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
+          // La clôture de période se relit aussi sous le verrou (point 7).
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, dto.journalId, date, tx);
           const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, dto.exerciceId, date, tx);
           ecritures.push(
             await tx.ecriture.create({
@@ -1652,34 +1684,36 @@ export class EcritureService {
     // inscrite · la version d'avant sort du solde, la nouvelle y entre.
     // Le STATUT décide, jamais le journal · un brouillard hérité resté dans un
     // journal de situation compte dans la caisse, et sa sortie augmentée se
-    // juge (seconde relecture, m4).
-    if (options.jugerLaCaisse && ecriture.statut !== StatutEcriture.SITUATION) {
-      const lignes =
-        dto.lignes ??
-        ecriture.lignes.map((l) => ({
-          compteId: l.compteId,
-          debit: Number(l.debit),
-          credit: Number(l.credit),
-          deviseId: l.deviseId,
-          montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
-        }));
-      await verifierCaisseProvisionnee(this.prisma, tenantId, ecriture.exerciceId, [{ date, lignes }], ecritureId);
-    }
+    // juge (seconde relecture, m4). Jugée DANS la transaction, sous le verrou
+    // du dossier (ligne saisie-serialisable), comme à la création.
+    const lignesCaisse =
+      options.jugerLaCaisse && ecriture.statut !== StatutEcriture.SITUATION
+        ? (dto.lignes ??
+          ecriture.lignes.map((l) => ({
+            compteId: l.compteId,
+            debit: Number(l.debit),
+            credit: Number(l.credit),
+            deviseId: l.deviseId,
+            montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+          })))
+        : null;
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
     // déplacée dans un autre mois gardait le numéro de son mois d'origine ·
     // un doublon dans le mois d'arrivée, que l'analyse des journaux ne
     // pouvait pas distinguer. Elle reçoit le numéro suivant du mois
-    // d'arrivée, dans la transaction sérialisable qui la déplace, comme à la
-    // création. Le trou laissé dans le mois d'origine est celui d'une pièce
+    // d'arrivée, dans la transaction qui la déplace, sous le verrou du
+    // dossier, comme à la création. Le trou laissé dans le mois d'origine est celui d'une pièce
     // retirée, et l'analyse des journaux le montre.
     const changeDeMois =
       ecriture.journal.numerotation === NumerotationPiece.MENSUELLE &&
       (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        if (lignesCaisse) await verifierCaisseProvisionnee(tx, tenantId, ecriture.exerciceId, [{ date, lignes: lignesCaisse }], ecritureId);
         // L'écriture a pu changer d'exercice depuis la lecture (arrêt à la
         // dissolution) · son exercice se relit ici, avec la date.
         const tenue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true, statut: true } });
@@ -1692,6 +1726,8 @@ export class EcritureService {
           throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
         }
         await relireLExerciceDansLaTransaction(tx, tenantId, tenue.exerciceId, date);
+        // La clôture de période se relit aussi sous le verrou (point 7).
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, ecriture.journalId, date, tx);
         if (dto.lignes) {
           // Les ventilations analytiques suivent leurs lignes (onDelete: Cascade
           // sur VentilationAnalytique.ligne) : remplacer les lignes remplace
@@ -1793,8 +1829,9 @@ export class EcritureService {
     // une sortie repoussée laisse la caisse plus garnie entre les deux dates,
     // jamais moins (`premierJourRefuse` ne trouverait aucun jour).
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         // RELUE DANS LA TRANSACTION · validée, supprimée ou déjà transférée
         // entre-temps (un second clic, un autre poste), elle ne se transfère
@@ -1809,6 +1846,8 @@ export class EcritureService {
           );
         }
         await relireLExerciceDansLaTransaction(tx, tenantId, relue.exerciceId, date);
+        // La clôture de période se relit aussi sous le verrou (point 7).
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, journal.id, date, tx);
         const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, relue.exerciceId, date, tx);
         // Mise à jour UNITAIRE · le journal d'audit en garde l'en-tête d'avant
         // (journal, numéro, date), seule trace de l'origine (art. 22, 1°).
@@ -1841,8 +1880,8 @@ export class EcritureService {
    * remplacer la pièce par une neuve laissait un trou dans la séquence que
    * l'analyse des journaux nomme (AUDCIF art. 22, 3°). Rend `false`, sans rien
    * écrire, quand la pièce changerait de mois dans un journal numéroté par
-   * mois · le numéro du mois d'arrivée se prend alors à la création, sous sa
-   * transaction sérialisable, et le module repasse la pièce.
+   * mois · le numéro du mois d'arrivée se prend alors à la création, sous le
+   * verrou du dossier, et le module repasse la pièce.
    */
   async modifierPieceDuModule(
     tx: Prisma.TransactionClient,
@@ -2002,6 +2041,8 @@ export class EcritureService {
     liberer?: (tx: Prisma.TransactionClient) => Promise<unknown>,
   ) {
     await transactionJournalisee(this.prisma, async (tx) => {
+      // Le dossier avant les lignes (saisie-serialisable, second tour, point 5).
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { id: true } });
       if (!ecriture) return;
       if (liberer) await liberer(tx);
@@ -2026,7 +2067,12 @@ export class EcritureService {
    * une relation nouvelle doit obliger quelqu'un à décider si son module
    * retient l'écriture ou la laisse partir.
    */
-  private async detenteursDe(tenantId: string, ecritureIds: string[]): Promise<DetenteurEcriture[]> {
+  private async detenteursDe(
+    tenantId: string,
+    ecritureIds: string[],
+    // Le client de la transaction de l'appelant, quand il juge sous ses verrous.
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<DetenteurEcriture[]> {
     const ecritureId = { in: [...new Set(ecritureIds)] };
     // Le `tenantId` accompagne l'id de l'écriture partout, alors même que cet
     // id est déjà unique · le cloisonnement se pose aux DEUX bouts, et un
@@ -2037,77 +2083,78 @@ export class EcritureService {
     // elle-même, déjà vérifiée pour ce dossier, qui les cloisonne.
     const parLEcriture = { ecritureId };
     const detenteursPossibles: Array<[string, Promise<number>]> = [
-      [DETENTEUR_ACQUISITION_IMMOBILISATION, this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
-      ['une immobilisation (sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
-      ['une immobilisation (produit de cession)', this.prisma.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
-      ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
-      ['une immobilisation (solde de la dette d\'acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
-      ['une immobilisation (écart de réévaluation soldé à la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
+      [DETENTEUR_ACQUISITION_IMMOBILISATION, db.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
+      ['une immobilisation (sortie)', db.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
+      ['une immobilisation (produit de cession)', db.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
+      ['une immobilisation (mise en service d’un en-cours)', db.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
+      ['une immobilisation (solde de la dette d\'acquisition)', db.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
+      ['une immobilisation (écart de réévaluation soldé à la sortie)', db.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
+      ['une immobilisation (dotation complémentaire de la sortie)', db.immobilisation.count({ where: { tenantId, ecritureComplementSortieId: ecritureId } })],
       // Un virement de fonds · ses deux pièces nées ensemble et leurs négatifs ·
       // retirée seule, l'une laisserait le 585 non soldé (virements-fonds/).
-      ['un virement de fonds (journal d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
-      ['un virement de fonds (journal de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
-      ['un virement de fonds annulé (négatif d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
-      ['un virement de fonds annulé (négatif de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
+      ['un virement de fonds (journal d’origine)', db.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
+      ['un virement de fonds (journal de destination)', db.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
+      ['un virement de fonds annulé (négatif d’origine)', db.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
+      ['un virement de fonds annulé (négatif de destination)', db.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
       // Les remises en banque (ligne sage-l3, fonction 40) · comme les
       // virements de fonds, l'origine et son négatif restent tenus après une
       // annulation (les deux sont au livre-journal, art. 20, al. 2) ; l'avis
       // de crédit et l'impayé annulés le sont par l'historique des
       // annulations, qui garde leur paire (second tour, BLOQUANT B1).
-      ['une valeur reçue (réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureReceptionId: ecritureId } })],
-      ['une valeur reçue annulée (négatif de la réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureNegatifReceptionId: ecritureId } })],
-      ['une valeur reçue revenue impayée', this.prisma.valeurRecue.count({ where: { tenantId, ecritureImpayeId: ecritureId } })],
-      ['une remise en banque (bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureRemiseId: ecritureId } })],
-      ['une remise en banque annulée (négatif du bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureNegatifRemiseId: ecritureId } })],
-      ['une remise en banque (avis de crédit)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureCreditId: ecritureId } })],
+      ['une valeur reçue (réception)', db.valeurRecue.count({ where: { tenantId, ecritureReceptionId: ecritureId } })],
+      ['une valeur reçue annulée (négatif de la réception)', db.valeurRecue.count({ where: { tenantId, ecritureNegatifReceptionId: ecritureId } })],
+      ['une valeur reçue revenue impayée', db.valeurRecue.count({ where: { tenantId, ecritureImpayeId: ecritureId } })],
+      ['une remise en banque (bordereau)', db.remiseEnBanque.count({ where: { tenantId, ecritureRemiseId: ecritureId } })],
+      ['une remise en banque annulée (négatif du bordereau)', db.remiseEnBanque.count({ where: { tenantId, ecritureNegatifRemiseId: ecritureId } })],
+      ['une remise en banque (avis de crédit)', db.remiseEnBanque.count({ where: { tenantId, ecritureCreditId: ecritureId } })],
       [
         "un avis de crédit ou un impayé annulé (fenêtre Remises en banque · l'origine ou son négatif)",
-        this.prisma.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce, ou son négatif.
-      ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", this.prisma.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["un financement ou un placement (fenêtre Financements et placements · l'acte ou son négatif)", this.prisma.acteOperationTresorerie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["un mouvement de titre de placement (fenêtre Financements et placements · le mouvement ou son négatif)", this.prisma.mouvementTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["une revue de titre de placement (fenêtre Financements et placements · la revue ou son négatif)", this.prisma.evaluationTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", db.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un financement ou un placement (fenêtre Financements et placements · l'acte ou son négatif)", db.acteOperationTresorerie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un mouvement de titre de placement (fenêtre Financements et placements · le mouvement ou son négatif)", db.mouvementTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["une revue de titre de placement (fenêtre Financements et placements · la revue ou son négatif)", db.evaluationTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
       // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
       // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
       // dit, et le salaire repartirait dans le paiement suivant ; son négatif
       // de même. Il s'annule depuis la fenêtre Personnel.
       [
         'le paiement des salaires (fenêtre Personnel)',
-        this.prisma.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
-      ["une dotation aux amortissements", this.prisma.dotationAmortissement.count({ where: parLEcriture })],
-      ["une dépréciation d'immobilisation", this.prisma.depreciationImmobilisation.count({ where: parLEcriture })],
+      ["une dotation aux amortissements", db.dotationAmortissement.count({ where: parLEcriture })],
+      ["une dépréciation d'immobilisation", db.depreciationImmobilisation.count({ where: parLEcriture })],
       [
         "le transfert d'un bien dans le groupe (fenêtre Groupe · la pièce ou son négatif, dans les deux dossiers)",
-        this.prisma.transfertImmobilisationGroupe.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.transfertImmobilisationGroupe.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // Le reclassement d'un bien · la clé est RESTRICT, et sans ce refus nommé
       // la base levait une erreur brute après que la garde avait laissé passer
       // (audit du serveur I1, voir detenteurs-ecriture.ts).
-      ["un reclassement d'immobilisation", this.prisma.reclassementImmobilisation.count({ where: parLEcriture })],
+      ["un reclassement d'immobilisation", db.reclassementImmobilisation.count({ where: parLEcriture })],
       // Une réévaluation ANNULÉE ne retient plus ses écritures (D6) · validées,
       // elles sont neutralisées par leur inscription en négatif. La
       // contre-passation faite à la main, DÉCLARÉE (A5 bis, troisième tour) ·
       // retirée seule, l'écart de conversion reviendrait en place et la
       // réévaluation suivante le repasserait.
-      ['une réévaluation de devise', this.prisma.reevaluation.count({
+      ['une réévaluation de devise', db.reevaluation.count({
         where: { tenantId, annuleeLe: null, OR: [{ ecritureEcartsId: ecritureId }, { ecritureProvisionId: ecritureId }, { ecritureExtourneId: ecritureId }, { contrePassationDeclareeId: ecritureId }] },
       })],
-      ['une régularisation', this.prisma.regularisation.count({
+      ['une régularisation', db.regularisation.count({
         where: { tenantId, OR: [{ ecritureConstatationId: ecritureId }, { ecritureRepriseId: ecritureId }] },
       })],
-      ["une échéance d'abonnement", this.prisma.echeanceAbonnement.count({ where: parLEcriture })],
-      [DETENTEUR_LIQUIDATION_TVA, this.prisma.liquidationTva.count({ where: { tenantId, ecritureId } })],
-      [DETENTEUR_DONATION, this.prisma.donation.count({ where: { tenantId, ecritureId } })],
-      ['une affectation du résultat', this.prisma.affectationResultat.count({ where: { tenantId, ecritureId } })],
+      ["une échéance d'abonnement", db.echeanceAbonnement.count({ where: parLEcriture })],
+      [DETENTEUR_LIQUIDATION_TVA, db.liquidationTva.count({ where: { tenantId, ecritureId } })],
+      [DETENTEUR_DONATION, db.donation.count({ where: { tenantId, ecritureId } })],
+      ['une affectation du résultat', db.affectationResultat.count({ where: { tenantId, ecritureId } })],
       // Le rattachement à un engagement de dépense. Sans ce refus nommé, la
       // clé étrangère RESTRICT renverrait une erreur brute de la base · et
       // s'il n'y avait pas de clé du tout, le reste à exécuter de l'engagement
       // REMONTERAIT tout seul, gonflant la colonne Engagement du tableau
       // d'exécution budgétaire sans que personne ne l'ait décidé.
-      [DETENTEUR_EXECUTION_ENGAGEMENT, this.prisma.executionEngagement.count({ where: parLEcriture })],
+      [DETENTEUR_EXECUTION_ENGAGEMENT, db.executionEngagement.count({ where: parLEcriture })],
       // Le mouvement de magasin, en inventaire permanent. Sans ce refus, le
       // lien se dénouerait en silence et la fiche de stock afficherait
       // « écriture non passée » sur un mouvement qui en avait une · la fiche
@@ -2116,60 +2163,60 @@ export class EcritureService {
       // n'existe pas, mis à la charge de l'entité.
       // Un mouvement ANNULÉ ne tient plus son écriture (audit final F133) · elle
       // se corrige alors au journal, et la fiche la nomme.
-      ['un mouvement de magasin', this.prisma.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })],
+      ['un mouvement de magasin', db.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })],
       // L'écart d'inventaire redressé (audit du serveur de 2026-09, I2 · le
       // lien n'était écrit nulle part, il l'est au rattachement). Sans ce
       // refus, le lien se dénouerait en silence et la campagne dirait le
       // manquant passé sur une pièce disparue du journal.
-      ["un écart d'inventaire (redressement)", this.prisma.ecartInventaire.count({ where: { tenantId, ecritureId } })],
+      ["un écart d'inventaire (redressement)", db.ecartInventaire.count({ where: { tenantId, ecritureId } })],
       // La clôture d'un contrat de location-acquisition (detenteurs-ecriture.ts).
-      ["la clôture d'un contrat de location-acquisition", this.prisma.clotureLocationAcquisition.count({
+      ["la clôture d'un contrat de location-acquisition", db.clotureLocationAcquisition.count({
         where: { tenantId, OR: [{ ecritureId }, { ecritureExtourneId: ecritureId }] },
       })],
-      ["la reprise d'une subvention d'investissement", this.prisma.repriseSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
-      ["la réduction d'une subvention rattachée à un bien", this.prisma.reductionSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
-      ["la révision rétroactive d'un plan d'amortissement", this.prisma.revisionPlanAmortissement.count({ where: { tenantId, ecritureId } })],
-      ["l'incorporation de coûts d'emprunt", this.prisma.coutEmpruntIncorpore.count({ where: { tenantId, ecritureId } })],
-      ['la réévaluation des immobilisations', this.prisma.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
-      ['la reprise de la provision spéciale de réévaluation', this.prisma.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
-      ['la provision pour démantèlement', this.prisma.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
+      ["la reprise d'une subvention d'investissement", db.repriseSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
+      ["la réduction d'une subvention rattachée à un bien", db.reductionSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
+      ["la révision rétroactive d'un plan d'amortissement", db.revisionPlanAmortissement.count({ where: { tenantId, ecritureId } })],
+      ["l'incorporation de coûts d'emprunt", db.coutEmpruntIncorpore.count({ where: { tenantId, ecritureId } })],
+      ['la réévaluation des immobilisations', db.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
+      ['la reprise de la provision spéciale de réévaluation', db.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
+      ['la provision pour démantèlement', db.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
       // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation retient
       // l'écriture validée qu'elle a annulée et son négatif.
-      ["l'annulation d'un traitement d'immobilisation", this.prisma.annulationTraitementImmobilisation.count({
+      ["l'annulation d'un traitement d'immobilisation", db.annulationTraitementImmobilisation.count({
         where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] },
       })],
       // Les créances douteuses (ligne A7) · elles se retirent depuis leur
       // fenêtre, qui libère sa ligne dans la même transaction. Un reclassement
       // ANNULÉ (m2) ne retient plus · son écriture validée est neutralisée par
       // l'inscription en négatif.
-      [DETENTEUR_RECLASSEMENT_CREANCE, this.prisma.creanceDouteuse.count({ where: { tenantId, ecritureReclassementId: ecritureId, annuleeLe: null } })],
+      [DETENTEUR_RECLASSEMENT_CREANCE, db.creanceDouteuse.count({ where: { tenantId, ecritureReclassementId: ecritureId, annuleeLe: null } })],
       // Une revue ANNULÉE ne retient plus son écriture (B2) · validée, elle est
       // neutralisée par son inscription en négatif.
-      [DETENTEUR_REVUE_CREANCE, this.prisma.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_REVUE_CREANCE, db.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
       // La perte qui récupère la TVA tient ses DEUX pièces (point D) · le retour
       // au compte d'origine et la perte sur lui.
       [
         DETENTEUR_MOUVEMENT_CREANCE,
-        this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
+        db.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
       ],
       // La récupération de la TVA (A7 bis, partie 2) · s'annule depuis sa
       // fenêtre ; annulée, elle ne retient plus son écriture.
-      [DETENTEUR_RECUPERATION_TVA_CREANCE, this.prisma.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_RECUPERATION_TVA_CREANCE, db.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // La devise déclarée d'un à-nouveau validé (AU3) · sa pièce de
       // correction, validée, ne se retire de toute façon pas.
-      [DETENTEUR_DEVISE_A_NOUVEAU, this.prisma.declarationDeviseANouveau.count({ where: { tenantId, ecritureCorrectionId: ecritureId } })],
+      [DETENTEUR_DEVISE_A_NOUVEAU, db.declarationDeviseANouveau.count({ where: { tenantId, ecritureCorrectionId: ecritureId } })],
       // La correction par le résultat d'une créance (M9) · retirée, réimputée
       // ou corrigée seule, l'écriture laisserait la créance sortie du module
       // sans ce qui la soldait au 416 et au 491. Aucun geste ne défait la
       // désignation · l'écriture, validée, ne se retire de toute façon pas.
-      [DETENTEUR_CORRECTION_CREANCE, this.prisma.creanceDouteuse.count({ where: { tenantId, ecritureCorrectionResultatId: ecritureId } })],
+      [DETENTEUR_CORRECTION_CREANCE, db.creanceDouteuse.count({ where: { tenantId, ecritureCorrectionResultatId: ecritureId } })],
       // L'impôt sur le résultat constaté depuis la fenêtre Résultat fiscal
       // (ligne A11) · retirée seule, l'écriture laisserait l'exercice se dire
       // constaté, et la proposition ne reviendrait plus. Un constat ANNULÉ ne
       // retient plus · son écriture validée est neutralisée par le négatif.
-      [DETENTEUR_IMPOT_RESULTAT, this.prisma.constatImpotResultat.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_IMPOT_RESULTAT, db.constatImpotResultat.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // La paie du mois (P9). Sans ce refus, la clé RESTRICT renverrait une
       // erreur brute ; sans la clé, les bulletins se diraient passés sans
       // écriture, ou repartiraient en silence dans la paie suivante. La
@@ -2179,7 +2226,7 @@ export class EcritureService {
       // même titre · retirée seule, le bulletin se dirait repris sans elle.
       [
         DETENTEUR_PAIE_DU_MOIS,
-        this.prisma.bulletinPaie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.bulletinPaie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // L'ordre de virement non annulé. Sans ce refus, la pièce de règlement
       // disparaîtrait sous un ordre que la banque exécute quand même · la
@@ -2187,15 +2234,15 @@ export class EcritureService {
       // L'annulation de l'ordre, avec son motif, libère la pièce.
       // Le dérogatoire d'un exercice · supprimée seule, l'écriture laisserait
       // le plan fiscal se dire passé, et le cumul du 151 faux.
-      ['un amortissement dérogatoire', this.prisma.amortissementDerogatoire.count({ where: { tenantId, ecritureId } })],
-      ['un ordre de virement', this.prisma.ligneOrdreVirement.count({ where: { tenantId, ecritureId } })],
+      ['un amortissement dérogatoire', db.amortissementDerogatoire.count({ where: { tenantId, ecritureId } })],
+      ['un ordre de virement', db.ligneOrdreVirement.count({ where: { tenantId, ecritureId } })],
       // La consignation d'emballages, par l'une OU l'autre de ses deux
       // écritures (posées au rattachement, audit I2). Le lien dénoué en
       // silence laisserait le registre annoncer une consignation ouverte ou
       // dénouée sans l'écriture qui l'a faite · et c'est précisément ce
       // registre qui existe pour montrer ce qui reste à qualifier au 4094 et
       // au 4194.
-      ["une consignation d'emballages", this.prisma.consignation.count({
+      ["une consignation d'emballages", db.consignation.count({
         where: { tenantId, OR: [{ ecritureConsignationId: ecritureId }, { ecritureDenouementId: ecritureId }] },
       })],
     ];
@@ -2209,8 +2256,12 @@ export class EcritureService {
    * résultat) refuse celle qu'un autre module tient déjà. Même liste que le
    * refus, jamais une copie.
    */
-  async detenteursDeLEcriture(tenantId: string, ecritureId: string): Promise<DetenteurEcriture[]> {
-    return this.detenteursDe(tenantId, [ecritureId]);
+  async detenteursDeLEcriture(
+    tenantId: string,
+    ecritureId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<DetenteurEcriture[]> {
+    return this.detenteursDe(tenantId, [ecritureId], db);
   }
 
   /**
@@ -2505,6 +2556,11 @@ export class EcritureService {
     exigences: { doubleRegard: boolean; visa: boolean },
     donneesValidation: Prisma.EcritureUpdateManyMutationInput,
   ) {
+    // LE VERROU DU DOSSIER EN TÊTE, AVANT LES LIGNES (relecture de la ligne
+    // saisie-serialisable, point 1) · la saisie le prend avant de réécrire
+    // les exercices ouverts ; pris après eux, la tranche et la saisie
+    // s'interbloquaient.
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
     await tx.$queryRaw`SELECT x."id" FROM "exercices" x WHERE x."tenantId" = ${tenantId} AND x."id" IN (SELECT e."exerciceId" FROM "ecritures" e WHERE e."id" = ANY(${ids}::text[]) AND e."tenantId" = ${tenantId} AND e."statut" = 'BROUILLARD') FOR SHARE`;
     const base = {
@@ -3055,6 +3111,7 @@ export class EcritureService {
     // de la pièce exacte. Débits et crédits partent ensemble · la fusion de
     // deux caisses ne doit pas lire les sorties de l'absorbée sans ses entrées.
     // Jugé avant la simulation, qu'une fusion joue exercice par exercice.
+    let piecesDeCaisse: PieceProposee[] | null = null;
     if (cible.numero.startsWith(RACINE_CAISSE)) {
       const versLaCaisse = (l: (typeof lignes)[number]) => ({
         compteId: cible.id,
@@ -3063,23 +3120,37 @@ export class EcritureService {
         deviseId: l.deviseId ?? null,
         montantDevise: l.montantDevise == null ? null : Number(l.montantDevise),
       });
-      await this.verifierCaisseProvisionnee(tenantId, exercice.id, [
+      piecesDeCaisse = [
         // Une simulation ne fait entrer ni sortir aucun billet (la lecture
         // l'écarte) · seul le brouillard se juge (seconde relecture, m2).
         ...auBrouillard
           .filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD)
           .map((l) => ({ date: l.ecriture.date, lignes: [versLaCaisse(l)] })),
         ...(validees.length ? [{ date, lignes: validees.map(versLaCaisse) }] : []),
-      ]);
+      ];
+      // Refus tôt, avant la simulation d'une fusion ; rejugé dans la
+      // transaction, sous le verrou du dossier (saisie-serialisable, second tour, point 4).
+      await this.verifierCaisseProvisionnee(tenantId, exercice.id, piecesDeCaisse);
     }
 
     // Une fusion vérifie TOUS ses exercices avant d'en écrire un seul.
     if (options.simuler) return { auBrouillard: auBrouillard.length, validees: validees.length, ecrituresPassees: [] };
 
     const motif = dto.motif.trim();
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        if (piecesDeCaisse) await verifierCaisseProvisionnee(tx, tenantId, exercice.id, piecesDeCaisse);
+        // Les clôtures de période se relisent sous le verrou (point 7) · au
+        // brouillard à la date de chaque pièce, validée à la date de la pièce exacte.
+        for (const id of brouillardsVus) {
+          const l = auBrouillard.find((x) => x.ecritureId === id)!;
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, l.ecriture.journalId, l.ecriture.date, tx);
+        }
+        for (const groupe of parEcriture.values()) {
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, groupe[0].ecriture.journalId, date, tx);
+        }
         // Une requête pour tout le brouillard, jamais une par ligne (audit
         // final F2) · la fusion d'un compte chargé en faisait des milliers.
         if (auBrouillard.length) {
@@ -3087,8 +3158,8 @@ export class EcritureService {
           // du circuit de visa, M1) · une pièce validée entre-temps par un
           // collègue changeait de compte EN PLACE, sur le livre-journal, que
           // l'art. 22, 2° de l'AUDCIF rend irréversible. Le filtre relit le
-          // statut ici (la transaction sérialisable fait tomber l'une des deux
-          // si elles se croisent), et un nombre qui manque arrête tout · la
+          // statut ici (sous le verrou du dossier, que la validation prend
+          // aussi, l'une attend l'autre puis relit), et un nombre qui manque arrête tout · la
           // ligne validée se réimpute par l'inscription en négatif, au geste
           // suivant.
           const deplacees = await tx.ligneEcriture.updateMany({
@@ -3296,18 +3367,16 @@ export class EcritureService {
     ecritureId: string,
     dto: CorrigerEcritureDto,
   ) {
-    const origine = await this.prisma.ecriture.findFirst({
-      where: { id: ecritureId, tenantId },
-      include: {
-        lignes: { include: { ventilations: true } },
-        journal: true,
-        exercice: true,
-        correction: { select: { id: true, numeroPiece: true } },
-        immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
-        immobilisationSortie: { select: { id: true, designation: true } },
-        dotationAmortissement: { select: { id: true } },
-      },
-    });
+    const inclusion = {
+      lignes: { include: { ventilations: true } },
+      journal: true,
+      exercice: true,
+      correction: { select: { id: true, numeroPiece: true } },
+      immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
+      immobilisationSortie: { select: { id: true, designation: true } },
+      dotationAmortissement: { select: { id: true } },
+    } satisfies Prisma.EcritureInclude;
+    const origine = await this.prisma.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: inclusion });
     if (!origine) throw new NotFoundException('Écriture introuvable pour ce dossier.');
 
     if (origine.statut === StatutEcriture.BROUILLARD) {
@@ -3367,9 +3436,20 @@ export class EcritureService {
 
     await this.exerciceService.verifierEcritureAutorisee(tenantId, origine.journalId, date);
 
-    return avecRetrySerialisable(
+    try {
+    return await transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        // RELUE SOUS LE VERROU (ligne saisie-serialisable, relecture, point 6) ·
+        // « déjà corrigée », lettrage, pointage et exercice se jugeaient sur la
+        // lecture d'avant la transaction · deux corrections simultanées
+        // passaient toutes deux le contrôle, et la seconde tombait sur l'unicité
+        // de `corrigeEcritureId` en 500.
+        const relue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: inclusion });
+        if (!relue) throw new NotFoundException('Écriture introuvable pour ce dossier.');
+        this.verifierCorrigeable(relue);
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, origine.journalId, date, tx);
         const numeroPiece = await this.journalService.prochainNumeroPiece(
           tenantId,
           origine.journal,
@@ -3403,6 +3483,16 @@ export class EcritureService {
       },
       `Trop d'écritures enregistrées au même instant sur le journal ${origine.journal.code} · veuillez réessayer.`,
     );
+    } catch (err) {
+      // L'UNICITÉ DE LA CORRECTION EST UN REFUS NOMMÉ, JAMAIS UN 500 · une
+      // correction passée par un autre chemin que ce geste (module, autre poste).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && JSON.stringify(err.meta?.target ?? '').includes('corrigeEcritureId')) {
+        throw new ConflictException(
+          'Cette écriture vient d\'être corrigée par un autre geste · rechargez le journal, une seconde inscription en négatif inverserait l\'erreur au lieu de l\'annuler.',
+        );
+      }
+      throw err;
+    }
   }
 
   /**

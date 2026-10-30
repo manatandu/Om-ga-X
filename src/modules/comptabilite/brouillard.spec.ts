@@ -75,13 +75,13 @@ function ecriture(surcharge: Faux = {}) {
 
 describe('brouillard · ce qui se modifie et ce qui ne se modifie plus', () => {
   it('refuse de modifier une écriture validée, et nomme l’article 20', async () => {
-    const prisma = { ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture({ statut: 'VALIDEE' })) } } as Faux;
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),  ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture({ statut: 'VALIDEE' })) } } as Faux;
     await expect(service(prisma).modifier('t1', 'e1', { libelle: 'x' })).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service(prisma).modifier('t1', 'e1', { libelle: 'x' })).rejects.toThrow(/article 20/i);
   });
 
   it('refuse de modifier une écriture dont une ligne est lettrée', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: {
         findFirst: jest.fn().mockResolvedValue(
           ecriture({ lignes: [{ id: 'l1', lettre: 'A', rapprochementId: null }] }),
@@ -92,7 +92,7 @@ describe('brouillard · ce qui se modifie et ce qui ne se modifie plus', () => {
   });
 
   it('refuse de modifier une écriture dont une ligne est pointée', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: {
         findFirst: jest.fn().mockResolvedValue(
           ecriture({ lignes: [{ id: 'l1', lettre: null, rapprochementId: 'r1' }] }),
@@ -103,12 +103,12 @@ describe('brouillard · ce qui se modifie et ce qui ne se modifie plus', () => {
   });
 
   it('refuse de supprimer une écriture validée', async () => {
-    const prisma = { ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture({ statut: 'VALIDEE' })) } } as Faux;
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),  ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture({ statut: 'VALIDEE' })) } } as Faux;
     await expect(service(prisma).supprimer('t1', 'e1')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('refuse une modification qui déséquilibrerait l’écriture', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture()) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
       compte: { findMany: jest.fn().mockResolvedValue([{ id: 'c1', typeCompte: 'DETAIL' }]) },
@@ -137,7 +137,8 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
     // La transaction RELIT l'écriture et son exercice (constat 10 de la
     // relecture de la dissolution) · la doublure les rend.
-    const tx = {
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
+    $executeRaw: jest.fn().mockResolvedValue(0),
       ligneEcriture: { deleteMany, count: jest.fn().mockResolvedValue(2) },
       ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
       pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
@@ -145,7 +146,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     };
     const tauxTva = { findMany: jest.fn().mockImplementation(({ where }: { where: { tenantId: string } }) =>
       Promise.resolve(where.tenantId === 't1' ? [] : [{ id: 'tva-voisin' }])) };
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: { findFirst: jest.fn().mockResolvedValue(ecritureEnPlace) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
       compte: {
@@ -351,7 +352,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
 
 describe('validation', () => {
   it('refuse de valider une écriture déséquilibrée', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -372,7 +373,7 @@ describe('validation', () => {
   });
 
   it('refuse de valider sur un exercice clôturé', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -394,7 +395,7 @@ describe('validation', () => {
 
   it('valide ce qui peut l’être et compte ce qui l’était déjà', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), 
       ecriture: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -585,7 +586,7 @@ describe('état du brouillard · retard de centralisation', () => {
   });
 
   it('compte les écritures déséquilibrées du brouillard', async () => {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYCEBNL' }) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ statut: 'OUVERT' }) },
       ecriture: {
@@ -634,7 +635,7 @@ describe('état du brouillard · une tranche qui se dit, des totaux entiers (aud
       if (args.cursor) debut = ecritures.findIndex((e) => e.id === args.cursor!.id) + (args.skip ?? 0);
       return ecritures.slice(debut, args.take === undefined ? undefined : debut + args.take);
     });
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYCEBNL' }) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ statut: 'OUVERT' }) },
       ecriture: { findMany },

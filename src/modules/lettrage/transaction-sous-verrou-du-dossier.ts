@@ -1,12 +1,7 @@
 import { ConflictException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { Prisma } from '@prisma/client';
-import {
-  ATTENTE_VERROU_DOSSIER_MS,
-  CODE_DOSSIER_OCCUPE,
-  estAttenteDeVerrouExpiree,
-  MESSAGE_DOSSIER_OCCUPE,
-  prendreLeVerrouDuDossier,
-} from '../../common/audit/extension-audit';
+import { CODE_DOSSIER_OCCUPE, estAttenteDeVerrouExpiree, MESSAGE_DOSSIER_OCCUPE } from '../../common/audit/extension-audit';
 import { ClientTransactionnel, transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import {
   CODE_CONFLIT_SERIALISATION,
@@ -52,23 +47,14 @@ import {
 
 /**
  * LES TRANSACTIONS SÉRIALISABLES QUI LISENT LE LETTRAGE (relecture de la ligne
- * lettrage-verrou, 2026-10-29, BLOQUANT 1). PostgreSQL ne surveille les
- * conflits lecture-écriture qu'entre transactions SERIALIZABLE · la CLÔTURE,
- * restée sérialisable, figeait son image avant ce lettrage, lisait les lignes
- * ouvertes, et reportait au Détail en N+1 une facture et son règlement que N
- * venait de lettrer · balance bouclée, relances et balance âgée fausses, sans
- * un mot. Le lettrage RÉÉCRIT donc, sans en changer une valeur, la ligne de
- * chaque exercice OUVERT du dossier · la clôture écrit toujours la sienne (son
- * statut), et une transaction sérialisable qui met à jour une ligne qu'une
- * autre a réécrite après son image tombe en 40001, que `avecRetrySerialisable`
- * rejoue sur une image qui voit le lettrage. En requête brute · ni journal
- * d'audit (aucune valeur ne change), ni garde de cloisonnement à juger (la
- * borne du dossier est dans la requête).
+ * lettrage-verrou, 2026-10-29, BLOQUANT 1) · le lettrage réécrivait la ligne de
+ * chaque exercice ouvert pour faire tomber la clôture sérialisable en 40001.
+ * RETIRÉ (ligne saisie-serialisable, second tour, point 5) · la clôture et le
+ * provisoire tournent en lecture validée sous ce même verrou du dossier, pris
+ * en tête ; le lettrage qui le tient les fait attendre, et ils lisent ensuite
+ * ce qu'il a validé. La réécriture ne protégeait plus rien et coûtait une mise
+ * à jour par geste.
  */
-async function marquerLesExercicesOuverts(tx: Prisma.TransactionClient, tenantId: string): Promise<void> {
-  await tx.$executeRaw`UPDATE "exercices" SET "statut" = "statut" WHERE "tenantId" = ${tenantId} AND "statut" = 'OUVERT'::"StatutExercice"`;
-}
-
 export async function transactionSousVerrouDuDossier<T>(
   prisma: ClientTransactionnel,
   tenantId: string,
@@ -81,13 +67,11 @@ export async function transactionSousVerrouDuDossier<T>(
       return await transactionJournalisee(
         prisma,
         async (tx) => {
-          // `SET` ne prend aucun paramètre lié · la valeur est une constante
-          // du module, jamais une donnée.
-          await tx.$executeRaw(Prisma.sql`SET LOCAL lock_timeout = ${Prisma.raw(String(ATTENTE_VERROU_DOSSIER_MS))}`);
-          await prendreLeVerrouDuDossier(tx, tenantId);
-          const resultat = await fn(tx);
-          await marquerLesExercicesOuverts(tx, tenantId);
-          return resultat;
+          // L'attente bornée au seul verrou du dossier (saisie-serialisable,
+          // second tour, point 5) · posée pour toute la transaction, elle
+          // bornait aussi les verrous de lignes que le lettrage prend ensuite.
+          await prendreLeVerrouDuDossierBorne(tx, tenantId);
+          return fn(tx);
         },
         {
           isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,

@@ -34,14 +34,15 @@ const DEVISES = [
 
 function service() {
   const creerEcriture = jest.fn().mockResolvedValue({ id: 'e1' });
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
+    $executeRaw: jest.fn().mockResolvedValue(0),
     compte: {
       createMany: jest.fn(),
       findMany: jest.fn().mockResolvedValue(COMPTES.map((c) => ({ id: c.id, numero: c.numero }))),
     },
     ecriture: { create: creerEcriture },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't', longueurCompte: 8, referentiel: 'SYSCOHADA' }) },
     exercice: {
       findFirst: jest.fn().mockResolvedValue({

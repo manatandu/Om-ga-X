@@ -98,8 +98,11 @@ describe('Réimputation · le service', () => {
     });
     expect(tx.ligneEcriture.updateMany).toHaveBeenCalledTimes(1);
     // Relecture lettrage-verrou, M3 · la ligne validée est retenue libre dans la transaction.
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect(tx.$executeRaw.mock.calls[0].slice(1)).toEqual(['t', ['v']]);
+    // Les autres requêtes brutes sont celles de la transaction de saisie (borne
+    // d'attente, verrou du dossier, marque des exercices ouverts).
+    const retenues = tx.$executeRaw.mock.calls.filter((c) => Array.isArray(c[0]) && c[0].join('').includes('lignes_ecriture'));
+    expect(retenues).toHaveLength(1);
+    expect(retenues[0].slice(1)).toEqual(['t', ['v']]);
     // LA FAILLE DE L'AUDIT DE SÉCURITÉ (ligne microfina-m1) · l'auteur de la
     // réimputation au brouillard devient l'auteur du dernier contenu de la
     // pièce, et son visa tombe · sans quoi il la validait ensuite sous le

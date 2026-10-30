@@ -23,7 +23,7 @@ function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: 
   };
   const zero = () => ({ count: jest.fn().mockResolvedValue(0) });
   const ordre: string[] = [];
-  const prisma: Record<string, unknown> = {
+  const prisma: Record<string, unknown> = { $executeRaw: jest.fn().mockResolvedValue(1), 
     ecriture: {
       findFirst: jest.fn().mockResolvedValue({
         id: 'ecr1', tenantId: 't1', statut: 'BROUILLARD', exercice: EXERCICE, lignes: [], journal: {}, date: new Date('2026-03-31'),

@@ -724,6 +724,12 @@ export class DeclarationDeviseANouveauService {
     const doubleRegard = tenant?.doubleRegardValidation === true;
     const messages: string[] = [];
     const resultat = await transactionJournalisee(this.prisma, async (tx) => {
+      // LE VERROU DU DOSSIER AVANT TOUTE RELECTURE (saisie-serialisable, second
+      // tour, point 5) · la ligne relue libre, la période close, l'exercice
+      // ouvert (au numéro) et la lettre du lettrage se jugent sur ce que les
+      // autres gestes ont validé · pris après, au premier maillon, un lettrage
+      // posé entre la relecture et l'écriture passait.
+      await this.ecritureService.relirePeriodesClosesSousVerrou(tx, tenantId, [{ journalId: ligne.ecriture.journalId, date }]);
       const encore = await tx.ligneEcriture.count({
         where: { id: ligne.id, deviseId: null, lettrageId: null, rapprochementId: null, ecriture: { tenantId } },
       });

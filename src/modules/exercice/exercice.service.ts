@@ -1,4 +1,6 @@
 import { HORS_SITUATION, avecStatut, estJournalDeSituation, motifJournalDeSituationNonCloturable } from '../comptabilite/ecritures-de-situation';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { moisNonImprimes, motifClotureNonImprimee, rattacherLesImpressions } from '../journaux/impressions-journal';
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
 import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
@@ -88,7 +90,6 @@ import { lignesEnNegatif } from '../comptabilite/lignes-en-negatif';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { libelleReference, referencesVers } from '../../common/suppression/references';
 import { JournalService } from '../journaux/journal.service';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, DefinitionJalon, jalonsApplicables } from './planning-cloture';
 
 /** Marque la place de la déclaration annuelle de l'IS que les cotisations spéciales prennent. */
@@ -1343,9 +1344,10 @@ export class ExerciceService {
    * une donnée protégée, la date l'est) ; les actes de module qui portent
    * l'exercice suivent leur écriture, les clôtures posées sur ces dates
    * suivent leurs dates (constat 11). Chaque mise à jour est unitaire, au
-   * journal d'audit. Sérialisable · une écriture passée pendant l'arrêt
-   * rejoue le geste ; `EcritureService` relit l'exercice dans sa propre
-   * transaction (constat 10).
+   * journal d'audit. Sous le verrou du dossier, pris en tête
+   * (`transactionDeSaisie`) · une écriture saisie pendant l'arrêt attend sa
+   * validation, et `EcritureService` relit l'exercice dans sa propre
+   * transaction, sous ce même verrou (constat 10).
    */
   async arreterALaDissolution(
     tenantId: string,
@@ -1366,8 +1368,9 @@ export class ExerciceService {
     const operations = dossier.dateDissolution
       ? await this.prisma.ecriture.count({ where: { tenantId, exerciceId, date: { gt: dossier.dateDissolution } } })
       : 0;
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const exercice = await tx.exercice.findFirstOrThrow({ where: { id: exerciceId, tenantId } });
         let etat = await lireEtatAvantArret(tx, tenantId, exercice, dossier);
@@ -1492,8 +1495,9 @@ export class ExerciceService {
     const operations = await this.prisma.ecriture.count({
       where: { tenantId, exercice: { dateDebut: lendemainDe(dissolution) }, date: { lte: finOrigine } },
     });
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const liquidation = await tx.exercice.findFirst({ where: { tenantId, dateDebut: lendemainDe(dissolution) } });
         const autre = await tx.exercice.findFirst({
@@ -1622,8 +1626,9 @@ export class ExerciceService {
           : `Cet exercice contient la dissolution du ${jourFr(dissolution)} · arrêtez-le à cette date (« Arrêter l’exercice »).`,
       );
     }
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const autre = await tx.exercice.findFirst({
           where: { tenantId, id: { not: exercice.id }, OR: [{ dateFin: { gte: lendemain } }, { statut: StatutExercice.OUVERT }] },
@@ -1695,7 +1700,7 @@ export class ExerciceService {
         `La fin de l'exercice de liquidation ne peut pas précéder son début, le ${jourFr(exercice.dateDebut)}.`,
       );
     }
-    return avecRetrySerialisable(this.prisma, async (tx) => {
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       const chevauche = await tx.exercice.findFirst({
         where: { tenantId, id: { not: exercice.id }, dateDebut: { lte: fin }, dateFin: { gte: exercice.dateDebut } },
         select: { dateDebut: true, dateFin: true },
@@ -1934,7 +1939,7 @@ export class ExerciceService {
         continue;
       }
       if (origine.statut === StatutEcriture.BROUILLARD) {
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: origine.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        await retirerLesLignesLibres(tx, tenantId, origine.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const { count } = await tx.ecriture.deleteMany({ where: { id: origine.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (count !== 1) {
           throw new ConflictException(`L'écriture ${a.piece} a été validée pendant le retrait · relancez le geste.`);
@@ -1995,8 +2000,13 @@ export class ExerciceService {
    * `refuserSiPeriodeClose`), par la réimputation et par la correction en
    * négatif (audit final F209).
    */
-  async verifierEcritureAutorisee(tenantId: string, journalId: string, date: Date) {
-    refuserSiPeriodeClose(await this.cloturesApplicables(tenantId, journalId), journalId, date);
+  // `db` · la transaction de saisie, qui le RELIT sous le verrou du dossier
+  // (ligne saisie-serialisable, relecture, point 7 · AUDCIF art. 22, 3°) · une
+  // clôture de période posée entre le contrôle d'entrée et l'écriture, sous ce
+  // même verrou (la `Cloture` est auditée), laissait entrer la pièce dans la
+  // période qu'elle venait de figer.
+  async verifierEcritureAutorisee(tenantId: string, journalId: string, date: Date, db?: Prisma.TransactionClient) {
+    refuserSiPeriodeClose(await this.cloturesApplicables(tenantId, journalId, db), journalId, date);
   }
 
   /**
@@ -2193,27 +2203,38 @@ export class ExerciceService {
     // soldes du livre-journal. Une écriture restée en brouillard n'y figure
     // pas · elle serait purement et simplement perdue du résultat, et son
     // exercice serait clos avant qu'elle n'ait pu y entrer.
-    const enBrouillard = await this.prisma.ecriture.count({
-      where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
-    });
-    if (enBrouillard > 0) {
-      // Celles d'un journal de situation ne se valident pas (relecture M3) ·
-      // l'issue est leur transfert dans un journal ordinaire (second tour,
-      // BLOQUANT), « défaites ce qui les tient » laissant parfois le dossier
-      // sans geste (lettrage figé, rapprochement clos).
-      const enSituation = await this.prisma.ecriture.count({
-        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
+    // RELU DANS LA TRANSACTION DE CLÔTURE, SOUS LE VERROU DU DOSSIER (ligne
+    // saisie-serialisable, 2026-10-30) · lu une seule fois avant elle, le
+    // refus laissait passer la pièce saisie entre-temps · rejoué sur vraie
+    // base (`scripts/rejouer-saisie-concurrente.cjs`, mesure 6), l'exercice se
+    // fermait avec dix pièces au brouillard, perdues du résultat. Sous le
+    // verrou, que toute saisie prend avant d'écrire, ce qui est compté ici est
+    // tout le brouillard, et aucune pièce ne naît plus dans N avant la
+    // validation (`prochainNumeroPiece` relit l'exercice ouvert).
+    const refuserLeBrouillard = async (db: Prisma.TransactionClient | PrismaService) => {
+      const enBrouillard = await db.ecriture.count({
+        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
       });
-      throw new BadRequestException(
-        `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
-          "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
-          (enSituation > 0
-            ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · transférez-les dans ` +
-              'un journal ordinaire (Brouillard, « Transférer »), où elles se valident comme toute pièce, leurs ' +
-              'lignes, lettrage, pointage et liens aux modules gardés tels quels.'
-            : ''),
-      );
-    }
+      if (enBrouillard > 0) {
+        // Celles d'un journal de situation ne se valident pas (relecture M3) ·
+        // l'issue est leur transfert dans un journal ordinaire (second tour,
+        // BLOQUANT), « défaites ce qui les tient » laissant parfois le dossier
+        // sans geste (lettrage figé, rapprochement clos).
+        const enSituation = await db.ecriture.count({
+          where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
+        });
+        throw new BadRequestException(
+          `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
+            "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
+            (enSituation > 0
+              ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · transférez-les dans ` +
+                'un journal ordinaire (Brouillard, « Transférer »), où elles se valident comme toute pièce, leurs ' +
+                'lignes, lettrage, pointage et liens aux modules gardés tels quels.'
+              : ''),
+        );
+      }
+    };
+    await refuserLeBrouillard(this.prisma);
     // LE JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60) · seulement quand
     // le dossier l'a demandé ; l'issue est immédiate, imprimer le journal.
     if (dossier.refusClotureJournalNonImprime === true) {
@@ -2251,9 +2272,18 @@ export class ExerciceService {
       },
     });
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        // LE STATUT DE N RELU SOUS LE VERROU DU DOSSIER (saisie-serialisable,
+        // second tour, point 5) · deux clôtures du même exercice passaient
+        // toutes deux le contrôle d'entrée · la seconde rend un refus nommé.
+        const statutRelu = await tx.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { statut: true } });
+        if (statutRelu?.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException("Cet exercice vient d'être clôturé par un autre geste · rien n'est refait. Rechargez la liste des exercices.");
+        }
+        await refuserLeBrouillard(tx);
         // LA DÉPRÉCIATION D'UNE CRÉANCE SE REPREND À LA CLÔTURE (ligne A7,
         // relecture adverse B1 · fiche du compte 49) · une créance perdue ou
         // recouvrée sans revue de l'exercice laisserait au 491 une dépréciation
@@ -2807,9 +2837,17 @@ export class ExerciceService {
     const brouillardNonRepris = await this.prisma.ecriture.count({
       where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
     });
-    const resultat = await avecRetrySerialisable(
+    const resultat = await transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        // LE STATUT DE N RELU SOUS LE VERROU DU DOSSIER (saisie-serialisable,
+        // second tour, point 5) · le provisoire ne se calcule pas sur un exercice
+        // qu'une clôture vient de fermer · refus nommé.
+        const statutRelu = await tx.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { statut: true } });
+        if (statutRelu?.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException("Cet exercice vient d'être clôturé · son report définitif remplace le provisoire, rien n'est relancé. Rechargez la liste des exercices.");
+        }
         // Le livre-journal seul · ce qui reste au brouillard est compté à
         // part (`brouillardNonRepris`), jamais lu. Même lecture que la clôture
         // (audit final F185, `lireComptesDuReport`).
@@ -2897,15 +2935,12 @@ export class ExerciceService {
             },
           });
         }
-        // LA MARQUE DU LETTRAGE (point 7 de la relecture lettrage-verrou) · le
-        // lettrage, en lecture validée sous le verrou du dossier, réécrit la
-        // ligne de chaque exercice OUVERT (`marquerLesExercicesOuverts`). La
-        // clôture écrit la sienne ; le provisoire ne l'écrivait pas, et un
-        // lettrage validé après son image laissait au Détail de N+1 des lignes
-        // que N venait de lettrer. Réécrite ici, EN DERNIER (après tout geste
-        // audité, qui prend le verrou du dossier), elle fait tomber le
-        // provisoire en 40001 sur une image périmée, et la reprise relit.
-        await tx.$executeRaw`UPDATE "exercices" SET "statut" = "statut" WHERE "id" = ${exerciceId} AND "tenantId" = ${tenantId}`;
+        // LA MARQUE DU LETTRAGE (point 7 de la relecture lettrage-verrou) ·
+        // elle faisait tomber le provisoire, sérialisable, sur une image
+        // périmée. Depuis la ligne saisie-serialisable le provisoire tourne en
+        // lecture validée sous le verrou du dossier, pris en tête, que le
+        // lettrage prend aussi · il ne lit plus d'image périmée, et la marque
+        // n'a plus d'objet.
         return {
           exerciceSuivantId: exerciceSuivant.id,
           lignes: lignes.length,
@@ -3010,7 +3045,7 @@ function versLigneRan(l: {
  * F185). Les deux lisaient toutes les lignes de l'exercice, compte par compte,
  * y compris celles des comptes au SOLDE et de gestion, dont le calcul ne garde
  * que des sommes · un dossier chargé montait l'exercice entier en mémoire dans
- * une transaction sérialisable.
+ * la transaction de clôture.
  *
  *  · AU SOLDE ET EN GESTION, LA BASE REND LES SOMMES. Débit et crédit de
  *    chaque compte ; et ses lignes en devise, par devise et par SENS · le sens
@@ -3970,7 +4005,7 @@ export function refuserSiPeriodeClose(
 /**
  * Ce que l'arrêt lit avant d'écrire · les exercices qui suivent, les
  * écritures datées après la dissolution, et le fait qui décide s'il y a une
- * liquidation. Lu DANS la transaction sérialisable de l'arrêt, et par le
+ * liquidation. Lu DANS la transaction de l'arrêt, sous le verrou du dossier, et par le
  * planning pour proposer (ou non) le bouton (constat 15).
  */
 async function lireEtatAvantArret(

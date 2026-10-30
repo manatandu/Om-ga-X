@@ -124,6 +124,7 @@ function monter(o: Options = {}) {
   };
   const ecritureService = {
     controlesDEntree: jest.fn().mockResolvedValue({ journal: { id: 'j-od' }, date: N1.dateDebut, dateValeur: null }),
+    relirePeriodesClosesSousVerrou: jest.fn().mockResolvedValue(undefined),
   };
   const devises = { sousVerrouDuDossier: (_t: string, _g: string, f: () => unknown) => f() };
   const svc = new DeclarationDeviseANouveauService(prisma as never, ecritureService as never, devises as never);

@@ -1,0 +1,186 @@
+{
+  "commentaire": "Fonction n° 48 · cas rejoués par le spec du serveur (grille-analytique.spec.ts) ET par celui de l'écran (client/src/lib/grille-analytique.spec.ts) · la règle recopiée à l'écran ne doit jamais diverger de celle du serveur.",
+  "cas": [
+    {
+      "nom": "100,00 en 33,33 / 33,33 / 33,34 · parts exactes, aucun reste",
+      "montant": 100,
+      "lignes": [
+        {
+          "sectionId": "c",
+          "code": "P3",
+          "pourcentage": 33.33
+        },
+        {
+          "sectionId": "a",
+          "code": "P1",
+          "pourcentage": 33.33
+        },
+        {
+          "sectionId": "b",
+          "code": "P2",
+          "pourcentage": 33.34
+        }
+      ],
+      "attendu": [
+        {
+          "sectionId": "c",
+          "montant": 33.33
+        },
+        {
+          "sectionId": "a",
+          "montant": 33.33
+        },
+        {
+          "sectionId": "b",
+          "montant": 33.34
+        }
+      ]
+    },
+    {
+      "nom": "0,02 en 33,33 / 33,33 / 33,34 · le plus fort reste d'abord, puis le code à égalité",
+      "montant": 0.02,
+      "lignes": [
+        {
+          "sectionId": "c",
+          "code": "P3",
+          "pourcentage": 33.33
+        },
+        {
+          "sectionId": "a",
+          "code": "P1",
+          "pourcentage": 33.33
+        },
+        {
+          "sectionId": "b",
+          "code": "P2",
+          "pourcentage": 33.34
+        }
+      ],
+      "attendu": [
+        {
+          "sectionId": "c",
+          "montant": 0
+        },
+        {
+          "sectionId": "a",
+          "montant": 0.01
+        },
+        {
+          "sectionId": "b",
+          "montant": 0.01
+        }
+      ]
+    },
+    {
+      "nom": "0,10 en 60 / 40 · aucune part flottante",
+      "montant": 0.1,
+      "lignes": [
+        {
+          "sectionId": "a",
+          "code": "A",
+          "pourcentage": 60
+        },
+        {
+          "sectionId": "b",
+          "code": "B",
+          "pourcentage": 40
+        }
+      ],
+      "attendu": [
+        {
+          "sectionId": "a",
+          "montant": 0.06
+        },
+        {
+          "sectionId": "b",
+          "montant": 0.04
+        }
+      ]
+    },
+    {
+      "nom": "0,01 en deux moitiés · le centime va au premier code",
+      "montant": 0.01,
+      "lignes": [
+        {
+          "sectionId": "b",
+          "code": "B",
+          "pourcentage": 50
+        },
+        {
+          "sectionId": "a",
+          "code": "A",
+          "pourcentage": 50
+        }
+      ],
+      "attendu": [
+        {
+          "sectionId": "b",
+          "montant": 0
+        },
+        {
+          "sectionId": "a",
+          "montant": 0.01
+        }
+      ]
+    },
+    {
+      "nom": "1 234 567,89 en 12,5 / 37,25 / 50,25 · la somme fait la ligne",
+      "montant": 1234567.89,
+      "lignes": [
+        {
+          "sectionId": "a",
+          "code": "A",
+          "pourcentage": 12.5
+        },
+        {
+          "sectionId": "b",
+          "code": "B",
+          "pourcentage": 37.25
+        },
+        {
+          "sectionId": "c",
+          "code": "C",
+          "pourcentage": 50.25
+        }
+      ],
+      "attendu": [
+        {
+          "sectionId": "a",
+          "montant": 154320.99
+        },
+        {
+          "sectionId": "b",
+          "montant": 459876.54
+        },
+        {
+          "sectionId": "c",
+          "montant": 620370.36
+        }
+      ]
+    },
+    {
+      "nom": "montant nul · rien n'est proposé",
+      "montant": 0,
+      "lignes": [
+        {
+          "sectionId": "a",
+          "code": "A",
+          "pourcentage": 100
+        }
+      ],
+      "attendu": null
+    },
+    {
+      "nom": "grille qui ne fait pas 100 % · rien n'est proposé",
+      "montant": 10,
+      "lignes": [
+        {
+          "sectionId": "a",
+          "code": "A",
+          "pourcentage": 99
+        }
+      ],
+      "attendu": null
+    }
+  ]
+}

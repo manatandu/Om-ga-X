@@ -73,7 +73,7 @@ function lectureDuReport(comptes: LigneJeu[]) {
     Object.fromEntries(
       Object.entries(select).map(([k, v]) => [k, v === true ? r[k] : { libelle: (r[k] as { libelle: string }).libelle }]),
     );
-  return {
+  return { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: {
       findMany: jest.fn(async (a: { where: unknown; select: Record<string, unknown>; include?: unknown }) => {
         if (a.include) throw new Error('doublure : include non honoré');
@@ -107,7 +107,7 @@ function lectureDuReport(comptes: LigneJeu[]) {
 
 function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre: null; rapprochementId: null }[] } | null, creancesDouteuses: unknown[] = []) {
   const lecture = lectureDuReport(COMPTES);
-  const tx = {
+  const tx = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: { findMany: lecture.compte.findMany, findUnique: jest.fn().mockResolvedValue({ id: '131' }) },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
     // Lu par son identifiant (contrôles relus dans la transaction, M2), l'exercice
@@ -126,7 +126,9 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
       // AU2 · aucune ouverture déjà passée dans N+1 par défaut, et N porte
       // des écritures.
       findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(4),
+      // Aucune au brouillard · la clôture relit le brouillard DANS sa
+      // transaction (ligne saisie-serialisable).
+      count: jest.fn(async (a?: { where?: { statut?: string } }): Promise<number> => (a?.where?.statut === 'BROUILLARD' ? 0 : 4)),
       delete: jest.fn().mockResolvedValue({}),
       create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
@@ -146,7 +148,7 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     // lignes lettrées le sont par une lettre, ou sont celles du report de N+1.
     lettrage: { findMany: jest.fn().mockResolvedValue([]) },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     // L'exercice lu par son identifiant, et les deux questions d'ordre
     // (précédent encore ouvert, suivant déjà clos) · aucun par défaut.
     exercice: {
@@ -253,6 +255,16 @@ describe('Clôture annuelle', () => {
     const { s } = service(null);
     (s as any).prisma.ecriture.count.mockResolvedValue(1);
     await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/brouillard/);
+  });
+
+  it('relit le brouillard DANS sa transaction · une pièce saisie pendant la clôture la refuse, rien n’est écrit (ligne saisie-serialisable)', async () => {
+    const { s, tx } = service(null);
+    // Rien au brouillard à la lecture d'avant ; une pièce entrée depuis, que la
+    // reprise après le conflit de la ligne de l'exercice relit.
+    tx.ecriture.count.mockImplementation(async (a?: { where?: { statut?: string } }) => (a?.where?.statut === 'BROUILLARD' ? 1 : 4));
+    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/encore en brouillard/);
+    expect(tx.ecriture.create).not.toHaveBeenCalled();
+    expect(tx.exercice.update).not.toHaveBeenCalled();
   });
 });
 

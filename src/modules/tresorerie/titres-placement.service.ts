@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { NatureMouvementTitre, NatureValeurTitre, Prisma, StatutEcriture, StatutExercice, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { journalDeBanqueEnFrancs } from './banque-en-francs';
@@ -406,8 +407,9 @@ export class TitresPlacementService {
     await refuserSiDernierJourClos(this.prisma, tenantId, od.id, exercice.dateFin, 'la revue');
     if (lignes.length === 0) {
       try {
-        // EN ISOLATION SÉRIALISABLE, comme la revue à pièce que `creerAvec` passe (relecture du 2026-10-22, B1).
-        const e = await avecRetrySerialisable(this.prisma, async (tx) => {
+        // SOUS LE VERROU DU DOSSIER, comme la revue à pièce que `creerAvec` passe (relecture du 2026-10-22, B1 ·
+        // ligne saisie-serialisable) · la ligne du titre prise, tout se relit après les gestes validés.
+        const e = await transactionDeSaisie(this.prisma, tenantId, async (tx) => {
           await this.verrouillerEtRelire(tx, tenantId, t);
           return tx.evaluationTitre.create({ data: donnees, select: { id: true } });
         }, 'Un autre geste est passé sur ce titre pendant la revue · relisez-le avant de recommencer.');
@@ -461,9 +463,9 @@ export class TitresPlacementService {
     if (revue) throw new BadRequestException(`La revue de clôture du ${jour(revue.date)} a lu ce mouvement · annulez-la d'abord.`);
     if (m.ecriture) await this.pieceAnnulable(tenantId, m.ecriture.id, `du mouvement du ${jour(m.date)}`);
     const ecritureId = m.ecriture?.id ?? null;
-    // EN ISOLATION SÉRIALISABLE, comme les gestes que `creerAvec` passe · en lecture validée, un geste passé en même
-    // temps sur un instantané antérieur ne voyait pas cette annulation (relecture du 2026-10-22, B1).
-    return avecRetrySerialisable(this.prisma, async (tx) => {
+    // SOUS LE VERROU DU DOSSIER, comme les gestes que `creerAvec` passe (`transactionDeSaisie`) · un geste passé en
+    // même temps attend l'autre puis relit, aucun ne juge sur un instantané antérieur (relecture du 2026-10-22, B1).
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, t);
       await this.prendre(
         () => tx.mouvementTitre.update({ where: { id: m.id, tenantId, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif }, select: { id: true } }),
@@ -490,9 +492,9 @@ export class TitresPlacementService {
     if (!exercice || exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException("L'exercice de cette revue est clôturé · elle ne s'annule plus (AUDCIF art. 20, al. 3).");
     if (e.ecriture) await this.pieceAnnulable(tenantId, e.ecriture.id, `de la revue du ${jour(e.date)}`);
     const ecritureId = e.ecriture?.id ?? null;
-    // EN ISOLATION SÉRIALISABLE, comme les gestes que `creerAvec` passe · en lecture validée, un geste passé en même
-    // temps sur un instantané antérieur ne voyait pas cette annulation (relecture du 2026-10-22, B1).
-    return avecRetrySerialisable(this.prisma, async (tx) => {
+    // SOUS LE VERROU DU DOSSIER, comme les gestes que `creerAvec` passe (`transactionDeSaisie`) · un geste passé en
+    // même temps attend l'autre puis relit, aucun ne juge sur un instantané antérieur (relecture du 2026-10-22, B1).
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, t);
       await this.prendre(
         () => tx.evaluationTitre.update({ where: { id: e.id, tenantId, annuleLe: null }, data: { annuleLe: new Date(), annulePar: userId, motifAnnulation: motif }, select: { id: true } }),
@@ -633,7 +635,7 @@ export class TitresPlacementService {
       if (tenue) throw new BadRequestException(tenue);
       // L'acte RETIENT sa pièce (RESTRICT) · le lien se dénoue AVANT le retrait, sinon la base refuse la suppression.
       await denouer();
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+      await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
       const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
       if (r.count !== 1) throw new ConflictException(`La pièce ${objet} a été validée pendant l'annulation · rien n'est retiré. Relancez · validée, elle s'inscrira en négatif.`);
       return null;

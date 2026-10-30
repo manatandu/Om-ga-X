@@ -24,6 +24,14 @@ export const ONGLETS_PERSONNEL = [
   'echeances',
   'formation',
   'declaration',
+  // Ligne paie-suite · départements et directions.
+  'organisation',
+  // Ligne paie-suite, fonction 89 · fiche individuelle et cumuls annuels.
+  'fiche',
+  // Ligne paie-suite, fonction 82 · import du personnel depuis Excel.
+  'import',
+  // Ligne paie-suite, fonction 87 · rappels de salaire.
+  'rappels',
   'rubriques',
   'baremes',
   'decompte',

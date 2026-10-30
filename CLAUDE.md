@@ -310,6 +310,13 @@ vingt-sept « Plus tard » GARDÉS au tri du même jour (trente-quatre écartés
 `docs/plan-gel-leve-2026-10-29.md`), le visa d'un plan d'étalement et les
 départements et directions (organigramme libre du dossier, aucun niveau
 imposé) ; le bon de commande au SYSCOHADA ÉCARTÉ.
+Puis, le 2026-10-30, les RESTES DES IMMOBILISATIONS ET DES BUDGETS, gel levé
+expressément par Manasse pour eux seuls (ligne `restes-immos-budgets`) · le
+report des budgets par compte sur l'exercice suivant, jamais un budget déjà
+posé écrasé ; la quantité du bien sur la fiche de comptage, l'écart dit en
+unités, jamais un excédent créé (AUDCIF art. 43) ; l'annulation d'une sortie
+d'immobilisation, partielle comprise (art. 20, al. 2 et 3 ; art. 22, 2° et
+4°) ; et les cas refusés de la sortie partielle, chacun tranché par son texte.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -1470,8 +1477,10 @@ formule (« de plein droit », « est réputé »), jamais appliquées en base. 
 d'exclusion se nomme par sa FIN, jamais par sa forme** · l'archive de restitution
 lisait celle du journal d'audit (`motDePasse`, `estOperateurPlateforme`), et y
 verser date de naissance et rémunération l'aurait VIDÉE en la disant complète. Le
-plafond de l'art. 41 se compte DATE À DATE, jamais en 730 jours (5 janvier 2027 au 5
-janvier 2029 · 731 jours, deux ans). « Un numéro, deux sens » · art. 37 du Code du
+plafond de l'art. 41 se compte DATE À DATE, jamais en 730 jours, le jour
+d'entrée en vigueur étant le premier de la durée (décision par la loi du
+2026-10-29 · deux ans depuis le 5 janvier 2027 vont jusqu'au 4 janvier 2029
+inclus, 731 jours ; le terme au jour anniversaire excède d'un jour). « Un numéro, deux sens » · art. 37 du Code du
 travail (nullité de la clause moins favorable) contre art. 37, point 4 de la loi
 n° 004/2001 (60 % de main-d'œuvre locale). **L'EFFECTIF EST PROPOSÉ, JAMAIS
 SUBSTITUÉ** (`Tenant.effectifPermanent`, notes 27B et 29B, part locale de
@@ -2907,19 +2916,62 @@ verrous de lecture par page d'index faisaient refuser le lettrage d'un cabinet
 parce qu'un AUTRE travaillait (banc k6 · 24 refus, 6 lettrages incomplets ;
 rejeu local · 43 refus avant, 0 après). Les six gestes de `lettrage.service.ts`
 passent par `transactionSousVerrouDuDossier` · READ COMMITTED, attente bornée
-(`lock_timeout`, 409 `DOSSIER_OCCUPE`), le verrou consultatif du dossier pris
+au seul verrou (409 `DOSSIER_OCCUPE`), le verrou consultatif du dossier pris
 EN PREMIER, celui que l'audit prend à chaque écriture auditée (lettrage,
-clôture, exercice, créance douteuse). TROIS RÈGLES À NE PAS DÉFAIRE. (1) Le
-lettrage RÉÉCRIT, sans en changer une valeur, la ligne de chaque exercice
-OUVERT du dossier (`marquerLesExercicesOuverts`) · PostgreSQL ne détecte les
-conflits qu'entre transactions sérialisables, et la clôture restée
-sérialisable reportait en N+1, comme ouvertes, des lignes lettrées pendant sa
-lecture ; elle tombe désormais en 40001 et se rejoue
-(`scripts/rejouer-cloture-contre-lettrage.cjs`). (2) Le doublon du CODE d'un
+clôture, exercice, créance douteuse). TROIS RÈGLES À NE PAS DÉFAIRE. (1) La
+clôture et le provisoire prennent ce même verrou en tête, en lecture validée
+(ligne saisie-serialisable) · ils attendent le lettrage en cours et lisent ce
+qu'il a validé ; la réécriture des exercices ouverts qui faisait tomber la
+clôture sérialisable en 40001 est RETIRÉE avec elle. (2) Le doublon du CODE d'un
 lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
 `avecRetrySerialisable` · aucune autre unicité. (3) Une ligne ne se lettre que
 LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
 `scripts/rejouer-lettrage-concurrent.cjs`.
+
+**Les écritures se sérialisent par DOSSIER, plus aucune transaction
+sérialisable (ligne saisie-serialisable, 2026-10-30, test de charge § 4.4).**
+Vingt dossiers saisissant chacun ses pièces une à une faisaient près d'un
+rejeu par pièce et de 1,3 à 2,3 % de 409 à cause d'un AUTRE dossier, et la
+clôture de N tombait huit fois en 40001 pendant la saisie de N+1 (MAJEUR) ;
+après, aucun refus ni rejeu. `transactionDeSaisie`
+(`common/transaction-de-saisie.ts`) · READ COMMITTED, verrou du dossier EN
+TÊTE, attente bornée à lui seul (`prendreLeVerrouDuDossierBorne`, 409
+`DOSSIER_OCCUPE`, puis `lock_timeout` rendu à son défaut). La prennent la
+saisie et ses variantes (création, modules par `creerAvec`, modification,
+transfert d'une situation, réimputation, correction en négatif), les titres et
+opérations de trésorerie, la clôture, les à-nouveaux provisoires, la
+dissolution, le rapprochement (ouverture, réouverture, clôture, départ et
+en-cours, pointage, confirmation, dissociation, annulation) ; le lettrage
+prend le même verrou (`transactionSousVerrouDuDossier`), sans plus réécrire
+les exercices. SIX RÈGLES À NE PAS DÉFAIRE. (1) UN SEUL ORDRE · le verrou du
+dossier, PUIS les lignes · la validation par période, le visa, les pièces
+jointes, la ventilation, les effets le prennent avant leurs `FOR UPDATE` ou
+`FOR SHARE` (`transaction-de-saisie.spec.ts`), les transferts du groupe
+prennent les deux dossiers dans un ordre fixe. (2) Le numéro de pièce se lit
+sous ce verrou, l'exercice relu OUVERT, DANS TOUS LES MODES, MANUELLE comprise
+(`prochainNumeroPiece`, `numeroteurDeLot`) · un import ou un module qui avait
+lu l'exercice ouvert avant le verrou n'entre plus dans celui qu'une clôture
+vient de fermer. (3) Un écrivain qui ne passe par aucune écriture auditée
+prend le verrou lui-même (pointage, rapprochement, délettrage d'héritage,
+retrait d'une pièce de compensation) · sans quoi la clôture en lecture
+validée le lirait à moitié. (4) Relus sous le verrou · le brouillard et le
+statut de N dans la clôture (une double clôture rend un refus nommé), le
+statut de N dans le provisoire, la clôture de période et l'exercice dans la
+saisie, les imports, le canevas du groupe et la déclaration de devise d'un
+à-nouveau (`relirePeriodesClosesSousVerrou`), « déjà corrigée » et le
+lettrage de la correction (P2002 rendu en 409 nommé), l'écart d'un
+rapprochement qui se clôt. (5) LA CAISSE PROVISIONNÉE SE JUGE DANS LA
+TRANSACTION, sous le verrou · saisie, modification, règlement, virement de
+fonds, paiement des salaires (`jugerLaCaisse`), réimputation ; le contrôle
+d'avant ne fait que refuser tôt. (6) Un brouillard retiré par un module ne
+retire que des lignes libres (`retirerLesLignesLibres`, nombre relu ;
+l'écriture changée reste nommée par le module) · les fiches
+d'immobilisation, l'annulation d'une sortie et les créances douteuses
+comprises ; au brouillard un groupe figé ne se tolère pas (A7 ter, B2). La
+liasse du groupe purge et recrée ses pièces dans UNE transaction, sous le
+verrou du dossier de combinaison. `avecRetrySerialisable` n'a plus
+d'appelant. Rejeu · `scripts/rejouer-saisie-concurrente.cjs` (treize
+mesures, clôture comprise).
 
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit
 final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par
@@ -3005,6 +3057,29 @@ un seul prédicat (`longueur-sections.ts`) pour l'aperçu
 (`GET /analytique/plans/:id/longueur-sections`), la pose et la création.
 Bornes 2 à 13, convention d'OmegaX, tenues aussi par la base. Au PLAN et non
 au dossier comme chez Sage (P_DOSSIER) · question posée à Manasse.
+
+**Grille, budget par compte, journal et filtres analytiques (ligne
+analytique, 2026-10-29, fonctions 48, 51, 52 et 53, gel levé).** Aucun texte
+ne les régit (classe 9, « laissé à l'initiative des entités », SYCEBNL Partie
+2 ch. 3 ; AUDCIF Titre VII) · conventions d'OmegaX, dites dans la bulle. (1)
+LA GRILLE DU COMPTE EST PROPOSÉE, JAMAIS IMPOSÉE (`grille-analytique.ts`) · une
+par compte et par axe, 100 % au point de base, sections Détail actives ; la
+saisie montre « Grille », répartie à l'envoi au centime par le plus fort reste,
+règle recopiée à l'écran et tenue en MIROIR (`cas-grille-analytique.json`) ;
+ni le serveur, ni les modules, ni les imports ne l'appliquent ; suspendue
+(section ou plan en sommeil), elle le dit. (2) LE BUDGET D'UN COMPTE
+(`budget-compte.ts`) · détail des classes 6 et 7, annuel réparti sur les mois
+de calendrier au centime, reliquat au dernier ; réalisé en MOUVEMENT
+(`filtresDesTroisColonnes`), charge au débit net, produit au crédit net ; non
+doté = `null` et « hors budget », jamais zéro ; N-1 · l'exercice qui précède,
+au même mois. Il n'entre dans aucun état financier, et le tableau d'exécution
+des projets ne lit que les sections. (3) JOURNAL ANALYTIQUE ET LIGNES NON
+VENTILÉES · écrans de travail, tranche de deux mille dite, totaux par la
+base ; les non ventilées sont celles du contrôle des cumuls, par un seul
+périmètre (`perimetreDuPlan`, `sansRepartitionSur`) ; la fusion des deux
+lectures ne compare que la date, l'ordre de la base gardé. (4) LE FILTRE DE
+LA BALANCE MASQUE, IL NE RECALCULE PAS · totaux de toutes les feuilles, nombre
+masqué dit, zéro au centime.
 
 **Tableau emplois ressources · trois colonnes.** « REF | DESIGNATION | SOLDE
 CUMULE DEBUT EXERCICE N | EXERCICE N | SOLDE CUMULE FIN EXERCICE N » (SYCEBNL,
@@ -3816,6 +3891,42 @@ s'annule avant la réévaluation (relecture B1) ; la révision posée par une
 réévaluation méthode 2 se reconnaît à sa LIAISON (`reevaluationBilanId`,
 RESTRICT), jamais à sa date ; dotation et annulation prennent le verrou de la
 fiche (`SELECT … FOR UPDATE`, ordre fixe).
+
+**Annuler une sortie, entière ou partielle (ligne restes-immos-budgets, point
+3).** AUDCIF art. 20, al. 2 et 3 ; art. 22, 2° et 4° (`immobilisations/annulation-sortie.ts`,
+`AnnulationSortieService`, `POST /immobilisations/:id/annuler-sortie`,
+`@ReserveAuComptable`, onglet Traitements de la fiche) · motif exigé, verrou des
+fiches, au brouillard les écritures de la sortie retirées, validées inscrites en
+négatif, une ligne d'historique par écriture (`AnnulationTraitementImmobilisation`,
+nature `SORTIE`, origine et négatif RETENUS) ; jamais dans un exercice clôturé.
+La sortie garde ce que son annulation relit · la dotation complémentaire par sa
+LIAISON (`ecritureComplementSortieId`, retenue), la part de chaque ligne de
+réévaluation (`passesEcartSortie`, TOUJOURS une liste, vide sans écart · nulle,
+c'est une sortie d'avant la ligne), et la reprise de la part de dépréciation sur
+le lot (`repriseDepreciationLotId`, sans clé étrangère · un cycle à clé
+obligatoire ne se purge pas). La fiche revient en service telle qu'avant ; une
+sortie partielle rend ses unités au lot au centime (quantité, brut, valeur
+résiduelle, amortissements détachés), retire la reprise sur le lot, et la fiche
+des unités disparaît. Refus nommés · transfert dans le groupe, échange,
+renouvellement, ligne lettrée ou pointée, écriture tenue par un autre module,
+acte enregistré après la sortie sur le bien ou sur le lot (« annulez-le
+d'abord »), et pour une sortie d'avant la ligne un complément, un écart ou une
+reprise qui ne se rattachent pas d'office (rien n'est deviné).
+
+**Sortie partielle · les cas refusés tranchés par la loi (ligne
+restes-immos-budgets, point 4).** `cession-partielle.ts`, en tête · SERVIS ·
+le COMPOSANT EN LOT (AUDCIF Titre VIII ch. 4 § 3.1.4, « regrouper les éléments
+ainsi décomposés au sein d'une même immobilisation corporelle », les unités
+restant un composant du même principal) et la SECONDE REPRISE DE DÉPRÉCIATION
+du même exercice (fiche du compte 81, exclusions · chaque sortie reprend la
+part de ses unités, clé unique partielle hors `CESSION_PARTIELLE`, migration
+`20270243000000`). GARDÉS, motif et texte dits · principal qui porte des
+composants en service (ch. 4 § 1), unités d'œuvre (art. 45), dégressif et
+dérogatoire (loi n° 23/053, art. 31 à 35 ; fiche du compte 68), fonds ou
+subvention rattachée (ch. 17), réévaluation (ch. 28 § 6), location-acquisition,
+prix aléatoire et démantèlement (bien entier), dotation de l'exercice déjà
+passée (fiche du compte 81, le complément ne court que jusqu'à la sortie ·
+annuler, sortir, repasser), exercice antérieur ouvert non doté.
 
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,

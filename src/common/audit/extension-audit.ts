@@ -279,7 +279,7 @@ export const CODE_DOSSIER_OCCUPE = 'DOSSIER_OCCUPE';
  * avant (un règlement crée une pièce par tiers). Le texte le dit.
  */
 export const MESSAGE_DOSSIER_OCCUPE =
-  "Une autre opération tient ce dossier ou cette ligne (clôture, validation ou lettrage par lot, autre saisie) · cette étape n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez le journal, puis réessayez dans un instant.";
+  "Une autre opération tient ce dossier ou cette ligne (clôture, validation par période, import, lettrage par lot, autre saisie) · cette étape n'a pas été enregistrée ; si votre demande en comptait plusieurs, une étape précédente a pu l'être · relisez le journal, puis réessayez dans un instant.";
 
 /**
  * LA CLÉ DU VERROU DU DOSSIER, CALCULÉE COMME LE MAILLON LA CALCULERA

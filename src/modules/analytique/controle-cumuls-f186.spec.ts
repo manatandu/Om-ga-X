@@ -27,6 +27,10 @@ type Ecriture = {
   journal: { code: string };
   /** L'écriture qui solde les classes 6 à 8 à la clôture, VALIDÉE depuis l'audit final F4. */
   estSoldeDesComptesDeGestion?: boolean;
+  /** Report de clôture (à-nouveau) · relecture du 2026-10-30, jamais « à ventiler ». */
+  estGenereeParCloture?: boolean;
+  /** À-nouveau provisoire d'OmegaX · jamais « à ventiler » non plus. */
+  estANouveauProvisoire?: boolean;
   /** Validée à défaut · une simulation d'un journal de situation (ligne sage-l1, fonction 12) porte SITUATION. */
   statut?: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 };
@@ -65,6 +69,8 @@ function doublure(d: Donnees) {
     Object.entries(w).every(([cle, v]) => {
       if (cle === 'tenantId' || cle === 'exerciceId') return e[cle] === v;
       if (cle === 'estSoldeDesComptesDeGestion') return (e.estSoldeDesComptesDeGestion ?? false) === v;
+      if (cle === 'estGenereeParCloture') return (e.estGenereeParCloture ?? e.estSoldeDesComptesDeGestion ?? false) === v;
+      if (cle === 'estANouveauProvisoire') return (e.estANouveauProvisoire ?? false) === v;
       if (cle === 'statut') {
         const statut = e.statut ?? 'VALIDEE';
         if (typeof v === 'string') return statut === v;
@@ -534,5 +540,26 @@ describe('Contrôle des cumuls · un exercice clos (régression de F4)', () => {
     const [proj] = await service.controleCumuls('t1', { exerciceId: 'e1', planId: 'p1' });
     expect(proj.lignesSansRepartition.map((l) => l.ligneId)).not.toContain('LCL');
     expect(proj.mouvementsGenerauxCredit).toBeLessThan(1_000_000);
+  });
+
+  it('ne compte ni ne liste un report à-nouveau, définitif ou provisoire (§ 10 bis)', async () => {
+    // L'à-nouveau d'une charge ventilée (classe ventilée) n'est l'objet
+    // d'aucune ventilation · « à ventiler », il fabriquait un écart à chaque
+    // ouverture que le cabinet aurait « corrigé » sans objet.
+    const donnees = dossierOrdinaire();
+    donnees.ecritures.push(
+      { id: 'EAN', tenantId: 't1', exerciceId: 'e1', date: new Date('2026-01-01'), numeroPiece: 1, libelle: 'À-nouveau', journal: { code: 'AN' }, estGenereeParCloture: true },
+      { id: 'EAP', tenantId: 't1', exerciceId: 'e1', date: new Date('2026-01-01'), numeroPiece: 2, libelle: 'À-nouveau provisoire', journal: { code: 'AN' }, estANouveauProvisoire: true },
+    );
+    donnees.lignes.push(
+      { id: 'LAN', ecritureId: 'EAN', compteId: 'c6', libelle: null, debit: 700_000, credit: 0 },
+      { id: 'LAP', ecritureId: 'EAP', compteId: 'c6', libelle: null, debit: 300_000, credit: 0 },
+    );
+    const { service } = doublure(donnees);
+    const [proj] = await service.controleCumuls('t1', { exerciceId: 'e1', planId: 'p1' });
+    expect(proj.lignesSansRepartition.map((l) => l.ligneId)).not.toEqual(expect.arrayContaining(['LAN']));
+    expect(proj.lignesSansRepartition.map((l) => l.ligneId)).not.toContain('LAP');
+    const [sans] = await doublure(dossierOrdinaire()).service.controleCumuls('t1', { exerciceId: 'e1', planId: 'p1' });
+    expect(proj.mouvementsGenerauxDebit).toBe(sans.mouvementsGenerauxDebit);
   });
 });

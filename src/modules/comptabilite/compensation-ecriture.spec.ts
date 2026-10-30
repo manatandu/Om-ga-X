@@ -15,7 +15,7 @@ import { PrismaService } from '../../common/prisma.service';
 function monter(options: { echecLignes?: boolean } = {}) {
   const ordre: string[] = [];
   let lignesPresentes = true;
-  const prisma: Record<string, unknown> = {
+  const prisma: Record<string, unknown> = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     ecriture: {
       findFirst: jest.fn().mockResolvedValue({ id: 'e1' }),
       delete: jest.fn().mockImplementation(async () => {

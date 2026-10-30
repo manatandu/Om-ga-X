@@ -21,8 +21,9 @@ function monter() {
     { id: 'c', compteId: '521', debit: 250, credit: 0, rapprochementId: null, ligneReleveId: null, ecriture },
     { id: 'x', compteId: '571', debit: 200, credit: 0, rapprochementId: null, ligneReleveId: null, ecriture },
   ];
-  const updateMany = jest.fn(async () => ({ count: 1 }));
-  const prisma = {
+  // Rend le nombre de lignes visées · la confirmation relit ce nombre (ligne saisie-serialisable, point 2).
+  const updateMany = jest.fn(async (a: { where: { id?: { in: string[] } } }) => ({ count: a.where.id?.in.length ?? 1 }));
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     // Honore la recherche du rapprochement CLOS précédent · aucun ici.
     rapprochementBancaire: {
       findFirst: jest.fn(async ({ where }: { where: { statut?: string } }) => (where.statut === 'CLOTURE' ? null : rapprochement)),

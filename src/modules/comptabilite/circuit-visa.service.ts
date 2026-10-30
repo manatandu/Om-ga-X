@@ -1,4 +1,5 @@
 import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 import { RoleUtilisateur, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -89,6 +90,8 @@ export class CircuitVisaService {
         const r = await transactionJournalisee(this.prisma, async (tx) => {
           // Le verrou ne porte que sur le brouillard · une pièce validée ne se vise plus,
           // la lecture qui suit le dit.
+          // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, point 1).
+          await prendreLeVerrouDuDossierBorne(tx, tenantId);
           await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ${p.id} AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
           const e = await tx.ecriture.findFirst({
             where: { id: p.id, tenantId },
@@ -143,6 +146,8 @@ export class CircuitVisaService {
     for (const id of new Set(ids)) {
       try {
         const r = await transactionJournalisee(this.prisma, async (tx) => {
+          // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, point 1).
+          await prendreLeVerrouDuDossierBorne(tx, tenantId);
           await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
           const e = await tx.ecriture.findFirst({
             where: { id, tenantId },

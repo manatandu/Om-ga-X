@@ -40,6 +40,14 @@ export const LIENS_QUI_NE_RETIENNENT_PAS = [
   'ProcesVerbalComptageCaisse.compteId',
   'Relance.compteId',
   'OdAnalytique.compteId',
+  // Ligne analytique (relecture du 2026-10-30) · le budget d'un compte et sa
+  // grille analytique le LISENT, ils n'y passent aucune écriture. La grille
+  // ne fait que proposer une répartition à la saisie d'un compte que la
+  // saisie admet déjà · si elle retenait, poser une grille personnaliserait
+  // d'office un compte que l'administrateur n'a jamais adopté, et l'ouvrirait
+  // à la saisie par un geste qui n'en est pas une.
+  'BudgetCompte.compteId',
+  'GrilleAnalytique.compteId',
 ];
 
 /** Parmi `ids`, les comptes auxquels quoi que ce soit se réfère. */

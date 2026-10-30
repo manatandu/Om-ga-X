@@ -103,6 +103,14 @@ Le jeu refait : du **5 janvier 2027 au 5 janvier 2029**. Il enjambe le
 29 février 2028, dure **731 jours** et pourtant **exactement deux ans**. C'est
 le seul cas où les deux lectures divergent. Le défaut est alors tombé.
 
+**Corrigé le 2026-10-29 (décision par la loi, art. 41 relu).** L'article mesure
+une DURÉE, dont le jour d'entrée en vigueur est le premier · deux ans depuis le
+5 janvier 2027 vont jusqu'au 4 janvier 2029 inclus, et un terme au 5 janvier
+2029 excède les deux ans d'un jour. Le plafond rendait la date anniversaire
+(`plafondDureeCdd`), il rend désormais la veille. Le jeu qui sépare encore les
+deux lectures est du 5 janvier 2026 au 5 janvier 2028 · 730 jours d'écart,
+admis par un plafond « 730 jours », refusé de date à date.
+
 **Même leçon que pour le mali de stock, et il a fallu la réapprendre :
 un jeu d'essai se CHERCHE quand il doit porter une propriété numérique.**
 

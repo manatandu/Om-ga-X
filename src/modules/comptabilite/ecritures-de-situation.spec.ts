@@ -225,7 +225,7 @@ describe('l’invariant tenu sur le client Prisma', () => {
 describe('une écriture de situation ne se valide pas', () => {
   it('refuse le lot en la nommant, au lieu de l’écarter sans un mot', async () => {
     const updateMany = jest.fn();
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       ecriture: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -313,7 +313,7 @@ describe('la numérotation · jamais la séquence du fichier', () => {
 
   it('la séquence du fichier ne lit jamais le maximum d’un journal de situation', async () => {
     const aggregate = jest.fn().mockResolvedValue({ _max: { numeroPiece: 7 } });
-    const tx = { ecriture: { aggregate } } as never;
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),  $executeRaw: jest.fn().mockResolvedValue(0), ecriture: { aggregate } } as never;
     await expect(prochainNumeroPiece(tx, 't1', ach, 'e1', new Date('2026-02-10T00:00:00Z'))).resolves.toBe(8);
     expect(JSON.stringify(aggregate.mock.calls[0][0].where)).toContain('"type":{"not":"SITUATION"}');
   });

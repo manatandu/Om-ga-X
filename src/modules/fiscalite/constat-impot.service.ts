@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { Prisma, StatutEcriture, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -425,7 +426,7 @@ export class ConstatImpotService {
         throw err;
       }
       if (e && annulation.traitement === 'SUPPRIMEE') {
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: e.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        await retirerLesLignesLibres(tx, tenantId, e.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const r = await tx.ecriture.deleteMany({ where: { id: e.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (r.count !== 1) {
           throw new ConflictException(

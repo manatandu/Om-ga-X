@@ -1,4 +1,5 @@
 import { detacherLesDetentionsAnnulees, detentionsQuiRetiennentLaFiche } from './detentions-de-la-fiche';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureMouvementDepreciation, Prisma, SensDepreciation, SensTransfertGroupe, StatutEcriture, StatutExercice, StatutImmobilisation, TypeJournal } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -698,7 +699,7 @@ export class TransfertGroupeService {
         // temps et l'annulation se relance.
         for (const c of [sortie, entree]) {
           if (negatifs.has(c.id)) continue;
-          await tx.ligneEcriture.deleteMany({ where: { ecritureId: c.ecritureId!, ecriture: { tenantId: c.tenantId, statut: StatutEcriture.BROUILLARD } } });
+          await retirerLesLignesLibres(tx, c.tenantId, c.ecritureId!, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
           const r = await tx.ecriture.deleteMany({ where: { id: c.ecritureId!, tenantId: c.tenantId, statut: StatutEcriture.BROUILLARD } });
           if (r.count !== 1) throw new ConflictException('Une pièce du transfert a changé de statut pendant l’annulation · relancez-la.');
         }

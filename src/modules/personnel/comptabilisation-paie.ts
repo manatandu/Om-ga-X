@@ -83,6 +83,13 @@ export type BulletinAComptabiliser = {
    * ligne, elle n'est plus retrouvable · la reprise se refuse, nommée.
    */
   readonly origine?: OrigineDuBulletin | null;
+  /**
+   * LIGNE PAIE-SUITE, FONCTION 76 · le compte individuel du salarié sous le
+   * 422, quand le dossier tient l'option (`compte-salarie.ts`) · le brut s'y
+   * crédite et les retenues s'y débitent, le net y reste dû. Absent ou null ·
+   * le collectif, comme avant.
+   */
+  readonly compte422?: { readonly numero: string; readonly intitule: string } | null;
 };
 
 /** Une écriture de paie déjà passée, ses lignes telles qu'au journal. */
@@ -125,6 +132,12 @@ export type LigneDuMois = {
   readonly montantFc: number;
   /** C2 · reprise en négatif d'un bulletin annulé après passation. */
   readonly negatif?: boolean;
+  /**
+   * LIGNE PAIE-SUITE, FONCTION 76 · la ligne de TOTAL du 422 d'un bloc, éclatée
+   * par compte (individuel ou collectif) · les bulletins dont elle porte la
+   * part. Absent quand le total tient sur le seul collectif, comme avant.
+   */
+  readonly bulletinIds?: readonly string[];
 };
 
 export type PropositionPaieDuMois = {
@@ -212,7 +225,7 @@ const nombreOuNull = (x: unknown): number | null => (typeof x === 'number' && Nu
  * sortait déséquilibrée, et le bulletin arrêtait la paie du mois entier.
  * Un élément sans montant en francs, ni converti, rend le bulletin illisible.
  */
-function elementsEnFrancs(elements: unknown, conversion: Json): EntreePassation['elements'] | null {
+export function elementsEnFrancs(elements: unknown, conversion: Json): EntreePassation['elements'] | null {
   if (!Array.isArray(elements)) return null;
   const convertis = Array.isArray(conversion?.elements) ? (conversion!.elements as unknown[]) : null;
   const rendus: EntreePassation['elements'][number][] = [];
@@ -249,6 +262,28 @@ export function entreeDuBulletin(b: BulletinAComptabiliser, referentiel: Referen
       ? (calcul!.retenuesAvances as EntreePassation['retenuesAvances'])
       : [],
   };
+}
+
+/** Les blocs dont la ligne de total est le 422 · elle s'éclate par compte de salarié (fonction 76). */
+const BLOCS_DU_422: readonly BlocPaie[] = ['BRUT', 'RETENUES'];
+
+/**
+ * LE 422 OÙ LE BULLETIN EST PASSÉ, pour le reprendre · son compte individuel
+ * si l'écriture d'origine le porte, le collectif sinon · un bulletin passé
+ * avant l'ouverture de son compte se reprend là où son net a été inscrit
+ * (AUDCIF art. 20, al. 2, « ce qui a été passé »).
+ */
+function compte422DeLOrigine(b: BulletinAComptabiliser, origine: OrigineDuBulletin | null | undefined) {
+  if (!b.compte422) return null;
+  return origine && origine.lignes.some((l) => l.compte === b.compte422!.numero) ? b.compte422 : null;
+}
+
+/** La part d'un bulletin dans la ligne de total d'un bloc · la somme de ses détails, en centimes (même addition que la passation). */
+function partDuBlocAuTotal(lignes: readonly { bloc: BlocPaie; compte: string; sens: SensLigne; montantFc: number }[], bloc: BlocPaie, referentiel: Referentiel): number {
+  const total = TOTAL_DU_BLOC[bloc];
+  return lignes
+    .filter((l) => l.bloc === bloc && !(l.compte === compteDuRole(total.role, referentiel) && l.sens === total.sens))
+    .reduce((n, l) => n + enCentimes(l.montantFc), 0);
 }
 
 export function propositionPaieDuMois(
@@ -289,6 +324,19 @@ export function propositionPaieDuMois(
     { bloc: BlocDuMois; compte: string; intitule: string; sens: SensLigne; centimes: number; negatif: boolean }
   >();
   let sommeDesNets = 0;
+  // Fonction 76 · la part de chaque compte du 422 dans le total des blocs
+  // brut et retenues, en centimes, et les bulletins qui la portent.
+  const c422 = compteDuRole('REMUNERATIONS_DUES', referentiel);
+  const parts422 = new Map<BlocPaie, Map<string, { intitule: string; centimes: number; bulletinIds: Set<string> }>>();
+  const ajouterPart422 = (bloc: BlocPaie, compte: { numero: string; intitule: string } | null, bulletinId: string, centimes: number) => {
+    const m = parts422.get(bloc) ?? new Map();
+    const numero = compte?.numero ?? c422;
+    const p = m.get(numero) ?? { intitule: compte?.intitule ?? NOMENCLATURE_PAIE.REMUNERATIONS_DUES.intitule, centimes: 0, bulletinIds: new Set<string>() };
+    p.centimes += centimes;
+    p.bulletinIds.add(bulletinId);
+    m.set(numero, p);
+    parts422.set(bloc, m);
+  };
 
   for (const b of aPasser) {
     const entree = entreeDuBulletin(b, referentiel);
@@ -302,6 +350,7 @@ export function propositionPaieDuMois(
       continue;
     }
     sommeDesNets += enCentimes(b.netAPayerFc);
+    for (const bloc of BLOCS_DU_422) ajouterPart422(bloc, b.compte422 ?? null, b.id, partDuBlocAuTotal(v.lignes, bloc, referentiel));
     for (const l of v.lignes) {
       const total = TOTAL_DU_BLOC[l.bloc];
       if (l.compte === compteDuRole(total.role, referentiel) && l.sens === total.sens) continue;
@@ -397,6 +446,8 @@ export function propositionPaieDuMois(
       continue;
     }
     sommeDesNets -= enCentimes(b.netAPayerFc);
+    // Le négatif reprend le 422 où le bulletin a été passé (fonction 76).
+    for (const bloc of BLOCS_DU_422) ajouterPart422(bloc, compte422DeLOrigine(b, b.origine), b.id, -partDuBlocAuTotal(v.lignes, bloc, referentiel));
     for (const l of v.lignes) {
       const total = TOTAL_DU_BLOC[l.bloc];
       if (l.compte === compteDuRole(total.role, referentiel) && l.sens === total.sens) continue;
@@ -469,16 +520,30 @@ export function propositionPaieDuMois(
     if (duBloc.length === 0) continue;
     const total = TOTAL_DU_BLOC[bloc];
     const totalCentimes = duBloc.reduce((n, d) => n + d.centimes, 0);
-    const ligneTotal: LigneDuMois | null =
-      totalCentimes === 0
-        ? null
-        : {
-            bloc,
-            compte: compteDuRole(total.role, referentiel),
-            intitule: NOMENCLATURE_PAIE[total.role].intitule,
-            sens: total.sens,
-            montantFc: enFrancs(totalCentimes),
-          };
+    // FONCTION 76 · le total du 422 s'éclate par compte dès qu'un salarié a
+    // son compte individuel · chaque part est la somme des détails de ses
+    // bulletins, si bien que les parts refont le total au centime. Tout au
+    // collectif, une ligne, comme avant.
+    const parts = [...(parts422.get(bloc) ?? new Map()).entries()].filter(([, p]) => p.centimes !== 0);
+    const eclate = BLOCS_DU_422.includes(bloc) && parts.some(([numero]) => numero !== c422);
+    if (eclate && parts.reduce((n, [, p]) => n + p.centimes, 0) !== totalCentimes) {
+      throw new Error(`propositionPaieDuMois · les parts du 422 du bloc ${bloc} ne refont pas son total`);
+    }
+    const lignesTotal: LigneDuMois[] = eclate
+      ? parts
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([numero, p]) => ({ bloc, compte: numero, intitule: p.intitule, sens: total.sens, montantFc: enFrancs(p.centimes), bulletinIds: [...p.bulletinIds] }))
+      : totalCentimes === 0
+        ? []
+        : [
+            {
+              bloc,
+              compte: compteDuRole(total.role, referentiel),
+              intitule: NOMENCLATURE_PAIE[total.role].intitule,
+              sens: total.sens,
+              montantFc: enFrancs(totalCentimes),
+            },
+          ];
     const details = duBloc
       .sort((a, b) => a.compte.localeCompare(b.compte) || Number(a.negatif) - Number(b.negatif))
       .map((d) => ({
@@ -490,16 +555,17 @@ export function propositionPaieDuMois(
         ...(d.negatif ? { negatif: true } : {}),
       }));
     // Débits avant crédits, dans chaque bloc · la présentation du Guide.
-    const tous = !ligneTotal ? details : total.sens === 'DEBIT' ? [ligneTotal, ...details] : [...details, ligneTotal];
+    const tous = total.sens === 'DEBIT' ? [...lignesTotal, ...details] : [...details, ...lignesTotal];
     lignes.push(...tous);
   }
 
   const somme = (sens: SensLigne) => lignes.filter((l) => l.sens === sens).reduce((n, l) => n + enCentimes(l.montantFc), 0);
   const debit = somme('DEBIT');
   const credit = somme('CREDIT');
-  const c422 = compteDuRole('REMUNERATIONS_DUES', referentiel);
+  // Le 422 et les comptes individuels nés sous lui (fonction 76) · une seule racine.
+  const racine422 = c422.replace(/0+$/, '');
   const solde422 = lignes
-    .filter((l) => l.compte === c422)
+    .filter((l) => l.compte.startsWith(racine422))
     .reduce((n, l) => n + (l.sens === 'CREDIT' ? enCentimes(l.montantFc) : -enCentimes(l.montantFc)), 0);
 
   // L'écart d'arrondi ne peut dépasser un centime par bulletin et par ligne
@@ -579,8 +645,9 @@ function seReconstitueALaRegleDuJour(
   reprisesPortees: readonly BulletinAComptabiliser[],
   referentiel: Referentiel,
 ): boolean {
+  // Fonction 76 · chaque bulletin rejoué sur le 422 où l'origine l'a passé.
   const rejeu = propositionPaieDuMois('0000-00', referentiel, [
-    ...portes.map((b) => ({ ...b, statut: 'EMIS' as const, ecritureId: null, ecritureNegatifId: null, origine: null })),
+    ...portes.map((b) => ({ ...b, statut: 'EMIS' as const, ecritureId: null, ecritureNegatifId: null, origine: null, compte422: compte422DeLOrigine(b, origine) })),
   ]);
   if (rejeu.refus.length > 0) return false;
   const positives = rejeu.lignes.map((l) => ({ compte: l.compte, sens: l.sens, centimes: enCentimes(l.montantFc) }));
@@ -602,7 +669,13 @@ function seReconstitueALaRegleDuJour(
       const entree = entreeDuBulletin(b, referentiel);
       const v = entree ? passationPaie(entree) : null;
       if (!v || v.refus.length > 0) return null;
-      for (const l of v.lignes) lignes.push({ compte: l.compte, sens: l.sens, centimes: -enCentimes(l.montantFc) });
+      // Le total du 422 d'une reprise passée sur le compte du salarié se lit sur lui (fonction 76).
+      const surSonCompte = compte422DeLOrigine(b, origine);
+      const c422 = compteDuRole('REMUNERATIONS_DUES', referentiel);
+      for (const l of v.lignes) {
+        const compte = surSonCompte && l.compte === c422 && BLOCS_DU_422.includes(l.bloc) ? surSonCompte.numero : l.compte;
+        lignes.push({ compte, sens: l.sens, centimes: -enCentimes(l.montantFc) });
+      }
     }
     return lignes;
   })();

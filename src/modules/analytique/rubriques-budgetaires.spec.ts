@@ -206,3 +206,21 @@ describe('OD analytiques dans les états analytiques', () => {
     expect(balance.totaux.solde).toBe(600);
   });
 });
+
+describe('Balance analytique filtrée (fonction n° 53)', () => {
+  it('le filtre masque des sections, les totaux restent ceux de toutes les feuilles', async () => {
+    // 11 est mouvementée et soldée (100 / 100), 12 n'a rien · « non soldées »
+    // les masque toutes, mais les 100 du débit restent au total de l'axe.
+    const s = serviceAnalytique({
+      sections: NOMENCLATURE,
+      ventilations: [{ sectionId: 's11', debit: 100, credit: 100 }],
+    });
+    const b = await s.balance('t1', { planId: 'p1', exerciceId: 'e1', filtre: 'NON_SOLDEES' });
+    expect(b.lignes).toEqual([]);
+    expect(b.masquees).toBe(3);
+    expect(b.totaux.debit).toBe(100);
+    const m = await s.balance('t1', { planId: 'p1', exerciceId: 'e1', filtre: 'MOUVEMENTEES' });
+    expect(m.lignes.map((l) => l.code)).toEqual(['1', '11']);
+    expect(m.filtre).toBe('MOUVEMENTEES');
+  });
+});

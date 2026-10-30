@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import {
   ModeInteretsTresorerie,
   NatureActeTresorerie,
@@ -12,7 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { journalDeBanqueEnFrancs } from './banque-en-francs';
@@ -719,9 +720,9 @@ export class OperationsTresorerieService {
         ? StatutOperationTresorerie.ECHUE
         : StatutOperationTresorerie.EN_COURS;
     const ecritureId = acte.ecriture?.id ?? null;
-    // EN ISOLATION SÉRIALISABLE, comme les actes que `creerAvec` passe · en lecture validée, un acte passé en même
-    // temps sur un instantané antérieur ne voyait pas cette annulation (relecture du 2026-10-22, B1).
-    return avecRetrySerialisable(this.prisma, async (tx) => {
+    // SOUS LE VERROU DU DOSSIER, comme les actes que `creerAvec` passe (`transactionDeSaisie`) · un acte passé en
+    // même temps attend l'autre puis relit, aucun ne juge sur un instantané antérieur (relecture du 2026-10-22, B1).
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, o);
       // MARQUÉ PAR UNE MISE À JOUR UNITAIRE · le motif entre au journal d'audit (AUDCIF art. 22, 5° et 6°).
       await this.prendre(
@@ -830,7 +831,7 @@ export class OperationsTresorerieService {
     o: OperationLue,
     a: { nature: NatureActeTresorerie; date: Date; exerciceId: string; proposes: number | null; regularisationId?: string },
   ) {
-    const acte = await avecRetrySerialisable(this.prisma, async (tx) => {
+    const acte = await transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       await this.verrouillerEtRelire(tx, tenantId, o);
       return tx.acteOperationTresorerie.create({
         data: {
@@ -961,7 +962,7 @@ export class OperationsTresorerieService {
       if (tenue) throw new BadRequestException(tenue);
       // L'acte RETIENT sa pièce (RESTRICT) · le lien se dénoue AVANT le retrait, sinon la base refuse la suppression.
       await tx.acteOperationTresorerie.update({ where: { id: acteId, tenantId }, data: { ecritureId: null } });
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+      await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
       const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
       if (r.count !== 1) throw new ConflictException(`La pièce ${objet} a été validée pendant l'annulation · rien n'est retiré. Relancez · validée, elle s'inscrira en négatif.`);
       return null;

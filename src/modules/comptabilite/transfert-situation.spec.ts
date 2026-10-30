@@ -58,7 +58,8 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
     Promise.resolve({ id: 'e1', ...data, journal: { code: arrivee.code } }),
   );
   const ligneEcriture = { deleteMany: jest.fn(), updateMany: jest.fn(), update: jest.fn() };
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(
         relue === undefined ? (ecriture ? { statut: ecriture.statut, journalId: ecriture.journalId, exerciceId: 'ex1' } : null) : relue,
@@ -70,7 +71,7 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
     // Les pièces jointes (ligne sage-l6) · aucune, sauf quand le cas en pose.
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture) },
     $transaction: jest.fn().mockImplementation((f: (t: unknown) => unknown) => f(tx)),
   };
@@ -81,7 +82,8 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
   const service = new EcritureService(
     prisma as unknown as PrismaService,
     journalService as unknown as JournalService,
-    {} as unknown as ExerciceService,
+    // La clôture de période se relit sous le verrou (ligne saisie-serialisable, point 7) · aucune ici.
+    { verifierEcritureAutorisee: jest.fn().mockResolvedValue(undefined) } as unknown as ExerciceService,
     {} as AnalytiqueService,
   );
   return { service, update, journalService, ligneEcriture, prisma, tx };
@@ -239,7 +241,7 @@ describe('le transfert d’un brouillard hérité dans un journal ordinaire', ()
 
 describe('la validation du brouillard hérité', () => {
   function service(findMany: jest.Mock, count?: jest.Mock, updateMany = jest.fn()) {
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), 
       ecriture: { findMany, count: count ?? jest.fn().mockResolvedValue(0), updateMany },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex1' }) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'jOD' }) },

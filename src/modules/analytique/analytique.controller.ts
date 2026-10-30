@@ -23,6 +23,12 @@ import { OdAnalytiqueService } from './od-analytique.service';
 import { CloreEngagementDto, CreerEngagementDto, RattacherExecutionDto } from './dto/engagement.dto';
 import { Referentiel, RoleUtilisateur } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { lireFiltreBalance } from './filtres-balance-analytique';
+import { lireOrigineJournal } from './journal-analytique';
+import { GrillesAnalytiquesService } from './grilles-analytiques.service';
+import { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
+import { BudgetsComptesService } from './budgets-comptes.service';
+import { DoterBudgetCompteDto, ModifierBudgetCompteMoisDto } from './dto/budget-compte.dto';
 
 /**
  * Même règle que le plan comptable et les journaux : consultation ouverte aux
@@ -43,7 +49,109 @@ export class AnalytiqueController {
     private readonly etats: EtatsAnalytiquesService,
     private readonly engagements: EngagementService,
     private readonly od: OdAnalytiqueService,
+    private readonly grilles: GrillesAnalytiquesService,
+    private readonly budgetsComptes: BudgetsComptesService,
   ) {}
+
+  // --- Budgets des comptes généraux (fonction n° 51) -----------------------
+  // Une STRUCTURE comme le budget des sections · dotée par l'administrateur,
+  // lue par tous. Aucune écriture, aucun état financier.
+
+  @Get('comptes/:compteId/budget')
+  async budgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.budget(user.tenantId, compteId, exerciceId);
+  }
+
+  @Post('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async doterBudgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Body() dto: DoterBudgetCompteDto,
+  ) {
+    return this.budgetsComptes.doter(user.tenantId, compteId, dto);
+  }
+
+  @Patch('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierBudgetCompteMois(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Body() dto: ModifierBudgetCompteMoisDto,
+  ) {
+    return this.budgetsComptes.modifierMois(user.tenantId, compteId, dto);
+  }
+
+  @Delete('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async retirerBudgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.retirer(user.tenantId, compteId, exerciceId);
+  }
+
+  /**
+   * Le report des budgets des comptes de l'exercice sur le suivant · l'aperçu
+   * (GET) dit ce qui serait repris et ce qui ne le serait pas, la
+   * confirmation (POST) l'écrit sans rien écraser.
+   */
+  @Get('budgets-comptes/report')
+  async apercuReportBudgetsComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.reporter(user.tenantId, exerciceId, false);
+  }
+
+  @Post('budgets-comptes/report')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async reporterBudgetsComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.reporter(user.tenantId, exerciceId, true);
+  }
+
+  /** L'état · budget, réalisé et réalisé de l'exercice précédent, par compte, sur l'exercice ou un mois. */
+  @Get('etats/budget-comptes')
+  async etatBudgetComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('mois') moisTexte?: string,
+  ) {
+    const texte = (moisTexte ?? '').trim();
+    if (texte !== '' && !/^(?:[1-9]|1[0-2])$/.test(texte)) {
+      throw new BadRequestException('Le mois est un nombre de 1 à 12, ou rien pour l’exercice entier.');
+    }
+    return this.budgetsComptes.etat(user.tenantId, { exerciceId, mois: texte === '' ? undefined : Number(texte) });
+  }
+
+  // --- Grilles analytiques des comptes (fonction n° 48) --------------------
+  // Une STRUCTURE, comme le plan · posée et retirée par l'administrateur, lue
+  // par tous (la saisie la propose). Elle ne touche à aucune écriture.
+
+  @Get('grilles')
+  async listerGrilles(@CurrentUser() user: AuthenticatedUser) {
+    return this.grilles.lister(user.tenantId);
+  }
+
+  @Post('grilles')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async poserGrille(@CurrentUser() user: AuthenticatedUser, @Body() dto: PoserGrilleAnalytiqueDto) {
+    return this.grilles.poser(user.tenantId, user.userId, dto);
+  }
+
+  @Delete('grilles/:grilleId')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async retirerGrille(@CurrentUser() user: AuthenticatedUser, @Param('grilleId') grilleId: string) {
+    return this.grilles.retirer(user.tenantId, grilleId);
+  }
 
   // --- OD analytiques ------------------------------------------------------
   // Un acte de saisie, pas de structure : il suit les droits d'écriture, comme
@@ -215,8 +323,15 @@ export class AnalytiqueController {
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
+    @Query('filtre') filtreTexte?: string,
   ) {
-    return this.etats.balance(user.tenantId, { planId, exerciceId, dateDebut, dateFin });
+    // Fonction n° 53 · toutes, mouvementées ou non soldées ; un filtre inconnu
+    // est refusé, jamais lu comme « toutes » (il aurait l'air appliqué).
+    const filtre = lireFiltreBalance(filtreTexte);
+    if (!filtre) {
+      throw new BadRequestException('Filtre de la balance analytique inconnu · TOUTES, MOUVEMENTEES ou NON_SOLDEES.');
+    }
+    return this.etats.balance(user.tenantId, { planId, exerciceId, dateDebut, dateFin, filtre });
   }
 
   @Get('etats/grand-livre')
@@ -228,6 +343,33 @@ export class AnalytiqueController {
     @Query('dateFin') dateFin?: string,
   ) {
     return this.etats.grandLivre(user.tenantId, { sectionId, exerciceId, dateDebut, dateFin });
+  }
+
+  /** Fonction n° 52 · le journal analytique d'un plan (toutes les lignes, ou les OD seules). */
+  @Get('etats/journal')
+  async journalAnalytique(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('planId') planId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('dateDebut') dateDebut?: string,
+    @Query('dateFin') dateFin?: string,
+    @Query('origine') origineTexte?: string,
+  ) {
+    const origine = lireOrigineJournal(origineTexte);
+    if (!origine) throw new BadRequestException('Origine du journal analytique inconnue · TOUTES ou OD.');
+    return this.etats.journal(user.tenantId, { planId, exerciceId, dateDebut, dateFin, origine });
+  }
+
+  /** Fonction n° 52 · le grand livre des lignes restées sans répartition sur un plan. */
+  @Get('etats/non-ventilees')
+  async nonVentilees(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('planId') planId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('dateDebut') dateDebut?: string,
+    @Query('dateFin') dateFin?: string,
+  ) {
+    return this.etats.nonVentilees(user.tenantId, { planId, exerciceId, dateDebut, dateFin });
   }
 
   @Get('etats/controle-cumuls')

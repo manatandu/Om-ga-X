@@ -30,7 +30,7 @@ describe('la fin de l’exercice de liquidation se reporte tant qu’il est ouve
   function service(exercice: Record<string, unknown>, chevauche: unknown = null, ecrituresApres = 0) {
     const ex = { id: 'e2', tenantId: 't1', dateDebut: jour(2026, 7, 1), dateFin: jour(2027, 3, 31), statut: 'OUVERT', ...exercice };
     const capture: { data?: Record<string, unknown> } = {};
-    const tx = {
+    const tx = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       exercice: {
         findFirst: jest.fn().mockResolvedValue(chevauche),
         update: jest.fn(async (a: { data: Record<string, unknown> }) => {
@@ -40,7 +40,7 @@ describe('la fin de l’exercice de liquidation se reporte tant qu’il est ouve
       },
       ecriture: { count: jest.fn().mockResolvedValue(ecrituresApres) },
     };
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       exercice: { findFirst: jest.fn().mockResolvedValue(ex) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ dateDissolution: DISSOLUTION }) },
       $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -296,7 +296,7 @@ describe('les cotisations spéciales prennent la place de la déclaration annuel
       dateTransmissionPvPortefeuille: null,
       ...exercice,
     };
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       exercice: { findFirst: jest.fn().mockResolvedValue(ex), findMany: jest.fn().mockResolvedValue([ex, ...autres]) },
       tenant: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -377,7 +377,7 @@ describe('faits déclarés au dossier · clôture de la liquidation et dépôt d
       dateDissolution: DISSOLUTION,
       ...tenant,
     };
-    return new TenantService({
+    return new TenantService({ $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       tenant: {
         findUnique: async () => t,
         findUniqueOrThrow: async () => t,

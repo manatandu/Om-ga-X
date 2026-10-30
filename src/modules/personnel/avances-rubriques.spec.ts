@@ -280,14 +280,14 @@ describe('la saisie-arrêt notifiée · le registre, le bulletin et la passation
       salarie: { findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) => (where.tenantId === 't' ? { id: where.id } : null)) },
       avanceSalaire: { create },
     } as never);
-    await svc.creerAvance('t', 'x@y', 's1', { ...saisie, dateOctroi: '2026-09-15' } as never);
+    await svc.creerAvance('t', 'x@y', 'u1', 's1', { ...saisie, dateOctroi: '2026-09-15' } as never);
     expect((create.mock.calls[0][0] as { data: Record<string, unknown> }).data).toMatchObject({
       type: 'SAISIE_ARRET',
       referenceActe: 'RH 1234/2026',
       greffe: 'Tripaix Gombe',
       destinataire: 'Greffe du Tripaix Gombe',
     });
-    await svc.creerAvance('t', 'x@y', 's1', { type: 'AVANCE', montantFc: 100, objet: 'x', pieceJustificative: 'y', dateOctroi: '2026-09-15' } as never);
+    await svc.creerAvance('t', 'x@y', 'u1', 's1', { type: 'AVANCE', montantFc: 100, objet: 'x', pieceJustificative: 'y', dateOctroi: '2026-09-15' } as never);
     expect((create.mock.calls[1][0] as { data: Record<string, unknown> }).data).toMatchObject({ referenceActe: null, greffe: null, destinataire: null });
   });
 

@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { NatureActeEffet, Prisma, SensEffet, StatutEcriture, StatutEffet, StatutExercice, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -736,6 +738,8 @@ export class EffetsService {
   }
 
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, e: EffetLu) {
+    // Le dossier avant la ligne · un seul ordre de verrous (saisie-serialisable, second tour, point 5).
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT id FROM "effets_de_commerce" WHERE id = ${e.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
     const vivants = await tx.acteEffet.findMany({ where: { tenantId, effetId: e.id, annuleLe: null }, select: { id: true } });
     const lus = e.actes.filter((a) => !a.annuleLe).map((a) => a.id).sort();
@@ -784,7 +788,7 @@ export class EffetsService {
       // L'acte RETIENT sa pièce (clé étrangère RESTRICT, `detenteurs-ecriture.ts`) · le lien se dénoue AVANT le retrait,
       // sinon la base refuse la suppression (vu sur vraie base, la doublure n'ayant aucune clé étrangère).
       await tx.acteEffet.update({ where: { id: acteId, tenantId }, data: { ecritureId: null } });
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+      await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
       const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
       if (r.count !== 1) throw new ConflictException(`La pièce ${objet} a été validée pendant l'annulation · rien n'est retiré. Relancez · validée, elle s'inscrira en négatif.`);
       return null;

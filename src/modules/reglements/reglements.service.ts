@@ -994,7 +994,8 @@ export class ReglementsService {
           // référence du règlement, et se lit sur la pièce comptable.
           reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
           lignes: lignesDe(preparee, libelle),
-        });
+        }, { jugerLaCaisse: true }); // Rejugée DANS la transaction, sous le verrou du dossier (saisie-serialisable, second tour, point 4) · le contrôle d'avant
+        // ne fait que refuser tôt ; deux sorties simultanées de la même caisse y lisaient le même solde.
         if (parts) {
           // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
           // désignée par le dossier (art. 151) devient le lettrage même, et le

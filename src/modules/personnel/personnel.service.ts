@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { motifPlanNonPropose } from './visa-plan-etalement';
 import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
@@ -59,6 +60,7 @@ import {
   usdEnFc,
 } from './conversion-usd';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { optionComptesIndividuels, ouvrirCompteSalarie } from './comptes-salaries.service';
 
 /** La trace d'une conversion USD vers FC · figée avec le bulletin émis. */
 export interface ConversionUsd {
@@ -162,6 +164,7 @@ import {
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
 import { lierMissionsAuBulletin, missionsAPorter, type MissionPortee } from './missions.service';
+import { elementsDesRappels, lierRappelsAuBulletin, motifRefusAnnulationSourceDeRappel, rappelsAPorter, type RappelPorte } from './rappels-salaire.service';
 import { libelleForfaitMission, libelleRemboursementMission } from './missions-salarie';
 import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
 
@@ -176,6 +179,8 @@ type SaisieRelue = SimulationPaieDto & {
   heuresPortees?: HeuresPortee[];
   /** Ligne microfina-m3, idée 3 · les missions rejouées, hors de tout DTO. */
   missionsLiees?: MissionPortee[];
+  /** Ligne paie-suite, fonction 87 · les rappels de salaire rejoués, hors de tout DTO. */
+  rappelsLies?: RappelPorte[];
 };
 
 /**
@@ -354,7 +359,12 @@ export class PersonnelService {
 
   async creerSalarie(tenantId: string, userId: string, dto: SalarieDto) {
     await this.verifierMatriculeLibre(tenantId, dto.matricule, null);
-    return this.prisma.salarie.create({
+    // FONCTION 76 · sous l'option, le compte individuel naît AVEC le salarié,
+    // dans la même transaction (`compte-salarie.ts`, règle 2), l'option lue
+    // dans cette transaction.
+    return transactionJournalisee(this.prisma, async (tx) => {
+      const option = await optionComptesIndividuels(tx, tenantId);
+      const cree = await tx.salarie.create({
       data: {
         tenantId,
         createdBy: userId,
@@ -374,6 +384,10 @@ export class PersonnelService {
           : {}),
       },
       include: { enfants: true },
+      });
+      if (!option) return cree;
+      const { compte } = await ouvrirCompteSalarie(tx, tenantId, cree.id);
+      return { ...cree, compteId: compte.id };
     });
   }
 
@@ -447,27 +461,7 @@ export class PersonnelService {
   }
 
   private champsSalarie(dto: SalarieDto) {
-    return {
-      matricule: dto.matricule?.trim() || null,
-      nom: dto.nom.trim(),
-      postNom: dto.postNom?.trim() || null,
-      prenoms: dto.prenoms?.trim() || null,
-      sexe: dto.sexe,
-      numeroAffiliationCnss: dto.numeroAffiliationCnss?.trim() || null,
-      dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
-      millesimeNaissance: dto.millesimeNaissance ?? null,
-      lieuNaissance: dto.lieuNaissance?.trim() || null,
-      nationalite: dto.nationalite?.trim() || null,
-      nomConjoint: dto.nomConjoint?.trim() || null,
-      aptitudeConstateeLe: dto.aptitudeConstateeLe ? new Date(dto.aptitudeConstateeLe) : null,
-      aptitudeConstateePar: dto.aptitudeConstateePar?.trim() || null,
-      aptitudeProvisoire: dto.aptitudeProvisoire ?? false,
-      declarationEngagementLe: dto.declarationEngagementLe
-        ? new Date(dto.declarationEngagementLe)
-        : null,
-      declarationDepartLe: dto.declarationDepartLe ? new Date(dto.declarationDepartLe) : null,
-      actif: dto.actif ?? true,
-    };
+    return champsDuSalarie(dto);
   }
 
   private async verifierMatriculeLibre(
@@ -529,31 +523,7 @@ export class PersonnelService {
         tenantId,
         salarieId,
         createdBy: userId,
-        type: dto.type,
-        constateParEcrit: dto.constateParEcrit ?? true,
-        dateEntreeEnVigueur: new Date(dto.dateEntreeEnVigueur),
-        dateConclusion: dto.dateConclusion ? new Date(dto.dateConclusion) : null,
-        lieuConclusion: dto.lieuConclusion?.trim() || null,
-        dateFinPrevue: dto.dateFinPrevue ? new Date(dto.dateFinPrevue) : null,
-        separeDeSaFamille: dto.separeDeSaFamille ?? false,
-        ouvrageDetermine: dto.ouvrageDetermine?.trim() || null,
-        motifRemplacement: dto.motifRemplacement?.trim() || null,
-        emploiPermanent: dto.emploiPermanent ?? false,
-        natureTravail: dto.natureTravail?.trim() || null,
-        lieuExecution: dto.lieuExecution?.trim() || null,
-        categorieProfessionnelle: dto.categorieProfessionnelle?.trim() || null,
-        classeProfessionnelle: dto.classeProfessionnelle ?? null,
-        periodiciteRemuneration: dto.periodiciteRemuneration ?? null,
-        manoeuvreSansSpecialite: dto.manoeuvreSansSpecialite ?? false,
-        remunerationBase: dto.remunerationBase ?? null,
-        deviseRemuneration: dto.deviseRemuneration ?? null,
-        avantagesConvenus: dto.avantagesConvenus?.trim() || null,
-        clauseEssai: dto.clauseEssai ?? false,
-        essaiConstateParEcrit: dto.essaiConstateParEcrit ?? false,
-        essaiDureeJours: dto.essaiDureeJours ?? null,
-        dureePreavisJours: dto.dureePreavisJours ?? null,
-        viseParOnem: dto.viseParOnem ?? false,
-        dateVisaOnem: dto.dateVisaOnem ? new Date(dto.dateVisaOnem) : null,
+        ...champsDuContrat(dto),
         renouvelleDeId: dto.renouvelleDeId ?? null,
       },
     });
@@ -1168,6 +1138,24 @@ export class PersonnelService {
       ];
     }
 
+    // LIGNE PAIE-SUITE, FONCTION 87 · LES RAPPELS DE SALAIRE que ce bulletin
+    // paie (`rappel-salaire.ts`) · relus et rejoués au serveur, un élément par
+    // mois rappelé, sous la nature du salaire (les arriérés de rémunération,
+    // mention 13 de l'arrêté du 8 août 2008). Tenus en francs · un bulletin
+    // stipulé en dollars ne les porte pas. Même garde que les missions · relue
+    // une seconde fois, la saisie ne les ajoute pas deux fois.
+    const demandesRappels = dto.rappelsPortes ?? [];
+    let rappelsLies: RappelPorte[] = (dto as SaisieRelue).rappelsLies ?? [];
+    if (demandesRappels.length) {
+      if (!salarieId) throw new BadRequestException('Un rappel de salaire se rapporte à un salarié · choisissez-le.');
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      if ((dto.deviseStipulation ?? 'CDF') === 'USD') {
+        throw new BadRequestException("Les rappels de salaire sont calculés en francs · un bulletin stipulé en dollars ne les porte pas.");
+      }
+      rappelsLies = await rappelsAPorter(this.prisma, tenantId, salarieId, dto.moisDePaie, demandesRappels.map((r) => r.rappelId));
+      elements = [...elements, ...elementsDesRappels(rappelsLies)];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1240,6 +1228,8 @@ export class PersonnelService {
         heuresPortees,
         missionsPortees: undefined,
         missionsLiees,
+        rappelsPortes: undefined,
+        rappelsLies,
       } as SaisieRelue,
       retenuesAvances,
     };
@@ -1539,6 +1529,8 @@ export class PersonnelService {
       // LIGNE MICROFINA-M3, IDÉE 3 · les missions que ce bulletin porte,
       // liées à lui par l'émission, dans sa transaction.
       missionsPortees: (dtoStipule as SaisieRelue).missionsLiees ?? [],
+      // LIGNE PAIE-SUITE, FONCTION 87 · les rappels de salaire que ce bulletin paie.
+      rappelsPortes: (dtoStipule as SaisieRelue).rappelsLies ?? [],
       reserveRetenuesAvances: retenuesAvances.length ? RESERVE_QUOTITE_AVANCES : null,
       // LIGNE MICROFINA-M3, IDÉE 6 · les retenues que les plans d'étalement
       // proposent ce mois-ci, et ce que le bulletin en porte · un oubli se
@@ -1621,7 +1613,13 @@ export class PersonnelService {
       take: 200,
       include: { retenues: { select: { montantFc: true, bulletin: { select: { statut: true, moisDePaie: true } } } } },
     });
+    if (avances.length === 0) return { retenuesPlanifiees: [], avertissementsRetenuesPlanifiees: [] };
+    // LIGNE PAIE-SUITE · l'option du visa des plans, lue seulement quand un
+    // plan existe · un dossier introuvable n'est pas « aucun visa exigé ».
+    const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { visaPlansEtalement: true } });
+    if (!dossier) throw new NotFoundException('Dossier introuvable.');
     const proposees: { avanceId: string; libelle: string; montantFc: number; motif: string }[] = [];
+    const nonVises: string[] = [];
     for (const a of avances) {
       // Le solde au moment du calcul, sur les bulletins ÉMIS seulement · un
       // bulletin annulé (à réémettre) rend sa retenue.
@@ -1641,9 +1639,17 @@ export class PersonnelService {
       );
       if (p.montantFc === null || !(p.montantFc > 0)) continue;
       const libelle = `${a.type === 'PRET' ? 'Prêt' : a.type === 'ACOMPTE' ? 'Acompte' : 'Avance'} du ${a.dateOctroi.toISOString().slice(0, 10)} · ${a.objet}`;
+      // LIGNE PAIE-SUITE · UN PLAN NON VISÉ N'EST PAS PROPOSÉ, ET C'EST DIT
+      // (`visa-plan-etalement.ts`, règle 5) · ni proposé, ni compté comme un
+      // écart au plan (qui ferait lire une retenue manquante).
+      const nonPropose = motifPlanNonPropose(dossier.visaPlansEtalement === true, a, libelle);
+      if (nonPropose) {
+        nonVises.push(nonPropose);
+        continue;
+      }
       proposees.push({ avanceId: a.id, libelle, montantFc: p.montantFc, motif: p.motif });
     }
-    const avertissements = ecartsAuPlan(proposees, portees);
+    const avertissements = [...nonVises, ...ecartsAuPlan(proposees, portees)];
     // Au-delà de deux cents avances planifiées pour un salarié, la lecture se
     // coupe · elle le DIT, jamais un plan oublié en silence.
     if (avances.length >= 200) avertissements.push("Plus de deux cents avances étalées pour ce salarié · seules les deux cents plus anciennes sont confrontées au bulletin.");
@@ -1910,8 +1916,9 @@ export class PersonnelService {
     saisie: SimulationPaieDto,
   ): Promise<{ refus: string | null; avertissements: string[] }> {
     const devise = saisie.deviseStipulation ?? 'CDF';
+    // Un rappel de salaire paie des mois passés · il n'est pas le salaire du mois (fonction 87).
     const salaire = saisie.elements
-      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT')
+      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT' && !(e as { rappelId?: string }).rappelId)
       .reduce((n, e) => n + Number((devise === 'USD' ? e.montantUsd : e.montantFc) ?? 0), 0);
     const avertissements: string[] = [];
     // Second tour · le mois du bulletin, confronté aux congés qui le touchent
@@ -2079,6 +2086,10 @@ export class PersonnelService {
         // Ligne microfina-m3, idée 3 · les missions, liées sous le même verrou.
         if (simulation.missionsPortees.length) {
           await lierMissionsAuBulletin(tx, tenantId, cree.id, simulation.missionsPortees);
+        }
+        // Ligne paie-suite, fonction 87 · les rappels de salaire, liés sous le même verrou.
+        if (simulation.rappelsPortes.length) {
+          await lierRappelsAuBulletin(tx, tenantId, cree.id, simulation.rappelsPortes);
         }
         return cree;
       });
@@ -2535,7 +2546,7 @@ export class PersonnelService {
     }
     const b = await this.prisma.bulletinPaie.findFirst({
       where: { id, tenantId },
-      select: { statut: true, ecritureId: true },
+      select: { statut: true, ecritureId: true, salarieId: true, moisDePaie: true, numero: true },
     });
     if (!b) throw new NotFoundException('Bulletin introuvable dans ce dossier.');
     if (b.statut !== StatutBulletinPaie.EMIS) throw new BadRequestException('Ce bulletin est déjà annulé.');
@@ -2557,9 +2568,20 @@ export class PersonnelService {
         );
       }
     }
-    await this.prisma.bulletinPaie.update({
-      where: { id },
-      data: { statut: StatutBulletinPaie.ANNULE, annuleLe: new Date(), annulePar: userId, motifAnnulation: texte },
+    // Ligne paie-suite, fonction 87 · le bulletin source d'un rappel non
+    // annulé ne s'annule pas · lu sous le verrou du salarié, que la
+    // déclaration d'un rappel prend aussi.
+    await transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${b.salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const refus = await motifRefusAnnulationSourceDeRappel(tx, tenantId, { id, salarieId: b.salarieId, moisDePaie: b.moisDePaie, numero: b.numero });
+      if (refus) throw new ConflictException(refus);
+      // L'état relu sous le verrou · une seconde annulation concurrente ne réécrit rien.
+      const encore = await tx.bulletinPaie.findFirst({ where: { id, tenantId }, select: { statut: true } });
+      if (encore?.statut !== StatutBulletinPaie.EMIS) throw new BadRequestException('Ce bulletin est déjà annulé.');
+      await tx.bulletinPaie.update({
+        where: { id },
+        data: { statut: StatutBulletinPaie.ANNULE, annuleLe: new Date(), annulePar: userId, motifAnnulation: texte },
+      });
     });
     return this.lireBulletin(tenantId, id);
   }
@@ -2591,3 +2613,64 @@ export type SimulationPaie = Awaited<ReturnType<PersonnelService['simulerPaie']>
 export type DecompteFinal = Awaited<ReturnType<PersonnelService['decompteFinal']>>;
 export type LivreDePaie = ReturnType<PersonnelService['livreDePaie']>;
 export type BulletinPaieLu = Awaited<ReturnType<PersonnelService['lireBulletin']>>;
+
+/**
+ * LIGNE PAIE-SUITE, FONCTION 82 · les colonnes d'une fiche du registre et
+ * celles d'un contrat, une seule écriture · la saisie et l'import du
+ * personnel (`import-personnel.service.ts`) écrivent la même chose, sans
+ * quoi un import ferait entrer une fiche que la saisie aurait écrite
+ * autrement.
+ */
+export function champsDuSalarie(dto: SalarieDto) {
+  return {
+    matricule: dto.matricule?.trim() || null,
+    nom: dto.nom.trim(),
+    postNom: dto.postNom?.trim() || null,
+    prenoms: dto.prenoms?.trim() || null,
+    sexe: dto.sexe,
+    numeroAffiliationCnss: dto.numeroAffiliationCnss?.trim() || null,
+    dateNaissance: dto.dateNaissance ? new Date(dto.dateNaissance) : null,
+    millesimeNaissance: dto.millesimeNaissance ?? null,
+    lieuNaissance: dto.lieuNaissance?.trim() || null,
+    nationalite: dto.nationalite?.trim() || null,
+    nomConjoint: dto.nomConjoint?.trim() || null,
+    aptitudeConstateeLe: dto.aptitudeConstateeLe ? new Date(dto.aptitudeConstateeLe) : null,
+    aptitudeConstateePar: dto.aptitudeConstateePar?.trim() || null,
+    aptitudeProvisoire: dto.aptitudeProvisoire ?? false,
+    declarationEngagementLe: dto.declarationEngagementLe
+      ? new Date(dto.declarationEngagementLe)
+      : null,
+    declarationDepartLe: dto.declarationDepartLe ? new Date(dto.declarationDepartLe) : null,
+    actif: dto.actif ?? true,
+  };
+}
+
+export function champsDuContrat(dto: ContratTravailDto) {
+  return {
+    type: dto.type,
+    constateParEcrit: dto.constateParEcrit ?? true,
+    dateEntreeEnVigueur: new Date(dto.dateEntreeEnVigueur),
+    dateConclusion: dto.dateConclusion ? new Date(dto.dateConclusion) : null,
+    lieuConclusion: dto.lieuConclusion?.trim() || null,
+    dateFinPrevue: dto.dateFinPrevue ? new Date(dto.dateFinPrevue) : null,
+    separeDeSaFamille: dto.separeDeSaFamille ?? false,
+    ouvrageDetermine: dto.ouvrageDetermine?.trim() || null,
+    motifRemplacement: dto.motifRemplacement?.trim() || null,
+    emploiPermanent: dto.emploiPermanent ?? false,
+    natureTravail: dto.natureTravail?.trim() || null,
+    lieuExecution: dto.lieuExecution?.trim() || null,
+    categorieProfessionnelle: dto.categorieProfessionnelle?.trim() || null,
+    classeProfessionnelle: dto.classeProfessionnelle ?? null,
+    periodiciteRemuneration: dto.periodiciteRemuneration ?? null,
+    manoeuvreSansSpecialite: dto.manoeuvreSansSpecialite ?? false,
+    remunerationBase: dto.remunerationBase ?? null,
+    deviseRemuneration: dto.deviseRemuneration ?? null,
+    avantagesConvenus: dto.avantagesConvenus?.trim() || null,
+    clauseEssai: dto.clauseEssai ?? false,
+    essaiConstateParEcrit: dto.essaiConstateParEcrit ?? false,
+    essaiDureeJours: dto.essaiDureeJours ?? null,
+    dureePreavisJours: dto.dureePreavisJours ?? null,
+    viseParOnem: dto.viseParOnem ?? false,
+    dateVisaOnem: dto.dateVisaOnem ? new Date(dto.dateVisaOnem) : null,
+  };
+}
