@@ -47,9 +47,20 @@ réalisé lu en mouvement hors écriture qui solde les comptes de gestion
   plan en sommeil) se dit et ne se propose pas. Jamais imposée · ni serveur
   à la saisie, ni modules, ni imports.
 
+- 51 · budget par compte général (`BudgetCompte`, migration
+  `20270220000200_budgets_comptes`, index unique NULLS NOT DISTINCT) ·
+  compte de détail des classes 6 et 7, dotation annuelle répartie au centime
+  sur les mois de calendrier de l'exercice, reliquat au dernier, mois
+  retouchable (l'année suit), annuel seul au-delà de douze mois, exercice
+  clôturé figé ; état budget / réalisé / N-1 (`GET
+  /analytique/etats/budget-comptes`, mois facultatif) · réalisé en
+  mouvement, écriture qui solde les comptes de gestion exclue, brouillard
+  compris, charge au débit net, produit au crédit net, non doté = `null`
+  et « hors budget ». Structure → Analytique → Budgets des comptes
+  (dotation), État → Suivi et prévision → Budget des comptes.
+
 ## Reste
 
-- 51 · budget par compte général
 - relecture, rejeu sur vraie base à travers une clôture
 
 ## Vérification

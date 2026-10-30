@@ -242,7 +242,9 @@ describe('menu « État » à 360 px', () => {
     // Le 2026-10-25 (ligne microfina-m1, idée 12), la concordance des modules
     // avec la comptabilité est entrée sous « Contrôle et révision » · une
     // relecture du cabinet, qui n'écrit rien. Les bornes tiennent.
-    expect(tous).toHaveLength(32);
+    // Le 2026-10-29 (ligne analytique, fonction n° 51), le budget des comptes
+    // face au réalisé et à N-1 est entré sous « Suivi et prévision ».
+    expect(tous).toHaveLength(33);
     expect([...vues].sort()).toEqual([...tous].sort());
     // DEUX BORNES, et plus un chiffre relevé d'un cran à chaque ajout · c'est
     // la troisième fois en une journée qu'une édition nouvelle faisait tomber
@@ -397,7 +399,8 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // au même groupe (fonction 47) · repos inchangé.
     // Ligne analytique (2026-10-29) · « Plans analytiques » et « Grilles
     // analytiques » réunis sous « Analytique » · repos inchangé.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 23],
+    // Puis « Budgets des comptes » au même groupe (fonction n° 51) · repos inchangé.
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 24],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.

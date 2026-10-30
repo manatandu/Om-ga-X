@@ -96,6 +96,8 @@ const ParametresDossierPage = lazy(() => import('../pages/ParametresDossierPage'
 const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').then((m) => ({ default: m.PlansAnalytiquesPage })));
 // Ligne analytique, fonction n° 48 · la grille analytique des comptes.
 const GrillesAnalytiquesPage = lazy(() => import('../pages/GrillesAnalytiquesPage').then((m) => ({ default: m.GrillesAnalytiquesPage })));
+// Ligne analytique, fonction n° 51 · le budget par compte général.
+const BudgetsComptesPage = lazy(() => import('../pages/BudgetsComptesPage').then((m) => ({ default: m.BudgetsComptesPage })));
 const BrouillardPage = lazy(() => import('../pages/BrouillardPage').then((m) => ({ default: m.BrouillardPage })));
 const ImportPage = lazy(() => import('../pages/ImportPage').then((m) => ({ default: m.ImportPage })));
 const ControlesPage = lazy(() => import('../pages/ControlesPage').then((m) => ({ default: m.ControlesPage })));
@@ -643,6 +645,18 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Grilles analytiques',
     titreCourt: 'Grilles analytiques',
     rendre: () => <GrillesAnalytiquesPage />,
+  },
+  {
+    motif: /^\/budgets-comptes$/,
+    titre: 'Budgets des comptes',
+    titreCourt: 'Budgets des comptes',
+    rendre: () => <BudgetsComptesPage ongletInitial="dotation" />,
+  },
+  {
+    motif: /^\/budgets-comptes\/etat$/,
+    titre: 'Budget des comptes',
+    titreCourt: 'Budget des comptes',
+    rendre: () => <BudgetsComptesPage ongletInitial="comparaison" />,
   },
   { motif: /^\/brouillard$/, titre: 'Brouillard', titreCourt: 'Brouillard', rendre: () => <BrouillardPage /> },
   { motif: /^\/import$/, titre: 'Importer des données', titreCourt: 'Import', rendre: () => <ImportPage /> },

@@ -41,6 +41,8 @@ export const CHEMINS_SANS_OBJET_SMT: readonly string[] = [
   // Pilotage, analytique et budget · aucun état budgétaire au SMT.
   '/plans-analytiques',
   '/grilles-analytiques',
+  '/budgets-comptes',
+  '/budgets-comptes/etat',
   '/od-analytiques',
   '/etats-analytiques',
   '/simulations-budgetaires',

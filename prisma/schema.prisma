@@ -842,6 +842,8 @@ model Tenant {
   // Ligne analytique, fonction n° 48 · les grilles analytiques des comptes.
   grillesAnalytiques        GrilleAnalytique[]
   lignesGrillesAnalytiques  LigneGrilleAnalytique[]
+  // Ligne analytique, fonction n° 51 · les budgets des comptes généraux.
+  budgetsComptes            BudgetCompte[]
   clesRepartition           CleRepartition[]
   lignesCleRepartition      LigneCleRepartition[]
   coutsProductionDeclares   CoutProductionDeclare[]
@@ -1462,6 +1464,8 @@ model Compte {
   odAnalytiques                 OdAnalytique[]
   // Ligne analytique, fonction n° 48 · sa répartition par défaut, plan par plan.
   grillesAnalytiques            GrilleAnalytique[]
+  // Ligne analytique, fonction n° 51 · son budget, exercice par exercice.
+  budgetsCompte                 BudgetCompte[]
   journauxTresorerie            Journal[] // journaux de type TRESORERIE dont ce compte est la contrepartie
   // Rattachement à un tiers (cf. §3.2) : au plus un tiers par compte · un
   // compte de classe 4 est le sous-compte auxiliaire d'un seul tiers.
@@ -1900,6 +1904,8 @@ model Exercice {
   depreciationsImmo            DepreciationImmobilisation[]
   reclassementsImmo            ReclassementImmobilisation[]
   budgetsSection               BudgetSection[]
+  // Ligne analytique, fonction n° 51 · les budgets des comptes de l'exercice.
+  budgetsCompte                BudgetCompte[]
   engagementsDepense           EngagementDepense[]
   bonsCommandeFournisseur      BonCommandeFournisseur[]
   arretesCaisse                ArreteCaisse[]
@@ -11886,6 +11892,32 @@ model LigneGrilleAnalytique {
   @@index([tenantId, grilleId])
   @@index([sectionId])
   @@map("lignes_grilles_analytiques")
+}
+
+// Ligne analytique, fonction n° 51 · le budget d'un compte général.
+
+/// LA DOTATION D'UN COMPTE DE CHARGE OU DE PRODUIT (classes 6 et 7) SUR UN
+/// EXERCICE · une ligne `mois = null` porte l'annuel, les lignes mensuelles
+/// (mois de calendrier, 1 à 12) le déclinent, au centime, le reliquat sur le
+/// dernier (`budget-compte.ts`) ; un exercice de plus de douze mois n'a que
+/// l'annuel. L'index unique tient deux NULL pour égaux (NULLS NOT DISTINCT,
+/// posé par la migration, comme `budgets_section`). Convention d'OmegaX ·
+/// aucun texte ne régit ce budget, qui n'entre dans aucun état financier.
+model BudgetCompte {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  compteId   String
+  compte     Compte   @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  exerciceId String
+  exercice   Exercice @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  mois       Int?
+  montant    Decimal  @db.Decimal(18, 2)
+
+  @@unique([compteId, exerciceId, mois])
+  @@index([tenantId, exerciceId])
+  @@index([exerciceId])
+  @@map("budgets_compte")
 }
 
 // Ligne sage-l4 · annuler une dotation ou un traitement d'immobilisation

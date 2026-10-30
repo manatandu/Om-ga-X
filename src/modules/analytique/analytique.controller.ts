@@ -27,6 +27,8 @@ import { lireFiltreBalance } from './filtres-balance-analytique';
 import { lireOrigineJournal } from './journal-analytique';
 import { GrillesAnalytiquesService } from './grilles-analytiques.service';
 import { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
+import { BudgetsComptesService } from './budgets-comptes.service';
+import { DoterBudgetCompteDto, ModifierBudgetCompteMoisDto } from './dto/budget-compte.dto';
 
 /**
  * Même règle que le plan comptable et les journaux : consultation ouverte aux
@@ -48,7 +50,65 @@ export class AnalytiqueController {
     private readonly engagements: EngagementService,
     private readonly od: OdAnalytiqueService,
     private readonly grilles: GrillesAnalytiquesService,
+    private readonly budgetsComptes: BudgetsComptesService,
   ) {}
+
+  // --- Budgets des comptes généraux (fonction n° 51) -----------------------
+  // Une STRUCTURE comme le budget des sections · dotée par l'administrateur,
+  // lue par tous. Aucune écriture, aucun état financier.
+
+  @Get('comptes/:compteId/budget')
+  async budgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.budget(user.tenantId, compteId, exerciceId);
+  }
+
+  @Post('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async doterBudgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Body() dto: DoterBudgetCompteDto,
+  ) {
+    return this.budgetsComptes.doter(user.tenantId, compteId, dto);
+  }
+
+  @Patch('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierBudgetCompteMois(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Body() dto: ModifierBudgetCompteMoisDto,
+  ) {
+    return this.budgetsComptes.modifierMois(user.tenantId, compteId, dto);
+  }
+
+  @Delete('comptes/:compteId/budget')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async retirerBudgetCompte(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId') compteId: string,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.retirer(user.tenantId, compteId, exerciceId);
+  }
+
+  /** L'état · budget, réalisé et réalisé de l'exercice précédent, par compte, sur l'exercice ou un mois. */
+  @Get('etats/budget-comptes')
+  async etatBudgetComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('mois') moisTexte?: string,
+  ) {
+    const texte = (moisTexte ?? '').trim();
+    if (texte !== '' && !/^(?:[1-9]|1[0-2])$/.test(texte)) {
+      throw new BadRequestException('Le mois est un nombre de 1 à 12, ou rien pour l’exercice entier.');
+    }
+    return this.budgetsComptes.etat(user.tenantId, { exerciceId, mois: texte === '' ? undefined : Number(texte) });
+  }
 
   // --- Grilles analytiques des comptes (fonction n° 48) --------------------
   // Une STRUCTURE, comme le plan · posée et retirée par l'administrateur, lue

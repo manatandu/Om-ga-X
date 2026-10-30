@@ -504,6 +504,8 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
     'Relevé importé en masse · la pièce est le relevé de la banque, le pointage se lit sur le rapprochement journalisé.',
   VentilationAnalytique: "Ventilations engendrées ligne à ligne avec les écritures · reconstituables depuis l'écriture.",
   BudgetSection: "Budgets mensuels engendrés en série (dotation, report d'exercice) · la section est journalisée.",
+  BudgetCompte:
+    'Budgets mensuels engendrés en série par la dotation (fonction n° 51) · une prévision, ni écriture ni état financier, que le compte journalisé porte.',
   EcheanceAbonnement: "Échéances engendrées par le modèle d'abonnement, journalisé · chacune pointe vers son écriture.",
   FicheInventaire: "Fiches créées par centaines en une fois · l'écart qu'elles produisent, et sa décision, sont journalisés.",
   LigneBalanceConsolidation: "Balance de filiale importée en masse · l'entité porte la date et le nom du fichier importé.",

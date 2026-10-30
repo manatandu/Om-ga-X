@@ -13,6 +13,7 @@ import { PiecesJointesSectionController } from './pieces-jointes-section.control
 import { BonsCommandeController } from './bons-commande.controller';
 import { BonsCommandeService } from './bons-commande.service';
 import { GrillesAnalytiquesService } from './grilles-analytiques.service';
+import { BudgetsComptesService } from './budgets-comptes.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, PiecesJointesModule],
@@ -31,6 +32,8 @@ import { GrillesAnalytiquesService } from './grilles-analytiques.service';
     ComptabiliteGestionService,
     BonsCommandeService,
     GrillesAnalytiquesService,
+    // Ligne analytique, fonction n° 51 · les budgets des comptes généraux.
+    BudgetsComptesService,
   ],
   exports: [AnalytiqueService, EngagementService],
 })

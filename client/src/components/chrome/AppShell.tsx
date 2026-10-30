@@ -267,6 +267,8 @@ export function AppShell() {
             { label: 'Plans analytiques', chemin: '/plans-analytiques', onClick: () => navigate('/plans-analytiques') },
             // Ligne analytique, fonction n° 48 · la répartition par défaut d'un compte, proposée à la saisie.
             { label: 'Grilles analytiques', chemin: '/grilles-analytiques', onClick: () => navigate('/grilles-analytiques') },
+            // Ligne analytique, fonction n° 51 · le budget par compte général, sa dotation.
+            { label: 'Budgets des comptes', chemin: '/budgets-comptes', onClick: () => navigate('/budgets-comptes') },
           ],
         },
         { label: 'Codes journaux', chemin: '/journaux', onClick: () => navigate('/journaux') },
@@ -546,6 +548,8 @@ export function AppShell() {
           items: [
             { label: 'Échéancier de trésorerie', chemin: '/echeancier', onClick: () => navigate('/echeancier') },
             { label: 'États analytiques et budgétaires', chemin: '/etats-analytiques', onClick: () => navigate('/etats-analytiques') },
+            // Ligne analytique, fonction n° 51 · le budget des comptes face au réalisé et à N-1.
+            { label: 'Budget des comptes', chemin: '/budgets-comptes/etat', onClick: () => navigate('/budgets-comptes/etat') },
             // Priorité 6 · un prévu tiré d'un exercice de référence, comparé au
             // réalisé. Aucune écriture, seules les hypothèses sont gardées.
             { label: 'Simulateur budgétaire', chemin: '/simulations-budgetaires', onClick: () => navigate('/simulations-budgetaires') },
