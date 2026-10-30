@@ -12,6 +12,8 @@ import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.
 import { PiecesJointesSectionController } from './pieces-jointes-section.controller';
 import { BonsCommandeController } from './bons-commande.controller';
 import { BonsCommandeService } from './bons-commande.service';
+import { GrillesAnalytiquesService } from './grilles-analytiques.service';
+import { BudgetsComptesService } from './budgets-comptes.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, PiecesJointesModule],
@@ -21,7 +23,18 @@ import { BonsCommandeService } from './bons-commande.service';
   // Ligne sage-l6 · les documents des sections (fonction 22).
   // Ligne microfina-m2, idée 2 · les bons de commande qui font naître les engagements.
   controllers: [AnalytiqueController, ComptabiliteGestionController, PiecesJointesSectionController, BonsCommandeController],
-  providers: [AnalytiqueService, EtatsAnalytiquesService, EngagementService, OdAnalytiqueService, ComptabiliteGestionService, BonsCommandeService],
+  // Ligne analytique, fonction n° 48 · les grilles analytiques des comptes.
+  providers: [
+    AnalytiqueService,
+    EtatsAnalytiquesService,
+    EngagementService,
+    OdAnalytiqueService,
+    ComptabiliteGestionService,
+    BonsCommandeService,
+    GrillesAnalytiquesService,
+    // Ligne analytique, fonction n° 51 · les budgets des comptes généraux.
+    BudgetsComptesService,
+  ],
   exports: [AnalytiqueService, EngagementService],
 })
 export class AnalytiqueModule {}

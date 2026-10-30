@@ -53,6 +53,10 @@ const FILTRES_NOMMES: Record<string, string> = {
   valideesDepuisLePv: 'src/modules/inventaire/solde-caisse-au-comptage.ts',
   filtreEcarteDuPointage: 'src/modules/rapprochement/rapprochement.service.ts',
   filtreLignesDeBienSansFiche: 'src/modules/immobilisations/creation-depuis-ecritures.service.ts',
+  // Ligne analytique, fonction n° 52 · le périmètre du contrôle des cumuls et
+  // du grand livre des lignes non ventilées.
+  perimetreDuPlan: 'src/modules/analytique/journal-analytique.ts',
+  sansRepartitionSur: 'src/modules/analytique/journal-analytique.ts',
 };
 
 // ---------------------------------------------------------------------------

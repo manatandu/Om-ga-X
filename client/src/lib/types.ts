@@ -1962,9 +1962,16 @@ export interface LigneBalanceAnalytique {
   solde: number;
 }
 
+/** Fonction n° 53 · les sections montrées par la balance analytique. */
+export type FiltreBalanceAnalytique = 'TOUTES' | 'MOUVEMENTEES' | 'NON_SOLDEES';
+
 export interface BalanceAnalytique {
   lignes: LigneBalanceAnalytique[];
+  /** Totaux de TOUTES les sections Détail, quel que soit le filtre. */
   totaux: { debit: number; credit: number; solde: number };
+  filtre: FiltreBalanceAnalytique;
+  /** Sections masquées par le filtre · leurs montants restent aux totaux. */
+  masquees: number;
 }
 
 export interface LigneGrandLivreAnalytique {
@@ -1991,6 +1998,56 @@ export interface GrandLivreAnalytique {
     dateFin: string | null;
   };
   lignes: LigneGrandLivreAnalytique[];
+  totaux: { debit: number; credit: number; solde: number };
+}
+
+/** Fonction n° 52 · le journal analytique d'un axe, toutes lignes ou OD seules. */
+export type OrigineJournalAnalytique = 'TOUTES' | 'OD';
+
+export interface JournalAnalytique {
+  plan: { id: string; code: string; intitule: string };
+  origine: OrigineJournalAnalytique;
+  lignes: {
+    id: string;
+    origine: 'VENTILATION' | 'OD';
+    date: string;
+    journal: string;
+    numeroPiece: number | null;
+    /** Statut de l'écriture ventilée · `null` sur une ligne d'OD. */
+    statut: string | null;
+    sectionCode: string;
+    sectionIntitule: string;
+    compteNumero: string;
+    compteIntitule: string;
+    libelle: string;
+    debit: number;
+    credit: number;
+  }[];
+  /** Nombre de lignes de toute la fenêtre · la liste n'en montre peut-être qu'une tranche. */
+  total: number;
+  tronque: boolean;
+  /** Totaux de toute la fenêtre, pris par la base. */
+  totaux: { debit: number; credit: number };
+}
+
+/** Fonction n° 52 · les lignes restées sans répartition sur un axe, en grand livre. */
+export interface LignesNonVentilees {
+  plan: { id: string; code: string; intitule: string; classesVentilees: string };
+  lignes: {
+    ligneEcritureId: string;
+    date: string;
+    journal: string;
+    numeroPiece: number | null;
+    statut: string;
+    compteNumero: string;
+    compteIntitule: string;
+    libelle: string;
+    debit: number;
+    credit: number;
+    soldeProgressif: number;
+  }[];
+  total: number;
+  tronque: boolean;
   totaux: { debit: number; credit: number; solde: number };
 }
 

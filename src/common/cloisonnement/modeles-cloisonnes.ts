@@ -222,6 +222,11 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne sage-l5 · fonction 88, la répartition analytique de la paie.
   'RepartitionAnalytiquePaie',
   'LigneRepartitionAnalytiquePaie',
+  // Ligne analytique, fonction n° 48 · la grille d'un compte et ses lignes.
+  'GrilleAnalytique',
+  'LigneGrilleAnalytique',
+  // Ligne analytique, fonction n° 51 · le budget d'un compte général.
+  'BudgetCompte',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

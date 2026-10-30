@@ -24,7 +24,7 @@ type Faux = Record<string, unknown>;
  * doublure qui répondrait « un » partout validerait une liste qu'aucune
  * requête ne ramène.
  */
-function prismaSuppression(usages: { engagements?: number; ventilations?: number; lignesOd?: number; ods?: number; budgetsClos?: number; cles?: number; repartitionsPaie?: number; documents?: number } = {}) {
+function prismaSuppression(usages: { engagements?: number; ventilations?: number; lignesOd?: number; ods?: number; budgetsClos?: number; cles?: number; repartitionsPaie?: number; documents?: number; grilles?: number } = {}) {
   const ops: string[] = [];
   const compteur = (n: number | undefined, champ: string) =>
     jest.fn(({ where }: { where: Record<string, unknown> }) => {
@@ -61,6 +61,9 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
     // Ligne sage-l5, fonction 88 · la répartition analytique de la paie retient sa section et son plan.
     ligneRepartitionAnalytiquePaie: { count: compteur(usages.repartitionsPaie, 'sectionId') },
     repartitionAnalytiquePaie: { count: compteur(undefined, 'planId') },
+    // Ligne analytique, fonction n° 48 · la grille d'un compte retient sa section et son plan.
+    ligneGrilleAnalytique: { count: compteur(usages.grilles, 'sectionId') },
+    grilleAnalytique: { count: compteur(undefined, 'planId') },
     // Ligne immos, n° 70 · un bien et une famille retiennent la section de leur dotation.
     immobilisation: { count: compteur(undefined, 'sectionAnalytiqueId') },
     familleImmobilisation: { count: compteur(undefined, 'sectionAnalytiqueId') },
@@ -112,6 +115,12 @@ describe('F142 · une section utilisée ne se supprime pas, et le refus la nomme
   it('une répartition analytique de la paie retient sa section (ligne sage-l5, fonction 88), et le refus la nomme', async () => {
     const { prisma, ops } = prismaSuppression({ repartitionsPaie: 2 });
     await expect(service(prisma).supprimerSection('t1', 's1')).rejects.toThrow(/répartitions analytiques de la paie \(2\)/);
+    expect(ops).toEqual([]);
+  });
+
+  it('une grille analytique de compte retient sa section (fonction n° 48), et le refus la nomme', async () => {
+    const { prisma, ops } = prismaSuppression({ grilles: 3 });
+    await expect(service(prisma).supprimerSection('t1', 's1')).rejects.toThrow(/grilles analytiques des comptes \(3\)/);
     expect(ops).toEqual([]);
   });
 

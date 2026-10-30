@@ -861,6 +861,11 @@ model Tenant {
   executionsBonCommande     ExecutionBonCommande[]
   odAnalytiques             OdAnalytique[]
   lignesOdAnalytique        LigneOdAnalytique[]
+  // Ligne analytique, fonction n° 48 · les grilles analytiques des comptes.
+  grillesAnalytiques        GrilleAnalytique[]
+  lignesGrillesAnalytiques  LigneGrilleAnalytique[]
+  // Ligne analytique, fonction n° 51 · les budgets des comptes généraux.
+  budgetsComptes            BudgetCompte[]
   clesRepartition           CleRepartition[]
   lignesCleRepartition      LigneCleRepartition[]
   coutsProductionDeclares   CoutProductionDeclare[]
@@ -1489,6 +1494,10 @@ model Compte {
 
   lignesEcriture                LigneEcriture[]
   odAnalytiques                 OdAnalytique[]
+  // Ligne analytique, fonction n° 48 · sa répartition par défaut, plan par plan.
+  grillesAnalytiques            GrilleAnalytique[]
+  // Ligne analytique, fonction n° 51 · son budget, exercice par exercice.
+  budgetsCompte                 BudgetCompte[]
   journauxTresorerie            Journal[] // journaux de type TRESORERIE dont ce compte est la contrepartie
   // Rattachement à un tiers (cf. §3.2) : au plus un tiers par compte · un
   // compte de classe 4 est le sous-compte auxiliaire d'un seul tiers.
@@ -1927,6 +1936,8 @@ model Exercice {
   depreciationsImmo            DepreciationImmobilisation[]
   reclassementsImmo            ReclassementImmobilisation[]
   budgetsSection               BudgetSection[]
+  // Ligne analytique, fonction n° 51 · les budgets des comptes de l'exercice.
+  budgetsCompte                BudgetCompte[]
   engagementsDepense           EngagementDepense[]
   bonsCommandeFournisseur      BonCommandeFournisseur[]
   arretesCaisse                ArreteCaisse[]
@@ -2482,10 +2493,10 @@ model LigneEcriture {
   // L'imputation DÉCLARÉE d'un paiement (Code civil, Livre III, art. 151 et
   // 153 ; décision par la loi du 2026-10-07, point 4) · la ligne du paiement,
   // et la ligne de la facture qu'il paie.
-  imputationsDuPaiement ImputationPaiement[] @relation("ImputationPaiementReglement")
-  imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
+  imputationsDuPaiement ImputationPaiement[]  @relation("ImputationPaiementReglement")
+  imputationsSurFacture ImputationPaiement[]  @relation("ImputationPaiementFacture")
   /// Ligne sage-l4, n° 68 · le bien né de cette ligne d'acquisition déjà passée.
-  immobilisationAcquise Immobilisation?      @relation("ImmoLigneAcquisition")
+  immobilisationAcquise Immobilisation?       @relation("ImmoLigneAcquisition")
   /// Ligne gl-saisie, fonction 33 · la décision de relance posée sur cette ligne (exclusion, échéance accordée).
   decisionRelance       DecisionRelanceLigne?
 
@@ -3362,6 +3373,8 @@ model PlanAnalytique {
   clesRepartition  CleRepartition[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie sur ce plan.
   repartitionsPaie RepartitionAnalytiquePaie[]
+  // Ligne analytique, fonction n° 48 · les grilles des comptes sur ce plan.
+  grilles          GrilleAnalytique[]
 
   @@unique([tenantId, code])
   @@map("plans_analytiques")
@@ -3398,24 +3411,26 @@ model SectionAnalytique {
   estActive Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  budgets               BudgetSection[]
-  ventilations          VentilationAnalytique[]
-  engagements           EngagementDepense[]
-  lignesBonCommande     LigneBonCommande[]
-  executionsBonCommande ExecutionBonCommande[]
-  lignesOd              LigneOdAnalytique[]
-  clesSource            CleRepartition[]                 @relation("CleSource")
-  lignesCle             LigneCleRepartition[]
-  coutsProduction       CoutProductionDeclare[]
+  budgets                BudgetSection[]
+  ventilations           VentilationAnalytique[]
+  engagements            EngagementDepense[]
+  lignesBonCommande      LigneBonCommande[]
+  executionsBonCommande  ExecutionBonCommande[]
+  lignesOd               LigneOdAnalytique[]
+  clesSource             CleRepartition[]                 @relation("CleSource")
+  lignesCle              LigneCleRepartition[]
+  coutsProduction        CoutProductionDeclare[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie qui la nomment.
-  repartitionsPaie      LigneRepartitionAnalytiquePaie[]
+  repartitionsPaie       LigneRepartitionAnalytiquePaie[]
+  // Ligne analytique, fonction n° 48 · les grilles de comptes qui la nomment.
+  lignesGrille           LigneGrilleAnalytique[]
   // Ligne sage-l6 · fonction 22 · les documents de la section.
-  piecesJointes         PieceJointeSection[]
+  piecesJointes          PieceJointeSection[]
   // Ligne immos, fonction 70 · les biens et les familles dont la dotation s'y ventile.
-  immobilisations       Immobilisation[]                 @relation("ImmoSection")
-  famillesImmobilisation FamilleImmobilisation[]         @relation("FamilleImmoSection")
+  immobilisations        Immobilisation[]                 @relation("ImmoSection")
+  famillesImmobilisation FamilleImmobilisation[]          @relation("FamilleImmoSection")
   // Ligne paie-suite · les unités de l'organigramme qui la proposent à la paie.
-  unitesOrganisation    UniteOrganisation[]
+  unitesOrganisation     UniteOrganisation[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -4961,20 +4976,20 @@ model Immobilisation {
   /// comptable, recopiée sur la fiche de comptage (`FicheInventaire`).
   /// Jamais repris par la duplication · un numéro de série désigne UN objet.
   /// Ni code-barres ni étiquette (écartés, plan du 2026-10-29).
-  numeroSerie      String?   @db.VarChar(100)
+  numeroSerie      String? @db.VarChar(100)
 
   /// LIGNE IMMOS, FONCTION N° 65 · le nombre d'UNITÉS IDENTIQUES que la fiche
   /// porte (un lot de chaises, d'ordinateurs du même achat) · 1 pour un bien
   /// seul, ce qu'était toute fiche avant la ligne. Sans effet comptable tant
   /// que rien ne sort ; une partie des unités sort au prorata
   /// (`cession-partielle.ts`). Au moins 1, tenu par la base.
-  quantite         Int       @default(1)
+  quantite     Int              @default(1)
   /// Ligne immos, n° 65 · la fiche du LOT dont ces unités ont été sorties.
   /// RESTRICT · le lot garde la trace de chaque partie sortie, et ne se
   /// supprime plus.
-  fractionDeId     String?
-  fractionDe       Immobilisation?  @relation("ImmoFraction", fields: [fractionDeId], references: [id], onDelete: Restrict)
-  fractions        Immobilisation[] @relation("ImmoFraction")
+  fractionDeId String?
+  fractionDe   Immobilisation?  @relation("ImmoFraction", fields: [fractionDeId], references: [id], onDelete: Restrict)
+  fractions    Immobilisation[] @relation("ImmoFraction")
 
   /// LIGNE IMMOS, FONCTION N° 70 · la section analytique où se ventile la
   /// dotation de CE bien · elle prime sur celle de sa famille
@@ -6440,7 +6455,7 @@ model FicheInventaire {
   /// registre quand la fiche est engendrée (et complété au geste suivant sur
   /// une fiche plus ancienne qui n'en avait pas) · le compteur vérifie l'objet
   /// qu'il a devant lui. Une saisie sur la fiche prime, comme l'emplacement.
-  numeroSerie String?  @db.VarChar(100)
+  numeroSerie String? @db.VarChar(100)
 
   /// Étape 2. Null tant que la fiche n'a pas été servie · une fiche imprimée
   /// à blanc pour aller compter n'a pas de quantité, et zéro n'est pas la même
@@ -8988,22 +9003,22 @@ model AvanceSalaire {
 /// répartition analytique de la paie, jamais imposée (RESTRICT · une section
 /// nommée par une unité ne se retire pas en silence).
 model UniteOrganisation {
-  id                  String             @id @default(uuid())
+  id                  String              @id @default(uuid())
   tenantId            String
-  tenant              Tenant             @relation(fields: [tenantId], references: [id])
-  code                String             @db.VarChar(20)
-  intitule            String             @db.VarChar(120)
+  tenant              Tenant              @relation(fields: [tenantId], references: [id])
+  code                String              @db.VarChar(20)
+  intitule            String              @db.VarChar(120)
   /// Le niveau que le dossier nomme (« Direction », « Département »…) · libre, null permis.
-  niveau              String?            @db.VarChar(40)
+  niveau              String?             @db.VarChar(40)
   parentId            String?
-  parent              UniteOrganisation? @relation("UniteParente", fields: [parentId], references: [id], onDelete: Restrict)
+  parent              UniteOrganisation?  @relation("UniteParente", fields: [parentId], references: [id], onDelete: Restrict)
   enfants             UniteOrganisation[] @relation("UniteParente")
   sectionAnalytiqueId String?
-  sectionAnalytique   SectionAnalytique? @relation(fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
+  sectionAnalytique   SectionAnalytique?  @relation(fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
   /// En sommeil · ne reçoit plus de rattachement nouveau, l'historique reste.
-  estActive           Boolean            @default(true)
+  estActive           Boolean             @default(true)
   creePar             String
-  createdAt           DateTime           @default(now())
+  createdAt           DateTime            @default(now())
   rattachements       RattachementUnite[]
 
   @@unique([tenantId, code])
@@ -11498,30 +11513,30 @@ model RepriseCongesSalarie {
 /// l'allocation se lie ici ; annulé, le congé redevient à porter. Un congé ne
 /// se supprime pas, il s'annule avec son motif.
 model CongeSalarie {
-  id                         String        @id @default(uuid())
+  id                         String               @id @default(uuid())
   tenantId                   String
-  tenant                     Tenant        @relation(fields: [tenantId], references: [id])
+  tenant                     Tenant               @relation(fields: [tenantId], references: [id])
   salarieId                  String
-  salarie                    Salarie       @relation(fields: [salarieId], references: [id], onDelete: Restrict)
-  du                         DateTime      @db.Date
-  au                         DateTime      @db.Date
-  joursVoyage                Int           @default(0)
+  salarie                    Salarie              @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  du                         DateTime             @db.Date
+  au                         DateTime             @db.Date
+  joursVoyage                Int                  @default(0)
   /// AAAA-MM · le bulletin du mois qui porte l'allocation (art. 145, payée au départ).
-  moisDePaie                 String        @db.VarChar(7)
+  moisDePaie                 String               @db.VarChar(7)
   /// CDF ou USD · la monnaie de la rémunération convenue, celle du bulletin.
-  deviseAllocation           String?       @db.VarChar(3)
-  remunerationJournaliere    Decimal?      @db.Decimal(18, 2)
-  moyenneMensuelleArticle142 Decimal?      @db.Decimal(18, 2)
+  deviseAllocation           String?              @db.VarChar(3)
+  remunerationJournaliere    Decimal?             @db.Decimal(18, 2)
+  moyenneMensuelleArticle142 Decimal?             @db.Decimal(18, 2)
   /// Pris au-delà des droits nés (art. 140, al. 3) · dit, avec son motif.
-  auDelaDuSolde              Boolean       @default(false)
-  motifAuDelaDuSolde         String?       @db.VarChar(500)
+  auDelaDuSolde              Boolean              @default(false)
+  motifAuDelaDuSolde         String?              @db.VarChar(500)
   bulletinId                 String?
-  bulletin                   BulletinPaie? @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
+  bulletin                   BulletinPaie?        @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
   annuleLe                   DateTime?
   annulePar                  String?
-  motifAnnulation            String?       @db.VarChar(500)
+  motifAnnulation            String?              @db.VarChar(500)
   creePar                    String
-  createdAt                  DateTime      @default(now())
+  createdAt                  DateTime             @default(now())
   /// Ligne microfina-m3, idée 7 · la demande accordée qui l'a fait naître.
   demande                    DemandeCongeSalarie?
 
@@ -11982,6 +11997,79 @@ model LigneRepartitionAnalytiquePaie {
   @@index([repartitionId])
   @@index([sectionId])
   @@map("lignes_repartitions_analytiques_paie")
+}
+
+// Ligne analytique, fonction n° 48 · la grille analytique d'un compte.
+
+/// LA RÉPARTITION PAR DÉFAUT D'UN COMPTE GÉNÉRAL ENTRE LES SECTIONS D'UN PLAN
+/// (Sage, grille analytique du compte) · ses lignes font 100 %, deux
+/// décimales. La saisie la PROPOSE quand le compte est choisi, au centime par
+/// le plus fort reste (`grille-analytique.ts`) ; elle n'est jamais imposée, ni
+/// à la saisie, ni aux modules, ni aux imports. Une grille par compte et par
+/// plan. Convention d'OmegaX, aucun texte ne la régit (classe 9, « laissé à
+/// l'initiative des entités »).
+model GrilleAnalytique {
+  id        String                  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id])
+  compteId  String
+  compte    Compte                  @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  planId    String
+  plan      PlanAnalytique          @relation(fields: [planId], references: [id], onDelete: Restrict)
+  creePar   String
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+  lignes    LigneGrilleAnalytique[]
+
+  @@unique([compteId, planId])
+  @@index([tenantId, planId])
+  @@index([planId])
+  @@map("grilles_analytiques")
+}
+
+/// UNE SECTION ET SA PART · section Détail du plan de la grille, réécrite avec
+/// la grille, jamais retouchée seule.
+model LigneGrilleAnalytique {
+  id          String            @id @default(uuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  grilleId    String
+  grille      GrilleAnalytique  @relation(fields: [grilleId], references: [id], onDelete: Cascade)
+  sectionId   String
+  section     SectionAnalytique @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  pourcentage Decimal           @db.Decimal(5, 2)
+  rang        Int
+
+  @@unique([grilleId, sectionId])
+  @@index([tenantId, grilleId])
+  @@index([sectionId])
+  @@map("lignes_grilles_analytiques")
+}
+
+// Ligne analytique, fonction n° 51 · le budget d'un compte général.
+
+/// LA DOTATION D'UN COMPTE DE CHARGE OU DE PRODUIT (classes 6 et 7) SUR UN
+/// EXERCICE · une ligne `mois = null` porte l'annuel, les lignes mensuelles
+/// (mois de calendrier, 1 à 12) le déclinent, au centime, le reliquat sur le
+/// dernier (`budget-compte.ts`) ; un exercice de plus de douze mois n'a que
+/// l'annuel. L'index unique tient deux NULL pour égaux (NULLS NOT DISTINCT,
+/// posé par la migration, comme `budgets_section`). Convention d'OmegaX ·
+/// aucun texte ne régit ce budget, qui n'entre dans aucun état financier.
+model BudgetCompte {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  compteId   String
+  compte     Compte   @relation(fields: [compteId], references: [id], onDelete: Restrict)
+  exerciceId String
+  exercice   Exercice @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  mois       Int?
+  montant    Decimal  @db.Decimal(18, 2)
+
+  @@unique([compteId, exerciceId, mois])
+  @@index([tenantId, exerciceId])
+  @@index([exerciceId])
+  @@map("budgets_compte")
 }
 
 // Ligne sage-l4 · annuler une dotation ou un traitement d'immobilisation
@@ -13338,16 +13426,16 @@ enum StatutDemandeConge {
 /// formulaire en JSON jugé par `bilan-social.ts`, jamais un montant reçu sans
 /// sa monnaie.
 model BilanSocial {
-  id             String   @id @default(uuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
   /// L'année civile E du bilan.
-  exercice       Int
+  exercice      Int
   /// [{ numero, nombre, budgete, realise, devise }], montants en chaînes décimales.
-  lignes         Json
-  commentaire    String?  @db.VarChar(4000)
-  enregistrePar  String
-  enregistreLe   DateTime @default(now())
+  lignes        Json
+  commentaire   String?  @db.VarChar(4000)
+  enregistrePar String
+  enregistreLe  DateTime @default(now())
 
   @@unique([tenantId, exercice])
   @@map("bilans_sociaux")
