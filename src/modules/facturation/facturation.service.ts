@@ -1,5 +1,5 @@
 import { estFactureVisee, nommerAuteur } from '../comptabilite/circuit-visa';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { NatureFacture, Prisma, SensFacture, StatutEcriture } from '@prisma/client';
 import { EncoursClientService } from '../commercial/encours-client.service';
@@ -38,6 +38,8 @@ const nombre = (d: Prisma.Decimal | number | null): number | null =>
  */
 @Injectable()
 export class FacturationService {
+  private readonly journal = new Logger('FacturationService');
+
   constructor(private readonly prisma: PrismaService) {}
 
   private async dossier(tenantId: string) {
@@ -343,12 +345,28 @@ export class FacturationService {
     // silencieux ») · la pièce annoncerait une remise que son montant hors
     // taxes ne retranche pas, et la taxe se calculerait sur le prix entier. Le
     // montant qui FIGURE fait foi (art. 134), rien n'est corrigé · averti.
+    //
+    // LA TAXE QUI NE SUIT PAS SA BASE SE DIT AUSSI (relecture indépendante,
+    // M1 et M2) · une ligne non imposable qui porte une taxe, ou une taxe qui
+    // s'écarte de taux × montant hors taxes de plus d'un centime (taxe restée
+    // d'un article précédent, ou calculée sur le brut avant remise) passerait
+    // au 443 telle quelle. Avertie, jamais corrigée · la pièce fait foi.
     const avertissementsLignes = dto.lignes.flatMap((l, i) => {
-      if (!l.remisePourcent) return [];
+      const dits: string[] = [];
       const brut = Math.round(l.quantite * l.prixUnitaire * 100);
-      return Math.round(l.montantHT * 100) >= brut && brut > 0
-        ? [`Ligne ${i + 1} · une remise de ${l.remisePourcent} % est portée, mais le montant hors taxes n'est pas inférieur à quantité × prix unitaire · vérifiez que la remise est déduite.`]
-        : [];
+      if (l.remisePourcent && Math.round(l.montantHT * 100) >= brut && brut > 0) {
+        dits.push(`Ligne ${i + 1} · une remise de ${l.remisePourcent} % est portée, mais le montant hors taxes n'est pas inférieur à quantité × prix unitaire · vérifiez que la remise est déduite.`);
+      }
+      const taxe = Math.round((l.montantTva ?? 0) * 100);
+      if (l.imposable === false && taxe !== 0) {
+        dits.push(`Ligne ${i + 1} · la ligne est non imposable mais porte une taxe de ${(taxe / 100).toLocaleString('fr-FR')} · retirez la taxe ou rendez la ligne imposable.`);
+      } else if (l.tauxApplique !== undefined && l.tauxApplique !== null) {
+        const attendue = Math.round(l.montantHT * l.tauxApplique);
+        if (Math.abs(taxe - attendue) > 1) {
+          dits.push(`Ligne ${i + 1} · la taxe (${(taxe / 100).toLocaleString('fr-FR')}) n'est pas ${l.tauxApplique} % du montant hors taxes de ${l.montantHT.toLocaleString('fr-FR')}, soit ${(attendue / 100).toLocaleString('fr-FR')} · vérifiez qu'elle est calculée sur le montant net de la remise.`);
+        }
+      }
+      return dits;
     });
     const idsArticles = [...new Set(dto.lignes.map((l) => l.articleId).filter((x): x is string => !!x))];
     if (idsArticles.length) {
@@ -441,7 +459,11 @@ export class FacturationService {
       try {
         encours = (await new EncoursClientService(this.prisma).encours(tenantId, dto.tiersId, dateFacture)).avertissement;
       } catch (e) {
-        encours = `Encours du client non calculé · ${e instanceof Error ? e.message : 'lecture impossible'}. L'encours maximum n'a pas été confronté.`;
+        // Un motif servi (refus nommé) se dit tel quel ; une panne se consigne
+        // au journal du serveur et l'écran reçoit un motif fixe, jamais le
+        // texte brut d'une erreur de base (relecture indépendante, mineur 6).
+        if (!(e instanceof HttpException)) this.journal.error(`Encours du client ${dto.tiersId} non calculé à l'enregistrement de la facture ${facture.id}`, e instanceof Error ? e.stack : String(e));
+        encours = `Encours du client non calculé · ${e instanceof HttpException ? e.message : 'lecture impossible, consignée au journal du serveur'}. L'encours maximum n'a pas été confronté.`;
       }
     }
     return {

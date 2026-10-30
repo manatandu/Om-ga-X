@@ -122,6 +122,31 @@ async function main() {
     refus = null;
     try { await A.appeler('DELETE', `/commercial/articles/${art.id}`); } catch (x) { refus = x; }
     verifier(refus && refus.statut >= 400 && /lignes de facture/.test(refus.message), `90 · l'article facturé ne se supprime plus (${refus?.statut})`);
+
+    // Relecture indépendante, M1 et M2 · la taxe calculée sur le brut (16 % de
+    // 90 000) au lieu du net (78 900) est avertie, la juste ne dit rien.
+    const taux = (await A.get('/taux-tva')).find((t) => Number(t.taux) === 16 && t.estActif);
+    verifier(!!taux, `un taux de 16 % au dossier (${taux?.code})`);
+    const fBrut = await A.post('/facturation', { sens: 'VENTE', numeroSerie: 'FV-L8-2', dateFacture: '2027-02-03', tiersId: cli.id, lignes: [{ designation: 'Ciment 50 kg', quantite: 3, prixUnitaire: 30_000, montantHT: 78_900, remisePourcent: 12.5, articleId: art.id, tauxTvaId: taux.id, tauxApplique: 16, montantTva: 14_400 }] });
+    verifier((fBrut.avertissementsLignes ?? []).some((m) => /n'est pas 16 % du montant hors taxes de 78\s900, soit 12\s624/.test(m)), `M2 · taxe sur le brut avertie · ${(fBrut.avertissementsLignes ?? []).join(' ')}`);
+    const fJuste = await A.post('/facturation', { sens: 'VENTE', numeroSerie: 'FV-L8-3', dateFacture: '2027-02-03', tiersId: cli.id, lignes: [{ designation: 'Ciment 50 kg', quantite: 3, prixUnitaire: 30_000, montantHT: 78_900, remisePourcent: 12.5, articleId: art.id, tauxTvaId: taux.id, tauxApplique: 16, montantTva: 12_624 }] });
+    verifier(!fJuste.avertissementsLignes, 'M1 · la taxe juste (12 624) ne dit rien');
+    const fExo = await A.post('/facturation', { sens: 'VENTE', numeroSerie: 'FV-L8-4', dateFacture: '2027-02-03', tiersId: cli.id, lignes: [{ designation: 'Ciment 50 kg', quantite: 1, prixUnitaire: 1_000, montantHT: 1_000, imposable: false, montantTva: 160 }] });
+    verifier((fExo.avertissementsLignes ?? []).some((m) => /non imposable mais porte une taxe/.test(m)), 'M1 · la ligne non imposable qui porte une taxe est avertie');
+
+    // Relecture indépendante, M3 · un tiers HÉRITÉ, rattaché au seul collectif
+    // commun (donnée d'avant la panoplie, posée en base), et le collectif qui
+    // porte le compte du client · encours « non calculé », jamais celui de tous.
+    const individuel = await prisma.compte.findUnique({ where: { id: compteClient.id }, select: { collectifId: true } });
+    const ancien = await A.post('/tiers', { type: 'CLIENT', code: 'C-ANCIEN', nom: 'Client hérité', creerCompteIndividuel: false, encoursMaximum: 1 });
+    await prisma.tiersCompte.create({ data: { tiersId: ancien.id, compteId: individuel.collectifId, estPrincipal: true } });
+    const eAncien = await A.get(`/commercial/encours/${ancien.id}?date=2027-02-04`);
+    verifier(eAncien.soldeComptable === null && /collectif .* qui porte les comptes d'autres tiers/.test(eAncien.avertissement ?? ''), `M3 · encours du tiers hérité · ${eAncien.avertissement}`);
+    const devisesApres = await A.get('/tiers/devises-des-comptes');
+    verifier(!devisesApres.comptes.some((c) => c.compteId === individuel.collectifId), 'M3 · aucune devise proposée sur le collectif commun');
+    // Le client garde son encours propre · 80 000 de solde, les quatre factures non passées de 2027.
+    const eCli = await A.get(`/commercial/encours/${cli.id}?date=2027-02-04`);
+    verifier(eCli.soldeComptable === 80_000 && eCli.facturesNonComptabilisees === 78_900 + 93_300 + 91_524 + 1_160, `client · solde ${eCli.soldeComptable}, non passées ${eCli.facturesNonComptabilisees}`);
   } finally {
     srv.kill();
     await prisma.$disconnect();

@@ -898,18 +898,21 @@ export class TiersService {
    * LA DEVISE HABITUELLE DE CHAQUE COMPTE DE TIERS (fonction 25) · pour la
    * proposition de la saisie. Bornée, et la borne se dit (§ 8 bis) · une
    * liste tronquée laisse sans proposition les comptes qu'elle ne porte pas,
-   * jamais une devise fausse.
+   * jamais une devise fausse. UN COLLECTIF QUI PORTE DES COMPTES INDIVIDUELS
+   * N'EN REÇOIT AUCUNE (relecture indépendante, M3) · resté rattaché à un tiers
+   * ancien, il proposerait la devise de ce tiers à tous les clients du
+   * collectif.
    */
   async devisesDesComptes(tenantId: string) {
     const PLAFOND = 2000;
     const [liens, total] = await Promise.all([
       this.prisma.tiersCompte.findMany({
-        where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } } },
+        where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } }, compte: { individuels: { none: {} } } },
         select: { compteId: true, tiers: { select: { code: true, deviseId: true, devise: { select: { code: true } } } } },
         orderBy: { compteId: 'asc' },
         take: PLAFOND,
       }),
-      this.prisma.tiersCompte.count({ where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } } } }),
+      this.prisma.tiersCompte.count({ where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } }, compte: { individuels: { none: {} } } } }),
     ]);
     return {
       total,

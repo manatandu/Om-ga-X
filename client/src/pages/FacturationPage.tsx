@@ -17,7 +17,7 @@ import { Aide } from '../components/chrome/Aide';
 import { BlocEmetteur, montantImprime, TableauLignes } from '../components/PieceImprimable';
 import { avertissementArticle17, manquesDeLaPiece, mentionDebitsProposee, type MentionsRecopiees } from '../lib/mentions-piece';
 import type { TauxTva, Tiers } from '../lib/types';
-import { montantHTPropose, type ArticleCommercial, type EncoursClient, type ListeArticlesCommerciaux, type PrixPropose } from '../lib/gestion-commerciale';
+import { compteDesArticles, montantHTPropose, taxeProposee, type ArticleCommercial, type EncoursClient, type ListeArticlesCommerciaux, type PrixPropose } from '../lib/gestion-commerciale';
 
 /** Le motif d'un refus servi, sinon le défaut · un échec se dit (§ 9 ter). */
 const motifDe = (e: unknown, defaut: string) => (e instanceof ApiError ? e.message : defaut);
@@ -372,37 +372,62 @@ export function FacturationPage() {
    * est portée. Une proposition du serveur, que le cabinet corrige ; un échec
    * se dit et la ligne garde ce qui était tapé.
    */
-  const choisirArticle = async (id: string) => {
+  // Jeton de la dernière demande · une réponse périmée (un autre article ou
+  // un autre client choisi entre-temps) est jetée (relecture indépendante,
+  // mineur 5).
+  const jetonArticle = useRef(0);
+  const choisirArticle = async (id: string, client: string = tiersId) => {
+    const jeton = ++jetonArticle.current;
     setArticleId(id);
     setAnnonceArticle(null);
     if (!id) return;
     const q = new URLSearchParams({ articleId: id, sens });
-    if (tiersId) q.set('tiersId', tiersId);
+    if (client) q.set('tiersId', client);
     try {
       const p = await api.get<PrixPropose>(`/commercial/articles-proposition-prix?${q.toString()}`);
+      if (jeton !== jetonArticle.current) return;
       setDesignation(p.designation);
-      if (p.prixUnitaireHT !== null) setPrixUnitaire(p.prixUnitaireHT);
+      setPrixUnitaire(p.prixUnitaireHT ?? '');
       setRemise(p.remisePourcent ? p.remisePourcent : '');
-      if (p.exonere) {
-        setImposable(false);
-        setTauxTvaId('');
-        setTauxApplique('');
-      } else if (p.tauxTvaId) {
-        setImposable(true);
-        setTauxTvaId(p.tauxTvaId);
-        const t = tauxListe.find((x) => x.id === p.tauxTvaId);
-        if (t) setTauxApplique(Number(t.taux));
-      }
-      if (p.prixNetUnitaireHT !== null && quantite !== '') setMontantHT(montantHTPropose(Number(quantite), p.prixNetUnitaireHT));
+      // L'ARTICLE DÉCIDE DE LA TAXE DE LA LIGNE, TOUT ENTIÈRE · rien n'est
+      // hérité de l'article précédent (mineur 5) · exonéré, sans taux ; taxé,
+      // son taux ; ni l'un ni l'autre, imposable sans taux, à choisir.
+      setImposable(!p.exonere);
+      const t = p.exonere || !p.tauxTvaId ? undefined : tauxListe.find((x) => x.id === p.tauxTvaId);
+      setTauxTvaId(t ? t.id : '');
+      setTauxApplique(t ? Number(t.taux) : '');
+      setMontantHT(p.prixNetUnitaireHT !== null && quantite !== '' ? montantHTPropose(Number(quantite), p.prixNetUnitaireHT) : '');
       setAnnonceArticle(
-        p.source === 'AUCUN'
-          ? 'Article sans prix · saisissez le prix unitaire.'
-          : `Prix ${p.source === 'TARIF_CLIENT' ? 'du tarif du client' : 'de base de l’article'}${p.remisePourcent ? `, remise de ${p.remisePourcent} %` : ''}${p.prixNetUnitaireHT !== null ? ` · prix net ${montant(p.prixNetUnitaireHT)}` : ''}${quantite === '' ? ' · portez la quantité, puis le montant HT' : ''}.`,
+        [
+          p.source === 'AUCUN'
+            ? 'Article sans prix · saisissez le prix unitaire.'
+            : `Prix ${p.source === 'TARIF_CLIENT' ? 'du tarif du client' : 'de base de l’article'}${p.remisePourcent ? `, remise de ${p.remisePourcent} %` : ''}${p.prixNetUnitaireHT !== null ? ` · prix net ${montant(p.prixNetUnitaireHT)}` : ''}${quantite === '' ? ' · portez la quantité, puis le montant HT' : ''}.`,
+          p.avertissement,
+        ]
+          .filter(Boolean)
+          .join(' '),
       );
     } catch (e) {
-      setAnnonceArticle(`Proposition de l’article non lue · ${motifDe(e, 'serveur injoignable')}.`);
+      if (jeton === jetonArticle.current) setAnnonceArticle(`Proposition de l’article non lue · ${motifDe(e, 'serveur injoignable')}.`);
     }
   };
+
+  // LE TARIF SE RELIT AU CHANGEMENT DE CLIENT (mineur 5) · le prix proposé
+  // pour l'ancien client ne reste pas sur la ligne du nouveau.
+  useEffect(() => {
+    if (articleId) void choisirArticle(articleId, tiersId);
+    // Seul le client relance · `choisirArticle` lit l'état courant à son appel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiersId]);
+
+  // LA TAXE SUIT SA BASE (relecture indépendante, M1) · à chaque changement de
+  // montant HT, de taux ou d'exonération, la taxe est reproposée au taux ×
+  // montant HT, au centime, et vidée sur une ligne non imposable ou sans taux.
+  // Une taxe portée à la main reste jusqu'au changement suivant ; le serveur
+  // avertit d'un écart.
+  useEffect(() => {
+    setMontantTva(taxeProposee(montantHT, tauxApplique, imposable));
+  }, [montantHT, tauxApplique, imposable]);
 
   const tiersDuSens = tiersListe.filter((t) => (sens === 'VENTE' ? t.type === 'CLIENT' || t.type === 'ADHERENT' : t.type === 'FOURNISSEUR'));
   const mentionDebitsCochee = mentionDebits ?? mentionDebitsProposee(sens, etat?.regimeExigibiliteTva);
@@ -976,6 +1001,7 @@ export function FacturationPage() {
                       {peutEcrire && !f.ecritureId && (!etat.circuitVisa || f.visa?.vise) && (
                         <PasserEcritureFacture
                           facture={f}
+                          compteIdPropose={compteDesArticles(f.sens, f.lignes, articles)}
                           onFait={(avis) => {
                             setAvisListe(avis ?? null);
                             void recharger();

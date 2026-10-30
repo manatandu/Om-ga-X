@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ArticlesCommerciauxService } from './articles.service';
 import { EncoursClientService } from './encours-client.service';
+import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import {
   CreerArticleCommercialDto,
   EncoursClientDto,
@@ -40,7 +41,9 @@ export class ArticlesCommerciauxController {
   encoursDuClient(@CurrentUser() user: AuthenticatedUser, @Param('tiersId') tiersId: string, @Query() q: EncoursClientDto) {
     const vente = q.venteEnCours === undefined ? 0 : Number(q.venteEnCours);
     if (!Number.isFinite(vente) || vente < 0) throw new BadRequestException('La vente en cours est un montant positif ou nul.');
-    return this.encours.encours(user.tenantId, tiersId, q.date ? new Date(`${q.date.slice(0, 10)}T00:00:00.000Z`) : undefined, vente);
+    // Date LUE STRICTEMENT (mineur 8) · « 2026-02-30 » est refusé en 400, jamais reporté au 2 mars.
+    const jour = dateSaisieOuEffacement(q.date ? q.date.slice(0, 10) : undefined) ?? undefined;
+    return this.encours.encours(user.tenantId, tiersId, jour ? new Date(`${q.date!.slice(0, 10)}T00:00:00.000Z`) : undefined, vente);
   }
 
   @Get('articles')

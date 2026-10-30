@@ -18,6 +18,8 @@ export function ModesArrondiPage() {
   const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // Ce que le serveur dit d'un mode mis en sommeil que des articles portent.
+  const [avis, setAvis] = useState<string | null>(null);
   const [intitule, setIntitule] = useState('');
   const [methode, setMethode] = useState<MethodeArrondi>('PROCHE');
   const [pas, setPas] = useState('');
@@ -78,6 +80,7 @@ export function ModesArrondiPage() {
         />
       </div>
       {erreurLecture && <div className="text-danger mb-2">{erreurLecture}</div>}
+      {avis && <div role="status" className="text-warning mb-2">{avis}</div>}
       {erreur && <div className="text-danger bg-danger-soft border border-danger/30 px-3 py-1.5 mb-2">{erreur}</div>}
       {estAdmin && (
         <form onSubmit={creer} className="border border-border bg-surface p-2 mb-2 flex flex-wrap items-end gap-2">
@@ -137,7 +140,12 @@ export function ModesArrondiPage() {
                       aria-label={`Mode ${m.intitule} actif`}
                       checked={m.actif}
                       disabled={!estAdmin || envoi}
-                      onChange={(e) => void agir(() => api.patch(`/commercial/modes-arrondi/${m.id}`, { actif: e.target.checked }))}
+                      onChange={(e) =>
+                        void agir(async () => {
+                          const r = await api.patch<{ avertissement?: string | null }>(`/commercial/modes-arrondi/${m.id}`, { actif: e.target.checked });
+                          setAvis(r.avertissement ?? null);
+                        })
+                      }
                     />
                   </td>
                   <td className="text-right">

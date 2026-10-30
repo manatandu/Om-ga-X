@@ -93,19 +93,41 @@ export class EncoursClientService {
   async encours(tenantId: string, tiersId: string, date?: Date, venteEnCours = 0): Promise<EncoursLu & { tiers: { code: string; nom: string; devise: string | null } }> {
     const tiers = await this.prisma.tiers.findFirst({
       where: { id: tiersId, tenantId },
-      select: { code: true, nom: true, encoursMaximum: true, devise: { select: { code: true } }, comptesRattaches: { select: { compteId: true }, take: COMPTES_MAX + 1 } },
+      select: {
+        code: true,
+        nom: true,
+        encoursMaximum: true,
+        devise: { select: { code: true } },
+        // Le compte rattaché et s'il est un COLLECTIF qui porte des comptes
+        // individuels (relecture indépendante, M3) · un tiers créé avant la
+        // panoplie reste rattaché au collectif commun, dont le solde est celui
+        // de TOUS les clients qui y ont un compte.
+        comptesRattaches: { select: { compteId: true, compte: { select: { numero: true, _count: { select: { individuels: true } } } } }, take: COMPTES_MAX + 1 },
+      },
     });
     if (!tiers) throw new NotFoundException('Tiers introuvable dans ce dossier.');
     const jour = date ?? jourDeKinshasa(new Date());
     const encoursMaximum = tiers.encoursMaximum === null ? null : Number(tiers.encoursMaximum);
-    const ids = tiers.comptesRattaches.map((c) => c.compteId);
+    const collectifs = tiers.comptesRattaches.filter((c) => c.compte._count.individuels > 0);
+    const ids = tiers.comptesRattaches.filter((c) => c.compte._count.individuels === 0).map((c) => c.compteId);
     const solde =
-      ids.length > COMPTES_MAX
+      tiers.comptesRattaches.length > COMPTES_MAX
         ? { solde: null, motif: `ce tiers a plus de ${COMPTES_MAX} comptes rattachés` }
-        : await this.soldeDesComptes(tenantId, ids, jour);
+        : collectifs.length && !ids.length
+          ? {
+              solde: null,
+              motif: `le seul compte de ce tiers est le collectif ${collectifs.map((c) => c.compte.numero).join(', ')}, qui porte les comptes d'autres tiers · ouvrez-lui ses comptes (Plan des tiers, « Compléter les comptes »)`,
+            }
+          : await this.soldeDesComptes(tenantId, ids, jour);
+    // TOUTE PIÈCE NON PASSÉE COMPTE, DATÉE AU PLUS TARD DU JOUR LU (relecture
+    // indépendante, mineurs 1 et 2) · la facture ajoute, la note de crédit
+    // retranche, qu'elles soient passées ou non l'une sans l'autre (une note
+    // passée sur une facture non passée est déjà dans le solde) ; une pièce
+    // datée après le jour lu n'est pas encore une dette à ce jour.
+    const avant = lendemain(jour);
     const [enAttente, notes, ligneEnDevise] = await Promise.all([
-      this.ttc(tenantId, { tiersId, sens: SensFacture.VENTE, nature: NatureFacture.FACTURE, ecritureId: null, noteDeCredit: null }),
-      this.ttc(tenantId, { tiersId, sens: SensFacture.VENTE, nature: NatureFacture.NOTE_DE_CREDIT, ecritureId: null, factureAnnulee: { ecritureId: { not: null } } }),
+      this.ttc(tenantId, { tiersId, sens: SensFacture.VENTE, nature: NatureFacture.FACTURE, ecritureId: null, dateFacture: { lt: avant } }),
+      this.ttc(tenantId, { tiersId, sens: SensFacture.VENTE, nature: NatureFacture.NOTE_DE_CREDIT, ecritureId: null, dateFacture: { lt: avant } }),
       ids.length ? this.prisma.ligneEcriture.findFirst({ where: { compteId: { in: ids }, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } }, select: { id: true } }) : null,
     ]);
     return {

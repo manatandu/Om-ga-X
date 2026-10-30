@@ -59,6 +59,27 @@ de `docs/comparaison-sage/15-absents-a-trier.md`, levées par
   personne n'a consenti) ; (4) lecture de l'encours qui échoue à la facture ·
   dite, la facture reste enregistrée.
 
+- Relecture indépendante (aucun BLOQUANT, quatre MAJEURS, neuf mineurs),
+  corrigée après fusion de `origin/main` ·
+  - M1 · la taxe de la ligne se repropose (taux × HT au centime) à chaque
+    changement d'article, de HT, de taux ou d'exonération, vide sans taux ou
+    non imposable (`taxeProposee`) ; le serveur avertit une ligne non
+    imposable qui porte une taxe.
+  - M2 · le serveur avertit une taxe qui s'écarte de taux × HT de plus d'un
+    centime (taxe calculée sur le brut avant remise).
+  - M3 · l'encours et la devise proposée écartent un collectif qui porte des
+    comptes individuels ; le seul collectif rattaché rend « non calculé ».
+  - M4 · la modification d'un article ne rejuge que les liens qu'elle change.
+  - Mineurs · note de crédit et facture non passées comptées chacune ; pièces
+    datées au plus tard du jour lu ; arrondi au-dessus du brut ou à zéro dit ;
+    taux et mode en sommeil non proposés et dits, mode en sommeil porté dit ;
+    jeton de réponse périmée, tarif relu au changement de client, taxe de
+    l'article précédent jamais héritée ; panne de l'encours au journal du
+    serveur, motif fixe à l'écran ; comptage par type en base ; date stricte ;
+    compte des articles proposé au passage de la facture au journal.
+  - Rejeu étendu (taxe sur le brut, taxe juste, ligne exonérée taxée, tiers
+    hérité sur le collectif) · conforme.
+
 ## Reste
 
 - Deux tours de relecture et tests navigateur avant l'intégration sur

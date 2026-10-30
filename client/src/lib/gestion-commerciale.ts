@@ -59,6 +59,8 @@ export interface PrixPropose {
   remisePourcent: number;
   prixNetUnitaireHT: number | null;
   source: 'TARIF_CLIENT' | 'PRIX_DE_BASE' | 'AUCUN';
+  /** Ce que la proposition doit dire · taux ou mode en sommeil, arrondi excessif. */
+  avertissement?: string | null;
 }
 
 /**
@@ -147,4 +149,32 @@ export interface EncoursClient {
  */
 export function montantHTPropose(quantite: number, prixNetUnitaire: number): number {
   return Math.round(quantite * prixNetUnitaire * 100) / 100;
+}
+
+/**
+ * LA TAXE PROPOSÉE D'UNE LIGNE (relecture indépendante, M1) · taux × montant
+ * hors taxes, au centime le plus proche ; vide sur une ligne non imposable,
+ * sans taux ou sans montant. Jamais héritée d'une ligne précédente.
+ */
+export function taxeProposee(montantHT: number | '', taux: number | '', imposable: boolean): number | '' {
+  if (!imposable || montantHT === '' || taux === '') return '';
+  return Math.round(montantHT * taux) / 100;
+}
+
+/**
+ * LE COMPTE QUE LES ARTICLES D'UNE FACTURE PROPOSENT À SA PASSATION (mineur 9)
+ * · celui de vente (ou d'achat) commun à TOUTES les lignes, chacune portant un
+ * article connu ; sinon aucun, et le choix reste au cabinet.
+ */
+export function compteDesArticles(
+  sens: 'VENTE' | 'ACHAT',
+  lignes: readonly { articleId?: string | null }[],
+  articles: readonly Pick<ArticleCommercial, 'id' | 'compteVenteId' | 'compteAchatId'>[] | null,
+): string | null {
+  if (!articles || !lignes.length) return null;
+  const comptes = lignes.map((l) => {
+    const a = l.articleId ? articles.find((x) => x.id === l.articleId) : undefined;
+    return a ? (sens === 'VENTE' ? a.compteVenteId : a.compteAchatId) : null;
+  });
+  return comptes.every((c) => c && c === comptes[0]) ? comptes[0] : null;
 }

@@ -51,10 +51,10 @@ describe('articles commerciaux · règles pures (ligne commercial-l8, étape a)'
   });
 
   it('le prix proposé · le tarif du client prime, la remise suit, rien n’est deviné', () => {
-    expect(prixPropose(1000, null)).toEqual({ prixUnitaireHT: 1000, remisePourcent: 0, prixNetUnitaireHT: 1000, source: 'PRIX_DE_BASE' });
-    expect(prixPropose(1000, { prixHT: 900, remisePourcent: 5 })).toEqual({ prixUnitaireHT: 900, remisePourcent: 5, prixNetUnitaireHT: 855, source: 'TARIF_CLIENT' });
-    expect(prixPropose(1000, { prixHT: null, remisePourcent: 10 })).toEqual({ prixUnitaireHT: 1000, remisePourcent: 10, prixNetUnitaireHT: 900, source: 'PRIX_DE_BASE' });
-    expect(prixPropose(null, null)).toEqual({ prixUnitaireHT: null, remisePourcent: 0, prixNetUnitaireHT: null, source: 'AUCUN' });
+    expect(prixPropose(1000, null)).toEqual({ prixUnitaireHT: 1000, remisePourcent: 0, prixNetUnitaireHT: 1000, source: 'PRIX_DE_BASE', avertissement: null });
+    expect(prixPropose(1000, { prixHT: 900, remisePourcent: 5 })).toEqual({ prixUnitaireHT: 900, remisePourcent: 5, prixNetUnitaireHT: 855, source: 'TARIF_CLIENT', avertissement: null });
+    expect(prixPropose(1000, { prixHT: null, remisePourcent: 10 })).toEqual({ prixUnitaireHT: 1000, remisePourcent: 10, prixNetUnitaireHT: 900, source: 'PRIX_DE_BASE', avertissement: null });
+    expect(prixPropose(null, null)).toEqual({ prixUnitaireHT: null, remisePourcent: 0, prixNetUnitaireHT: null, source: 'AUCUN', avertissement: null });
   });
 });
 

@@ -105,14 +105,31 @@ export function prixPropose(
   base: number | null,
   tarif: { prixHT: number | null; remisePourcent: number | null } | null,
   mode: { methode: MethodeArrondi; pas: number } | null = null,
-): { prixUnitaireHT: number | null; remisePourcent: number; prixNetUnitaireHT: number | null; source: SourcePrix } {
+): { prixUnitaireHT: number | null; remisePourcent: number; prixNetUnitaireHT: number | null; source: SourcePrix; avertissement: string | null } {
   const propre = tarif?.prixHT ?? null;
   const prix = propre ?? base;
   const remisePourcent = tarif?.remisePourcent ?? 0;
+  const net = prix === null ? null : prixNetArrondi(prix, remisePourcent, mode);
   return {
     prixUnitaireHT: prix,
     remisePourcent,
-    prixNetUnitaireHT: prix === null ? null : prixNetArrondi(prix, remisePourcent, mode),
+    prixNetUnitaireHT: net,
     source: propre !== null ? 'TARIF_CLIENT' : base !== null ? 'PRIX_DE_BASE' : 'AUCUN',
+    avertissement: prix === null || net === null ? null : motifArrondiExcessif(prix, net),
   };
+}
+
+/**
+ * L'ARRONDI QUI DÉFAIT LE PRIX SE DIT (relecture indépendante, mineur 3) · un
+ * pas au supérieur qui porte le prix net au-dessus du prix brut fait payer au
+ * client plus que le prix convenu sans remise, un pas à l'inférieur qui le
+ * ramène à zéro fait une livraison gratuite. Proposé quand même, jamais
+ * imposé · la ligne garde le prix que le cabinet porte (AUDCG art. 263).
+ */
+export function motifArrondiExcessif(prix: number, net: number): string | null {
+  if (prix > 0 && net === 0) return 'L’arrondi ramène le prix net à zéro · revoyez le pas du mode d’arrondi, ou portez le prix à la main.';
+  if (Math.round(net * 100) > Math.round(prix * 100)) {
+    return `L’arrondi porte le prix net (${net.toLocaleString('fr-FR')}) au-dessus du prix sans remise (${prix.toLocaleString('fr-FR')}) · revoyez le pas du mode d’arrondi, ou portez le prix à la main.`;
+  }
+  return null;
 }

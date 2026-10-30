@@ -69,7 +69,13 @@ export class StructuresCommercialesService {
         },
         select: { id: true, intitule: true, methode: true, pas: true, actif: true },
       });
-      return vueMode(r);
+      // UN MODE MIS EN SOMMEIL QUE DES ARTICLES PORTENT SE DIT (relecture
+      // indépendante, mineur 4) · leurs prix se proposeront au centime.
+      const portes = dto.actif === false ? await this.prisma.articleCommercial.count({ where: { tenantId, modeArrondiId: id } }) : 0;
+      return {
+        ...vueMode(r),
+        avertissement: portes ? `${portes} article(s) portent ce mode · tant qu’il est en sommeil, leur prix net se propose au centime.` : null,
+      };
     } catch (e) {
       throw this.conflitIntitule(e, intitule ?? '');
     }
@@ -145,15 +151,18 @@ export class StructuresCommercialesService {
     const retires = ROLES_COLLABORATEUR.filter((r) => actuel[r] && dto[r] === false);
     const misEnSommeil = actuel.actif && dto.actif === false;
     if (retires.length || misEnSommeil) {
-      const representes = await this.prisma.tiers.findMany({ where: { tenantId, representantId: id }, select: { type: true } });
-      const touches = representes.filter((t) => {
-        const role = roleExigePour(t.type);
-        return misEnSommeil || (role !== null && retires.includes(role));
-      });
-      if (touches.length) {
+      // Compté par type en base, jamais une liste rapatriée (§ 8 bis, mineur 7).
+      const parType = await this.prisma.tiers.groupBy({ by: ['type'], where: { tenantId, representantId: id }, _count: { _all: true } });
+      const touches = parType
+        .filter((t) => {
+          const role = roleExigePour(t.type);
+          return misEnSommeil || (role !== null && retires.includes(role));
+        })
+        .reduce((n, t) => n + t._count._all, 0);
+      if (touches) {
         const quoi = misEnSommeil ? 'mis en sommeil' : `privé du rôle de ${retires.map((r) => LIBELLES_ROLES[r]).join(' et ')}`;
         throw new ConflictException(
-          `Ce collaborateur représente ${touches.length} tiers qui exigent ce rôle · il ne peut être ${quoi} tant qu’il les représente. Changez d’abord leur représentant dans Plan des tiers.`,
+          `Ce collaborateur représente ${touches} tiers qui exigent ce rôle · il ne peut être ${quoi} tant qu’il les représente. Changez d’abord leur représentant dans Plan des tiers.`,
         );
       }
     }

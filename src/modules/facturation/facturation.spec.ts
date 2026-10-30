@@ -974,7 +974,8 @@ describe('ligne commercial-l8 · l’article, la remise et l’encours du client
       .mockRejectedValueOnce(new Error('base injoignable'));
     const r = (await svc.enregistrer('t', dto({ tiersId: 'c1' }) as never)) as Faux;
     expect(create).toHaveBeenCalled();
-    expect(r.avertissementEncours).toMatch(/non calculé · base injoignable/);
+    expect(r.avertissementEncours).toMatch(/non calculé · lecture impossible, consignée au journal du serveur/);
+    expect(r.avertissementEncours).not.toMatch(/base injoignable/);
   });
 
   it('sans encours maximum, rien n’est lu ni dit', async () => {
@@ -983,5 +984,24 @@ describe('ligne commercial-l8 · l’article, la remise et l’encours du client
     const r = (await svc.enregistrer('t', dto({ tiersId: 'c1' }) as never)) as Faux;
     expect(r.avertissementEncours).toBeUndefined();
     expect((prisma.tiers as Faux).findFirst).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relecture indépendante, M1 et M2 · la taxe qui ne suit pas sa base est avertie', () => {
+  const ligne = (sur: Faux) => [{ designation: 'Ciment', quantite: 2, prixUnitaire: 30_000, montantHT: 54_000, remisePourcent: 10, ...sur }];
+  it('une ligne non imposable qui porte une taxe', async () => {
+    const { svc } = service();
+    const r = (await svc.enregistrer('t', dto({ lignes: ligne({ imposable: false, montantTva: 8_640 }) }) as never)) as Faux;
+    expect((r.avertissementsLignes as string[]).join(' ')).toMatch(/non imposable mais porte une taxe/);
+  });
+  it('une taxe calculée sur le brut avant remise (16 % de 60 000 et non de 54 000)', async () => {
+    const { svc } = service();
+    const r = (await svc.enregistrer('t', dto({ lignes: ligne({ tauxApplique: 16, montantTva: 9_600 }) }) as never)) as Faux;
+    expect((r.avertissementsLignes as string[]).join(' ')).toMatch(/n'est pas 16 % du montant hors taxes de 54\s000, soit 8\s640/);
+  });
+  it('une taxe juste au centime ne dit rien', async () => {
+    const { svc } = service();
+    const r = (await svc.enregistrer('t', dto({ lignes: ligne({ tauxApplique: 16, montantTva: 8_640 }) }) as never)) as Faux;
+    expect(r.avertissementsLignes).toBeUndefined();
   });
 });

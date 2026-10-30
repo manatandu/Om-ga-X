@@ -29,3 +29,33 @@ describe('fonction 25 · la devise proposée en saisie ne suit pas un autre comp
     expect(page).toContain("'/tiers/devises-des-comptes'");
   });
 });
+
+describe('relecture indépendante · la taxe suit sa base, le compte des articles se propose', () => {
+  it('M1 · taux × HT au centime, vide sans taux ou non imposable', async () => {
+    const { taxeProposee } = await import('./gestion-commerciale');
+    expect(taxeProposee(54_000, 16, true)).toBe(8_640);
+    expect(taxeProposee(333.33, 16, true)).toBe(53.33);
+    expect(taxeProposee(54_000, 16, false)).toBe('');
+    expect(taxeProposee(54_000, '', true)).toBe('');
+  });
+  it('M1 · l’écran repropose la taxe à chaque changement de base, de taux ou d’exonération', () => {
+    const page = readFileSync(join(__dirname, '..', 'pages', 'FacturationPage.tsx'), 'utf8');
+    expect(page).toContain('setMontantTva(taxeProposee(montantHT, tauxApplique, imposable));');
+    expect(page).toContain('}, [montantHT, tauxApplique, imposable]);');
+    // mineur 5 · la réponse périmée est jetée, le tarif relu au changement de client.
+    expect(page).toContain('if (jeton !== jetonArticle.current) return;');
+    expect(page).toContain('if (articleId) void choisirArticle(articleId, tiersId);');
+  });
+  it('mineur 9 · le compte commun à toutes les lignes, sinon aucun', async () => {
+    const { compteDesArticles } = await import('./gestion-commerciale');
+    const articles = [
+      { id: 'a', compteVenteId: 'k7', compteAchatId: 'k6' },
+      { id: 'b', compteVenteId: 'k7', compteAchatId: null },
+      { id: 'c', compteVenteId: 'k8', compteAchatId: null },
+    ];
+    expect(compteDesArticles('VENTE', [{ articleId: 'a' }, { articleId: 'b' }], articles)).toBe('k7');
+    expect(compteDesArticles('VENTE', [{ articleId: 'a' }, { articleId: 'c' }], articles)).toBeNull();
+    expect(compteDesArticles('VENTE', [{ articleId: 'a' }, { articleId: null }], articles)).toBeNull();
+    expect(compteDesArticles('ACHAT', [{ articleId: 'b' }], articles)).toBeNull();
+  });
+});
