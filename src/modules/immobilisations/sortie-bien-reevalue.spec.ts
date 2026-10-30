@@ -76,7 +76,11 @@ function harnais(o: { referentiel?: Referentiel; lignes: LigneReev[]; echecMiseA
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: fiche,
     },
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') }) },
+    exercice: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') }),
+      // Ligne restes-l8-immos · aucun exercice antérieur encore ouvert.
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     compte: {
       findUnique: jest.fn(({ where }: { where: { tenantId_numero: { numero: string } } }) =>
         Promise.resolve({ id: `n${where.tenantId_numero.numero}`, numero: where.tenantId_numero.numero }),

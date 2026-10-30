@@ -32,6 +32,8 @@ function harnais(
     echecCreation?: number;
     /** Composants rattachés au bien (audit final F127). */
     composants?: { designation: string; immobilisationPrincipaleId: string; statut: string }[];
+    /** Les autres exercices du dossier (ligne restes-l8-immos). */
+    exercices?: { id: string; dateFin: Date; statut: string }[];
   } = {},
 ) {
   const ecrituresPostees: Array<{ id: string; libelle: string; lignes: Ligne[] }> = [];
@@ -79,6 +81,12 @@ function harnais(
     },
     exercice: {
       findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }),
+      // Ligne restes-l8-immos · la doublure HONORE le filtre · fin avant l'exercice de la sortie, ouverts seuls.
+      findMany: jest.fn(({ where }: { where: { dateFin: { lt: Date }; statut: string } }) =>
+        Promise.resolve(
+          (options.exercices ?? []).filter((e) => e.dateFin.getTime() < where.dateFin.lt.getTime() && e.statut === where.statut),
+        ),
+      ),
     },
     compte: {
       findUnique: jest.fn().mockImplementation(({ where }: { where: { tenantId_numero: { numero: string } } }) => {
@@ -297,5 +305,51 @@ describe('un bien jamais mis en service sort sans dotation complémentaire (AUDC
     const { svc, ecrituresPostees } = harnais({ dateMiseEnService: null, dotations: [] });
     await expect(svc.sortir('t1', 'u1', 'i1', sortie('2023-05-31') as never)).rejects.toThrow(/date d'acquisition/);
     expect(ecrituresPostees).toEqual([]);
+  });
+});
+
+/**
+ * LIGNE RESTES-L8-IMMOS · LA SORTIE ENTIÈRE DOTE DANS L'ORDRE, COMME LA
+ * PARTIELLE · un exercice antérieur encore ouvert (N+1 s'ouvre avant la
+ * clôture de N, AUDCIF art. 23) qui n'a pas la dotation du bien refuse la
+ * sortie · sinon le 81 recevrait une valeur nette sans l'annuité de cet
+ * exercice (fiche du compte 81, « sous déduction des amortissements
+ * pratiqués », jusqu'à la date de la cession), et le module ne doterait plus
+ * un bien sorti. Seule la sortie partielle refusait jusque-là.
+ */
+describe('un exercice antérieur ouvert non doté refuse la sortie entière, comme la partielle', () => {
+  const N1 = { id: 'ex2025', dateFin: new Date('2025-12-31'), statut: 'OUVERT' };
+
+  it('2025 encore ouvert, sans sa dotation · refus nommé, issue dite, rien de posé', async () => {
+    const { svc, updateMany, ecrituresPostees } = harnais({ dotations: [2_400], exercices: [N1] });
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).rejects.toThrow(
+      'L’exercice clos le 2025-12-31 n’a pas reçu la dotation du bien · passez-la d’abord, sinon le bien sortirait sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).',
+    );
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(ecrituresPostees).toEqual([]);
+  });
+
+  it('la simulation (sortie globale) refuse de même', async () => {
+    const { svc } = harnais({ dotations: [2_400], exercices: [N1] });
+    await expect(svc.simulerSortie('t1', 'i1', sortie('2026-09-30') as never)).rejects.toThrow(/clos le 2025-12-31/);
+  });
+
+  it('2025 ouvert mais doté, ou clôturé · la sortie passe', async () => {
+    const dote = harnais({ dotations: [2_400, 2_400], exercices: [{ ...N1, id: 'exAnt1' }] });
+    await expect(dote.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+    const clos = harnais({ dotations: [2_400], exercices: [{ ...N1, statut: 'CLOTURE' }] });
+    await expect(clos.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+  });
+
+  it('rien à amortir (bien amorti en entier, ou jamais mis en service) · aucun refus inventé', async () => {
+    const amorti = harnais({ dotations: [12_000], exercices: [N1] });
+    await expect(amorti.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+    const jamais = harnais({ dateMiseEnService: null, dotations: [], exercices: [N1] });
+    await expect(jamais.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+  });
+
+  it('un exercice ouvert qui finit avant la mise en service ne réclame rien', async () => {
+    const { svc } = harnais({ dateMiseEnService: '2026-02-01', dotations: [], exercices: [N1] });
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
   });
 });

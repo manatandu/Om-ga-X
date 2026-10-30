@@ -220,8 +220,49 @@ export function motifRefusSortiePartielle(f: FaitsDuLot): string | null {
       '(onglet Traitements de la fiche), sortez les unités, puis repassez-la.'
     );
   }
-  if (f.exerciceAnterieurNonDote) {
-    return `L’exercice clos le ${f.exerciceAnterieurNonDote} n’a pas reçu la dotation du lot · passez-la d’abord, sinon les unités sortiraient sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`;
-  }
+  if (f.exerciceAnterieurNonDote) return motifExerciceAnterieurNonDote(f.exerciceAnterieurNonDote, 'LOT');
   return null;
+}
+
+/**
+ * UN EXERCICE ANTÉRIEUR ENCORE OUVERT SANS LA DOTATION DU BIEN · la sortie,
+ * entière ou d'une partie des unités, porte au 81 « la valeur d'entrée des
+ * éléments sortis sous déduction des amortissements pratiqués », le cumul
+ * courant « jusqu'à la date de sa cession » (AUDCIF Titre VII, fiche du
+ * compte 81, mêmes mots au SYCEBNL). N+1 s'ouvre avant la clôture de N
+ * (AUDCIF art. 23) · sortir le bien en N+1 avant d'avoir doté N perdrait
+ * l'annuité de N · une fois le bien sorti, le module ne la passe plus (il ne
+ * dote qu'un bien en service), et le complément de N+1 se calcule sur un
+ * cumul qui l'ignore. Ligne restes-l8-immos · la sortie ENTIÈRE juge comme la
+ * partielle, par cette fonction · seule la sortie partielle refusait jusque-là.
+ *
+ * Le PREMIER exercice ouvert, finissant avant celui de la sortie, après la
+ * mise en service et l'entrée dans le dossier, qui n'a pas la dotation du
+ * bien · `null` si le bien n'a rien à amortir (non amortissable, rien qui
+ * reste), sans quoi le refus serait inventé.
+ */
+export function exerciceAnterieurNonDote(
+  bien: { dateMiseEnService: Date | null; debutDetention: Date | null; dotations: { exerciceId: string }[] },
+  anterieursOuverts: { id: string; dateFin: Date }[],
+  aAmortir: boolean,
+): Date | null {
+  if (!aAmortir || !bien.dateMiseEnService) return null;
+  const miseEnService = bien.dateMiseEnService.getTime();
+  const detention = bien.debutDetention?.getTime() ?? null;
+  const nonDote = [...anterieursOuverts]
+    .sort((a, b) => a.dateFin.getTime() - b.dateFin.getTime())
+    .find(
+      (e) =>
+        miseEnService <= e.dateFin.getTime() &&
+        (detention === null || detention <= e.dateFin.getTime()) &&
+        !bien.dotations.some((d) => d.exerciceId === e.id),
+    );
+  return nonDote?.dateFin ?? null;
+}
+
+/** Le refus, nommé avec son issue · la même phrase pour le lot et pour le bien entier. */
+export function motifExerciceAnterieurNonDote(fin: string, objet: 'LOT' | 'BIEN'): string {
+  return objet === 'LOT'
+    ? `L’exercice clos le ${fin} n’a pas reçu la dotation du lot · passez-la d’abord, sinon les unités sortiraient sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`
+    : `L’exercice clos le ${fin} n’a pas reçu la dotation du bien · passez-la d’abord, sinon le bien sortirait sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`;
 }

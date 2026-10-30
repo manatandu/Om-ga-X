@@ -165,7 +165,7 @@ import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-r
 import { PERIODES_MAX, periodesDeSimulation, totauxDeLaSimulation } from './simulation-dotations';
 import { motifSectionImpropre, sectionDuBien, ventilationDeLaDotation } from './analytique-des-biens';
 import { messageRefusDuLot, motifRefusLot } from './sortie-globale';
-import { motifRefusSortiePartielle, partDesUnites } from './cession-partielle';
+import { exerciceAnterieurNonDote, motifExerciceAnterieurNonDote, motifRefusSortiePartielle, partDesUnites } from './cession-partielle';
 import { debutDeDetention, estDepreciationAnterieure } from './transfert-groupe';
 import {
   annuiteDegressive,
@@ -5373,6 +5373,38 @@ export class ImmobilisationService {
     // « cession courante ».
     const regime = await this.regimeComptable(tenantId);
     const { referentiel } = regime;
+    // LIGNE RESTES-L8-IMMOS · ON DOTE DANS L'ORDRE AVANT DE SORTIR · un exercice
+    // antérieur encore ouvert sans la dotation du bien refuse la sortie, comme
+    // la sortie partielle (fiche du compte 81, « sous déduction des
+    // amortissements pratiqués », jusqu'à la date de la cession ;
+    // `exerciceAnterieurNonDote`). Les unités d'un lot (`complementImpose`) ont
+    // été jugées sur le lot, dont elles ne portent pas les dotations.
+    if (opts.complementImpose === undefined) {
+      const anterieursOuverts = await this.prisma.exercice.findMany({
+        where: { tenantId, dateFin: { lt: exercice.dateDebut }, statut: StatutExercice.OUVERT },
+        select: { id: true, dateFin: true },
+        orderBy: { dateFin: 'asc' },
+      });
+      const amortissable =
+        !!immo.dateMiseEnService &&
+        !immo.dureeNonLimitee &&
+        !motifNonAmortissable(immo.compteImmobilisation.numero, referentiel) &&
+        !motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl);
+      // Rien qui reste à amortir, aucune annuité à passer · le refus serait inventé.
+      const resteAAmortir =
+        Number(immo.valeurOrigine) -
+          Number(immo.valeurResiduelle) -
+          immo.dotations.reduce((t, d) => t + Number(d.montant), 0) -
+          amortissementsHorsDotations(immo) -
+          this.cumulDepreciation(immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant) }))) >
+        EPSILON;
+      const nonDote = exerciceAnterieurNonDote(
+        { dateMiseEnService: immo.dateMiseEnService, debutDetention: debutDeDetention(immo.dateEntreeGroupe), dotations: immo.dotations },
+        anterieursOuverts,
+        amortissable && resteAAmortir,
+      );
+      if (nonDote) throw new BadRequestException(motifExerciceAnterieurNonDote(nonDote.toISOString().slice(0, 10), 'BIEN'));
+    }
     const nature = natureImmobilisation(immo.compteImmobilisation.numero, referentiel);
     // L'usufruit temporaire se RÉTROCÈDE au donateur, il ne se vend pas · le
     // texte ne lui donne ni cession ni compte 81 (SYCEBNL Partie 3 ch. 2
@@ -5869,10 +5901,13 @@ export class ImmobilisationService {
       !lot.dureeNonLimitee &&
       !motifNonAmortissable(lot.compteImmobilisation.numero, regime.referentiel) &&
       !motifSansAmortissementProjet(regime.jeuEtatsFinanciersSycebnl);
-    // Un exercice antérieur ouvert, finissant après la mise en service, sans la dotation du lot.
-    const nonDote = amortissable
-      ? anterieursOuverts.find((e) => lot.dateMiseEnService! <= e.dateFin && !lot.dotations.some((d) => d.exerciceId === e.id))
-      : undefined;
+    // Un exercice antérieur ouvert, finissant après la mise en service, sans la dotation du lot ·
+    // la même règle que la sortie entière (`exerciceAnterieurNonDote`).
+    const nonDote = exerciceAnterieurNonDote(
+      { dateMiseEnService: lot.dateMiseEnService, debutDetention: debutDeDetention(lot.dateEntreeGroupe), dotations: lot.dotations },
+      anterieursOuverts,
+      amortissable,
+    );
     const refus = motifRefusSortiePartielle({
       enService: lot.statut === StatutImmobilisation.EN_SERVICE,
       quantite: lot.quantite,
@@ -5887,7 +5922,7 @@ export class ImmobilisationService {
       acquisitionAleatoire: !!lot.natureAcquisitionAleatoire,
       demantelement: lot.coutFuturDemantelement !== null && lot.coutFuturDemantelement !== undefined,
       dotationDejaPassee: lot.dotations.some((d) => d.exercice.dateDebut >= exercice.dateDebut),
-      exerciceAnterieurNonDote: nonDote ? nonDote.dateFin.toISOString().slice(0, 10) : null,
+      exerciceAnterieurNonDote: nonDote ? nonDote.toISOString().slice(0, 10) : null,
     });
     if (refus) throw new BadRequestException(refus);
 

@@ -111,7 +111,11 @@ function harnais(jeu: JeuEtatsFinanciersSycebnl | null = null, referentiel: Refe
       updateMany,
       update: jest.fn().mockResolvedValue(immo),
     },
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
+    exercice: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'exN', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }),
+      // Ligne restes-l8-immos · aucun exercice antérieur encore ouvert.
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     compte: {
       findUnique: jest.fn().mockImplementation(({ where }: { where: { tenantId_numero: { numero: string } } }) =>
         Promise.resolve({ id: `n${where.tenantId_numero.numero}`, numero: where.tenantId_numero.numero }),
