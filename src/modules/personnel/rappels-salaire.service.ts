@@ -14,6 +14,7 @@ import {
   type LigneRappel,
 } from './rappel-salaire';
 import type { AnnulationRappelDto, RappelSalaireDto } from './dto/rappel-salaire.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 type Db = Pick<PrismaService, 'rappelSalaire' | 'bulletinPaie'> | Prisma.TransactionClient;
 
@@ -103,6 +104,7 @@ export function elementsDesRappels(portes: readonly RappelPorte[]) {
  */
 export async function lierRappelsAuBulletin(tx: Prisma.TransactionClient, tenantId: string, bulletinId: string, portes: readonly RappelPorte[]) {
   for (const p of portes) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT id FROM "rappels_salaire" WHERE id = ${p.rappelId} AND "tenantId" = ${tenantId} FOR UPDATE`;
     const r = await tx.rappelSalaire.findFirst({
       where: { id: p.rappelId, tenantId },
@@ -205,6 +207,7 @@ export class RappelsSalaireService {
     }
     // Deux déclarations simultanées sur le même mois · le verrou du salarié les range l'une derrière l'autre.
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const chevauchent = await tx.rappelSalaire.findMany({
         where: { tenantId, salarieId, annuleLe: null, moisFin: { gte: r.mois[0] }, moisDebut: { lte: r.mois[r.mois.length - 1] } },
@@ -297,6 +300,7 @@ export class RappelsSalaireService {
   /** Annuler un rappel faux · motif exigé, refusé tant qu'un bulletin émis le paie. Une écriture unitaire, au journal d'audit. */
   async annuler(tenantId: string, userId: string, id: string, dto: AnnulationRappelDto) {
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "rappels_salaire" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const r = await tx.rappelSalaire.findFirst({
         where: { id, tenantId },

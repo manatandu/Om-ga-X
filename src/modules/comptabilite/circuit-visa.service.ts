@@ -182,6 +182,7 @@ export class CircuitVisaService {
   async viserFacture(tenantId: string, utilisateurId: string, factureId: string) {
     await this.circuitActif(tenantId);
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT "id" FROM "factures" WHERE "id" = ${factureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await tx.facture.findFirst({
         where: { id: factureId, tenantId },

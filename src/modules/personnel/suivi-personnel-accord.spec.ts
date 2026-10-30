@@ -76,7 +76,7 @@ describe('Demande de congé · l’accord ne laisse jamais une demande accordée
 describe('Demande de congé · l’issue de la demande accordée sans congé héritée', () => {
   function monterReparation(d: Record<string, unknown>, conge: Record<string, unknown> | null, autre: unknown = null) {
     const tx = {
-      $queryRaw: jest.fn(async () => []),
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => []),
       demandeCongeSalarie: {
         findFirst: jest.fn(async (a: { where: { congeId?: string } }) => (a.where.congeId ? autre : d)),
         update: jest.fn(async () => ({})),
@@ -115,7 +115,7 @@ describe('Demande de congé · chevauchement et double envoi', () => {
   it('une demande qui chevauche une demande en attente du même salarié est refusée, sous le verrou du salarié', async () => {
     const ordre: string[] = [];
     const tx = {
-      $queryRaw: jest.fn(async () => {
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => {
         ordre.push('verrou');
         return [];
       }),

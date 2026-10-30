@@ -97,7 +97,7 @@ function service(etat: Etat = {}) {
     },
     sousCommissionInventaire: { findFirst: jest.fn().mockResolvedValue(etat.sousCommission ?? null) },
     // Le verrou de la campagne à la clôture (relecture du paquet 1, mineur 3).
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   } as unknown as PrismaService;
   const ecritures = {

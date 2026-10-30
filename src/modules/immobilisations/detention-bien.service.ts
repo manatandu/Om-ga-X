@@ -20,6 +20,7 @@ import {
   texteDuRecu,
 } from './detention-bien';
 import type { AnnulationActeDetentionDto, LiberationBienDto, RemiseBienDto, SignatureRecuDto } from './dto/detention-bien.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 type Tx = Prisma.TransactionClient;
 
@@ -385,6 +386,7 @@ export class DetentionBienService {
   async declarerSignature(tenantId: string, auteur: { email: string }, recuId: string, dto: SignatureRecuDto) {
     const jour = jourDepuisIso(dto.date);
     await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "recus_detention_biens" WHERE id = ${recuId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       if (verrou.length !== 1) throw new NotFoundException('Reçu introuvable');
       const r = await tx.recuDetentionBien.findFirst({ where: { id: recuId, tenantId }, select: { dateActe: true, signatureDeclareeLe: true, annuleLe: true } });
@@ -490,6 +492,7 @@ export class DetentionBienService {
   }
 
   private async bienSousVerrou(tx: Tx, tenantId: string, immobilisationId: string) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "immobilisations" WHERE id = ${immobilisationId} AND "tenantId" = ${tenantId} FOR UPDATE`;
     if (verrou.length !== 1) throw new NotFoundException('Immobilisation introuvable');
     const bien = await tx.immobilisation.findFirst({

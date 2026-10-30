@@ -12,7 +12,7 @@ const portee = { missionId: 'm1', numero: 4, destination: 'Goma', forfaitFc: 90_
 
 function txAvecFrais(frais: { element: string; qualification: string; montantFc: number }[], ordre: string[]) {
   return {
-    $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
+    $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
       ordre.push(parts.join('?').includes('FOR UPDATE') ? 'verrou' : 'autre');
       return [];
     }),
@@ -51,7 +51,7 @@ describe('Mission · la course entre un frais et l’émission (M1)', () => {
   it("l'ajout d'un frais relit le porteur DANS la transaction, sous le verrou · une mission portée entre-temps refuse", async () => {
     const ordre: string[] = [];
     const tx = {
-      $queryRaw: jest.fn(async () => {
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => {
         ordre.push('verrou');
         return [];
       }),

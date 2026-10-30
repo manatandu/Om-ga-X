@@ -28,6 +28,7 @@ import {
   type PlanEtalement,
   type TypeAvance,
 } from './avances-salaire';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LA BORNE DES TROIS LISTES DE CE SERVICE (audit final F259, § 8 bis) ·
@@ -342,6 +343,7 @@ export class AvancesRubriquesService {
    */
   async viserPlan(tenantId: string, id: string, utilisateurId: string, saisiLeLu: string | null) {
     const vise = await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "avances_salaire" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const a = await tx.avanceSalaire.findFirst({
         where: { id, tenantId },

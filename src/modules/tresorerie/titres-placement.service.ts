@@ -34,6 +34,7 @@ import {
   type MouvementLu,
 } from './titres-placement';
 import type { AnnulerTitreDto, EvaluationTitreDto, MouvementTitreDto, TitrePlacementDto } from './titres-placement.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 const PLAFOND_LISTE = 500;
 /** Un titre dont les mouvements dépassent ce nombre ne se rejoue pas en une lecture · le geste est refusé, jamais un P.E.P.S. amputé. */
@@ -600,6 +601,7 @@ export class TitresPlacementService {
 
   /** La ligne du titre prise `FOR UPDATE`, puis ses mouvements et revues vivants relus · changés depuis la lecture qui a jugé le geste, 409. */
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, t: TitreLu) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     const pris = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "titres_placement" WHERE id = ${t.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
     if (pris.length !== 1) throw new ConflictException(`Le titre ${t.code} n'existe plus · relisez la liste avant de recommencer.`);
     const [mouvements, evaluations] = await Promise.all([

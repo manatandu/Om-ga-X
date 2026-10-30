@@ -77,7 +77,7 @@ describe('visa des plans · le service', () => {
     const update = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'a1', planSaisiPar: ligne?.planSaisiPar ?? null, ...data }));
     const prisma = {
       $transaction: async (f: (tx: unknown) => unknown) => f(prisma),
-      $queryRaw: jest.fn(async () => []),
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => []),
       avanceSalaire: {
         findFirst: jest.fn(async ({ where }: { where: { tenantId: string } }) => (where.tenantId === 't' ? ligne : null)),
         update,

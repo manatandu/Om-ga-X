@@ -39,6 +39,7 @@ import {
   type RoleCompte,
 } from './operations-tresorerie';
 import type { AnnulerActeTresorerieDto, ContrePasserDto, CoursTauxDto, EcheanceOperationDto, OperationTresorerieDto, RegulariserDto, TauxReferenceDto } from './operations-tresorerie.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 const PLAFOND_LISTE = 500;
 const PLAFOND_COURS = 100;
@@ -919,6 +920,7 @@ export class OperationsTresorerieService {
 
   /** La ligne de l'opération prise `FOR UPDATE`, puis ses actes vivants relus · changés depuis la lecture qui a jugé le geste, 409. */
   private async verrouillerEtRelire(tx: Prisma.TransactionClient, tenantId: string, o: OperationLue) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "operations_tresorerie" WHERE id = ${o.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
     if (verrou.length !== 1) throw new ConflictException("Cette opération n'existe plus · relisez la liste.");
     const relus = (await tx.acteOperationTresorerie.findMany({ where: { tenantId, operationId: o.id, annuleLe: null }, select: { id: true } })).map((a) => a.id).sort();

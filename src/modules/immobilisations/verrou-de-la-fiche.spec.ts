@@ -54,6 +54,7 @@ function fabrique(relue: ReturnType<typeof fiche>) {
   };
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const ecritures = { creer: jest.fn().mockResolvedValue({ id: 'e-dot' }) } as unknown as EcritureService;
   return { svc: new ImmobilisationService(prisma as unknown as PrismaService, ecritures), prisma: prisma as Record<string, any> };
 }

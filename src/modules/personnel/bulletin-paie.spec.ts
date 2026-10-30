@@ -354,7 +354,7 @@ describe('annuler et remettre · jamais modifier', () => {
   function avecBulletin(b: Record<string, unknown>, rappels: unknown[] = []) {
     const update = jest.fn().mockResolvedValue({});
     const prisma: Record<string, unknown> = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn().mockResolvedValue([]),
       rappelSalaire: { findMany: jest.fn().mockResolvedValue(rappels) },
       bulletinPaie: {
         findFirst: jest.fn().mockImplementation(({ select }) =>

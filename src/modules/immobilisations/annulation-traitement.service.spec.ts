@@ -63,6 +63,7 @@ function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivante
   };
   prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const ecritures = { inscrireEnNegatifPourAnnulation: jest.fn().mockResolvedValue({ id: 'neg-1', numeroPiece: 9, date: new Date('2026-12-31') }) };
   const service = new AnnulationTraitementService(prisma as never, ecritures as never);
   return { service, prisma, ecritures, dotation };

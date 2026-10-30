@@ -121,7 +121,7 @@ function prismaFactice(plan: { id: string; code: string; longueurSections: numbe
       findFirst: jest.fn(async () => null),
       create: jest.fn(async (a: any) => (ordre.push('create'), { id: 'nouvelle', ...a.data })),
     },
-    $queryRaw: jest.fn(async () => (ordre.push('verrou'), [])),
+    $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => (ordre.push('verrou'), [])),
     evenementAudit: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({})) },
   };
   client.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client));

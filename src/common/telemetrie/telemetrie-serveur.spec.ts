@@ -1,7 +1,8 @@
 import { ArgumentsHost, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { FiltrePannes, statutDe } from './filtre-pannes';
+import { Prisma } from '@prisma/client';
+import { CODE_GESTE_CONCURRENT, exceptionRendue, FiltrePannes, statutDe } from './filtre-pannes';
 import { demarrerTelemetrieServeur, signalerPanneServeur } from './telemetrie-serveur';
 
 /**
@@ -111,6 +112,34 @@ describe('filtre des pannes · un 5xx part, un refus jamais', () => {
     expect(appels.capture[0].c).toEqual({
       tags: { route: '/comptes/:id', methode: 'POST', statut: '500', code_prisma: 'P2002' },
     });
+  });
+
+  it('un interblocage ou un conflit d’écriture qui s’échappe rend un 409 nommé, jamais une 500 muette, et reste signalé', () => {
+    const { sdk, appels } = doublure();
+    demarrerTelemetrieServeur({ SENTRY_DSN: DSN }, () => sdk);
+    const formes = [
+      new Prisma.PrismaClientKnownRequestError('deadlock', { code: 'P2010', clientVersion: 'x', meta: { code: '40P01' } }),
+      new Prisma.PrismaClientKnownRequestError('write conflict or a deadlock', { code: 'P2034', clientVersion: 'x' }),
+      new Prisma.PrismaClientUnknownRequestError('ERROR: deadlock detected', { clientVersion: 'x' }),
+      Object.assign(new Error('Maillon NON écrit'), {
+        cause: new Prisma.PrismaClientKnownRequestError('serialize', { code: 'P2010', clientVersion: 'x', meta: { code: '40001' } }),
+      }),
+    ];
+    for (const erreur of formes) {
+      const reponses: { corps: unknown; statut: number }[] = [];
+      const f = new FiltrePannes();
+      (f as any).httpAdapterHost = {
+        httpAdapter: { isHeadersSent: () => false, reply: (_r: unknown, corps: unknown, statut: number) => reponses.push({ corps, statut }), end: () => undefined },
+      };
+      f.catch(erreur, hote());
+      expect(reponses).toEqual([{ statut: 409, corps: expect.objectContaining({ code: CODE_GESTE_CONCURRENT, message: expect.stringMatching(/cette étape n'a pas été enregistrée/) }) }]);
+    }
+    expect(appels.capture).toHaveLength(formes.length);
+    // Ni une unicité ordinaire, ni un refus déjà nommé ne sont traduits.
+    const unicite = new Prisma.PrismaClientKnownRequestError('Unique', { code: 'P2002', clientVersion: 'x' });
+    expect(exceptionRendue(unicite)).toBe(unicite);
+    const refus = new BadRequestException('x');
+    expect(exceptionRendue(refus)).toBe(refus);
   });
 
   it('un refus (4xx) ne part pas', () => {

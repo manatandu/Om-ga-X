@@ -5,6 +5,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { motifGrilleInapplicable, motifRefusGrille } from './grille-analytique';
 import type { PoserGrilleAnalytiqueDto } from './dto/grille-analytique.dto';
 import { motifCompteHorsSaisie } from './compte-de-saisie';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * Lecture bornée (§ 8 bis du règlement) · une grille par compte et par plan,
@@ -138,6 +139,7 @@ export class GrillesAnalytiquesService {
 
     try {
       await transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const [avant] = await tx.$queryRaw<{ id: string }[]>`
           SELECT "id" FROM "grilles_analytiques"
           WHERE "tenantId" = ${tenantId} AND "compteId" = ${dto.compteId} AND "planId" = ${dto.planId}

@@ -26,6 +26,7 @@ import {
   type NatureMajorationHeures,
 } from './feuilles-temps';
 import { CompteurHeuresDto, FeuilleTempsDto, JoursFeuilleTempsDto } from './dto/feuilles-temps.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LIGNE SAGE-L5, FONCTION 78, RESTE · les feuilles de temps du salarié et les
@@ -157,6 +158,7 @@ export class FeuillesTempsService {
       // DEUX FEUILLES NE SE CHEVAUCHENT PAS · le verrou du salarié tient ce
       // qu'une lecture préalable ne tient pas entre deux créations simultanées,
       // qui liraient toutes deux une période libre.
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const chevauche = await tx.feuilleTemps.findFirst({
         where: { tenantId, salarieId, annuleLe: null, du: { lte: au }, au: { gte: du } },
@@ -242,6 +244,7 @@ export class FeuillesTempsService {
       }
     }
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "feuilles_temps" WHERE id = ${feuilleId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await tx.feuilleTemps.findFirst({
         where: { id: feuilleId, tenantId },
@@ -339,6 +342,7 @@ export class FeuillesTempsService {
   /** Annuler une feuille · jamais supprimée, marquée avec son motif (journal d'audit). */
   async annuler(tenantId: string, userEmail: string, id: string, motif: string) {
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "feuilles_temps" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await tx.feuilleTemps.findFirst({
         where: { id, tenantId },

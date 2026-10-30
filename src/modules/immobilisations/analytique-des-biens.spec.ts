@@ -76,6 +76,7 @@ function passer(opts: { sectionFiche: string | null; sectionFamille: string | nu
   };
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const creer = jest.fn().mockResolvedValue({ id: 'e1' });
   const svc = new ImmobilisationService(prisma as unknown as PrismaService, { creer } as unknown as EcritureService);
   return { svc, creer, prisma };

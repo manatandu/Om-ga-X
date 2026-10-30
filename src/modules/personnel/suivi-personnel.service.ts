@@ -50,6 +50,7 @@ import {
   type StatutDemandeConge,
   type StatutFormation,
 } from './suivi-personnel';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /** Listes de travail bornées (§ 8 bis) · elles disent quand elles ne couvrent pas tout. */
 export const PLAFOND_SUIVI = 500;
@@ -130,6 +131,7 @@ export class SuiviPersonnelService {
     const du = jourUtc(dto.du);
     const au = jourUtc(dto.au);
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const enAttente = await tx.demandeCongeSalarie.findFirst({
         where: { tenantId, salarieId, statut: 'DEMANDEE', du: { lte: au }, au: { gte: du } },
@@ -211,6 +213,7 @@ export class SuiviPersonnelService {
    */
   async reparerDemandeSansConge(tenantId: string, email: string, id: string, dto: ReparationDemandeCongeDto) {
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "demandes_conge_salarie" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const d = await tx.demandeCongeSalarie.findFirst({ where: { id, tenantId } });
       if (!d) throw new NotFoundException('Demande introuvable dans ce dossier.');
@@ -436,6 +439,7 @@ export class SuiviPersonnelService {
   async inscrire(tenantId: string, id: string, dto: ParticipantsFormationDto) {
     await this.salariesDuDossier(tenantId, dto.salarieIds);
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "formations_personnel" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await this.formationPrevue(tx, tenantId, id);
       const deja = await tx.participantFormation.findMany({ where: { tenantId, formationId: f.id }, select: { salarieId: true }, take: PARTICIPANTS_PAR_FORMATION + 1 });
@@ -462,6 +466,7 @@ export class SuiviPersonnelService {
     // interrompue en route, elle gardait des présences à moitié écrites, et
     // un inscrit ajouté entre la lecture et l'écriture restait sans présence.
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "formations_personnel" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const f = await tx.formationPersonnel.findFirst({
         where: { id, tenantId },

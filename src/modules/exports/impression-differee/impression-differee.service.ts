@@ -23,6 +23,7 @@ import {
   libelleDemande,
   motifEchecDe,
 } from './impression-differee';
+import { prendreLeVerrouDuDossierBorne } from '../../../common/transaction-de-saisie';
 
 /** Ce qu'une demande montre · jamais son fichier. */
 const RESUME = {
@@ -312,6 +313,7 @@ export class ImpressionDiffereeService {
     return transactionJournalisee(
       this.prisma,
       async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const [ligne] = await tx.$queryRaw<{ etat: string; commenceLe: Date | null }[]>`
           SELECT "etat"::text AS "etat", "commenceLe" FROM "impressions_differees"
           WHERE "id" = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
@@ -367,6 +369,7 @@ export class ImpressionDiffereeService {
     });
     for (const a of anciennes) {
       await transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const [ligne] = await tx.$queryRaw<{ etat: string; commenceLe: Date | null }[]>`
           SELECT "etat"::text AS "etat", "commenceLe" FROM "impressions_differees"
           WHERE "id" = ${a.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
