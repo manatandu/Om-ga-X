@@ -18,17 +18,16 @@ et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
 ## Relevés en attente · saisie hors de l'isolation sérialisable (2026-10-30)
 
-- Le banc `charge-k6.yml` n'a pas été relancé par la ligne saisie-serialisable
-  (k6 absent du conteneur) · le rejeu local (`scripts/rejouer-saisie-concurrente.cjs`)
-  passe de 4 à 7 refus sur 300 pièces entre dossiers à zéro sur 300 et 900. À
-  relancer avant l'intégration sur `main`.
-- Limite écrite · l'à-nouveau provisoire (`genererANouveauxProvisoires`),
-  resté sérialisable, qui reprend son numéro sans relire la séquence, n'écrit
-  aucune ligne d'exercice · une pièce de N saisie pendant son calcul peut lui
-  échapper. Il est provisoire par nature, se relance, et la clôture le refait.
-- Restent sérialisables, sous `avecRetrySerialisable` · clôture, à-nouveaux
-  provisoires, arrêt à la dissolution et ses suites, ouverture et réouverture
-  d'un rapprochement.
+- Le banc `charge-k6.yml` a tourné sur `089c965cb` (avant la relecture) · aucun
+  409, p50 de 15 % au-dessus de `main`. À relancer sur la branche corrigée,
+  qui a retiré la marque des exercices (p50 local revenu à celui de `main`).
+- La marque des exercices du lettrage (`marquerLesExercicesOuverts`) n'a plus
+  d'objet, aucune transaction n'étant plus sérialisable · gardée sans effet,
+  à retirer avec une relecture du lettrage.
+- `avecRetrySerialisable` n'a plus d'appelant · gardée avec ses tests.
+- Les retraits de brouillard qui tolèrent un groupe (`annulation-sortie`,
+  `fiche-immobilisation`, créances douteuses) n'ont pas été mis au filtre des
+  lignes libres · leur tolérance est à relire à part.
 
 ## Questions à Manasse · saisie, ligne sage-l1
 

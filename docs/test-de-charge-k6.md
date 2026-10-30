@@ -543,7 +543,19 @@ Dans un même dossier, la même paire envoyée trois fois en même temps est let
 | même dossier, même journal, rafale | 29 et 30 × 201 sur 30 | 30 × 201 sur 30 | 60 × 201 sur 60 |
 | doublon ou trou de numéro, réponse 5xx | 0, 0, 0 | 0, 0, 0 | 0, 0, 0 |
 
-Clôture de 2026 et vingt saisies en 2026 et 2027 au même instant (mesure 6) · avant la relecture du brouillard dans la transaction, la clôture rejouée après son 40001 se validait avec dix pièces au brouillard dans l'exercice clos ; après, elle est refusée (400, brouillard nommé) ou la saisie l'est (exercice clôturé), séquences de 2026 et 2027 sans doublon ni trou. Le banc `charge-k6.yml` n'a pas été relancé par cette ligne (k6 absent du conteneur) · à rejouer avant l'intégration.
+Clôture de 2026 et vingt saisies en 2026 et 2027 au même instant (mesure 6) · avant la relecture du brouillard dans la transaction, la clôture rejouée après son 40001 se validait avec dix pièces au brouillard dans l'exercice clos ; après, elle est refusée (400, brouillard nommé) ou la saisie l'est (exercice clôturé), séquences de 2026 et 2027 sans doublon ni trou. Banc `charge-k6.yml` nominal sur `089c965cb` (run 40992337207, PostgreSQL 18) · aucun 5xx, aucune fuite, aucune incohérence, aucun 409 de conflit (un sur `main`), mêmes neuf seuils de latence tombés que sur `main` (un cœur) ; p50 441 ms contre 379, p95 1 764 ms contre 1 664.
+
+*Relecture indépendante (2026-10-30), quatre MAJEURS.* (1) La validation par période prenait ses écritures `FOR UPDATE` et ses exercices `FOR SHARE` AVANT le verrou du dossier, la saisie le prenait avant de réécrire les exercices · interblocage ; un seul ordre désormais, le dossier puis les lignes (validation, visa, pièces jointes, ventilation). (2) Les retraits de brouillard des modules (`deleteMany` sans filtre) emportaient une ligne pointée entre la lecture et le retrait · ils ne retirent plus que des lignes libres, nombre relu, et le pointage prend le verrou. (3) La clôture, restée sérialisable, tombait en 40001 sur toute saisie de N+1 pendant sa lecture · mesuré (mesure 7), 409 après huit reprises sur la branche et une fois sur deux sur `main` · elle passe en lecture validée sous le verrou du dossier, comme les à-nouveaux provisoires, la dissolution et le rapprochement, une fois vérifié que tout écrivain du dossier le prend (saisie, validation, lettrage, pointage, imports et modules par le numéro de pièce). (4) Un journal MANUELLE ne relisait pas l'exercice · le numéro relit l'exercice ouvert sous le verrou dans tous les modes. Plus aucune transaction sérialisable, plus de marque des exercices.
+
+| rejeu local, 20 dossiers × 20 pièces, deux lancements | `main` (`c6215eb46`) | branche après relecture |
+|---|---|---|
+| saisies entre dossiers | 395 et 394 × 201 sur 400, 5 et 6 × 409 | 400 × 201 sur 400 |
+| p50 / p95 entre dossiers | 869 et 762 ms / 2 346 et 2 224 ms | 865 et 846 ms / 1 162 et 1 123 ms |
+| même journal, rafale de 30, p95 | 2 430 et 2 217 ms | 1 478 et 1 371 ms |
+| clôture de N pendant que quatre postes saisissent N+1 | 409 une fois, 201 une fois | 201 et 201 (375 et 444 ms) |
+| échecs de sérialisation vus par PostgreSQL | 295 à 301, plus 107 à 103 sur la rafale | 0 |
+
+Le p50 local est revenu à celui de `main` · les 15 % du banc tenaient vraisemblablement à la réécriture de tous les exercices ouverts à chaque saisie (une mise à jour et son journal de transactions par geste), retirée ; à confirmer par le banc. Mesures nouvelles, toutes vertes · deux corrections de la même écriture au même instant (une passe, deux refus nommés, un seul négatif), clôture de période et dix saisies dans la période (aucune pièce après la clôture), pointage contre suppression du même brouillard dix fois (jamais les deux).
 
 ### 4.5 [MAJEUR · corrigé pour les maillons, 2026-10-21] Sous saturation, des erreurs 500 et des maillons d'audit manquants
 

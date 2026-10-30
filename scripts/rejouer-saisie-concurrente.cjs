@@ -136,7 +136,8 @@ async function mesurer(titre, envois) {
   const pg = conflitsPgDepuis(pos);
   const durees = issues.map((r) => r.duree).sort((a, b) => a - b);
   const p95 = durees[Math.floor(durees.length * 0.95)] ?? 0;
-  console.log(`${titre} · ${issues.length} saisies en ${duree} s · statuts ${JSON.stringify(compter(issues))} · p95 ${p95} ms · PostgreSQL ${pg ? JSON.stringify(pg) : 'journal illisible'}`);
+  const p50 = durees[Math.floor(durees.length * 0.5)] ?? 0;
+  console.log(`${titre} · ${issues.length} saisies en ${duree} s · statuts ${JSON.stringify(compter(issues))} · p50 ${p50} ms · p95 ${p95} ms · PostgreSQL ${pg ? JSON.stringify(pg) : 'journal illisible'}`);
   for (const r of issues.filter((x) => x.statut >= 400).slice(0, 3)) console.log(`    refus ${r.statut} · ${JSON.stringify(r.corps).slice(0, 220)}`);
   return { issues, pg };
 }

@@ -2930,30 +2930,37 @@ lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
 LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
 `scripts/rejouer-lettrage-concurrent.cjs`.
 
-**La saisie se sérialise par DOSSIER, comme le lettrage (ligne
-saisie-serialisable, 2026-10-30, test de charge § 4.4).** Vingt dossiers
-saisissant chacun ses pièces une à une faisaient près d'un rejeu par pièce, et
-de 1,3 à 2,3 % des pièces refusées en 409 à cause d'un AUTRE dossier (MAJEUR) ;
-après, aucun refus ni rejeu sur 300 puis 900 pièces. `creerPlusieursAvec`
-(donc `creer` et `creerAvec` des modules), `modifier`, le transfert d'une
-situation, la réimputation, la correction en négatif et les gestes des
-titres et opérations de trésorerie passent par `transactionDeSaisie`
-(`common/transaction-de-saisie.ts`) · READ COMMITTED, attente bornée (409
-`DOSSIER_OCCUPE`), verrou du dossier EN TÊTE, puis la ligne de chaque exercice
-OUVERT réécrite sans changer de valeur, AVANT le geste. QUATRE RÈGLES À NE PAS
-DÉFAIRE. (1) Le numéro de pièce se lit sous le verrou du dossier ET la ligne de
-son exercice (`prochainNumeroPiece`, quelle que soit l'isolation de
-l'appelant · imports, Groupe, devises compris) · deux pièces ne lisent jamais
-le même maximum, et un appelant resté sérialisable tombe en 40001 plutôt que
-de doubler un numéro. (2) La marque passe en TÊTE, jamais en fin · une clôture
-qui a déjà écrit son exercice fait attendre la saisie, qui relit l'exercice
-clos et refuse. (3) La clôture relit le brouillard DANS sa transaction · sa
-reprise après le 40001 fermait sinon l'exercice avec les pièces saisies
-pendant elle, perdues du résultat (rejeu, mesure 6). (4) La caisse
-provisionnée se juge dans la transaction, sous le verrou. Restent
-sérialisables, gardés par `avecRetrySerialisable` · clôture, à-nouveaux
-provisoires, dissolution, rapprochement. Rejeu ·
-`scripts/rejouer-saisie-concurrente.cjs`.
+**Les écritures se sérialisent par DOSSIER, plus aucune transaction
+sérialisable (ligne saisie-serialisable, 2026-10-30, test de charge § 4.4).**
+Vingt dossiers saisissant chacun ses pièces une à une faisaient près d'un
+rejeu par pièce et de 1,3 à 2,3 % de 409 à cause d'un AUTRE dossier, et la
+clôture de N tombait huit fois en 40001 pendant la saisie de N+1 (MAJEUR) ;
+après, aucun refus ni rejeu. `transactionDeSaisie`
+(`common/transaction-de-saisie.ts`) · READ COMMITTED, verrou du dossier EN
+TÊTE, attente bornée à lui seul (`prendreLeVerrouDuDossierBorne`, 409
+`DOSSIER_OCCUPE`). La prennent la saisie et ses variantes (création, modules
+par `creerAvec`, modification, transfert d'une situation, réimputation,
+correction en négatif), les titres et opérations de trésorerie, la clôture,
+les à-nouveaux provisoires, la dissolution, le rapprochement et le pointage ;
+le lettrage prend le même verrou (`transactionSousVerrouDuDossier`). CINQ
+RÈGLES À NE PAS DÉFAIRE. (1) UN SEUL ORDRE · le verrou du dossier, PUIS les
+lignes · toute transaction qui prend des écritures ou des exercices `FOR
+UPDATE` ou `FOR SHARE` (validation par période, visa, pièces jointes,
+ventilation) le prend avant (`transaction-de-saisie.spec.ts`). (2) Le numéro
+de pièce se lit sous ce verrou, l'exercice relu OUVERT, DANS TOUS LES MODES,
+MANUELLE comprise (`prochainNumeroPiece`, `numeroteurDeLot`) · un import ou
+un module qui avait lu l'exercice ouvert avant le verrou n'entre plus dans
+celui qu'une clôture vient de fermer. (3) Un écrivain qui ne passe par aucune
+écriture auditée prend le verrou lui-même (pointage, confirmation,
+dissociation et annulation d'un rapprochement, délettrage d'héritage) · sans
+quoi la clôture en lecture validée le lirait à moitié. (4) Relus sous le
+verrou · le brouillard dans la clôture, la clôture de période et l'exercice
+dans la saisie, la caisse provisionnée, « déjà corrigée » et le lettrage de la
+correction (P2002 rendu en 409 nommé). (5) Un brouillard retiré par un module
+ne retire que des lignes libres (`retirerLesLignesLibres`, nombre relu ;
+l'écriture changée reste nommée par le module). `avecRetrySerialisable`
+n'a plus d'appelant. Rejeu · `scripts/rejouer-saisie-concurrente.cjs`
+(dix mesures, clôture comprise).
 
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit
 final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par
