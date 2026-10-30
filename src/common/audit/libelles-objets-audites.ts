@@ -179,6 +179,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   Facture: 'Facture',
   Devis: 'Devis',
   ArticleStock: 'Article de stock',
+  ArticleCommercial: 'Article commercial',
+  TarifClient: 'Tarif d’un client',
   MouvementStock: 'Mouvement de stock',
   Consignation: 'Consignation',
   EntitePerimetreConsolidation: 'Entité du périmètre de consolidation',

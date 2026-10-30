@@ -427,6 +427,12 @@ export const MODELES_AUDITES = new Set<string>([
   // ou retiré ferait naître un MALI D'INVENTAIRE qui n'existe pas.
   'ArticleStock',
   'MouvementStock',
+  // La gestion commerciale (ligne commercial-l8) · l'article porte les comptes
+  // de vente et d'achat et le taux que ses lignes proposent, le tarif le prix
+  // et la remise d'un client · en changer un change les pièces suivantes sans
+  // qu'aucune écriture ne bouge.
+  'ArticleCommercial',
+  'TarifClient',
   // La consignation · compte d'attente dont le DÉNOUEMENT (retour, vente,
   // écart) décide du bilan.
   'Consignation',

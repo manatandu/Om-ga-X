@@ -32,7 +32,7 @@ describe('Fusion de tiers · le service', () => {
       ligneOrdreVirement: maj(),
       abonnementCabinet: maj(),
       contratLocationAcquisition: maj(),
-      bonCommandeFournisseur: maj(),
+      bonCommandeFournisseur: maj(), tarifClient: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn().mockResolvedValue({}), delete: jest.fn().mockResolvedValue({}) },
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -79,7 +79,8 @@ describe('Fusion de tiers · le service', () => {
       where: { bailleurTiersId: 'doublon', tenantId: 't' },
       data: { bailleurTiersId: 'garde' },
     });
-    expect(r.reporte).toHaveLength(13);
+    // 14 avec les tarifs propres au client (ligne commercial-l8).
+    expect(r.reporte).toHaveLength(14);
     expect(tx.lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon', tenantId: 't' }, data: { tiersId: 'garde' } });
   });
 
@@ -102,7 +103,7 @@ describe('Fusion de tiers · le service', () => {
       ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
       lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       contratLocationAcquisition: maj(),
-      bonCommandeFournisseur: maj(), documentTiers,
+      bonCommandeFournisseur: maj(), tarifClient: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() }, documentTiers,
       tiers: { update: jest.fn(), delete: jest.fn() },
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
@@ -128,7 +129,7 @@ describe('Fusion de tiers · le service', () => {
     const tx: Record<string, unknown> = {
       tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
       ribTiers, ligneOrdreVirement: maj(), abonnementCabinet: maj(), contratLocationAcquisition: maj(),
-      bonCommandeFournisseur: maj(),
+      bonCommandeFournisseur: maj(), tarifClient: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn(), delete: jest.fn() },
@@ -160,7 +161,7 @@ describe('Fusion de tiers · le service', () => {
       tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
       ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
       contratLocationAcquisition: maj(),
-      bonCommandeFournisseur: maj(), lieuLivraison,
+      bonCommandeFournisseur: maj(), tarifClient: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() }, lieuLivraison,
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn(), delete: jest.fn() },
       $executeRaw: jest.fn().mockResolvedValue(1),

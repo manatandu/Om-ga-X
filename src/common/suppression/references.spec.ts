@@ -29,7 +29,7 @@ describe('les relations se lisent dans le schéma', () => {
     const { proxy, appels } = fauxPrisma({});
     await referencesVers(proxy, 'TauxTva', 'x', 't');
     expect(appels.map((a) => `${a.modele}.${Object.keys(a.where)[0]}`).sort()).toEqual(
-      ['compte.tauxTvaDefautId', 'ligneEcriture.tauxTvaId', 'ligneFacture.tauxTvaId', 'ligneModeleSaisie.tauxTvaId'].sort(),
+      ['articleCommercial.tauxTvaId', 'compte.tauxTvaDefautId', 'ligneEcriture.tauxTvaId', 'ligneFacture.tauxTvaId', 'ligneModeleSaisie.tauxTvaId'].sort(),
     );
   });
 

@@ -72,6 +72,8 @@ const InventairePage = lazy(() => import('../pages/InventairePage').then((m) => 
 const VariationStocksPage = lazy(() => import('../pages/VariationStocksPage').then((m) => ({ default: m.VariationStocksPage })));
 const PersonnelPage = lazy(() => import('../pages/PersonnelPage').then((m) => ({ default: m.PersonnelPage })));
 const MagasinPage = lazy(() => import('../pages/MagasinPage').then((m) => ({ default: m.MagasinPage })));
+// Ligne commercial-l8 · la gestion commerciale.
+const ArticlesCommerciauxPage = lazy(() => import('../pages/ArticlesCommerciauxPage').then((m) => ({ default: m.ArticlesCommerciauxPage })));
 const EmballagesPage = lazy(() => import('../pages/EmballagesPage').then((m) => ({ default: m.EmballagesPage })));
 const CircularisationPage = lazy(() => import('../pages/CircularisationPage').then((m) => ({ default: m.CircularisationPage })));
 const FaiblessesPage = lazy(() => import('../pages/FaiblessesPage').then((m) => ({ default: m.FaiblessesPage })));
@@ -453,6 +455,14 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Magasin et fiches de stock',
     titreCourt: 'Magasin',
     rendre: () => <MagasinPage />,
+  },
+  {
+    // Ligne commercial-l8 · ouverts aux deux référentiels, une association
+    // vendant « à titre accessoire » (loi n° 004/2001, art. 1er).
+    motif: /^\/articles$/,
+    titre: 'Articles et tarifs',
+    titreCourt: 'Articles',
+    rendre: () => <ArticlesCommerciauxPage />,
   },
   {
     // AUCUN `referentielsApplicables` · les deux textes décrivent la

@@ -897,6 +897,9 @@ model Tenant {
   factures                         Facture[]
   devis                            Devis[]
   articlesStock                    ArticleStock[]
+  /// Ligne commercial-l8 · gestion commerciale (articles, tarifs).
+  articlesCommerciaux              ArticleCommercial[]
+  tarifsClients                    TarifClient[]
   mouvementsStock                  MouvementStock[]
   consignations                    Consignation[]
   EntitePerimetreConsolidation     EntitePerimetreConsolidation[]
@@ -1528,6 +1531,9 @@ model Compte {
 
   /// Articles de magasin rattachés à ce compte de stock (classe 3).
   articlesStock ArticleStock[]
+  /// Ligne commercial-l8 · articles vendus ou achetés sur ce compte.
+  articlesVente ArticleCommercial[] @relation("ArticleCompteVente")
+  articlesAchat ArticleCommercial[] @relation("ArticleCompteAchat")
 
   /// Subventions en numéraire (14) rattachées à des biens (lot 5).
   subventionsImmobilisations SubventionImmobilisation[]          @relation("SubventionImmoCompte")
@@ -3090,6 +3096,8 @@ model Tiers {
   contratsLocationAcquisition ContratLocationAcquisition[]
   // Ligne microfina-m2, idée 2 · les bons de commande remis à ce fournisseur.
   bonsCommande                BonCommandeFournisseur[]
+  /// Ligne commercial-l8 · prix et remises propres à ce client.
+  tarifsClients               TarifClient[]
 
   @@unique([tenantId, code])
   // L'agrégation du groupe interroge les tiers PAR CELLULE · sans cet index
@@ -4775,6 +4783,8 @@ model TauxTva {
   lignesEcriture     LigneEcriture[]
   lignesFacture      LigneFacture[]
   lignesModeleSaisie LigneModeleSaisie[]
+  /// Ligne commercial-l8 · articles qui proposent ce taux.
+  articlesCommerciaux ArticleCommercial[]
 
   // Comptes de charge ou de produit qui proposent ce taux en saisie.
   comptesAvecCeTauxParDefaut Compte[] @relation("CompteTauxTvaDefaut")
@@ -8155,6 +8165,9 @@ model ArticleStock {
 
   mouvements MouvementStock[]
 
+  /// Ligne commercial-l8 · l'article commercial qui le vend ou l'achète.
+  articleCommercial ArticleCommercial?
+
   createdAt DateTime @default(now())
   createdBy String
   updatedAt DateTime @updatedAt
@@ -8162,6 +8175,101 @@ model ArticleStock {
   @@unique([tenantId, code])
   @@index([tenantId, compteId])
   @@map("articles_stock")
+}
+
+// ---------------------------------------------------------------------------
+// LIGNE commercial-l8 · la gestion commerciale (Sage, ligne 90), son noyau.
+//
+// L'ARTICLE COMMERCIAL NOMME CE QUE LE DOSSIER VEND OU ACHÈTE, avec le compte
+// où sa vente et son achat se passent (classe 7 · AUDCIF Titre VII, compte 70,
+// « crédité du montant des facturations hors taxes » ; classe 6 · compte 60,
+// « le montant des factures d'achat ») et le taux de taxe proposé. Il N'EST PAS
+// la fiche de stock · un article stocké RENVOIE à l'article du magasin
+// (`ArticleStock`), dont la fiche, la méthode et la valorisation restent les
+// seules (inventaire permanent, trois méthodes admises). Un service vendu n'a
+// pas de fiche de stock.
+// ---------------------------------------------------------------------------
+model ArticleCommercial {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// Référence unique au dossier (convention d'OmegaX, comme la référence
+  /// d'article de Sage).
+  reference   String @db.VarChar(18)
+  designation String @db.VarChar(120)
+  /// Unité de vente · celle de la fiche de stock quand l'article est stocké.
+  unite       String @db.VarChar(20)
+
+  /// Compte de produit (classe 7, compte d'imputation) · facultatif, exigé
+  /// au passage de la facture de vente au journal.
+  compteVenteId String?
+  compteVente   Compte? @relation("ArticleCompteVente", fields: [compteVenteId], references: [id], onDelete: Restrict)
+  /// Compte de charge (classe 6, compte d'imputation) · facultatif, exigé au
+  /// passage de la facture d'achat au journal.
+  compteAchatId String?
+  compteAchat   Compte? @relation("ArticleCompteAchat", fields: [compteAchatId], references: [id], onDelete: Restrict)
+
+  /// Taux proposé sur la ligne · un taux du dossier, jamais un pourcentage
+  /// écrit à la main. `exonere` dit l'opération exonérée, qui n'est pas un
+  /// taux nul (exonéré et taux zéro se distinguent, O.-L. n° 10/001, art. 24
+  /// et 43).
+  tauxTvaId String?
+  tauxTva   TauxTva? @relation(fields: [tauxTvaId], references: [id], onDelete: Restrict)
+  exonere   Boolean  @default(false)
+
+  /// Prix hors taxes de base, en francs (AUDCG art. 263, « présumé convenu
+  /// hors taxes ») · proposés à la ligne, jamais imposés.
+  prixVenteHT Decimal? @db.Decimal(18, 2)
+  prixAchatHT Decimal? @db.Decimal(18, 2)
+
+  /// L'article du magasin que la livraison et la réception mouvementent.
+  articleStockId String?       @unique
+  articleStock   ArticleStock? @relation(fields: [articleStockId], references: [id], onDelete: Restrict)
+
+  /// Un article qui a servi ne se supprime pas · il se met en sommeil.
+  actif Boolean @default(true)
+
+  tarifs TarifClient[]
+
+  createdAt DateTime @default(now())
+  createdBy String
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, actif])
+  @@index([compteVenteId])
+  @@index([compteAchatId])
+  @@index([tauxTvaId])
+  @@map("articles_commerciaux")
+}
+
+/// UN PRIX OU UNE REMISE PROPRE À UN CLIENT · proposé à la ligne, jamais
+/// imposé. La remise est DÉDUITE SUR LA FACTURE (AUDCIF Titre VII, compte 70,
+/// « déductions faites des rabais et remises lorsqu'ils sont déduits sur la
+/// facture elle-même »), jamais passée à part.
+model TarifClient {
+  id        String            @id @default(uuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  articleId String
+  article   ArticleCommercial @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  tiersId   String
+  tiers     Tiers             @relation(fields: [tiersId], references: [id], onDelete: Restrict)
+
+  /// Prix hors taxes propre au client, en francs · à défaut, le prix de base.
+  prixHT         Decimal? @db.Decimal(18, 2)
+  /// Remise en pour cent, au moins 0 et moins de 100.
+  remisePourcent Decimal? @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  createdBy String
+  updatedAt DateTime @updatedAt
+
+  @@unique([articleId, tiersId])
+  @@index([tenantId, tiersId])
+  @@index([tiersId])
+  @@map("tarifs_clients")
 }
 
 model MouvementStock {

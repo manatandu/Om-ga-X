@@ -632,6 +632,16 @@ export class TiersService {
       for (const rib of ribsDuDoublon) {
         await tx.ribTiers.update({ where: { id: rib.id }, data: saisieDesCoordonnees(utilisateurId, maintenant) });
       }
+      // UN TARIF DU DOUBLON POUR UN ARTICLE QUE LA FICHE CONSERVÉE TARIFE DÉJÀ
+      // n'est pas reporté (ligne commercial-l8) · l'unicité (article, client)
+      // tiendrait la fusion en échec. Le prix convenu avec le client conservé
+      // prime, comme ses coordonnées ; le journal d'audit trace le retrait.
+      const tarifesGardes = await tx.tarifClient.findMany({ where: { tenantId, tiersId: cible.id }, select: { articleId: true } });
+      if (tarifesGardes.length) {
+        await tx.tarifClient.deleteMany({
+          where: { tenantId, tiersId: source.id, articleId: { in: tarifesGardes.map((t) => t.articleId) } },
+        });
+      }
       const r = await reporterReferences(tx, 'Tiers', source.id, cible.id, tenantId);
       const complement = coordonneesAComblement(source, cible);
       if (Object.keys(complement).length) await tx.tiers.update({ where: { id: cible.id }, data: complement });

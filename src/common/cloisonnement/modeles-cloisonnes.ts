@@ -19,6 +19,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   'ChequeEmis',
   'AffectationResultat',
   'ArticleStock',
+  // Ligne commercial-l8 · la gestion commerciale.
+  'ArticleCommercial',
+  'TarifClient',
   'Bailleur',
   'BulletinPaie',
   'Cloture',

@@ -136,6 +136,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ExonerationsController: FonctionMetier.FISCALITE,
   FacturationController: FonctionMetier.GESTION_COMMERCIALE,
   CommercialController: FonctionMetier.GESTION_COMMERCIALE,
+  // Ligne commercial-l8 · articles, tarifs et pièces de la gestion commerciale.
+  ArticlesCommerciauxController: FonctionMetier.GESTION_COMMERCIALE,
   PersonnelController: FonctionMetier.PAIE,
   AvancesRubriquesController: FonctionMetier.PAIE,
   BaremesPaieController: FonctionMetier.PAIE,

@@ -308,6 +308,13 @@ export function AppShell() {
               ]
             : [],
         },
+        {
+          // Ligne commercial-l8 · Sage, Structure > Articles. Masqué tant que
+          // le dossier n'a pas activé la gestion commerciale, et refusé par le
+          // serveur (`GestionCommercialeGuard`).
+          titre: 'Gestion commerciale',
+          items: [{ label: 'Articles et tarifs', chemin: '/articles', onClick: () => navigate('/articles') }],
+        },
         { label: 'Immobilisations', separateurAvant: true, chemin: '/immobilisations', onClick: () => navigate('/immobilisations') },
         // Le registre tient l'état civil et les engagements, comme le plan des
         // tiers tient les tiers. Son onglet Bulletins passe la paie du mois au
