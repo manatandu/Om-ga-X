@@ -53,6 +53,12 @@ test('SYSCOHADA · export des modifications, impressions différées et modèle 
       await dansLEcran(page, commande, largeur);
       await sansDebordement(page, largeur);
       await page.getByRole('button', { name: fermer }).click();
+      // FERMER REMET L'ADRESSE SUR L'ACCUEIL (AppShell, fenêtre active qui
+      // change) · la fenêtre suivante ne se demande qu'une fois ce retour
+      // fait, sans quoi il l'emporte sur elle (run 519, WebKit · adresse
+      // revenue à « #/ », aucune fenêtre ouverte).
+      await expect(page.getByRole('button', { name: fermer })).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/$/);
     }
   }
 
