@@ -15,9 +15,12 @@ Branche de sauvegarde `travail/saisie-suites`, partie de `origin/main`
    salariés, rappels, missions, feuilles de temps, formations, demandes de
    congé, organigramme, avances, bilan social, campagnes d'inventaire,
    budgets et grilles analytiques, plan analytique, visa des factures,
-   impressions différées, titres et opérations de trésorerie). Garde ·
+   impressions différées, titres et opérations de trésorerie ; puis, à la
+   relecture, la suppression d'un dossier d'essai, qui ne tenait qu'un
+   verrou consultatif à clé préfixée). Garde ·
    `src/common/ordre-des-verrous.spec.ts`, relu par STRUCTURE (la fonction
-   qui écrit le verrou de ligne doit prendre le verrou du dossier avant lui).
+   qui écrit le verrou de ligne doit prendre le verrou du dossier avant lui ;
+   un verrou consultatif à clé préfixée, `cheques:…`, ne compte pas).
    Dernier rempart · `FiltrePannes` traduit un interblocage ou un conflit
    d'écriture qui s'échapperait (P2034, 40001, 40P01, enveloppés compris) en
    409 nommé `GESTE_CONCURRENT`, jamais rejoué d'office par l'interface

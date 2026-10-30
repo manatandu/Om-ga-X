@@ -489,7 +489,11 @@ describe('supprimer', () => {
   it('SUPPRIME · verrou d’abord, purge de tout le plan, dossier, PUIS la trace (nombres seulement)', async () => {
     const { service, lecteur, appels } = monter(pret);
     const r = await service.supprimer(T, OPERATEUR, T, MAINTENANT);
-    expect(lecteur.$executeRaw).toHaveBeenCalledTimes(1); // le verrou consultatif du dossier
+    // Le verrou de la suppression, puis celui du dossier, borné (borne posée,
+    // verrou, borne rendue) · le dossier avant ses lignes (ligne saisie-suites).
+    expect(lecteur.$executeRaw).toHaveBeenCalledTimes(4);
+    expect(String(lecteur.$executeRaw.mock.calls[2][0])).toMatch(/pg_advisory_xact_lock/);
+    expect(lecteur.$executeRaw.mock.calls[2].slice(1)).toEqual([T]);
     const plan = planDePurge();
     const suppressions = appels.filter((a) => a.startsWith('DELETE') || a.startsWith('UPDATE'));
     expect(suppressions).toHaveLength(plan.length + 1);
