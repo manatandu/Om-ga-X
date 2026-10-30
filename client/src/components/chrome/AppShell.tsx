@@ -8,7 +8,7 @@ import { definitionPour } from '../../lib/registre-fenetres';
 import { fenetreDisponible } from '../../lib/referentiel-fenetre';
 import { SymboleOmegaX } from './Logo';
 import { MenuBar, type MenuDef } from './MenuBar';
-import { CalculetteChrome, ClocheChrome, NavigationChrome } from './OutilsChrome';
+import { CalculetteChrome, ClocheChrome, NavigationChrome, NotificationsChrome } from './OutilsChrome';
 import { StatusBar } from './StatusBar';
 import { BandeauDemonstration } from './BandeauDemonstration';
 import { BandeauConditions } from './BandeauConditions';
@@ -269,6 +269,10 @@ export function AppShell() {
         // Ligne dossier-l9, fonction 95 · la messagerie entre utilisateurs du
         // dossier, à côté du compte de chacun · ouverte à tous les rôles.
         { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
+        // Ligne dossier-l9, fonctions 96 et 100 · les notifications de chacun
+        // et ses préférences (langue du cadre, événements notifiés).
+        { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
+        { label: 'Préférences…', chemin: '/preferences', onClick: () => navigate('/preferences') },
         { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
       ],
     },
@@ -732,6 +736,8 @@ export function AppShell() {
               { label: 'Devises et réévaluation', chemin: '/devises', onClick: () => navigate('/devises') },
               { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
               { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
+              { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
+              { label: 'Préférences…', chemin: '/preferences', onClick: () => navigate('/preferences') },
               { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
             ],
           },
@@ -876,6 +882,8 @@ export function AppShell() {
                   qui la fenêtre est fermée (gestionnaire de paie), c'était un
                   403 par minute et un clic renvoyé ailleurs. */}
               {fenetreOuverteAuRole('/courrier', utilisateur?.role) && <ClocheChrome />}
+              {/* Ligne dossier-l9, fonction 100 · les notifications, à tous les rôles. */}
+              <NotificationsChrome />
               <CalculetteChrome />
             </>
           }

@@ -24,6 +24,8 @@ const EXEMPTS: Record<string, string> = {
   'components/ModaleMonCompte.tsx': 'chacun règle la sécurité de son propre compte (mot de passe, sessions), lecture seule comprise',
   'components/ModaleMonAdresse.tsx': 'chacun change sa propre adresse de connexion, lecture seule comprise',
   'components/ModaleDoubleAuth.tsx': 'chacun protège son propre compte par un second facteur, lecture seule comprise',
+  'pages/PreferencesPage.tsx': 'chacun règle ses propres préférences (langue du cadre, notifications), lecture seule comprise · aucun effet sur les livres (ligne dossier-l9, fonctions 96 et 100)',
+  'pages/NotificationsPage.tsx': 'chacun marque ses propres notifications lues, lecture seule comprise · aucun effet sur les livres (ligne dossier-l9, fonction 100)',
   'pages/MessagesPage.tsx': 'chacun écrit, lit et retire ses propres messages internes, lecture seule comprise · aucun effet sur les livres (ligne dossier-l9, fonction 95)',
   'components/NouveauFichierWizard.tsx': "création d'un dossier depuis la porte d'ouverture, avant toute session",
   'components/PanneauSurSite.tsx': "dépôt de la licence sur site depuis la porte d'ouverture, avant qu'aucun compte n'existe",

@@ -25,6 +25,16 @@ describe("les notifications dans l'interface · aux seuls qu'elles concernent", 
     ]);
     // Les utilisateurs actifs du dossier, et lui seul.
     expect(findMany.mock.calls[0][0].where).toEqual({ tenantId: 't1', estActif: true });
+    expect(findMany.mock.calls[0][0].orderBy).toEqual({ id: 'asc' });
+  });
+
+  it('au-delà d’une tranche, les destinataires suivants sont lus, jamais tus', async () => {
+    const premiers = Array.from({ length: 500 }, (_, i) => ({ id: `u${String(i).padStart(4, '0')}`, preferences: null }));
+    const createMany = jest.fn().mockResolvedValue({ count: 0 });
+    const findMany = jest.fn().mockResolvedValueOnce(premiers).mockResolvedValueOnce([{ id: 'u9999', preferences: null }]);
+    const db = { user: { findMany }, notificationUtilisateur: { createMany } } as never;
+    expect(await notifier(db, 't1', TypeNotification.EXERCICE_CLOTURE, { titre: 'x' }, {})).toBe(501);
+    expect(findMany.mock.calls[1][0].where.AND).toEqual([{ id: { gt: 'u0499' } }]);
   });
 
   it('les rôles et les destinataires nommés bornent la lecture', async () => {
@@ -38,6 +48,17 @@ describe("les notifications dans l'interface · aux seuls qu'elles concernent", 
     await expect(notifierSansEchec(db, 't1', TypeNotification.MESSAGE_RECU, { titre: 'x' }, {})).resolves.toBe(0);
   });
 
+  it("la lecture qui compose le contenu tombe sous la même garde · un acte fait ne rend jamais d'erreur", async () => {
+    const createMany = jest.fn();
+    const db = { user: { findMany: jest.fn().mockResolvedValue([{ id: 'b', preferences: null }]) }, notificationUtilisateur: { createMany } } as never;
+    await expect(
+      notifierSansEchec(db, 't1', TypeNotification.EXERCICE_CLOTURE, async () => Promise.reject(new Error('lecture')), {}),
+    ).resolves.toBe(0);
+    // Rien à dire (l'exercice introuvable) · aucune notification, aucune lecture des destinataires.
+    await expect(notifierSansEchec(db, 't1', TypeNotification.EXERCICE_CLOTURE, async () => null, {})).resolves.toBe(0);
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
   it('les trois actes disent leur événement après coup', () => {
     const lire = (f: string) => readFileSync(join(__dirname, '..', f), 'utf8');
     expect(lire('messagerie/messagerie.service.ts')).toMatch(/notifierSansEchec\([\s\S]*TypeNotification\.MESSAGE_RECU/);
@@ -47,22 +68,32 @@ describe("les notifications dans l'interface · aux seuls qu'elles concernent", 
 });
 
 describe('les préférences · les siennes seules', () => {
-  it('sans ligne, les défauts · français, texte normal, rien de coupé', async () => {
+  it('sans ligne, les défauts · français, rien de coupé', async () => {
     const prisma = { preferenceUtilisateur: { findFirst: jest.fn().mockResolvedValue(null) } };
     const r = await new PreferencesService(prisma as never).lire('t1', 'u1');
-    expect(r).toMatchObject({ langue: 'FR', tailleTexte: 'NORMALE', notificationsCoupees: [] });
+    expect(r).toMatchObject({ langue: 'FR', notificationsCoupees: [] });
     expect(prisma.preferenceUtilisateur.findFirst.mock.calls[0][0].where).toEqual({ tenantId: 't1', userId: 'u1' });
+  });
+
+  it("l'anglais est refusé tant que le contrat dit le français seul · refusé, pas seulement masqué", async () => {
+    const prisma = { preferenceUtilisateur: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() } };
+    await expect(new PreferencesService(prisma as never).regler('t1', 'u1', { langue: 'EN' as never })).rejects.toThrow(/seule langue proposée/);
+    expect(prisma.preferenceUtilisateur.update).not.toHaveBeenCalled();
+    expect(prisma.preferenceUtilisateur.create).not.toHaveBeenCalled();
+    // La phrase du contrat qui le fonde est bien celle du texte servi.
+    const contrat = readFileSync(join(__dirname, '..', 'conditions-licence', 'conditions-de-licence.ts'), 'utf8');
+    expect(contrat).toContain('L’interface d’OmegaX, ses documents et le présent contrat sont en français, seule langue proposée.');
   });
 
   it('ce qui n’est pas envoyé ne change pas', async () => {
     const prisma = {
       preferenceUtilisateur: {
-        findFirst: jest.fn().mockResolvedValueOnce({ id: 'p' }).mockResolvedValue({ langue: 'EN', tailleTexte: 'NORMALE', notificationsCoupees: [] }),
+        findFirst: jest.fn().mockResolvedValueOnce({ id: 'p' }).mockResolvedValue({ langue: 'EN', notificationsCoupees: [] }),
         update: jest.fn().mockResolvedValue({}),
       },
     };
-    await new PreferencesService(prisma as never).regler('t1', 'u1', { langue: 'EN' as never });
-    expect(prisma.preferenceUtilisateur.update).toHaveBeenCalledWith({ where: { id: 'p', tenantId: 't1' }, data: { langue: 'EN' } });
+    await new PreferencesService(prisma as never).regler('t1', 'u1', { notificationsCoupees: ['MESSAGE_RECU', 'MESSAGE_RECU'] as never });
+    expect(prisma.preferenceUtilisateur.update).toHaveBeenCalledWith({ where: { id: 'p', tenantId: 't1' }, data: { notificationsCoupees: ['MESSAGE_RECU'] } });
   });
 });
 

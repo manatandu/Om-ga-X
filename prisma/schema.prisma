@@ -13522,13 +13522,6 @@ enum LangueInterface {
   EN
 }
 
-/// La taille du texte de l'espace de travail, préférence du titulaire.
-enum TailleTexte {
-  NORMALE
-  GRANDE
-  TRES_GRANDE
-}
-
 /// Les événements du dossier qui donnent une notification dans l'interface.
 enum TypeNotification {
   MESSAGE_RECU
@@ -13536,7 +13529,7 @@ enum TypeNotification {
   EXERCICE_CLOTURE
 }
 
-/// LES PRÉFÉRENCES D'UN UTILISATEUR · langue, taille du texte, notifications
+/// LES PRÉFÉRENCES D'UN UTILISATEUR · langue de l'interface, notifications
 /// coupées. Les siennes seules · chacun les règle pour lui-même, elles ne
 /// touchent ni le dossier ni les autres. Une ligne par utilisateur, née à la
 /// première modification · sans elle, les défauts valent.
@@ -13547,7 +13540,6 @@ model PreferenceUtilisateur {
   userId               String             @unique
   user                 User               @relation("PreferencesDeLUtilisateur", fields: [userId], references: [id], onDelete: Cascade)
   langue               LangueInterface    @default(FR)
-  tailleTexte          TailleTexte        @default(NORMALE)
   notificationsCoupees TypeNotification[] @default([])
   modifieeLe           DateTime           @updatedAt
 

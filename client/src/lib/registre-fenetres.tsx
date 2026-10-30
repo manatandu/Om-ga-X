@@ -90,6 +90,8 @@ const ExportModificationsPage = lazy(() =>
 );
 const UtilisateursConnectesPage = lazy(() => import('../pages/UtilisateursConnectesPage').then((m) => ({ default: m.UtilisateursConnectesPage })));
 const MessagesPage = lazy(() => import('../pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
+const NotificationsPage = lazy(() => import('../pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const PreferencesPage = lazy(() => import('../pages/PreferencesPage').then((m) => ({ default: m.PreferencesPage })));
 const EchangeEcrituresPage = lazy(() => import('../pages/EchangeEcrituresPage').then((m) => ({ default: m.EchangeEcrituresPage })));
 const ImpressionsDiffereesPage = lazy(() =>
   import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
@@ -602,6 +604,20 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Messages',
     titreCourt: 'Messages',
     rendre: () => <MessagesPage />,
+  },
+  {
+    // Ligne dossier-l9, fonction 100 · les notifications de chacun, à tous les rôles.
+    motif: /^\/notifications$/,
+    titre: 'Notifications',
+    titreCourt: 'Notifications',
+    rendre: () => <NotificationsPage />,
+  },
+  {
+    // Ligne dossier-l9, fonctions 96 et 100 · les préférences de chacun, à tous les rôles.
+    motif: /^\/preferences$/,
+    titre: 'Préférences',
+    titreCourt: 'Préférences',
+    rendre: () => <PreferencesPage />,
   },
   {
     // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,

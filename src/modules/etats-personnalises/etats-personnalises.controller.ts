@@ -23,7 +23,7 @@ export class EtatsPersonnalisesController {
   // Ligne dossier-l9, fonction 100 · l'aide à la formule d'une rubrique, une
   // lecture du plan · déclarée AVANT `:id/calcul`, qui ne la masque pas.
   @Get('formule')
-  formule(@CurrentUser() user: AuthenticatedUser, @Query('racines') racines = '') {
+  formule(@CurrentUser() user: AuthenticatedUser, @Query('racines') racines: unknown = '') {
     return this.service.formule(user.tenantId, racines);
   }
 

@@ -143,6 +143,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/etats-personnalises/formule':
+    "aide à la formule d'une rubrique d'état personnalisé (ligne dossier-l9, fonction 100), les comptes du plan entier qu'elle lit par la règle du calcul, jamais une liste de choix",
   '/interrogation-compte/:compteId':
     "interrogation du compte déjà choisi dans la saisie (ligne gl-saisie, fonction 13), son solde et ses dernières lignes, jamais une liste",
   '/personnel/compteurs-heures':

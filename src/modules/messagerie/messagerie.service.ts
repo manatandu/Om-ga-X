@@ -108,12 +108,14 @@ export class MessagerieService {
     );
     // LA NOTIFICATION (fonction 100) · aux destinataires seuls, après l'envoi,
     // jamais levée · l'objet se dit à qui le lit de toute façon.
-    const expediteur = await this.prisma.user.findFirst({ where: { tenantId, id: userId }, select: { email: true } });
     await notifierSansEchec(
       this.prisma,
       tenantId,
       TypeNotification.MESSAGE_RECU,
-      { titre: `Message de ${expediteur?.email ?? 'un utilisateur du dossier'} · ${dto.objet.trim()}`, lien: '/messages' },
+      async () => {
+        const expediteur = await this.prisma.user.findFirst({ where: { tenantId, id: userId }, select: { email: true } });
+        return { titre: `Message de ${expediteur?.email ?? 'un utilisateur du dossier'} · ${dto.objet.trim()}`, lien: '/messages' };
+      },
       { userIds: ids, sauf: userId },
     );
     return { ...message, destinataires: ids.length };

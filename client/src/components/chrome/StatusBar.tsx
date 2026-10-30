@@ -1,6 +1,7 @@
 import { useAuth } from '../../lib/auth';
 import { SelecteurExercice } from './SelecteurExercice';
 import { useFenetres } from '../../lib/fenetres';
+import { useLangue } from '../../lib/langue';
 
 const LIBELLE_ROLE: Record<string, string> = {
   ADMIN_CABINET: 'Administrateur',
@@ -13,6 +14,7 @@ const LIBELLE_ROLE: Record<string, string> = {
 export function StatusBar() {
   const { utilisateur } = useAuth();
   const { fenetres, cleActive } = useFenetres();
+  const { tr } = useLangue();
 
   /*
     Le nom de la fenêtre active vient du GESTIONNAIRE DE FENÊTRES, plus d'une
@@ -22,7 +24,7 @@ export function StatusBar() {
     celui que porte la barre de titre de la fenêtre · ils ne peuvent plus
     diverger. Aucune fenêtre ouverte = on regarde l'accueil.
   */
-  const titreFenetre = fenetres.find((f) => f.cle === cleActive)?.titre ?? 'Accueil';
+  const titreFenetre = fenetres.find((f) => f.cle === cleActive)?.titre ?? tr('Accueil');
 
   return (
     <div className="h-[24px] bg-surface border-t border-border flex items-center justify-between gap-3 px-3 text-[11px] text-text-dim shrink-0">
@@ -49,7 +51,7 @@ export function StatusBar() {
       <span className="min-w-0 truncate flex items-center gap-1">
         <span className="truncate">
           {utilisateur?.tenant.nom} · {utilisateur?.tenant.referentiel}
-          {utilisateur && ` · ${LIBELLE_ROLE[utilisateur.role]}`}
+          {utilisateur && ` · ${tr(LIBELLE_ROLE[utilisateur.role])}`}
         </span>
         <SelecteurExercice />
       </span>

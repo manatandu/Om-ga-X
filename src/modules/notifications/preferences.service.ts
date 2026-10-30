@@ -1,12 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { LangueInterface, TailleTexte, TypeNotification } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { LangueInterface, TypeNotification } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { CONSERVATION_LUES_JOURS, LIBELLE_TYPE_NOTIFICATION, TAILLE_LISTE_NOTIFICATIONS } from './notifications';
+import { CONSERVATION_LUES_JOURS, LANGUES_PROPOSEES, LIBELLE_TYPE_NOTIFICATION, MOTIF_LANGUE_NON_PROPOSEE, TAILLE_LISTE_NOTIFICATIONS } from './notifications';
 
 /** Les préférences quand le titulaire n'en a posé aucune. */
 export const PREFERENCES_PAR_DEFAUT = {
   langue: LangueInterface.FR,
-  tailleTexte: TailleTexte.NORMALE,
   notificationsCoupees: [] as TypeNotification[],
 };
 
@@ -22,10 +21,12 @@ export class PreferencesService {
   async lire(tenantId: string, userId: string) {
     const p = await this.prisma.preferenceUtilisateur.findFirst({
       where: { tenantId, userId },
-      select: { langue: true, tailleTexte: true, notificationsCoupees: true },
+      select: { langue: true, notificationsCoupees: true },
     });
     return {
       ...(p ?? PREFERENCES_PAR_DEFAUT),
+      // Servies, jamais recopiées à l'écran · l'écran n'offre que celles-ci.
+      languesProposees: LANGUES_PROPOSEES,
       types: Object.values(TypeNotification).map((type) => ({ type, libelle: LIBELLE_TYPE_NOTIFICATION[type] })),
     };
   }
@@ -34,11 +35,11 @@ export class PreferencesService {
   async regler(
     tenantId: string,
     userId: string,
-    dto: { langue?: LangueInterface; tailleTexte?: TailleTexte; notificationsCoupees?: TypeNotification[] },
+    dto: { langue?: LangueInterface; notificationsCoupees?: TypeNotification[] },
   ) {
+    if (dto.langue !== undefined && !LANGUES_PROPOSEES.includes(dto.langue)) throw new BadRequestException(MOTIF_LANGUE_NON_PROPOSEE);
     const donnees = {
       ...(dto.langue !== undefined ? { langue: dto.langue } : {}),
-      ...(dto.tailleTexte !== undefined ? { tailleTexte: dto.tailleTexte } : {}),
       ...(dto.notificationsCoupees !== undefined ? { notificationsCoupees: [...new Set(dto.notificationsCoupees)] } : {}),
     };
     const existante = await this.prisma.preferenceUtilisateur.findFirst({ where: { tenantId, userId }, select: { id: true } });

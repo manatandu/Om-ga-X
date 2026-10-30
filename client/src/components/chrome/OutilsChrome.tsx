@@ -11,7 +11,8 @@ import {
 } from '../../lib/courrier-file';
 import type { CompteursCourrier } from '../../lib/types';
 import { Calculette } from '../Calculette';
-import { IconCalculette, IconCloche } from './icons';
+import { IconCalculette, IconCloche, IconInfo } from './icons';
+import { EVENEMENT_NOTIFICATIONS, pastilleNotifications, titreNotifications } from '../../lib/preferences';
 
 /**
  * OUTILS DU CHROME · ce qui reste de l'ancienne barre d'outils, ramené sur
@@ -160,6 +161,57 @@ export function ClocheChrome() {
       className="relative flex items-center justify-center w-[22px] h-[22px] rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       <IconCloche width={13} height={13} />
+      {pastille && (
+        <span className="absolute -top-px -right-px min-w-[13px] h-[13px] px-[3px] rounded-full bg-danger text-white text-[9px] font-bold leading-[13px] text-center">
+          {pastille}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * LES NOTIFICATIONS DANS L'INTERFACE (ligne dossier-l9, fonction 100) · le
+ * nombre de non lues, relu à la cadence de la cloche, onglet visible
+ * seulement. Un compte non lu (échec) ne se dit jamais « aucune » · la
+ * pastille disparaît et l'infobulle dit l'échec (`titreNotifications`).
+ */
+export function NotificationsChrome() {
+  const navigate = useNavigate();
+  const [nonLues, setNonLues] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vivant = true;
+    const lire = () => {
+      if (document.visibilityState === 'hidden') return;
+      api.get<{ nonLues: number }>('/notifications/non-lues').then(
+        (r) => vivant && setNonLues(r.nonLues),
+        () => vivant && setNonLues(null),
+      );
+    };
+    lire();
+    const rythme = window.setInterval(lire, RYTHME_CLOCHE_MS);
+    document.addEventListener('visibilitychange', lire);
+    window.addEventListener(EVENEMENT_NOTIFICATIONS, lire);
+    return () => {
+      vivant = false;
+      window.clearInterval(rythme);
+      document.removeEventListener('visibilitychange', lire);
+      window.removeEventListener(EVENEMENT_NOTIFICATIONS, lire);
+    };
+  }, []);
+
+  const pastille = pastilleNotifications(nonLues);
+  const titre = titreNotifications(nonLues);
+  return (
+    <button
+      type="button"
+      title={titre}
+      aria-label={titre}
+      onClick={() => navigate('/notifications')}
+      className="relative flex items-center justify-center w-[22px] h-[22px] rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+    >
+      <IconInfo width={13} height={13} />
       {pastille && (
         <span className="absolute -top-px -right-px min-w-[13px] h-[13px] px-[3px] rounded-full bg-danger text-white text-[9px] font-bold leading-[13px] text-center">
           {pastille}

@@ -9,6 +9,11 @@
  *    le corps hors du journal d'audit, l'administrateur ne lit pas les
  *    messages des autres.
  *
+ *  · 100 · un message, une clôture notifient leurs seuls destinataires, jamais
+ *    l'auteur ni le voisin ; un événement coupé ne notifie plus ; l'anglais
+ *    est refusé tant que le contrat dit le français seul ; l'aide à la
+ *    formule lit le plan du dossier par la règle du calcul.
+ *
  *   DATABASE_URL=postgresql://... node scripts/rejouer-dossier-l9.cjs
  */
 const { join } = require('node:path');
@@ -138,6 +143,58 @@ async function main() {
     verifier((await prisma.messageInterne.count({ where: { id: envoi.id } })) === 1, 'encore dans la boîte du gestionnaire · gardé');
     await paie.c.post(`/messages/${envoi.id}/retirer`, {});
     verifier((await prisma.messageInterne.count({ where: { id: envoi.id } })) === 0, 'retiré par tous · supprimé');
+
+    console.log('== 100 · notifications et préférences');
+    const notesComptable = await comptable2.get('/notifications');
+    const deMessage = notesComptable.notifications.filter((x) => x.type === 'MESSAGE_RECU');
+    verifier(deMessage.length === 2 && deMessage.every((x) => x.lien === '/messages'), `le comptable est notifié de ses deux messages reçus (${deMessage.length})`);
+    const notesAdmin = await A.c.get('/notifications');
+    verifier(notesAdmin.notifications.filter((x) => x.type === 'MESSAGE_RECU').length === 1, "l'administrateur n'est notifié que de la réponse qu'il a reçue, jamais de son propre envoi");
+    verifier((await B.c.get('/notifications')).total === 0, "le voisin n'a aucune notification");
+    verifier((await paie.c.get('/notifications/non-lues')).nonLues === 1, 'le gestionnaire de paie lit les siennes');
+    await comptable2.put('/preferences', { notificationsCoupees: ['MESSAGE_RECU'] });
+    const avant = (await comptable2.get('/notifications/non-lues')).nonLues;
+    await A.c.post('/messages', { objet: 'Rappel', corps: 'Brouillard de mars.', destinataireIds: [comptable.id] });
+    verifier((await comptable2.get('/notifications/non-lues')).nonLues === avant, 'un événement coupé ne notifie plus');
+    verifier((await comptable2.get('/messages/non-lus')).nonLus >= 1, 'le message, lui, arrive');
+    let langue = null;
+    try { await comptable2.put('/preferences', { langue: 'EN' }); } catch (e) { langue = e; }
+    verifier(langue?.statut === 400 && /seule langue proposée/.test(JSON.stringify(langue.corps)), `l'anglais est refusé tant que le contrat dit le français seul (${langue?.statut})`);
+    const prefs = await comptable2.get('/preferences');
+    verifier(prefs.langue === 'FR' && JSON.stringify(prefs.languesProposees) === '["FR"]' && prefs.notificationsCoupees.includes('MESSAGE_RECU'), 'ses préférences relues · français, message coupé');
+    const une = notesComptable.notifications[0];
+    await comptable2.post(`/notifications/${une.id}/lue`, {});
+    let autre = null;
+    try { await A.c.post(`/notifications/${une.id}/lue`, {}); } catch (e) { autre = e; }
+    verifier(autre?.statut === 404, `nul ne marque lue la notification d'un autre (${autre?.statut})`);
+    const tout = await comptable2.post('/notifications/tout-lu', {});
+    verifier((await comptable2.get('/notifications/non-lues')).nonLues === 0 && tout.lues >= 1, 'tout marquer lu');
+
+    console.log('== 100 · clôture notifiée');
+    const exercices = await A.c.get('/exercices');
+    const ex = Array.isArray(exercices) ? exercices[0] : exercices.exercices?.[0];
+    await comptable2.put('/preferences', { notificationsCoupees: [] });
+    const cloture = await A.c.appeler('POST', `/exercices/${ex.id}/cloturer`, {}, [200, 201, 400, 409]);
+    if (cloture.statut < 300) {
+      const n2 = (await comptable2.get('/notifications')).notifications.filter((x) => x.type === 'EXERCICE_CLOTURE');
+      verifier(n2.length === 1 && /clôturé par/.test(n2[0].titre), `le comptable est notifié de la clôture (${n2[0]?.titre})`);
+      verifier((await A.c.get('/notifications')).notifications.every((x) => x.type !== 'EXERCICE_CLOTURE'), "l'auteur de la clôture ne se notifie pas");
+    } else {
+      verifier(false, `clôture refusée, notification non éprouvée · ${JSON.stringify(cloture.corps).slice(0, 300)}`);
+    }
+
+    console.log('== 100 · aide à la formule');
+    // Au SYSCOHADA, les rabais accordés sont au 7019 (aucun 709 n'est semé) ·
+    // la racine sans compte se NOMME, jamais lue comme un zéro.
+    const f = await A.c.get(`/etats-personnalises/formule?racines=${encodeURIComponent('70 71 -7019 -709')}`);
+    verifier(f.motif === null && f.nombreInclus > 0 && f.inclus.every((x) => /^7[01]/.test(x.numero) && !x.numero.startsWith('7019')), `${f.nombreInclus} comptes additionnés, aucun 7019`);
+    verifier(f.nombreExclus === 1 && f.exclus[0].numero === '70190000', `le 7019 écarté par le moins (${f.nombreExclus})`);
+    verifier(JSON.stringify(f.racinesSansCompte) === '["-709"]', `la racine sans compte est nommée (${f.racinesSansCompte})`);
+    const fx = await A.c.get(`/etats-personnalises/formule?racines=${encodeURIComponent('-709')}`);
+    verifier(typeof fx.motif === 'string' && fx.nombreInclus === 0, `une formule refusée dit son motif (${fx.motif})`);
+    let tableau = null;
+    try { await A.c.get('/etats-personnalises/formule?racines=70&racines=71'); } catch (e) { tableau = e; }
+    verifier(tableau?.statut === 400, `une formule donnée deux fois est refusée en 400, jamais en 500 (${tableau?.statut})`);
   } catch (e) {
     echecs.push(String(e));
     console.error(e);

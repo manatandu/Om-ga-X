@@ -5,6 +5,9 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { EtatPersonnaliseDto } from './dto/etat-personnalise.dto';
 import { calculerColonne, LigneDefinition, lireLesRacines, motifRefusDefinition, PLAFOND_EXERCICES } from './moteur-etat-personnalise';
 
+/** Les comptes de détail que l'aide à la formule lit au plus · convention d'OmegaX. */
+const PLAFOND_PLAN_LU = 20000;
+
 /**
  * ÉTATS PERSONNALISÉS · définitions enregistrées, calculées à la demande sur
  * la balance de chaque exercice choisi (`EcritureService.balance`, la même que
@@ -24,14 +27,22 @@ export class EtatsPersonnalisesService {
    * (`lireLesRacines`). Bornée et dite · au plus cinquante comptes nommés par
    * liste, le nombre toujours.
    */
-  async formule(tenantId: string, racines: string) {
+  async formule(tenantId: string, racines: unknown) {
+    // Une chaîne seule · `?racines=a&racines=b` rend un tableau, qui tombait en
+    // erreur 500 au premier appel de méthode de chaîne.
+    if (typeof racines !== 'string') throw new BadRequestException('La formule se donne une fois, en texte (« 70 71 -709 »).');
     if (racines.length > 300) throw new BadRequestException('La formule tient en 300 caractères au plus.');
     const comptes = await this.prisma.compte.findMany({
       where: { tenantId, typeCompte: 'DETAIL' },
       orderBy: { numero: 'asc' },
-      take: 20000,
+      take: PLAFOND_PLAN_LU + 1,
       select: { numero: true, intitule: true },
     });
+    // Au-delà du plafond, la lecture se REFUSE · une aide qui ne lirait qu'une
+    // partie du plan dirait « aucun compte sous 79 » à tort.
+    if (comptes.length > PLAFOND_PLAN_LU) {
+      throw new BadRequestException(`Le plan du dossier compte plus de ${PLAFOND_PLAN_LU} comptes de détail · l'aide à la formule ne le lit pas en entier, et ne répond donc pas.`);
+    }
     const lu = lireLesRacines(racines, comptes.map((c) => c.numero));
     const intitules = new Map(comptes.map((c) => [c.numero, c.intitule]));
     const nommer = (liste: string[]) => liste.slice(0, 50).map((numero) => ({ numero, intitule: intitules.get(numero) ?? '' }));

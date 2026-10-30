@@ -197,7 +197,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
  * l'aide (« ? »). Les commandes sans fenêtre (Mon compte, Fermer le dossier,
  * Imprimer, menu Fenêtre) n'ont pas de chemin et ne se filtrent jamais.
  */
-export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/impressions-differees', '/plateforme', '/messages'];
+export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/impressions-differees', '/plateforme', '/messages', '/notifications', '/preferences'];
 export const PREFIXES_COMMUNS: readonly string[] = ['/aide/'];
 
 /** Le chemin sans sa chaîne de requête · `/journal?onglet=balance` devient `/journal`. */

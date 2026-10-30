@@ -1,5 +1,5 @@
 import { ArrayMaxSize, IsArray, IsEnum } from 'class-validator';
-import { LangueInterface, TailleTexte, TypeNotification } from '@prisma/client';
+import { LangueInterface, TypeNotification } from '@prisma/client';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
 /** Ses préférences (ligne dossier-l9, fonctions 96 et 100) · ce qui n'est pas envoyé ne change pas. */
@@ -8,12 +8,8 @@ export class ReglerPreferencesDto {
   @IsEnum(LangueInterface, { message: 'Langue inconnue · « FR » ou « EN ».' })
   langue?: LangueInterface;
 
-  @FacultatifNonNul('La taille du texte ne s’efface pas.')
-  @IsEnum(TailleTexte, { message: 'Taille du texte inconnue.' })
-  tailleTexte?: TailleTexte;
-
   @FacultatifNonNul('La liste des notifications coupées ne s’efface pas · une liste vide les rouvre toutes.')
-  @IsArray()
+  @IsArray({ message: 'Les notifications coupées sont une liste.' })
   @ArrayMaxSize(20)
   @IsEnum(TypeNotification, { each: true, message: 'Événement de notification inconnu.' })
   notificationsCoupees?: TypeNotification[];

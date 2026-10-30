@@ -36,6 +36,8 @@ export function MessagesPage() {
   const [erreurMessage, setErreurMessage] = useState<string | null>(null);
   const [redaction, setRedaction] = useState<{ objet: string; corps: string; destinataires: string[]; repondAId?: string } | null>(null);
   const [destinataires, setDestinataires] = useState<Destinataire[] | null>(null);
+  // La liste servie est bornée · au-delà, l'écran le dit (relecture « échecs silencieux »).
+  const [destinatairesTronques, setDestinatairesTronques] = useState(false);
   const [erreurRedaction, setErreurRedaction] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [fait, setFait] = useState<string | null>(null);
@@ -95,7 +97,9 @@ export function MessagesPage() {
     setRedaction(depart);
     if (destinataires === null) {
       try {
-        setDestinataires((await api.get<{ destinataires: Destinataire[] }>('/messages/destinataires')).destinataires);
+        const lus = await api.get<{ destinataires: Destinataire[]; tronque: boolean }>('/messages/destinataires');
+        setDestinataires(lus.destinataires);
+        setDestinatairesTronques(lus.tronque);
       } catch (e) {
         setErreurRedaction(messageOuDefaut(e, "La liste des utilisateurs du dossier n'a pas pu être lue."));
       }
@@ -165,6 +169,7 @@ export function MessagesPage() {
             <legend className="font-semibold">Destinataires</legend>
             {destinataires === null && !erreurRedaction && <p className="text-text-dim">Chargement…</p>}
             {destinataires && destinataires.length === 0 && <p className="text-text-dim">Aucun autre utilisateur actif dans ce dossier.</p>}
+            {destinatairesTronques && <p className="text-warning">Les {destinataires?.length} premiers utilisateurs actifs, par adresse, sont proposés.</p>}
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {destinataires?.map((d) => (
                 <label key={d.id} className="inline-flex items-center gap-1.5">

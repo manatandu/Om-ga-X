@@ -1,14 +1,11 @@
 -- Ligne dossier-l9, fonctions 96 et 100 · les préférences de chaque
--- utilisateur (langue de l'interface, taille du texte, notifications coupées)
+-- utilisateur (langue de l'interface, notifications coupées)
 -- et les notifications dans l'interface (message reçu, écritures reçues,
 -- exercice clôturé). Une notification lue se retire après quatre-vingt-dix
 -- jours (Code du numérique, art. 193, 3°).
 
 -- CreateEnum
 CREATE TYPE "LangueInterface" AS ENUM ('FR', 'EN');
-
--- CreateEnum
-CREATE TYPE "TailleTexte" AS ENUM ('NORMALE', 'GRANDE', 'TRES_GRANDE');
 
 -- CreateEnum
 CREATE TYPE "TypeNotification" AS ENUM ('MESSAGE_RECU', 'ECRITURES_RECUES', 'EXERCICE_CLOTURE');
@@ -19,7 +16,6 @@ CREATE TABLE "preferences_utilisateurs" (
     "tenantId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "langue" "LangueInterface" NOT NULL DEFAULT 'FR',
-    "tailleTexte" "TailleTexte" NOT NULL DEFAULT 'NORMALE',
     "notificationsCoupees" "TypeNotification"[] DEFAULT ARRAY[]::"TypeNotification"[],
     "modifieeLe" TIMESTAMP(3) NOT NULL,
 

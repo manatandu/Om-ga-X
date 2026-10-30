@@ -77,17 +77,18 @@ export class ExerciceController {
     const resultat = await this.exerciceService.cloturer(user.tenantId, id, user.userId, dto ?? {});
     // LA NOTIFICATION (ligne dossier-l9, fonction 100) · après la clôture,
     // jamais levée · l'exercice ne reçoit plus d'écriture.
-    if (this.prisma) {
-      const exercice = await this.prisma.exercice.findFirst({ where: { id, tenantId: user.tenantId }, select: { dateDebut: true, dateFin: true } });
-      if (exercice) {
-        await notifierSansEchec(
-          this.prisma,
-          user.tenantId,
-          TypeNotification.EXERCICE_CLOTURE,
-          { titre: `Exercice ${libelleExercice(exercice)} clôturé par ${user.email}`, lien: '/exercice' },
-          { sauf: user.userId },
-        );
-      }
+    const prisma = this.prisma;
+    if (prisma) {
+      await notifierSansEchec(
+        prisma,
+        user.tenantId,
+        TypeNotification.EXERCICE_CLOTURE,
+        async () => {
+          const exercice = await prisma.exercice.findFirst({ where: { id, tenantId: user.tenantId }, select: { dateDebut: true, dateFin: true } });
+          return exercice ? { titre: `Exercice ${libelleExercice(exercice)} clôturé par ${user.email}`, lien: '/exercice' } : null;
+        },
+        { sauf: user.userId },
+      );
     }
     return resultat;
   }
