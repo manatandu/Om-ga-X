@@ -37,8 +37,12 @@ function sources(dossier: string, liste: string[] = []): string[] {
 
 /** Le début de la fonction qui écrit la requête · corps d'une transaction, méthode, ou fonction. */
 const OUVERTURE = /async\s*\(\s*(tx|t|db)\b[^)]*\)\s*=>|^\s*(export\s+)?(async\s+)?function\s+\w+|^\s{2}(private\s+|public\s+|protected\s+)?(static\s+)?async\s+\w+\s*\(/gm;
-/** La prise du verrou du dossier, sous l'une de ses formes. */
-const VERROU = /prendreLeVerrouDuDossier(Borne)?\s*\(|transactionDeSaisie\s*\(|transactionSousVerrouDuDossier\s*\(|pg_advisory_xact_lock/;
+/**
+ * La prise du verrou du dossier, sous l'une de ses formes · un verrou
+ * consultatif à clé PRÉFIXÉE (`cheques:…`, `recus-detention:…`) n'est pas
+ * celui du dossier, et ne compte pas.
+ */
+const VERROU = /prendreLeVerrouDuDossier(Borne)?\s*\(|transactionDeSaisie\s*\(|transactionSousVerrouDuDossier\s*\(|pg_advisory_xact_lock\(hashtext\(\$\{(?!`)/;
 
 function sansCommentaires(source: string): string {
   // Les commentaires remplacés par des blancs de même longueur · les positions
@@ -70,6 +74,8 @@ describe('un seul ordre de verrous · le dossier, puis les lignes', () => {
     expect(verrousDeLigneSansDossier(juste)).toEqual([]);
     expect(verrousDeLigneSansDossier(aide)).toEqual([2]);
     expect(verrousDeLigneSansDossier('// un FOR UPDATE cité\n/* FOR SHARE */')).toEqual([]);
+    const autreCle = 'async (tx) => {\n  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cheques:${d}`}))`;\n  await tx.$queryRaw`SELECT id FROM "x" FOR UPDATE`;\n}';
+    expect(verrousDeLigneSansDossier(autreCle)).toEqual([3]);
   });
 
   it('aucun FOR UPDATE ni FOR SHARE de src/ n’est pris avant le verrou du dossier', () => {

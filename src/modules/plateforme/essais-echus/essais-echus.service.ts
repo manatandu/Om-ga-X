@@ -22,6 +22,7 @@ import {
   VerdictEssai,
 } from './essais-echus';
 import { purgerDossier } from './purger-dossier';
+import { prendreLeVerrouDuDossierBorne } from '../../../common/transaction-de-saisie';
 
 /**
  * LES DOSSIERS D'ESSAI ÉCHUS, DANS LA CONSOLE DE L'ÉDITEUR (décision de Manasse
@@ -661,6 +662,11 @@ export class EssaisEchusService {
         this.prisma,
         async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`suppression-essai:${tenantId}`}))`;
+          // Le dossier avant ses lignes (ligne saisie-suites, point 1) · une
+          // prolongation de licence, acte audité, tient ce verrou puis la ligne
+          // de licence ; prise ici après la ligne, l'ordre inverse fermait le
+          // cycle, et PostgreSQL abattait l'un des deux.
+          await prendreLeVerrouDuDossierBorne(tx, tenantId);
           const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "tenants" WHERE "id" = ${tenantId} FOR UPDATE`;
           if (verrou.length === 0) throw new NotFoundException('Dossier introuvable · il a peut-être déjà été supprimé.');
           // LA LICENCE SOUS VERROU AUSSI · `modifierLicence` (prolongation, essai
