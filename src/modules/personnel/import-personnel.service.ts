@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { ouvrirCompteSalarie } from './comptes-salaries.service';
+import { optionComptesIndividuels, ouvrirCompteSalarie } from './comptes-salaries.service';
 import { lireFichier } from '../import/lecture-fichier';
 import { ContratTravailDto, SalarieDto } from './dto/personnel.dto';
 import { champsDuContrat, champsDuSalarie } from './personnel.service';
@@ -107,16 +108,28 @@ export class ImportPersonnelService {
         motifs: s.lignes.filter((l) => l.refus.length).slice(0, 50).map((l) => `Ligne ${l.rang} · ${l.refus.join(' ')}`),
       });
     }
-    // Fonction 76 · sous l'option, chaque salarié importé naît avec son compte.
-    const option = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { comptesIndividuelsSalaries: true } });
     const crees = await transactionJournalisee(this.prisma, async (tx) => {
+      // Fonction 76 · sous l'option, chaque salarié importé naît avec son compte · l'option lue ici.
+      const option = await optionComptesIndividuels(tx, tenantId);
       let salaries = 0;
       let contrats = 0;
       for (const l of s.jugees) {
         const dtoSalarie = plainToInstance(SalarieDto, l.lue.salarie);
-        const cree = await tx.salarie.create({ data: { tenantId, createdBy: userId, ...champsDuSalarie(dtoSalarie) }, select: { id: true } });
+        // LE MATRICULE PRIS ENTRE LA SIMULATION ET L'IMPORT · l'index unique
+        // (`@@unique([tenantId, matricule])`) le refuse ; le refus nomme la
+        // ligne, et la transaction défait tout (tout ou rien).
+        const cree = await tx.salarie
+          .create({ data: { tenantId, createdBy: userId, ...champsDuSalarie(dtoSalarie) }, select: { id: true } })
+          .catch((e: unknown) => {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+              throw new ConflictException(
+                `Ligne ${l.rang} · le matricule ${l.lue.salarie.matricule ?? ''} a été pris entre la simulation et l'import · rien n'est importé, relancez la simulation.`,
+              );
+            }
+            throw e;
+          });
         salaries++;
-        if (option?.comptesIndividuelsSalaries) await ouvrirCompteSalarie(tx, tenantId, cree.id);
+        if (option) await ouvrirCompteSalarie(tx, tenantId, cree.id);
         if (l.lue.contrat) {
           const dtoContrat = plainToInstance(ContratTravailDto, l.lue.contrat);
           await tx.contratTravail.create({ data: { tenantId, salarieId: cree.id, createdBy: userId, ...champsDuContrat(dtoContrat), renouvelleDeId: null } });

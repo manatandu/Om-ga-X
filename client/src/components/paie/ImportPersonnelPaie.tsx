@@ -29,10 +29,17 @@ export function OngletImportPersonnel({ peutEcrire, onImporte }: { peutEcrire: b
     setErreur('');
     setSimulation(null);
     setFait(null);
-    const octets = new Uint8Array(await f.arrayBuffer());
-    let binaire = '';
-    for (let i = 0; i < octets.length; i += 8192) binaire += String.fromCharCode(...octets.subarray(i, i + 8192));
-    setFichier({ nomFichier: f.name, contenuBase64: btoa(binaire) });
+    setFichier(null);
+    // Un fichier illisible (retiré du disque, droits) se DIT · avalé, l'écran
+    // restait sans fichier et sans raison.
+    try {
+      const octets = new Uint8Array(await f.arrayBuffer());
+      let binaire = '';
+      for (let i = 0; i < octets.length; i += 8192) binaire += String.fromCharCode(...octets.subarray(i, i + 8192));
+      setFichier({ nomFichier: f.name, contenuBase64: btoa(binaire) });
+    } catch {
+      setErreur(`Le fichier ${f.name} n'a pas pu être lu · choisissez-le de nouveau.`);
+    }
   };
 
   const geste = async (fn: () => Promise<void>) => {
@@ -85,11 +92,19 @@ export function OngletImportPersonnel({ peutEcrire, onImporte }: { peutEcrire: b
             disabled={envoi}
             onClick={() =>
               void geste(async () => {
-                const r = await api.post<{ salaries: number; contrats: number }>('/personnel/import', fichier);
-                setFait(`${r.salaries} fiche(s) et ${r.contrats} contrat(s) importés.`);
-                setSimulation(null);
-                setFichier(null);
-                onImporte();
+                try {
+                  const r = await api.post<{ salaries: number; contrats: number }>('/personnel/import', fichier);
+                  setFait(`${r.salaries} fiche(s) et ${r.contrats} contrat(s) importés.`);
+                  setSimulation(null);
+                  setFichier(null);
+                  onImporte();
+                } catch (e) {
+                  // Refusé à l'import (le registre a changé depuis la simulation) ·
+                  // la simulation rejouée remet le refus de CHAQUE ligne à l'écran,
+                  // et le message du serveur reste affiché au-dessus.
+                  await api.post<Simulation>('/personnel/import/simulation', fichier).then(setSimulation, () => undefined);
+                  throw e;
+                }
               })
             }
           >

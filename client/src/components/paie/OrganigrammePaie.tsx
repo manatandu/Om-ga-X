@@ -36,6 +36,8 @@ type Organigramme = {
   unites: Unite[];
   niveaux: string[];
   sectionsProposables: { id: string; code: string; intitule: string; plan: string }[];
+  /** Plus de 50 plans ou plus de 500 sections par plan · la liste proposée est coupée. */
+  sectionsTronquees?: boolean;
   total: number;
   tronque: boolean;
   fondement: string;
@@ -205,6 +207,9 @@ export function OngletOrganigramme({ salaries, peutEcrire }: { salaries: Salarie
                 </option>
               ))}
             </select>
+            {donnees.sectionsTronquees && (
+              <span className="text-warning">Sections tronquées · seules les 500 premières de chacun des 50 premiers plans sont proposées.</span>
+            )}
             <button type="button" className="bg-sel text-white font-semibold px-3 py-1" disabled={envoi} onClick={creer}>
               Créer l&apos;unité
             </button>

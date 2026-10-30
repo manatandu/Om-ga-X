@@ -60,7 +60,7 @@ import {
   usdEnFc,
 } from './conversion-usd';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { ouvrirCompteSalarie } from './comptes-salaries.service';
+import { optionComptesIndividuels, ouvrirCompteSalarie } from './comptes-salaries.service';
 
 /** La trace d'une conversion USD vers FC · figée avec le bulletin émis. */
 export interface ConversionUsd {
@@ -164,7 +164,7 @@ import {
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
 import { lierMissionsAuBulletin, missionsAPorter, type MissionPortee } from './missions.service';
-import { elementsDesRappels, lierRappelsAuBulletin, rappelsAPorter, type RappelPorte } from './rappels-salaire.service';
+import { elementsDesRappels, lierRappelsAuBulletin, motifRefusAnnulationSourceDeRappel, rappelsAPorter, type RappelPorte } from './rappels-salaire.service';
 import { libelleForfaitMission, libelleRemboursementMission } from './missions-salarie';
 import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
 
@@ -360,10 +360,10 @@ export class PersonnelService {
   async creerSalarie(tenantId: string, userId: string, dto: SalarieDto) {
     await this.verifierMatriculeLibre(tenantId, dto.matricule, null);
     // FONCTION 76 · sous l'option, le compte individuel naît AVEC le salarié,
-    // dans la même transaction (`compte-salarie.ts`, règle 2) · jamais un
-    // salarié de plus que de comptes.
-    const option = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { comptesIndividuelsSalaries: true } });
+    // dans la même transaction (`compte-salarie.ts`, règle 2), l'option lue
+    // dans cette transaction.
     return transactionJournalisee(this.prisma, async (tx) => {
+      const option = await optionComptesIndividuels(tx, tenantId);
       const cree = await tx.salarie.create({
       data: {
         tenantId,
@@ -385,7 +385,7 @@ export class PersonnelService {
       },
       include: { enfants: true },
       });
-      if (!option?.comptesIndividuelsSalaries) return cree;
+      if (!option) return cree;
       const { compte } = await ouvrirCompteSalarie(tx, tenantId, cree.id);
       return { ...cree, compteId: compte.id };
     });
@@ -2546,7 +2546,7 @@ export class PersonnelService {
     }
     const b = await this.prisma.bulletinPaie.findFirst({
       where: { id, tenantId },
-      select: { statut: true, ecritureId: true },
+      select: { statut: true, ecritureId: true, salarieId: true, moisDePaie: true, numero: true },
     });
     if (!b) throw new NotFoundException('Bulletin introuvable dans ce dossier.');
     if (b.statut !== StatutBulletinPaie.EMIS) throw new BadRequestException('Ce bulletin est déjà annulé.');
@@ -2568,9 +2568,20 @@ export class PersonnelService {
         );
       }
     }
-    await this.prisma.bulletinPaie.update({
-      where: { id },
-      data: { statut: StatutBulletinPaie.ANNULE, annuleLe: new Date(), annulePar: userId, motifAnnulation: texte },
+    // Ligne paie-suite, fonction 87 · le bulletin source d'un rappel non
+    // annulé ne s'annule pas · lu sous le verrou du salarié, que la
+    // déclaration d'un rappel prend aussi.
+    await transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${b.salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const refus = await motifRefusAnnulationSourceDeRappel(tx, tenantId, { id, salarieId: b.salarieId, moisDePaie: b.moisDePaie, numero: b.numero });
+      if (refus) throw new ConflictException(refus);
+      // L'état relu sous le verrou · une seconde annulation concurrente ne réécrit rien.
+      const encore = await tx.bulletinPaie.findFirst({ where: { id, tenantId }, select: { statut: true } });
+      if (encore?.statut !== StatutBulletinPaie.EMIS) throw new BadRequestException('Ce bulletin est déjà annulé.');
+      await tx.bulletinPaie.update({
+        where: { id },
+        data: { statut: StatutBulletinPaie.ANNULE, annuleLe: new Date(), annulePar: userId, motifAnnulation: texte },
+      });
     });
     return this.lireBulletin(tenantId, id);
   }

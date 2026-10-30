@@ -33,12 +33,14 @@
  *     SALARIÉ (`comptabilisation-paie.ts`), le PAIEMENT le débite du net ·
  *     sur le compte où son bulletin a été PASSÉ, collectif compris pour un
  *     bulletin passé avant l'ouverture · une reprise en négatif suit la même
- *     règle (AUDCIF art. 20, al. 2, « ce qui a été passé »). LIMITE ÉCRITE ·
- *     un bulletin PAYÉ AVANT D'ÊTRE PASSÉ suit l'option du jour du paiement,
- *     et sa passation celle du jour de la passation · l'option changée entre
- *     les deux laisse le compte du salarié et le collectif de sens contraires,
- *     la balance générale bouclée. Passez la paie avant de la payer, ou ne
- *     changez pas l'option entre les deux.
+ *     règle (AUDCIF art. 20, al. 2, « ce qui a été passé »). UN BULLETIN
+ *     PAYÉ AVANT D'ÊTRE PASSÉ SE PASSE SUR LE COMPTE QUE SON PAIEMENT A
+ *     DÉBITÉ (`compteDeLaPassation`, lu sur la pièce du paiement), jamais sur
+ *     l'option du jour · l'option changée, ou le compte ouvert, entre le
+ *     paiement et la passation laissait le compte du salarié et le collectif
+ *     de sens contraires, la balance générale bouclée (relecture
+ *     indépendante, MAJEUR). Refuser la bascule de l'option n'aurait pas
+ *     couvert le compte ouvert entre les deux.
  * (4) UNE FOIS UN COMPTE OUVERT, LA SAISIE MANUELLE NE VA PLUS AU COLLECTIF
  *     (règle des collectifs, `verifierComptesCollectifs`) · un paiement de
  *     salaire saisi à la main se passe sur le compte du salarié ; un solde
@@ -48,6 +50,26 @@
  */
 
 export const TRANCHE_OUVERTURE_COMPTES = 100;
+
+/**
+ * RÈGLE 3 · LE 422 QUE LA PASSATION CRÉDITE. Un bulletin déjà PORTÉ par une
+ * écriture (passé, ou annulé après passation) lit toujours le compte du
+ * salarié, l'option fût-elle retirée · c'est l'écriture d'origine qui
+ * tranche (`compte422DeLOrigine`). Un bulletin à passer DÉJÀ PAYÉ suit le
+ * compte que son paiement a débité ; sinon l'option du jour.
+ */
+export function compteDeLaPassation(b: {
+  compteIndividuel: boolean;
+  porte: boolean;
+  /** null · aucun paiement actif du bulletin. */
+  payeSurSonCompte: boolean | null;
+  option: boolean;
+}): 'INDIVIDUEL' | 'COLLECTIF' {
+  if (!b.compteIndividuel) return 'COLLECTIF';
+  if (b.porte) return 'INDIVIDUEL';
+  if (b.payeSurSonCompte !== null) return b.payeSurSonCompte ? 'INDIVIDUEL' : 'COLLECTIF';
+  return b.option ? 'INDIVIDUEL' : 'COLLECTIF';
+}
 
 /**
  * RÈGLE 3 · LE 422 QUE LE PAIEMENT DÉBITE · celui où le net a été inscrit.

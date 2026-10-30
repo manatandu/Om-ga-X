@@ -7,6 +7,17 @@ import { compteDuRole } from './passation-paie';
 import { MOTIF_OPTION_ABSENTE, TRANCHE_OUVERTURE_COMPTES, intituleDuCompteSalarie } from './compte-salarie';
 
 /**
+ * L'OPTION DES COMPTES INDIVIDUELS, lue DANS la transaction de l'acte qui
+ * crée le salarié · un dossier introuvable est une erreur, jamais une
+ * option fermée (relecture indépendante).
+ */
+export async function optionComptesIndividuels(tx: Prisma.TransactionClient, tenantId: string): Promise<boolean> {
+  const t = await tx.tenant.findUnique({ where: { id: tenantId }, select: { comptesIndividuelsSalaries: true } });
+  if (!t) throw new NotFoundException('Dossier introuvable.');
+  return t.comptesIndividuelsSalaries;
+}
+
+/**
  * OUVRIR LE COMPTE INDIVIDUEL D'UN SALARIÉ, dans la transaction donnée · sous
  * le verrou de la numérotation des comptes de tiers (même racine possible,
  * même famille de geste). Rend le compte, ou celui déjà ouvert.
@@ -28,6 +39,12 @@ export async function ouvrirCompteSalarie(tx: Prisma.TransactionClient, tenantId
     throw new BadRequestException(`Le compte ${numeroCollectif} (Personnel, rémunérations dues) n'est pas ouvert en imputation dans ce dossier · ouvrez-le au plan comptable.`);
   }
   const racine = racineCollectif(numeroCollectif);
+  // SANS BORNE, ET C'EST VOULU · le premier numéro libre ne se trouve qu'en
+  // lisant TOUS les numéros sous la racine du 422 · une tranche ferait
+  // proposer un numéro déjà pris. La lecture est bornée par construction ·
+  // au plus 10^(longueur − 3) numéros sous la racine, un par salarié, et
+  // seule la colonne `numero` est lue (même lecture que la panoplie des
+  // tiers, `tiers.service.ts`).
   const existants = await tx.compte.findMany({ where: { tenantId, numero: { startsWith: racine } }, select: { numero: true } });
   const numero = prochainNumeroIndividuel(racine, tenant.longueurCompte, [numeroCollectif, ...existants.map((c) => c.numero)]);
   if (!numero) {

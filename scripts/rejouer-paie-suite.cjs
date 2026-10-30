@@ -169,6 +169,32 @@ async function main() {
     verifier(rapLu.bulletinId === b1jan.id, 'le rappel est lié au bulletin qui le paie');
     const b2bis = await A.statut('POST', `/personnel/salaries/${s1.id}/bulletins`, corps('2026-12'));
     verifier(b2bis.statut === 400 || b2bis.statut === 409, `aucun second bulletin du mois passé (${b2bis.statut})`);
+    // Relecture indépendante, BLOQUANT · le bulletin source d'un rappel non annulé ne s'annule pas.
+    r = await A.statut('POST', `/personnel/bulletins/${b1dec.id}/annulation`, { motif: 'Réémis au nouveau contrat' });
+    verifier(r.statut === 409 && /Avenant de novembre/.test(JSON.stringify(r.corps)) && /Annulez d'abord le bulletin qui paie le rappel/.test(JSON.stringify(r.corps)), `bulletin source d'un rappel · annulation refusée, rappel et issue nommés (${r.statut})`);
+    verifier((await prisma.bulletinPaie.findUnique({ where: { id: b1dec.id } })).statut === 'EMIS', 'décembre reste émis');
+
+    console.log('8 bis. Payé avant d’être passé, option retirée entre les deux (relecture, MAJEUR)');
+    const b2jan = await A.post(`/personnel/salaries/${s2.id}/bulletins`, corps('2027-01'));
+    const payJan = await A.post('/personnel/paiement-salaires/2027-01', { mode: 'CHEQUE', exerciceId: ex27.id, journalId: bq.id, date: '2027-01-25', bulletinIds: [b2jan.id], references: [{ bulletinId: b2jan.id, reference: 'CHQ 0004' }] });
+    const pj = await lignes422((await prisma.paiementSalaires.findUnique({ where: { id: payJan.id }, select: { ecritureId: true } })).ecritureId);
+    verifier(JSON.stringify(pj) === JSON.stringify({ '42200002': -centimes(b2jan.netAPayerFc) }), `payé sous l'option, sur son compte (${JSON.stringify(pj)})`);
+    await A.patch('/dossier/comptes-individuels-salaries', { comptesIndividuelsSalaries: false });
+    const pJan = await A.post('/personnel/paie-du-mois/2027-01/comptabilisation', { exerciceId: ex27.id, journalId: od.id, date: '2027-01-31' });
+    const eJan = pJan.ecriture?.id ?? pJan.ecritureId ?? pJan.id;
+    const jan = await lignes422(eJan);
+    verifier(jan['42200002'] === centimes(b2jan.netAPayerFc) && jan['42200000'] === centimes(b1jan.netAPayerFc) && !jan['42200001'], `option retirée · LUKUSA passé sur le compte que son paiement a débité, KASONGO au collectif (${JSON.stringify(jan)})`);
+    verifier((await solde('42200002', ex27.id)) === 0, 'le compte de LUKUSA soldé · aucun 422 de sens contraire');
+
+    console.log('8 ter. Reprise en négatif d’une pièce commune, option retirée (relecture, MAJEUR)');
+    await A.post('/ecritures/valider-jusqua', { exerciceId: ex27.id, dateLimite: '2027-01-31' });
+    await A.post(`/personnel/bulletins/${b1jan.id}/annulation`, { motif: 'Rappel porté par erreur' });
+    const prJan = await A.get('/personnel/paie-du-mois/2027-01');
+    verifier((prJan.refus ?? []).length === 0, `la reprise se reconstitue malgré l'option retirée (${JSON.stringify(prJan.refus ?? []).slice(0, 300)})`);
+    const pRep = await A.post('/personnel/paie-du-mois/2027-01/comptabilisation', { exerciceId: ex27.id, journalId: od.id, date: '2027-01-31', inscrireNegatifs: true });
+    const rep = await lignes422(pRep.ecriture?.id ?? pRep.ecritureId ?? pRep.id);
+    verifier(rep['42200000'] === -centimes(b1jan.netAPayerFc) && !rep['42200002'], `KASONGO repris au collectif où il a été passé, LUKUSA intact (${JSON.stringify(rep)})`);
+    await A.patch('/dossier/comptes-individuels-salaries', { comptesIndividuelsSalaries: true });
 
     console.log('9. Visa du plan d’étalement');
     const av = await A.post(`/personnel/salaries/${s1.id}/avances`, { type: 'AVANCE', dateOctroi: '2027-01-15', montantFc: 100000, objet: 'Avance', pieceJustificative: 'Reçu 1', premierMoisRetenue: '2027-02', nombreEcheances: 2 });

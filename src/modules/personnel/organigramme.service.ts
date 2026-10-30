@@ -43,7 +43,7 @@ export class OrganigrammeService {
   /** L'organigramme déroulé, avec l'effectif de chaque unité au jour de Kinshasa. */
   async lister(tenantId: string) {
     const aujourdhui = jourDeKinshasa(new Date());
-    const [unites, total, effectifs, plans] = await Promise.all([
+    const [unites, total, effectifs, plans, totalPlans] = await Promise.all([
       this.prisma.uniteOrganisation.findMany({
         where: { tenantId },
         orderBy: [{ code: 'asc' }, { id: 'asc' }],
@@ -77,8 +77,11 @@ export class OrganigrammeService {
             take: 500,
             select: { id: true, code: true, intitule: true },
           },
+          // Le nombre réel · une liste coupée à 500 se DIT (`sectionsTronquees`).
+          _count: { select: { sections: { where: { type: TypeCompteDetailTotal.DETAIL, estActive: true } } } },
         },
       }),
+      this.prisma.planAnalytique.count({ where: { tenantId, estActif: true } }),
     ]);
     const niveaux = [...new Set(unites.map((u) => u.niveau).filter((n): n is string => !!n))].sort((a, b) => a.localeCompare(b));
     return {
@@ -105,6 +108,9 @@ export class OrganigrammeService {
       sectionsProposables: plans
         .filter((p) => motifRefusClasseVentilee(CLASSE_DES_CHARGES_DE_PERSONNEL, p.classesVentilees) === null)
         .flatMap((p) => p.sections.map((x) => ({ id: x.id, code: x.code, intitule: x.intitule, plan: p.code }))),
+      // Plans au-delà de 50 ou sections au-delà de 500 par plan · la liste
+      // proposée est coupée, et l'écran le dit (jamais « aucune section »).
+      sectionsTronquees: totalPlans > plans.length || plans.some((p) => p._count.sections > p.sections.length),
       total,
       tronque: total > unites.length,
       fondement: FONDEMENT_ORGANIGRAMME,

@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { propositionPaieDuMois, type BulletinAComptabiliser, type OrigineDuBulletin } from './comptabilisation-paie';
-import { compteDuPaiement, intituleDuCompteSalarie } from './compte-salarie';
+import { compteDeLaPassation, compteDuPaiement, intituleDuCompteSalarie } from './compte-salarie';
 import { ouvrirCompteSalarie } from './comptes-salaries.service';
 import { PaiementSalairesService } from './paiement-salaires.service';
 import { Prisma } from '@prisma/client';
@@ -253,5 +253,33 @@ describe('le paiement au service · deux salariés passés sur leur compte dans 
       ['c1', 649_300],
       ['c2', 649_300],
     ]);
+  });
+});
+
+describe('la passation · le compte que le paiement a débité, et la reprise après retrait de l’option', () => {
+  it.each([
+    // Relecture indépendante, MAJEUR · payé au collectif avant l'ouverture du
+    // compte, puis option posée · la passation suit le paiement.
+    [{ compteIndividuel: true, porte: false, payeSurSonCompte: false, option: true }, 'COLLECTIF'],
+    // Payé sur son compte, option retirée ensuite · la passation suit le paiement.
+    [{ compteIndividuel: true, porte: false, payeSurSonCompte: true, option: false }, 'INDIVIDUEL'],
+    [{ compteIndividuel: true, porte: false, payeSurSonCompte: null, option: true }, 'INDIVIDUEL'],
+    [{ compteIndividuel: true, porte: false, payeSurSonCompte: null, option: false }, 'COLLECTIF'],
+    // MAJEUR · un bulletin porté lit son compte, option retirée ou non · la pièce d'origine tranche.
+    [{ compteIndividuel: true, porte: true, payeSurSonCompte: null, option: false }, 'INDIVIDUEL'],
+    [{ compteIndividuel: false, porte: true, payeSurSonCompte: null, option: true }, 'COLLECTIF'],
+  ] as const)('%o · %s', (b, attendu) => {
+    expect(compteDeLaPassation(b)).toBe(attendu);
+  });
+
+  it('option retirée · la reprise d’une pièce commune se reconstitue encore quand le bulletin resté valide lit son compte', () => {
+    const commune = origineDe('e1', propositionPaieDuMois('2026-03', 'SYSCOHADA', [bulletin(1, { compte422: KABONGO }), bulletin(2, { compte422: { numero: '42200002', intitule: 'B' } })]).lignes);
+    const p = propositionPaieDuMois('2026-03', 'SYSCOHADA', [
+      bulletin(1, { statut: 'ANNULE', ecritureId: 'e1', origine: commune, compte422: KABONGO }),
+      bulletin(2, { ecritureId: 'e1', compte422: { numero: '42200002', intitule: 'B' } }),
+    ]);
+    expect(p.refus).toEqual([]);
+    expect(net(p).get('42200001')).toBe(1_250_000);
+    expect(net(p).has('42200002')).toBe(false);
   });
 });

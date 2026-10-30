@@ -119,6 +119,39 @@ export async function lierRappelsAuBulletin(tx: Prisma.TransactionClient, tenant
  * LIGNE PAIE-SUITE, FONCTION 87 · le rappel de salaires · simuler, déclarer
  * (le calcul REJOUÉ et figé), annuler, et dire ce qu'un bulletin peut porter.
  */
+/**
+ * UN BULLETIN SOURCE D'UN RAPPEL NON ANNULÉ NE S'ANNULE PAS (relecture
+ * indépendante de la ligne, BLOQUANT) · l'arriéré a été calculé sur son
+ * salaire figé ; annulé puis réémis au nouveau contrat, le mois porterait la
+ * hausse ET le rappel la paierait encore · deux fois la même somme. Lu dans
+ * la transaction de l'annulation, sous le verrou du salarié que la
+ * déclaration d'un rappel prend aussi. Rend le motif du refus, ou null.
+ */
+export async function motifRefusAnnulationSourceDeRappel(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  bulletin: { id: string; salarieId: string; moisDePaie: string; numero: number },
+): Promise<string | null> {
+  const rappels = await tx.rappelSalaire.findMany({
+    where: { tenantId, salarieId: bulletin.salarieId, annuleLe: null, moisDebut: { lte: bulletin.moisDePaie }, moisFin: { gte: bulletin.moisDePaie } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: PLAFOND_RAPPELS,
+    select: { id: true, motif: true, moisDebut: true, moisFin: true, lignes: true, bulletin: { select: { numero: true, moisDePaie: true, statut: true } } },
+  });
+  const sources = rappels.filter((r) => (r.lignes as unknown as LigneRappel[]).some((l) => l.bulletinId === bulletin.id));
+  if (sources.length === 0) return null;
+  const noms = sources.map((r) => {
+    const porteur =
+      r.bulletin && r.bulletin.statut === StatutBulletinPaie.EMIS ? ` · payé par le bulletin n° ${r.bulletin.numero} de ${r.bulletin.moisDePaie}` : ' · pas encore payé';
+    return `rappel « ${r.motif} » de ${r.moisDebut} à ${r.moisFin}${porteur}`;
+  });
+  return (
+    `Le bulletin n° ${bulletin.numero} de ${bulletin.moisDePaie} est la base du ${noms.join(' ; ')} · annulé puis réémis, ` +
+    "son mois porterait la hausse et le rappel la paierait une seconde fois. Annulez d'abord le bulletin qui paie le rappel (s'il est payé), " +
+    'puis le rappel (Rappels de salaire), puis ce bulletin ; déclarez ensuite un rappel nouveau si un arriéré reste dû.'
+  );
+}
+
 @Injectable()
 export class RappelsSalaireService {
   constructor(private readonly prisma: PrismaService) {}
@@ -180,6 +213,13 @@ export class RappelsSalaireService {
       });
       if (chevauchent.some((x) => (x.lignes as unknown as LigneRappel[]).some((l) => r.lignes.some((y) => y.mois === l.mois)))) {
         throw new ConflictException('Un rappel couvrant ces mois a été déclaré entre-temps · relancez la simulation.');
+      }
+      // Les bulletins sources relus SOUS le verrou · un bulletin annulé entre
+      // le calcul et la déclaration ne fonde plus aucun arriéré.
+      const sources = [...new Set(r.lignes.map((l) => l.bulletinId))];
+      const encoreEmis = await tx.bulletinPaie.count({ where: { tenantId, id: { in: sources }, statut: StatutBulletinPaie.EMIS } });
+      if (encoreEmis !== sources.length) {
+        throw new ConflictException("Un bulletin d'un mois rappelé a été annulé entre-temps · relancez la simulation.");
       }
       return tx.rappelSalaire.create({
         data: {
