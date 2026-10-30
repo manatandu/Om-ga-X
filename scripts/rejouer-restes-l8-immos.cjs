@@ -19,6 +19,8 @@
  *
  * POINT 3 · LA DUPLICATION D'UN TIERS REPREND REPRÉSENTANT ET DEVISE, JAMAIS
  *   L'ENCOURS MAXIMUM ; un représentant en sommeil n'est pas repris.
+ *
+ * POINT 4 · RELECTURE INDÉPENDANTE (B1, B2, M1, M3) · voir en tête de `point4`.
  */
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
@@ -192,6 +194,84 @@ async function point3(A) {
   // de la copie est tenu par le test unitaire (`duplication-tiers.spec.ts`).
 }
 
+
+/**
+ * POINT 4 · RELECTURE INDÉPENDANTE · L'ANNUITÉ, JAMAIS LA SEULE LIGNE.
+ *   B1 · bâtiment acquis en 2025, 2025 ouvert non doté · le remplacement
+ *   imprévu d'une partie est refusé en nommant la STRUCTURE, avant tout
+ *   détachement ; 2025 doté, il passe (la partie, née dans l'opération, n'est
+ *   pas jugée elle-même).
+ *   B2 · bien repris sur 2026 (amortissement antérieur), 2025 gardé ouvert ·
+ *   la sortie passe, rien ne pousse à doter 2025 une seconde fois.
+ *   M1 · aux unités d'œuvre, sans relevé pour 2025 · la sortie passe ; avec
+ *   un relevé de 2025, l'annuité se réclame.
+ *   M3 · PV · deux chaises comptées en moins, puis sorties du registre · le PV
+ *   réédité sert le registre d'aujourd'hui et ne les présente plus à sortir.
+ */
+async function point4(A) {
+  console.log('POINT 4 · l’annuité, jamais la seule ligne de dotation');
+  const { e2025, e2026, od, nouveau, compte, premier } = await dossierABiens(A, 'annuite');
+  const batimentCompte = premier('231');
+  await A.patch(`/comptes/${batimentCompte.id}`, { estRetenu: true });
+  const batiment = await A.post('/immobilisations', {
+    compteImmobilisationId: batimentCompte.id, designation: 'Bâtiment administratif', dateAcquisition: '2025-01-01', dateMiseEnService: '2025-01-01',
+    valeurOrigine: 30_000_000, dureeAmortissementAns: 20, compteContrepartieId: compte('48120000').id, journalId: od.id, exerciceId: e2025.id,
+  });
+  const tenantId = (await prisma.immobilisation.findUnique({ where: { id: batiment.id }, select: { tenantId: true } })).tenantId;
+  const remplacement = {
+    dateRenouvellement: '2026-06-30', exerciceId: e2026.id, journalId: od.id, designation: 'Ascenseur neuf', coutRenouvellement: 4_000_000,
+    compteContrepartieId: compte('48120000').id, dureeAmortissementAns: 10, designationPartie: 'Ascenseur d’origine', valeurOrigineEstimee: 3_000_000,
+    methodeEstimation: 'COUT_ACTUEL_A_NEUF', sourceEstimation: 'Devis du fournisseur', justificationDecomposition: 'Ascenseur à durée distincte de la structure',
+  };
+  let r = await A.statut('POST', `/immobilisations/${batiment.id}/remplacement-imprevu`, remplacement);
+  verifier(r.statut === 400 && /clos le 2025-12-31 n’a pas reçu la dotation du bien/.test(JSON.stringify(r.corps)), `B1 · structure sans l’annuité de 2025 · refus nommé (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+  const nbAvant = await prisma.immobilisation.count({ where: { tenantId } });
+  verifier(nbAvant === 1 && egal((await prisma.immobilisation.findUnique({ where: { id: batiment.id } })).valeurOrigine, 30_000_000), 'B1 · rien détaché');
+  await A.post(`/immobilisations/${batiment.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  r = await A.statut('POST', `/immobilisations/${batiment.id}/remplacement-imprevu`, remplacement);
+  verifier(r.statut === 201 || r.statut === 200, `B1 · 2025 doté · le remplacement passe, la partie née dans l’opération n’est pas jugée (${r.statut} ${JSON.stringify(r.corps).slice(0, 200)})`);
+
+  // B2 · repris sur 2026, 2025 ouvert.
+  const repris = await A.post('/immobilisations', {
+    compteImmobilisationId: compte('24410000').id, designation: 'Armoire reprise', dateAcquisition: '2024-01-01', dateMiseEnService: '2024-01-01',
+    valeurOrigine: 500_000, dureeAmortissementAns: 5, repris: true, amortissementAnterieur: 200_000, exerciceId: e2026.id,
+  });
+  r = await A.statut('POST', `/immobilisations/${repris.id}/sortie`, { ...SORTIE, dateSortie: '2026-09-30', datePieceSortie: '2026-09-30', exerciceId: e2026.id, journalId: od.id });
+  verifier(r.statut === 201 || r.statut === 200, `B2 · bien repris, 2025 ouvert · la sortie passe (${r.statut} ${JSON.stringify(r.corps).slice(0, 220)})`);
+  verifier((await prisma.dotationAmortissement.count({ where: { immobilisationId: repris.id, exerciceId: e2025.id } })) === 0, 'B2 · aucune dotation de 2025 réclamée ni passée');
+
+  // M1 · unités d'œuvre.
+  const uo = (designation) => nouveau(designation, 1_000_000, 5, { modeAmortissement: 'UNITES_DOEUVRE', unitesOeuvrePrevues: 100_000, uniteOeuvreLibelle: 'kilomètres' });
+  const camion1 = await uo('Camion sans relevé 2025');
+  await A.post(`/immobilisations/${camion1.id}/consommation`, { exerciceId: e2026.id, unitesConsommees: 10_000, source: 'Compteur' });
+  r = await A.statut('POST', `/immobilisations/${camion1.id}/sortie`, { ...SORTIE, dateSortie: '2026-09-30', datePieceSortie: '2026-09-30', exerciceId: e2026.id, journalId: od.id });
+  verifier(r.statut === 201 || r.statut === 200, `M1 · aucun relevé pour 2025 · la sortie passe (${r.statut} ${JSON.stringify(r.corps).slice(0, 220)})`);
+  const camion2 = await uo('Camion avec relevé 2025');
+  await A.post(`/immobilisations/${camion2.id}/consommation`, { exerciceId: e2025.id, unitesConsommees: 20_000, source: 'Compteur' });
+  await A.post(`/immobilisations/${camion2.id}/consommation`, { exerciceId: e2026.id, unitesConsommees: 10_000, source: 'Compteur' });
+  r = await A.statut('POST', `/immobilisations/${camion2.id}/sortie`, { ...SORTIE, dateSortie: '2026-09-30', datePieceSortie: '2026-09-30', exerciceId: e2026.id, journalId: od.id });
+  verifier(r.statut === 400 && /clos le 2025-12-31/.test(JSON.stringify(r.corps)), `M1 · relevé de 2025 saisi · l’annuité (200 000) se réclame (${r.statut})`);
+  await A.post(`/immobilisations/${camion2.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  verifier(egal(await solde(tenantId, '6813', [e2025.id]), 1_500_000 + 200_000), `M1 · 2025 doté · bâtiment 1 500 000 + camion 200 000 (lu ${await solde(tenantId, '6813', [e2025.id])})`);
+  await A.post(`/immobilisations/${camion2.id}/sortie`, { ...SORTIE, dateSortie: '2026-09-30', datePieceSortie: '2026-09-30', exerciceId: e2026.id, journalId: od.id });
+
+  // M3 · PV · manquant déjà traduit.
+  const chaises = await nouveau('Chaises', 1_000_000, 5, { quantite: 10 });
+  await A.post(`/immobilisations/${chaises.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  await cloturer2025(A, e2025);
+  const campagne = await A.post('/inventaire', { exerciceId: e2026.id, dateInventaire: '2026-12-31', libelle: 'Inventaire 2026' });
+  await A.post(`/inventaire/${campagne.id}/fiches/immobilisations`, {});
+  const fiche = await prisma.ficheInventaire.findFirst({ where: { campagneId: campagne.id, immobilisationId: chaises.id }, select: { id: true } });
+  await A.patch(`/inventaire/fiches/${fiche.id}`, { quantiteComptee: 8 });
+  await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, {
+    ...SORTIE, natureSortie: 'DISPARITION', dateSortie: '2026-12-31', datePieceSortie: '2026-12-31', exerciceId: e2026.id, journalId: od.id, quantiteSortie: 2,
+  });
+  const pv = await A.get(`/inventaire/${campagne.id}/editions/proces-verbal`);
+  const l = pv.releve.find((x) => x.unites && x.unites.attendue === 10);
+  verifier(l && l.unites.quantiteRegistre === 8 && l.unites.ecart === -2 && l.unites.manquantATraduire === 0, `M3 · registre aujourd’hui 8, manquant 2 déjà traduit (lu ${JSON.stringify(l?.unites)})`);
+  verifier(!pv.mentions.some((m) => /en manquant d'unités/.test(m)) && pv.mentions.some((m) => /déjà traduit au registre/.test(m)), `M3 · le PV ne réclame plus la sortie (lu ${JSON.stringify(pv.mentions)})`);
+}
+
 async function main() {
   const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -200,10 +280,11 @@ async function main() {
     let pret = false;
     for (let i = 0; i < 90; i++) { try { if ((await fetch(`${API}/health`)).ok) { pret = true; break; } } catch {} await attendre(1000); }
     if (!pret) throw new Error(`serveur non démarré\n${journal.slice(-3000)}`);
-    const points = (process.env.POINTS || '1,2,3').split(',');
+    const points = (process.env.POINTS || '1,2,3,4').split(',');
     if (points.includes('1')) await point1(new Client());
     if (points.includes('2')) await point2(new Client());
     if (points.includes('3')) await point3(new Client());
+    if (points.includes('4')) await point4(new Client());
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();
