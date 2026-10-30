@@ -94,6 +94,9 @@ export const COLONNES_ECHANGE = [
   { header: 'Statut', key: 'statut', width: 11 },
   { header: 'Mouvement', key: 'mouvement', width: 34 },
   { header: "Identifiant de l'écriture", key: 'identifiant', width: 38 },
+  // En DERNIÈRE colonne (ligne dossier-l9, relecture M3) · les colonnes déjà
+  // lues par leur rang ne bougent pas.
+  { header: 'Code taxe', key: 'codeTaxe', width: 10 },
 ] as const;
 
 export const COLONNES_SUPPRIMEES = [
@@ -115,6 +118,12 @@ export interface LigneEchange {
   montantDevise: string | null;
   cours: string | null;
   echeance: string | null;
+  /**
+   * Le code du taux de TVA de la ligne (ligne dossier-l9, relecture M3) · sans
+   * lui, une ligne 443 ou 445 reçue par un autre dossier n'entrait pas dans
+   * sa déclaration de TVA (`taux-tva.service.ts` lit le taux de la ligne).
+   */
+  codeTaxe?: string | null;
 }
 
 /** Une écriture telle que le fichier la porte · ce dont l'empreinte est faite. */
@@ -134,7 +143,12 @@ const jourIso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 /** Ce qu'une ligne porte dans le fichier, dans l'ordre des colonnes · ce que l'empreinte lit. */
 function contenuDeLaLigne(l: LigneEchange) {
-  return [l.compte, l.libelle ?? null, l.debit, l.credit, l.devise, l.montantDevise, l.cours, l.echeance] as const;
+  // Le taux n'entre que PRÉSENT · une ligne sans taux garde l'empreinte
+  // qu'elle avait avant la colonne, et le registre des envois ne la croit pas
+  // modifiée. Une pièce du brouillard qui porte un taux, déjà partie, repart
+  // une fois « Modifiée » · son remplacement chez celui qui reçoit lui donne
+  // le taux qu'elle n'avait pas.
+  return [l.compte, l.libelle ?? null, l.debit, l.credit, l.devise, l.montantDevise, l.cours, l.echeance, ...(l.codeTaxe ? [l.codeTaxe] : [])] as const;
 }
 
 /**

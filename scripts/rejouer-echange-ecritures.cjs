@@ -12,7 +12,12 @@
  *    pièce détachée n'est plus touchée ;
  *  · la clôture de 2026 chez celui qui reçoit · une pièce 2027 entre dans
  *    l'exercice ouvert, une pièce 2026 est refusée (exercice clôturé) ;
- *  · une écriture reçue ne repart pas par l'export de celui qui la reçoit.
+ *  · une écriture reçue ne repart pas par l'export de celui qui la reçoit ;
+ *  · B1 · le même fichier se RELIT · rien n'est recréé ; une pièce refusée
+ *    (journal absent) entre à la relecture une fois le journal créé, avec son
+ *    taux de TVA (M3) et sa date de valeur (M2) ;
+ *  · M1 · un remplacement qui change de journal retire et recrée la pièce
+ *    d'un seul tenant, le registre sur la remplaçante.
  * Chaque solde lu contre le calcul à la main.
  *
  *   DATABASE_URL=postgresql://... node scripts/rejouer-echange-ecritures.cjs
@@ -124,9 +129,11 @@ async function main() {
     const brouillardR = await prisma.ecriture.count({ where: { tenantId: R.tenantId, statut: 'BROUILLARD' } });
     verifier(brouillardR === 3, `les trois naissent au brouillard, apport validé chez l'expéditeur compris (${brouillardR})`);
     verifier((await solde(R.tenantId, '62220000', R.ex26.id)) === 150_000, `6222 chez celui qui reçoit · 150 000 (${await solde(R.tenantId, '62220000', R.ex26.id)})`);
-    let refus = null;
-    try { await R.c.post('/echanges-ecritures', envoi1); } catch (e) { refus = e; }
-    verifier(refus?.statut === 409, `le même fichier ne se relit pas (${refus?.statut})`);
+    // B1 · le même fichier se RELIT · rien n'est recréé, rien ne double.
+    const relu1 = await R.c.post('/echanges-ecritures', envoi1);
+    verifier(relu1.creees === 0 && relu1.ignorees === 3 && relu1.pieces.every((x) => /par cet envoi/.test(x.message)), `le même fichier relu · rien recréé (${relu1.creees} créées, ${relu1.ignorees} « déjà reçue par cet envoi »)`);
+    verifier((await prisma.ecriture.count({ where: { tenantId: R.tenantId } })) === 3, 'toujours trois écritures chez celui qui reçoit');
+    verifier((await solde(R.tenantId, '62220000', R.ex26.id)) === 150_000, '6222 toujours à 150 000');
 
     // Le dossier qui reçoit ne peut ni retoucher ni retirer une écriture tenue.
     const recue1 = await prisma.ecritureRecue.findFirst({ where: { tenantId: R.tenantId, identifiantSource: p1.id } });
@@ -184,8 +191,59 @@ async function main() {
     verifier(report401 === -200_000, `401 en 2027 · à-nouveau -120 000 et février -80 000 = -200 000 (${report401})`);
     const p6recue = await prisma.ecritureRecue.findFirst({ where: { tenantId: R.tenantId, identifiantSource: p6.id } });
     verifier(p6recue === null, 'la pièce de décembre 2026 n’est pas reçue, ni au registre');
+
+    console.log('== B1 · refus, correction, relecture · taux et date de valeur');
+    const achat = await S.adopter('6011');
+    const tvaRecup = await S.adopter('4452');
+    const tauxS = (await S.c.get('/taux-tva')).find((t) => t.compteDeductible?.numero?.startsWith('4452') && Number(t.taux) > 0);
+    verifier(!!tauxS, `un taux déductible au 4452 chez l'expéditeur (${tauxS?.code})`);
+    const hax = await S.c.post('/journaux', { code: 'HAX', intitule: 'Achats reçus', type: 'ACHATS' });
+    const p7 = await S.c.post('/ecritures', {
+      exerciceId: S.ex27.id, journalId: hax.id, date: '2027-03-10', libelle: 'Facture achat',
+      lignes: [
+        { compteId: achat.id, debit: 100_000, credit: 0 },
+        { compteId: tvaRecup.id, debit: 16_000, credit: 0, tauxTvaId: tauxS.id },
+        { compteId: fournisseur.id, debit: 0, credit: 116_000 },
+      ],
+    });
+    // La date de valeur posée en base chez l'expéditeur (art. 22, 4°) · ce que l'export lit.
+    await prisma.ecriture.update({ where: { id: p7.id }, data: { dateValeur: new Date('2027-02-27T00:00:00Z') } });
+    const envoi5 = await exporter();
+    const recu5 = await R.c.post('/echanges-ecritures', envoi5);
+    const nommes5 = recu5.pieces.map((x) => x.message).join(' | ');
+    verifier(recu5.creees === 0 && recu5.refusees === 1 && /« HAX » inconnu/.test(nommes5), `journal absent · refusée, nommée (${nommes5})`);
+    await R.c.post('/journaux', { code: 'HAX', intitule: 'Achats reçus', type: 'ACHATS' });
+    const relu5 = await R.c.post('/echanges-ecritures', envoi5);
+    verifier(relu5.creees === 1 && relu5.refusees === 0, `relu après création du journal · créée (${relu5.creees}) · ${relu5.pieces.map((x) => x.message).join(' | ')}`);
+    const p7recue = await prisma.ecritureRecue.findFirst({ where: { tenantId: R.tenantId, identifiantSource: p7.id }, include: { ecriture: { include: { lignes: { include: { compte: true, tauxTva: true } } } } } });
+    const ligneTva = p7recue?.ecriture?.lignes.find((l) => l.compte.numero.startsWith('4452'));
+    verifier(ligneTva?.tauxTva?.code === tauxS.code, `la ligne 4452 reçue porte le taux ${tauxS.code} du dossier qui reçoit (${ligneTva?.tauxTva?.code})`);
+    verifier(p7recue?.ecriture?.dateValeur?.toISOString().slice(0, 10) === '2027-02-27', `la date de valeur voyage (${p7recue?.ecriture?.dateValeur?.toISOString().slice(0, 10)})`);
+    verifier((await solde(R.tenantId, '44520000', R.ex27.id)) === 16_000, `4452 en 2027 · 16 000 (${await solde(R.tenantId, '44520000', R.ex27.id)})`);
+
+    console.log('== M1 · remplacement qui change de journal, d’un seul tenant');
+    const avantM1 = p7recue.ecritureId;
+    let deplacee = true;
+    try {
+      await S.c.patch(`/ecritures/${p7.id}`, {
+        journalId: S.od.id, libelle: 'Facture achat, en OD',
+        lignes: [
+          { compteId: achat.id, debit: 100_000, credit: 0 },
+          { compteId: tvaRecup.id, debit: 16_000, credit: 0, tauxTvaId: tauxS.id },
+          { compteId: fournisseur.id, debit: 0, credit: 116_000 },
+        ],
+      });
+    } catch (e) { deplacee = false; console.log(`  (le journal d'une pièce ne se change pas chez l'expéditeur · ${e.statut}) · journal changé en base chez l'expéditeur`); }
+    if (!deplacee) await prisma.ecriture.update({ where: { id: p7.id }, data: { journalId: S.od.id } });
+    const envoi6 = await exporter();
+    const recu6 = await R.c.post('/echanges-ecritures', envoi6);
+    const apresM1 = await prisma.ecritureRecue.findFirst({ where: { tenantId: R.tenantId, identifiantSource: p7.id }, include: { ecriture: { include: { journal: true } } } });
+    verifier(recu6.modifiees === 1 && apresM1.ecritureId && apresM1.ecritureId !== avantM1 && apresM1.ecriture.journal.code === R.od.code, `remplacée par retrait et recréation · le registre tient la remplaçante, au journal ${apresM1?.ecriture?.journal?.code} · ${recu6.pieces.map((x) => x.message).join(' | ')}`);
+    verifier((await prisma.ecriture.count({ where: { id: avantM1 } })) === 0, "l'ancienne est retirée");
+    verifier((await solde(R.tenantId, '44520000', R.ex27.id)) === 16_000, '4452 toujours 16 000 · rien de doublé, rien de perdu');
+
     const receptions = await R.c.get('/echanges-ecritures');
-    verifier(receptions.total === 4 && receptions.receptions.every((x) => x.etat === 'TERMINEE'), `${receptions.total} réceptions, toutes terminées`);
+    verifier(receptions.total === 6 && receptions.receptions.every((x) => x.etat === 'TERMINEE'), `${receptions.total} réceptions (deux fichiers relus), toutes terminées`);
     void p3;
   } catch (e) {
     echecs.push(String(e));

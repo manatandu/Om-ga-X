@@ -114,6 +114,7 @@ const CONTENU_ECRITURE = {
       dateEcheance: true,
       compte: { select: { numero: true } },
       devise: { select: { code: true } },
+      tauxTva: { select: { code: true } },
     },
   },
 } satisfies Prisma.EcritureInclude;
@@ -142,6 +143,7 @@ export function versEchange(e: EcritureLue): EcritureEchange {
       // Le cours garde sa précision (six décimales en base) · ce n'est pas un montant.
       cours: l.coursApplique === null ? null : l.coursApplique.toString(),
       echeance: l.dateEcheance ? l.dateEcheance.toISOString().slice(0, 10) : null,
+      codeTaxe: l.tauxTva?.code ?? null,
     })),
   };
 }
@@ -578,6 +580,7 @@ export class ExportModificationsService {
                 devise: l.devise ?? '',
                 cours: l.cours === null ? null : Number(l.cours),
                 echeance: l.echeance ? new Date(`${l.echeance}T00:00:00Z`) : null,
+                codeTaxe: l.codeTaxe ?? '',
                 jourValeur: e.dateValeur,
                 statut: libelleDuStatut(e.statut),
                 mouvement: mention,

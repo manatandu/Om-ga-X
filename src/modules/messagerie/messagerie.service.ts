@@ -59,7 +59,8 @@ export class MessagerieService {
       sessions,
       total: ouvertes.length,
       tronque: ouvertes.length > sessions.length || lues.length === 500,
-      connectees: sessions.filter((s) => s.connectee).length,
+      // Sur TOUTES les sessions ouvertes lues, pas sur les deux cents servies (relecture, m4).
+      connectees: ouvertes.filter((p) => estConnectee(p.derniereActiviteLe, maintenant)).length,
       delaiConnecteMinutes: DELAI_CONNECTE_MS / 60000,
       fenetreHeures: FENETRE_PRESENCE_MS / 3600000,
     };

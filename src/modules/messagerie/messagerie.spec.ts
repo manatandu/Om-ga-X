@@ -99,3 +99,26 @@ describe('la messagerie · un même dossier, une correspondance confidentielle',
     expect(lire).toMatch(/destinataires: \{ some: \{ destinataireId: userId/);
   });
 });
+
+describe('utilisateurs connectés · le compte porte sur toutes les sessions ouvertes (relecture, m4)', () => {
+  it('au-delà des deux cents servies, les connectées se comptent quand même', async () => {
+    const maintenant = new Date('2027-03-04T10:00:00Z');
+    const lues = Array.from({ length: 250 }, (_, i) => ({
+      id: `p${i}`,
+      empreinteSession: `e${i}`,
+      ouverteLe: maintenant,
+      authentifieeLe: maintenant,
+      derniereActiviteLe: maintenant,
+      fermeeLe: null,
+      sessionLongue: false,
+      appareil: null,
+      user: { id: `u${i}`, email: `u${i}@exemple.invalid`, role: 'COMPTABLE', estActif: true, sessionsInvalidesAvant: null, sessionsFermees: [] },
+    }));
+    const prisma = { presenceSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }), findMany: jest.fn().mockResolvedValue(lues) } };
+    const r = await new MessagerieService(prisma as never).utilisateursConnectes('t1', maintenant);
+    expect(r.sessions).toHaveLength(200);
+    expect(r.total).toBe(250);
+    expect(r.connectees).toBe(250);
+    expect(r.tronque).toBe(true);
+  });
+});

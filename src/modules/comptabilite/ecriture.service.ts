@@ -1859,6 +1859,12 @@ export class EcritureService {
       date: string;
       libelle?: string;
       reference?: string | null;
+      /**
+       * La date de valeur (AUDCIF art. 22, 4°) · absente, inchangée ; `null`
+       * l'efface. L'échange d'écritures la porte de l'expéditeur (ligne
+       * dossier-l9, relecture M2).
+       */
+      dateValeur?: Date | null;
       exigerVentilationObligatoire?: boolean;
       lignes: LigneEcritureDto[];
     },
@@ -1904,6 +1910,7 @@ export class EcritureService {
         date,
         ...(dto.libelle ? { libelle: dto.libelle } : {}),
         ...(dto.reference !== undefined ? { reference: dto.reference } : {}),
+        ...(dto.dateValeur !== undefined ? { dateValeur: dto.dateValeur } : {}),
         lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
         ...contenuChange(auteur, new Date()),
       },

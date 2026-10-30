@@ -153,6 +153,34 @@ Voir « Questions pour Manasse ».
   `scripts/rejouer-echange-ecritures.cjs` rejoué · conforme. Dérive de
   migration contrôlée (`prisma migrate diff`) · aucune.
 
+## Relecture indépendante de la ligne (coordinateur), constats corrigés
+
+- B1 · un fichier déjà reçu se RELIT · seule une réception en cours sur un
+  autre poste refuse. Le registre laisse ce qui est entré (« déjà reçue par
+  cet envoi »), fait naître ce qui n'y est pas, rejoue un remplacement
+  refusé ; la reprise est prise par un `updateMany` filtré sur l'état et
+  l'instant lus (m2). Les nombres de la réception s'ajoutent. Tests ·
+  `decisionPour` (refus, correction, relecture), source du service ; rejeu ·
+  journal absent, refusée, journal créé, relue, entrée.
+- M1 · le remplacement qui change de journal, d'exercice ou de mois retire
+  et recrée DANS LA MÊME TRANSACTION (`ecrireLesPieces(tx, …)` dans le
+  `liberer` de `supprimer`). Test de source, rejeu (registre sur la
+  remplaçante, l'ancienne retirée, 4452 inchangé).
+- M2 · la date de valeur (AUDCIF art. 22, 4°) est lue (« Jour de valeur »),
+  entre dans l'empreinte et la cohérence des lignes, est posée à la création
+  et au remplacement en place (`modifierPieceDuModule`, champ `dateValeur`).
+- M3 · le taux voyage par son code (« Code taxe », DERNIÈRE colonne de
+  l'export, entré dans l'empreinte de l'export seulement quand il est présent
+  · une pièce du brouillard à taux déjà partie repart une fois « Modifiée »),
+  résolu chez celui qui reçoit, refus nommé si le code manque ou dort ; une
+  ligne 443 ou 445 reçue sans taux est NOMMÉE au compte rendu. Tests · `juger`
+  sur les trois cas ; rejeu (4452 reçue avec TVA16).
+- Mineurs · m1 message de la validée (détacher, puis négatif) ; m2 « plus
+  récent » faux à numéro égal ; m3 pièce reçue sans numéro dite ; m4
+  `connectees` sur toutes les sessions ouvertes (test) ; m5 message de la
+  langue ; m6 la panne se dit par sa catégorie au compte rendu, le détail au
+  journal du serveur seul (test de source).
+
 ## Questions pour Manasse
 
 1. **96 · ouvrir l'anglais.** Faut-il publier une version 4 du contrat de

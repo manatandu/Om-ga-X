@@ -5,8 +5,10 @@ import {
   Prisma,
   RoleUtilisateur,
   StatutEcriture,
+  NumerotationPiece,
   StatutExercice,
   TypeCompteDetailTotal,
+  TypeJournal,
   TypeNotification,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -41,6 +43,8 @@ interface LignePrete {
   deviseId?: string;
   montantDevise?: number;
   coursApplique?: number;
+  /** Le taux du dossier qui porte le code de l'envoi (relecture M3). */
+  tauxTvaId?: string;
 }
 
 /** Une écriture de l'envoi, jugée et prête à naître ou à remplacer celle du dossier. */
@@ -54,7 +58,21 @@ interface PiecePrete {
   lignes: LignePrete[];
   entree: (EntreeRecue & { id: string }) | undefined;
   note: string | null;
+  /** Ce qui se dit de la pièce même reçue · une ligne de taxe reçue sans taux. */
+  avertissements: string[];
 }
+
+/** Les journaux du dossier, comme la numérotation les lit. */
+type JournauxParId = Map<string, { id: string; numerotation: NumerotationPiece; type: TypeJournal }>;
+
+/**
+ * Une ligne de TAXE reçue sans taux · la déclaration de TVA ne lit que la
+ * ligne 443 ou 445 qui porte son taux (`taux-tva.service.ts`) · reçue sans
+ * lui, la déduction ou la collecte manquerait sans un mot. Nommée au compte
+ * rendu, jamais refusée · l'envoi peut venir d'un dossier sans taux posé, et
+ * le dossier qui reçoit pose le taux sur la ligne au brouillard.
+ */
+const estLigneDeTaxe = (compte: string) => compte.startsWith('443') || compte.startsWith('445');
 
 /** Ce qu'une réception a fait, ou ferait (aperçu). */
 export interface CompteRenduReception {
@@ -221,15 +239,14 @@ export class EchangeEcrituresService {
       throw e;
     }
 
-    // LE MÊME FICHIER NE SE RELIT PAS · sauf une réception tombée en route.
+    // LE MÊME FICHIER SE RELIT (relecture indépendante, B1) · les messages de
+    // refus disent « créez le journal, puis relisez le fichier », et une pièce
+    // refusée ne revient par aucun envoi suivant (l'expéditeur l'a déjà
+    // envoyée). Le registre fait le tri · ce qui est entré reste « déjà reçue »,
+    // seules les écritures sans entrée naissent, et un remplacement refusé se
+    // rejoue. Seule une réception EN COURS sur un autre poste refuse.
     const existante = await this.prisma.receptionEchange.findFirst({ where: { tenantId, empreinteFichier } });
-    if (existante?.etat === EtatReceptionEchange.TERMINEE) {
-      throw new ConflictException(
-        `Ce fichier a déjà été reçu le ${existante.recuLe.toLocaleString('fr-FR', { timeZone: 'Africa/Kinshasa' })} ` +
-          `(envoi n° ${existante.numeroExportSource} de « ${existante.dossierSource} ») · rien n'est relu.`,
-      );
-    }
-    if (existante && Date.now() - existante.recuLe.getTime() < DELAI_RECEPTION_TOMBEE_MS) {
+    if (existante?.etat === EtatReceptionEchange.EN_COURS && Date.now() - existante.recuLe.getTime() < DELAI_RECEPTION_TOMBEE_MS) {
       throw new ConflictException('Ce fichier est en cours de réception sur un autre poste · attendez la fin, puis relisez la liste.');
     }
 
@@ -247,6 +264,12 @@ export class EchangeEcrituresService {
     }
 
     const avertissements: string[] = envoi.illisibles.slice(0, 20).map((i) => `Ligne ${i.rang} · ${i.message}`);
+    if (existante?.etat === EtatReceptionEchange.TERMINEE) {
+      avertissements.push(
+        `Relecture d'un fichier déjà reçu le ${existante.recuLe.toLocaleString('fr-FR', { timeZone: 'Africa/Kinshasa' })} · ` +
+          "ce qui y était entré reste tel quel, seules les écritures qui n'étaient pas entrées sont reçues.",
+      );
+    }
     if (envoi.illisibles.length > 20) avertissements.push(`… et ${envoi.illisibles.length - 20} autres lignes illisibles.`);
     const precedente = await this.prisma.receptionEchange.findFirst({
       where: { tenantId, dossierSource: envoi.dossierSource, etat: EtatReceptionEchange.TERMINEE },
@@ -268,12 +291,14 @@ export class EchangeEcrituresService {
     }
 
     // LE CONTEXTE DU DOSSIER · exercices, journaux, comptes, devises, registre.
-    const [exercices, journaux, comptes, devises] = await Promise.all([
+    const [exercices, journaux, comptes, devises, taux] = await Promise.all([
       this.prisma.exercice.findMany({ where: { tenantId }, select: { id: true, dateDebut: true, dateFin: true, statut: true } }),
       this.prisma.journal.findMany({ where: { tenantId }, select: { id: true, code: true, numerotation: true, type: true } }),
       this.prisma.compte.findMany({ where: { tenantId }, select: { id: true, numero: true, typeCompte: true } }),
       this.prisma.devise.findMany({ where: { tenantId }, select: { id: true, code: true } }),
+      this.prisma.tauxTva.findMany({ where: { tenantId }, select: { id: true, code: true, estActif: true } }),
     ]);
+    const tauxParCode = new Map(taux.map((t) => [t.code.toUpperCase(), t]));
     const journauxParCode = new Map(journaux.map((j) => [j.code.toUpperCase(), j]));
     const journauxParId = new Map(journaux.map((j) => [j.id, j]));
     const comptesParNumero = new Map(comptes.map((c) => [c.numero, c]));
@@ -310,7 +335,7 @@ export class EchangeEcrituresService {
         dire(nom, decision.motif, decision.refus);
         continue;
       }
-      const jugee = await this.juger(tenantId, e, { exercices, journauxParCode, comptesParNumero, devisesParCode, memoire });
+      const jugee = await this.juger(tenantId, e, { exercices, journauxParCode, comptesParNumero, devisesParCode, tauxParCode, memoire });
       if (typeof jugee === 'string') {
         dire(nom, jugee, true);
         continue;
@@ -372,6 +397,7 @@ export class EchangeEcrituresService {
       avertissements,
     });
     for (const p of aCreer) if (p.note) pieces.push({ piece: p.nom, message: p.note, refus: false });
+    for (const p of [...aCreer, ...aRemplacer]) for (const a of p.avertissements) pieces.push({ piece: p.nom, message: a, refus: false });
     if (simulation) return rendu(null, aCreer.length, aRemplacer.length, aRetirer.length);
 
     // LA RÉCEPTION NAÎT AVANT LA PREMIÈRE ÉCRITURE · elle est la pièce que le
@@ -379,7 +405,16 @@ export class EchangeEcrituresService {
     let receptionId: string;
     if (existante) {
       receptionId = existante.id;
-      await this.prisma.receptionEchange.update({ where: { id: existante.id }, data: { recuLe: new Date(), recuPar: userId } });
+      // Reprise ou relecture PRISE par un seul poste (relecture, m2) · filtrée
+      // sur l'état et l'instant LUS, une et une seule ligne, sinon un autre
+      // poste l'a prise entre-temps.
+      const prise = await this.prisma.receptionEchange.updateMany({
+        where: { id: existante.id, tenantId, etat: existante.etat, recuLe: existante.recuLe },
+        data: { etat: EtatReceptionEchange.EN_COURS, recuLe: new Date(), recuPar: userId },
+      });
+      if (prise.count !== 1) {
+        throw new ConflictException('Ce fichier vient d’être repris sur un autre poste · attendez la fin, puis relisez la liste.');
+      }
     } else {
       try {
         receptionId = (
@@ -407,7 +442,11 @@ export class EchangeEcrituresService {
     let creees = 0;
     if (aCreer.length > 0) {
       try {
-        creees = await this.creerLesPieces(tenantId, userId, receptionId, envoi.numeroExport, aCreer, journauxParId);
+        const ecrites = await this.creerLesPieces(tenantId, userId, receptionId, envoi.numeroExport, aCreer, journauxParId);
+        creees = ecrites.length;
+        for (const nom of ecrites.filter((x) => x.numeroPiece === null).map((x) => x.nom)) {
+          pieces.push({ piece: nom, message: 'reçue sans numéro de pièce · le journal du dossier se numérote à la main, numérotez-la avant de la valider', refus: false });
+        }
       } catch (e) {
         for (const p of aCreer) dire(p.nom, `${this.motifDeLEchec(e, receptionId)} · aucune des écritures nouvelles de l'envoi n'a été créée`, true);
       }
@@ -417,8 +456,11 @@ export class EchangeEcrituresService {
     let modifiees = 0;
     for (const p of aRemplacer) {
       try {
-        await this.remplacer(tenantId, userId, receptionId, envoi.numeroExport, p, journauxParId);
+        const numeroPiece = await this.remplacer(tenantId, userId, receptionId, envoi.numeroExport, p, journauxParId);
         modifiees++;
+        if (numeroPiece === null) {
+          pieces.push({ piece: p.nom, message: 'recréée sans numéro de pièce · le journal du dossier se numérote à la main, numérotez-la avant de la valider', refus: false });
+        }
       } catch (e) {
         dire(p.nom, `${this.motifDeLEchec(e, receptionId)} · l'écriture du dossier n'a pas été remplacée`, true);
       }
@@ -447,9 +489,12 @@ export class EchangeEcrituresService {
       data: {
         etat: EtatReceptionEchange.TERMINEE,
         termineeLe: new Date(),
-        nombreCreees: creees,
-        nombreModifiees: modifiees,
-        nombreRetirees: retirees,
+        // Une relecture AJOUTE ce qu'elle a fait à ce que le fichier avait déjà
+        // fait ; ignorées et refusées sont celles de la dernière lecture, ce
+        // qui reste en suspens.
+        nombreCreees: { increment: creees },
+        nombreModifiees: { increment: modifiees },
+        nombreRetirees: { increment: retirees },
         nombreIgnorees: ignorees,
         nombreRefusees: refusees,
         compteRendu: { pieces: pieces.slice(0, PLAFOND_COMPTE_RENDU), total: pieces.length, avertissements } as unknown as Prisma.InputJsonValue,
@@ -487,15 +532,17 @@ export class EchangeEcrituresService {
       journauxParCode: Map<string, { id: string; code: string }>;
       comptesParNumero: Map<string, { id: string; numero: string; typeCompte: TypeCompteDetailTotal }>;
       devisesParCode: Map<string, { id: string; code: string }>;
+      tauxParCode: Map<string, { id: string; code: string; estActif: boolean }>;
       memoire: MemoireControles;
     },
-  ): Promise<Pick<PiecePrete, 'exerciceId' | 'journalId' | 'libelle' | 'lignes'> | string> {
+  ): Promise<Pick<PiecePrete, 'exerciceId' | 'journalId' | 'libelle' | 'lignes' | 'avertissements'> | string> {
     const exercice = ctx.exercices.find((x) => x.dateDebut <= e.date && e.date <= x.dateFin);
     if (!exercice) return "aucun exercice du dossier ne couvre sa date · créez l'exercice, puis relisez le fichier";
     if (exercice.statut === StatutExercice.CLOTURE) return "sa date tombe dans un exercice clôturé · elle n'est pas reçue";
     const journal = ctx.journauxParCode.get(e.journal);
     if (!journal) return `journal « ${e.journal} » inconnu du dossier · créez-le sous ce code, puis relisez le fichier`;
     const lignes: LignePrete[] = [];
+    const avertissements: string[] = [];
     for (const l of e.lignes) {
       const compte = ctx.comptesParNumero.get(l.compte);
       if (!compte) return `le compte ${l.compte} n'existe pas dans le plan du dossier`;
@@ -504,6 +551,19 @@ export class EchangeEcrituresService {
       const lue = lireDeviseDeLaLigne(l.devise, l.montantDevise, l.cours, l.compte, ctx.devisesParCode, Math.abs(l.debit - l.credit));
       const ligne: LignePrete = { compteId: compte.id, libelle: l.libelle, debit: l.debit, credit: l.credit };
       if (l.echeance) ligne.dateEcheance = l.echeance;
+      // LE TAUX VOYAGE PAR SON CODE (relecture M3) · résolu dans ce dossier,
+      // sinon refus nommé · posée sans lui, la ligne de taxe sortait de la
+      // déclaration de TVA en silence.
+      if (l.codeTaxe) {
+        const t = ctx.tauxParCode.get(l.codeTaxe);
+        if (!t) return `le taux de TVA « ${l.codeTaxe} » de la ligne ${l.compte} n'existe pas dans ce dossier · créez-le sous ce code (Structure > Taux de taxes), puis relisez le fichier`;
+        if (!t.estActif) return `le taux de TVA « ${l.codeTaxe} » de la ligne ${l.compte} est en sommeil dans ce dossier · réactivez-le, puis relisez le fichier`;
+        ligne.tauxTvaId = t.id;
+      } else if (estLigneDeTaxe(l.compte)) {
+        avertissements.push(
+          `la ligne ${l.compte} est reçue sans taux de TVA · la déclaration de TVA ne la lit pas tant que son taux n'est pas posé sur la ligne, au brouillard`,
+        );
+      }
       if (lue.enDevise) {
         if (lue.refus !== null) return lue.refus;
         ligne.deviseId = lue.deviseId;
@@ -527,7 +587,7 @@ export class EchangeEcrituresService {
     } catch (err) {
       return message(err);
     }
-    return { exerciceId: exercice.id, journalId: journal.id, libelle: e.lignes[0]?.libelle || `Reçue de l'envoi n° ${e.piece}`, lignes };
+    return { exerciceId: exercice.id, journalId: journal.id, libelle: e.lignes[0]?.libelle || `Reçue de l'envoi n° ${e.piece}`, lignes, avertissements };
   }
 
   /**
@@ -549,7 +609,7 @@ export class EchangeEcrituresService {
     if (locale.statut !== StatutEcriture.BROUILLARD) {
       return (
         `validée dans ce dossier (pièce n° ${locale.numeroPiece ?? 'sans numéro'}) · elle ne se remplace plus (AUDCIF art. 22, 2°) ; ` +
-        "si l'expéditeur l'a corrigée, passez la correction par inscription en négatif (art. 20, al. 2)"
+        "si l'expéditeur l'a corrigée, détachez-la (Fichier > Échanger des écritures), puis corrigez-la par inscription en négatif (art. 20, al. 2)"
       );
     }
     if (locale.exercice.statut === StatutExercice.CLOTURE) return "son exercice est clôturé dans ce dossier · elle ne se remplace plus";
@@ -568,72 +628,91 @@ export class EchangeEcrituresService {
     receptionId: string,
     numeroExport: number,
     pieces: PiecePrete[],
-    journauxParId: Map<string, { id: string; numerotation: import('@prisma/client').NumerotationPiece; type: import('@prisma/client').TypeJournal }>,
-  ): Promise<number> {
-    await transactionJournalisee(
+    journauxParId: JournauxParId,
+  ): Promise<Array<{ nom: string; numeroPiece: number | null }>> {
+    return transactionJournalisee(
       this.prisma,
-      async (tx) => {
-        const numeroteurs = new Map<string, ReturnType<typeof numeroteurDeLot>>();
-        const ecrites: Array<PiecePrete & { id: string; numeroPiece: number | null }> = [];
-        // Dans l'ordre des dates · les numéros se suivent comme la saisie les aurait donnés.
-        for (const p of [...pieces].sort((a, b) => a.source.date.getTime() - b.source.date.getTime())) {
-          let numeroter = numeroteurs.get(p.exerciceId);
-          if (!numeroter) {
-            numeroter = numeroteurDeLot(tx, tenantId, p.exerciceId);
-            numeroteurs.set(p.exerciceId, numeroter);
-          }
-          ecrites.push({ ...p, id: randomUUID(), numeroPiece: await numeroter(journauxParId.get(p.journalId)!, p.source.date) });
-        }
-        for (const lot of tranches(ecrites, LOT)) {
-          await tx.ecriture.createMany({
-            data: lot.map((p) => ({
-              id: p.id,
-              tenantId,
-              exerciceId: p.exerciceId,
-              journalId: p.journalId,
-              numeroPiece: p.numeroPiece,
-              date: p.source.date,
-              libelle: p.libelle,
-              reference: p.source.reference,
-              createdBy: userId,
-            })),
-          });
-        }
-        const lignes = ecrites.flatMap((p) => p.lignes.map((l) => ({ ...this.versLigne(l), ecritureId: p.id })));
-        for (const lot of tranches(lignes, 5000)) await tx.ligneEcriture.createMany({ data: lot });
-        // LE REGISTRE · une entrée neuve, ou celle d'un remplacement interrompu.
-        const neuves = ecrites.filter((p) => !p.entree);
-        for (const lot of tranches(neuves, LOT)) {
-          await tx.ecritureRecue.createMany({
-            data: lot.map((p) => ({
-              tenantId,
-              identifiantSource: p.source.identifiant,
-              ecritureId: p.id,
-              empreinteSource: p.empreinte,
-              numeroExportSource: numeroExport,
-              premiereReceptionId: receptionId,
-              derniereReceptionId: receptionId,
-            })),
-          });
-        }
-        for (const p of ecrites.filter((x) => x.entree)) {
-          await tx.ecritureRecue.update({
-            where: { id: p.entree!.id },
-            data: { etat: EtatEcritureRecue.TENUE, ecritureId: p.id, empreinteSource: p.empreinte, numeroExportSource: numeroExport, derniereReceptionId: receptionId },
-          });
-        }
-      },
+      (tx) => this.ecrireLesPieces(tx, tenantId, userId, receptionId, numeroExport, pieces, journauxParId),
       { maxWait: 10_000, timeout: 120_000 },
     );
-    return pieces.length;
+  }
+
+  /**
+   * ÉCRIT DES PIÈCES ET LEUR REGISTRE DANS LA TRANSACTION DONNÉE · celle des
+   * créations, ou celle du RETRAIT d'un remplacement (relecture M1), si bien
+   * que l'écriture retirée et sa remplaçante passent ensemble, ou aucune.
+   */
+  private async ecrireLesPieces(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    receptionId: string,
+    numeroExport: number,
+    pieces: PiecePrete[],
+    journauxParId: JournauxParId,
+  ): Promise<Array<{ nom: string; numeroPiece: number | null }>> {
+    const numeroteurs = new Map<string, ReturnType<typeof numeroteurDeLot>>();
+    const ecrites: Array<PiecePrete & { id: string; numeroPiece: number | null }> = [];
+    // Dans l'ordre des dates · les numéros se suivent comme la saisie les aurait donnés.
+    for (const p of [...pieces].sort((a, b) => a.source.date.getTime() - b.source.date.getTime())) {
+      let numeroter = numeroteurs.get(p.exerciceId);
+      if (!numeroter) {
+        numeroter = numeroteurDeLot(tx, tenantId, p.exerciceId);
+        numeroteurs.set(p.exerciceId, numeroter);
+      }
+      ecrites.push({ ...p, id: randomUUID(), numeroPiece: await numeroter(journauxParId.get(p.journalId)!, p.source.date) });
+    }
+    for (const lot of tranches(ecrites, LOT)) {
+      await tx.ecriture.createMany({
+        data: lot.map((p) => ({
+          id: p.id,
+          tenantId,
+          exerciceId: p.exerciceId,
+          journalId: p.journalId,
+          numeroPiece: p.numeroPiece,
+          date: p.source.date,
+          // La date de valeur voyage (AUDCIF art. 22, 4°, relecture M2).
+          dateValeur: p.source.dateValeur,
+          libelle: p.libelle,
+          reference: p.source.reference,
+          createdBy: userId,
+        })),
+      });
+    }
+    const lignes = ecrites.flatMap((p) => p.lignes.map((l) => ({ ...this.versLigne(l), ecritureId: p.id })));
+    for (const lot of tranches(lignes, 5000)) await tx.ligneEcriture.createMany({ data: lot });
+    // LE REGISTRE · une entrée neuve, ou celle d'un remplacement (interrompu ou en cours).
+    const neuves = ecrites.filter((p) => !p.entree);
+    for (const lot of tranches(neuves, LOT)) {
+      await tx.ecritureRecue.createMany({
+        data: lot.map((p) => ({
+          tenantId,
+          identifiantSource: p.source.identifiant,
+          ecritureId: p.id,
+          empreinteSource: p.empreinte,
+          numeroExportSource: numeroExport,
+          premiereReceptionId: receptionId,
+          derniereReceptionId: receptionId,
+        })),
+      });
+    }
+    for (const p of ecrites.filter((x) => x.entree)) {
+      await tx.ecritureRecue.update({
+        where: { id: p.entree!.id },
+        data: { etat: EtatEcritureRecue.TENUE, ecritureId: p.id, empreinteSource: p.empreinte, numeroExportSource: numeroExport, derniereReceptionId: receptionId },
+      });
+    }
+    return ecrites.map((p) => ({ nom: p.nom, numeroPiece: p.numeroPiece }));
   }
 
   /**
    * REMPLACER UNE ÉCRITURE REÇUE · EN PLACE au brouillard, même numéro, quand
    * elle reste dans son exercice et son journal (`modifierPieceDuModule`) ;
-   * sinon retirée puis recréée · le registre est dénoué dans la transaction du
-   * retrait, et une recréation interrompue se reprend au fichier suivant
-   * (entrée TENUE sans écriture).
+   * sinon retirée puis recréée DANS LA MÊME TRANSACTION (relecture M1) · la
+   * remplaçante et son registre s'écrivent dans la transaction du retrait,
+   * jamais après lui · une recréation tombée retirait la pièce sans la
+   * recréer, et le compte rendu disait « non remplacée ». Rend le numéro de
+   * pièce de l'écriture du dossier.
    */
   private async remplacer(
     tenantId: string,
@@ -641,10 +720,10 @@ export class EchangeEcrituresService {
     receptionId: string,
     numeroExport: number,
     p: PiecePrete,
-    journauxParId: Map<string, { id: string; numerotation: import('@prisma/client').NumerotationPiece; type: import('@prisma/client').TypeJournal }>,
-  ) {
+    journauxParId: JournauxParId,
+  ): Promise<number | null> {
     const ecritureId = p.entree!.ecritureId!;
-    const locale = await this.prisma.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true, journalId: true } });
+    const locale = await this.prisma.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true, journalId: true, numeroPiece: true } });
     if (!locale) throw new ConflictException("l'écriture reçue n'existe plus dans ce dossier");
     if (locale.exerciceId === p.exerciceId && locale.journalId === p.journalId) {
       const enPlace = await transactionJournalisee(this.prisma, async (tx) => {
@@ -654,6 +733,7 @@ export class EchangeEcrituresService {
           ecritureId,
           {
             date: p.source.date.toISOString().slice(0, 10),
+            dateValeur: p.source.dateValeur,
             libelle: p.libelle,
             reference: p.source.reference,
             exigerVentilationObligatoire: false,
@@ -664,6 +744,7 @@ export class EchangeEcrituresService {
               credit: l.credit,
               ...(l.dateEcheance ? { dateEcheance: l.dateEcheance.toISOString().slice(0, 10) } : {}),
               ...(l.deviseId ? { deviseId: l.deviseId, montantDevise: l.montantDevise, coursApplique: coursDeLaLigne(l) } : {}),
+              ...(l.tauxTvaId ? { tauxTvaId: l.tauxTvaId } : {}),
             })),
           },
           userId,
@@ -675,14 +756,18 @@ export class EchangeEcrituresService {
         });
         return true;
       });
-      if (enPlace) return;
+      if (enPlace) return locale.numeroPiece;
     }
     // Autre exercice, autre journal, ou autre mois d'un journal numéroté par mois.
+    let numeroPiece: number | null = null;
     await this.ecritures.supprimer(tenantId, ecritureId, {
       detenteur: DETENTEUR_ECHANGE,
-      liberer: (tx) => tx.ecritureRecue.update({ where: { id: p.entree!.id }, data: { ecritureId: null } }),
+      liberer: async (tx) => {
+        const [ecrite] = await this.ecrireLesPieces(tx, tenantId, userId, receptionId, numeroExport, [p], journauxParId);
+        numeroPiece = ecrite.numeroPiece;
+      },
     });
-    await this.creerLesPieces(tenantId, userId, receptionId, numeroExport, [{ ...p, entree: { ...p.entree!, ecritureId: null } }], journauxParId);
+    return numeroPiece;
   }
 
   private versLigne(l: LignePrete) {
@@ -695,6 +780,7 @@ export class EchangeEcrituresService {
       deviseId: l.deviseId,
       montantDevise: l.montantDevise,
       coursApplique: coursDeLaLigne(l),
+      tauxTvaId: l.tauxTvaId,
     };
   }
 
@@ -710,12 +796,20 @@ export class EchangeEcrituresService {
 
   /**
    * Une écriture qui n'a pas pu s'écrire · le refus nommé (exception HTTP) se
-   * dit tel quel ; une panne de la base se dit aussi, et se consigne au
-   * journal du serveur avec la réception · jamais avalée.
+   * dit tel quel ; une panne se dit par sa CATÉGORIE au compte rendu, que tout
+   * le dossier relit (relecture, m6), et son détail (message de Prisma, qui
+   * peut citer des valeurs) va au seul journal du serveur, avec la réception ·
+   * jamais avalée.
    */
   private motifDeLEchec(e: unknown, receptionId: string): string {
     if (e instanceof HttpException) return message(e);
     this.journalServeur.error(`Réception ${receptionId} · écriture non écrite · ${message(e)}`);
-    return `panne pendant l'écriture (${message(e)})`;
+    const categorie =
+      e instanceof Prisma.PrismaClientKnownRequestError
+        ? `refus de la base (code ${e.code})`
+        : e instanceof Prisma.PrismaClientInitializationError || e instanceof Prisma.PrismaClientRustPanicError
+          ? 'base injoignable'
+          : 'panne du serveur';
+    return `${categorie} pendant l'écriture · relisez le fichier, ce qui est entré n'est pas recréé`;
   }
 }

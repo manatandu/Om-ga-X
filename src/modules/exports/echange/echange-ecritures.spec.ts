@@ -88,7 +88,22 @@ describe("l'envoi lu · les trois feuilles de l'export des modifications", () =>
     const lu = await lireEnvoi(await envoi({ lignes: [ligne(ID_A, '62210000', 500, 0), ligne(ID_A, '40110000', 0, 500, { piece: '9' }), ligne(ID_A, '40110000', 0, 1)] }));
     expect(lu.ecritures).toEqual([]);
     expect(lu.illisibles).toHaveLength(1);
-    expect(lu.illisibles[0].message).toMatch(/même date, le même journal ou la même pièce/);
+    expect(lu.illisibles[0].message).toMatch(/même date, la même date de valeur, le même journal ou la même pièce/);
+  });
+
+  it('lit la date de valeur et le code du taux de TVA de chaque ligne (relecture M2 et M3)', async () => {
+    const valeur = new Date('2027-02-27T00:00:00Z');
+    const lu = await lireEnvoi(
+      await envoi({
+        lignes: [
+          ligne(ID_A, '60110000', 100000, 0, { jourValeur: valeur }),
+          ligne(ID_A, '44520000', 16000, 0, { jourValeur: valeur, codeTaxe: 'tva16' }),
+          ligne(ID_A, '40110000', 0, 116000, { jourValeur: valeur }),
+        ],
+      }),
+    );
+    expect(lu.ecritures[0].dateValeur).toEqual(valeur);
+    expect(lu.ecritures[0].lignes.map((l) => l.codeTaxe)).toEqual(['', 'TVA16', '']);
   });
 
   it("une ligne sans identifiant d'origine se nomme et n'est pas lue", async () => {
@@ -99,9 +114,9 @@ describe("l'envoi lu · les trois feuilles de l'export des modifications", () =>
 });
 
 describe("l'empreinte du contenu reçu", () => {
-  const base = { date: new Date('2027-03-04T00:00:00Z'), journal: 'OD', reference: 'F-12' };
-  const l1 = { compte: '62210000', libelle: 'Loyer', debit: 500000, credit: 0, devise: '', montantDevise: '', cours: '', echeance: null };
-  const l2 = { compte: '40110000', libelle: 'Loyer', debit: 0, credit: 500000, devise: '', montantDevise: '', cours: '', echeance: null };
+  const base = { date: new Date('2027-03-04T00:00:00Z'), dateValeur: null, journal: 'OD', reference: 'F-12' };
+  const l1 = { compte: '62210000', libelle: 'Loyer', debit: 500000, credit: 0, devise: '', montantDevise: '', cours: '', echeance: null, codeTaxe: '' };
+  const l2 = { compte: '40110000', libelle: 'Loyer', debit: 0, credit: 500000, devise: '', montantDevise: '', cours: '', echeance: null, codeTaxe: '' };
 
   it("ne dépend pas de l'ordre des lignes", () => {
     expect(empreinteRecue({ ...base, lignes: [l1, l2] })).toBe(empreinteRecue({ ...base, lignes: [l2, l1] }));
@@ -112,6 +127,12 @@ describe("l'empreinte du contenu reçu", () => {
     expect(empreinteRecue({ ...base, lignes: [{ ...l1, debit: 500001 }, l2] })).not.toBe(a);
     expect(empreinteRecue({ ...base, lignes: [{ ...l1, compte: '62200000' }, l2] })).not.toBe(a);
     expect(empreinteRecue({ ...base, date: new Date('2027-03-05T00:00:00Z'), lignes: [l1, l2] })).not.toBe(a);
+  });
+
+  it('change avec la date de valeur et le taux de TVA (relecture M2 et M3) · un remplacement les porte', () => {
+    const a = empreinteRecue({ ...base, lignes: [l1, l2] });
+    expect(empreinteRecue({ ...base, dateValeur: new Date('2027-02-27T00:00:00Z'), lignes: [l1, l2] })).not.toBe(a);
+    expect(empreinteRecue({ ...base, lignes: [{ ...l1, codeTaxe: 'TVA16' }, l2] })).not.toBe(a);
   });
 });
 
@@ -153,6 +174,20 @@ describe('la table de décision · jamais deux fois la même écriture', () => {
   it('un remplacement interrompu (tenue sans écriture) se reprend', () => {
     expect(decisionPour({ ...tenue, ecritureId: null }, 'Y', 3, 'Modifiée')).toMatchObject({ action: 'CREER' });
   });
+
+  it('RELIRE LE MÊME FICHIER (relecture B1) · le reçu reste, le refusé revient, l’interrompu se reprend', () => {
+    // Reçue par cet envoi même · « déjà reçue par cet envoi », jamais « plus récent » (m2).
+    const recue = decisionPour(tenue, 'X', 2, 'Nouvelle');
+    expect(recue).toMatchObject({ action: 'LAISSER', refus: false });
+    expect((recue as { motif: string }).motif).toMatch(/par cet envoi \(n° 2\)/);
+    expect((recue as { motif: string }).motif).not.toMatch(/plus récent/);
+    // Refusée à la première lecture (journal absent) · aucune entrée, elle naît.
+    expect(decisionPour(undefined, 'X', 2, 'Nouvelle')).toMatchObject({ action: 'CREER' });
+    // Interrompue par le même envoi · reprise par sa relecture.
+    expect(decisionPour({ ...tenue, ecritureId: null }, 'Y', 2, 'Nouvelle')).toMatchObject({ action: 'CREER' });
+    // Un envoi plus ancien ne reprend rien.
+    expect(decisionPour({ ...tenue, ecritureId: null }, 'Y', 1, 'Nouvelle')).toMatchObject({ action: 'LAISSER' });
+  });
 });
 
 describe('le nom d’une pièce et les portes du service', () => {
@@ -168,6 +203,30 @@ describe('le nom d’une pièce et les portes du service', () => {
     const corps = service.slice(service.indexOf('tx.ecriture.createMany'), service.indexOf('tx.ligneEcriture.createMany'));
     expect(corps).not.toMatch(/statut/);
   });
+  it('un fichier déjà reçu se RELIT (B1) · seule une réception en cours sur un autre poste refuse', () => {
+    expect(service).not.toMatch(/rien n'est relu/);
+    expect(service).toMatch(/existante\?\.etat === EtatReceptionEchange\.EN_COURS && Date\.now\(\)/);
+    // La reprise est prise par un seul poste · filtrée sur l'état et l'instant lus (m2).
+    expect(service).toMatch(/updateMany\(\{\s*where: \{ id: existante\.id, tenantId, etat: existante\.etat, recuLe: existante\.recuLe \}/);
+  });
+
+  it('le retrait et la recréation d’un remplacement passent dans UNE transaction (M1)', () => {
+    const corps = service.slice(service.indexOf('  private async remplacer('), service.indexOf('  private versLigne('));
+    expect(corps).toMatch(/liberer: async \(tx\) => \{\s*const \[ecrite\] = await this\.ecrireLesPieces\(tx,/);
+    expect(corps).not.toMatch(/this\.creerLesPieces\(/);
+  });
+
+  it('la date de valeur et le taux sont posés, à la création comme au remplacement (M2, M3)', () => {
+    expect(service).toMatch(/dateValeur: p\.source\.dateValeur,\s*libelle: p\.libelle/);
+    expect(service).toMatch(/\.\.\.\(l\.tauxTvaId \? \{ tauxTvaId: l\.tauxTvaId \} : \{\}\)/);
+    expect(service).toMatch(/tauxTvaId: l\.tauxTvaId,\s*\};/);
+  });
+
+  it('le détail d’une panne ne va pas au compte rendu (m6)', () => {
+    const corps = service.slice(service.indexOf('  private motifDeLEchec('));
+    expect(corps).not.toMatch(/return `[^`]*\$\{message\(e\)\}/);
+  });
+
   it("refuse le fichier d'un dossier qui s'enverrait à lui-même", () => {
     expect(service).toMatch(/export de CE dossier/);
   });
@@ -176,5 +235,45 @@ describe('le nom d’une pièce et les portes du service', () => {
     const exp = readFileSync(join(__dirname, '..', 'modifications', 'export-modifications.service.ts'), 'utf8');
     const occurrences = exp.match(/FROM "ecritures_recues" rr/g) ?? [];
     expect(occurrences).toHaveLength(2);
+  });
+});
+
+describe('le taux de TVA voyage par son code (relecture M3)', () => {
+  // `juger` est la règle de chaque pièce · éprouvée seule, la base hors du jeu.
+  const { EchangeEcrituresService } = jest.requireActual('./echange-ecritures.service');
+  const service = new EchangeEcrituresService({} as never, { controlesDEntree: jest.fn().mockResolvedValue({}) } as never);
+  const ctx = (taux: Array<{ id: string; code: string; estActif: boolean }>) => ({
+    exercices: [{ id: 'ex', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z'), statut: 'OUVERT' }],
+    journauxParCode: new Map([['HA', { id: 'j', code: 'HA' }]]),
+    comptesParNumero: new Map(
+      ['60110000', '44520000', '40110000'].map((n) => [n, { id: `c${n}`, numero: n, typeCompte: 'DETAIL' }]),
+    ),
+    devisesParCode: new Map(),
+    tauxParCode: new Map(taux.map((t) => [t.code, t])),
+    memoire: new Map(),
+  });
+  const lignes = (codeTaxe: string) => [
+    { compte: '60110000', libelle: 'Achat', debit: 100000, credit: 0, devise: '', montantDevise: '', cours: '', echeance: null, codeTaxe: '' },
+    { compte: '44520000', libelle: 'TVA', debit: 16000, credit: 0, devise: '', montantDevise: '', cours: '', echeance: null, codeTaxe },
+    { compte: '40110000', libelle: 'Fournisseur', debit: 0, credit: 116000, devise: '', montantDevise: '', cours: '', echeance: null, codeTaxe: '' },
+  ];
+  const ecriture = (codeTaxe: string) => ({
+    identifiant: ID_A, date: new Date('2027-03-04T00:00:00Z'), dateValeur: null, journal: 'HA', piece: '1', reference: null,
+    statut: 'Brouillard', mouvement: 'Nouvelle', rang: 2, lignes: lignes(codeTaxe),
+  });
+
+  it('résolu dans le dossier qui reçoit, posé sur la ligne de taxe', async () => {
+    const r = await service.juger('t', ecriture('TVA16'), ctx([{ id: 'tva16', code: 'TVA16', estActif: true }]));
+    expect(r.lignes.find((l: { compteId: string }) => l.compteId === 'c44520000').tauxTvaId).toBe('tva16');
+    expect(r.avertissements).toEqual([]);
+  });
+
+  it('un code que le dossier n’a pas refuse la pièce, en le nommant', async () => {
+    expect(await service.juger('t', ecriture('TVA16'), ctx([]))).toMatch(/« TVA16 » .* n'existe pas dans ce dossier/);
+  });
+
+  it('une ligne 445 reçue sans taux passe, NOMMÉE · la déclaration ne la lirait pas', async () => {
+    const r = await service.juger('t', ecriture(''), ctx([]));
+    expect(r.avertissements).toEqual([expect.stringMatching(/44520000 est reçue sans taux de TVA · la déclaration de TVA ne la lit pas/)]);
   });
 });

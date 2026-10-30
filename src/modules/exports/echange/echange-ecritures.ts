@@ -52,6 +52,19 @@ import {
  *    ventilation analytique non exigée (le fichier n'en porte pas) · une
  *    écriture refusée l'est nommément, sans emporter les autres.
  *
+ * CE QUI VOYAGE AVEC LA PIÈCE (relecture indépendante, M2 et M3) · la date
+ *    de valeur (AUDCIF art. 22, 4°, « mentionnée distinctement »), et le TAUX
+ *    de TVA de chaque ligne par son code, résolu chez celui qui reçoit (refus
+ *    nommé s'il n'a pas ce code) · sans lui, une ligne 443 ou 445 reçue
+ *    sortait de la déclaration de TVA. Une ligne de taxe reçue SANS taux
+ *    (envoi d'avant la colonne, ou expéditeur sans taux posé) entre, et le
+ *    compte rendu la NOMME.
+ *
+ *  · UN FICHIER DÉJÀ REÇU SE RELIT (relecture, B1) · une pièce refusée (journal
+ *    absent, ligne lettrée, panne) revient par la relecture du même fichier,
+ *    puisque l'expéditeur ne la renverra pas · le registre laisse ce qui est
+ *    entré, et ne fait naître que ce qui n'y est pas.
+ *
  * Hors du champ, et dit · l'analytique, les pièces jointes, le lettrage et le
  * pointage ne voyagent pas (le fichier ne les porte pas) ; une écriture reçue
  * ne repart pas par l'export des modifications du dossier qui la reçoit (elle
@@ -69,6 +82,12 @@ export interface LigneRecue {
   montantDevise: string;
   cours: string;
   echeance: Date | null;
+  /**
+   * Le code du taux de TVA de la ligne chez l'expéditeur (« Code taxe ») ·
+   * vide sans taux, ou dans un envoi d'avant la colonne. Une ligne 443 ou 445
+   * sans taux n'est pas lue par la déclaration (`taux-tva.service.ts`).
+   */
+  codeTaxe: string;
 }
 
 /** Une écriture lue dans l'envoi, rassemblée par son identifiant d'origine. */
@@ -78,6 +97,8 @@ export interface EcritureLueDansLEnvoi {
   journal: string;
   piece: string;
   reference: string | null;
+  /** La date de valeur (AUDCIF art. 22, 4° · « mentionnée distinctement »), quand l'expéditeur en porte une. */
+  dateValeur: Date | null;
   statut: string;
   mouvement: string;
   lignes: LigneRecue[];
@@ -205,6 +226,7 @@ export async function lireEnvoi(contenu: Buffer): Promise<EnvoiLu> {
       journal: texte(ligne, 'journal').toUpperCase(),
       piece: texte(ligne, 'piece'),
       reference: texte(ligne, 'reference') || null,
+      dateValeur: lireDate(texte(ligne, 'jourValeur')),
       statut: texte(ligne, 'statut'),
       mouvement: texte(ligne, 'mouvement'),
     };
@@ -218,6 +240,7 @@ export async function lireEnvoi(contenu: Buffer): Promise<EnvoiLu> {
       montantDevise: texte(ligne, 'montantDevise'),
       cours: texte(ligne, 'cours'),
       echeance,
+      codeTaxe: texte(ligne, 'codeTaxe').toUpperCase(),
     };
     const deja = parIdentifiant.get(identifiant);
     if (!deja) {
@@ -231,9 +254,10 @@ export async function lireEnvoi(contenu: Buffer): Promise<EnvoiLu> {
       deja.journal !== tete.journal ||
       deja.piece !== tete.piece ||
       deja.reference !== tete.reference ||
+      (deja.dateValeur?.getTime() ?? null) !== (tete.dateValeur?.getTime() ?? null) ||
       deja.mouvement !== tete.mouvement
     ) {
-      illisibles.push({ rang, message: `Les lignes de l'écriture ${identifiant.slice(0, 8)} ne portent pas la même date, le même journal ou la même pièce · elle n'est pas lue.` });
+      illisibles.push({ rang, message: `Les lignes de l'écriture ${identifiant.slice(0, 8)} ne portent pas la même date, la même date de valeur, le même journal ou la même pièce · elle n'est pas lue.` });
       ecarte.add(identifiant);
       parIdentifiant.delete(identifiant);
       return;
@@ -275,11 +299,11 @@ export async function lireEnvoi(contenu: Buffer): Promise<EnvoiLu> {
  * L'EMPREINTE DU CONTENU REÇU · ce qui fait qu'une écriture a changé chez
  * l'expéditeur. Ni le statut (une écriture validée chez lui naît ici au
  * brouillard, et sa validation n'y change rien), ni le numéro de pièce (celui
- * du dossier qui reçoit est le sien), ni le mouvement · la date, le journal,
- * la référence, et les lignes dans un ordre total sur leur contenu, montants
- * au centime en texte.
+ * du dossier qui reçoit est le sien), ni le mouvement · la date, la date de
+ * valeur, le journal, la référence, et les lignes dans un ordre total sur leur
+ * contenu (taux de TVA compris), montants au centime en texte.
  */
-export function empreinteRecue(e: Pick<EcritureLueDansLEnvoi, 'date' | 'journal' | 'reference' | 'lignes'>): string {
+export function empreinteRecue(e: Pick<EcritureLueDansLEnvoi, 'date' | 'dateValeur' | 'journal' | 'reference' | 'lignes'>): string {
   const lignes = e.lignes
     .map((l) =>
       JSON.stringify([
@@ -291,10 +315,14 @@ export function empreinteRecue(e: Pick<EcritureLueDansLEnvoi, 'date' | 'journal'
         l.montantDevise,
         l.cours,
         l.echeance ? l.echeance.toISOString().slice(0, 10) : null,
+        l.codeTaxe || null,
       ]),
     )
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const contenu = { date: e.date.toISOString().slice(0, 10), journal: e.journal, reference: e.reference ?? null, lignes };
+  const contenu = {
+    date: e.date.toISOString().slice(0, 10),
+    dateValeur: e.dateValeur ? e.dateValeur.toISOString().slice(0, 10) : null,
+    journal: e.journal, reference: e.reference ?? null, lignes };
   return createHash('sha256').update(JSON.stringify(contenu)).digest('hex');
 }
 
@@ -346,7 +374,18 @@ export function decisionPour(entree: EntreeRecue | undefined, empreinte: string,
     };
   }
   // TENUE.
-  if (numeroExport <= entree.numeroExportSource) {
+  // Un remplacement interrompu (entrée sans écriture) se reprend par le même
+  // envoi ou un plus récent · la relecture du fichier est la voie que le
+  // compte rendu donne (B1 de la relecture indépendante).
+  if (entree.ecritureId === null && numeroExport >= entree.numeroExportSource) {
+    return { action: 'CREER', note: 'son remplacement avait été interrompu · recréée' };
+  }
+  // Le même envoi relu · ce qu'il a déjà porté ne se rejoue pas (relecture,
+  // m2 · « plus récent » était faux à numéro égal).
+  if (numeroExport === entree.numeroExportSource) {
+    return { action: 'LAISSER', motif: `déjà reçue par cet envoi (n° ${numeroExport}) · rien n'est changé`, refus: false };
+  }
+  if (numeroExport < entree.numeroExportSource) {
     return {
       action: 'LAISSER',
       motif: `déjà reçue par l'envoi n° ${entree.numeroExportSource}, plus récent que celui-ci · rien n'est changé`,
