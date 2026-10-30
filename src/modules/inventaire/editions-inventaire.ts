@@ -113,6 +113,7 @@ export interface FicheLue {
    * créé (AUDCIF art. 43). Absentes, la fiche n'est pas celle d'un bien du registre.
    */
   quantiteAttendue?: number | null;
+  immobilisationId?: string | null;
   immobilisation?: { quantite: number } | null;
 }
 
@@ -279,12 +280,38 @@ export interface LigneReleve {
    * Ligne restes-l8-immos · l'écart EN UNITÉS d'un bien du registre, servi par
    * la même règle que l'écran (`ecartEnUnites`) · `null` hors bien du registre.
    */
-  unites: { attendue: number; ecart: number | null; sens: SensEcartUnites | null; mention: string } | null;
+  unites: UnitesDuReleve | null;
   /** Null · pas encore valorisé, jamais zéro. */
   valeur: number | null;
   piece: string | null;
   sousCommission: string | null;
 }
+
+/**
+ * L'écart en unités d'un bien du registre, tel que le PV l'imprime (relecture
+ * indépendante, M3 et m3).
+ */
+export interface UnitesDuReleve {
+  /** La quantité MONTRÉE au comptage, recopiée sur la fiche · `null` pour une fiche d'avant la règle, non recopiée. */
+  attendue: number | null;
+  /** La quantité que le registre porte AUJOURD'HUI, quand elle diffère de l'attendue (unités sorties ou rendues depuis), sinon `null`. */
+  quantiteRegistre: number | null;
+  ecart: number | null;
+  sens: SensEcartUnites | null;
+  /**
+   * Ce qui reste d'un manquant à traduire au registre · le manquant moins
+   * les unités déjà sorties depuis la fiche. Zéro · déjà traduit, le PV ne
+   * le présente plus comme à sortir ; `null` hors manquant.
+   */
+  manquantATraduire: number | null;
+  /** La fiche porte un bien du registre mais pas sa quantité (engendrée avant la règle) · distinct de « pas un bien ». */
+  nonRecopiee: boolean;
+  mention: string;
+}
+
+export const MENTION_QUANTITE_NON_RECOPIEE =
+  "Quantité du registre non recopiée sur cette fiche, engendrée avant que la fiche porte la quantité du bien · aucun écart en unités n'est dit. " +
+  'Tant que la fiche n’est pas comptée, « Fiches du parc immobilisé » la recopie.';
 
 export interface TotalCompte {
   compte: string;
@@ -457,12 +484,26 @@ export function editionPvInventaire(entree: {
   // Ligne restes-l8-immos · l'écart en unités des biens du registre, dit sur le PV
   // comme à l'écran · un manquant se qualifie et se sort depuis la fiche du bien,
   // un excédent n'entre jamais au registre ni au bilan (AUDCIF art. 43).
-  const manquants = releve.filter((l) => l.unites?.sens === 'MANQUANT').length;
+  // Un manquant DÉJÀ traduit au registre (unités sorties depuis la fiche) ne
+  // s'annonce plus comme à sortir · sinon le PV réédité inviterait à sortir
+  // deux fois les mêmes unités (relecture indépendante, M3).
+  const manquants = releve.filter((l) => l.unites?.sens === 'MANQUANT' && (l.unites.manquantATraduire ?? 0) > 0).length;
   if (manquants > 0) {
     mentions.push(
       `${manquants} bien${manquants > 1 ? 's' : ''} du registre en manquant d'unités · la sous-commission qualifie ; ` +
         "rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.",
     );
+  }
+  const traduits = releve.filter((l) => l.unites?.sens === 'MANQUANT' && l.unites.manquantATraduire === 0).length;
+  if (traduits > 0) {
+    mentions.push(
+      `${traduits} bien${traduits > 1 ? 's' : ''} du registre dont le manquant est déjà traduit au registre ` +
+        '(unités sorties depuis le comptage) · rien à sortir de nouveau.',
+    );
+  }
+  const nonRecopiees = releve.filter((l) => l.unites?.nonRecopiee).length;
+  if (nonRecopiees > 0) {
+    mentions.push(`${nonRecopiees} fiche${nonRecopiees > 1 ? 's' : ''} d'un bien du registre sans quantité recopiée · aucun écart en unités dit.`);
   }
   const excedents = releve.filter((l) => l.unites?.sens === 'EXCEDENT').length;
   if (excedents > 0) {
@@ -492,12 +533,30 @@ export function editionPvInventaire(entree: {
 
 /** L'écart en unités d'une ligne du relevé · la règle de l'écran, rien de recalculé autrement. */
 function unitesDeLaFiche(f: FicheLue): LigneReleve['unites'] {
-  const e = ecartEnUnites({
-    quantiteAttendue: f.quantiteAttendue ?? null,
-    quantiteComptee: f.quantiteComptee,
-    quantiteRegistre: f.immobilisation?.quantite ?? null,
-  });
-  return e ? { attendue: e.attendue, ecart: e.ecart, sens: e.sens, mention: e.mention } : null;
+  const registre = f.immobilisation?.quantite ?? null;
+  const e = ecartEnUnites({ quantiteAttendue: f.quantiteAttendue ?? null, quantiteComptee: f.quantiteComptee, quantiteRegistre: registre });
+  if (!e) {
+    // Une fiche d'un bien du registre sans quantité recopiée n'est pas une fiche hors registre (m3).
+    if (!f.immobilisationId) return null;
+    return {
+      attendue: null,
+      quantiteRegistre: registre,
+      ecart: null,
+      sens: null,
+      manquantATraduire: null,
+      nonRecopiee: true,
+      mention: MENTION_QUANTITE_NON_RECOPIEE,
+    };
+  }
+  return {
+    attendue: e.attendue,
+    quantiteRegistre: e.quantiteRegistre,
+    ecart: e.ecart,
+    sens: e.sens,
+    manquantATraduire: e.manquantATraduire,
+    nonRecopiee: false,
+    mention: e.mention,
+  };
 }
 
 // --- 3. Procès-verbal de comptage d'une caisse ----------------------------

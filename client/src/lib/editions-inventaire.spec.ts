@@ -159,24 +159,28 @@ describe('procès-verbal d’inventaire physique', () => {
 
   it('null s’imprime « · », jamais « 0,00 » · le reste passe par lib/montants.ts', () => {
     expect(tableReleve(e).lignes).toEqual([
-      ['Riz', '31100000 · Marchandises', 'Magasin', 'sac', '·', '·', '·', '·', '·', 'Magasin'],
-      ['Bureau', '24410000 · Mobilier', 'B2', 'unité', '1', '·', '·', montant(1150000), 'FA-31', '·'],
+      ['Riz', '31100000 · Marchandises', 'Magasin', 'sac', '·', '·', '·', '·', '·', '·', 'Magasin'],
+      ['Bureau', '24410000 · Mobilier', 'B2', 'unité', '1', '·', '·', '·', montant(1150000), 'FA-31', '·'],
     ]);
   });
 
-  it('un bien du registre imprime sa quantité au registre et l’écart EN UNITÉS (ligne restes-l8-immos)', () => {
+  it('un bien du registre imprime la quantité attendue au comptage, le registre d’aujourd’hui et l’écart EN UNITÉS (ligne restes-l8-immos)', () => {
     const base = e.releve[1];
-    const avec = (unites: (typeof base)['unites'], quantite: number | null) => ({
-      ...e,
-      releve: [{ ...base, designation: 'Chaises', quantite, unites }],
-    });
-    const ligne = (x: EditionPvInventaire) => tableReleve(x).lignes[0].slice(4, 7);
-    expect(tableReleve(e).colonnes.slice(4, 7)).toEqual(['Quantité', 'Quantité au registre', 'Écart en unités']);
-    expect(ligne(avec({ attendue: 10, ecart: -2, sens: 'MANQUANT', mention: 'm' }, 8))).toEqual(['8', '10', 'Manquant 2']);
-    expect(ligne(avec({ attendue: 4, ecart: 1, sens: 'EXCEDENT', mention: 'm' }, 5))).toEqual(['5', '4', 'Excédent 1']);
-    expect(ligne(avec({ attendue: 4, ecart: 0, sens: 'CONFORME', mention: 'm' }, 4))).toEqual(['4', '4', 'Conforme']);
+    type U = NonNullable<(typeof base)['unites']>;
+    const u = (x: Partial<U>): U => ({ attendue: 10, quantiteRegistre: null, ecart: null, sens: null, manquantATraduire: null, nonRecopiee: false, mention: 'm', ...x });
+    const avec = (unites: U, quantite: number | null) => ({ ...e, releve: [{ ...base, designation: 'Chaises', quantite, unites }] });
+    const ligne = (x: EditionPvInventaire) => tableReleve(x).lignes[0].slice(4, 8);
+    expect(tableReleve(e).colonnes.slice(4, 8)).toEqual(['Quantité', 'Quantité attendue au comptage', 'Registre aujourd’hui', 'Écart en unités']);
+    expect(ligne(avec(u({ ecart: -2, sens: 'MANQUANT', manquantATraduire: 2 }), 8))).toEqual(['8', '10', '·', 'Manquant 2']);
+    expect(ligne(avec(u({ attendue: 4, ecart: 1, sens: 'EXCEDENT' }), 5))).toEqual(['5', '4', '·', 'Excédent 1']);
+    expect(ligne(avec(u({ attendue: 4, ecart: 0, sens: 'CONFORME' }), 4))).toEqual(['4', '4', '·', 'Conforme']);
     // « Pas encore compté » n'est pas un manquant de tout le lot.
-    expect(ligne(avec({ attendue: 3, ecart: null, sens: null, mention: 'm' }, null))).toEqual(['·', '3', 'Non compté']);
+    expect(ligne(avec(u({ attendue: 3 }), null))).toEqual(['·', '3', '·', 'Non compté']);
+    // M3 · deux unités sorties du registre depuis le comptage · le manquant n'est plus à sortir.
+    expect(ligne(avec(u({ quantiteRegistre: 8, ecart: -2, sens: 'MANQUANT', manquantATraduire: 0 }), 8))).toEqual(['8', '10', '8', 'Manquant 2 · déjà sorti du registre']);
+    expect(ligne(avec(u({ quantiteRegistre: 9, ecart: -3, sens: 'MANQUANT', manquantATraduire: 2 }), 7))).toEqual(['7', '10', '9', 'Manquant 3 · 2 encore à sortir']);
+    // m3 · une fiche d'un bien sans quantité recopiée n'est pas « hors registre ».
+    expect(ligne(avec(u({ attendue: null, quantiteRegistre: 1, nonRecopiee: true }), 1))).toEqual(['1', '·', '1', 'Quantité non recopiée']);
   });
 
   it('le total d’un compte non valorisé dit son manque au lieu d’un chiffre', () => {

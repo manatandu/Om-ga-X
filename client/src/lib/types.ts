@@ -4683,6 +4683,8 @@ export interface FicheInventaire {
     mention: string;
     /** La quantité du registre aujourd'hui, quand elle a changé depuis la fiche. */
     quantiteRegistre: number | null;
+    /** Relecture indépendante, M3 · le manquant moins les unités déjà sorties depuis · 0, déjà traduit. */
+    manquantATraduire?: number | null;
   } | null;
   valeurInventaire: string | null;
   referencePiece: string | null;
@@ -4850,9 +4852,15 @@ export interface EditionPvInventaire {
     quantite: number | null;
     /** Ligne restes-l8-immos · l'écart en unités d'un bien du registre, servi ; `null` hors registre. */
     unites?: {
-      attendue: number;
+      /** La quantité montrée au comptage · `null` pour une fiche d'avant la règle, non recopiée. */
+      attendue: number | null;
+      /** Le registre aujourd'hui, quand il diffère de l'attendue · sinon `null`. */
+      quantiteRegistre: number | null;
       ecart: number | null;
       sens: 'CONFORME' | 'MANQUANT' | 'EXCEDENT' | null;
+      /** Le manquant moins les unités déjà sorties depuis la fiche · 0, déjà traduit. */
+      manquantATraduire: number | null;
+      nonRecopiee: boolean;
       mention: string;
     } | null;
     valeur: number | null;

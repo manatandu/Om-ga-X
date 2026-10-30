@@ -475,4 +475,47 @@ describe('le PV dit la quantité du registre et l’écart EN UNITÉS (ligne res
     );
     expect(e.mentions.find((m) => m.startsWith("1 bien du registre en excédent d'unités"))).toContain('AUDCIF art. 43');
   });
+
+  // RELECTURE INDÉPENDANTE, M3 · lot de 10, 8 comptées, 2 unités déjà sorties
+  // depuis · le PV réédité disait encore « manquant 2 » à sortir.
+  it('le registre d’aujourd’hui est servi quand il diffère, et un manquant déjà traduit n’est plus à sortir', () => {
+    const e = editionPvInventaire({
+      campagne: CAMPAGNE,
+      etabli: null,
+      sousCommissions: [],
+      fiches: [
+        fiche({ id: 'chaises', immobilisationId: 'i1', quantiteAttendue: 10, quantiteComptee: 8, immobilisation: { quantite: 8 } }),
+        fiche({ id: 'tables', immobilisationId: 'i2', quantiteAttendue: 10, quantiteComptee: 7, immobilisation: { quantite: 9 } }),
+      ],
+      ecarts: [],
+      pvCaisses: [],
+    });
+    const par = (d: string) => e.releve.find((l) => l.designation === d)?.unites;
+    expect(par('chaises')).toMatchObject({ attendue: 10, quantiteRegistre: 8, ecart: -2, manquantATraduire: 0 });
+    expect(par('tables')).toMatchObject({ attendue: 10, quantiteRegistre: 9, ecart: -3, manquantATraduire: 2 });
+    expect(e.mentions.filter((m) => /manquant d'unités/.test(m))).toEqual([
+      "1 bien du registre en manquant d'unités · la sous-commission qualifie ; rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.",
+    ]);
+    expect(e.mentions).toContain(
+      '1 bien du registre dont le manquant est déjà traduit au registre (unités sorties depuis le comptage) · rien à sortir de nouveau.',
+    );
+  });
+
+  // m3 · une fiche d'un bien engendrée avant la règle n'est pas « hors registre ».
+  it('fiche d’un bien sans quantité recopiée · « non recopiée », distincte d’une fiche hors registre', () => {
+    const e = editionPvInventaire({
+      campagne: CAMPAGNE,
+      etabli: null,
+      sousCommissions: [],
+      fiches: [
+        fiche({ id: 'armoire', immobilisationId: 'i3', quantiteAttendue: null, quantiteComptee: 1, immobilisation: { quantite: 1 } }),
+        fiche({ id: 'riz', quantiteComptee: 12, compte: { numero: '31100000', intitule: 'Marchandises' } }),
+      ],
+      ecarts: [],
+      pvCaisses: [],
+    });
+    expect(e.releve.find((l) => l.designation === 'armoire')?.unites).toMatchObject({ nonRecopiee: true, attendue: null, quantiteRegistre: 1, ecart: null });
+    expect(e.releve.find((l) => l.designation === 'riz')?.unites).toBeNull();
+    expect(e.mentions).toContain("1 fiche d'un bien du registre sans quantité recopiée · aucun écart en unités dit.");
+  });
 });
