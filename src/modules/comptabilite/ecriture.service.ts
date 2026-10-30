@@ -2026,7 +2026,12 @@ export class EcritureService {
    * une relation nouvelle doit obliger quelqu'un à décider si son module
    * retient l'écriture ou la laisse partir.
    */
-  private async detenteursDe(tenantId: string, ecritureIds: string[]): Promise<DetenteurEcriture[]> {
+  private async detenteursDe(
+    tenantId: string,
+    ecritureIds: string[],
+    // Le client de la transaction de l'appelant, quand il juge sous ses verrous.
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<DetenteurEcriture[]> {
     const ecritureId = { in: [...new Set(ecritureIds)] };
     // Le `tenantId` accompagne l'id de l'écriture partout, alors même que cet
     // id est déjà unique · le cloisonnement se pose aux DEUX bouts, et un
@@ -2037,78 +2042,78 @@ export class EcritureService {
     // elle-même, déjà vérifiée pour ce dossier, qui les cloisonne.
     const parLEcriture = { ecritureId };
     const detenteursPossibles: Array<[string, Promise<number>]> = [
-      [DETENTEUR_ACQUISITION_IMMOBILISATION, this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
-      ['une immobilisation (sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
-      ['une immobilisation (produit de cession)', this.prisma.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
-      ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
-      ['une immobilisation (solde de la dette d\'acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
-      ['une immobilisation (écart de réévaluation soldé à la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
-      ['une immobilisation (dotation complémentaire de la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureComplementSortieId: ecritureId } })],
+      [DETENTEUR_ACQUISITION_IMMOBILISATION, db.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
+      ['une immobilisation (sortie)', db.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
+      ['une immobilisation (produit de cession)', db.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
+      ['une immobilisation (mise en service d’un en-cours)', db.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
+      ['une immobilisation (solde de la dette d\'acquisition)', db.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
+      ['une immobilisation (écart de réévaluation soldé à la sortie)', db.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
+      ['une immobilisation (dotation complémentaire de la sortie)', db.immobilisation.count({ where: { tenantId, ecritureComplementSortieId: ecritureId } })],
       // Un virement de fonds · ses deux pièces nées ensemble et leurs négatifs ·
       // retirée seule, l'une laisserait le 585 non soldé (virements-fonds/).
-      ['un virement de fonds (journal d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
-      ['un virement de fonds (journal de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
-      ['un virement de fonds annulé (négatif d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
-      ['un virement de fonds annulé (négatif de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
+      ['un virement de fonds (journal d’origine)', db.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
+      ['un virement de fonds (journal de destination)', db.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
+      ['un virement de fonds annulé (négatif d’origine)', db.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
+      ['un virement de fonds annulé (négatif de destination)', db.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
       // Les remises en banque (ligne sage-l3, fonction 40) · comme les
       // virements de fonds, l'origine et son négatif restent tenus après une
       // annulation (les deux sont au livre-journal, art. 20, al. 2) ; l'avis
       // de crédit et l'impayé annulés le sont par l'historique des
       // annulations, qui garde leur paire (second tour, BLOQUANT B1).
-      ['une valeur reçue (réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureReceptionId: ecritureId } })],
-      ['une valeur reçue annulée (négatif de la réception)', this.prisma.valeurRecue.count({ where: { tenantId, ecritureNegatifReceptionId: ecritureId } })],
-      ['une valeur reçue revenue impayée', this.prisma.valeurRecue.count({ where: { tenantId, ecritureImpayeId: ecritureId } })],
-      ['une remise en banque (bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureRemiseId: ecritureId } })],
-      ['une remise en banque annulée (négatif du bordereau)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureNegatifRemiseId: ecritureId } })],
-      ['une remise en banque (avis de crédit)', this.prisma.remiseEnBanque.count({ where: { tenantId, ecritureCreditId: ecritureId } })],
+      ['une valeur reçue (réception)', db.valeurRecue.count({ where: { tenantId, ecritureReceptionId: ecritureId } })],
+      ['une valeur reçue annulée (négatif de la réception)', db.valeurRecue.count({ where: { tenantId, ecritureNegatifReceptionId: ecritureId } })],
+      ['une valeur reçue revenue impayée', db.valeurRecue.count({ where: { tenantId, ecritureImpayeId: ecritureId } })],
+      ['une remise en banque (bordereau)', db.remiseEnBanque.count({ where: { tenantId, ecritureRemiseId: ecritureId } })],
+      ['une remise en banque annulée (négatif du bordereau)', db.remiseEnBanque.count({ where: { tenantId, ecritureNegatifRemiseId: ecritureId } })],
+      ['une remise en banque (avis de crédit)', db.remiseEnBanque.count({ where: { tenantId, ecritureCreditId: ecritureId } })],
       [
         "un avis de crédit ou un impayé annulé (fenêtre Remises en banque · l'origine ou son négatif)",
-        this.prisma.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.annulationActeRemise.count({ where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // Ligne sage-l3, fonction 39 · l'acte d'un effet de commerce, ou son négatif.
-      ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", this.prisma.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["un financement ou un placement (fenêtre Financements et placements · l'acte ou son négatif)", this.prisma.acteOperationTresorerie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["un mouvement de titre de placement (fenêtre Financements et placements · le mouvement ou son négatif)", this.prisma.mouvementTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
-      ["une revue de titre de placement (fenêtre Financements et placements · la revue ou son négatif)", this.prisma.evaluationTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un effet de commerce (fenêtre Effets de commerce · l'acte ou son négatif)", db.acteEffet.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un financement ou un placement (fenêtre Financements et placements · l'acte ou son négatif)", db.acteOperationTresorerie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["un mouvement de titre de placement (fenêtre Financements et placements · le mouvement ou son négatif)", db.mouvementTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
+      ["une revue de titre de placement (fenêtre Financements et placements · la revue ou son négatif)", db.evaluationTitre.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } })],
       // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
       // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
       // dit, et le salaire repartirait dans le paiement suivant ; son négatif
       // de même. Il s'annule depuis la fenêtre Personnel.
       [
         'le paiement des salaires (fenêtre Personnel)',
-        this.prisma.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
-      ["une dotation aux amortissements", this.prisma.dotationAmortissement.count({ where: parLEcriture })],
-      ["une dépréciation d'immobilisation", this.prisma.depreciationImmobilisation.count({ where: parLEcriture })],
+      ["une dotation aux amortissements", db.dotationAmortissement.count({ where: parLEcriture })],
+      ["une dépréciation d'immobilisation", db.depreciationImmobilisation.count({ where: parLEcriture })],
       [
         "le transfert d'un bien dans le groupe (fenêtre Groupe · la pièce ou son négatif, dans les deux dossiers)",
-        this.prisma.transfertImmobilisationGroupe.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.transfertImmobilisationGroupe.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // Le reclassement d'un bien · la clé est RESTRICT, et sans ce refus nommé
       // la base levait une erreur brute après que la garde avait laissé passer
       // (audit du serveur I1, voir detenteurs-ecriture.ts).
-      ["un reclassement d'immobilisation", this.prisma.reclassementImmobilisation.count({ where: parLEcriture })],
+      ["un reclassement d'immobilisation", db.reclassementImmobilisation.count({ where: parLEcriture })],
       // Une réévaluation ANNULÉE ne retient plus ses écritures (D6) · validées,
       // elles sont neutralisées par leur inscription en négatif. La
       // contre-passation faite à la main, DÉCLARÉE (A5 bis, troisième tour) ·
       // retirée seule, l'écart de conversion reviendrait en place et la
       // réévaluation suivante le repasserait.
-      ['une réévaluation de devise', this.prisma.reevaluation.count({
+      ['une réévaluation de devise', db.reevaluation.count({
         where: { tenantId, annuleeLe: null, OR: [{ ecritureEcartsId: ecritureId }, { ecritureProvisionId: ecritureId }, { ecritureExtourneId: ecritureId }, { contrePassationDeclareeId: ecritureId }] },
       })],
-      ['une régularisation', this.prisma.regularisation.count({
+      ['une régularisation', db.regularisation.count({
         where: { tenantId, OR: [{ ecritureConstatationId: ecritureId }, { ecritureRepriseId: ecritureId }] },
       })],
-      ["une échéance d'abonnement", this.prisma.echeanceAbonnement.count({ where: parLEcriture })],
-      [DETENTEUR_LIQUIDATION_TVA, this.prisma.liquidationTva.count({ where: { tenantId, ecritureId } })],
-      [DETENTEUR_DONATION, this.prisma.donation.count({ where: { tenantId, ecritureId } })],
-      ['une affectation du résultat', this.prisma.affectationResultat.count({ where: { tenantId, ecritureId } })],
+      ["une échéance d'abonnement", db.echeanceAbonnement.count({ where: parLEcriture })],
+      [DETENTEUR_LIQUIDATION_TVA, db.liquidationTva.count({ where: { tenantId, ecritureId } })],
+      [DETENTEUR_DONATION, db.donation.count({ where: { tenantId, ecritureId } })],
+      ['une affectation du résultat', db.affectationResultat.count({ where: { tenantId, ecritureId } })],
       // Le rattachement à un engagement de dépense. Sans ce refus nommé, la
       // clé étrangère RESTRICT renverrait une erreur brute de la base · et
       // s'il n'y avait pas de clé du tout, le reste à exécuter de l'engagement
       // REMONTERAIT tout seul, gonflant la colonne Engagement du tableau
       // d'exécution budgétaire sans que personne ne l'ait décidé.
-      [DETENTEUR_EXECUTION_ENGAGEMENT, this.prisma.executionEngagement.count({ where: parLEcriture })],
+      [DETENTEUR_EXECUTION_ENGAGEMENT, db.executionEngagement.count({ where: parLEcriture })],
       // Le mouvement de magasin, en inventaire permanent. Sans ce refus, le
       // lien se dénouerait en silence et la fiche de stock afficherait
       // « écriture non passée » sur un mouvement qui en avait une · la fiche
@@ -2117,60 +2122,60 @@ export class EcritureService {
       // n'existe pas, mis à la charge de l'entité.
       // Un mouvement ANNULÉ ne tient plus son écriture (audit final F133) · elle
       // se corrige alors au journal, et la fiche la nomme.
-      ['un mouvement de magasin', this.prisma.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })],
+      ['un mouvement de magasin', db.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })],
       // L'écart d'inventaire redressé (audit du serveur de 2026-09, I2 · le
       // lien n'était écrit nulle part, il l'est au rattachement). Sans ce
       // refus, le lien se dénouerait en silence et la campagne dirait le
       // manquant passé sur une pièce disparue du journal.
-      ["un écart d'inventaire (redressement)", this.prisma.ecartInventaire.count({ where: { tenantId, ecritureId } })],
+      ["un écart d'inventaire (redressement)", db.ecartInventaire.count({ where: { tenantId, ecritureId } })],
       // La clôture d'un contrat de location-acquisition (detenteurs-ecriture.ts).
-      ["la clôture d'un contrat de location-acquisition", this.prisma.clotureLocationAcquisition.count({
+      ["la clôture d'un contrat de location-acquisition", db.clotureLocationAcquisition.count({
         where: { tenantId, OR: [{ ecritureId }, { ecritureExtourneId: ecritureId }] },
       })],
-      ["la reprise d'une subvention d'investissement", this.prisma.repriseSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
-      ["la réduction d'une subvention rattachée à un bien", this.prisma.reductionSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
-      ["la révision rétroactive d'un plan d'amortissement", this.prisma.revisionPlanAmortissement.count({ where: { tenantId, ecritureId } })],
-      ["l'incorporation de coûts d'emprunt", this.prisma.coutEmpruntIncorpore.count({ where: { tenantId, ecritureId } })],
-      ['la réévaluation des immobilisations', this.prisma.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
-      ['la reprise de la provision spéciale de réévaluation', this.prisma.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
-      ['la provision pour démantèlement', this.prisma.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
+      ["la reprise d'une subvention d'investissement", db.repriseSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
+      ["la réduction d'une subvention rattachée à un bien", db.reductionSubventionImmobilisation.count({ where: { tenantId, ecritureId } })],
+      ["la révision rétroactive d'un plan d'amortissement", db.revisionPlanAmortissement.count({ where: { tenantId, ecritureId } })],
+      ["l'incorporation de coûts d'emprunt", db.coutEmpruntIncorpore.count({ where: { tenantId, ecritureId } })],
+      ['la réévaluation des immobilisations', db.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
+      ['la reprise de la provision spéciale de réévaluation', db.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
+      ['la provision pour démantèlement', db.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
       // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation retient
       // l'écriture validée qu'elle a annulée et son négatif.
-      ["l'annulation d'un traitement d'immobilisation", this.prisma.annulationTraitementImmobilisation.count({
+      ["l'annulation d'un traitement d'immobilisation", db.annulationTraitementImmobilisation.count({
         where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] },
       })],
       // Les créances douteuses (ligne A7) · elles se retirent depuis leur
       // fenêtre, qui libère sa ligne dans la même transaction. Un reclassement
       // ANNULÉ (m2) ne retient plus · son écriture validée est neutralisée par
       // l'inscription en négatif.
-      [DETENTEUR_RECLASSEMENT_CREANCE, this.prisma.creanceDouteuse.count({ where: { tenantId, ecritureReclassementId: ecritureId, annuleeLe: null } })],
+      [DETENTEUR_RECLASSEMENT_CREANCE, db.creanceDouteuse.count({ where: { tenantId, ecritureReclassementId: ecritureId, annuleeLe: null } })],
       // Une revue ANNULÉE ne retient plus son écriture (B2) · validée, elle est
       // neutralisée par son inscription en négatif.
-      [DETENTEUR_REVUE_CREANCE, this.prisma.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_REVUE_CREANCE, db.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
       // La perte qui récupère la TVA tient ses DEUX pièces (point D) · le retour
       // au compte d'origine et la perte sur lui.
       [
         DETENTEUR_MOUVEMENT_CREANCE,
-        this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
+        db.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
       ],
       // La récupération de la TVA (A7 bis, partie 2) · s'annule depuis sa
       // fenêtre ; annulée, elle ne retient plus son écriture.
-      [DETENTEUR_RECUPERATION_TVA_CREANCE, this.prisma.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_RECUPERATION_TVA_CREANCE, db.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // La devise déclarée d'un à-nouveau validé (AU3) · sa pièce de
       // correction, validée, ne se retire de toute façon pas.
-      [DETENTEUR_DEVISE_A_NOUVEAU, this.prisma.declarationDeviseANouveau.count({ where: { tenantId, ecritureCorrectionId: ecritureId } })],
+      [DETENTEUR_DEVISE_A_NOUVEAU, db.declarationDeviseANouveau.count({ where: { tenantId, ecritureCorrectionId: ecritureId } })],
       // La correction par le résultat d'une créance (M9) · retirée, réimputée
       // ou corrigée seule, l'écriture laisserait la créance sortie du module
       // sans ce qui la soldait au 416 et au 491. Aucun geste ne défait la
       // désignation · l'écriture, validée, ne se retire de toute façon pas.
-      [DETENTEUR_CORRECTION_CREANCE, this.prisma.creanceDouteuse.count({ where: { tenantId, ecritureCorrectionResultatId: ecritureId } })],
+      [DETENTEUR_CORRECTION_CREANCE, db.creanceDouteuse.count({ where: { tenantId, ecritureCorrectionResultatId: ecritureId } })],
       // L'impôt sur le résultat constaté depuis la fenêtre Résultat fiscal
       // (ligne A11) · retirée seule, l'écriture laisserait l'exercice se dire
       // constaté, et la proposition ne reviendrait plus. Un constat ANNULÉ ne
       // retient plus · son écriture validée est neutralisée par le négatif.
-      [DETENTEUR_IMPOT_RESULTAT, this.prisma.constatImpotResultat.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      [DETENTEUR_IMPOT_RESULTAT, db.constatImpotResultat.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // La paie du mois (P9). Sans ce refus, la clé RESTRICT renverrait une
       // erreur brute ; sans la clé, les bulletins se diraient passés sans
       // écriture, ou repartiraient en silence dans la paie suivante. La
@@ -2180,7 +2185,7 @@ export class EcritureService {
       // même titre · retirée seule, le bulletin se dirait repris sans elle.
       [
         DETENTEUR_PAIE_DU_MOIS,
-        this.prisma.bulletinPaie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+        db.bulletinPaie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
       // L'ordre de virement non annulé. Sans ce refus, la pièce de règlement
       // disparaîtrait sous un ordre que la banque exécute quand même · la
@@ -2188,15 +2193,15 @@ export class EcritureService {
       // L'annulation de l'ordre, avec son motif, libère la pièce.
       // Le dérogatoire d'un exercice · supprimée seule, l'écriture laisserait
       // le plan fiscal se dire passé, et le cumul du 151 faux.
-      ['un amortissement dérogatoire', this.prisma.amortissementDerogatoire.count({ where: { tenantId, ecritureId } })],
-      ['un ordre de virement', this.prisma.ligneOrdreVirement.count({ where: { tenantId, ecritureId } })],
+      ['un amortissement dérogatoire', db.amortissementDerogatoire.count({ where: { tenantId, ecritureId } })],
+      ['un ordre de virement', db.ligneOrdreVirement.count({ where: { tenantId, ecritureId } })],
       // La consignation d'emballages, par l'une OU l'autre de ses deux
       // écritures (posées au rattachement, audit I2). Le lien dénoué en
       // silence laisserait le registre annoncer une consignation ouverte ou
       // dénouée sans l'écriture qui l'a faite · et c'est précisément ce
       // registre qui existe pour montrer ce qui reste à qualifier au 4094 et
       // au 4194.
-      ["une consignation d'emballages", this.prisma.consignation.count({
+      ["une consignation d'emballages", db.consignation.count({
         where: { tenantId, OR: [{ ecritureConsignationId: ecritureId }, { ecritureDenouementId: ecritureId }] },
       })],
     ];
@@ -2210,8 +2215,12 @@ export class EcritureService {
    * résultat) refuse celle qu'un autre module tient déjà. Même liste que le
    * refus, jamais une copie.
    */
-  async detenteursDeLEcriture(tenantId: string, ecritureId: string): Promise<DetenteurEcriture[]> {
-    return this.detenteursDe(tenantId, [ecritureId]);
+  async detenteursDeLEcriture(
+    tenantId: string,
+    ecritureId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<DetenteurEcriture[]> {
+    return this.detenteursDe(tenantId, [ecritureId], db);
   }
 
   /**

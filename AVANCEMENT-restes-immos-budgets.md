@@ -50,6 +50,17 @@ lot réduit depuis tant qu'elle n'est pas comptée ; l'annulation d'une sortie
 partielle ferme la fiche des unités, qui n'existe plus ; la défaite d'une
 sortie lâche les liaisons de la fiche AVANT de retirer ses écritures (RESTRICT).
 
+Relecture indépendante (2026-10-30) · l'annulation d'une sortie refuse
+désormais un bien dont l'option de location-acquisition est déclarée (voie
+sûre · la déclaration, faite une fois, n'est pas remise à nul, § 2.1.9), un
+composant dont le principal est sorti, une réévaluation de l'exercice datée au
+plus tôt de la sortie, un matériel récupéré consommé depuis (388 ou 378) ; la
+lecture juge ce que le geste opposait seul (fiche des unités encore visée,
+reprise du lot introuvable, écriture déjà corrigée), les détenteurs lus par la
+transaction ; l'issue dite est celle de l'acte postérieur le plus récent ; la
+fiche comptée dit que le registre a changé depuis ; le report des budgets ne
+relit que les comptes verrouillés.
+
 ## Reste
 
 Intégration sur `main` (non faite, à la demande). Limites écrites · l'édition

@@ -4677,6 +4677,8 @@ export interface FicheInventaire {
     ecart: number | null;
     sens: 'CONFORME' | 'MANQUANT' | 'EXCEDENT' | null;
     mention: string;
+    /** La quantité du registre aujourd'hui, quand elle a changé depuis la fiche. */
+    quantiteRegistre: number | null;
   } | null;
   valeurInventaire: string | null;
   referencePiece: string | null;

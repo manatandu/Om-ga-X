@@ -34,6 +34,12 @@ export type EcartEnUnites = {
   ecart: number | null;
   sens: SensEcartUnites | null;
   mention: string;
+  /**
+   * La quantité que le registre porte AUJOURD'HUI, quand elle diffère de celle
+   * recopiée (une partie du lot sortie depuis) · la fiche comptée la garde, le
+   * compteur ayant confronté ce qu'il voyait à la quantité montrée, et c'est dit.
+   */
+  quantiteRegistre: number | null;
 };
 
 const unites = (k: number) => `${k.toLocaleString('fr-FR')} unité${Math.abs(k) > 1 ? 's' : ''}`;
@@ -43,15 +49,25 @@ export const MENTION_EXCEDENT_UNITES =
   "une acquisition omise s'enregistre avec sa pièce justificative.";
 
 /** L'écart d'une fiche en unités, ou `null` quand la fiche ne porte aucune quantité du registre. */
-export function ecartEnUnites(fiche: { quantiteAttendue: number | null; quantiteComptee: unknown }): EcartEnUnites | null {
+export function ecartEnUnites(fiche: {
+  quantiteAttendue: number | null;
+  quantiteComptee: unknown;
+  /** La quantité du bien au registre aujourd'hui, si la fiche porte un bien. */
+  quantiteRegistre?: number | null;
+}): EcartEnUnites | null {
   if (fiche.quantiteAttendue === null || fiche.quantiteAttendue === undefined) return null;
   const attendue = fiche.quantiteAttendue;
+  const change = fiche.quantiteRegistre !== null && fiche.quantiteRegistre !== undefined && fiche.quantiteRegistre !== attendue;
+  const quantiteRegistre = change ? (fiche.quantiteRegistre as number) : null;
+  const suite = change
+    ? ` Le registre porte depuis ${unites(quantiteRegistre as number)} (une partie du lot sortie ou rendue après l'engendrement) · la fiche garde la quantité qui a été montrée au comptage.`
+    : '';
   if (fiche.quantiteComptee === null || fiche.quantiteComptee === undefined) {
-    return { attendue, comptee: null, ecart: null, sens: null, mention: `Registre · ${unites(attendue)} · non compté.` };
+    return { attendue, comptee: null, ecart: null, sens: null, mention: `Registre · ${unites(attendue)} · non compté.${suite}`, quantiteRegistre };
   }
   const comptee = Number(fiche.quantiteComptee);
   const ecart = comptee - attendue;
-  if (ecart === 0) return { attendue, comptee, ecart, sens: 'CONFORME', mention: `${unites(comptee)} comptée(s), conforme au registre.` };
+  if (ecart === 0) return { attendue, comptee, ecart, sens: 'CONFORME', mention: `${unites(comptee)} comptée(s), conforme au registre.${suite}`, quantiteRegistre };
   if (ecart < 0) {
     return {
       attendue,
@@ -60,10 +76,18 @@ export function ecartEnUnites(fiche: { quantiteAttendue: number | null; quantite
       sens: 'MANQUANT',
       mention:
         `Manquant de ${unites(-ecart)} sur ${unites(attendue)} au registre · la sous-commission qualifie (sortie, vol, ` +
-        "disparition, rebut) ; rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.",
+        `disparition, rebut) ; rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.${suite}`,
+      quantiteRegistre,
     };
   }
-  return { attendue, comptee, ecart, sens: 'EXCEDENT', mention: `Excédent de ${unites(ecart)} sur ${unites(attendue)} au registre · ${MENTION_EXCEDENT_UNITES}` };
+  return {
+    attendue,
+    comptee,
+    ecart,
+    sens: 'EXCEDENT',
+    mention: `Excédent de ${unites(ecart)} sur ${unites(attendue)} au registre · ${MENTION_EXCEDENT_UNITES}${suite}`,
+    quantiteRegistre,
+  };
 }
 
 /** Le refus d'une quantité comptée sur la fiche d'un bien du registre, ou `null`. */

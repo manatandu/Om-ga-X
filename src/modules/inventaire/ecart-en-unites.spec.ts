@@ -27,6 +27,13 @@ describe('la quantité du bien sur la fiche de comptage', () => {
     expect(plus?.mention).toContain('AUDCIF art. 43');
   });
 
+  it('une fiche comptée dont le lot a changé depuis le dit, sans réécrire la quantité montrée', () => {
+    const e = ecartEnUnites({ quantiteAttendue: 10, quantiteComptee: 10, quantiteRegistre: 7 });
+    expect(e).toMatchObject({ attendue: 10, ecart: 0, sens: 'CONFORME', quantiteRegistre: 7 });
+    expect(e?.mention).toMatch(/porte depuis 7 unités/);
+    expect(ecartEnUnites({ quantiteAttendue: 7, quantiteComptee: 7, quantiteRegistre: 7 })?.quantiteRegistre).toBeNull();
+  });
+
   it('un bien du registre se compte en unités entières', () => {
     expect(motifRefusQuantiteDuBien(2.5, true)).toMatch(/unités entières/);
     expect(motifRefusQuantiteDuBien(2.5, false)).toBeNull();

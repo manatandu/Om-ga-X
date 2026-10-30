@@ -1498,7 +1498,7 @@ export class InventaireService {
         },
         sousCommissions: { include: { membres: true }, orderBy: { nom: 'asc' } },
         fiches: {
-          include: { compte: { select: { numero: true, intitule: true } } },
+          include: { compte: { select: { numero: true, intitule: true } }, immobilisation: { select: { quantite: true } } },
           orderBy: { designation: 'asc' },
         },
         ecarts: {
@@ -1516,7 +1516,10 @@ export class InventaireService {
     return {
       ...reste,
       // L'écart en unités d'un bien du registre (point 2) · servi, jamais recalculé à l'écran.
-      fiches: fiches.map((f) => ({ ...f, ecartUnites: ecartEnUnites(f) })),
+      fiches: fiches.map(({ immobilisation, ...f }) => ({
+        ...f,
+        ecartUnites: ecartEnUnites({ ...f, quantiteRegistre: immobilisation?.quantite ?? null }),
+      })),
       pvComptageCaisse: pvComptageCaisse.map((pv) => InventaireService.presenterPvCaisse(pv, exercice.dateFin)),
       sanction: InventaireService.sanctionApplicable(tenant.referentiel),
     };

@@ -5,7 +5,7 @@
  * Serveur COMPILÉ contre une base PostgreSQL jetable déjà migrée.
  *   DATABASE_URL=postgresql://... node scripts/rejouer-restes-immos-budgets.cjs
  *
- * POINTS=1,2,3,4 choisit les points rejoués (par défaut, tous).
+ * POINTS=1,2,3,4,5 choisit les points rejoués (par défaut, tous).
  *
  * POINT 1 · REPORT DES BUDGETS PAR COMPTE.
  *   N = 2025 · charge A dotée 1 200 puis mars à 250 (l'année suit · 1 350),
@@ -346,6 +346,56 @@ async function point4(A) {
   verifier(rendu.quantite === 10 && egal(rendu.valeurOrigine, 1_000_000) && egal(rendu.amortissementsDetaches, 0) && egal(net, 100_000), `les deux annulées · lot rendu à 10, 1 000 000, dépréciation 100 000 (lu ${rendu.quantite}, ${rendu.valeurOrigine}, ${net})`);
 }
 
+/**
+ * POINT 5 · RELECTURE INDÉPENDANTE · le composant dont le principal est sorti
+ * ne revient pas en service ; le matériel récupéré consommé depuis refuse
+ * l'annulation de la sortie, et elle passe une fois la consommation retirée.
+ */
+async function point5(A) {
+  console.log('POINT 5 · relecture indépendante · principal sorti, matériel récupéré consommé');
+  const { e2025, e2026, od, nouveau, plan } = await dossierABiens(A, 'relecture');
+  const auto = plan.find((c) => c.numero === '24510000');
+  const stock = plan.find((c) => c.numero === '38800000');
+  const variation = plan.find((c) => c.numero === '60330000');
+  for (const c of [auto, stock, variation]) await A.patch(`/comptes/${c.id}`, { estRetenu: true });
+  const bus = await nouveau('Autocar', 10_000_000, 10, { compteImmobilisationId: auto.id });
+  const moteurs = await nouveau('Moteurs de l’autocar', 2_000_000, 4, {
+    compteImmobilisationId: auto.id, quantite: 4, immobilisationPrincipaleId: bus.id, typeComposant: 'COMPOSANT',
+    justificationDecomposition: 'Quatre moteurs identiques, remplacés tous les quatre ans',
+  });
+  const four = await nouveau('Four', 600_000, 3);
+  const tenantId = (await prisma.immobilisation.findUnique({ where: { id: bus.id }, select: { tenantId: true } })).tenantId;
+  await cloturer2025(A, e2025);
+  const rebut = (date) => ({ ...SORTIE, dateSortie: date, datePieceSortie: date, exerciceId: e2026.id, journalId: od.id });
+  await A.post(`/immobilisations/${moteurs.id}/sortie`, rebut('2026-03-31'));
+  await A.post(`/immobilisations/${bus.id}/sortie`, rebut('2026-03-31'));
+  let r = await A.statut('POST', `/immobilisations/${moteurs.id}/annuler-sortie`, { motif: 'essai' });
+  verifier(r.statut === 400 && /principal/.test(JSON.stringify(r.corps)), `composant, principal sorti · refus nommé (${r.statut})`);
+  const ap = await A.get(`/immobilisations/${moteurs.id}/annulation-sortie`);
+  verifier(ap.annulable === false && /principal/.test(ap.motifRefus ?? ''), 'l’aperçu dit le même refus');
+  await A.post(`/immobilisations/${bus.id}/annuler-sortie`, { motif: 'Autocar sorti par erreur' });
+  await A.post(`/immobilisations/${moteurs.id}/annuler-sortie`, { motif: 'Moteurs sortis par erreur' });
+  const etats = await prisma.immobilisation.findMany({ where: { id: { in: [bus.id, moteurs.id] } }, select: { statut: true } });
+  verifier(etats.every((x) => x.statut === 'EN_SERVICE'), 'principal puis composant rendus en service');
+  verifier(egal(await solde(tenantId, '2451', [e2025.id, e2026.id]), 12_000_000), '2451 = 12 000 000');
+
+  console.log(' matériel récupéré au 388, consommé depuis');
+  await A.post(`/immobilisations/${four.id}/sortie`, {
+    ...rebut('2026-06-30'), valeurMaterielRecupere: 50_000, compteStockRecupereId: stock.id, sourceMaterielRecupere: 'Pièces démontées, PV de rebut',
+  });
+  verifier(egal(await solde(tenantId, '388', [e2026.id]), 50_000), '388 = 50 000 après la sortie');
+  const conso = await A.post('/ecritures', {
+    exerciceId: e2026.id, journalId: od.id, date: '2026-07-15', libelle: 'Pièces récupérées utilisées',
+    lignes: [{ compteId: variation.id, debit: 30_000 }, { compteId: stock.id, credit: 30_000 }],
+  });
+  r = await A.statut('POST', `/immobilisations/${four.id}/annuler-sortie`, { motif: 'essai' });
+  verifier(r.statut === 400 && /consommé/.test(JSON.stringify(r.corps)), `stock consommé · refus nommé, jamais un 388 négatif (${r.statut} ${JSON.stringify(r.corps).slice(0, 220)})`);
+  verifier(egal(await solde(tenantId, '388', [e2026.id]), 20_000), '388 inchangé · 20 000');
+  await A.del(`/ecritures/${conso.id}`);
+  await A.post(`/immobilisations/${four.id}/annuler-sortie`, { motif: 'Rebut annulé' });
+  verifier(egal(await solde(tenantId, '388', [e2026.id]), 0), '388 = 0, le four rendu');
+}
+
 async function main() {
   const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -354,11 +404,12 @@ async function main() {
     let pret = false;
     for (let i = 0; i < 90; i++) { try { if ((await fetch(`${API}/health`)).ok) { pret = true; break; } } catch {} await attendre(1000); }
     if (!pret) throw new Error(`serveur non démarré\n${journal.slice(-3000)}`);
-    const points = (process.env.POINTS || '1,2,3,4').split(',');
+    const points = (process.env.POINTS || '1,2,3,4,5').split(',');
     if (points.includes('1')) await point1(new Client());
     if (points.includes('2')) await point2(new Client());
     if (points.includes('3')) await point3(new Client());
     if (points.includes('4')) await point4(new Client());
+    if (points.includes('5')) await point5(new Client());
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

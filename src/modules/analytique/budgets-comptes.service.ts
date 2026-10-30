@@ -207,9 +207,12 @@ export class BudgetsComptesService {
     }
     refuserSiExerciceBudgetaireClos(suivant.statut);
 
-    const lirePlan = async (db: Prisma.TransactionClient | PrismaService) => {
+    // `verrouilles` · dans la transaction, la seule liste des comptes pris
+    // sous verrou est relue · un compte doté en N entre la liste et le verrou
+    // n'est pas reporté cette fois, plutôt que reporté sans verrou.
+    const lirePlan = async (db: Prisma.TransactionClient | PrismaService, verrouilles?: string[]) => {
       const budgets = await db.budgetCompte.findMany({
-        where: { tenantId, exerciceId: exercice.id },
+        where: { tenantId, exerciceId: exercice.id, ...(verrouilles ? { compteId: { in: verrouilles } } : {}) },
         select: { compteId: true, mois: true, montant: true },
       });
       const ids = [...new Set(budgets.map((b) => b.compteId))];
@@ -258,8 +261,9 @@ export class BudgetsComptesService {
           select: { compteId: true },
           distinct: ['compteId'],
         });
-        for (const id of ids.map((x) => x.compteId).sort()) await this.verrouillerCompte(tx, tenantId, id);
-        const lu = await lirePlan(tx);
+        const verrouilles = ids.map((x) => x.compteId).sort();
+        for (const id of verrouilles) await this.verrouillerCompte(tx, tenantId, id);
+        const lu = await lirePlan(tx, verrouilles);
         if (lu.motifRefus) throw new BadRequestException(lu.motifRefus);
         const lignes = lu.repris.flatMap((r) =>
           r.lignes.map((l) => ({

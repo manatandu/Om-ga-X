@@ -54,6 +54,8 @@ export interface ActePosterieur {
   libelle: string;
   /** Le geste qui le défait, s'il existe dans OmegaX. */
   issue: string | null;
+  /** L'instant de son enregistrement · l'issue dite est celle du PLUS RÉCENT, qui se défait le premier. */
+  creeLe: Date;
 }
 
 /** Ce que le service lit de la sortie, pour la juger. */
@@ -65,6 +67,12 @@ export interface FaitsSortie {
   echange: boolean;
   /** Le bien a été remplacé par un composant renouvelé (`renouveler`), nommé. */
   renouvelePar: string | null;
+  /** Sortie née de la non-levée d'une option de location-acquisition, ou bien dont l'option est déclarée. */
+  optionLocationDeclaree: boolean;
+  /** Composant dont le principal n'est plus en service, nommé. */
+  principalSorti: string | null;
+  /** L'exercice de la sortie est introuvable. */
+  exerciceIntrouvable: boolean;
   /** L'exercice de la sortie est clôturé. */
   exerciceClos: boolean;
   /** Sortie d'avant la ligne, dont le complément ne se distingue pas d'une dotation ordinaire. */
@@ -101,6 +109,20 @@ export function motifRefusAnnulationSortie(f: FaitsSortie): string | null {
       `ch. 4 § 4.1), qui ne s’annule pas dans OmegaX · ${CORRECTION_A_LA_MAIN}.`
     );
   }
+  if (f.optionLocationDeclaree) {
+    return (
+      'Ce bien est tenu par un contrat de location-acquisition dont la levée de l’option est déclarée (AUDCIF Titre VIII ch. 8 ' +
+      '§ 2.1.9) · une sortie née de la non-levée annulée seule laisserait le bien en service, sa dette au 17 et une option ' +
+      `déclarée « non levée » qu’aucun geste ne referme, et la déclaration, faite une fois, ne se retire pas · ${CORRECTION_A_LA_MAIN}.`
+    );
+  }
+  if (f.principalSorti) {
+    return (
+      `Le bien principal « ${f.principalSorti} » de ce composant n’est plus en service · un composant ne revient pas en service sans ` +
+      'son principal (AUDCIF Titre VIII ch. 4 ; audit final F127). Annulez d’abord la sortie du principal, puis celle-ci.'
+    );
+  }
+  if (f.exerciceIntrouvable) return "L'exercice de la sortie est introuvable dans ce dossier · rien n'est annulé.";
   if (f.exerciceClos) {
     return (
       "L'exercice de la sortie est clôturé · son erreur ne se corrige plus par inscription en négatif, qui ne vaut que pour " +
@@ -133,12 +155,13 @@ export function motifRefusAnnulationSortie(f: FaitsSortie): string | null {
   if (f.posterieurs.length > 0) {
     const liste = f.posterieurs.slice(0, 5).map((a) => a.libelle).join(' ; ');
     const reste = f.posterieurs.length > 5 ? ` et ${f.posterieurs.length - 5} autre(s)` : '';
-    const avecIssue = f.posterieurs.filter((a) => a.issue);
-    const sansIssue = f.posterieurs.filter((a) => !a.issue);
-    const issue =
-      sansIssue.length > 0
-        ? ` ${sansIssue.map((a) => a.libelle).join(' ; ')} ne s’annule pas dans OmegaX · ${CORRECTION_A_LA_MAIN}.`
-        : ` ${avecIssue[0].issue}, puis annulez la sortie.`;
+    // L'ISSUE DU PLUS RÉCENT, et de lui seul · c'est lui qui se défait le
+    // premier ; l'issue d'un plus ancien serait elle-même refusée tant que
+    // le plus récent tient.
+    const plusRecent = [...f.posterieurs].sort((a, b) => b.creeLe.getTime() - a.creeLe.getTime())[0];
+    const issue = plusRecent.issue
+      ? ` Le plus récent · ${plusRecent.libelle} · ${plusRecent.issue}, puis le suivant, et enfin la sortie.`
+      : ` Le plus récent · ${plusRecent.libelle} · ne s’annule pas dans OmegaX · ${CORRECTION_A_LA_MAIN}.`;
     return (
       `Un acte postérieur a lu cette sortie · ${liste}${reste}. Annulée seule, la sortie laisserait ces actes calculés sur un ` +
       `état que la fiche ne porterait plus, sans qu’aucun total ne le signale.${issue}`

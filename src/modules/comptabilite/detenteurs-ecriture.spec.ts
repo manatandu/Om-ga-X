@@ -66,7 +66,9 @@ describe('détenteurs d’une écriture · la décision est prise pour chaque re
     const absentes = COLONNES_QUI_RETIENNENT.filter((r) => {
       const [modele, colonne] = r.split('.');
       const delegue = modele[0].toLowerCase() + modele.slice(1);
-      if (!corps.includes(`this.prisma.${delegue}.count(`)) return true;
+      // Le comptage passe par `db`, le client de la transaction de
+      // l'appelant quand il juge sous ses verrous, `this.prisma` sinon.
+      if (!corps.includes(`db.${delegue}.count(`)) return true;
       // `ecritureId` passe souvent par l'objet `parLEcriture` ou par la
       // propriété abrégée · les autres colonnes sont nommées en toutes lettres.
       return colonne !== 'ecritureId' && !corps.includes(`${colonne}:`);
@@ -75,7 +77,7 @@ describe('détenteurs d’une écriture · la décision est prise pour chaque re
   });
 
   it('un mouvement de magasin ANNULÉ ne tient plus son écriture (audit final F133)', () => {
-    expect(corpsDetenteursDe()).toContain('this.prisma.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })');
+    expect(corpsDetenteursDe()).toContain('db.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })');
   });
 
   it('toute relation vers une LIGNE d’écriture est décidée, avec la règle que le schéma déclare (mineur du 2026-10-07)', () => {

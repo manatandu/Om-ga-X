@@ -8,6 +8,7 @@ import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { AnnulationTraitementService } from './annulation-traitement.service';
 import { NATURES_ANNULABLES } from './annulation-traitement';
+import { compteStockRecupere } from './materiel-recupere';
 import {
   ActePosterieur,
   complementDUneSortieAncienne,
@@ -195,15 +196,8 @@ export class AnnulationSortieService {
           },
         });
       }
-      if (c.fiche.fractionDeId) {
-        const reste = await referencesVers(tx, 'Immobilisation', id, tenantId, ['DotationAmortissement.immobilisationId']);
-        if (reste.length > 0) {
-          throw new ConflictException(
-            `La fiche des unités porte encore ${reste.map(libelleReference).join(', ')} · retirez-les d’abord, puis annulez la sortie.`,
-          );
-        }
-        await tx.immobilisation.delete({ where: { id } });
-      }
+      // Ce qui visait la fiche des unités a été jugé par `lire`, sous le verrou.
+      if (c.fiche.fractionDeId) await tx.immobilisation.delete({ where: { id } });
 
       // 6 · les écritures du brouillard, une et une seule chacune, ENCORE au
       // brouillard, sinon rien ne part (409).
@@ -246,6 +240,7 @@ export class AnnulationSortieService {
         dateSortie: true,
         createdAt: true,
         fractionDeId: true,
+        immobilisationPrincipaleId: true,
         quantite: true,
         valeurOrigine: true,
         valeurResiduelle: true,
@@ -295,6 +290,9 @@ export class AnnulationSortieService {
       transfertGroupe: false,
       echange: false,
       renouvelePar: null,
+      optionLocationDeclaree: false,
+      principalSorti: null,
+      exerciceIntrouvable: false,
       exerciceClos: false,
       complementIndistinct: false,
       ecartSansParts: false,
@@ -305,10 +303,20 @@ export class AnnulationSortieService {
     };
     if (!sortie) return vide(motifRefusAnnulationSortie(base)!);
 
-    const [transfert, renouvellement, lot] = await Promise.all([
+    const [transfert, renouvellement, lot, contratDeclare, principal] = await Promise.all([
       db.transfertImmobilisationGroupe.findFirst({ where: { tenantId, immobilisationId: id, sens: 'SORTIE', annuleLe: null }, select: { id: true } }),
       db.immobilisation.findFirst({ where: { tenantId, composantRemplaceId: id }, select: { designation: true } }),
       f.fractionDeId ? db.immobilisation.findFirst({ where: { id: f.fractionDeId, tenantId }, select: { id: true, designation: true, statut: true } }) : null,
+      // LA VOIE SÛRE (relecture du 2026-10-30, bloquant) · la levée ou la
+      // non-levée de l'option se déclare UNE fois (AUDCIF Titre VIII ch. 8
+      // § 2.1.9, `declarerOption`) et la clôture du contrat la relit · la
+      // remettre à nul effacerait une décision datée que rien ne redemande
+      // d'office. La sortie d'un bien dont l'option est déclarée ne s'annule
+      // donc pas, et c'est dit.
+      db.contratLocationAcquisition.findFirst({ where: { tenantId, immobilisationId: id, optionLevee: { not: null } }, select: { id: true } }),
+      f.immobilisationPrincipaleId
+        ? db.immobilisation.findFirst({ where: { id: f.immobilisationPrincipaleId, tenantId }, select: { designation: true, statut: true } })
+        : null,
     ]);
     const ecritureSortie = f.ecritureSortieId
       ? await db.ecriture.findFirst({ where: { id: f.ecritureSortieId, tenantId, ...HORS_SITUATION }, select: { exerciceId: true, createdAt: true } })
@@ -324,9 +332,12 @@ export class AnnulationSortieService {
       transfertGroupe: !!transfert,
       echange: f.natureSortie === 'ECHANGE',
       renouvelePar: renouvellement?.designation ?? null,
-      exerciceClos: !exercice || exercice.statut === StatutExercice.CLOTURE,
+      optionLocationDeclaree: !!contratDeclare,
+      principalSorti: principal && principal.statut !== StatutImmobilisation.EN_SERVICE ? principal.designation : null,
+      exerciceIntrouvable: !exercice,
+      exerciceClos: !!exercice && exercice.statut === StatutExercice.CLOTURE,
     });
-    if (premiers || !exercice) return { ...vide(premiers ?? "L'exercice de la sortie est introuvable."), lot, exercice };
+    if (premiers || !exercice) return { ...vide(premiers ?? "L'exercice de la sortie est introuvable dans ce dossier · rien n'est annulé."), lot, exercice };
 
     // LA SORTIE D'AVANT LA LIGNE se reconnaît à l'absence de la liste des
     // parts (`passesEcartSortie` nul) · toute sortie passée depuis en pose
@@ -366,6 +377,13 @@ export class AnnulationSortieService {
     const reprise = repriseLotId
       ? await db.depreciationImmobilisation.findFirst({ where: { id: repriseLotId, immobilisation: { tenantId } }, select: { id: true, ecritureId: true } })
       : null;
+    // La reprise nommée par la fiche des unités, sans clé étrangère (schéma) ·
+    // introuvable, le refus le DIT au lieu d'un échec de suppression.
+    let refusEcriture: string | null =
+      repriseLotId && !reprise
+        ? 'La reprise de la part de dépréciation passée sur le lot pour ces unités est introuvable · rien n’est annulé d’office ; ' +
+          'la correction passe alors par une écriture en négatif saisie par le cabinet, avec son motif (AUDCIF art. 20, al. 2).'
+        : null;
 
     // Les écritures, dans l'ordre où elles se défont.
     const parRole: Partial<Record<RoleEcritureSortie, string | null>> = {
@@ -379,12 +397,17 @@ export class AnnulationSortieService {
     const lues = ids.length
       ? await db.ecriture.findMany({
           where: { tenantId, id: { in: ids }, ...HORS_SITUATION },
-          select: { id: true, numeroPiece: true, statut: true, lignes: { select: { debit: true, lettre: true, lettrageId: true, rapprochementId: true } } },
+          select: {
+            id: true,
+            numeroPiece: true,
+            statut: true,
+            correction: { select: { id: true } },
+            lignes: { select: { debit: true, lettre: true, lettrageId: true, rapprochementId: true, compte: { select: { id: true, numero: true } } } },
+          },
         })
       : [];
     const parId = new Map(lues.map((e) => [e.id, e]));
     const ecritures: SortieLue['ecritures'] = [];
-    let refusEcriture: string | null = null;
     for (const role of ORDRE_DES_ROLES) {
       const eid = parRole[role];
       if (!eid) continue;
@@ -394,15 +417,54 @@ export class AnnulationSortieService {
         continue;
       }
       const nom = `l'écriture n° ${e.numeroPiece ?? '·'} (${LIBELLE_ROLE[role]})`;
+      if (!refusEcriture && e.correction) {
+        refusEcriture = `${nom.charAt(0).toUpperCase()}${nom.slice(1)} est déjà corrigée par inscription en négatif · elle ne s’annule pas une seconde fois.`;
+      }
       refusEcriture = refusEcriture ?? motifLignesTenues(e.lignes, nom, 'annuler', ', puis annulez la sortie');
       if (!refusEcriture) {
-        const autres = (await this.ecritures.detenteursDeLEcriture(tenantId, e.id)).filter((d) => !DETENTEURS_LIBERES.has(d));
+        const autres = (await this.ecritures.detenteursDeLEcriture(tenantId, e.id, db)).filter((d) => !DETENTEURS_LIBERES.has(d));
         if (autres.length > 0) {
           refusEcriture = `${nom.charAt(0).toUpperCase()}${nom.slice(1)} est aussi la contrepartie de ${autres.join(' et ')} · reprenez d’abord l’opération dans son module, puis annulez la sortie.`;
         }
       }
       const montant = Math.round(e.lignes.reduce((t, x) => t + n(x.debit), 0) * 100) / 100;
       ecritures.push({ role, id: e.id, numeroPiece: e.numeroPiece, statut: e.statut, montant });
+    }
+
+    // LE MATÉRIEL RÉCUPÉRÉ (lot 15) · la sortie l'a porté au 388 (SYSCOHADA) ou
+    // au 378 (SYCEBNL) ; l'annuler le retire de ce stock. Consommé depuis, le
+    // stock passerait négatif en silence · refusé, la valeur dite.
+    const valeurRecuperee = n(f.valeurMaterielRecupere);
+    if (!refusEcriture && valeurRecuperee > 0.004) {
+      const dossier = await db.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
+      const racineStock = dossier ? compteStockRecupere(dossier.referentiel).racine : null;
+      const sortieLue = f.ecritureSortieId ? parId.get(f.ecritureSortieId) : undefined;
+      const ligneStock = racineStock ? sortieLue?.lignes.find((l) => l.compte.numero.startsWith(racineStock) && n(l.debit) > 0) : undefined;
+      if (!ligneStock) {
+        refusEcriture = 'La reprise en stock du matériel récupéré ne se retrouve pas sur l’écriture de sortie · rien n’est annulé d’office.';
+      } else {
+        const soldes = await db.ligneEcriture.aggregate({
+          where: { compteId: ligneStock.compte.id, ecriture: { tenantId, exerciceId: exercice.id, estANouveauProvisoire: false, ...HORS_SITUATION } },
+          _sum: { debit: true, credit: true },
+        });
+        const reste = Math.round((n(soldes._sum.debit) - n(soldes._sum.credit)) * 100);
+        if (reste < Math.round(valeurRecuperee * 100)) {
+          refusEcriture =
+            `Le matériel récupéré (${valeurRecuperee.toFixed(2)}) porté au compte ${ligneStock.compte.numero} a été consommé depuis · ` +
+            `le compte n’en porte plus que ${(reste / 100).toFixed(2)}, et annuler la sortie le rendrait négatif. Annulez d’abord la ` +
+            'consommation du stock, puis la sortie.';
+        }
+      }
+    }
+
+    // LA FICHE DES UNITÉS PART AVEC L'ANNULATION · ce qui la vise encore (une
+    // pièce jointe, un document) est dit dès l'aperçu, jamais au geste seul.
+    let refusFiche: string | null = null;
+    if (f.fractionDeId) {
+      const reste = await referencesVers(db, 'Immobilisation', id, tenantId, ['DotationAmortissement.immobilisationId']);
+      if (reste.length > 0) {
+        refusFiche = `La fiche des unités porte encore ${reste.map(libelleReference).join(', ')} · retirez-les d’abord, puis annulez la sortie.`;
+      }
     }
 
     // CE QUI A SUIVI LA SORTIE · sur la fiche sortie, tout acte enregistré
@@ -415,7 +477,21 @@ export class AnnulationSortieService {
       if (a.nature === 'SORTIE') continue;
       if (a.nature === 'DOTATION' && a.id === dotationComplementId) continue;
       if (a.creeLe.getTime() <= seuil.getTime()) continue;
-      posterieurs.push({ libelle: a.libelle, issue: issuePour(a.nature) });
+      posterieurs.push({ libelle: a.libelle, issue: a.issue ?? issuePour(a.nature), creeLe: a.creeLe });
+    }
+    // LA RÉÉVALUATION DE L'EXERCICE, datée au plus tôt de la sortie · elle a
+    // recensé les biens au bilan sans celui-ci (AUDCIF Titre VIII ch. 28) ;
+    // rendu en service après elle, il serait au bilan sans avoir été réévalué.
+    const reevaluation = await db.reevaluationBilan.findFirst({
+      where: { tenantId, exerciceId: exercice.id, dateReevaluation: { gte: f.dateSortie! } },
+      select: { createdAt: true, dateReevaluation: true },
+    });
+    if (reevaluation) {
+      posterieurs.push({
+        libelle: `la réévaluation des immobilisations du ${jour(reevaluation.dateReevaluation)}`,
+        issue: 'annulez d’abord la réévaluation (onglet Traitements d’un bien qu’elle a réévalué)',
+        creeLe: reevaluation.createdAt,
+      });
     }
     if (lot && f.fractionDeId) {
       const actesLot = await this.traitements.actesDesBiens(db, tenantId, [lot.id]);
@@ -423,7 +499,7 @@ export class AnnulationSortieService {
         if (a.nature === 'SORTIE') continue;
         if (a.id === id || a.id === repriseLotId) continue;
         if (a.creeLe.getTime() <= f.createdAt.getTime()) continue;
-        posterieurs.push({ libelle: `${a.libelle} (lot « ${lot.designation} »)`, issue: issuePour(a.nature) });
+        posterieurs.push({ libelle: `${a.libelle} (lot « ${lot.designation} »)`, issue: a.issue ?? issuePour(a.nature), creeLe: a.creeLe });
       }
     }
 
@@ -433,7 +509,7 @@ export class AnnulationSortieService {
       ecartSansParts: ancienne && !!f.ecritureSortieEcartReevaluationId,
       repriseLotIndistincte,
       lotSorti: !!lot && lot.statut !== StatutImmobilisation.EN_SERVICE,
-      refusEcriture,
+      refusEcriture: refusEcriture ?? refusFiche,
       posterieurs,
     });
     return {

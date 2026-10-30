@@ -15,6 +15,9 @@ const ouverte: FaitsSortie = {
   transfertGroupe: false,
   echange: false,
   renouvelePar: null,
+  optionLocationDeclaree: false,
+  principalSorti: null,
+  exerciceIntrouvable: false,
   exerciceClos: false,
   complementIndistinct: false,
   ecartSansParts: false,
@@ -46,11 +49,30 @@ describe('annulation d’une sortie · les refus, dans l’ordre', () => {
   });
 
   it('un acte postérieur est nommé avec son issue, ou la correction à la main', () => {
-    const avecIssue = motifRefusAnnulationSortie({ ...ouverte, posterieurs: [{ libelle: 'la dotation de 2026', issue: 'annulez-le d’abord depuis l’onglet Traitements de la fiche' }] });
+    const t = new Date('2026-07-01T10:00:00Z');
+    const avecIssue = motifRefusAnnulationSortie({ ...ouverte, posterieurs: [{ libelle: 'la dotation de 2026', issue: 'annulez-le d’abord depuis l’onglet Traitements de la fiche', creeLe: t }] });
     expect(avecIssue).toMatch(/la dotation de 2026/);
     expect(avecIssue).toMatch(/Traitements/);
-    const sansIssue = motifRefusAnnulationSortie({ ...ouverte, posterieurs: [{ libelle: 'le reclassement du 01/07/2026', issue: null }] });
+    const sansIssue = motifRefusAnnulationSortie({ ...ouverte, posterieurs: [{ libelle: 'le reclassement du 01/07/2026', issue: null, creeLe: t }] });
     expect(sansIssue).toMatch(/art\. 20, al\. 2/);
+  });
+
+  it('plusieurs actes postérieurs · l’issue dite est celle du plus récent, jamais d’un plus ancien', () => {
+    const m = motifRefusAnnulationSortie({
+      ...ouverte,
+      posterieurs: [
+        { libelle: 'la dotation de 2026', issue: 'ISSUE-ANCIENNE', creeLe: new Date('2026-07-01T10:00:00Z') },
+        { libelle: 'la réévaluation du 31/12/2026', issue: 'ISSUE-RECENTE', creeLe: new Date('2026-12-31T10:00:00Z') },
+      ],
+    });
+    expect(m).toContain('ISSUE-RECENTE');
+    expect(m).not.toContain('ISSUE-ANCIENNE');
+  });
+
+  it('option de location-acquisition déclarée, principal sorti, exercice introuvable · refus nommés', () => {
+    expect(motifRefusAnnulationSortie({ ...ouverte, optionLocationDeclaree: true })).toMatch(/§ 2\.1\.9/);
+    expect(motifRefusAnnulationSortie({ ...ouverte, principalSorti: 'Autocar' })).toMatch(/Annulez d’abord la sortie du principal/);
+    expect(motifRefusAnnulationSortie({ ...ouverte, exerciceIntrouvable: true })).toMatch(/introuvable/);
   });
 
   it('une ligne lettrée ou une écriture tenue ailleurs arrête l’annulation, avec son motif', () => {
@@ -94,6 +116,19 @@ describe('les parts de réévaluation gardées par la sortie', () => {
     const corps = defaire.slice(0, defaire.indexOf('\n  }\n'));
     expect(corps.indexOf('ecritureComplementSortieId: null')).toBeGreaterThan(-1);
     expect(corps.indexOf('immobilisation.updateMany')).toBeLessThan(corps.indexOf('annulerEcritureOrpheline'));
+  });
+});
+
+describe('la lecture juge tout ce que le geste opposera (relecture indépendante)', () => {
+  const source = readFileSync(join(__dirname, 'annulation-sortie.service.ts'), 'utf8');
+  const lire = source.slice(source.indexOf('private async lire('));
+  it('option de location-acquisition déclarée, réévaluation datée au plus tôt de la sortie, principal, fiche des unités, écriture corrigée', () => {
+    expect(lire).toMatch(/contratLocationAcquisition\.findFirst\(\{ where: \{ tenantId, immobilisationId: id, optionLevee: \{ not: null \} \}/);
+    expect(lire).toMatch(/reevaluationBilan\.findFirst\(\{\s+where: \{ tenantId, exerciceId: exercice\.id, dateReevaluation: \{ gte: f\.dateSortie! \} \}/);
+    expect(lire).toContain('immobilisationPrincipaleId');
+    expect(lire).toContain("referencesVers(db, 'Immobilisation', id, tenantId");
+    expect(lire).toContain('e.correction');
+    expect(lire).toContain('detenteursDeLEcriture(tenantId, e.id, db)');
   });
 });
 
