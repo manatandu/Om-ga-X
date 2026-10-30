@@ -88,6 +88,21 @@ unique · les deux passent.
   (mise à jour Prisma d'un modèle non audité non vue, clé non confrontée au
   dossier des lignes, aide appelée sous le verrou).
 
+## Décompte des tests serveur, relevé par fichier contre `main`
+
+`main` de départ (`476a1df39`), mesuré en entier · 1044 suites, 15 055
+tests. Branche avant la relecture (`c08dbc03c`) · 1045 suites, 15 054
+tests, soit −1 exactement expliqué fichier par fichier · `prisma-retry-audit`
+8 → 4 (tests d'`avecRetrySerialisable` retirés, un ajouté),
+`transaction-sous-verrou-du-dossier` 8 → 7 (doublon de lettrage déjà
+couvert), `telemetrie-serveur` 12 → 13, `changer-mot-de-passe` 3 → 4,
+`ordre-des-verrous` 0 → 2. Le « 15 058 » d'un premier passage, pris comme
+référence, avait été lu sur une suite à 83 échecs (doublures sans
+`$executeRaw`) · il ne valait rien. La relecture ajoute trois tests
+(impression différée, mot de passe sous clôture, transaction expirée) ;
+après fusion de `main` (restes-l8-immos, dont `cession-partielle` 3 → 6),
+15 086 tests.
+
 ## Décisions
 
 - Le 409 du dernier rempart porte un code PROPRE (`GESTE_CONCURRENT`) et non
