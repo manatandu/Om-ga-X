@@ -161,3 +161,88 @@ export function totauxDeLaNature(lignes: readonly LigneBudgetCompte[], nature: N
   const n1 = de.some((l) => l.realiseN1 === null) ? null : arrondi(de.reduce((t, l) => t + (l.realiseN1 ?? 0), 0));
   return { budget, realise, realiseN1: n1, horsBudget: arrondi(de.filter((l) => l.horsBudget).reduce((t, l) => t + l.realise, 0)) };
 }
+
+/**
+ * LE REPORT DES BUDGETS DES COMPTES SUR L'EXERCICE SUIVANT (ligne
+ * restes-immos-budgets, point 1), au modèle du report des budgets des
+ * sections (`budgetsAReporter`, `exercice/report-a-nouveau.ts` · Sage i7,
+ * « demander le report des budgets sur le nouvel exercice »). Convention
+ * d'OmegaX, comme le budget lui-même · aucun texte ne la régit.
+ *
+ * QUATRE RÈGLES.
+ *  1. UN BUDGET DÉJÀ POSÉ SUR L'EXERCICE SUIVANT N'EST JAMAIS ÉCRASÉ · il a
+ *     été décidé, le report n'en est qu'une proposition. Le compte se juge
+ *     ENTIER (annuel et mois ensemble) · compléter les seuls mois manquants
+ *     ferait un annuel qui n'est plus la somme de ses mois.
+ *  2. RIEN NE SE PRORATISE · le report recopie les montants, annuel et mois,
+ *     tels qu'ils sont. Deux exercices qui n'ont pas les mêmes mois de
+ *     calendrier (premier exercice court ou long, AUDCIF art. 7) ne se
+ *     reportent pas · le cabinet dote l'exercice suivant compte par compte,
+ *     comme la colonne N-1 des états ne s'adapte pas d'office.
+ *  3. UN COMPTE QUE LA SAISIE N'ADMET PLUS N'EST PAS DOTÉ · en sommeil ou
+ *     subdivisé depuis (`motifCompteHorsSaisie`), il est NOMMÉ avec son motif
+ *     et sauté · son budget irait à un compte qui ne reçoit plus d'écriture.
+ *  4. CE QUI EST REPRIS ET CE QUI NE L'EST PAS SE DIT, compte par compte.
+ */
+export type BudgetLu = { compteId: string; mois: number | null; montant: number };
+
+export type CompteDuReport = { id: string; numero: string; intitule: string };
+
+export type PlanReportBudgetsComptes = {
+  /** Refus du report entier, ou `null`. */
+  motifRefus: string | null;
+  repris: { compteId: string; numero: string; intitule: string; annuel: number | null; lignes: BudgetLu[] }[];
+  nonRepris: { compteId: string; numero: string; intitule: string; motif: string }[];
+};
+
+export const MOTIF_DEJA_DOTE_EN_N1 =
+  "Déjà doté sur l'exercice suivant · un budget posé n'est jamais écrasé par le report.";
+
+export const MOTIF_MOIS_DIFFERENTS =
+  "Les deux exercices n'ont pas les mêmes mois de calendrier · le report recopie les montants sans rien proratiser, " +
+  "il ne s'applique qu'entre deux exercices de même durée. Dotez l'exercice suivant compte par compte.";
+
+export function planDuReportBudgetsComptes(params: {
+  moisSource: readonly number[];
+  moisDestination: readonly number[];
+  budgets: readonly BudgetLu[];
+  comptes: ReadonlyMap<string, CompteDuReport>;
+  dejaDotes: ReadonlySet<string>;
+  /** Le motif qui écarte un compte (sommeil, subdivision, classe), s'il y en a un. */
+  horsSaisie: ReadonlyMap<string, string>;
+}): PlanReportBudgetsComptes {
+  const memesMois =
+    params.moisSource.length === params.moisDestination.length && params.moisSource.every((m, i) => m === params.moisDestination[i]);
+  if (!memesMois) return { motifRefus: MOTIF_MOIS_DIFFERENTS, repris: [], nonRepris: [] };
+  const parCompte = new Map<string, BudgetLu[]>();
+  for (const b of params.budgets) {
+    const l = parCompte.get(b.compteId) ?? [];
+    l.push(b);
+    parCompte.set(b.compteId, l);
+  }
+  const repris: PlanReportBudgetsComptes['repris'] = [];
+  const nonRepris: PlanReportBudgetsComptes['nonRepris'] = [];
+  const ordonnes = [...parCompte.keys()]
+    .map((id) => params.comptes.get(id) ?? { id, numero: '?', intitule: 'Compte introuvable' })
+    .sort((a, b) => a.numero.localeCompare(b.numero));
+  for (const c of ordonnes) {
+    const base = { compteId: c.id, numero: c.numero, intitule: c.intitule };
+    if (!params.comptes.has(c.id)) {
+      nonRepris.push({ ...base, motif: 'Compte introuvable dans ce dossier.' });
+      continue;
+    }
+    if (params.dejaDotes.has(c.id)) {
+      nonRepris.push({ ...base, motif: MOTIF_DEJA_DOTE_EN_N1 });
+      continue;
+    }
+    const motif = params.horsSaisie.get(c.id);
+    if (motif) {
+      nonRepris.push({ ...base, motif });
+      continue;
+    }
+    const lignes = (parCompte.get(c.id) ?? []).slice().sort((a, b) => (a.mois ?? 0) - (b.mois ?? 0));
+    const annuelle = lignes.find((l) => l.mois === null);
+    repris.push({ ...base, annuel: annuelle ? annuelle.montant : null, lignes });
+  }
+  return { motifRefus: null, repris, nonRepris };
+}

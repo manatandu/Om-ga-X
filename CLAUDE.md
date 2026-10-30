@@ -310,6 +310,13 @@ vingt-sept « Plus tard » GARDÉS au tri du même jour (trente-quatre écartés
 `docs/plan-gel-leve-2026-10-29.md`), le visa d'un plan d'étalement et les
 départements et directions (organigramme libre du dossier, aucun niveau
 imposé) ; le bon de commande au SYSCOHADA ÉCARTÉ.
+Puis, le 2026-10-30, les RESTES DES IMMOBILISATIONS ET DES BUDGETS, gel levé
+expressément par Manasse pour eux seuls (ligne `restes-immos-budgets`) · le
+report des budgets par compte sur l'exercice suivant, jamais un budget déjà
+posé écrasé ; la quantité du bien sur la fiche de comptage, l'écart dit en
+unités, jamais un excédent créé (AUDCIF art. 43) ; l'annulation d'une sortie
+d'immobilisation, partielle comprise (art. 20, al. 2 et 3 ; art. 22, 2° et
+4°) ; et les cas refusés de la sortie partielle, chacun tranché par son texte.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

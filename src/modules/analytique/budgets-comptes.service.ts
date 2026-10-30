@@ -12,6 +12,7 @@ import {
   motifRefusCompteBudgetable,
   motifRefusMontantBudget,
   natureDuCompte,
+  planDuReportBudgetsComptes,
   repartirSurLesMois,
   totauxDeLaNature,
   type LigneBudgetCompte,
@@ -19,6 +20,7 @@ import {
 import type { DoterBudgetCompteDto, ModifierBudgetCompteMoisDto } from './dto/budget-compte.dto';
 import { motifCompteHorsSaisie } from './compte-de-saisie';
 import { evaluerComparabilite } from '../etats-financiers/comparabilite-exercices';
+import { estContigu, motifSuivantNonContigu } from '../exercice/exercice-contigu';
 
 /** Le doublon d'une clé unique, même enveloppé par la transaction. */
 function estDoublon(e: unknown): boolean {
@@ -181,6 +183,100 @@ export class BudgetsComptesService {
       return tx.budgetCompte.deleteMany({ where: { tenantId, compteId, exerciceId: exercice.id } });
     });
     return { retire: retire.count > 0 };
+  }
+
+  /**
+   * LE REPORT SUR L'EXERCICE SUIVANT (ligne restes-immos-budgets, point 1) ·
+   * l'aperçu (`confirmer` faux) rend ce qui serait repris et ce qui ne le
+   * serait pas ; la confirmation rejoue le même plan DANS la transaction,
+   * sous le verrou des comptes, et n'écrit que ce qui n'est pas déjà doté.
+   * Règles · `planDuReportBudgetsComptes`. L'exercice suivant est celui qui
+   * commence le lendemain (AUDCIF art. 34 ; SYCEBNL art. 16, 4°), ouvert ;
+   * on ne le crée pas pour un budget.
+   */
+  async reporter(tenantId: string, exerciceId: string, confirmer: boolean) {
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
+    if (!exercice) throw new NotFoundException('Exercice introuvable dans ce dossier.');
+    const suivant = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateDebut: { gt: exercice.dateFin } },
+      orderBy: { dateDebut: 'asc' },
+    });
+    if (!suivant) throw new BadRequestException("L'exercice suivant n'existe pas encore · ouvrez-le avant d'y reporter les budgets.");
+    if (!estContigu(exercice.dateFin, suivant.dateDebut)) {
+      throw new BadRequestException(motifSuivantNonContigu(exercice.dateFin, suivant));
+    }
+    refuserSiExerciceBudgetaireClos(suivant.statut);
+
+    const lirePlan = async (db: Prisma.TransactionClient | PrismaService) => {
+      const budgets = await db.budgetCompte.findMany({
+        where: { tenantId, exerciceId: exercice.id },
+        select: { compteId: true, mois: true, montant: true },
+      });
+      const ids = [...new Set(budgets.map((b) => b.compteId))];
+      const [comptes, dejaDotes] = await Promise.all([
+        db.compte.findMany({
+          where: { tenantId, id: { in: ids } },
+          select: { id: true, numero: true, intitule: true, classe: true, typeCompte: true, estActif: true },
+        }),
+        db.budgetCompte.findMany({
+          where: { tenantId, exerciceId: suivant.id, compteId: { in: ids } },
+          select: { compteId: true },
+          distinct: ['compteId'],
+        }),
+      ]);
+      const horsSaisie = new Map<string, string>();
+      for (const c of comptes) {
+        const refus =
+          motifRefusCompteBudgetable({ numero: c.numero, classe: c.classe, estTotal: c.typeCompte === TypeCompteDetailTotal.TOTAL }) ??
+          (await motifCompteHorsSaisie(db, tenantId, c, 'le budget'));
+        if (refus) horsSaisie.set(c.id, refus);
+      }
+      return planDuReportBudgetsComptes({
+        moisSource: moisDeLExercice(exercice.dateDebut, exercice.dateFin),
+        moisDestination: moisDeLExercice(suivant.dateDebut, suivant.dateFin),
+        budgets: budgets.map((b) => ({ compteId: b.compteId, mois: b.mois, montant: Number(b.montant) })),
+        comptes: new Map(comptes.map((c) => [c.id, { id: c.id, numero: c.numero, intitule: c.intitule }])),
+        dejaDotes: new Set(dejaDotes.map((d) => d.compteId)),
+        horsSaisie,
+      });
+    };
+
+    const entete = {
+      exercice: { id: exercice.id, dateDebut: jour(exercice.dateDebut), dateFin: jour(exercice.dateFin) },
+      exerciceSuivant: { id: suivant.id, dateDebut: jour(suivant.dateDebut), dateFin: jour(suivant.dateFin) },
+    };
+    if (!confirmer) {
+      const plan = await lirePlan(this.prisma);
+      return { ...entete, ...plan, reporte: false };
+    }
+    try {
+      const plan = await transactionJournalisee(this.prisma, async (tx) => {
+        // Les comptes dotés en N, verrouillés dans un ordre fixe · une dotation
+        // concurrente de N+1 (`doter`, même verrou) attend ou est vue.
+        const ids = await tx.budgetCompte.findMany({
+          where: { tenantId, exerciceId: exercice.id },
+          select: { compteId: true },
+          distinct: ['compteId'],
+        });
+        for (const id of ids.map((x) => x.compteId).sort()) await this.verrouillerCompte(tx, tenantId, id);
+        const lu = await lirePlan(tx);
+        if (lu.motifRefus) throw new BadRequestException(lu.motifRefus);
+        const lignes = lu.repris.flatMap((r) =>
+          r.lignes.map((l) => ({
+            tenantId,
+            compteId: r.compteId,
+            exerciceId: suivant.id,
+            mois: l.mois,
+            montant: new Prisma.Decimal(l.montant.toFixed(2)),
+          })),
+        );
+        if (lignes.length) await tx.budgetCompte.createMany({ data: lignes });
+        return lu;
+      });
+      return { ...entete, ...plan, reporte: true };
+    } catch (e) {
+      this.conflit(e);
+    }
   }
 
   /**

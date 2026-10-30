@@ -14,6 +14,7 @@ import {
   type EtatBudgetComptes,
   type LigneBudgetCompte,
   type NatureBudget,
+  type ReportBudgetsComptes,
 } from '../lib/budget-compte';
 
 /**
@@ -49,6 +50,7 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
   const [envoi, setEnvoi] = useState(false);
   const [detail, setDetail] = useState<{ compte: LigneBudgetCompte; budget: BudgetDuCompte | null } | null>(null);
   const [moisSaisis, setMoisSaisis] = useState<Record<number, string>>({});
+  const [report, setReport] = useState<ReportBudgetsComptes | null>(null);
 
   const modifiable = estAdmin && exerciceCourant?.statut !== 'CLOTURE';
   const echec = (e: unknown, defaut: string) => setErreur(e instanceof ApiError ? e.message : defaut);
@@ -141,6 +143,35 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
       setRechargement((n) => n + 1);
     } catch (e) {
       echec(e, "Le mois n'a pas pu être retouché.");
+    }
+  };
+
+  // Le report sur l'exercice suivant · un aperçu servi, puis la confirmation.
+  const apercuReport = () => {
+    if (!exerciceCourant) return;
+    setErreur(null);
+    setInfo(null);
+    setReport(null);
+    api
+      .get<ReportBudgetsComptes>(`/analytique/budgets-comptes/report?exerciceId=${exerciceCourant.id}`)
+      .then(setReport, (e) => echec(e, "Le report des budgets n'a pas pu être préparé."));
+  };
+
+  const confirmerReport = async () => {
+    if (!exerciceCourant) return;
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      const r = await api.post<ReportBudgetsComptes>(`/analytique/budgets-comptes/report?exerciceId=${exerciceCourant.id}`, {});
+      setReport(r);
+      setInfo(
+        `${r.repris.length} compte${r.repris.length > 1 ? 's' : ''} reporté${r.repris.length > 1 ? 's' : ''} sur l'exercice suivant · ` +
+          `${r.nonRepris.length} non repris.`,
+      );
+    } catch (e) {
+      echec(e, "Les budgets n'ont pas pu être reportés.");
+    } finally {
+      setEnvoi(false);
     }
   };
 
@@ -352,6 +383,64 @@ export function BudgetsComptesPage({ ongletInitial = 'comparaison' }: { ongletIn
           {exerciceCourant?.statut === 'CLOTURE'
             ? "L'exercice est clôturé · son budget se lit, il ne se modifie plus."
             : "La dotation des budgets est réservée à l'administrateur du dossier."}
+        </div>
+      )}
+
+      {onglet === 'dotation' && estAdmin && (
+        <div className="border border-border bg-surface rounded-[10px] p-3 flex flex-col gap-2 text-[11.5px]">
+          <div className="flex items-center justify-between">
+            <span className="font-bold">Report sur l'exercice suivant</span>
+            <span className="flex gap-3 items-center">
+              <Aide titre="Report des budgets" source="Convention d'OmegaX (Sage i7, report des budgets)" texte="Le report recopie sur l'exercice qui commence le lendemain les budgets de cet exercice, annuel et mois, sans rien proratiser · il ne s'applique qu'entre deux exercices aux mêmes mois. Un compte déjà doté sur l'exercice suivant n'est jamais écrasé ; un compte en sommeil ou subdivisé n'est pas doté. L'aperçu dit ce qui serait repris et ce qui ne le serait pas." />
+              <button type="button" onClick={apercuReport} className="border border-border px-2.5 py-0.5">
+                Préparer le report…
+              </button>
+            </span>
+          </div>
+          {report && (
+            <>
+              <div className="text-text-dim">
+                Vers l'exercice du {report.exerciceSuivant.dateDebut.split('-').reverse().join('/')} au{' '}
+                {report.exerciceSuivant.dateFin.split('-').reverse().join('/')}
+                {report.reporte ? ' · reporté' : ''}
+              </div>
+              {report.motifRefus && <div className="text-danger">{report.motifRefus}</div>}
+              {!report.motifRefus && (
+                <>
+                  <div className="font-bold">
+                    {report.reporte ? 'Repris' : 'Serait repris'} · {report.repris.length}
+                  </div>
+                  {report.repris.length === 0 && <div className="text-text-dim">Aucun budget à reporter.</div>}
+                  {report.repris.map((r) => (
+                    <div key={r.compteId} className="flex gap-3">
+                      <span className="w-[90px]">{r.numero}</span>
+                      <span className="flex-1">{r.intitule}</span>
+                      <span className="font-mono">{montant(r.annuel)}</span>
+                    </div>
+                  ))}
+                  {report.nonRepris.length > 0 && <div className="font-bold">Non repris · {report.nonRepris.length}</div>}
+                  {report.nonRepris.map((r) => (
+                    <div key={r.compteId} className="flex gap-3">
+                      <span className="w-[90px]">{r.numero}</span>
+                      <span className="flex-1">{r.motif}</span>
+                    </div>
+                  ))}
+                  {!report.reporte && report.repris.length > 0 && (
+                    <div>
+                      <button
+                        type="button"
+                        disabled={envoi}
+                        onClick={() => void confirmerReport()}
+                        className="bg-sel text-white font-semibold px-4 py-1 rounded-full disabled:opacity-50"
+                      >
+                        Reporter les budgets
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 

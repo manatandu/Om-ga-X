@@ -96,6 +96,28 @@ export class AnalytiqueController {
     return this.budgetsComptes.retirer(user.tenantId, compteId, exerciceId);
   }
 
+  /**
+   * Le report des budgets des comptes de l'exercice sur le suivant · l'aperçu
+   * (GET) dit ce qui serait repris et ce qui ne le serait pas, la
+   * confirmation (POST) l'écrit sans rien écraser.
+   */
+  @Get('budgets-comptes/report')
+  async apercuReportBudgetsComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.reporter(user.tenantId, exerciceId, false);
+  }
+
+  @Post('budgets-comptes/report')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async reporterBudgetsComptes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+  ) {
+    return this.budgetsComptes.reporter(user.tenantId, exerciceId, true);
+  }
+
   /** L'état · budget, réalisé et réalisé de l'exercice précédent, par compte, sur l'exercice ou un mois. */
   @Get('etats/budget-comptes')
   async etatBudgetComptes(

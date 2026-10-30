@@ -48,6 +48,19 @@ export interface BudgetDuCompte {
   mensuel: { mois: number; montant: number }[];
 }
 
+/**
+ * Le report des budgets sur l'exercice suivant, tel que le serveur le rend
+ * (`planDuReportBudgetsComptes`) · rien ne s'y recalcule.
+ */
+export interface ReportBudgetsComptes {
+  exercice: { id: string; dateDebut: string; dateFin: string };
+  exerciceSuivant: { id: string; dateDebut: string; dateFin: string };
+  motifRefus: string | null;
+  repris: { compteId: string; numero: string; intitule: string; annuel: number | null }[];
+  nonRepris: { compteId: string; numero: string; intitule: string; motif: string }[];
+  reporte: boolean;
+}
+
 /** Les mois de calendrier d'un exercice (AAAA-MM-JJ), dans l'ordre · même règle que le serveur. */
 export function moisDeLExercice(debut: string, fin: string): number[] {
   const mois: number[] = [];
