@@ -339,6 +339,17 @@ export class FacturationService {
       const motif = motifRefusRemise(l.remisePourcent);
       if (motif) throw new BadRequestException(`Ligne ${i + 1} · ${motif}`);
     }
+    // UNE REMISE PORTÉE SANS ÊTRE DÉDUITE SE DIT (relecture « échecs
+    // silencieux ») · la pièce annoncerait une remise que son montant hors
+    // taxes ne retranche pas, et la taxe se calculerait sur le prix entier. Le
+    // montant qui FIGURE fait foi (art. 134), rien n'est corrigé · averti.
+    const avertissementsLignes = dto.lignes.flatMap((l, i) => {
+      if (!l.remisePourcent) return [];
+      const brut = Math.round(l.quantite * l.prixUnitaire * 100);
+      return Math.round(l.montantHT * 100) >= brut && brut > 0
+        ? [`Ligne ${i + 1} · une remise de ${l.remisePourcent} % est portée, mais le montant hors taxes n'est pas inférieur à quantité × prix unitaire · vérifiez que la remise est déduite.`]
+        : [];
+    });
     const idsArticles = [...new Set(dto.lignes.map((l) => l.articleId).filter((x): x is string => !!x))];
     if (idsArticles.length) {
       const trouves = await this.prisma.articleCommercial.findMany({ where: { id: { in: idsArticles }, tenantId }, select: { id: true } });
@@ -436,6 +447,7 @@ export class FacturationService {
     return {
       id: facture.id,
       ...(encours ? { avertissementEncours: encours } : {}),
+      ...(avertissementsLignes.length ? { avertissementsLignes } : {}),
       totaux: totauxFacture(v),
       mentions: verifierMentions(v, this.estPersonneMorale(t), {
         sensVente: facture.sens === SensFacture.VENTE,

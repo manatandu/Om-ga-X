@@ -116,7 +116,7 @@ async function main() {
 
     // La vente de 2027 · 3 sacs à 26 300 = 78 900 HT, au-delà de l'encours (80 000 + 78 900 > 150 000).
     const f = await A.post('/facturation', { sens: 'VENTE', numeroSerie: 'FV-L8-1', dateFacture: '2027-02-02', tiersId: cli.id, lignes: [{ designation: 'Ciment 50 kg', quantite: 3, prixUnitaire: 30_000, montantHT: 78_900, remisePourcent: 12.5, articleId: art.id }] });
-    verifier(/dépassé · ce client devrait 158 900,00/.test(f.avertissementEncours ?? ''), `30 · la facture passe et avertit · ${f.avertissementEncours}`);
+    verifier(/dépassé · ce client devrait 158\s900,00/.test(f.avertissementEncours ?? ''), `30 · la facture passe et avertit · ${f.avertissementEncours}`);
     const lue = await prisma.ligneFacture.findFirst({ where: { factureId: f.id } });
     verifier(lue && String(lue.remisePourcent) === '12.5' && lue.articleId === art.id, '90 · la ligne garde la remise et l’article');
     refus = null;

@@ -44,10 +44,27 @@ de `docs/comparaison-sage/15-absents-a-trier.md`, levées par
 - Migrations `20270230000002` à `20270230000004`, contrôlées par
   `prisma migrate diff` sur base jetable (aucune différence).
 
+- Rejeu sur base PostgreSQL 16 jetable locale, serveur compilé, à travers la
+  clôture de 2026 (`scripts/rejouer-commercial-l8.cjs`) · encours lu en 2027
+  avant la clôture (remontée) puis après (à-nouveau), 80 000 les deux fois ;
+  prix net 26 300 (30 000 moins 12,5 %, cent francs supérieur) ; facture de
+  78 900 avertie (158 900 pour 150 000), ligne qui garde article et remise,
+  article facturé non supprimable ; retrait du rôle de vendeur refusé en 409.
+  Tout conforme.
+- Relecture adverse des échecs silencieux · (1) remise portée sans être
+  déduite du montant HT · avertie à l'enregistrement (`avertissementsLignes`) ;
+  (2) devise proposée en saisie qui suivait un autre compte · retirée quand le
+  compte change ; (3) fusion de tiers · représentant et devise comblent le
+  vide, l'ENCOURS MAXIMUM du doublon jamais (il ouvrirait un crédit que
+  personne n'a consenti) ; (4) lecture de l'encours qui échoue à la facture ·
+  dite, la facture reste enregistrée.
+
 ## Reste
 
-- Rejeu sur base jetable (`scripts/rejouer-commercial-l8.cjs`).
-- Relecture adverse des échecs silencieux.
+- Deux tours de relecture et tests navigateur avant l'intégration sur
+  `main` (non lancés ici).
+- La jambe PostgreSQL 18 et 17 du portillon n'a pas été rejouée localement
+  (seul PostgreSQL 16 est installé dans ce conteneur).
 
 ## Écarté de la fonction 90, avec son motif
 

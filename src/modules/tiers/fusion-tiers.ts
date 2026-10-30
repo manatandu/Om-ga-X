@@ -28,6 +28,9 @@ export interface FicheTiers {
   modeleImpressionExtraitId?: string | null;
   modeleImpressionReglementId?: string | null;
   modeleImpressionRappelId?: string | null;
+  /** Ligne commercial-l8 · représentant (fonction 91) et devise habituelle (25), qui comblent le vide de même. */
+  representantId?: string | null;
+  deviseId?: string | null;
 }
 
 export function motifRefusFusionTiers(source: FicheTiers, cible: FicheTiers): string | null {
@@ -56,6 +59,12 @@ const COORDONNEES = [
   'modeleImpressionExtraitId',
   'modeleImpressionReglementId',
   'modeleImpressionRappelId',
+  // Le représentant et la devise habituelle (ligne commercial-l8) · même
+  // règle. L'ENCOURS MAXIMUM n'en est PAS · celui du doublon, plus large,
+  // ouvrirait au client conservé un crédit que personne ne lui a consenti ;
+  // la fiche conservée garde le sien, ou aucun.
+  'representantId',
+  'deviseId',
 ] as const;
 
 /**

@@ -411,7 +411,7 @@ export function FacturationPage() {
     setErreur(null);
     setAvisEncours(null);
     try {
-      const r: { avertissementEncours?: string } = await api.post('/facturation', {
+      const r: { avertissementEncours?: string; avertissementsLignes?: string[] } = await api.post('/facturation', {
         sens,
         numeroSerie,
         dateFacture,
@@ -446,7 +446,7 @@ export function FacturationPage() {
       });
       // L'ENCOURS MAXIMUM AVERTI (fonction 30) · la facture est enregistrée,
       // le dépassement se dit, jamais un refus.
-      setAvisEncours(r.avertissementEncours ?? null);
+      setAvisEncours([r.avertissementEncours, ...(r.avertissementsLignes ?? [])].filter(Boolean).join(' ') || null);
       setNumeroSerie('');
       setDateReception('');
       setDesignation('');

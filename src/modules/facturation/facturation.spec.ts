@@ -959,6 +959,13 @@ describe('ligne commercial-l8 · l’article, la remise et l’encours du client
     expect(ligne[0].articleId).toBe('a1');
   });
 
+  it('une remise portée sans être déduite du montant HT est avertie, la pièce passe', async () => {
+    const { svc, create } = service();
+    const r = (await svc.enregistrer('t', dto({ lignes: [{ designation: 'Ciment', quantite: 2, prixUnitaire: 30_000, montantHT: 60_000, remisePourcent: 10 }] }) as never)) as Faux;
+    expect(create).toHaveBeenCalled();
+    expect((r.avertissementsLignes as string[])[0]).toMatch(/Ligne 1 · une remise de 10 %/);
+  });
+
   it('un client à encours maximum · la vente passe, et un échec de lecture se dit au lieu d’un silence', async () => {
     const { svc, prisma, create } = service();
     (prisma.tiers as Faux).findFirst = jest
