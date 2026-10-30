@@ -433,6 +433,10 @@ export const MODELES_AUDITES = new Set<string>([
   // qu'aucune écriture ne bouge.
   'ArticleCommercial',
   'TarifClient',
+  // Le mode d'arrondi change le prix proposé, le collaborateur nomme qui
+  // représente un tiers (fonctions 94 et 91).
+  'ModeArrondi',
+  'Collaborateur',
   // La consignation · compte d'attente dont le DÉNOUEMENT (retour, vente,
   // écart) décide du bilan.
   'Consignation',

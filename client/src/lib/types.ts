@@ -1040,6 +1040,10 @@ export interface Tiers {
   modeReglement?: ModeReglementResume | null;
   /** L'échéancier du modèle appliqué en saisie sans fenêtre (ligne sage-l2, fonction 3). */
   validationAutomatiqueEcheances?: boolean;
+  /** Ligne commercial-l8 · représentant (fonction 91), devise habituelle (25), encours maximum en francs (30, décimal servi en texte). */
+  representantId?: string | null;
+  deviseId?: string | null;
+  encoursMaximum?: number | string | null;
   comptesRattaches: TiersCompte[];
   /**
    * Coordonnées · sans elles, les lettres de relance que le logiciel compose

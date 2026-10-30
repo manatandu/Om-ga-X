@@ -20,9 +20,44 @@ de `docs/comparaison-sage/15-absents-a-trier.md`, levées par
   annoncée qui n'existe pas). Fusion de tiers · tarif en double retiré ligne
   par ligne (journal d'audit), jamais par `deleteMany`.
 
+- Étapes b, c, d (un commit) ·
+  - 94 · modes d'arrondi (`commercial/arrondi.ts`, `ModeArrondi`, fenêtre
+    Structure > Gestion commerciale > Modes d'arrondi) · le PRIX NET proposé
+    (prix moins la remise) s'arrondit au pas du mode de l'article, sinon au
+    centime, en centimes entiers ; jamais la taxe ni un total.
+  - 91 · collaborateurs et leurs six rôles (`Collaborateur`, fenêtre
+    Collaborateurs), représentant d'un tiers (`Tiers.representantId`) ·
+    vendeur pour un client ou un adhérent, acheteur pour un fournisseur ;
+    retrait du rôle ou mise en sommeil refusés tant qu'il représente.
+  - 25 · devise habituelle du tiers (`Tiers.deviseId`) · proposée sur la
+    ligne de saisie d'un de ses comptes (`GET /tiers/devises-des-comptes`),
+    rappelée à la facture, jamais convertie.
+  - 30 · encours maximum du client (`Tiers.encoursMaximum`,
+    `commercial/encours-client*.ts`, `GET /commercial/encours/:tiersId`) ·
+    solde de ses comptes à la date (remontée sur l'exercice précédent ouvert
+    sans ouverture) + factures de vente non passées + vente en préparation ;
+    AVERTI à l'écran de facturation et dans la réponse d'enregistrement,
+    jamais refusé ; illisible, « non calculé ».
+  - 90 · la ligne de facture prend l'article (`LigneFacture.articleId`,
+    RESTRICT) et la remise (`remisePourcent`), imprimée sur la pièce ;
+    l'écran propose désignation, prix, remise, taux et montant HT net.
+- Migrations `20270230000002` à `20270230000004`, contrôlées par
+  `prisma migrate diff` sur base jetable (aucune différence).
+
 ## Reste
 
-Voir la section « Étapes » ci-dessous, tenue à chaque commit.
+- Rejeu sur base jetable (`scripts/rejouer-commercial-l8.cjs`).
+- Relecture adverse des échecs silencieux.
+
+## Écarté de la fonction 90, avec son motif
+
+Gammes, caisse de comptoir (décret n° 23/10, art. 3, 7° et 20 à 22 · OmegaX
+n'est pas homologué, aucun ticket ne vaut facture), site marchand, agenda,
+codes-barres, glossaires, catalogue, commissions, fabrication et affaires,
+abonnements commerciaux (les abonnements d'écriture existent), livraisons
+et documents internes avec mouvement de stock (le magasin garde seul ses
+mouvements · une sortie par la facture doublerait la valorisation). Le bon
+de commande au SYSCOHADA est écarté par le plan.
 
 ## Étapes
 
@@ -48,6 +83,19 @@ Voir la section « Étapes » ci-dessous, tenue à chaque commit.
   facture elle-même ») ; O.-L. n° 10/001, art. 29, et décret n° 011/42,
   art. 79 (remises exclues de la base « figurant sur facture initiale ou
   rectificative »).
+- D5 · arrondi · aucun texte lu ne fixe l'arrondi d'un prix (AUDCG art. 263,
+  prix convenu) · convention du dossier, sur le prix net PROPOSÉ seulement ;
+  la taxe se calcule sur le montant HT qui figure (O.-L. n° 10/001, art. 29).
+- D6 · encours · aucun texte lu n'impose ni ne borne le crédit client · on
+  AVERTIT, jamais on ne refuse (la facture est due pour chaque transaction,
+  loi de procédures fiscales, art. 23). En francs (loi n° 23/053, art. 141,
+  1°), lignes en devise pour leur contrevaleur historique, dit.
+- D7 · devise du tiers · la monnaie de tenue n'est pas une devise (loi
+  n° 23/053, art. 141, 1° ; refus du franc comme la ligne en devise, F49) ;
+  aucun texte lu ne régit la monnaie d'une facture · la facture OmegaX reste
+  en francs, la devise y est rappelée.
+- D8 · collaborateurs · aucun texte ne régit cette structure ; un rôle ne
+  donne aucun droit (les droits restent ceux du rôle d'utilisateur).
 - D4 · articles et tarifs ouverts aux deux référentiels · l'association
   vend « à titre accessoire » (loi n° 004/2001, art. 1er ;
   `docs/comparaison-sage/reproduction/architecture.md`, D5).

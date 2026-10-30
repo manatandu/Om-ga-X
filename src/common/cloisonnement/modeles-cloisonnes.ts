@@ -22,6 +22,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne commercial-l8 · la gestion commerciale.
   'ArticleCommercial',
   'TarifClient',
+  'ModeArrondi',
+  'Collaborateur',
   'Bailleur',
   'BulletinPaie',
   'Cloture',

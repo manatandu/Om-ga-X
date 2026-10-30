@@ -154,8 +154,8 @@ export const LOGICIELS: readonly LogicielDef[] = [
   {
     cle: 'GESTION_COMMERCIALE',
     libelle: 'Gestion commerciale',
-    aide: 'Articles et tarifs, devis et commandes, facturation, variation des stocks, magasin et emballages consignés.',
-    chemins: ['/articles', '/devis', '/facturation', '/variation-stocks', '/magasin', '/emballages'],
+    aide: 'Articles et tarifs, collaborateurs, modes d’arrondi, devis et commandes, facturation, variation des stocks, magasin et emballages consignés.',
+    chemins: ['/articles', '/collaborateurs', '/modes-arrondi', '/devis', '/facturation', '/variation-stocks', '/magasin', '/emballages'],
   },
   {
     cle: 'GROUPE_CONSOLIDATION',

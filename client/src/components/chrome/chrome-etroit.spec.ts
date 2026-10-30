@@ -396,8 +396,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // (ligne sage-l3, fonction 46) · repos inchangé. « Taux de référence »
     // au même groupe (fonction 47) · repos inchangé.
     // 2026-10-30 · groupe « Gestion commerciale » (ligne commercial-l8) ·
-    // une ligne de plus au repos.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 10, 23],
+    // une ligne de plus au repos, trois commandes (articles, collaborateurs,
+    // modes d'arrondi).
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 10, 25],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.

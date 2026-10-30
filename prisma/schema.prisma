@@ -900,6 +900,8 @@ model Tenant {
   /// Ligne commercial-l8 · gestion commerciale (articles, tarifs).
   articlesCommerciaux              ArticleCommercial[]
   tarifsClients                    TarifClient[]
+  modesArrondi                     ModeArrondi[]
+  collaborateurs                   Collaborateur[]
   mouvementsStock                  MouvementStock[]
   consignations                    Consignation[]
   EntitePerimetreConsolidation     EntitePerimetreConsolidation[]
@@ -3099,6 +3101,22 @@ model Tiers {
   /// Ligne commercial-l8 · prix et remises propres à ce client.
   tarifsClients               TarifClient[]
 
+  /// Ligne commercial-l8, fonction 91 · le représentant du tiers, un
+  /// collaborateur vendeur (client, adhérent) ou acheteur (fournisseur).
+  representantId String?
+  representant   Collaborateur? @relation("RepresentantTiers", fields: [representantId], references: [id], onDelete: Restrict)
+
+  /// Ligne commercial-l8, fonction 25 · la devise habituelle du tiers,
+  /// PROPOSÉE sur la ligne de saisie de ses comptes, jamais imposée · la
+  /// comptabilité reste tenue en francs (loi n° 23/053, art. 141, 1°), la ligne
+  /// en devise porte ses francs, sa devise et son cours (F49).
+  deviseId String?
+  devise   Devise? @relation("DeviseTiers", fields: [deviseId], references: [id], onDelete: Restrict)
+
+  /// Ligne commercial-l8, fonction 30 · l'encours maximum du client, en
+  /// francs · AVERTI à la vente, jamais refusé (`commercial/encours-client.ts`).
+  encoursMaximum Decimal? @db.Decimal(18, 2)
+
   @@unique([tenantId, code])
   // L'agrégation du groupe interroge les tiers PAR CELLULE · sans cet index
   // elle balaie toute la table des tiers de chaque dossier à chaque agrégat.
@@ -3110,6 +3128,8 @@ model Tiers {
   @@index([modeleImpressionExtraitId])
   @@index([modeleImpressionReglementId])
   @@index([modeleImpressionRappelId])
+  @@index([representantId])
+  @@index([deviseId])
   @@map("tiers")
 }
 
@@ -4362,6 +4382,8 @@ model Devise {
   // Arrêtés de caisse et plafonds d'encaisse dans cette devise (ligne microfina-m2).
   arretesCaisse    ArreteCaisse[]
   plafondsEncaisse PlafondEncaisse[]
+  // Tiers dont c'est la devise habituelle (ligne commercial-l8, fonction 25).
+  tiers            Tiers[]           @relation("DeviseTiers")
 
   @@unique([tenantId, code])
   @@map("devises")
@@ -7938,7 +7960,18 @@ model LigneFacture {
   tauxApplique Decimal? @db.Decimal(5, 2)
   montantTva   Decimal  @default(0) @db.Decimal(18, 2)
 
+  /// Ligne commercial-l8 · l'article vendu ou acheté, facultatif · il a
+  /// proposé désignation, prix et taux, la ligne garde ce qui a été porté. Un
+  /// article qui a servi ne se supprime plus (RESTRICT), il se met en sommeil.
+  articleId String?
+  article   ArticleCommercial? @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  /// La remise en pour cent portée SUR LA FACTURE · sa mention exclut la remise
+  /// de la base de la taxe (O.-L. n° 10/001, art. 29 ; décret n° 011/42,
+  /// art. 79) ; le montant hors taxes de la ligne est déjà net de la remise.
+  remisePourcent Decimal? @db.Decimal(5, 2)
+
   @@unique([factureId, ordre])
+  @@index([articleId])
   @@map("lignes_facture")
 }
 
@@ -8228,10 +8261,16 @@ model ArticleCommercial {
   articleStockId String?       @unique
   articleStock   ArticleStock? @relation(fields: [articleStockId], references: [id], onDelete: Restrict)
 
+  /// Le mode d'arrondi du prix net proposé (fonction 94) · facultatif, à
+  /// défaut le centime le plus proche (`commercial/arrondi.ts`).
+  modeArrondiId String?
+  modeArrondi   ModeArrondi? @relation(fields: [modeArrondiId], references: [id], onDelete: Restrict)
+
   /// Un article qui a servi ne se supprime pas · il se met en sommeil.
   actif Boolean @default(true)
 
   tarifs TarifClient[]
+  lignesFacture LigneFacture[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -8242,7 +8281,73 @@ model ArticleCommercial {
   @@index([compteVenteId])
   @@index([compteAchatId])
   @@index([tauxTvaId])
+  @@index([modeArrondiId])
   @@map("articles_commerciaux")
+}
+
+enum MethodeArrondi {
+  PROCHE
+  SUPERIEUR
+  INFERIEUR
+}
+
+/// LIGNE commercial-l8, fonction 94 · UN MODE D'ARRONDI DU PRIX PROPOSÉ (Sage,
+/// P_ARRONDI). Aucun texte ne fixe l'arrondi d'un prix · convention du dossier,
+/// qui ne touche jamais la taxe ni un total (`commercial/arrondi.ts`).
+model ModeArrondi {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  intitule String         @db.VarChar(35)
+  methode  MethodeArrondi
+  /// Le pas, en francs, au centime (0,01 au moins).
+  pas      Decimal        @db.Decimal(18, 2)
+  actif    Boolean        @default(true)
+
+  articles ArticleCommercial[]
+
+  createdAt DateTime @default(now())
+  createdBy String
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, intitule])
+  @@map("modes_arrondi")
+}
+
+/// LIGNE commercial-l8, fonction 91 · UN COLLABORATEUR ET SES RÔLES
+/// COMMERCIAUX (Sage, F_COLLABORATEUR · vendeur, caissier, acheteur,
+/// contrôleur, financier, chargé de recouvrement). Une STRUCTURE · aucun
+/// texte ne l'impose, aucun droit d'accès n'en découle (les droits restent
+/// ceux de l'utilisateur). Le représentant d'un tiers se choisit parmi eux.
+model Collaborateur {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  nom       String  @db.VarChar(35)
+  prenom    String? @db.VarChar(35)
+  fonction  String? @db.VarChar(35)
+  telephone String? @db.VarChar(30)
+  email     String? @db.VarChar(120)
+
+  vendeur      Boolean @default(false)
+  caissier     Boolean @default(false)
+  acheteur     Boolean @default(false)
+  controleur   Boolean @default(false)
+  financier    Boolean @default(false)
+  recouvrement Boolean @default(false)
+
+  actif Boolean @default(true)
+
+  tiersRepresentes Tiers[] @relation("RepresentantTiers")
+
+  createdAt DateTime @default(now())
+  createdBy String
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, actif])
+  @@map("collaborateurs")
 }
 
 /// UN PRIX OU UNE REMISE PROPRE À UN CLIENT · proposé à la ligne, jamais

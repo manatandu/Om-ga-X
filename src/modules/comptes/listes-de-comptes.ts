@@ -142,6 +142,7 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  * plan »).
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
+  '/tiers/devises-des-comptes': 'devise habituelle du tiers de chaque compte rattaché (ligne commercial-l8, fonction 25), proposée en saisie · aucun compte à choisir',
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
   '/interrogation-compte/:compteId':
     "interrogation du compte déjà choisi dans la saisie (ligne gl-saisie, fonction 13), son solde et ses dernières lignes, jamais une liste",

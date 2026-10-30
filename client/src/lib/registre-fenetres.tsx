@@ -74,6 +74,8 @@ const PersonnelPage = lazy(() => import('../pages/PersonnelPage').then((m) => ({
 const MagasinPage = lazy(() => import('../pages/MagasinPage').then((m) => ({ default: m.MagasinPage })));
 // Ligne commercial-l8 · la gestion commerciale.
 const ArticlesCommerciauxPage = lazy(() => import('../pages/ArticlesCommerciauxPage').then((m) => ({ default: m.ArticlesCommerciauxPage })));
+const CollaborateursPage = lazy(() => import('../pages/CollaborateursPage').then((m) => ({ default: m.CollaborateursPage })));
+const ModesArrondiPage = lazy(() => import('../pages/ModesArrondiPage').then((m) => ({ default: m.ModesArrondiPage })));
 const EmballagesPage = lazy(() => import('../pages/EmballagesPage').then((m) => ({ default: m.EmballagesPage })));
 const CircularisationPage = lazy(() => import('../pages/CircularisationPage').then((m) => ({ default: m.CircularisationPage })));
 const FaiblessesPage = lazy(() => import('../pages/FaiblessesPage').then((m) => ({ default: m.FaiblessesPage })));
@@ -463,6 +465,20 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Articles et tarifs',
     titreCourt: 'Articles',
     rendre: () => <ArticlesCommerciauxPage />,
+  },
+  {
+    // Ligne commercial-l8, fonction 91 · ouvert aux deux référentiels.
+    motif: /^\/collaborateurs$/,
+    titre: 'Collaborateurs',
+    titreCourt: 'Collaborateurs',
+    rendre: () => <CollaborateursPage />,
+  },
+  {
+    // Ligne commercial-l8, fonction 94 · ouvert aux deux référentiels.
+    motif: /^\/modes-arrondi$/,
+    titre: "Modes d'arrondi",
+    titreCourt: 'Arrondis',
+    rendre: () => <ModesArrondiPage />,
   },
   {
     // AUCUN `referentielsApplicables` · les deux textes décrivent la

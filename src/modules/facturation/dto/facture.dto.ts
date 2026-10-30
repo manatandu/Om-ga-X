@@ -49,6 +49,20 @@ export class LigneFactureDto {
   @IsNumber()
   @Min(0)
   montantTva?: number;
+
+  /** L'article qui a proposé la ligne (ligne commercial-l8) · un article de ce dossier. */
+  @IsOptional()
+  @IsUUID()
+  articleId?: string;
+
+  /**
+   * La remise portée sur la facture, en pour cent (ligne commercial-l8) · le
+   * montant hors taxes est déjà net de la remise ; la mentionner la sort de
+   * la base de la taxe (O.-L. n° 10/001, art. 29).
+   */
+  @IsOptional()
+  @IsNumber()
+  remisePourcent?: number;
 }
 
 export class EnregistrerFactureDto {

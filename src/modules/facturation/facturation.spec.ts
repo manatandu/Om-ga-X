@@ -940,3 +940,41 @@ describe("Art. 97 bis · le choix du barème lit la liste partagée", () => {
     // présence (un appel, une valeur servie), jamais une absence de mot.
   });
 });
+
+describe('ligne commercial-l8 · l’article, la remise et l’encours du client à la vente', () => {
+  it('un article d’un autre dossier n’existe pas, une remise de cent pour cent non plus', async () => {
+    const { svc, prisma, create } = service();
+    (prisma as Faux).articleCommercial = { findMany: jest.fn().mockResolvedValue([]) };
+    await expect(svc.enregistrer('t', dto({ lignes: [{ designation: 'Ciment', quantite: 1, prixUnitaire: 10, montantHT: 10, articleId: 'a-voisin' }] }) as never)).rejects.toThrow(/Article introuvable/);
+    await expect(svc.enregistrer('t', dto({ lignes: [{ designation: 'Ciment', quantite: 1, prixUnitaire: 10, montantHT: 0, remisePourcent: 100 }] }) as never)).rejects.toThrow(/Ligne 1 · La remise/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('la remise et l’article suivent la ligne enregistrée', async () => {
+    const { svc, prisma, create } = service();
+    (prisma as Faux).articleCommercial = { findMany: jest.fn().mockResolvedValue([{ id: 'a1' }]) };
+    await svc.enregistrer('t', dto({ lignes: [{ designation: 'Ciment', quantite: 2, prixUnitaire: 30_000, montantHT: 54_000, remisePourcent: 10, articleId: 'a1' }] }) as never);
+    const ligne = (((create.mock.calls[0][0] as Faux).data as Faux).lignes as Faux).create as Faux[];
+    expect(String(ligne[0].remisePourcent)).toBe('10');
+    expect(ligne[0].articleId).toBe('a1');
+  });
+
+  it('un client à encours maximum · la vente passe, et un échec de lecture se dit au lieu d’un silence', async () => {
+    const { svc, prisma, create } = service();
+    (prisma.tiers as Faux).findFirst = jest
+      .fn()
+      .mockResolvedValueOnce({ nom: 'Client SARL', numeroImpot: null, adresse: null, ville: null, encoursMaximum: new Prisma.Decimal(1000) })
+      .mockRejectedValueOnce(new Error('base injoignable'));
+    const r = (await svc.enregistrer('t', dto({ tiersId: 'c1' }) as never)) as Faux;
+    expect(create).toHaveBeenCalled();
+    expect(r.avertissementEncours).toMatch(/non calculé · base injoignable/);
+  });
+
+  it('sans encours maximum, rien n’est lu ni dit', async () => {
+    const { svc, prisma } = service();
+    (prisma.tiers as Faux).findFirst = jest.fn().mockResolvedValue({ nom: 'Client SARL', numeroImpot: null, adresse: null, ville: null, encoursMaximum: null });
+    const r = (await svc.enregistrer('t', dto({ tiersId: 'c1' }) as never)) as Faux;
+    expect(r.avertissementEncours).toBeUndefined();
+    expect((prisma.tiers as Faux).findFirst).toHaveBeenCalledTimes(1);
+  });
+});

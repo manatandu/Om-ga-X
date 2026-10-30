@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsNumberString, IsNumber, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
 /**
@@ -17,6 +17,8 @@ export class CreerArticleCommercialDto {
   @IsOptional() @IsNumber() prixVenteHT?: number | null;
   @IsOptional() @IsNumber() prixAchatHT?: number | null;
   @IsOptional() @IsUUID() articleStockId?: string | null;
+  /** Le mode d'arrondi du prix net proposé (fonction 94) · null le retire. */
+  @IsOptional() @IsUUID() modeArrondiId?: string | null;
 }
 
 export class ModifierArticleCommercialDto {
@@ -29,6 +31,8 @@ export class ModifierArticleCommercialDto {
   @IsOptional() @IsNumber() prixVenteHT?: number | null;
   @IsOptional() @IsNumber() prixAchatHT?: number | null;
   @IsOptional() @IsUUID() articleStockId?: string | null;
+  /** Le mode d'arrondi du prix net proposé (fonction 94) · null le retire. */
+  @IsOptional() @IsUUID() modeArrondiId?: string | null;
   @FacultatifNonNul('Un article est actif ou en sommeil · omettez le champ, ou portez true ou false.') @IsBoolean() actif?: boolean;
 }
 
@@ -50,4 +54,10 @@ export class PropositionPrixDto {
   @IsUUID() articleId!: string;
   @IsOptional() @IsUUID() tiersId?: string;
   @IsOptional() @IsIn(['VENTE', 'ACHAT']) sens?: 'VENTE' | 'ACHAT';
+}
+
+/** L'encours d'un client (fonction 30) · à une date, avec la vente en préparation. */
+export class EncoursClientDto {
+  @IsOptional() @IsDateString({}, { message: 'La date se saisit AAAA-MM-JJ.' }) date?: string;
+  @IsOptional() @IsNumberString({}, { message: 'La vente en cours est un montant en chiffres.' }) venteEnCours?: string;
 }

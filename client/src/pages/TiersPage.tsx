@@ -37,6 +37,8 @@ import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
 import { libelleMode, modesProposables, type ModeReglement } from '../lib/modes-reglement';
 import { LONGUEUR_QUALITE, QUALITES_PROPOSEES, qualiteAEnvoyer } from '../lib/qualite-tiers';
 import { champsReprisHorsFormulaire, nonReprisEnClair, type CopieDuTiers } from '../lib/duplication-tiers';
+import { MONNAIE_DE_TENUE } from '../lib/ligne-en-devise';
+import { lireNombre, nomCollaborateur, roleExigePour, type Collaborateur } from '../lib/gestion-commerciale';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -217,6 +219,11 @@ export function TiersPage() {
   // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · null tant qu'ils ne sont pas lus.
   const [modes, setModes] = useState<ModeReglement[] | null>(null);
   const [erreurModes, setErreurModes] = useState<string | null>(null);
+  // Ligne commercial-l8 · collaborateurs (représentant) et devises du dossier,
+  // lus une fois ; un échec se dit sur la fiche.
+  const [collaborateurs, setCollaborateurs] = useState<Collaborateur[] | null>(null);
+  const [devisesLues, setDevisesLues] = useState<{ id: string; code: string; estActive: boolean }[] | null>(null);
+  const [erreurCommerciale, setErreurCommerciale] = useState<string | null>(null);
   // Liste de choix (comptes de classe 4 retenus ou utilisés) · null tant qu'elle n'est pas lue.
   const [comptesLus, setComptesLus] = useState<Compte[] | null>(null);
   const [erreurComptes, setErreurComptes] = useState<string | null>(null);
@@ -332,6 +339,16 @@ export function TiersPage() {
         setErreurModes(null);
       },
       (err) => setErreurModes(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
+    Promise.all([
+      api.get<{ collaborateurs: Collaborateur[] }>('/commercial/collaborateurs'),
+      api.get<{ id: string; code: string; estActive: boolean }[]>('/devises'),
+    ]).then(
+      ([c, d]) => {
+        setCollaborateurs(c.collaborateurs);
+        setDevisesLues(d.filter((x) => x.code.toUpperCase() !== MONNAIE_DE_TENUE));
+      },
+      (err) => setErreurCommerciale(err instanceof ApiError ? err.message : 'serveur injoignable'),
     );
   }, []);
 
@@ -646,6 +663,9 @@ export function TiersPage() {
         | 'celluleGroupeId'
         | 'modeleReglementId'
         | 'modeReglementId'
+        | 'representantId'
+        | 'deviseId'
+        | 'encoursMaximum'
         | 'validationAutomatiqueEcheances'
         | 'qualite'
         | 'autoriseTvaDebits'
@@ -1117,6 +1137,16 @@ export function TiersPage() {
                     {erreurModes && <span className="block text-danger text-[11px]">Modes illisibles · {erreurModes}</span>}
                   </span>
                 )}
+                <FicheCommercialeDuTiers
+                  key={tiersSelectionne.id}
+                  tiers={tiersSelectionne}
+                  estAdmin={estAdmin}
+                  collaborateurs={collaborateurs}
+                  devises={devisesLues}
+                  erreur={erreurCommerciale}
+                  enregistrer={(d) => enregistrerChamp(tiersSelectionne, d)}
+                  signaler={setErreur}
+                />
                 {tiersSelectionne.modeleReglementId && (
                   <>
                     <span />
@@ -1844,5 +1874,126 @@ export function TiersPage() {
         </PortailModale>
       )}
     </div>
+  );
+}
+
+/**
+ * LA FICHE COMMERCIALE DU TIERS (ligne commercial-l8) · représentant
+ * (fonction 91), devise habituelle (25) et encours maximum d'un client (30).
+ * Tenue par l'administrateur, comme le reste de la structure du tiers ; les
+ * refus sont ceux du serveur. Rangées dans la grille de la fiche, deux cellules
+ * par ligne.
+ */
+function FicheCommercialeDuTiers(p: {
+  tiers: Tiers;
+  estAdmin: boolean;
+  collaborateurs: Collaborateur[] | null;
+  devises: { id: string; code: string; estActive: boolean }[] | null;
+  erreur: string | null;
+  enregistrer: (d: Partial<Pick<Tiers, 'representantId' | 'deviseId' | 'encoursMaximum'>>) => Promise<boolean>;
+  signaler: (m: string) => void;
+}) {
+  const t = p.tiers;
+  // La saisie en cours de l'encours · propre à la fiche ouverte (clé par tiers).
+  const [encoursSaisi, setEncoursSaisi] = useState<string | null>(null);
+  const role = roleExigePour(t.type);
+  const proposables = (p.collaborateurs ?? []).filter((c) => (c.actif && role && c[role]) || c.id === t.representantId);
+  const representant = p.collaborateurs?.find((c) => c.id === t.representantId);
+  const devise = p.devises?.find((d) => d.id === t.deviseId);
+  const client = t.type === 'CLIENT' || t.type === 'ADHERENT';
+  const encoursActuel = t.encoursMaximum === null || t.encoursMaximum === undefined ? '' : String(Number(t.encoursMaximum));
+  const valeurEncours = encoursSaisi ?? encoursActuel;
+  const poserEncours = async () => {
+    if (encoursSaisi === null || encoursSaisi === encoursActuel) return;
+    const n = lireNombre(encoursSaisi);
+    if (n === undefined) {
+      p.signaler('L’encours maximum se saisit en chiffres, la virgule pour les décimales (« 500.000 » est ambigu).');
+      return;
+    }
+    if (await p.enregistrer({ encoursMaximum: n })) setEncoursSaisi(null);
+  };
+  return (
+    <>
+      {role && (
+        <>
+          <span className="text-text-dim text-right">Représentant :</span>
+          {p.estAdmin && p.collaborateurs ? (
+            <span>
+              <select
+                aria-label="Représentant du tiers"
+                value={t.representantId ?? ''}
+                onChange={(e) => void p.enregistrer({ representantId: e.target.value || null })}
+                className="border border-border px-1.5 py-0.5 bg-surface"
+              >
+                <option value="">Aucun représentant</option>
+                {proposables.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {nomCollaborateur(c)}
+                    {c.actif ? '' : ' (en sommeil)'}
+                  </option>
+                ))}
+              </select>
+              {proposables.length === 0 && (
+                <span className="block text-text-dim text-[11px]">
+                  Aucun collaborateur {role === 'vendeur' ? 'vendeur' : 'acheteur'} · créez-le dans Structure &gt; Gestion commerciale &gt; Collaborateurs.
+                </span>
+              )}
+            </span>
+          ) : (
+            <span>
+              {representant ? nomCollaborateur(representant) : t.representantId ? 'collaborateur non lu' : 'aucun représentant'}
+              {p.erreur && <span className="block text-danger text-[11px]">Collaborateurs illisibles · {p.erreur}</span>}
+            </span>
+          )}
+        </>
+      )}
+      <span className="text-text-dim text-right">Devise habituelle :</span>
+      {p.estAdmin && p.devises ? (
+        <span>
+          <select
+            aria-label="Devise habituelle du tiers"
+            value={t.deviseId ?? ''}
+            onChange={(e) => void p.enregistrer({ deviseId: e.target.value || null })}
+            className="border border-border px-1.5 py-0.5 bg-surface"
+          >
+            <option value="">Francs (aucune devise)</option>
+            {p.devises
+              .filter((d) => d.estActive || d.id === t.deviseId)
+              .map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.code}
+                  {d.estActive ? '' : ' (en sommeil)'}
+                </option>
+              ))}
+          </select>
+        </span>
+      ) : (
+        <span>
+          {devise ? devise.code : t.deviseId ? 'devise non lue' : 'francs'}
+          {p.erreur && <span className="block text-danger text-[11px]">Devises illisibles · {p.erreur}</span>}
+        </span>
+      )}
+      {client && (
+        <>
+          <span className="text-text-dim text-right">Encours maximum :</span>
+          {p.estAdmin ? (
+            <input
+              aria-label="Encours maximum du client"
+              inputMode="decimal"
+              placeholder="aucun"
+              value={valeurEncours}
+              onChange={(e) => setEncoursSaisi(e.target.value)}
+              onBlur={() => void poserEncours()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void poserEncours();
+              }}
+              className="border border-border px-1.5 py-0.5 w-[160px] text-right"
+            />
+          ) : (
+            <span>{encoursActuel ? montant(Number(encoursActuel)) : 'aucun'}</span>
+          )}
+        </>
+      )}
+    </>
   );
 }

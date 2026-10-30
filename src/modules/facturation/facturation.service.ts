@@ -2,6 +2,8 @@ import { estFactureVisee, nommerAuteur } from '../comptabilite/circuit-visa';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { NatureFacture, Prisma, SensFacture, StatutEcriture } from '@prisma/client';
+import { EncoursClientService } from '../commercial/encours-client.service';
+import { motifRefusRemise } from '../commercial/articles';
 import { PrismaService } from '../../common/prisma.service';
 import { EmettreNoteDeCreditDto, EnregistrerFactureDto } from './dto/facture.dto';
 import {
@@ -254,6 +256,9 @@ export class FacturationService {
             imposable: l.imposable,
             tauxApplique: nombre(l.tauxApplique),
             montantTva: nombre(l.montantTva),
+            // Ligne commercial-l8 · la remise portée sur la facture (art. 29).
+            remisePourcent: nombre(l.remisePourcent),
+            articleId: l.articleId,
           })),
           totaux: totauxFacture(v),
           mentions: verifierMentions(v, morale, {
@@ -291,12 +296,14 @@ export class FacturationService {
     let contrepartieNom = dto.contrepartieNom?.trim() ?? '';
     let contrepartieAdresse = dto.contrepartieAdresse?.trim() || null;
     let contrepartieNumeroImpot = dto.contrepartieNumeroImpot?.trim() || null;
+    let encoursMaximumPose = false;
     if (dto.tiersId) {
       const tiers = await this.prisma.tiers.findFirst({
         where: { id: dto.tiersId, tenantId },
-        select: { nom: true, numeroImpot: true, adresse: true, ville: true },
+        select: { nom: true, numeroImpot: true, adresse: true, ville: true, encoursMaximum: true },
       });
       if (!tiers) throw new NotFoundException('Tiers introuvable dans ce dossier.');
+      encoursMaximumPose = tiers.encoursMaximum !== null && tiers.encoursMaximum !== undefined;
       contrepartieNom = contrepartieNom || tiers.nom;
       contrepartieNumeroImpot = contrepartieNumeroImpot ?? tiers.numeroImpot;
       // ADRESSE RECOPIÉE À LA DATE DE LA PIÈCE, comme le nom · ce que la fiche
@@ -322,6 +329,20 @@ export class FacturationService {
     if (idsTaux.length) {
       const trouves = await this.prisma.tauxTva.findMany({ where: { id: { in: idsTaux }, tenantId }, select: { id: true } });
       if (trouves.length !== idsTaux.length) throw new NotFoundException('Taux de taxe introuvable dans ce dossier.');
+    }
+
+    // L'ARTICLE ET LA REMISE D'UNE LIGNE (ligne commercial-l8) · un article
+    // d'un autre dossier n'existe pas (la ligne n'a pas de tenantId, la garde
+    // de cloisonnement ne voit pas le lien), et la remise est un pourcentage
+    // de 0 à moins de 100, comme le tarif du client.
+    for (const [i, l] of dto.lignes.entries()) {
+      const motif = motifRefusRemise(l.remisePourcent);
+      if (motif) throw new BadRequestException(`Ligne ${i + 1} · ${motif}`);
+    }
+    const idsArticles = [...new Set(dto.lignes.map((l) => l.articleId).filter((x): x is string => !!x))];
+    if (idsArticles.length) {
+      const trouves = await this.prisma.articleCommercial.findMany({ where: { id: { in: idsArticles }, tenantId }, select: { id: true } });
+      if (trouves.length !== idsArticles.length) throw new NotFoundException('Article introuvable dans ce dossier.');
     }
 
     if (dto.ecritureId) {
@@ -391,6 +412,8 @@ export class FacturationService {
             tauxTvaId: l.tauxTvaId ?? null,
             tauxApplique: l.tauxApplique === undefined ? null : new Prisma.Decimal(l.tauxApplique),
             montantTva: new Prisma.Decimal(l.montantTva ?? 0),
+            articleId: l.articleId ?? null,
+            remisePourcent: l.remisePourcent === undefined ? null : new Prisma.Decimal(l.remisePourcent),
           })),
         },
       },
@@ -398,8 +421,21 @@ export class FacturationService {
     });
 
     const v = this.verifiable(facture);
+    // L'ENCOURS MAXIMUM DU CLIENT, AVERTI À LA VENTE (ligne commercial-l8,
+    // fonction 30) · jamais un refus, et la facture est déjà enregistrée. Une
+    // lecture qui échoue se DIT, elle ne fait ni tomber la facture ni passer
+    // l'encours pour respecté.
+    let encours: string | null = null;
+    if (facture.sens === SensFacture.VENTE && dto.tiersId && encoursMaximumPose) {
+      try {
+        encours = (await new EncoursClientService(this.prisma).encours(tenantId, dto.tiersId, dateFacture)).avertissement;
+      } catch (e) {
+        encours = `Encours du client non calculé · ${e instanceof Error ? e.message : 'lecture impossible'}. L'encours maximum n'a pas été confronté.`;
+      }
+    }
     return {
       id: facture.id,
+      ...(encours ? { avertissementEncours: encours } : {}),
       totaux: totauxFacture(v),
       mentions: verifierMentions(v, this.estPersonneMorale(t), {
         sensVente: facture.sens === SensFacture.VENTE,
@@ -546,6 +582,10 @@ export class FacturationService {
               tauxTvaId: l.tauxTvaId,
               tauxApplique: l.tauxApplique,
               montantTva: l.montantTva,
+              // L'article et la remise suivent la ligne annulée · la note la
+              // reprend telle qu'elle a été facturée.
+              articleId: l.articleId,
+              remisePourcent: l.remisePourcent,
             })),
           },
         },

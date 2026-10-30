@@ -1,4 +1,5 @@
 import { ClasseCompte, TypeCompteDetailTotal, TypeTiers } from '@prisma/client';
+import { prixNetArrondi, type MethodeArrondi } from './arrondi';
 
 /**
  * LIGNE commercial-l8 · RÈGLES PURES DES ARTICLES ET DES TARIFS.
@@ -94,16 +95,24 @@ export type SourcePrix = 'TARIF_CLIENT' | 'PRIX_DE_BASE' | 'AUCUN';
  * cas. PROPOSÉ, jamais imposé · la ligne garde le prix que le cabinet porte,
  * celui que les parties ont convenu (AUDCG art. 263). Sans prix, rien n'est
  * deviné et la source le dit.
+ *
+ * LE PRIX NET UNITAIRE (prix moins la remise) est arrondi au mode de l'article
+ * (fonction 94, `arrondi.ts`), sinon au centime le plus proche · c'est lui que
+ * la quantité multiplie pour le montant hors taxes de la ligne, celui qui
+ * FIGURE sur la facture et fait la base de la taxe (O.-L. n° 10/001, art. 29).
  */
 export function prixPropose(
   base: number | null,
   tarif: { prixHT: number | null; remisePourcent: number | null } | null,
-): { prixUnitaireHT: number | null; remisePourcent: number; source: SourcePrix } {
+  mode: { methode: MethodeArrondi; pas: number } | null = null,
+): { prixUnitaireHT: number | null; remisePourcent: number; prixNetUnitaireHT: number | null; source: SourcePrix } {
   const propre = tarif?.prixHT ?? null;
   const prix = propre ?? base;
+  const remisePourcent = tarif?.remisePourcent ?? 0;
   return {
     prixUnitaireHT: prix,
-    remisePourcent: tarif?.remisePourcent ?? 0,
+    remisePourcent,
+    prixNetUnitaireHT: prix === null ? null : prixNetArrondi(prix, remisePourcent, mode),
     source: propre !== null ? 'TARIF_CLIENT' : base !== null ? 'PRIX_DE_BASE' : 'AUCUN',
   };
 }

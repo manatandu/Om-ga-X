@@ -29,11 +29,13 @@ const SELECT_ARTICLE = {
   prixVenteHT: true,
   prixAchatHT: true,
   articleStockId: true,
+  modeArrondiId: true,
   actif: true,
   compteVente: { select: { numero: true, intitule: true } },
   compteAchat: { select: { numero: true, intitule: true } },
   tauxTva: { select: { code: true, taux: true } },
   articleStock: { select: { code: true, designation: true, uniteMesure: true } },
+  modeArrondi: { select: { intitule: true, methode: true, pas: true } },
 } satisfies Prisma.ArticleCommercialSelect;
 
 type ArticleLu = Prisma.ArticleCommercialGetPayload<{ select: typeof SELECT_ARTICLE }>;
@@ -44,6 +46,7 @@ function vueArticle(a: ArticleLu) {
     prixVenteHT: a.prixVenteHT === null ? null : Number(a.prixVenteHT),
     prixAchatHT: a.prixAchatHT === null ? null : Number(a.prixAchatHT),
     tauxTva: a.tauxTva ? { code: a.tauxTva.code, taux: Number(a.tauxTva.taux) } : null,
+    modeArrondi: a.modeArrondi ? { intitule: a.modeArrondi.intitule, methode: a.modeArrondi.methode, pas: Number(a.modeArrondi.pas) } : null,
     stocke: a.articleStockId !== null,
   };
 }
@@ -86,7 +89,7 @@ export class ArticlesCommerciauxService {
    */
   private async verifierLiens(
     tenantId: string,
-    cible: { compteVenteId: string | null; compteAchatId: string | null; tauxTvaId: string | null; articleStockId: string | null; unite: string; exonere: boolean },
+    cible: { compteVenteId: string | null; compteAchatId: string | null; tauxTvaId: string | null; articleStockId: string | null; modeArrondiId: string | null; unite: string; exonere: boolean },
     articleId: string | null,
   ) {
     const idsComptes = [cible.compteVenteId, cible.compteAchatId].filter((x): x is string => !!x);
@@ -122,6 +125,11 @@ export class ArticlesCommerciauxService {
       if (!taux) throw new NotFoundException('Taux de taxe introuvable dans ce dossier.');
       if (!taux.estActif) throw new BadRequestException(`Le taux ${taux.code} est en sommeil · il ne se propose plus.`);
     }
+    if (cible.modeArrondiId) {
+      const mode = await this.prisma.modeArrondi.findFirst({ where: { id: cible.modeArrondiId, tenantId }, select: { actif: true, intitule: true } });
+      if (!mode) throw new NotFoundException('Mode d’arrondi introuvable dans ce dossier.');
+      if (!mode.actif) throw new BadRequestException(`Le mode d’arrondi « ${mode.intitule} » est en sommeil · il ne se donne plus à un article.`);
+    }
     if (cible.articleStockId) {
       const fiche = await this.prisma.articleStock.findFirst({
         where: { id: cible.articleStockId, tenantId },
@@ -154,6 +162,7 @@ export class ArticlesCommerciauxService {
       compteAchatId: dto.compteAchatId ?? null,
       tauxTvaId: dto.tauxTvaId ?? null,
       articleStockId: dto.articleStockId ?? null,
+      modeArrondiId: dto.modeArrondiId ?? null,
       unite: dto.unite.trim(),
       exonere: dto.exonere ?? false,
     };
@@ -200,6 +209,7 @@ export class ArticlesCommerciauxService {
       compteAchatId: garde(dto.compteAchatId, actuel.compteAchatId),
       tauxTvaId: garde(dto.tauxTvaId, actuel.tauxTvaId),
       articleStockId: garde(dto.articleStockId, actuel.articleStockId),
+      modeArrondiId: garde(dto.modeArrondiId, actuel.modeArrondiId),
       unite: (dto.unite ?? actuel.unite).trim(),
       exonere: dto.exonere ?? actuel.exonere,
     };
@@ -280,14 +290,28 @@ export class ArticlesCommerciauxService {
   /** Prix proposé pour une vente (tarif du client, sinon prix de base) ou un achat (prix d'achat de base). */
   async propositionPrix(tenantId: string, articleId: string, tiersId: string | undefined, sens: 'VENTE' | 'ACHAT') {
     const a = await this.lire(tenantId, articleId);
-    if (sens === 'ACHAT') return prixPropose(a.prixAchatHT, null);
+    const article = {
+      designation: a.designation,
+      unite: a.unite,
+      compteId: sens === 'ACHAT' ? a.compteAchatId : a.compteVenteId,
+      tauxTvaId: a.tauxTvaId,
+      exonere: a.exonere,
+      actif: a.actif,
+    };
+    // L'arrondi ne vaut que pour le prix que le dossier FIXE (la vente) · le
+    // prix d'achat est celui du fournisseur, recopié tel qu'il le facture.
+    if (sens === 'ACHAT') return { ...article, ...prixPropose(a.prixAchatHT, null) };
     const tarif = tiersId
       ? await this.prisma.tarifClient.findFirst({ where: { tenantId, articleId, tiersId }, select: { prixHT: true, remisePourcent: true } })
       : null;
-    return prixPropose(
-      a.prixVenteHT,
-      tarif ? { prixHT: tarif.prixHT === null ? null : Number(tarif.prixHT), remisePourcent: tarif.remisePourcent === null ? null : Number(tarif.remisePourcent) } : null,
-    );
+    return {
+      ...article,
+      ...prixPropose(
+        a.prixVenteHT,
+        tarif ? { prixHT: tarif.prixHT === null ? null : Number(tarif.prixHT), remisePourcent: tarif.remisePourcent === null ? null : Number(tarif.remisePourcent) } : null,
+        a.modeArrondi,
+      ),
+    };
   }
 
   async retirerTarif(tenantId: string, id: string) {

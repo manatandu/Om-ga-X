@@ -41,11 +41,17 @@ export type LigneImprimee = {
   tauxApplique?: number | null;
   montantTva?: number | null;
   imposable?: boolean;
+  /** La remise portée sur la pièce, en pour cent (ligne commercial-l8) · le montant HT en est déjà net. */
+  remisePourcent?: number | null;
 };
 
 /** Le tableau des lignes · colonnes de TVA seulement quand la pièce en porte. */
 export function TableauLignes({ lignes, avecTva }: { lignes: LigneImprimee[]; avecTva: boolean }) {
   const cellule = 'border border-black px-1.5 py-1';
+  // LA REMISE FIGURE SUR LA PIÈCE dès qu'une ligne en porte · c'est sa mention
+  // qui la sort de la base de la taxe (O.-L. n° 10/001, art. 29 ; décret
+  // n° 011/42, art. 79).
+  const avecRemise = lignes.some((l) => !!l.remisePourcent);
   return (
     <table className="w-full border-collapse mb-3">
       <thead>
@@ -53,6 +59,7 @@ export function TableauLignes({ lignes, avecTva }: { lignes: LigneImprimee[]; av
           <th className={`${cellule} text-left`}>Désignation</th>
           <th className={`${cellule} text-right`}>Quantité</th>
           <th className={`${cellule} text-right`}>Prix unitaire HT</th>
+          {avecRemise && <th className={`${cellule} text-right`}>Remise</th>}
           <th className={`${cellule} text-right`}>Montant HT</th>
           {avecTva && <th className={`${cellule} text-right`}>Taux TVA</th>}
           {avecTva && <th className={`${cellule} text-right`}>TVA</th>}
@@ -64,6 +71,7 @@ export function TableauLignes({ lignes, avecTva }: { lignes: LigneImprimee[]; av
             <td className={cellule}>{l.designation}</td>
             <td className={`${cellule} text-right`}>{l.quantite?.toLocaleString('fr-FR') ?? ''}</td>
             <td className={`${cellule} text-right`}>{fmt(l.prixUnitaire)}</td>
+            {avecRemise && <td className={`${cellule} text-right`}>{l.remisePourcent ? `${l.remisePourcent.toLocaleString('fr-FR')} %` : ''}</td>}
             <td className={`${cellule} text-right`}>{fmt(l.montantHT)}</td>
             {avecTva && (
               <td className={`${cellule} text-right`}>

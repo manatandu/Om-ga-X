@@ -5,7 +5,7 @@ import { Aide } from '../components/chrome/Aide';
 import { montant } from '../lib/montants';
 import { motifAucunCompteRetenu } from '../lib/comptes-proposes';
 import type { Compte, TauxTva, Tiers } from '../lib/types';
-import { lireNombre, type ArticleCommercial, type ListeArticlesCommerciaux, type ListeTarifs } from '../lib/gestion-commerciale';
+import { lireNombre, type ArticleCommercial, type ListeArticlesCommerciaux, type ListeTarifs, type ModeArrondi } from '../lib/gestion-commerciale';
 
 interface FicheStock {
   id: string;
@@ -32,6 +32,8 @@ export function ArticlesCommerciauxPage() {
   const [comptes, setComptes] = useState<Compte[] | null>(null);
   const [taux, setTaux] = useState<TauxTva[] | null>(null);
   const [fiches, setFiches] = useState<FicheStock[] | null>(null);
+  const [modes, setModes] = useState<ModeArrondi[] | null>(null);
+  const [modeArrondiId, setModeArrondiId] = useState('');
   const [erreurListes, setErreurListes] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -61,8 +63,10 @@ export function ArticlesCommerciauxPage() {
       api.get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL&retenus=true'),
       api.get<TauxTva[]>('/taux-tva'),
       api.get<{ articles: FicheStock[] }>('/magasin/articles'),
+      api.get<{ modes: ModeArrondi[] }>('/commercial/modes-arrondi'),
     ]).then(
-      ([c, t, f]) => {
+      ([c, t, f, m]) => {
+        setModes(m.modes.filter((x) => x.actif));
         setComptes(c);
         setTaux(t.filter((x) => x.estActif));
         setFiches(f.articles.filter((x) => x.actif));
@@ -118,6 +122,7 @@ export function ArticlesCommerciauxPage() {
         ...(pv === null ? {} : { prixVenteHT: pv }),
         ...(pa === null ? {} : { prixAchatHT: pa }),
         ...(articleStockId ? { articleStockId } : {}),
+        ...(modeArrondiId ? { modeArrondiId } : {}),
       });
       setReference('');
       setDesignation('');
@@ -157,7 +162,7 @@ export function ArticlesCommerciauxPage() {
         />
       </div>
       {erreurLecture && <div className="text-[11.5px] text-danger mb-2">{erreurLecture}</div>}
-      {erreurListes && <div className="text-[11.5px] text-danger mb-2">Comptes, taux ou fiches de stock illisibles · {erreurListes}</div>}
+      {erreurListes && <div className="text-[11.5px] text-danger mb-2">Comptes, taux, fiches de stock ou modes d’arrondi illisibles · {erreurListes}</div>}
       {erreur && <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-1.5 mb-2">{erreur}</div>}
       {info && <div role="status" className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-1.5 mb-2">{info}</div>}
 
@@ -240,7 +245,18 @@ export function ArticlesCommerciauxPage() {
               ))}
             </select>
           </label>
-          <div className="md:col-span-4 flex justify-end">
+          <label className="flex flex-col">
+            Arrondi du prix net
+            <select value={modeArrondiId} onChange={(e) => setModeArrondiId(e.target.value)} className="border border-border px-1 py-0.5 bg-surface">
+              <option value="">Au centime</option>
+              {modes?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.intitule}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="md:col-span-3 flex justify-end">
             <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1 rounded-full disabled:opacity-50">
               Créer l’article
             </button>

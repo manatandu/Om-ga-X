@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { RoleUtilisateur } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -6,8 +6,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ArticlesCommerciauxService } from './articles.service';
+import { EncoursClientService } from './encours-client.service';
 import {
   CreerArticleCommercialDto,
+  EncoursClientDto,
   ListerArticlesDto,
   ModifierArticleCommercialDto,
   PoserTarifClientDto,
@@ -28,7 +30,18 @@ import {
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('commercial')
 export class ArticlesCommerciauxController {
-  constructor(private readonly articles: ArticlesCommerciauxService) {}
+  constructor(
+    private readonly articles: ArticlesCommerciauxService,
+    private readonly encours: EncoursClientService,
+  ) {}
+
+  /** L'encours d'un client à une date (fonction 30) · une lecture, ouverte à tous les rôles qui voient le plan des tiers. */
+  @Get('encours/:tiersId')
+  encoursDuClient(@CurrentUser() user: AuthenticatedUser, @Param('tiersId') tiersId: string, @Query() q: EncoursClientDto) {
+    const vente = q.venteEnCours === undefined ? 0 : Number(q.venteEnCours);
+    if (!Number.isFinite(vente) || vente < 0) throw new BadRequestException('La vente en cours est un montant positif ou nul.');
+    return this.encours.encours(user.tenantId, tiersId, q.date ? new Date(`${q.date.slice(0, 10)}T00:00:00.000Z`) : undefined, vente);
+  }
 
   @Get('articles')
   lister(@CurrentUser() user: AuthenticatedUser, @Query() q: ListerArticlesDto) {
