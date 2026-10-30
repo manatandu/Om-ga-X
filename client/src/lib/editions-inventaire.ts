@@ -103,15 +103,41 @@ export function tableFichesVierges(
 
 // --- Procès-verbal d'inventaire ---------------------------------------------
 
+/**
+ * L'écart EN UNITÉS d'un bien du registre (ligne restes-l8-immos), servi par
+ * le serveur · « non compté » tant que rien n'est compté, jamais un manquant
+ * de tout le lot ; « · » pour une fiche qui n'est pas celle d'un bien.
+ */
+export function ecartUnitesImprime(u: EditionPvInventaire['releve'][number]['unites']): string {
+  if (!u) return ABSENT;
+  if (u.ecart === null) return 'Non compté';
+  if (u.ecart === 0) return 'Conforme';
+  const n = Math.abs(u.ecart).toLocaleString('fr-FR');
+  return u.ecart < 0 ? `Manquant ${n}` : `Excédent ${n}`;
+}
+
 export function tableReleve(e: EditionPvInventaire): Table {
   return {
-    colonnes: ['Désignation', 'Compte', 'Lieu', 'Unité', 'Quantité', 'Valeur d’inventaire', 'Pièce', 'Sous-commission'],
+    colonnes: [
+      'Désignation',
+      'Compte',
+      'Lieu',
+      'Unité',
+      'Quantité',
+      'Quantité au registre',
+      'Écart en unités',
+      'Valeur d’inventaire',
+      'Pièce',
+      'Sous-commission',
+    ],
     lignes: e.releve.map((l) => [
       l.designation,
       l.compte,
       l.lieu,
       texte(l.unite),
       quantiteImprimee(l.quantite),
+      l.unites ? quantiteImprimee(l.unites.attendue) : ABSENT,
+      ecartUnitesImprime(l.unites),
       montant(l.valeur),
       texte(l.piece),
       texte(l.sousCommission),

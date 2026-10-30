@@ -1,4 +1,5 @@
 import { DecisionEcartInventaire, ModeComparaisonCaisse, RoleMembreInventaire, StatutCampagneInventaire } from '@prisma/client';
+import { ecartEnUnites, MENTION_EXCEDENT_UNITES, type SensEcartUnites } from './ecart-en-unites';
 
 /**
  * LES ÉDITIONS DE L'INVENTAIRE (ligne A19, relevé CPCC C16) · fiches de
@@ -105,6 +106,14 @@ export interface FicheLue {
   referencePiece: string | null;
   sousCommissionId: string | null;
   compte: { numero: string; intitule: string };
+  /**
+   * Ligne restes-l8-immos · la quantité du registre recopiée sur la fiche
+   * (`quantiteAttendue`) et celle que le registre porte aujourd'hui · le PV dit
+   * l'écart EN UNITÉS comme l'écran (`ecart-en-unites.ts`), jamais un excédent
+   * créé (AUDCIF art. 43). Absentes, la fiche n'est pas celle d'un bien du registre.
+   */
+  quantiteAttendue?: number | null;
+  immobilisation?: { quantite: number } | null;
 }
 
 export interface EcartLu {
@@ -266,6 +275,11 @@ export interface LigneReleve {
   unite: string | null;
   /** Null · pas encore compté, jamais zéro. */
   quantite: number | null;
+  /**
+   * Ligne restes-l8-immos · l'écart EN UNITÉS d'un bien du registre, servi par
+   * la même règle que l'écran (`ecartEnUnites`) · `null` hors bien du registre.
+   */
+  unites: { attendue: number; ecart: number | null; sens: SensEcartUnites | null; mention: string } | null;
   /** Null · pas encore valorisé, jamais zéro. */
   valeur: number | null;
   piece: string | null;
@@ -368,6 +382,7 @@ export function editionPvInventaire(entree: {
     lieu: f.emplacement?.trim() || LIEU_NON_RENSEIGNE,
     unite: f.uniteMesure,
     quantite: nombreOuNull(f.quantiteComptee),
+    unites: unitesDeLaFiche(f),
     valeur: nombreOuNull(f.valeurInventaire),
     piece: f.referencePiece,
     sousCommission: f.sousCommissionId ? (nomSc.get(f.sousCommissionId) ?? null) : null,
@@ -439,6 +454,20 @@ export function editionPvInventaire(entree: {
   if (signataires.temoins.length === 0) mentions.push('Aucun témoin enregistré.');
   const nonComptees = releve.filter((l) => l.quantite === null).length;
   if (nonComptees > 0) mentions.push(`${nonComptees} fiche${nonComptees > 1 ? 's' : ''} sans quantité comptée.`);
+  // Ligne restes-l8-immos · l'écart en unités des biens du registre, dit sur le PV
+  // comme à l'écran · un manquant se qualifie et se sort depuis la fiche du bien,
+  // un excédent n'entre jamais au registre ni au bilan (AUDCIF art. 43).
+  const manquants = releve.filter((l) => l.unites?.sens === 'MANQUANT').length;
+  if (manquants > 0) {
+    mentions.push(
+      `${manquants} bien${manquants > 1 ? 's' : ''} du registre en manquant d'unités · la sous-commission qualifie ; ` +
+        "rien n'est passé d'office, la sortie des unités se fait depuis la fiche du bien.",
+    );
+  }
+  const excedents = releve.filter((l) => l.unites?.sens === 'EXCEDENT').length;
+  if (excedents > 0) {
+    mentions.push(`${excedents} bien${excedents > 1 ? 's' : ''} du registre en excédent d'unités · ${MENTION_EXCEDENT_UNITES}`);
+  }
   const nonValorisees = releve.filter((l) => l.valeur === null).length;
   if (nonValorisees > 0) mentions.push(`${nonValorisees} fiche${nonValorisees > 1 ? 's' : ''} sans valeur d'inventaire.`);
   if (!rapprochee) mentions.push('Écarts non encore rapprochés de la balance.');
@@ -459,6 +488,16 @@ export function editionPvInventaire(entree: {
     signataires,
     mentions,
   };
+}
+
+/** L'écart en unités d'une ligne du relevé · la règle de l'écran, rien de recalculé autrement. */
+function unitesDeLaFiche(f: FicheLue): LigneReleve['unites'] {
+  const e = ecartEnUnites({
+    quantiteAttendue: f.quantiteAttendue ?? null,
+    quantiteComptee: f.quantiteComptee,
+    quantiteRegistre: f.immobilisation?.quantite ?? null,
+  });
+  return e ? { attendue: e.attendue, ecart: e.ecart, sens: e.sens, mention: e.mention } : null;
 }
 
 // --- 3. Procès-verbal de comptage d'une caisse ----------------------------

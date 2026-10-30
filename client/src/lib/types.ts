@@ -4848,6 +4848,13 @@ export interface EditionPvInventaire {
     lieu: string;
     unite: string | null;
     quantite: number | null;
+    /** Ligne restes-l8-immos · l'écart en unités d'un bien du registre, servi ; `null` hors registre. */
+    unites?: {
+      attendue: number;
+      ecart: number | null;
+      sens: 'CONFORME' | 'MANQUANT' | 'EXCEDENT' | null;
+      mention: string;
+    } | null;
     valeur: number | null;
     piece: string | null;
     sousCommission: string | null;

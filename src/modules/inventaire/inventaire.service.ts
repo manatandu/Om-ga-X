@@ -1752,7 +1752,8 @@ export class InventaireService {
   private fichesPourEdition(tenantId: string, campagneId: string) {
     return this.prisma.ficheInventaire.findMany({
       where: { tenantId, campagneId },
-      include: { compte: { select: { numero: true, intitule: true } } },
+      // La quantité du bien au registre aujourd'hui · le PV dit l'écart en unités comme l'écran.
+      include: { compte: { select: { numero: true, intitule: true } }, immobilisation: { select: { quantite: true } } },
       orderBy: { designation: 'asc' },
     });
   }
