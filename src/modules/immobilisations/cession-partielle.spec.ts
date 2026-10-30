@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { motifRefusSortiePartielle, partDesUnites, resteDuLot, type FaitsDuLot } from './cession-partielle';
 import { estDepreciationAnterieure } from './transfert-groupe';
 
@@ -39,7 +41,6 @@ const FAITS: FaitsDuLot = {
   enService: true,
   quantite: 10,
   quantiteSortie: 3,
-  estComposant: false,
   composantsEnService: 0,
   unitesOeuvre: false,
   degressifFiscal: false,
@@ -51,8 +52,6 @@ const FAITS: FaitsDuLot = {
   demantelement: false,
   dotationDejaPassee: false,
   exerciceAnterieurNonDote: null,
-  repriseDejaPasseeCetExercice: false,
-  deprecie: false,
 };
 
 describe('les refus nommés, avec leur issue', () => {
@@ -82,9 +81,25 @@ describe('les refus nommés, avec leur issue', () => {
     expect(motifRefusSortiePartielle({ ...FAITS, demantelement: true })).toMatch(/démantèlement/);
   });
 
-  it('une seconde reprise de dépréciation dans le même exercice se refuse, sans dépréciation elle passe', () => {
-    expect(motifRefusSortiePartielle({ ...FAITS, deprecie: true, repriseDejaPasseeCetExercice: true })).toMatch(/exercice suivant/);
-    expect(motifRefusSortiePartielle({ ...FAITS, deprecie: false, repriseDejaPasseeCetExercice: true })).toBeNull();
+  it('point 4 · chaque refus gardé cite son texte et dit son issue', () => {
+    expect(motifRefusSortiePartielle({ ...FAITS, composantsEnService: 2 })).toMatch(/ch\. 4 § 1/);
+    expect(motifRefusSortiePartielle({ ...FAITS, unitesOeuvre: true })).toMatch(/art\. 45/);
+    expect(motifRefusSortiePartielle({ ...FAITS, degressifFiscal: true })).toMatch(/art\. 31 à 35/);
+    expect(motifRefusSortiePartielle({ ...FAITS, financeeParUnFonds: true })).toMatch(/ch\. 17/);
+    expect(motifRefusSortiePartielle({ ...FAITS, reevaluee: true })).toMatch(/ch\. 28 § 6/);
+    expect(motifRefusSortiePartielle({ ...FAITS, locationAcquisition: true })).toMatch(/bien entier/);
+    expect(motifRefusSortiePartielle({ ...FAITS, dotationDejaPassee: true })).toMatch(/fiche du compte 81/);
+  });
+
+  it('point 4 · une seconde reprise de dépréciation dans l’exercice est servie · la clé n’est plus unique pour elle seule', () => {
+    const sql = readFileSync(join(__dirname, '../../../prisma/migrations/20270243000000_sortie_partielle_cas_servis/migration.sql'), 'utf8');
+    expect(sql).toMatch(/CREATE UNIQUE INDEX[^;]+\("immobilisationId", "exerciceId", "nature"\)\s+WHERE "nature" <> 'CESSION_PARTIELLE'/);
+  });
+
+  it('point 4 · les unités d’un composant en lot restent un composant du même principal', () => {
+    const source = readFileSync(join(__dirname, 'immobilisation.service.ts'), 'utf8');
+    const corps = source.slice(source.indexOf('async sortirUnePartie('), source.indexOf('private async lotEntreParUnFonds('));
+    expect(corps).toContain('immobilisationPrincipaleId: lot.immobilisationPrincipaleId,');
   });
 });
 

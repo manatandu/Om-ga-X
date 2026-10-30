@@ -3870,6 +3870,21 @@ acte enregistré après la sortie sur le bien ou sur le lot (« annulez-le
 d'abord »), et pour une sortie d'avant la ligne un complément, un écart ou une
 reprise qui ne se rattachent pas d'office (rien n'est deviné).
 
+**Sortie partielle · les cas refusés tranchés par la loi (ligne
+restes-immos-budgets, point 4).** `cession-partielle.ts`, en tête · SERVIS ·
+le COMPOSANT EN LOT (AUDCIF Titre VIII ch. 4 § 3.1.4, « regrouper les éléments
+ainsi décomposés au sein d'une même immobilisation corporelle », les unités
+restant un composant du même principal) et la SECONDE REPRISE DE DÉPRÉCIATION
+du même exercice (fiche du compte 81, exclusions · chaque sortie reprend la
+part de ses unités, clé unique partielle hors `CESSION_PARTIELLE`, migration
+`20270243000000`). GARDÉS, motif et texte dits · principal qui porte des
+composants en service (ch. 4 § 1), unités d'œuvre (art. 45), dégressif et
+dérogatoire (loi n° 23/053, art. 31 à 35 ; fiche du compte 68), fonds ou
+subvention rattachée (ch. 17), réévaluation (ch. 28 § 6), location-acquisition,
+prix aléatoire et démantèlement (bien entier), dotation de l'exercice déjà
+passée (fiche du compte 81, le complément ne court que jusqu'à la sortie ·
+annuler, sortir, repasser), exercice antérieur ouvert non doté.
+
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,
 `FicheImmobilisationService`) · désignation, numéro d'inventaire et nature se

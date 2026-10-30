@@ -5851,7 +5851,7 @@ export class ImmobilisationService {
     if (!exercice) throw new BadRequestException('Exercice introuvable pour ce dossier');
     const regime = await this.regimeComptable(tenantId);
     const n = (x: unknown) => Number(x ?? 0);
-    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts, repriseCetExercice] = await Promise.all([
+    const [composantsEnService, nombreDerogatoires, nombreSubventions, reevaluee, contrat, anterieursOuverts] = await Promise.all([
       this.prisma.immobilisation.count({ where: { tenantId, immobilisationPrincipaleId: id, statut: StatutImmobilisation.EN_SERVICE } }),
       this.prisma.amortissementDerogatoire.count({ where: { tenantId, immobilisationId: id } }),
       this.prisma.subventionImmobilisation.count({ where: { tenantId, immobilisationId: id } }),
@@ -5861,10 +5861,6 @@ export class ImmobilisationService {
         where: { tenantId, dateFin: { lt: exercice.dateDebut }, statut: StatutExercice.OUVERT },
         select: { id: true, dateFin: true },
         orderBy: { dateFin: 'asc' },
-      }),
-      this.prisma.depreciationImmobilisation.findFirst({
-        where: { immobilisationId: id, exerciceId: exercice.id, nature: NatureMouvementDepreciation.CESSION_PARTIELLE },
-        select: { id: true },
       }),
     ]);
     const financeeParUnFonds = nombreSubventions > 0 || (await this.lotEntreParUnFonds(tenantId, lot.ecritureAcquisitionId, regime.referentiel));
@@ -5877,12 +5873,10 @@ export class ImmobilisationService {
     const nonDote = amortissable
       ? anterieursOuverts.find((e) => lot.dateMiseEnService! <= e.dateFin && !lot.dotations.some((d) => d.exerciceId === e.id))
       : undefined;
-    const depreciationNette = this.cumulDepreciation(lot.depreciations.map((d) => ({ sens: d.sens, montant: n(d.montant) })));
     const refus = motifRefusSortiePartielle({
       enService: lot.statut === StatutImmobilisation.EN_SERVICE,
       quantite: lot.quantite,
       quantiteSortie: dto.quantiteSortie,
-      estComposant: !!lot.immobilisationPrincipaleId,
       composantsEnService,
       unitesOeuvre: lot.modeAmortissement === ModeAmortissement.UNITES_DOEUVRE,
       degressifFiscal: lot.degressifFiscal,
@@ -5894,8 +5888,6 @@ export class ImmobilisationService {
       demantelement: lot.coutFuturDemantelement !== null && lot.coutFuturDemantelement !== undefined,
       dotationDejaPassee: lot.dotations.some((d) => d.exercice.dateDebut >= exercice.dateDebut),
       exerciceAnterieurNonDote: nonDote ? nonDote.dateFin.toISOString().slice(0, 10) : null,
-      repriseDejaPasseeCetExercice: !!repriseCetExercice,
-      deprecie: depreciationNette > EPSILON,
     });
     if (refus) throw new BadRequestException(refus);
 
@@ -5965,6 +5957,11 @@ export class ImmobilisationService {
           designation,
           quantite: dto.quantiteSortie,
           fractionDeId: lot.id,
+          // Point 4 · les unités d'un composant en lot restent un composant du
+          // même principal (AUDCIF Titre VIII ch. 4 § 1 et § 3.1.4).
+          immobilisationPrincipaleId: lot.immobilisationPrincipaleId,
+          typeComposant: lot.typeComposant,
+          justificationDecomposition: lot.justificationDecomposition,
           lieuId: lot.lieuId,
           sectionAnalytiqueId: lot.sectionAnalytiqueId,
           compteImmobilisationId: lot.compteImmobilisationId,

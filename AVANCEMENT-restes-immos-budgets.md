@@ -35,9 +35,19 @@ Branche de sauvegarde `travail/restes-immos-budgets`, partie de `origin/main`.
    vraie base · brouillard puis validée, entière puis partielle, à travers la
    clôture de 2025.
 
+4. **Cas refusés de la sortie partielle, tranchés par la loi** (`cession-partielle.ts`,
+   en tête, chaque décision avec son article ; migration `20270243000000`).
+   Servis · composant en lot (AUDCIF Titre VIII ch. 4 § 3.1.4), seconde reprise
+   de dépréciation du même exercice (fiche du compte 81, exclusions). Gardés ·
+   principal à composants en service (ch. 4 § 1), unités d'œuvre (art. 45),
+   dégressif et dérogatoire (loi n° 23/053, art. 31 à 35), fonds ou subvention
+   (ch. 17), réévaluation (ch. 28 § 6), location-acquisition, prix aléatoire,
+   démantèlement, dotation de l'exercice déjà passée (fiche du compte 81),
+   exercice antérieur ouvert non doté. Rejoué sur vraie base.
+
 ## Reste
 
-4. Cas refusés de la sortie partielle, tranchés par la loi.
+Relecture adverse, deux tours.
 
 ## Vérification
 

@@ -33,6 +33,15 @@
  *   revient à 10 unités, 1 000 000, dépréciation 100 000. Repassé, validé,
  *   la dotation du lot (122 500) refuse l'annulation ; annulée, la sortie
  *   s'annule en trois négatifs et le lot entier se dote de 175 000.
+ *
+ * POINT 4 · CAS SERVIS DE LA SORTIE PARTIELLE.
+ *   2025 · autocar 10 000 000 (10 ans) et son composant, quatre moteurs
+ *   2 000 000 (4 ans) ; lot de dix chaises déprécié de 100 000 ; clôture.
+ *   2026 · un moteur sort le 30/06 · part 500 000, cumul 125 000, complément
+ *   62 500, 812 = 312 500, et sa fiche reste un composant de l'autocar. Deux
+ *   sorties du lot de chaises le même exercice · 2/10 de 100 000 = 20 000,
+ *   puis 3/8 de 80 000 = 30 000 ; 7914 = 50 000 ; annulées à rebours, le lot
+ *   revient entier.
  */
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
@@ -287,6 +296,56 @@ async function point3(A) {
   verifier(egal(await solde(tenantId, '2844', deux), -775_000 + 200_000), `2844 = 300 000 (2025, imprimante soldée) + 100 000 (ordinateur 2026) + 175 000 (lot 2026) = 575 000 au crédit (lu ${await solde(tenantId, '2844', deux)})`);
 }
 
+async function point4(A) {
+  console.log('POINT 4 · cas de la sortie partielle tranchés par la loi');
+  const { e2025, e2026, od, nouveau, compte, plan } = await dossierABiens(A, 'cas-servis');
+  const auto = plan.find((c) => c.numero === '24510000');
+  await A.patch(`/comptes/${auto.id}`, { estRetenu: true });
+  const bus = await nouveau('Autocar', 10_000_000, 10, { compteImmobilisationId: auto.id });
+  const moteurs = await nouveau('Moteurs de l’autocar', 2_000_000, 4, {
+    compteImmobilisationId: auto.id, quantite: 4, immobilisationPrincipaleId: bus.id, typeComposant: 'COMPOSANT',
+    justificationDecomposition: 'Quatre moteurs identiques, remplacés tous les quatre ans (AUDCIF Titre VIII ch. 4 § 3.1.4)',
+  });
+  const chaises = await nouveau('Chaises de la salle', 1_000_000, 5, { quantite: 10 });
+  const tenantId = (await prisma.immobilisation.findUnique({ where: { id: bus.id }, select: { tenantId: true } })).tenantId;
+  for (const b of [bus, moteurs, chaises]) await A.post(`/immobilisations/${b.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  await A.post(`/immobilisations/${chaises.id}/depreciation`, {
+    exerciceId: e2025.id, journalId: od.id, sens: 'DOTATION', montant: 100_000,
+    compteDepreciationId: compte('29440000').id, compteContrepartieId: compte('69140000').id, indice: 'Usure constatée au comptage',
+  });
+  await cloturer2025(A, e2025);
+
+  console.log(' composant en lot · un moteur sort le 30/06/2026');
+  const sortie = { ...SORTIE, exerciceId: e2026.id, journalId: od.id };
+  const m = await A.post(`/immobilisations/${moteurs.id}/sortie-partielle`, { ...sortie, dateSortie: '2026-06-30', datePieceSortie: '2026-06-30', quantiteSortie: 1 });
+  verifier(egal(m.part.brut, 500_000) && egal(m.part.cumulOuverture, 125_000) && egal(m.part.complement, 62_500), `part d'un moteur · 500 000 / 125 000 / 62 500 (lu ${JSON.stringify(m.part)})`);
+  const unite = await prisma.immobilisation.findUnique({ where: { id: m.unites.id }, select: { immobilisationPrincipaleId: true, typeComposant: true, statut: true } });
+  verifier(unite.immobilisationPrincipaleId === bus.id && unite.typeComposant === 'COMPOSANT' && unite.statut === 'MISE_HORS_SERVICE', 'la fiche du moteur sorti reste un composant de l’autocar');
+  const l812 = await solde(tenantId, '812', [e2026.id]);
+  verifier(egal(l812, 312_500), `VNC du moteur au 812 · 500 000 − 125 000 − 62 500 = 312 500 (lu ${l812})`);
+  let r = await A.statut('POST', `/immobilisations/${bus.id}/sortie-partielle`, { ...sortie, dateSortie: '2026-06-30', datePieceSortie: '2026-06-30', quantiteSortie: 1 });
+  verifier(r.statut === 400 && /une seule unité|composants en service/.test(JSON.stringify(r.corps)), `l’autocar (une unité, composants en service) · refusé (${r.statut})`);
+
+  console.log(' deux sorties du lot de chaises déprécié dans le même exercice');
+  const p1 = await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, { ...sortie, dateSortie: '2026-04-30', datePieceSortie: '2026-04-30', referencePieceSortie: 'PV-01', quantiteSortie: 2 });
+  verifier(egal(p1.part.depreciation, 20_000), `première sortie · 2/10 de 100 000 = 20 000 (lu ${p1.part.depreciation})`);
+  const p2 = await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, { ...sortie, dateSortie: '2026-06-30', datePieceSortie: '2026-06-30', referencePieceSortie: 'PV-02', quantiteSortie: 3 });
+  verifier(egal(p2.part.depreciation, 30_000), `seconde sortie du même exercice · 3/8 de 80 000 = 30 000 (lu ${p2.part.depreciation})`);
+  const reprises = await prisma.depreciationImmobilisation.count({ where: { immobilisationId: chaises.id, nature: 'CESSION_PARTIELLE' } });
+  verifier(reprises === 2, `deux reprises sur le lot dans l'exercice (lu ${reprises})`);
+  verifier(egal(await solde(tenantId, '7914', [e2026.id]), -50_000) && egal(await solde(tenantId, '2944', [e2025.id, e2026.id]), -50_000), '7914 (2026) = 50 000 ; 2944 = 50 000 au crédit');
+  const lot = await prisma.immobilisation.findUnique({ where: { id: chaises.id }, select: { quantite: true, valeurOrigine: true } });
+  verifier(lot.quantite === 5 && egal(lot.valeurOrigine, 500_000), `le lot garde 5 chaises, 500 000 (lu ${lot.quantite}, ${lot.valeurOrigine})`);
+  // La première sortie ne s'annule plus · la seconde l'a lue ; la seconde, oui, puis la première.
+  r = await A.statut('POST', `/immobilisations/${p1.unites.id}/annuler-sortie`, { motif: 'essai' });
+  verifier(r.statut === 400 && /postérieur/.test(JSON.stringify(r.corps)), `la première sortie, lue par la seconde · refus nommé (${r.statut})`);
+  await A.post(`/immobilisations/${p2.unites.id}/annuler-sortie`, { motif: 'Seconde sortie annulée' });
+  await A.post(`/immobilisations/${p1.unites.id}/annuler-sortie`, { motif: 'Première sortie annulée' });
+  const rendu = await prisma.immobilisation.findUnique({ where: { id: chaises.id }, include: { depreciations: true } });
+  const net = Math.round(rendu.depreciations.reduce((t, x) => t + (x.sens === 'DOTATION' ? 1 : -1) * Number(x.montant), 0) * 100) / 100;
+  verifier(rendu.quantite === 10 && egal(rendu.valeurOrigine, 1_000_000) && egal(rendu.amortissementsDetaches, 0) && egal(net, 100_000), `les deux annulées · lot rendu à 10, 1 000 000, dépréciation 100 000 (lu ${rendu.quantite}, ${rendu.valeurOrigine}, ${net})`);
+}
+
 async function main() {
   const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -299,6 +358,7 @@ async function main() {
     if (points.includes('1')) await point1(new Client());
     if (points.includes('2')) await point2(new Client());
     if (points.includes('3')) await point3(new Client());
+    if (points.includes('4')) await point4(new Client());
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();
