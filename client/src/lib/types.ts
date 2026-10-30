@@ -4668,6 +4668,16 @@ export interface FicheInventaire {
   numeroSerie?: string | null;
   uniteMesure: string | null;
   quantiteComptee: string | null;
+  /** Ligne restes-immos-budgets, point 2 · la quantité du registre recopiée, `null` hors bien du registre. */
+  quantiteAttendue?: number | null;
+  /** L'écart en unités servi par le serveur (`ecart-en-unites.ts`), `null` sans quantité du registre. */
+  ecartUnites?: {
+    attendue: number;
+    comptee: number | null;
+    ecart: number | null;
+    sens: 'CONFORME' | 'MANQUANT' | 'EXCEDENT' | null;
+    mention: string;
+  } | null;
   valeurInventaire: string | null;
   referencePiece: string | null;
   compte: { numero: string; intitule: string };

@@ -16,9 +16,16 @@ Branche de sauvegarde `travail/restes-immos-budgets`, partie de `origin/main`.
    exercice suivant contigu (AUDCIF art. 34 ; SYCEBNL art. 16, 4°) et ouvert.
    Rejoué sur vraie base à travers la clôture de 2025.
 
+2. **Quantité du bien sur la fiche de comptage** (`FicheInventaire.quantiteAttendue`,
+   migration `20270241000000` ; `inventaire/ecart-en-unites.ts`). Recopiée du
+   registre (`Immobilisation.quantite`) quand les fiches s'engendrent, comme le
+   numéro de série, et sur une fiche ancienne NON comptée seulement ; écart en
+   unités servi par `GET /inventaire/:id` (manquant, conforme, excédent), une
+   fraction d'unité refusée ; aucun excédent créé (AUDCIF art. 43, la valeur
+   d'entrée maintenue), aucun manquant passé d'office (CPCC, étapes 4 et 5).
+
 ## Reste
 
-2. Quantité du bien sur la fiche de comptage.
 3. Annulation d'une sortie d'immobilisation.
 4. Cas refusés de la sortie partielle, tranchés par la loi.
 

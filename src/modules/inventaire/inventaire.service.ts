@@ -42,6 +42,7 @@ import {
   valeurAPorterSurLaFiche,
   valideesDepuisLePv,
 } from './solde-caisse-au-comptage';
+import { ecartEnUnites, motifRefusQuantiteDuBien } from './ecart-en-unites';
 import { libelleLieuBien } from './lieu-sur-fiche';
 import { type CampagneEdition, editionFichesVierges, editionPvCaisse, editionPvInventaire } from './editions-inventaire';
 
@@ -363,7 +364,7 @@ export class InventaireService {
       }),
       this.prisma.ficheInventaire.findMany({
         where: { tenantId, campagneId, immobilisationId: { not: null } },
-        select: { id: true, immobilisationId: true, emplacement: true, numeroSerie: true },
+        select: { id: true, immobilisationId: true, emplacement: true, numeroSerie: true, quantiteAttendue: true, quantiteComptee: true },
       }),
     ]);
     const connues = new Set(dejaFichees.map((f) => f.immobilisationId));
@@ -393,8 +394,28 @@ export class InventaireService {
         data: { numeroSerie: serieParBien.get(f.immobilisationId as string) },
       });
     }
+    // LIGNE RESTES-IMMOS-BUDGETS, POINT 2 · la quantité du registre, même règle ·
+    // recopiée sur une fiche plus ancienne qui n'en porte pas, jamais sur une
+    // fiche déjà comptée (le compteur a confronté ce qu'il voyait à la
+    // quantité qu'on lui montrait, ou à aucune).
+    const quantiteParBien = new Map(biens.map((b) => [b.id, b.quantite]));
+    const quantitesACompleter = dejaFichees.filter(
+      (f) => f.quantiteAttendue === null && f.quantiteComptee === null && f.immobilisationId && quantiteParBien.has(f.immobilisationId),
+    );
+    for (const f of quantitesACompleter) {
+      await this.prisma.ficheInventaire.updateMany({
+        where: { id: f.id, tenantId, quantiteAttendue: null, quantiteComptee: null },
+        data: { quantiteAttendue: quantiteParBien.get(f.immobilisationId as string) },
+      });
+    }
     if (aCreer.length === 0) {
-      return { creees: 0, deja: connues.size, lieuxRecopies: aCompleter.length, seriesRecopiees: seriesACompleter.length };
+      return {
+        creees: 0,
+        deja: connues.size,
+        lieuxRecopies: aCompleter.length,
+        seriesRecopiees: seriesACompleter.length,
+        quantitesRecopiees: quantitesACompleter.length,
+      };
     }
 
     // Le compte d'imputation du bien est celui contre lequel son écart se
@@ -410,10 +431,17 @@ export class InventaireService {
         designation: b.numeroInventaire ? `${b.numeroInventaire} · ${b.designation}` : b.designation,
         emplacement: libelleLieuBien(b.lieu),
         numeroSerie: b.numeroSerie?.trim() || null,
+        quantiteAttendue: b.quantite,
         uniteMesure: 'unité',
       })),
     });
-    return { creees: aCreer.length, deja: connues.size, lieuxRecopies: aCompleter.length, seriesRecopiees: seriesACompleter.length };
+    return {
+      creees: aCreer.length,
+      deja: connues.size,
+      lieuxRecopies: aCompleter.length,
+      seriesRecopiees: seriesACompleter.length,
+      quantitesRecopiees: quantitesACompleter.length,
+    };
   }
 
   async creerFiche(tenantId: string, campagneId: string, dto: CreerFicheDto) {
@@ -473,6 +501,8 @@ export class InventaireService {
       );
     }
     if (dto.sousCommissionId) await this.sousCommissionDeLaCampagne(tenantId, fiche.campagneId, dto.sousCommissionId);
+    const refusQuantite = motifRefusQuantiteDuBien(dto.quantiteComptee, fiche.immobilisationId !== null);
+    if (refusQuantite) throw new BadRequestException(refusQuantite);
     const miseAJour = await this.prisma.ficheInventaire.update({
       where: { id: ficheId },
       data: {
@@ -1476,9 +1506,11 @@ export class InventaireService {
       where: { id: tenantId },
       select: { referentiel: true },
     });
-    const { exercice, pvComptageCaisse, ...reste } = campagne;
+    const { exercice, pvComptageCaisse, fiches, ...reste } = campagne;
     return {
       ...reste,
+      // L'écart en unités d'un bien du registre (point 2) · servi, jamais recalculé à l'écran.
+      fiches: fiches.map((f) => ({ ...f, ecartUnites: ecartEnUnites(f) })),
       pvComptageCaisse: pvComptageCaisse.map((pv) => InventaireService.presenterPvCaisse(pv, exercice.dateFin)),
       sanction: InventaireService.sanctionApplicable(tenant.referentiel),
     };

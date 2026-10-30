@@ -5,6 +5,8 @@
  * Serveur COMPILÉ contre une base PostgreSQL jetable déjà migrée.
  *   DATABASE_URL=postgresql://... node scripts/rejouer-restes-immos-budgets.cjs
  *
+ * POINTS=1,2,3,4 choisit les points rejoués (par défaut, tous).
+ *
  * POINT 1 · REPORT DES BUDGETS PAR COMPTE.
  *   N = 2025 · charge A dotée 1 200 puis mars à 250 (l'année suit · 1 350),
  *   charge B dotée 600, produit doté 5 000 ; N+1 = 2026 · le produit déjà
@@ -13,6 +15,12 @@
  *   B non repris (sommeil). Après confirmation · A en 2026 = 1 350, mars 250,
  *   janvier 100 ; produit 2026 = 4 000, jamais 5 000. Un second report ne
  *   reprend rien (A déjà doté) et ne double aucune ligne.
+ *
+ * POINT 2 · QUANTITÉ DU BIEN SUR LA FICHE DE COMPTAGE.
+ *   Lot de dix chaises (2025), doté, 2025 clôturé ; trois chaises sortent le
+ *   30/06/2026. Campagne 2026 · la fiche du lot attend 7 unités (jamais 10) ;
+ *   2,5 refusé ; non compté, aucun écart ; 6 comptées, manquant 1 ; 9
+ *   comptées, excédent 2, ni bien ni écriture créés, le registre garde 7.
  */
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
@@ -109,6 +117,73 @@ async function point1(A) {
   verifier(r.statut === 400 && /exercice suivant n'existe pas/.test(JSON.stringify(r.corps)), `2026 sans exercice suivant · refus nommé (${r.statut})`);
 }
 
+/** Un dossier à biens · un lot de dix chaises acquis et mis en service le 01/01/2025 (1 000 000, cinq ans). */
+async function dossierABiens(A, nom) {
+  const d = await dossier(A, nom);
+  const journaux = await A.get('/journaux');
+  const od = journaux.find((j) => j.code === 'OD') ?? journaux[0];
+  const compte = (num) => d.plan.find((c) => c.numero === num);
+  for (const num of ['24410000', '48120000', '29440000', '69140000', '79140000']) await A.patch(`/comptes/${compte(num).id}`, { estRetenu: true });
+  const nouveau = (designation, valeur, duree, extra = {}) =>
+    A.post('/immobilisations', {
+      compteImmobilisationId: compte('24410000').id, designation, dateAcquisition: '2025-01-01', dateMiseEnService: '2025-01-01',
+      valeurOrigine: valeur, dureeAmortissementAns: duree, compteContrepartieId: compte('48120000').id, journalId: od.id, exerciceId: d.e2025.id, ...extra,
+    });
+  return { ...d, od, compte, nouveau };
+}
+
+async function cloturer2025(A, e2025) {
+  await A.post('/ecritures/valider-jusqua', { exerciceId: e2025.id, dateLimite: '2025-12-31' });
+  const r = await A.statut('POST', `/exercices/${e2025.id}/cloturer`, {});
+  if (r.statut >= 400) console.log('   refus de clôture ·', JSON.stringify(r.corps).slice(0, 1500));
+  const ex = await prisma.exercice.findUnique({ where: { id: e2025.id }, select: { statut: true } });
+  verifier(ex.statut === 'CLOTURE', `2025 clôturé (${ex.statut})`);
+}
+
+const SORTIE = { type: 'MISE_HORS_SERVICE', natureSortie: 'MISE_AU_REBUT', referencePieceSortie: 'PV-REBUT-01' };
+
+async function point2(A) {
+  console.log('POINT 2 · quantité du bien sur la fiche de comptage');
+  const { e2025, e2026, od, nouveau } = await dossierABiens(A, 'quantite');
+  const chaises = await nouveau('Chaises de la salle', 1_000_000, 5, { quantite: 10 });
+  await A.post(`/immobilisations/${chaises.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  await cloturer2025(A, e2025);
+  await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, {
+    ...SORTIE, dateSortie: '2026-06-30', datePieceSortie: '2026-06-30', exerciceId: e2026.id, journalId: od.id, quantiteSortie: 3,
+  });
+  const campagne = await A.post('/inventaire', { exerciceId: e2026.id, dateInventaire: '2026-12-31', libelle: 'Inventaire 2026' });
+  await A.post(`/inventaire/${campagne.id}/fiches/immobilisations`, {});
+  const tenantId = (await prisma.campagneInventaire.findUnique({ where: { id: campagne.id }, select: { tenantId: true } })).tenantId;
+  const fiches = await prisma.ficheInventaire.findMany({ where: { campagneId: campagne.id }, select: { id: true, immobilisationId: true, quantiteAttendue: true } });
+  verifier(fiches.length === 1 && fiches[0].immobilisationId === chaises.id && fiches[0].quantiteAttendue === 7, `une fiche, le lot restant · 7 unités attendues, jamais 10 (lu ${JSON.stringify(fiches)})`);
+  const fiche = fiches[0];
+  let r = await A.statut('PATCH', `/inventaire/fiches/${fiche.id}`, { quantiteComptee: 2.5 });
+  verifier(r.statut === 400 && /unités entières/.test(JSON.stringify(r.corps)), `une fraction d'unité refusée (${r.statut})`);
+  let vue = await A.get(`/inventaire/${campagne.id}`);
+  let e = vue.fiches[0].ecartUnites;
+  verifier(e && e.attendue === 7 && e.comptee === null && e.ecart === null, `non compté · aucun écart, jamais un manquant de 7 (lu ${JSON.stringify(e)})`);
+  await A.patch(`/inventaire/fiches/${fiche.id}`, { quantiteComptee: 6 });
+  vue = await A.get(`/inventaire/${campagne.id}`);
+  e = vue.fiches[0].ecartUnites;
+  verifier(e.ecart === -1 && e.sens === 'MANQUANT', `six comptées · manquant d'une unité (lu ${JSON.stringify(e)})`);
+  const biensAvant = await prisma.immobilisation.count({ where: { tenantId } });
+  const ecrituresAvant = await prisma.ecriture.count({ where: { tenantId } });
+  await A.patch(`/inventaire/fiches/${fiche.id}`, { quantiteComptee: 9 });
+  vue = await A.get(`/inventaire/${campagne.id}`);
+  e = vue.fiches[0].ecartUnites;
+  verifier(e.ecart === 2 && e.sens === 'EXCEDENT' && /art\. 43/.test(e.mention), `neuf comptées · excédent de deux, art. 43 cité (lu ${JSON.stringify(e)})`);
+  verifier((await prisma.immobilisation.count({ where: { tenantId } })) === biensAvant && (await prisma.ecriture.count({ where: { tenantId } })) === ecrituresAvant, "l'excédent ne crée ni bien ni écriture");
+  const lot = await prisma.immobilisation.findUnique({ where: { id: chaises.id }, select: { quantite: true, valeurOrigine: true } });
+  verifier(lot.quantite === 7 && egal(lot.valeurOrigine, 700_000), `le registre garde 7 chaises, 700 000 (lu ${lot.quantite}, ${lot.valeurOrigine})`);
+  // Une fiche d'avant la règle · recopiée au geste suivant si elle n'est pas comptée, jamais si elle l'est.
+  await prisma.ficheInventaire.update({ where: { id: fiche.id }, data: { quantiteAttendue: null } });
+  const re = await A.post(`/inventaire/${campagne.id}/fiches/immobilisations`, {});
+  verifier((await prisma.ficheInventaire.findUnique({ where: { id: fiche.id } })).quantiteAttendue === null && re.quantitesRecopiees === 0, `fiche déjà comptée · rien recopié après coup (${JSON.stringify(re)})`);
+  await prisma.ficheInventaire.update({ where: { id: fiche.id }, data: { quantiteComptee: null } });
+  await A.post(`/inventaire/${campagne.id}/fiches/immobilisations`, {});
+  verifier((await prisma.ficheInventaire.findUnique({ where: { id: fiche.id } })).quantiteAttendue === 7, 'fiche non comptée d’avant la règle · la quantité recopiée');
+}
+
 async function main() {
   const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -117,8 +192,9 @@ async function main() {
     let pret = false;
     for (let i = 0; i < 90; i++) { try { if ((await fetch(`${API}/health`)).ok) { pret = true; break; } } catch {} await attendre(1000); }
     if (!pret) throw new Error(`serveur non démarré\n${journal.slice(-3000)}`);
-    const points = (process.env.POINTS || '1').split(',');
+    const points = (process.env.POINTS || '1,2,3,4').split(',');
     if (points.includes('1')) await point1(new Client());
+    if (points.includes('2')) await point2(new Client());
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();
