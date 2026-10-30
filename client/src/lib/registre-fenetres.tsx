@@ -92,6 +92,11 @@ const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) =
 const ExportModificationsPage = lazy(() =>
   import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
 );
+const UtilisateursConnectesPage = lazy(() => import('../pages/UtilisateursConnectesPage').then((m) => ({ default: m.UtilisateursConnectesPage })));
+const MessagesPage = lazy(() => import('../pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
+const NotificationsPage = lazy(() => import('../pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const PreferencesPage = lazy(() => import('../pages/PreferencesPage').then((m) => ({ default: m.PreferencesPage })));
+const EchangeEcrituresPage = lazy(() => import('../pages/EchangeEcrituresPage').then((m) => ({ default: m.EchangeEcrituresPage })));
 const ImpressionsDiffereesPage = lazy(() =>
   import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
 );
@@ -605,6 +610,44 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Exporter les modifications',
     titreCourt: 'Export modif.',
     rendre: () => <ExportModificationsPage />,
+  },
+  {
+    // Ligne dossier-l9, fonction 102 · aucun référentiel · l'AUDCIF art. 22
+    // vaut aux deux, l'art. 3 du SYCEBNL ne l'écarte pas.
+    motif: /^\/echanges-ecritures$/,
+    titre: 'Échanger des écritures',
+    titreCourt: 'Échange',
+    rendre: () => <EchangeEcrituresPage />,
+  },
+  {
+    // Ligne dossier-l9, fonction 95 · les sessions du dossier, à son
+    // administrateur seul, comme leur contrôleur.
+    motif: /^\/utilisateurs-connectes$/,
+    titre: 'Utilisateurs connectés',
+    titreCourt: 'Connectés',
+    rendre: () => <UtilisateursConnectesPage />,
+    reserveAdmin: true,
+  },
+  {
+    // Ligne dossier-l9, fonction 95 · la messagerie interne, à tous les rôles.
+    motif: /^\/messages$/,
+    titre: 'Messages',
+    titreCourt: 'Messages',
+    rendre: () => <MessagesPage />,
+  },
+  {
+    // Ligne dossier-l9, fonction 100 · les notifications de chacun, à tous les rôles.
+    motif: /^\/notifications$/,
+    titre: 'Notifications',
+    titreCourt: 'Notifications',
+    rendre: () => <NotificationsPage />,
+  },
+  {
+    // Ligne dossier-l9, fonctions 96 et 100 · les préférences de chacun, à tous les rôles.
+    motif: /^\/preferences$/,
+    titre: 'Préférences',
+    titreCourt: 'Préférences',
+    rendre: () => <PreferencesPage />,
   },
   {
     // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,

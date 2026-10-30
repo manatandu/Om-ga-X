@@ -116,6 +116,12 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'VirementFonds.ecritureDestinationId',
   'VirementFonds.ecritureNegatifOrigineId',
   'VirementFonds.ecritureNegatifDestinationId',
+  // L'écriture reçue d'un autre dossier par l'échange (ligne dossier-l9,
+  // fonction 102) · tant qu'elle est TENUE, son contenu est celui de
+  // l'expéditeur, que ses envois suivants remplacent ou retirent ; retouchée
+  // ou retirée ici en silence, l'envoi suivant la recréerait ou écraserait
+  // la retouche. Le dossier qui reçoit la DÉTACHE pour la reprendre.
+  'EcritureRecue.ecritureId',
   // Les remises en banque (ligne sage-l3, fonction 40) · la réception d'une
   // valeur (D 513 ou 515 / C tiers), le bordereau (D 514 / C 513), l'avis de
   // crédit (D 52 / C 514 ou 515) et l'impayé (D tiers / C 514) · retirée

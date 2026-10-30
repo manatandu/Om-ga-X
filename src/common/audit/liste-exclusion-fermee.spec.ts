@@ -76,6 +76,15 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // activée ou retirée, et quand, se relit. Le secret, le dernier pas et
     // les empreintes des codes de secours sont exclus.
     'doubleAuthActiveDepuis',
+    // Ligne dossier-l9, fonction 95 · des RELATIONS, pas des colonnes · la
+    // charge du journal ne recopie que les colonnes de la ligne, et ni les
+    // sessions vues ni les messages n'y passent par elles.
+    'presences',
+    'messagesEnvoyes',
+    'messagesRecus',
+    // Fonctions 96 et 100 · ses préférences et ses notifications, des relations de même.
+    'preferences',
+    'notifications',
   ];
 
   it('classe chaque colonne de User, sans exception ni oubli', () => {

@@ -220,6 +220,13 @@ export const MODELES_AUDITES = new Set<string>([
   // (AUDCIF art. 22, 7°) · demandée, produite, échouée ou fichier retiré, chaque
   // pas se lit au journal ; son fichier n'est pas recopié.
   'ImpressionDifferee',
+  // Ligne dossier-l9, fonction 102 · l'envoi reçu d'un autre dossier, cité par
+  // son numéro et l'empreinte de son fichier (AUDCIF art. 22, 7°) · retouché
+  // après coup, il attesterait une réception qui n'a pas eu lieu.
+  'ReceptionEchange',
+  // Ligne dossier-l9, fonction 95 · l'envoi d'un message interne, son auteur
+  // et sa date · jamais son objet ni son corps (`COLONNES_EXCLUES_PAR_MODELE`).
+  'MessageInterne',
   // Même ligne · une sélection enregistrée est une structure de travail du
   // dossier, que tous rappellent, comme une séquence de saisie.
   'SelectionEdition',
@@ -493,6 +500,16 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  PreferenceUtilisateur:
+    "Préférences d'affichage d'un utilisateur (ligne dossier-l9, fonctions 96 et 100) · la langue, la taille du texte et les notifications qu'il coupe, réglées par lui seul pour lui seul, sans effet sur le dossier ni sur les autres.",
+  NotificationUtilisateur:
+    "Notification dans l'interface (ligne dossier-l9, fonction 100) · engendrée par un événement que son module journalise déjà (message, réception d'écritures, clôture) ; sa lecture est l'affaire de son seul destinataire.",
+  PresenceSession:
+    "Session vue en activité (ligne dossier-l9, fonction 95) · écrite par chaque requête admise, au plus une fois par minute, et retirée trente et un jours après sa dernière activité (Code du numérique, art. 193, 3°) ; la déconnexion, elle, se lit au compte.",
+  DestinataireMessage:
+    "Destinataire d'un message interne (ligne dossier-l9, fonction 95) · né avec l'envoi, qui est journalisé ; sa lecture et son retrait de la boîte sont l'affaire de son seul titulaire, comme la lecture d'un courrier.",
+  EcritureRecue:
+    "Registre de ce qu'un envoi reçu a porté (ligne dossier-l9, fonction 102) · une ligne par écriture reçue, engendrée en masse par la réception, comme le registre de l'export ; la réception elle-même, numérotée chez l'expéditeur et datée ici, est journalisée, et le détachement d'une écriture garde son auteur et sa date sur la ligne.",
   EcritureExportee:
     "Registre de ce qu'un export a porté (ligne sage-l7, fonction 99) · une ligne par écriture envoyée, engendrée en masse par l'export, comme les lignes d'écriture ; l'export lui-même, numéroté et daté, est journalisé.",
   VerrouProvisionChange:
@@ -637,6 +654,13 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   ExportEcritures: ['contenu'],
   // Le fichier d'une impression différée (ligne sage-l7, fonction 59) · même raison.
   ImpressionDifferee: ['contenu'],
+  // Le compte rendu d'une réception (ligne dossier-l9) · les pièces refusées et
+  // leur motif, déjà dits à l'écran ; les nombres de la réception le résument.
+  ReceptionEchange: ['compteRendu'],
+  // La correspondance d'un message interne (ligne dossier-l9, fonction 95) ·
+  // confidentielle (Code du numérique, art. 193, 2°), elle ne se lit que par
+  // ses correspondants ; le journal, lu par d'autres, n'en garde que l'envoi.
+  MessageInterne: ['objet', 'corps'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.

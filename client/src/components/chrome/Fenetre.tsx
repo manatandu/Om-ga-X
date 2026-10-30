@@ -6,6 +6,7 @@ import { CURSEUR_BORD, estLeBoutonPrincipal, geometrieRedimensionnee, suivreGest
 import { rendreFenetre } from '../../lib/registre-fenetres';
 import { LimiteErreur } from './LimiteErreur';
 import { LignesSquelette } from './Squelette';
+import { useLangue } from '../../lib/langue';
 
 /**
  * CADRE DE FENÊTRE · la fenêtre MDI de Sage 100 i7 : une barre de titre
@@ -332,11 +333,13 @@ function BoutonTitre({
   actif: boolean;
   danger?: boolean;
 }) {
+  // Ligne dossier-l9, fonction 96 · les boutons du cadre suivent la langue choisie.
+  const { tr } = useLangue();
   return (
     <button
       type="button"
-      title={titre}
-      aria-label={titre}
+      title={tr(titre)}
+      aria-label={tr(titre)}
       // `stopPropagation` sur le pointeur : sans lui, appuyer sur « Fermer »
       // amorcerait aussi le déplacement de la fenêtre par sa barre de titre.
       onPointerDown={(e) => e.stopPropagation()}

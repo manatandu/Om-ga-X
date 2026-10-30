@@ -105,6 +105,39 @@ export function motifRefusDefinition(lignes: LigneDefinition[]): string | null {
   return null;
 }
 
+/**
+ * L'AIDE À LA FORMULE (ligne dossier-l9, fonction 100 · Sage X3, « éditeur de
+ * formules ») · ce qu'une rubrique « 70 71 -709 » LIT dans le plan du
+ * dossier, compte par compte, par la MÊME règle que le calcul (la racine la
+ * plus longue décide, le moins exclut). Rien de nouveau n'est calculé · la
+ * formule reste celle du moteur, l'aide dit seulement ce qu'elle prend.
+ */
+export interface LectureDesRacines {
+  motif: string | null;
+  /** Les comptes que la rubrique additionne. */
+  inclus: string[];
+  /** Les comptes qu'un moins écarte d'une racine incluse. */
+  exclus: string[];
+  /** Les racines qui ne trouvent aucun compte dans le plan · une faute de frappe, ou un compte non ouvert. */
+  racinesSansCompte: string[];
+}
+
+export function lireLesRacines(racines: string, numeros: string[]): LectureDesRacines {
+  const motif = motifRefusDefinition([{ cle: 'A', libelle: 'formule', racines, mesure: 'SOLDE', sens: 'DEBIT' }]);
+  if (motif) return { motif: motif.replace(/^Ligne A · /, ''), inclus: [], exclus: [], racinesSansCompte: [] };
+  const termes = lireTermes(racines, /.*/)!;
+  const inclus: string[] = [];
+  const exclus: string[] = [];
+  for (const numero of numeros) {
+    const t = termes.filter((x) => numero.startsWith(x.valeur)).sort((a, z) => z.valeur.length - a.valeur.length)[0];
+    if (!t) continue;
+    if (t.signe === 1) inclus.push(numero);
+    else if (termes.some((x) => x.signe === 1 && numero.startsWith(x.valeur))) exclus.push(numero);
+  }
+  const racinesSansCompte = termes.filter((t) => !numeros.some((n) => n.startsWith(t.valeur))).map((t) => (t.signe === -1 ? `-${t.valeur}` : t.valeur));
+  return { motif: null, inclus, exclus, racinesSansCompte };
+}
+
 /** Les montants d'une colonne (un exercice), ligne par ligne, arrondis au centime. */
 export function calculerColonne(lignes: LigneDefinition[], balance: LigneBalanceEtat[]): Record<string, number> {
   const valeurs: Record<string, number> = {};

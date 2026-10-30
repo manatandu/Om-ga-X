@@ -7,6 +7,76 @@ import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImp
 import { MODELE_ETAT, ligneNeuve, titreColonne, type CalculEtat, type EtatPersonnalise, type LigneEtat } from '../lib/etats-personnalises';
 import { montant } from '../lib/montants';
 
+/** Ce que le serveur dit d'une formule (`GET /etats-personnalises/formule`). */
+interface LectureFormule {
+  motif: string | null;
+  inclus: Array<{ numero: string; intitule: string }>;
+  nombreInclus: number;
+  exclus: Array<{ numero: string; intitule: string }>;
+  nombreExclus: number;
+  racinesSansCompte: string[];
+}
+
+/** L'AIDE À LA FORMULE · la liste nommée est bornée, le nombre toujours dit. */
+function AideFormule({
+  formule,
+  onFermer,
+}: {
+  formule: { cle: string; racines: string; lu: LectureFormule | null; erreur: string | null };
+  onFermer: () => void;
+}) {
+  const { lu, erreur } = formule;
+  const liste = (titre: string, comptes: LectureFormule['inclus'], nombre: number) => (
+    <div>
+      <p className="font-semibold">
+        {titre} · {nombre} compte{nombre > 1 ? 's' : ''}
+        {nombre > comptes.length && ` (les ${comptes.length} premiers nommés)`}
+      </p>
+      {comptes.length > 0 && (
+        <ul className="columns-2 gap-4">
+          {comptes.map((c) => (
+            <li key={c.numero}>
+              {c.numero} {c.intitule}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+  return (
+    <section aria-label="Comptes lus par la rubrique" className="mt-2 border border-border bg-surface px-3 py-2 text-[11.5px] flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <h3 className="font-bold">
+          Ligne {formule.cle} · « {formule.racines} »
+        </h3>
+        <button type="button" onClick={onFermer} className="ml-auto text-text-dim hover:underline">
+          Fermer
+        </button>
+      </div>
+      {!lu && !erreur && <p className="text-text-dim">Lecture…</p>}
+      {erreur && (
+        <p role="alert" className="text-danger">
+          {erreur}
+        </p>
+      )}
+      {lu?.motif && (
+        <p role="alert" className="text-danger">
+          {lu.motif}
+        </p>
+      )}
+      {lu && !lu.motif && (
+        <>
+          {liste('Additionnés', lu.inclus, lu.nombreInclus)}
+          {lu.nombreExclus > 0 && liste('Écartés par un moins', lu.exclus, lu.nombreExclus)}
+          {lu.racinesSansCompte.length > 0 && (
+            <p className="text-warning">Aucun compte du plan sous {lu.racinesSansCompte.map((r) => `« ${r} »`).join(', ')}.</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 /**
  * ÉTATS PERSONNALISÉS (point 20 de la comparaison Sage i7). Le catalogue Sage
  * nomme les « états libres » sans les décrire · la définition est celle
@@ -31,6 +101,9 @@ export function EtatsPersonnalisesPage() {
   const [calcul, setCalcul] = useState<CalculEtat | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Ligne dossier-l9, fonction 100 · ce qu'une rubrique lit dans le plan, servi
+  // par le serveur sur la règle même du calcul (`lireLesRacines`).
+  const [formule, setFormule] = useState<{ cle: string; racines: string; lu: LectureFormule | null; erreur: string | null } | null>(null);
 
   const charger = async () => {
     setEtats(await api.get<EtatPersonnalise[]>('/etats-personnalises'));
@@ -54,6 +127,18 @@ export function EtatsPersonnalisesPage() {
     setCalcul(null);
     setErreur(null);
     setInfo(null);
+  };
+
+  const lireFormule = async (cle: string, racines: string) => {
+    setFormule({ cle, racines, lu: null, erreur: null });
+    try {
+      const lu = await api.get<LectureFormule>(`/etats-personnalises/formule?racines=${encodeURIComponent(racines)}`);
+      // Une réponse périmée (une autre rubrique demandée entre-temps) est jetée.
+      setFormule((f) => (f && f.cle === cle && f.racines === racines ? { cle, racines, lu, erreur: null } : f));
+    } catch (e) {
+      const erreur = e instanceof Error ? e.message : "La formule n'a pas pu être lue.";
+      setFormule((f) => (f && f.cle === cle && f.racines === racines ? { cle, racines, lu: null, erreur } : f));
+    }
   };
 
   const majLigne = (i: number, patch: Partial<LigneEtat>) => setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -162,6 +247,7 @@ export function EtatsPersonnalisesPage() {
                     <th className="text-left w-[110px]">Mesure</th>
                     <th className="text-left w-[80px]">Sens</th>
                     <th className="text-left w-[150px]">Total</th>
+                    <th className="w-[64px]" />
                     <th className="w-[30px]" />
                   </tr>
                 </thead>
@@ -196,6 +282,20 @@ export function EtatsPersonnalisesPage() {
                           />
                         </td>
                         <td>
+                          {!estTotal && (
+                            <button
+                              type="button"
+                              aria-label={`Comptes lus par la ligne ${i + 1}`}
+                              title="Les comptes du plan que la rubrique lit"
+                              disabled={!(l.racines ?? '').trim()}
+                              onClick={() => void lireFormule(l.cle, l.racines ?? '')}
+                              className="border border-border-dark bg-chrome px-1.5 py-0.5 disabled:opacity-40"
+                            >
+                              Comptes
+                            </button>
+                          )}
+                        </td>
+                        <td>
                           {peutValider && (
                             <button type="button" aria-label={`Retirer la ligne ${i + 1}`} onClick={() => setLignes((ls) => ls.filter((_, j) => j !== i))} className="text-danger">
                               ✕
@@ -208,6 +308,7 @@ export function EtatsPersonnalisesPage() {
                 </tbody>
               </table>
             </div>
+            {formule && <AideFormule formule={formule} onFermer={() => setFormule(null)} />}
             {peutValider && (
               <div className="flex gap-2 mt-2">
                 <button type="button" onClick={() => setLignes((ls) => [...ls, ligneNeuve(ls)])} className="border border-border-dark bg-chrome px-3 py-1 text-[11.5px]">

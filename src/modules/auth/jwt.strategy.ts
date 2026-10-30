@@ -16,6 +16,7 @@ import {
   sessionDuJeton,
 } from './session-longue';
 import { estSessionFermee } from './sessions-fermees';
+import { noterPresence } from '../messagerie/presence';
 
 type JwtPayload = ChargeJeton;
 
@@ -178,6 +179,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       session.prolongation = { accessToken: prolonge.accessToken, maxAgeMs: prolonge.maxAgeMs ?? 0 };
     }
     (req as unknown as Record<string, unknown>)[CLE_SESSION_REQUETE] = session;
+    // LA PRÉSENCE DE LA SESSION (ligne dossier-l9, fonction 95, `presence.ts`) ·
+    // notée au plus une fois par minute, après tous les refus ci-dessus, jamais
+    // attendue ni levée · une présence manquée ne refuse aucune requête.
+    void noterPresence(this.prisma, {
+      tenantId: user.tenantId,
+      userId: user.id,
+      csrf: session.csrf,
+      origineS: session.origine,
+      authentificationS: session.authentification ?? session.origine,
+      longue: session.longue,
+      userAgent: typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    });
 
     return {
       userId: user.id,

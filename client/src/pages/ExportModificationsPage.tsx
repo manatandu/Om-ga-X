@@ -26,7 +26,8 @@ import {
  * DATÉ (AUDCIF art. 22, 7°) · les écritures nouvelles, celles du brouillard
  * modifiées depuis leur envoi, et les retraits, nommés à part. L'import des
  * écritures d'OmegaX ne relit qu'un envoi de pièces nouvelles · celui qui
- * remplace ou retire une pièce, il le refuse en le nommant (relecture M3).
+ * remplace ou retire une pièce, il le refuse en le nommant (relecture M3) ·
+ * c'est l'échange d'écritures qui le relit (Fichier > Échanger des écritures).
  * Le serveur tient le registre de ce qui est parti et GARDE le fichier · un
  * téléchargement interrompu ne perd rien, il se reprend depuis la liste.
  * L'écran ne recompte rien.
@@ -176,7 +177,7 @@ export function ExportModificationsPage() {
           </label>
           <Aide
             titre="Export des seules modifications"
-            texte="Part ce qui a changé depuis l'export précédent · les écritures jamais envoyées, celles du brouillard modifiées depuis leur envoi (elles repartent entières, marquées « remplace l'envoi n° k »), et celles du brouillard retirées depuis, nommées sur la feuille « Supprimées ». Une écriture validée ne change plus · envoyée validée, elle ne repart pas, et sa correction en négatif part comme une écriture nouvelle. Le lettrage et le pointage ne sont pas des modifications. Chaque export porte un numéro continu, sa date, son auteur et l'empreinte de son fichier, que le serveur garde. Au-delà du plafond de lignes, l'export part par lots et dit ce qui attend. Le journal de situation et l'à-nouveau provisoire ne partent jamais. L'import des écritures d'OmegaX relit un envoi de pièces nouvelles ; un envoi qui remplace ou retire une pièce, il le refuse en le nommant."
+            texte="Part ce qui a changé depuis l'export précédent · les écritures jamais envoyées, celles du brouillard modifiées depuis leur envoi (elles repartent entières, marquées « remplace l'envoi n° k »), et celles du brouillard retirées depuis, nommées sur la feuille « Supprimées ». Une écriture validée ne change plus · envoyée validée, elle ne repart pas, et sa correction en négatif part comme une écriture nouvelle. Le lettrage et le pointage ne sont pas des modifications. Chaque export porte un numéro continu, sa date, son auteur et l'empreinte de son fichier, que le serveur garde. Au-delà du plafond de lignes, l'export part par lots et dit ce qui attend. Le journal de situation et l'à-nouveau provisoire ne partent jamais. Un autre dossier OmegaX relit ce fichier par Fichier > Échanger des écritures, qui crée, remplace ou retire chaque pièce au brouillard par son identifiant, jamais deux fois. Une écriture reçue d'un autre dossier ne repart pas."
             source="AUDCIF art. 20, al. 2 ; art. 22, 1°, 2° et 7°."
           />
         </div>
