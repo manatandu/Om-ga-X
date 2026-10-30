@@ -17,6 +17,10 @@ import { Aide } from '../components/chrome/Aide';
 import { BlocEmetteur, montantImprime, TableauLignes } from '../components/PieceImprimable';
 import { avertissementArticle17, manquesDeLaPiece, mentionDebitsProposee, type MentionsRecopiees } from '../lib/mentions-piece';
 import type { TauxTva, Tiers } from '../lib/types';
+import { compteDesArticles, montantHTPropose, taxeProposee, type ArticleCommercial, type EncoursClient, type ListeArticlesCommerciaux, type PrixPropose } from '../lib/gestion-commerciale';
+
+/** Le motif d'un refus servi, sinon le défaut · un échec se dit (§ 9 ter). */
+const motifDe = (e: unknown, defaut: string) => (e instanceof ApiError ? e.message : defaut);
 
 /**
  * FACTURATION · la pièce que la loi exige pour chaque transaction.
@@ -69,6 +73,8 @@ type Facture = {
     imposable: boolean;
     tauxApplique: number | null;
     montantTva: number | null;
+    remisePourcent?: number | null;
+    articleId?: string | null;
   }[];
   totaux: {
     montantHT: number;
@@ -196,6 +202,18 @@ export function FacturationPage() {
   const [imposable, setImposable] = useState(true);
   const [tauxApplique, setTauxApplique] = useState<number | ''>('');
   const [montantTva, setMontantTva] = useState<number | ''>('');
+  // Ligne commercial-l8 · l'article propose désignation, prix, remise et
+  // taux ; la remise se porte sur la facture (O.-L. n° 10/001, art. 29).
+  const [articleId, setArticleId] = useState('');
+  const [remise, setRemise] = useState<number | ''>('');
+  const [articles, setArticles] = useState<ArticleCommercial[] | null>(null);
+  const [erreurArticles, setErreurArticles] = useState<string | null>(null);
+  const [annonceArticle, setAnnonceArticle] = useState<string | null>(null);
+  // L'encours du client et sa devise habituelle (fonctions 30 et 25) · lus au
+  // serveur au choix du client, l'échec dit.
+  const [encours, setEncours] = useState<EncoursClient | null>(null);
+  const [erreurEncours, setErreurEncours] = useState<string | null>(null);
+  const [avisEncours, setAvisEncours] = useState<string | null>(null);
   const [autresImpots, setAutresImpots] = useState<number | ''>('');
   // LE TIERS ET LE TAUX SE CHOISISSENT (audit final F23) · sans eux la
   // passation n'a ni compte de tiers ni compte de TVA, et « Passer
@@ -310,13 +328,115 @@ export function FacturationPage() {
       annule = true;
     };
   }, []);
+  // Les articles actifs (ligne commercial-l8) · une liste vide se dit, un échec aussi.
+  useEffect(() => {
+    let annule = false;
+    api.get<ListeArticlesCommerciaux>('/commercial/articles?actifs=oui').then(
+      (r) => {
+        if (annule) return;
+        setArticles(r.articles);
+        setErreurArticles(r.tronque ? `${r.articles.length} articles proposés sur ${r.total}.` : null);
+      },
+      (e) => {
+        if (!annule) setErreurArticles(motifDe(e, "Les articles n'ont pas pu être lus."));
+      },
+    );
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  // L'encours et la devise du client choisi · relus à chaque choix, une
+  // réponse périmée (un autre client choisi entre-temps) jetée.
+  useEffect(() => {
+    setEncours(null);
+    setErreurEncours(null);
+    if (sens !== 'VENTE' || !tiersId) return;
+    let annule = false;
+    api.get<EncoursClient>(`/commercial/encours/${encodeURIComponent(tiersId)}`).then(
+      (r) => {
+        if (!annule) setEncours(r);
+      },
+      (e) => {
+        if (!annule) setErreurEncours(motifDe(e, "L'encours du client n'a pas pu être lu."));
+      },
+    );
+    return () => {
+      annule = true;
+    };
+  }, [sens, tiersId]);
+
+  /**
+   * L'ARTICLE PROPOSE LA LIGNE · désignation, prix unitaire (tarif du client,
+   * sinon prix de base), remise, taux, et le montant HT net quand la quantité
+   * est portée. Une proposition du serveur, que le cabinet corrige ; un échec
+   * se dit et la ligne garde ce qui était tapé.
+   */
+  // Jeton de la dernière demande · une réponse périmée (un autre article ou
+  // un autre client choisi entre-temps) est jetée (relecture indépendante,
+  // mineur 5).
+  const jetonArticle = useRef(0);
+  const choisirArticle = async (id: string, client: string = tiersId) => {
+    const jeton = ++jetonArticle.current;
+    setArticleId(id);
+    setAnnonceArticle(null);
+    if (!id) return;
+    const q = new URLSearchParams({ articleId: id, sens });
+    if (client) q.set('tiersId', client);
+    try {
+      const p = await api.get<PrixPropose>(`/commercial/articles-proposition-prix?${q.toString()}`);
+      if (jeton !== jetonArticle.current) return;
+      setDesignation(p.designation);
+      setPrixUnitaire(p.prixUnitaireHT ?? '');
+      setRemise(p.remisePourcent ? p.remisePourcent : '');
+      // L'ARTICLE DÉCIDE DE LA TAXE DE LA LIGNE, TOUT ENTIÈRE · rien n'est
+      // hérité de l'article précédent (mineur 5) · exonéré, sans taux ; taxé,
+      // son taux ; ni l'un ni l'autre, imposable sans taux, à choisir.
+      setImposable(!p.exonere);
+      const t = p.exonere || !p.tauxTvaId ? undefined : tauxListe.find((x) => x.id === p.tauxTvaId);
+      setTauxTvaId(t ? t.id : '');
+      setTauxApplique(t ? Number(t.taux) : '');
+      setMontantHT(p.prixNetUnitaireHT !== null && quantite !== '' ? montantHTPropose(Number(quantite), p.prixNetUnitaireHT) : '');
+      setAnnonceArticle(
+        [
+          p.source === 'AUCUN'
+            ? 'Article sans prix · saisissez le prix unitaire.'
+            : `Prix ${p.source === 'TARIF_CLIENT' ? 'du tarif du client' : 'de base de l’article'}${p.remisePourcent ? `, remise de ${p.remisePourcent} %` : ''}${p.prixNetUnitaireHT !== null ? ` · prix net ${montant(p.prixNetUnitaireHT)}` : ''}${quantite === '' ? ' · portez la quantité, puis le montant HT' : ''}.`,
+          p.avertissement,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
+    } catch (e) {
+      if (jeton === jetonArticle.current) setAnnonceArticle(`Proposition de l’article non lue · ${motifDe(e, 'serveur injoignable')}.`);
+    }
+  };
+
+  // LE TARIF SE RELIT AU CHANGEMENT DE CLIENT (mineur 5) · le prix proposé
+  // pour l'ancien client ne reste pas sur la ligne du nouveau.
+  useEffect(() => {
+    if (articleId) void choisirArticle(articleId, tiersId);
+    // Seul le client relance · `choisirArticle` lit l'état courant à son appel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiersId]);
+
+  // LA TAXE SUIT SA BASE (relecture indépendante, M1) · à chaque changement de
+  // montant HT, de taux ou d'exonération, la taxe est reproposée au taux ×
+  // montant HT, au centime, et vidée sur une ligne non imposable ou sans taux.
+  // Une taxe portée à la main reste jusqu'au changement suivant ; le serveur
+  // avertit d'un écart.
+  useEffect(() => {
+    setMontantTva(taxeProposee(montantHT, tauxApplique, imposable));
+  }, [montantHT, tauxApplique, imposable]);
+
   const tiersDuSens = tiersListe.filter((t) => (sens === 'VENTE' ? t.type === 'CLIENT' || t.type === 'ADHERENT' : t.type === 'FOURNISSEUR'));
   const mentionDebitsCochee = mentionDebits ?? mentionDebitsProposee(sens, etat?.regimeExigibiliteTva);
 
   async function enregistrer() {
     setErreur(null);
+    setAvisEncours(null);
     try {
-      await api.post('/facturation', {
+      const r: { avertissementEncours?: string; avertissementsLignes?: string[] } = await api.post('/facturation', {
         sens,
         numeroSerie,
         dateFacture,
@@ -344,12 +464,20 @@ export function FacturationPage() {
             tauxTvaId: tauxTvaId || undefined,
             tauxApplique: tauxApplique === '' ? undefined : Number(tauxApplique),
             montantTva: montantTva === '' ? undefined : Number(montantTva),
+            ...(articleId ? { articleId } : {}),
+            ...(remise === '' || remise === 0 ? {} : { remisePourcent: Number(remise) }),
           },
         ],
       });
+      // L'ENCOURS MAXIMUM AVERTI (fonction 30) · la facture est enregistrée,
+      // le dépassement se dit, jamais un refus.
+      setAvisEncours([r.avertissementEncours, ...(r.avertissementsLignes ?? [])].filter(Boolean).join(' ') || null);
       setNumeroSerie('');
       setDateReception('');
       setDesignation('');
+      setArticleId('');
+      setRemise('');
+      setAnnonceArticle(null);
       setMentionDebits(null);
       // Une pièce datée hors de la période affichée ne s'y verra pas · le dire.
       setAvisListe(horsPeriode(dateFacture, periodeListe) ? 'Pièce enregistrée · datée hors de la période affichée.' : null);
@@ -495,6 +623,16 @@ export function FacturationPage() {
               ))}
             </select>
             {erreurTiers && <span className="block text-danger">Tiers illisibles · {erreurTiers}</span>}
+            {erreurEncours && <span className="block text-danger">{erreurEncours}</span>}
+            {encours?.tiers.devise && (
+              <span className="block text-text-dim">Devise habituelle {encours.tiers.devise} · la facture se tient en francs.</span>
+            )}
+            {encours?.avertissement && <span className="block text-warning">{encours.avertissement}</span>}
+            {encours && !encours.avertissement && encours.encoursMaximum !== null && encours.encours !== null && (
+              <span className="block text-text-dim">
+                Encours {montant(encours.encours)} sur {montant(encours.encoursMaximum)} autorisés.
+              </span>
+            )}
           </label>
           <label className="text-[11.5px]">
             N° de série
@@ -523,6 +661,19 @@ export function FacturationPage() {
             <input className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={contrepartieNumeroImpot} onChange={(e) => setContrepartieNumeroImpot(e.target.value)} />
           </label>
           <label className="text-[11.5px]">
+            Article
+            <select className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={articleId} onChange={(e) => void choisirArticle(e.target.value)}>
+              <option value="">Aucun · saisir la ligne</option>
+              {articles?.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.reference} · {a.designation}
+                </option>
+              ))}
+            </select>
+            {erreurArticles && <span className="block text-danger">{erreurArticles}</span>}
+            {annonceArticle && <span className="block text-text-dim">{annonceArticle}</span>}
+          </label>
+          <label className="text-[11.5px]">
             Désignation
             <input className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={designation} onChange={(e) => setDesignation(e.target.value)} />
           </label>
@@ -534,8 +685,12 @@ export function FacturationPage() {
             Prix unitaire
             <input type="number" className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={prixUnitaire} onChange={(e) => setPrixUnitaire(e.target.value === '' ? '' : Number(e.target.value))} />
           </label>
+          <label className="text-[11.5px]" title="O.-L. n° 10/001, art. 29 · la remise portée sur la facture sort de la base de la taxe">
+            Remise (%)
+            <input type="number" className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={remise} onChange={(e) => setRemise(e.target.value === '' ? '' : Number(e.target.value))} />
+          </label>
           <label className="text-[11.5px]">
-            Montant HT
+            Montant HT net
             <input type="number" className="w-full border border-border px-1.5 py-1 text-[11.5px]" value={montantHT} onChange={(e) => setMontantHT(e.target.value === '' ? '' : Number(e.target.value))} />
           </label>
           <label className="text-[11.5px]">
@@ -621,6 +776,7 @@ export function FacturationPage() {
             déduit pas d'un taux nul, une opération au taux zéro (exportation)
             étant imposable. */}
         {erreur && <p className="text-[11.5px] text-danger mt-2">{erreur}</p>}
+        {avisEncours && <p role="status" className="text-[11.5px] text-warning mt-2">{avisEncours}</p>}
         {peutEcrire && (
           <button className="mt-2 border border-border px-2.5 py-1 text-[11.5px]" onClick={() => void enregistrer()}>
             Enregistrer
@@ -845,6 +1001,7 @@ export function FacturationPage() {
                       {peutEcrire && !f.ecritureId && (!etat.circuitVisa || f.visa?.vise) && (
                         <PasserEcritureFacture
                           facture={f}
+                          compteIdPropose={compteDesArticles(f.sens, f.lignes, articles)}
                           onFait={(avis) => {
                             setAvisListe(avis ?? null);
                             void recharger();

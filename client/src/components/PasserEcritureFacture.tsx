@@ -13,8 +13,15 @@ import { corpsComptabilisation, passageComplet, receptionADeclarer } from '../li
 export function PasserEcritureFacture({
   facture,
   onFait,
+  compteIdPropose = null,
 }: {
   facture: { id: string; sens: 'VENTE' | 'ACHAT'; dateReception?: string | null };
+  /**
+   * Le compte de vente ou d'achat que portent les articles de TOUTES les
+   * lignes (ligne commercial-l8, relecture indépendante, mineur 9) · proposé,
+   * jamais imposé ; le serveur juge le compte choisi comme tout autre.
+   */
+  compteIdPropose?: string | null;
   /** `avis` · l'avertissement du serveur (facture d'un exercice reçue dans le suivant). */
   onFait: (avis?: string) => void;
 }) {
@@ -55,7 +62,7 @@ export function PasserEcritureFacture({
         (c) => c.typeCompte === 'DETAIL' && c.estActif && (facture.sens === 'VENTE' ? c.numero.startsWith('7') : c.numero.startsWith('6') || c.numero.startsWith('2')),
       );
       setComptes(proposes);
-      setCompteId((v) => v || compteUnique(proposes));
+      setCompteId((v) => v || (compteIdPropose && proposes.some((c) => c.id === compteIdPropose) ? compteIdPropose : compteUnique(proposes)));
     }, echec);
   }, [ouvert, facture.sens]);
 

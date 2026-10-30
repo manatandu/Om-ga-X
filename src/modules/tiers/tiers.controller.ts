@@ -63,6 +63,16 @@ export class TiersController {
   }
 
   /**
+   * LES DEVISES HABITUELLES PAR COMPTE (ligne commercial-l8, fonction 25) ·
+   * la saisie les lit une fois pour PROPOSER la devise d'une ligne posée sur
+   * le compte d'un tiers. Lecture seule. Déclarée avant `:id`.
+   */
+  @Get('devises-des-comptes')
+  async devisesDesComptes(@CurrentUser() user: AuthenticatedUser) {
+    return this.tiersService.devisesDesComptes(user.tenantId);
+  }
+
+  /**
    * L'échéancier de la ligne de facture en saisie (ligne sage-l2, fonction 3)
    * · le modèle de règlement du tiers rattaché au compte, appliqué à la date
    * et au montant de la ligne. Lecture seule ; le compte est jugé dans le

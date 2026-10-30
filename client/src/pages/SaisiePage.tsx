@@ -381,6 +381,13 @@ export function SaisiePage() {
   // qu'il a fait de la dernière ligne de facture, dit au-dessus de la saisie,
   // et la fenêtre des échéances quand le modèle en compte plusieurs.
   const [annonceEcheance, setAnnonceEcheance] = useState<string | null>(null);
+  // LA DEVISE HABITUELLE DU TIERS (ligne commercial-l8, fonction 25) · lue une
+  // fois, proposée au choix d'un de ses comptes quand la ligne n'a pas encore
+  // de devise, jamais imposée ; un échec de lecture se dit.
+  const [devisesDesComptes, setDevisesDesComptes] = useState<Map<string, { deviseId: string; devise: string; tiers: string }> | null>(null);
+  const [erreurDevisesTiers, setErreurDevisesTiers] = useState<string | null>(null);
+  const [annonceDevise, setAnnonceDevise] = useState<string | null>(null);
+  const deviseProposee = useRef<string | null>(null);
   // LE MODE POSÉ D'OFFICE sur une ligne (mode habituel du tiers, mode du
   // modèle) · il se retire d'un clic (second tour, mineur 4).
   const [modeDOffice, setModeDOffice] = useState<{ cle: string; numero: string; code: string } | null>(null);
@@ -540,6 +547,13 @@ export function SaisiePage() {
         setErreurDevises(null);
       },
       (e) => setErreurDevises(e instanceof Error ? e.message : "La liste des devises n'a pas pu être lue."),
+    );
+    api.get<{ tronque: boolean; comptes: { compteId: string; deviseId: string; devise: string; tiers: string }[] }>('/tiers/devises-des-comptes').then(
+      (r) => {
+        setDevisesDesComptes(new Map(r.comptes.map((c) => [c.compteId, c])));
+        setErreurDevisesTiers(r.tronque ? 'Devises habituelles des tiers en partie lues · certaines lignes ne recevront pas de proposition.' : null);
+      },
+      (e) => setErreurDevisesTiers(`Devises habituelles des tiers non lues · ${e instanceof Error ? e.message : 'serveur injoignable'}.`),
     );
     api.get<ModeReglement[]>('/modes-reglement').then(
       (ms) => {
@@ -898,6 +912,25 @@ export function SaisiePage() {
   const choisirCompte = (c: Compte) => {
     setCompteChoisi(c);
     setCompteSaisie(c.numero);
+    setAnnonceDevise(null);
+    const habituelle = devisesDesComptes?.get(c.id);
+    // UNE DEVISE PROPOSÉE NE SUIT PAS UN AUTRE COMPTE (relecture « échecs
+    // silencieux ») · posée d'office pour le compte d'un tiers, elle est
+    // retirée quand le compte change, sans quoi une charge partait en USD sans
+    // que personne l'ait choisi. Une devise choisie à la main reste.
+    let deviseCourante = deviseSaisie;
+    const etaitProposee = !!deviseProposee.current && deviseSaisie === deviseProposee.current;
+    if (etaitProposee && habituelle?.deviseId !== deviseSaisie) {
+      choisirDevise('');
+      deviseCourante = '';
+    }
+    // Restée proposée pour un compte du même tiers ou de même devise · elle le reste.
+    deviseProposee.current = etaitProposee && deviseCourante ? deviseCourante : null;
+    if (habituelle && !deviseCourante && devises.some((d) => d.id === habituelle.deviseId)) {
+      deviseProposee.current = habituelle.deviseId;
+      choisirDevise(habituelle.deviseId);
+      setAnnonceDevise(`${c.numero} · devise habituelle ${habituelle.devise} du tiers ${habituelle.tiers} proposée · retirez-la si la ligne est en francs.`);
+    }
     // NET À PAYER · le compte de tiers d'un journal d'achats ou de ventes
     // reçoit d'office le montant qui équilibre la pièce, modifiable.
     if (!debitSaisie && !creditSaisie) {
@@ -1234,6 +1267,7 @@ export function SaisiePage() {
     setVersement('');
     setModeLigne('');
     setDeviseSaisie('');
+    deviseProposee.current = null;
     setMontantDeviseSaisie('');
     setCoursSaisie('');
     compteRef.current?.focus();
@@ -2788,6 +2822,12 @@ export function SaisiePage() {
           {erreurDevises && (
             <div className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-danger">
               Devises illisibles · {erreurDevises}
+            </div>
+          )}
+          {erreurDevisesTiers && <div className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-warning">{erreurDevisesTiers}</div>}
+          {annonceDevise && deviseSaisie && (
+            <div role="status" className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-text-dim">
+              {annonceDevise}
             </div>
           )}
           {devises.length > 0 && (

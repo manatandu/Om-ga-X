@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { TypeTiers } from '@prisma/client';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
@@ -20,6 +20,21 @@ export class CreerTiersDto {
   @IsOptional()
   @IsUUID()
   modeReglementId?: string;
+
+  /** Le représentant (ligne commercial-l8, fonction 91) · un collaborateur actif, vendeur ou acheteur selon le tiers. */
+  @IsOptional()
+  @IsUUID()
+  representantId?: string;
+
+  /** La devise habituelle (ligne commercial-l8, fonction 25) · une devise du dossier, active, autre que le franc. */
+  @IsOptional()
+  @IsUUID()
+  deviseId?: string;
+
+  /** L'encours maximum d'un client, en francs (ligne commercial-l8, fonction 30) · averti à la vente. */
+  @IsOptional()
+  @IsNumber()
+  encoursMaximum?: number;
 
   /**
    * Les modèles d'impression du tiers (ligne sage-l2, fonction 27) · un
@@ -205,6 +220,21 @@ export class ModifierTiersDto {
   @IsOptional()
   @IsUUID()
   modeReglementId?: string | null;
+
+  // null explicite = le tiers n'a plus de représentant (ligne commercial-l8, fonction 91)
+  @IsOptional()
+  @IsUUID()
+  representantId?: string | null;
+
+  // null explicite = le tiers n'a plus de devise habituelle (fonction 25)
+  @IsOptional()
+  @IsUUID()
+  deviseId?: string | null;
+
+  // null explicite = le client n'a plus d'encours maximum (fonction 30)
+  @IsOptional()
+  @IsNumber()
+  encoursMaximum?: number | null;
 
   // null explicite = le document part sans habillage (ligne sage-l2, fonction 27)
   @IsOptional()

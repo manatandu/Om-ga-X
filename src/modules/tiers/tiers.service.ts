@@ -32,6 +32,9 @@ import { modeDuDossier } from '../reglements/modes-reglement.service';
 import { conflitSiReferenceRetiree } from './reference-retiree';
 import { modeleDuDossierPourLaZone } from './modeles-impression.service';
 import { echeancierDuModele, motifSansEcheancierDuModele } from './echeancier-modele';
+import { motifRefusRepresentant } from '../commercial/collaborateurs';
+import { motifRefusEncoursMaximum } from '../commercial/encours-client';
+import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 
 /**
  * Tiers (cf. docs/plan-de-construction.md §3.2) : Client/Fournisseur/Salarié/
@@ -170,6 +173,8 @@ export class TiersService {
     }
     if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     await this.verifierModelesImpression(tenantId, dto);
+    if (dto.representantId) await this.verifierRepresentant(tenantId, dto.type, dto.representantId);
+    await this.verifierDeviseEtEncours(tenantId, dto.type, dto.deviseId, dto.encoursMaximum);
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
@@ -632,6 +637,20 @@ export class TiersService {
       for (const rib of ribsDuDoublon) {
         await tx.ribTiers.update({ where: { id: rib.id }, data: saisieDesCoordonnees(utilisateurId, maintenant) });
       }
+      // UN TARIF DU DOUBLON POUR UN ARTICLE QUE LA FICHE CONSERVÉE TARIFE DÉJÀ
+      // n'est pas reporté (ligne commercial-l8) · l'unicité (article, client)
+      // tiendrait la fusion en échec. Le prix convenu avec le client conservé
+      // prime, comme ses coordonnées · retiré ligne par ligne, pour que le
+      // journal d'audit garde chaque tarif retiré (un `deleteMany` n'y
+      // laisserait que le filtre et le compte).
+      const tarifesGardes = await tx.tarifClient.findMany({ where: { tenantId, tiersId: cible.id }, select: { articleId: true } });
+      if (tarifesGardes.length) {
+        const enDouble = await tx.tarifClient.findMany({
+          where: { tenantId, tiersId: source.id, articleId: { in: tarifesGardes.map((t) => t.articleId) } },
+          select: { id: true },
+        });
+        for (const t of enDouble) await tx.tarifClient.delete({ where: { id: t.id } });
+      }
       const r = await reporterReferences(tx, 'Tiers', source.id, cible.id, tenantId);
       const complement = coordonneesAComblement(source, cible);
       if (Object.keys(complement).length) await tx.tiers.update({ where: { id: cible.id }, data: complement });
@@ -647,7 +666,9 @@ export class TiersService {
   }
 
   async modifier(tenantId: string, tiersId: string, dto: ModifierTiersDto) {
-    await this.trouver(tenantId, tiersId);
+    const fiche = await this.trouver(tenantId, tiersId);
+    if (dto.representantId) await this.verifierRepresentant(tenantId, fiche.type, dto.representantId);
+    await this.verifierDeviseEtEncours(tenantId, fiche.type, dto.deviseId, dto.encoursMaximum);
     if (dto.modeleReglementId) {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
@@ -858,6 +879,67 @@ export class TiersService {
    * 27) · chacun du dossier et de la nature de sa zone. `null` passe sans
    * contrôle · il retire le modèle, le document part sans habillage.
    */
+  /**
+   * LE REPRÉSENTANT D'UN TIERS (ligne commercial-l8, fonction 91) · un
+   * collaborateur de CE dossier (la clé étrangère ne voit pas le dossier),
+   * actif, qui porte le rôle que le type du tiers exige (`collaborateurs.ts`).
+   */
+  private async verifierRepresentant(tenantId: string, type: TypeTiers, representantId: string) {
+    const c = await this.prisma.collaborateur.findFirst({
+      where: { id: representantId, tenantId },
+      select: { nom: true, prenom: true, actif: true, vendeur: true, caissier: true, acheteur: true, controleur: true, financier: true, recouvrement: true },
+    });
+    if (!c) throw new NotFoundException('Collaborateur introuvable dans ce dossier.');
+    const motif = motifRefusRepresentant(type, c);
+    if (motif) throw new BadRequestException(motif);
+  }
+
+  /**
+   * LA DEVISE HABITUELLE DE CHAQUE COMPTE DE TIERS (fonction 25) · pour la
+   * proposition de la saisie. Bornée, et la borne se dit (§ 8 bis) · une
+   * liste tronquée laisse sans proposition les comptes qu'elle ne porte pas,
+   * jamais une devise fausse. UN COLLECTIF QUI PORTE DES COMPTES INDIVIDUELS
+   * N'EN REÇOIT AUCUNE (relecture indépendante, M3) · resté rattaché à un tiers
+   * ancien, il proposerait la devise de ce tiers à tous les clients du
+   * collectif.
+   */
+  async devisesDesComptes(tenantId: string) {
+    const PLAFOND = 2000;
+    const [liens, total] = await Promise.all([
+      this.prisma.tiersCompte.findMany({
+        where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } }, compte: { individuels: { none: {} } } },
+        select: { compteId: true, tiers: { select: { code: true, deviseId: true, devise: { select: { code: true } } } } },
+        orderBy: { compteId: 'asc' },
+        take: PLAFOND,
+      }),
+      this.prisma.tiersCompte.count({ where: { tiers: { tenantId, deviseId: { not: null }, devise: { estActive: true } }, compte: { individuels: { none: {} } } } }),
+    ]);
+    return {
+      total,
+      tronque: total > liens.length,
+      comptes: liens.map((l) => ({ compteId: l.compteId, tiers: l.tiers.code, deviseId: l.tiers.deviseId as string, devise: l.tiers.devise?.code ?? '' })),
+    };
+  }
+
+  /**
+   * LA DEVISE HABITUELLE ET L'ENCOURS MAXIMUM (ligne commercial-l8, fonctions
+   * 25 et 30). La devise est une devise de CE dossier, active, jamais le franc
+   * · la monnaie de tenue n'est pas une devise (loi n° 23/053, art. 141, 1° ;
+   * même refus que la ligne en devise, F49). L'encours est un montant en
+   * francs, d'un client ou d'un adhérent (`encours-client.ts`).
+   */
+  private async verifierDeviseEtEncours(tenantId: string, type: TypeTiers, deviseId: string | null | undefined, encours: number | null | undefined) {
+    const motif = motifRefusEncoursMaximum(encours, type);
+    if (motif) throw new BadRequestException(motif);
+    if (!deviseId) return;
+    const devise = await this.prisma.devise.findFirst({ where: { id: deviseId, tenantId }, select: { code: true, estActive: true } });
+    if (!devise) throw new NotFoundException('Devise introuvable dans ce dossier.');
+    if (devise.code.toUpperCase() === MONNAIE_DE_TENUE) {
+      throw new BadRequestException(`${MONNAIE_DE_TENUE} est la monnaie de tenue · un tiers réglé en francs n’a pas de devise habituelle, laissez le champ vide.`);
+    }
+    if (!devise.estActive) throw new BadRequestException(`La devise ${devise.code} est en sommeil · rouvrez-la dans Devises avant de la donner à un tiers.`);
+  }
+
   private async verifierModelesImpression(
     tenantId: string,
     dto: { modeleImpressionExtraitId?: string | null; modeleImpressionReglementId?: string | null; modeleImpressionRappelId?: string | null },

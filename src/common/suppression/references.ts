@@ -84,6 +84,15 @@ const LIBELLES: Record<string, string> = {
   'ModeleReglement.modeReglementId': 'modèles de règlement',
   'EcheanceReglement.modeReglementId': 'échéances de modèles de règlement',
   'LieuLivraison.tiersId': 'lieux de livraison',
+  // Ligne commercial-l8 · un article nomme ses comptes et son taux, un tarif son client.
+  'ArticleCommercial.compteVenteId': 'articles commerciaux (compte de vente)',
+  'ArticleCommercial.compteAchatId': 'articles commerciaux (compte d’achat)',
+  'ArticleCommercial.tauxTvaId': 'articles commerciaux (taux proposé)',
+  'TarifClient.tiersId': 'tarifs propres à ce client',
+  'ArticleCommercial.modeArrondiId': 'articles commerciaux (mode d’arrondi)',
+  'Tiers.representantId': 'tiers représentés',
+  'Tiers.deviseId': 'tiers dont c’est la devise habituelle',
+  'LigneFacture.articleId': 'lignes de facture',
   // Ligne sage-l2, fonction 27 · le modèle d'impression choisi sur la fiche d'un tiers.
   'Tiers.modeleImpressionExtraitId': "tiers (modèle de l'extrait de compte)",
   'Tiers.modeleImpressionReglementId': "tiers (modèle de l'avis de règlement)",

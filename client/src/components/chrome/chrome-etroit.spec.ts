@@ -400,7 +400,10 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // Ligne analytique (2026-10-29) · « Plans analytiques » et « Grilles
     // analytiques » réunis sous « Analytique » · repos inchangé.
     // Puis « Budgets des comptes » au même groupe (fonction n° 51) · repos inchangé.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 24],
+    // 2026-10-30 · groupe « Gestion commerciale » (ligne commercial-l8) ·
+    // une ligne de plus au repos, trois commandes (articles, collaborateurs,
+    // modes d'arrondi).
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 10, 27],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.

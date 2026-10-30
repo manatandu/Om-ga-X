@@ -84,6 +84,11 @@ export const TRADUCTIONS_EN: Readonly<Record<string, string>> = {
   'Types de remise': 'Deposit types',
   'Conditions bancaires': 'Bank terms',
   'Taux de référence': 'Reference rates',
+  // Ligne commercial-l8 · le groupe Gestion commerciale de Structure.
+  'Gestion commerciale': 'Sales management',
+  'Articles et tarifs': 'Items and prices',
+  Collaborateurs: 'Sales staff',
+  "Modes d'arrondi": 'Rounding methods',
   'Bailleurs et subventions': 'Donors and grants',
   'Bailleurs de fonds': 'Donors',
   'Dossier de subvention': 'Grant file',

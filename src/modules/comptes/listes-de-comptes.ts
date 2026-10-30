@@ -142,6 +142,7 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  * plan »).
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
+  '/tiers/devises-des-comptes': 'devise habituelle du tiers de chaque compte rattaché (ligne commercial-l8, fonction 25), proposée en saisie · aucun compte à choisir',
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
   '/analytique/comptes/:compteId/budget':
     "budget d'un compte déjà choisi sur un exercice (ligne analytique, fonction n° 51), l'annuel et ses mois, jamais une liste",

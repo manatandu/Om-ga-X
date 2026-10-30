@@ -333,6 +333,19 @@ export function AppShell() {
               ]
             : [],
         },
+        {
+          // Ligne commercial-l8 · Sage, Structure > Articles. Masqué tant que
+          // le dossier n'a pas activé la gestion commerciale
+          // (`lib/profil-dossier.ts`, MODULES) · masquer n'est pas refuser.
+          titre: 'Gestion commerciale',
+          items: [
+            { label: 'Articles et tarifs', chemin: '/articles', onClick: () => navigate('/articles') },
+            // Fonction 91 · Sage, F_COLLABORATEUR.
+            { label: 'Collaborateurs', chemin: '/collaborateurs', onClick: () => navigate('/collaborateurs') },
+            // Fonction 94 · Sage, P_ARRONDI.
+            { label: "Modes d'arrondi", chemin: '/modes-arrondi', onClick: () => navigate('/modes-arrondi') },
+          ],
+        },
         { label: 'Immobilisations', separateurAvant: true, chemin: '/immobilisations', onClick: () => navigate('/immobilisations') },
         // Le registre tient l'état civil et les engagements, comme le plan des
         // tiers tient les tiers. Son onglet Bulletins passe la paie du mois au

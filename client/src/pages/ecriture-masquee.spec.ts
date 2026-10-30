@@ -47,6 +47,8 @@ const EXEMPTS: Record<string, string> = {
 const ADMIN_SEULEMENT: Record<string, string> = {
   'components/DemarrageGuide.tsx': "choix des modules du dossier, route PATCH /dossier/modules réservée à l'administrateur",
   'components/AcceptationConditionsLicence.tsx': "acceptation des conditions de licence au nom du client, route POST /conditions-licence/acceptation réservée à l'administrateur",
+  'pages/CollaborateursPage.tsx': "collaborateurs et leurs rôles commerciaux, structure réservée à l'administrateur (ligne commercial-l8, fonction 91)",
+  'pages/ModesArrondiPage.tsx': "modes d'arrondi du prix proposé, structure réservée à l'administrateur (ligne commercial-l8, fonction 94)",
   'pages/BanquesPage.tsx': "banques et RIB, structures du dossier réservées à l'administrateur",
   'components/SectionsFamilles.tsx': "section analytique des familles d'immobilisations, route PATCH /immobilisations/familles/:id/section réservée à l'administrateur (ligne immos, n° 70)",
   'pages/ConditionsBancairesPage.tsx': "conditions, autorisations de financement et unions des comptes bancaires, structures réservées à l'administrateur (ligne sage-l3, n° 46)",
