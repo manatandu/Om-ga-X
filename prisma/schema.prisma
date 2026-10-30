@@ -8223,7 +8223,8 @@ model ArticleCommercial {
   prixVenteHT Decimal? @db.Decimal(18, 2)
   prixAchatHT Decimal? @db.Decimal(18, 2)
 
-  /// L'article du magasin que la livraison et la réception mouvementent.
+  /// La fiche du magasin de cet article · elle donne l'unité ; ses entrées et
+  /// sorties se saisissent au magasin, aucune pièce commerciale ne les passe.
   articleStockId String?       @unique
   articleStock   ArticleStock? @relation(fields: [articleStockId], references: [id], onDelete: Restrict)
 

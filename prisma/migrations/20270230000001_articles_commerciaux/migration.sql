@@ -2,7 +2,7 @@
 --
 -- L'article nomme ce que le dossier vend ou achète, avec ses comptes de vente
 -- (classe 7) et d'achat (classe 6), son taux de taxe et, s'il est stocké,
--- l'article du magasin qu'il mouvemente (une fiche de stock au plus par
+-- la fiche du magasin dont il prend l'unité (une fiche de stock au plus par
 -- article commercial, index unique). Toutes les clés sont RESTRICT · un
 -- article qui a servi se met en sommeil, il ne se supprime pas, et un compte,
 -- un taux ou une fiche de stock qu'un article nomme ne part pas en silence.

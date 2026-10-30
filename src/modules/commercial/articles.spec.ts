@@ -1,5 +1,4 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { ClasseCompte, ModuleOptionnel, TypeCompteDetailTotal, TypeLicence, TypeTiers } from '@prisma/client';
+import { ClasseCompte, TypeCompteDetailTotal, TypeTiers } from '@prisma/client';
 import {
   motifRefusCompteAchat,
   motifRefusCompteVente,
@@ -9,7 +8,6 @@ import {
   motifRefusUniteStockee,
   prixPropose,
 } from './articles';
-import { GestionCommercialeGuard, MOTIF_MODULE_NON_ACTIVE } from './gestion-commerciale.guard';
 import { ArticlesCommerciauxService } from './articles.service';
 
 const compte = (numero: string, classe: ClasseCompte, detail = true, actif = true) => ({
@@ -57,25 +55,6 @@ describe('articles commerciaux · règles pures (ligne commercial-l8, étape a)'
     expect(prixPropose(1000, { prixHT: 900, remisePourcent: 5 })).toEqual({ prixUnitaireHT: 900, remisePourcent: 5, source: 'TARIF_CLIENT' });
     expect(prixPropose(1000, { prixHT: null, remisePourcent: 10 })).toEqual({ prixUnitaireHT: 1000, remisePourcent: 10, source: 'PRIX_DE_BASE' });
     expect(prixPropose(null, null)).toEqual({ prixUnitaireHT: null, remisePourcent: 0, source: 'AUCUN' });
-  });
-});
-
-describe('la gestion commerciale se refuse par le serveur quand le module n’est pas activé', () => {
-  const contexte = (method: string) =>
-    ({ switchToHttp: () => ({ getRequest: () => ({ method, user: { tenantId: 't' } }) }) }) as unknown as ExecutionContext;
-  const garde = (modules: ModuleOptionnel[], type: TypeLicence = TypeLicence.ABONNEMENT) =>
-    new GestionCommercialeGuard({ tenant: { findUnique: jest.fn().mockResolvedValue({ modulesActives: modules, licence: { type } }) } } as never);
-
-  it('une écriture est refusée, nommée, quand le module manque', async () => {
-    await expect(garde([]).canActivate(contexte('POST'))).rejects.toThrow(new ForbiddenException(MOTIF_MODULE_NON_ACTIVE));
-    await expect(garde([ModuleOptionnel.PAIE]).canActivate(contexte('DELETE'))).rejects.toBeInstanceOf(ForbiddenException);
-  });
-  it('une lecture passe toujours · désactiver ne cache rien de ce qui a été fait', async () => {
-    await expect(garde([]).canActivate(contexte('GET'))).resolves.toBe(true);
-  });
-  it('le module activé, ou le dossier de l’éditeur, écrit', async () => {
-    await expect(garde([ModuleOptionnel.GESTION_COMMERCIALE]).canActivate(contexte('PATCH'))).resolves.toBe(true);
-    await expect(garde([], TypeLicence.PROPRIETAIRE).canActivate(contexte('POST'))).resolves.toBe(true);
   });
 });
 

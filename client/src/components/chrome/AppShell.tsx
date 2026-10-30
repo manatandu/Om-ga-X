@@ -310,8 +310,8 @@ export function AppShell() {
         },
         {
           // Ligne commercial-l8 · Sage, Structure > Articles. Masqué tant que
-          // le dossier n'a pas activé la gestion commerciale, et refusé par le
-          // serveur (`GestionCommercialeGuard`).
+          // le dossier n'a pas activé la gestion commerciale
+          // (`lib/profil-dossier.ts`, MODULES) · masquer n'est pas refuser.
           titre: 'Gestion commerciale',
           items: [{ label: 'Articles et tarifs', chemin: '/articles', onClick: () => navigate('/articles') }],
         },

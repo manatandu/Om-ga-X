@@ -20,8 +20,8 @@ const message = (e: unknown, defaut: string) => (e instanceof ApiError ? e.messa
 /**
  * ARTICLES ET TARIFS (ligne commercial-l8, étape a) · Structure > Gestion
  * commerciale. L'article nomme ce que le dossier vend ou achète, ses comptes
- * de vente et d'achat, son taux et, s'il est stocké, la fiche du magasin que
- * la livraison et la réception mouvementent. Les refus sont ceux du serveur,
+ * de vente et d'achat, son taux et, s'il est stocké, la fiche du magasin dont
+ * il prend l'unité (les mouvements restent saisis au magasin). Les refus sont ceux du serveur,
  * affichés tels quels.
  */
 export function ArticlesCommerciauxPage() {
@@ -152,7 +152,7 @@ export function ArticlesCommerciauxPage() {
         <div className="flex-1" />
         <Aide
           titre="Articles et tarifs"
-          texte="L’article nomme ce que le dossier vend ou achète. Son compte de vente est un compte de produit de la classe 7, son compte d’achat un compte de charge de la classe 6 (le 603, qui porte la variation des stocks, n’est pas un achat) · tous deux personnalisés dans Plan comptable. Le taux est un taux du dossier ; une opération exonérée ne porte pas de taux, l’exonération n’étant pas un taux nul. Un article stocké renvoie à une fiche du magasin, dont il prend l’unité · la livraison en sort la quantité, la réception l’y fait entrer. Le prix de base et le tarif d’un client sont proposés à la ligne d’une pièce, jamais imposés ; la remise est déduite sur la facture. Un article qui a servi se met en sommeil, il ne se supprime pas."
+          texte="L’article nomme ce que le dossier vend ou achète. Son compte de vente est un compte de produit de la classe 7, son compte d’achat un compte de charge de la classe 6 (le 603, qui porte la variation des stocks, n’est pas un achat) · tous deux personnalisés dans Plan comptable. Le taux est un taux du dossier ; une opération exonérée ne porte pas de taux, l’exonération n’étant pas un taux nul. Un article stocké renvoie à une fiche du magasin, dont il prend l’unité · les entrées et sorties se saisissent toujours au magasin, la facture ne les passe pas. Le prix de base et le tarif d’un client sont proposés à la ligne d’une pièce, jamais imposés ; la remise est déduite sur la facture. Un article qui a servi se met en sommeil, il ne se supprime pas."
           source="AUDCIF Titre VII, comptes 60 et 70 · AUDCG art. 263 · O.-L. n° 10/001, art. 24 et 43"
         />
       </div>

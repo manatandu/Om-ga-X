@@ -5,7 +5,6 @@ import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { GestionCommercialeGuard } from './gestion-commerciale.guard';
 import { ArticlesCommerciauxService } from './articles.service';
 import {
   CreerArticleCommercialDto,
@@ -21,10 +20,12 @@ import {
  * (loi n° 004/2001, art. 1er) et achète comme tout le monde, et l'article ne
  * porte qu'un compte de la classe que chaque plan fixe. Tenue par
  * l'administrateur et le comptable, comme les fiches du magasin ; la lecture
- * est ouverte. Le module doit être activé pour écrire
- * (`GestionCommercialeGuard`).
+ * est ouverte. MASQUER N'EST PAS REFUSER (`tenant/modules-optionnels.ts`,
+ * décision de Manasse du 2026-09-28) · le menu ne montre ces fenêtres qu'au
+ * dossier qui a activé la gestion commerciale, la route reste ouverte comme
+ * celles des devis et du magasin.
  */
-@UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, GestionCommercialeGuard)
+@UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('commercial')
 export class ArticlesCommerciauxController {
   constructor(private readonly articles: ArticlesCommerciauxService) {}

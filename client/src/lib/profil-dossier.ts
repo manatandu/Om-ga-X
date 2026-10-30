@@ -89,7 +89,7 @@ export const MODULES: ReadonlyArray<{ cle: ModuleOptionnel; libelle: string; che
     libelle: 'Révision et contrôle interne',
     chemins: ['/dossier-revision', '/circularisation', '/questionnaire-revision', '/faiblesses'],
   },
-  { cle: 'GESTION_COMMERCIALE', libelle: 'Gestion commerciale et stocks', chemins: ['/devis', '/magasin', '/emballages'] },
+  { cle: 'GESTION_COMMERCIALE', libelle: 'Gestion commerciale et stocks', chemins: ['/devis', '/magasin', '/emballages', '/articles'] },
   { cle: 'CONSOLIDATION', libelle: 'Consolidation', chemins: ['/consolidation'] },
   { cle: 'IFRS', libelle: 'États IFRS', chemins: ['/ifrs'] },
 ];
