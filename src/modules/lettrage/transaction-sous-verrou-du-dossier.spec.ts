@@ -93,7 +93,6 @@ describe('le lettrage sous le verrou du dossier', () => {
 
   it('le service de lettrage ne retourne plus à l’isolation sérialisable', () => {
     const source = readFileSync(join(__dirname, 'lettrage.service.ts'), 'utf-8');
-    expect(source).not.toMatch(/avecRetrySerialisable\(/);
     expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(8);
   });
 
@@ -114,16 +113,5 @@ describe('le lettrage sous le verrou du dossier', () => {
     const poses = [...source.matchAll(/ligneEcriture\.updateMany\(\{[\s\S]*?data:\s*\{\s*lettrageId(?::\s*groupe\.id)?\s*[,}]/g)].map((m) => m[0]);
     expect(poses).toHaveLength(3);
     for (const pose of poses) expect(pose).toMatch(/where:\s*\{\s*id:\s*\{\s*in:\s*\w+(?:\.\w+)?\s*\},\s*compteId:\s*[\w.]+,\s*lettrageId:\s*null\s*\}/);
-  });
-});
-
-describe('la clôture et les modules restés sérialisables (relecture lettrage-verrou, M1)', () => {
-  it('avecRetrySerialisable rejoue le doublon du code de lettrage, jamais une autre unicité', async () => {
-    const { avecRetrySerialisable } = await import('../../common/prisma-retry.util');
-    const r = client([doublon('Lettrage')]);
-    await expect(avecRetrySerialisable(r.prisma, async () => 'ok', 'conflit')).resolves.toBe('ok');
-    expect(r.prisma.$transaction).toHaveBeenCalledTimes(2);
-    const autre = client([doublon('Tiers')]);
-    await expect(avecRetrySerialisable(autre.prisma, async () => 'ok', 'conflit')).rejects.toMatchObject({ code: 'P2002' });
   });
 });

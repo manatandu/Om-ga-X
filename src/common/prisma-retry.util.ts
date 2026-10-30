@@ -1,6 +1,4 @@
-import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { transactionJournalisee } from './audit/transaction-journalisee';
 
 // Code Prisma d'un échec de sérialisation (conflit d'écriture concurrente).
 const CODE_CONFLIT_TRANSACTION = 'P2034';
@@ -80,33 +78,18 @@ export function estDoublonDeCodeDeLettrage(err: unknown): boolean {
   return cible === 'lettrages_compteId_code_key';
 }
 
-function attendre(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Exécute `fn` dans une transaction Prisma en isolation Serializable, avec
- * reprise automatique en cas de conflit de sérialisation (jusqu'à
- * TENTATIVES_MAX, délai croissant + aléatoire pour éviter que des tentatives
- * reparties en même temps se re-percutent aussitôt).
- *
- * À utiliser chaque fois qu'une opération lit un état agrégé (max d'un
- * compteur, prochaine lettre disponible...) puis écrit en conséquence : sans
- * cette garantie, deux requêtes concurrentes peuvent lire le même état et
- * produire un doublon silencieux. Introduit après un bug réel de ce type
- * trouvé dans la numérotation des pièces de journal. Le lettrage l'a quitté
- * le 2026-10-29 pour le verrou du dossier
- * (`lettrage/transaction-sous-verrou-du-dossier.ts`), la saisie le 2026-10-30
- * (`common/transaction-de-saisie.ts`) · leurs conflits venaient des pages
- * d'index partagées par tous les cabinets. La clôture, les à-nouveaux
- * provisoires, la dissolution et le rapprochement ont suivi (relecture de la
- * ligne saisie-serialisable, point 3) · AUCUN GESTE NE L'APPELLE PLUS. Gardée,
- * avec ses tests, pour un geste qui devrait redevenir sérialisable · il
- * faudrait alors reposer la marque des exercices que la saisie a retirée.
- *
- * `messageConflit` est utilisé pour le message renvoyé à l'utilisateur si
- * toutes les tentatives échouent (jamais un 500 brut).
+/*
+ * LA TRANSACTION SÉRIALISABLE EST RETIRÉE (ligne saisie-suites, point 2,
+ * 2026-10-30). `avecRetrySerialisable` portait la numérotation des pièces, le
+ * lettrage, la saisie, la clôture, les à-nouveaux provisoires, la dissolution
+ * et le rapprochement · tous ont quitté l'isolation sérialisable pour le
+ * verrou du dossier (`common/transaction-de-saisie.ts`,
+ * `lettrage/transaction-sous-verrou-du-dossier.ts`), dont les conflits ne
+ * venaient plus des pages d'index partagées par tous les cabinets. Restent ici
+ * ce que ces portes lisent · la reconnaissance d'un conflit, le délai de
+ * reprise et celui d'une transaction qui croît avec le volume.
  */
+
 /**
  * LE DÉLAI D'UNE TRANSACTION DONT LE TRAVAIL CROÎT AVEC LE VOLUME (audit final
  * F2). Le défaut de Prisma, cinq secondes, est celui d'un geste unitaire ; un
@@ -123,34 +106,4 @@ export const DELAI_MAX_MS = 240_000;
 
 export function delaiSelonVolume(operations: number): number {
   return Math.min(DELAI_MAX_MS, DELAI_BASE_MS + Math.max(0, operations) * DELAI_PAR_OPERATION_MS);
-}
-
-export async function avecRetrySerialisable<T>(
-  prisma: { $transaction: <R>(fn: (tx: Prisma.TransactionClient) => Promise<R>, opts?: any) => Promise<R> },
-  fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  messageConflit: string,
-  options: { operations?: number } = {},
-): Promise<T> {
-  for (let tentative = 1; tentative <= TENTATIVES_MAX; tentative++) {
-    try {
-      // LE JOURNAL D'AUDIT S'ÉCRIT DANS CETTE TRANSACTION (audit du serveur
-      // du 2026-09-27, F11). Écrit par une connexion à part, un maillon
-      // survivait à l'annulation de l'acte, et chaque reprise après un
-      // conflit en ajoutait un de plus · la chaîne attestait des créations
-      // d'écritures qui n'ont jamais existé. Déclarée ici, la transaction
-      // porte le maillon : il naît et meurt avec l'acte.
-      return await transactionJournalisee(prisma, fn, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        ...(options.operations === undefined ? {} : { maxWait: 10_000, timeout: delaiSelonVolume(options.operations) }),
-      });
-    } catch (err) {
-      const estConflit = estConflitDeSerialisation(err) || estDoublonDeCodeDeLettrage(err);
-      if (!estConflit) throw err;
-      if (tentative === TENTATIVES_MAX) throw new ConflictException({ message: messageConflit, code: CODE_CONFLIT_SERIALISATION });
-      await attendre(delaiDeReprise(tentative));
-    }
-  }
-  // Inatteignable (la boucle retourne ou relance à chaque itération) ·
-  // seulement là pour satisfaire le vérificateur de types.
-  throw new Error('Échec inattendu de la transaction sérialisable');
 }

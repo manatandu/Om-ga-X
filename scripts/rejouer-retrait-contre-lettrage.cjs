@@ -6,7 +6,7 @@
  * lettrage HORS de sa transaction · un lettrage validé entre ce contrôle et le
  * retrait des lignes laissait un groupe amputé de sa ligne, solde stocké faux.
  * Le script force l'entrelacement · la transaction du geste (sérialisable,
- * comme `avecRetrySerialisable`) prend son image, un lettrage en lecture
+ * comme l'était `avecRetrySerialisable`, retirée le 2026-10-30) prend son image, un lettrage en lecture
  * validée pose `lettre` sur une ligne de l'écriture et se valide, puis le geste
  * appelle les fonctions COMPILÉES de `lignes-libres`. Attendu · le geste tombe
  * (409 nommé, ou 40001 que la reprise rejoue sur une image qui voit le
