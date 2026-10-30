@@ -1,4 +1,5 @@
 import { NumerotationPiece, Prisma, TypeJournal } from '@prisma/client';
+import { prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { PrismaService } from '../../common/prisma.service';
 
 /**
@@ -27,10 +28,19 @@ import { PrismaService } from '../../common/prisma.service';
  *
  * LE `tx` N'EST PAS FACULTATIF EN PRATIQUE. Lire le maximum puis l'écrire est
  * une lecture-puis-écriture non atomique : deux écritures créées au même
- * instant sur le même journal liraient le même maximum. Les appelants passent
- * la transaction sérialisable qui crée l'écriture (voir
- * `avecRetrySerialisable`), ce qui fait échouer et rejouer l'une des deux
- * plutôt que de leur donner le même numéro.
+ * instant sur le même journal liraient le même maximum. LE MAXIMUM SE LIT SOUS
+ * LE VERROU DU DOSSIER ET LA LIGNE DE L'EXERCICE (ligne saisie-serialisable,
+ * 2026-10-30), quelle que soit l'isolation de l'appelant · la saisie est en
+ * lecture validée (`common/transaction-de-saisie.ts`), et les imports, le
+ * module Groupe, les déclarations de devises l'étaient déjà, si bien qu'un
+ * import et une saisie simultanés pouvaient lire le même maximum sans
+ * qu'aucune isolation ne les sépare. Deux appelants en lecture validée
+ * s'attendent sur le verrou, puis le second relit un maximum à jour ; un
+ * appelant resté SÉRIALISABLE (clôture, à-nouveau) dont l'image précède une
+ * pièce validée depuis heurte la ligne de l'exercice qu'elle a réécrite et
+ * tombe en 40001, que sa reprise rejoue · jamais deux pièces sous un même
+ * numéro. Toutes les séries d'un exercice (journal, fichier, mois) passent par
+ * la même ligne · une pièce est datée dans son exercice.
  */
 /**
  * Le mode dont les journaux partagent UNE séquence, tous journaux confondus ·
@@ -69,6 +79,17 @@ export function modeEffectif(journal: { numerotation: NumerotationPiece; type?: 
     : journal.numerotation;
 }
 
+/**
+ * Le verrou du dossier (réentrant · l'audit le reprend sans attendre), puis la
+ * ligne de l'exercice réécrite sans qu'aucune valeur change · en requête brute,
+ * ni journal d'audit ni garde de cloisonnement à juger, la borne du dossier est
+ * dans la requête. Toujours dans cet ordre, celui de la saisie et du lettrage.
+ */
+async function prendreLaSequence(tx: Prisma.TransactionClient | PrismaService, tenantId: string, exerciceId: string): Promise<void> {
+  await prendreLeVerrouDuDossier(tx as Prisma.TransactionClient, tenantId);
+  await tx.$executeRaw`UPDATE "exercices" SET "statut" = "statut" WHERE "id" = ${exerciceId} AND "tenantId" = ${tenantId}`;
+}
+
 export async function prochainNumeroPiece(
   tx: Prisma.TransactionClient | PrismaService,
   tenantId: string,
@@ -76,6 +97,8 @@ export async function prochainNumeroPiece(
   exerciceId: string,
   date: Date,
 ): Promise<number | null> {
+  if (modeEffectif(journal) === NumerotationPiece.MANUELLE) return null;
+  await prendreLaSequence(tx, tenantId, exerciceId);
   switch (modeEffectif(journal)) {
     case NumerotationPiece.MANUELLE:
       return null;
@@ -119,7 +142,8 @@ export async function prochainNumeroPiece(
  * chaque pièce coûtait un aller-retour par pièce · la transaction dépassait
  * son délai et l'import échouait entier. Le numéroteur lit le maximum UNE
  * fois par série, par `prochainNumeroPiece` lui-même, puis incrémente. C'est
- * juste parce que la transaction sérialisable écarte toute autre écriture
+ * juste parce que le verrou du dossier, pris par cette première lecture et
+ * gardé jusqu'à la validation, écarte toute autre pièce du dossier
  * entre-temps, et parce que les séries ne se recoupent pas : chaque mode ne
  * compte que les siennes.
  */

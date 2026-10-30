@@ -142,6 +142,7 @@ function service(referentiel: Referentiel = Referentiel.SYCEBNL) {
   const creerEcriture = jest.fn().mockResolvedValue({ id: 'e1' });
   const creerComptes = jest.fn();
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     compte: {
       createMany: creerComptes,
       findMany: jest.fn().mockResolvedValue(COMPTES.map((c) => ({ id: c.id, numero: c.numero }))),

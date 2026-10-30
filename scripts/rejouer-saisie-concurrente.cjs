@@ -226,7 +226,29 @@ async function main() {
     const soldeReporte = Number(report._sum.credit) - Number(report._sum.debit);
     verifier(cloture.statut < 300 && anouveau >= 1 && Math.abs(soldeN - soldeReporte) < 0.005, `clôture · capital de 2026 ${soldeN} reporté en 2027 pour ${soldeReporte}`);
 
-    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues];
+    // 6. CLÔTURE ET SAISIES AU MÊME INSTANT · la clôture, restée sérialisable,
+    // ne se valide jamais sur une image qui ignore une pièce passée pendant
+    // elle · ni pièce au brouillard dans un exercice clos, ni doublon de
+    // numéro dans l'exercice suivant, où la clôture pose son à-nouveau.
+    const d3 = dossiers[3];
+    await d3.c.post('/ecritures/valider-jusqua', { exerciceId: d3.ex26.id, dateLimite: '2026-12-31' });
+    let ex27b = (await d3.c.get('/exercices')).find((e) => e.dateDebut.startsWith('2027'));
+    if (!ex27b) ex27b = await d3.c.post('/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
+    const m6 = await mesurer('6. clôture de 2026 et vingt saisies en 2026 et 2027 au même instant', () => Promise.all([
+      d3.c.appeler('POST', `/exercices/${d3.ex26.id}/cloturer`, {}, ACCEPTES),
+      ...Array.from({ length: 10 }, (_, k) => d3.ecrire(d3.od.id, d3.ex26.id, '2026-12-31', `Fin ${k}`, 300 + k, ACCEPTES)),
+      ...Array.from({ length: 10 }, (_, k) => d3.ecrire(d3.od.id, ex27b.id, '2027-01-02', `Début ${k}`, 400 + k, ACCEPTES)),
+    ]));
+    const statut26 = (await prisma.exercice.findUnique({ where: { id: d3.ex26.id }, select: { statut: true } })).statut;
+    const brouillard26 = await prisma.ecriture.count({ where: { exerciceId: d3.ex26.id, statut: 'BROUILLARD' } });
+    console.log(`  clôture · ${m6.issues[0].statut} · exercice 2026 ${statut26}, ${brouillard26} pièce(s) au brouillard en 2026`);
+    verifier(m6.issues.every((r) => r.statut < 500), `clôture et saisies · aucune réponse 5xx (${JSON.stringify(compter(m6.issues))})`);
+    verifier(!(statut26 === 'CLOTURE' && brouillard26 > 0), 'clôture et saisies · aucun exercice clos avec une pièce au brouillard');
+    const s6a = await sequence(d3.tenantId, d3.od.id, d3.ex26.id);
+    const s6b = await sequence(d3.tenantId, d3.od.id, ex27b.id);
+    verifier(s6a.doublons === 0 && s6a.trous === 0 && s6b.doublons === 0 && s6b.trous === 0, `clôture et saisies · séquences sans doublon ni trou (2026 ${JSON.stringify(s6a)}, 2027 ${JSON.stringify(s6b)})`);
+
+    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues, ...m6.issues];
     const pannes = toutes.filter((r) => r.statut >= 500).length;
     verifier(pannes === 0, `aucune réponse 5xx sur l'ensemble (${pannes})`);
     verifier(!/Maillon d'audit NON écrit/.test(journal), 'aucun maillon d\'audit manqué au journal du serveur');

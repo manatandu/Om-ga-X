@@ -48,6 +48,7 @@ function service(premier: Date) {
   const cree = jest.fn().mockImplementation(({ data }: { data: unknown }) => Promise.resolve(data));
   // La transaction RELIT l'exercice (constat 10 de la relecture de la dissolution).
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: { create: cree },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31'), statut: 'OUVERT' }) },
   };

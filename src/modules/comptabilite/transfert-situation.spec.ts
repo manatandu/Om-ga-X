@@ -59,6 +59,7 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
   );
   const ligneEcriture = { deleteMany: jest.fn(), updateMany: jest.fn(), update: jest.fn() };
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(
         relue === undefined ? (ecriture ? { statut: ecriture.statut, journalId: ecriture.journalId, exerciceId: 'ex1' } : null) : relue,

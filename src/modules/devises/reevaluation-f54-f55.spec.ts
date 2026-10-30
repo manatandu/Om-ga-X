@@ -202,7 +202,8 @@ describe('F55 · la clôture passe la devise au report', () => {
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
       // Aucun exercice clôturé avant N · aucun groupe ancien à reconduire.
       exercice: { findFirst: jest.fn().mockResolvedValue(N1), findMany: jest.fn().mockResolvedValue([N, N1]), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
-      ecriture: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
+      // `count` · aucune au brouillard, relu DANS la transaction de clôture (ligne saisie-serialisable).
+      ecriture: { count: jest.fn().mockResolvedValue(0), findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
       ligneEcriture: { ...lecture.ligneEcriture, count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn() },
       // Les dépréciations orphelines se relisent DANS la transaction de clôture (ligne A7, M2).
       creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },

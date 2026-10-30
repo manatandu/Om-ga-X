@@ -40,6 +40,7 @@ const COMPTES = [
 function service() {
   const creerEcriture = jest.fn().mockResolvedValue({ id: 'e1' });
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     compte: {
       createMany: jest.fn(),
       findMany: jest.fn().mockResolvedValue(COMPTES.map((c) => ({ id: c.id, numero: c.numero }))),

@@ -138,6 +138,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     // La transaction RELIT l'écriture et son exercice (constat 10 de la
     // relecture de la dissolution) · la doublure les rend.
     const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
       ligneEcriture: { deleteMany, count: jest.fn().mockResolvedValue(2) },
       ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
       pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },

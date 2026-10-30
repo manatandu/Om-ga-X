@@ -313,7 +313,7 @@ describe('la numérotation · jamais la séquence du fichier', () => {
 
   it('la séquence du fichier ne lit jamais le maximum d’un journal de situation', async () => {
     const aggregate = jest.fn().mockResolvedValue({ _max: { numeroPiece: 7 } });
-    const tx = { ecriture: { aggregate } } as never;
+    const tx = { $executeRaw: jest.fn().mockResolvedValue(0), ecriture: { aggregate } } as never;
     await expect(prochainNumeroPiece(tx, 't1', ach, 'e1', new Date('2026-02-10T00:00:00Z'))).resolves.toBe(8);
     expect(JSON.stringify(aggregate.mock.calls[0][0].where)).toContain('"type":{"not":"SITUATION"}');
   });

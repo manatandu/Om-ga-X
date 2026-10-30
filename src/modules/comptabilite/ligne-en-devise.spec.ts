@@ -158,6 +158,7 @@ describe('F49 · les contrôles d’entrée vérifient la devise d’une ligne',
 describe('F49 · l’import d’écritures porte la devise', () => {
   function serviceImport() {
     const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
       ecriture: {
         aggregate: jest.fn().mockResolvedValue({ _max: { numeroPiece: 0 } }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),

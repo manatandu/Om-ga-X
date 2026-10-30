@@ -26,6 +26,7 @@ function monde(numerotation: string, exercice = exerciceOuvert) {
   // La transaction RELIT l'écriture et son exercice (constat 10 de la
   // relecture de la dissolution) · la doublure les rend.
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ligneEcriture: { deleteMany: jest.fn() },
     ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
     // Aucune pièce jointe (ligne sage-l6) · leur description n'a rien à suivre.

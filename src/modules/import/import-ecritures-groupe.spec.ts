@@ -18,6 +18,7 @@ const PIECES = 300;
 
 function service() {
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: {
       // Le maximum existant de chaque série · OD en continu sur le fichier,
       // ACH en continu sur le journal.

@@ -2193,27 +2193,37 @@ export class ExerciceService {
     // soldes du livre-journal. Une écriture restée en brouillard n'y figure
     // pas · elle serait purement et simplement perdue du résultat, et son
     // exercice serait clos avant qu'elle n'ait pu y entrer.
-    const enBrouillard = await this.prisma.ecriture.count({
-      where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
-    });
-    if (enBrouillard > 0) {
-      // Celles d'un journal de situation ne se valident pas (relecture M3) ·
-      // l'issue est leur transfert dans un journal ordinaire (second tour,
-      // BLOQUANT), « défaites ce qui les tient » laissant parfois le dossier
-      // sans geste (lettrage figé, rapprochement clos).
-      const enSituation = await this.prisma.ecriture.count({
-        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
+    // RELU DANS LA TRANSACTION DE CLÔTURE (ligne saisie-serialisable,
+    // 2026-10-30) · la saisie, en lecture validée sous le verrou du dossier,
+    // réécrit la ligne des exercices ouverts ; une pièce passée pendant la
+    // clôture la fait tomber en 40001, et sa reprise ne relisait pas ce refus,
+    // posé une seule fois avant elle · rejoué sur vraie base
+    // (`scripts/rejouer-saisie-concurrente.cjs`, mesure 6), l'exercice se
+    // fermait avec dix pièces au brouillard, perdues du résultat.
+    const refuserLeBrouillard = async (db: Prisma.TransactionClient | PrismaService) => {
+      const enBrouillard = await db.ecriture.count({
+        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
       });
-      throw new BadRequestException(
-        `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
-          "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
-          (enSituation > 0
-            ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · transférez-les dans ` +
-              'un journal ordinaire (Brouillard, « Transférer »), où elles se valident comme toute pièce, leurs ' +
-              'lignes, lettrage, pointage et liens aux modules gardés tels quels.'
-            : ''),
-      );
-    }
+      if (enBrouillard > 0) {
+        // Celles d'un journal de situation ne se valident pas (relecture M3) ·
+        // l'issue est leur transfert dans un journal ordinaire (second tour,
+        // BLOQUANT), « défaites ce qui les tient » laissant parfois le dossier
+        // sans geste (lettrage figé, rapprochement clos).
+        const enSituation = await db.ecriture.count({
+          where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
+        });
+        throw new BadRequestException(
+          `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
+            "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
+            (enSituation > 0
+              ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · transférez-les dans ` +
+                'un journal ordinaire (Brouillard, « Transférer »), où elles se valident comme toute pièce, leurs ' +
+                'lignes, lettrage, pointage et liens aux modules gardés tels quels.'
+              : ''),
+        );
+      }
+    };
+    await refuserLeBrouillard(this.prisma);
     // LE JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60) · seulement quand
     // le dossier l'a demandé ; l'issue est immédiate, imprimer le journal.
     if (dossier.refusClotureJournalNonImprime === true) {
@@ -2254,6 +2264,7 @@ export class ExerciceService {
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
+        await refuserLeBrouillard(tx);
         // LA DÉPRÉCIATION D'UNE CRÉANCE SE REPREND À LA CLÔTURE (ligne A7,
         // relecture adverse B1 · fiche du compte 49) · une créance perdue ou
         // recouvrée sans revue de l'exercice laisserait au 491 une dépréciation

@@ -126,7 +126,9 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
       // AU2 · aucune ouverture déjà passée dans N+1 par défaut, et N porte
       // des écritures.
       findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(4),
+      // Aucune au brouillard · la clôture relit le brouillard DANS sa
+      // transaction (ligne saisie-serialisable).
+      count: jest.fn(async (a?: { where?: { statut?: string } }): Promise<number> => (a?.where?.statut === 'BROUILLARD' ? 0 : 4)),
       delete: jest.fn().mockResolvedValue({}),
       create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
@@ -253,6 +255,16 @@ describe('Clôture annuelle', () => {
     const { s } = service(null);
     (s as any).prisma.ecriture.count.mockResolvedValue(1);
     await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/brouillard/);
+  });
+
+  it('relit le brouillard DANS sa transaction · une pièce saisie pendant la clôture la refuse, rien n’est écrit (ligne saisie-serialisable)', async () => {
+    const { s, tx } = service(null);
+    // Rien au brouillard à la lecture d'avant ; une pièce entrée depuis, que la
+    // reprise après le conflit de la ligne de l'exercice relit.
+    tx.ecriture.count.mockImplementation(async (a?: { where?: { statut?: string } }) => (a?.where?.statut === 'BROUILLARD' ? 1 : 4));
+    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/encore en brouillard/);
+    expect(tx.ecriture.create).not.toHaveBeenCalled();
+    expect(tx.exercice.update).not.toHaveBeenCalled();
   });
 });
 

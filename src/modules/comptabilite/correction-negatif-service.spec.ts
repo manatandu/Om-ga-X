@@ -63,7 +63,7 @@ function service(surcharge: Record<string, unknown> = {}) {
     ],
     ...surcharge,
   };
-  const tx = { ecriture: { create: jest.fn().mockResolvedValue({}) } };
+  const tx = { $executeRaw: jest.fn().mockResolvedValue(0), ecriture: { create: jest.fn().mockResolvedValue({}) } };
   // Tout modèle détenteur d'écriture répond « aucune » · la liste vit dans
   // `detenteursDe`, et la recopier ici la ferait diverger au premier ajout.
   const prisma = new Proxy(

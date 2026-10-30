@@ -82,6 +82,9 @@ function harnais(lignes: LigneFixture[], rattachements: RattachementFixture[] = 
   }));
   const s = new GroupeService(
     {
+      // Le numéro de pièce se lit sous le verrou du dossier et la ligne de
+      // l'exercice (ligne saisie-serialisable) · requêtes brutes sans résultat lu.
+      $executeRaw: async () => 0,
       exercice: {
         findFirst: async ({ where }: { where: { id?: string; tenantId: string } }) =>
           where.id === 'ex-m' && where.tenantId === 'mere' ? EX : where.tenantId === 't-comb' ? { id: 'ex-comb' } : null,

@@ -331,6 +331,7 @@ describe('GroupeService · canevas de trésorerie', () => {
       },
       $transaction: async (fn: (tx: unknown) => Promise<void>) =>
         fn({
+          $executeRaw: async () => 0,
           ecriture: {
             create: async (args: unknown) => {
               creees.push(args);
@@ -491,6 +492,7 @@ describe('GroupeService · liasse du groupe en un clic', () => {
       $transaction(fn: (tx: unknown) => unknown) {
         return fn(this);
       },
+      $executeRaw: async () => 0,
       tenant: {
         findUnique: async () => ({ id: 'mere', nom: 'Église centrale', dossierCombinaisonId: null }),
         findMany: async () => [

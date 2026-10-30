@@ -39,7 +39,7 @@ import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
 import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { FILTRE_LIGNE_LIBRE, retenirLesLignesLibres, retirerLesLignesLibres } from './lignes-libres';
@@ -519,8 +519,11 @@ function modesPortesPar(lignes: ReadonlyArray<{ modeReglementId?: string | null 
  * L'EXERCICE SE RELIT DANS LA TRANSACTION QUI ÉCRIT (constat 10 de la
  * relecture de la dissolution) · lu avant, il pouvait être arrêté à la
  * dissolution entre la lecture et l'écriture, et l'écriture entrait datée
- * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous isolation
- * sérialisable, l'arrêt et la saisie se rejouent l'un après l'autre.
+ * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous le verrou du
+ * dossier et la marque des exercices ouverts (`transactionDeSaisie`), l'arrêt
+ * et la saisie se rejouent l'un après l'autre · l'arrêt, sérialisable, tombe
+ * sur la ligne de l'exercice que la saisie a réécrite, ou la saisie attend
+ * qu'il soit validé et relit ici l'exercice qu'il a changé.
  */
 async function relireLExerciceDansLaTransaction(
   tx: Prisma.TransactionClient,
@@ -1342,8 +1345,8 @@ export class EcritureService {
    * transactions · entre les deux, l'écriture existait sans son détenteur, et
    * un échec de la seconde laissait au journal une pièce que rien ne tenait
    * si la compensation échouait à son tour. `suite` s'exécute dans la même
-   * transaction sérialisable, après la création · son échec défait
-   * l'écriture.
+   * transaction, sous le verrou du dossier (`transactionDeSaisie`), après la
+   * création · son échec défait l'écriture.
    */
   async creerAvec<T>(
     tenantId: string,
@@ -1384,25 +1387,32 @@ export class EcritureService {
     // reportée au premier jour ouvert (art. 22, 4°), la sortie se juge à ce
     // jour-là, où les entrées intercalées la couvrent. Une simulation ne
     // fait sortir aucun billet.
+    // JUGÉE DANS LA TRANSACTION, SOUS LE VERROU DU DOSSIER (ligne
+    // saisie-serialisable) · lue avant, deux sorties simultanées de la même
+    // caisse y trouvaient chacune le même solde et la rendaient créditrice
+    // ensemble. Une autre saisie du dossier attend désormais la validation de
+    // celle-ci, et relit le solde qu'elle laisse.
+    const caissesAJuger = new Map<string, PieceProposee[]>();
     if (options.jugerLaCaisse) {
-      const parExercice = new Map<string, PieceProposee[]>();
       for (const { dto, journal, date } of controles) {
         if (estJournalDeSituation(journal)) continue;
-        parExercice.set(dto.exerciceId, [...(parExercice.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
+        caissesAJuger.set(dto.exerciceId, [...(caissesAJuger.get(dto.exerciceId) ?? []), { date, lignes: dto.lignes }]);
       }
-      for (const [exerciceId, pieces] of parExercice) await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces);
     }
 
     // Le calcul du numéro de pièce (lire le max actuel, l'incrémenter) et la
     // création de l'écriture doivent former une seule opération atomique :
     // sans ça, deux écritures créées au même instant sur le même journal
-    // pourraient lire le même max et recevoir le même numeroPiece. Voir
-    // avecRetrySerialisable pour le détail (transaction Serializable +
-    // reprise automatique). Testé jusqu'à 12 écritures envoyées en parfaite
-    // simultanéité sur le même journal/mois : aucun doublon de numeroPiece.
-    return avecRetrySerialisable(
+    // pourraient lire le même max et recevoir le même numeroPiece. Le verrou
+    // du dossier, pris en tête de `transactionDeSaisie` et par
+    // `prochainNumeroPiece`, les fait passer l'une après l'autre
+    // (`scripts/rejouer-saisie-concurrente.cjs` · trente pièces envoyées au
+    // même instant sur un journal, aucun doublon, aucun trou).
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        for (const [exerciceId, pieces] of caissesAJuger) await verifierCaisseProvisionnee(tx, tenantId, exerciceId, pieces);
         const ecritures = [];
         for (const { dto, journal, date, dateValeur, sectionsParId } of controles) {
           await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
@@ -1652,34 +1662,36 @@ export class EcritureService {
     // inscrite · la version d'avant sort du solde, la nouvelle y entre.
     // Le STATUT décide, jamais le journal · un brouillard hérité resté dans un
     // journal de situation compte dans la caisse, et sa sortie augmentée se
-    // juge (seconde relecture, m4).
-    if (options.jugerLaCaisse && ecriture.statut !== StatutEcriture.SITUATION) {
-      const lignes =
-        dto.lignes ??
-        ecriture.lignes.map((l) => ({
-          compteId: l.compteId,
-          debit: Number(l.debit),
-          credit: Number(l.credit),
-          deviseId: l.deviseId,
-          montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
-        }));
-      await verifierCaisseProvisionnee(this.prisma, tenantId, ecriture.exerciceId, [{ date, lignes }], ecritureId);
-    }
+    // juge (seconde relecture, m4). Jugée DANS la transaction, sous le verrou
+    // du dossier (ligne saisie-serialisable), comme à la création.
+    const lignesCaisse =
+      options.jugerLaCaisse && ecriture.statut !== StatutEcriture.SITUATION
+        ? (dto.lignes ??
+          ecriture.lignes.map((l) => ({
+            compteId: l.compteId,
+            debit: Number(l.debit),
+            credit: Number(l.credit),
+            deviseId: l.deviseId,
+            montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+          })))
+        : null;
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
     // déplacée dans un autre mois gardait le numéro de son mois d'origine ·
     // un doublon dans le mois d'arrivée, que l'analyse des journaux ne
     // pouvait pas distinguer. Elle reçoit le numéro suivant du mois
-    // d'arrivée, dans la transaction sérialisable qui la déplace, comme à la
-    // création. Le trou laissé dans le mois d'origine est celui d'une pièce
+    // d'arrivée, dans la transaction qui la déplace, sous le verrou du
+    // dossier, comme à la création. Le trou laissé dans le mois d'origine est celui d'une pièce
     // retirée, et l'analyse des journaux le montre.
     const changeDeMois =
       ecriture.journal.numerotation === NumerotationPiece.MENSUELLE &&
       (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
+        if (lignesCaisse) await verifierCaisseProvisionnee(tx, tenantId, ecriture.exerciceId, [{ date, lignes: lignesCaisse }], ecritureId);
         // L'écriture a pu changer d'exercice depuis la lecture (arrêt à la
         // dissolution) · son exercice se relit ici, avec la date.
         const tenue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true, statut: true } });
@@ -1793,8 +1805,9 @@ export class EcritureService {
     // une sortie repoussée laisse la caisse plus garnie entre les deux dates,
     // jamais moins (`premierJourRefuse` ne trouverait aucun jour).
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         // RELUE DANS LA TRANSACTION · validée, supprimée ou déjà transférée
         // entre-temps (un second clic, un autre poste), elle ne se transfère
@@ -1841,8 +1854,8 @@ export class EcritureService {
    * remplacer la pièce par une neuve laissait un trou dans la séquence que
    * l'analyse des journaux nomme (AUDCIF art. 22, 3°). Rend `false`, sans rien
    * écrire, quand la pièce changerait de mois dans un journal numéroté par
-   * mois · le numéro du mois d'arrivée se prend alors à la création, sous sa
-   * transaction sérialisable, et le module repasse la pièce.
+   * mois · le numéro du mois d'arrivée se prend alors à la création, sous le
+   * verrou du dossier, et le module repasse la pièce.
    */
   async modifierPieceDuModule(
     tx: Prisma.TransactionClient,
@@ -3077,8 +3090,9 @@ export class EcritureService {
     if (options.simuler) return { auBrouillard: auBrouillard.length, validees: validees.length, ecrituresPassees: [] };
 
     const motif = dto.motif.trim();
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         // Une requête pour tout le brouillard, jamais une par ligne (audit
         // final F2) · la fusion d'un compte chargé en faisait des milliers.
@@ -3087,8 +3101,8 @@ export class EcritureService {
           // du circuit de visa, M1) · une pièce validée entre-temps par un
           // collègue changeait de compte EN PLACE, sur le livre-journal, que
           // l'art. 22, 2° de l'AUDCIF rend irréversible. Le filtre relit le
-          // statut ici (la transaction sérialisable fait tomber l'une des deux
-          // si elles se croisent), et un nombre qui manque arrête tout · la
+          // statut ici (sous le verrou du dossier, que la validation prend
+          // aussi, l'une attend l'autre puis relit), et un nombre qui manque arrête tout · la
           // ligne validée se réimpute par l'inscription en négatif, au geste
           // suivant.
           const deplacees = await tx.ligneEcriture.updateMany({
@@ -3367,8 +3381,9 @@ export class EcritureService {
 
     await this.exerciceService.verifierEcritureAutorisee(tenantId, origine.journalId, date);
 
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const numeroPiece = await this.journalService.prochainNumeroPiece(
           tenantId,
