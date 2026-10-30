@@ -7,7 +7,10 @@
  * lecture validée se valide pendant ce temps ; la clôture écrit son exercice.
  * Sans la marque (`marquerLesExercicesOuverts`), elle se valide sur sa lecture
  * périmée et reporterait la ligne ouverte en N+1 ; avec elle, elle tombe en
- * 40001, que `avecRetrySerialisable` rejoue. Base JETABLE qui porte déjà un
+ * 40001, que `avecRetrySerialisable` rejouait. ÉTAT RÉVOLU · la clôture
+ * est en lecture validée sous le verrou du dossier depuis le 2026-10-30, la
+ * marque et `avecRetrySerialisable` sont retirées ; le script reste comme
+ * trace de la preuve. Base JETABLE qui porte déjà un
  * exercice 2026 ouvert avec une ligne non lettrée (après
  * `rejouer-lettrage-concurrent.cjs`, par exemple).
  *

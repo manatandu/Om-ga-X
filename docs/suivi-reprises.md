@@ -21,7 +21,8 @@ et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 - Le banc `charge-k6.yml` a tourné sur `089c965cb` (avant la relecture) · aucun
   409, p50 de 15 % au-dessus de `main`. À relancer sur la branche corrigée,
   qui a retiré la marque des exercices (p50 local revenu à celui de `main`).
-- `avecRetrySerialisable` n'a plus d'appelant · gardée avec ses tests.
+- `avecRetrySerialisable` n'avait plus d'appelant · retirée avec ses tests
+  (ligne saisie-suites, 2026-10-30).
 - Non rejoués sur vraie base, couverts par les tests unitaires seuls · la
   liasse du groupe générée deux fois au même instant (il faut un siège et ses
   cellules), la modification d'une fiche d'immobilisation et l'annulation

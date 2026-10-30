@@ -3,8 +3,9 @@
  * de charge § 4.4).
  *
  * Le serveur rejoue lui-même une transaction qui se heurte à une autre
- * (`avecRetrySerialisable`, et pour le lettrage la transaction sous le verrou
- * du dossier, `lettrage/transaction-sous-verrou-du-dossier.ts`), puis, à bout de tentatives, rend un
+ * (la transaction de saisie, `common/transaction-de-saisie.ts`, et pour le
+ * lettrage la transaction sous le verrou du dossier,
+ * `lettrage/transaction-sous-verrou-du-dossier.ts`), puis, à bout de tentatives, rend un
  * 409 au code `CONFLIT_SERIALISATION` · ce 409 ne laisse RIEN d'écrit par
  * cette transaction, annulée entière. Jusqu'ici l'interface le montrait tel
  * quel, et c'était à la personne de recommencer · à vingt cabinets

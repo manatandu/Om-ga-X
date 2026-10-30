@@ -146,7 +146,7 @@ describe('aucun geste qui écrit les écritures ne passe plus par la transaction
     it(fichier, () => {
       const source = readFileSync(join(__dirname, '..', fichier), 'utf8');
       expect(source).toContain('transactionDeSaisie(');
-      expect(source).not.toMatch(/avecRetrySerialisable\s*\(/);
+      expect(source).not.toMatch(/isolationLevel:\s*Prisma\.TransactionIsolationLevel\.Serializable/);
     });
   }
 
