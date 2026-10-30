@@ -162,8 +162,10 @@ export interface FaitsDuLot {
   demantelement: boolean;
   /** La dotation de l'exercice de la sortie, ou d'un exercice postérieur, est passée sur le lot. */
   dotationDejaPassee: boolean;
-  /** La fin (AAAA-MM-JJ) d'un exercice antérieur encore ouvert qui n'a pas reçu la dotation du lot, ou null. */
+  /** La fin (AAAA-MM-JJ) d'un exercice antérieur encore ouvert à qui manque l'annuité du lot, ou null. */
   exerciceAnterieurNonDote: string | null;
+  /** Cette annuité ne se passe plus dans OmegaX (réévaluation postérieure) · l'issue nommée change. */
+  anterieurHorsModule?: boolean;
 }
 
 /** Pourquoi une partie des unités ne sort pas, ou null · le premier motif, avec son issue. */
@@ -220,49 +222,51 @@ export function motifRefusSortiePartielle(f: FaitsDuLot): string | null {
       '(onglet Traitements de la fiche), sortez les unités, puis repassez-la.'
     );
   }
-  if (f.exerciceAnterieurNonDote) return motifExerciceAnterieurNonDote(f.exerciceAnterieurNonDote, 'LOT');
+  if (f.exerciceAnterieurNonDote) {
+    return f.anterieurHorsModule
+      ? motifDotationAnterieureHorsModule(f.exerciceAnterieurNonDote, 'LOT')
+      : motifExerciceAnterieurNonDote(f.exerciceAnterieurNonDote, 'LOT');
+  }
   return null;
 }
 
 /**
- * UN EXERCICE ANTÉRIEUR ENCORE OUVERT SANS LA DOTATION DU BIEN · la sortie,
+ * UN EXERCICE ANTÉRIEUR ENCORE OUVERT SANS L'ANNUITÉ DU BIEN · la sortie,
  * entière ou d'une partie des unités, porte au 81 « la valeur d'entrée des
  * éléments sortis sous déduction des amortissements pratiqués », le cumul
  * courant « jusqu'à la date de sa cession » (AUDCIF Titre VII, fiche du
  * compte 81, mêmes mots au SYCEBNL). N+1 s'ouvre avant la clôture de N
  * (AUDCIF art. 23) · sortir le bien en N+1 avant d'avoir doté N perdrait
- * l'annuité de N · une fois le bien sorti, le module ne la passe plus (il ne
- * dote qu'un bien en service), et le complément de N+1 se calcule sur un
- * cumul qui l'ignore. Ligne restes-l8-immos · la sortie ENTIÈRE juge comme la
- * partielle, par cette fonction · seule la sortie partielle refusait jusque-là.
+ * l'annuité de N, que le module ne passe plus sur un bien sorti.
  *
- * Le PREMIER exercice ouvert, finissant avant celui de la sortie, après la
- * mise en service et l'entrée dans le dossier, qui n'a pas la dotation du
- * bien · `null` si le bien n'a rien à amortir (non amortissable, rien qui
- * reste), sans quoi le refus serait inventé.
+ * LIGNE RESTES-L8-IMMOS · la sortie ENTIÈRE juge comme la partielle, par
+ * `ImmobilisationService.anterieurNonDote` · ce n'est pas « une ligne de
+ * dotation existe » qui se juge, c'est L'ANNUITÉ de cet exercice, rejouée par
+ * le calcul même de la dotation (`calculerDotation`, début d'amortissement,
+ * relevé d'unités d'œuvre, début de détention) · nulle, rien n'est réclamé ;
+ * non passable dans OmegaX, l'issue réelle est nommée. Ce module ne garde
+ * que les phrases.
  */
-export function exerciceAnterieurNonDote(
-  bien: { dateMiseEnService: Date | null; debutDetention: Date | null; dotations: { exerciceId: string }[] },
-  anterieursOuverts: { id: string; dateFin: Date }[],
-  aAmortir: boolean,
-): Date | null {
-  if (!aAmortir || !bien.dateMiseEnService) return null;
-  const miseEnService = bien.dateMiseEnService.getTime();
-  const detention = bien.debutDetention?.getTime() ?? null;
-  const nonDote = [...anterieursOuverts]
-    .sort((a, b) => a.dateFin.getTime() - b.dateFin.getTime())
-    .find(
-      (e) =>
-        miseEnService <= e.dateFin.getTime() &&
-        (detention === null || detention <= e.dateFin.getTime()) &&
-        !bien.dotations.some((d) => d.exerciceId === e.id),
-    );
-  return nonDote?.dateFin ?? null;
-}
 
 /** Le refus, nommé avec son issue · la même phrase pour le lot et pour le bien entier. */
 export function motifExerciceAnterieurNonDote(fin: string, objet: 'LOT' | 'BIEN'): string {
   return objet === 'LOT'
     ? `L’exercice clos le ${fin} n’a pas reçu la dotation du lot · passez-la d’abord, sinon les unités sortiraient sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`
     : `L’exercice clos le ${fin} n’a pas reçu la dotation du bien · passez-la d’abord, sinon le bien sortirait sans l’amortissement de cet exercice (fiche du compte 81, « sous déduction des amortissements pratiqués »).`;
+}
+
+/**
+ * La dotation manquante ne se passe plus dans OmegaX (bien réévalué à la
+ * clôture de cet exercice ou d'un postérieur · la dotation se passe AVANT la
+ * réévaluation, AUDCIF art. 63 ; Titre VIII ch. 28 § 3.2) · l'issue réelle
+ * est de la passer à la main et de clôturer l'exercice, jamais un geste que
+ * le module refuserait.
+ */
+export function motifDotationAnterieureHorsModule(fin: string, objet: 'LOT' | 'BIEN'): string {
+  const qui = objet === 'LOT' ? 'du lot' : 'du bien';
+  return (
+    `L’exercice clos le ${fin} n’a pas reçu la dotation ${qui}, et OmegaX ne la passe plus · le bien a été réévalué à la clôture de cet exercice ` +
+    'ou d’un exercice postérieur, et la dotation se passe avant la réévaluation (AUDCIF art. 63 ; Titre VIII ch. 28 § 3.2). ' +
+    `Passez-la à la main sur cet exercice, puis clôturez l’exercice clos le ${fin} ; la sortie se passera ensuite.`
+  );
 }

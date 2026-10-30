@@ -33,7 +33,16 @@ function harnais(
     /** Composants rattachés au bien (audit final F127). */
     composants?: { designation: string; immobilisationPrincipaleId: string; statut: string }[];
     /** Les autres exercices du dossier (ligne restes-l8-immos). */
-    exercices?: { id: string; dateFin: Date; statut: string }[];
+    exercices?: { id: string; dateDebut?: Date; dateFin: Date; statut: string }[];
+    /** Bien repris par le bilan d'ouverture · aucune écriture d'acquisition dans OmegaX. */
+    repris?: boolean;
+    amortissementAnterieur?: number;
+    /** Incorporel passé en durée limitée · début de l'amortissement. */
+    dateDebutAmortissement?: string;
+    /** Aux unités d'œuvre · les relevés (exercice → unités). */
+    unitesOeuvre?: Record<string, number>;
+    /** Réévalué à la clôture d'un exercice postérieur. */
+    reevalueApres?: boolean;
   } = {},
 ) {
   const ecrituresPostees: Array<{ id: string; libelle: string; lignes: Ligne[] }> = [];
@@ -46,13 +55,21 @@ function harnais(
     dureeAmortissementAns: 5,
     dateMiseEnService: options.dateMiseEnService === null ? null : new Date(options.dateMiseEnService ?? '2024-01-01'),
     dateAcquisition: new Date('2023-06-01'),
-    amortissementAnterieur: 0,
-    modeAmortissement: 'LINEAIRE',
+    modeAmortissement: options.unitesOeuvre ? 'UNITES_DOEUVRE' : 'LINEAIRE',
     compteImmobilisationId: 'cimmo',
     compteImmobilisation: { id: 'cimmo', numero: '24500000', intitule: 'Matériel de transport' },
     compteDotationId: 'cd',
     compteAmortissementId: 'ca',
-    dotations: (options.dotations ?? [2_400, 2_400]).map((m, i) => ({ montant: m, exerciceId: `exAnt${i}` })),
+    dotations: (options.dotations ?? [2_400, 2_400]).map((m, i) => ({
+      montant: m,
+      exerciceId: `exAnt${i}`,
+      exercice: { dateDebut: new Date(`${2024 + i}-01-01`), dateFin: new Date(`${2024 + i}-12-31`) },
+    })),
+    // Acquis dans OmegaX · un bien sans écriture d'acquisition (repris) ne se juge qu'après sa première dotation.
+    ecritureAcquisitionId: options.repris ? null : 'eAcq',
+    amortissementAnterieur: options.amortissementAnterieur ?? 0,
+    dateDebutAmortissement: options.dateDebutAmortissement ? new Date(options.dateDebutAmortissement) : null,
+    unitesOeuvrePrevues: options.unitesOeuvre ? 100_000 : null,
     depreciations: [],
   };
   const updateMany = jest.fn().mockResolvedValue({ count: 1 });
@@ -105,7 +122,25 @@ function harnais(
     },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     // Ligne A15 · aucun bien réévalué ici · la sortie ne lit aucun écart.
-    ligneReevaluationBilan: { findMany: jest.fn().mockResolvedValue([]) },
+    ligneReevaluationBilan: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(options.reevalueApres ? { id: 'lr' } : null),
+    },
+    // Ligne restes-l8-immos · la doublure HONORE le filtre · le relevé d'un exercice.
+    consommationUniteOeuvre: {
+      findFirst: jest.fn(({ where }: { where: { exerciceId: string } }) =>
+        Promise.resolve(options.unitesOeuvre?.[where.exerciceId] !== undefined ? { id: `c-${where.exerciceId}` } : null),
+      ),
+      findMany: jest.fn(() =>
+        Promise.resolve(
+          Object.entries(options.unitesOeuvre ?? {}).map(([exerciceId, u]) => ({
+            exerciceId,
+            unitesConsommees: u,
+            exercice: { dateFin: exerciceId === 'ex2025' ? new Date('2025-12-31') : new Date('2026-12-31') },
+          })),
+        ),
+      ),
+    },
     ecriture: {
       delete: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
         supprimees.push(where.id);
@@ -318,7 +353,7 @@ describe('un bien jamais mis en service sort sans dotation complémentaire (AUDC
  * un bien sorti. Seule la sortie partielle refusait jusque-là.
  */
 describe('un exercice antérieur ouvert non doté refuse la sortie entière, comme la partielle', () => {
-  const N1 = { id: 'ex2025', dateFin: new Date('2025-12-31'), statut: 'OUVERT' };
+  const N1 = { id: 'ex2025', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31'), statut: 'OUVERT' };
 
   it('2025 encore ouvert, sans sa dotation · refus nommé, issue dite, rien de posé', async () => {
     const { svc, updateMany, ecrituresPostees } = harnais({ dotations: [2_400], exercices: [N1] });
@@ -346,6 +381,42 @@ describe('un exercice antérieur ouvert non doté refuse la sortie entière, com
     await expect(amorti.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
     const jamais = harnais({ dateMiseEnService: null, dotations: [], exercices: [N1] });
     await expect(jamais.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+  });
+
+  // RELECTURE INDÉPENDANTE · ce qui se juge est l'ANNUITÉ, jamais la seule absence d'une ligne.
+  it('B2 · bien repris (aucune écriture d’acquisition) saisi sur 2026, 2025 gardé ouvert · aucun refus, l’antérieur le couvre', async () => {
+    const { svc } = harnais({ repris: true, amortissementAnterieur: 2_400, dotations: [], exercices: [N1] });
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+  });
+
+  it('bien repris déjà doté dans OmegaX · un trou APRÈS sa première dotation se juge', async () => {
+    const N2 = { id: 'ex2026x', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' };
+    const { svc } = harnais({ repris: true, amortissementAnterieur: 2_400, dotations: [2_400], exercices: [N1, N2] });
+    // 2024 doté (exAnt0), 2025 ouvert sans annuité · la sortie de 2027 le nomme.
+    const sortie2027 = { ...sortie('2027-03-31'), exerciceId: 'exN' };
+    (svc as unknown as { prisma: { exercice: { findFirst: jest.Mock } } }).prisma.exercice.findFirst.mockResolvedValue({
+      id: 'exN', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'),
+    });
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie2027 as never)).rejects.toThrow(/clos le 2025-12-31/);
+  });
+
+  it('B3 · incorporel passé en durée limitée en 2026 · l’annuité de 2025 est nulle, aucun refus', async () => {
+    const { svc } = harnais({ dotations: [], dateDebutAmortissement: '2026-01-01', exercices: [N1] });
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+  });
+
+  it('M1 · unités d’œuvre sans relevé pour 2025 · rien n’est réclamé (un relevé ne porte pas zéro) ; relevé saisi, l’annuité se réclame', async () => {
+    const sansReleve = harnais({ dotations: [2_400], unitesOeuvre: { exN: 10_000 }, exercices: [N1] });
+    await expect(sansReleve.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).resolves.toBeDefined();
+    const avecReleve = harnais({ dotations: [2_400], unitesOeuvre: { ex2025: 20_000, exN: 10_000 }, exercices: [N1] });
+    await expect(avecReleve.svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).rejects.toThrow(/clos le 2025-12-31/);
+  });
+
+  it('M2 · réévalué à la clôture d’un exercice postérieur · la dotation de 2025 ne se passe plus, l’issue réelle est nommée', async () => {
+    const { svc } = harnais({ dotations: [2_400], exercices: [N1], reevalueApres: true });
+    const refus = svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never);
+    await expect(refus).rejects.toThrow(/OmegaX ne la passe plus/);
+    await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).rejects.toThrow(/clôturez l’exercice clos le 2025-12-31/);
   });
 
   it('un exercice ouvert qui finit avant la mise en service ne réclame rien', async () => {
