@@ -2043,6 +2043,7 @@ export class EcritureService {
       ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
       ['une immobilisation (solde de la dette d\'acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
       ['une immobilisation (écart de réévaluation soldé à la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
+      ['une immobilisation (dotation complémentaire de la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureComplementSortieId: ecritureId } })],
       // Un virement de fonds · ses deux pièces nées ensemble et leurs négatifs ·
       // retirée seule, l'une laisserait le 585 non soldé (virements-fonds/).
       ['un virement de fonds (journal d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],

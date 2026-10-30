@@ -3849,6 +3849,27 @@ réévaluation méthode 2 se reconnaît à sa LIAISON (`reevaluationBilanId`,
 RESTRICT), jamais à sa date ; dotation et annulation prennent le verrou de la
 fiche (`SELECT … FOR UPDATE`, ordre fixe).
 
+**Annuler une sortie, entière ou partielle (ligne restes-immos-budgets, point
+3).** AUDCIF art. 20, al. 2 et 3 ; art. 22, 2° et 4° (`immobilisations/annulation-sortie.ts`,
+`AnnulationSortieService`, `POST /immobilisations/:id/annuler-sortie`,
+`@ReserveAuComptable`, onglet Traitements de la fiche) · motif exigé, verrou des
+fiches, au brouillard les écritures de la sortie retirées, validées inscrites en
+négatif, une ligne d'historique par écriture (`AnnulationTraitementImmobilisation`,
+nature `SORTIE`, origine et négatif RETENUS) ; jamais dans un exercice clôturé.
+La sortie garde ce que son annulation relit · la dotation complémentaire par sa
+LIAISON (`ecritureComplementSortieId`, retenue), la part de chaque ligne de
+réévaluation (`passesEcartSortie`, TOUJOURS une liste, vide sans écart · nulle,
+c'est une sortie d'avant la ligne), et la reprise de la part de dépréciation sur
+le lot (`repriseDepreciationLotId`, sans clé étrangère · un cycle à clé
+obligatoire ne se purge pas). La fiche revient en service telle qu'avant ; une
+sortie partielle rend ses unités au lot au centime (quantité, brut, valeur
+résiduelle, amortissements détachés), retire la reprise sur le lot, et la fiche
+des unités disparaît. Refus nommés · transfert dans le groupe, échange,
+renouvellement, ligne lettrée ou pointée, écriture tenue par un autre module,
+acte enregistré après la sortie sur le bien ou sur le lot (« annulez-le
+d'abord »), et pour une sortie d'avant la ligne un complément, un écart ou une
+reprise qui ne se rattachent pas d'office (rien n'est deviné).
+
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,
 `FicheImmobilisationService`) · désignation, numéro d'inventaire et nature se

@@ -21,6 +21,18 @@
  *   30/06/2026. Campagne 2026 · la fiche du lot attend 7 unités (jamais 10) ;
  *   2,5 refusé ; non compté, aucun écart ; 6 comptées, manquant 1 ; 9
  *   comptées, excédent 2, ni bien ni écriture créés, le registre garde 7.
+ *
+ * POINT 3 · ANNULATION D'UNE SORTIE.
+ *   2025 · ordinateur 300 000 (3 ans), imprimante 120 000 (3 ans, sortie le
+ *   31/12/2025), lot de dix chaises 1 000 000 (5 ans) déprécié de 100 000 ;
+ *   dotations, clôture. La sortie de l'imprimante ne s'annule plus (exercice
+ *   clos). 2026 · l'ordinateur sort le 30/09 (complément 75 000, 812 125 000)
+ *   · annulé au brouillard, puis repassé, validé, annulé en négatif · 812 et
+ *   6813 nets à zéro, le bien se dote de 100 000. Trois chaises sortent le
+ *   30/06 (complément 26 250, reprise 30 000 sur le lot) · annulé, le lot
+ *   revient à 10 unités, 1 000 000, dépréciation 100 000. Repassé, validé,
+ *   la dotation du lot (122 500) refuse l'annulation ; annulée, la sortie
+ *   s'annule en trois négatifs et le lot entier se dote de 175 000.
  */
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
@@ -184,6 +196,97 @@ async function point2(A) {
   verifier((await prisma.ficheInventaire.findUnique({ where: { id: fiche.id } })).quantiteAttendue === 7, 'fiche non comptée d’avant la règle · la quantité recopiée');
 }
 
+/** Le solde (débit − crédit) d'une racine sur un exercice, hors écritures de clôture et de situation. */
+async function solde(tenantId, racine, exerciceIds) {
+  const lignes = await prisma.ligneEcriture.findMany({
+    where: {
+      compte: { tenantId, numero: { startsWith: racine } },
+      ecriture: { tenantId, exerciceId: { in: exerciceIds }, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false, statut: { not: 'SITUATION' } },
+    },
+    select: { debit: true, credit: true },
+  });
+  return Math.round(lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0) * 100) / 100;
+}
+
+async function point3(A) {
+  console.log('POINT 3 · annulation d’une sortie, entière et partielle');
+  const { e2025, e2026, od, nouveau, compte } = await dossierABiens(A, 'annulation');
+  const pc = await nouveau('Ordinateur', 300_000, 3);
+  const vieux = await nouveau('Imprimante', 120_000, 3);
+  const chaises = await nouveau('Chaises de la salle', 1_000_000, 5, { quantite: 10 });
+  const tenantId = (await prisma.immobilisation.findUnique({ where: { id: pc.id }, select: { tenantId: true } })).tenantId;
+  for (const b of [pc, vieux, chaises]) await A.post(`/immobilisations/${b.id}/dotation`, { exerciceId: e2025.id, journalId: od.id });
+  await A.post(`/immobilisations/${chaises.id}/depreciation`, {
+    exerciceId: e2025.id, journalId: od.id, sens: 'DOTATION', montant: 100_000,
+    compteDepreciationId: compte('29440000').id, compteContrepartieId: compte('69140000').id, indice: 'Usure constatée au comptage',
+  });
+  // L'imprimante sort en 2025, avant la clôture · sa sortie ne s'annule plus ensuite.
+  await A.post(`/immobilisations/${vieux.id}/sortie`, { ...SORTIE, dateSortie: '2025-12-31', datePieceSortie: '2025-12-31', exerciceId: e2025.id, journalId: od.id });
+  await cloturer2025(A, e2025);
+  const deux = [e2025.id, e2026.id];
+  let r = await A.statut('POST', `/immobilisations/${vieux.id}/annuler-sortie`, { motif: 'essai' });
+  verifier(r.statut === 400 && /clôturé/.test(JSON.stringify(r.corps)), `sortie d'un exercice clôturé · refus nommé, art. 20 al. 3 (${r.statut})`);
+  r = await A.statut('POST', `/immobilisations/${pc.id}/annuler-sortie`, { motif: 'essai' });
+  verifier(r.statut === 400 && /pas sorti/.test(JSON.stringify(r.corps)), `bien en service · refus (${r.statut})`);
+
+  console.log(' entière · au brouillard');
+  const sortiePc = { ...SORTIE, dateSortie: '2026-09-30', datePieceSortie: '2026-09-30', exerciceId: e2026.id, journalId: od.id };
+  await A.post(`/immobilisations/${pc.id}/sortie`, sortiePc);
+  verifier(egal(await solde(tenantId, '812', [e2026.id]), 125_000) && egal(await solde(tenantId, '6813', [e2026.id]), 75_000), 'sortie passée · 812 = 125 000, complément 75 000');
+  let ap = await A.get(`/immobilisations/${pc.id}/annulation-sortie`);
+  verifier(ap.annulable && ap.ecritures.length === 2 && ap.ecritures.every((x) => x.traitement === 'SUPPRIMEE'), `aperçu · deux écritures du brouillard à retirer (lu ${JSON.stringify(ap.ecritures.map((x) => [x.role, x.traitement]))})`);
+  r = await A.statut('POST', `/immobilisations/${pc.id}/annuler-sortie`, { motif: '' });
+  verifier(r.statut === 400, `sans motif · refus (${r.statut})`);
+  await A.post(`/immobilisations/${pc.id}/annuler-sortie`, { motif: 'Rebut saisi par erreur' });
+  let fiche = await prisma.immobilisation.findUnique({ where: { id: pc.id }, include: { dotations: true } });
+  verifier(fiche.statut === 'EN_SERVICE' && fiche.dateSortie === null && fiche.ecritureSortieId === null && fiche.dotations.length === 1, `fiche rendue · en service, sans date, une dotation (2025) (lu ${fiche.statut}, ${fiche.dotations.length})`);
+  verifier(egal(await solde(tenantId, '812', [e2026.id]), 0) && egal(await solde(tenantId, '6813', [e2026.id]), 0) && egal(await solde(tenantId, '2441', deux), 1_300_000), '812 et 6813 de 2026 à zéro, 2441 = 1 300 000 (ordinateur et lot)');
+
+  console.log(' entière · validée');
+  await A.post(`/immobilisations/${pc.id}/sortie`, sortiePc);
+  await A.post('/ecritures/valider-jusqua', { exerciceId: e2026.id, dateLimite: '2026-12-31' });
+  ap = await A.get(`/immobilisations/${pc.id}/annulation-sortie`);
+  verifier(ap.annulable && ap.ecritures.every((x) => x.traitement === 'INSCRITE_EN_NEGATIF'), 'aperçu · écritures validées, inscrites en négatif');
+  const ann = await A.post(`/immobilisations/${pc.id}/annuler-sortie`, { motif: 'Sortie validée par erreur' });
+  verifier(ann.ecritures.length === 2 && ann.ecritures.every((x) => x.negatif && x.negatif.numeroPiece !== null), 'deux négatifs numérotés');
+  verifier(egal(await solde(tenantId, '812', [e2026.id]), 0) && egal(await solde(tenantId, '6813', [e2026.id]), 0) && egal(await solde(tenantId, '2844', deux), -300_000), `négatifs · 812 et 6813 nets à zéro, 2844 = 300 000 au crédit (dotations 2025 · 100 000 + 200 000) (lu ${await solde(tenantId, '2844', deux)})`);
+  const historique = await prisma.annulationTraitementImmobilisation.groupBy({ by: ['traitement'], where: { tenantId, immobilisationId: pc.id, nature: 'SORTIE' }, _count: true });
+  const parTraitement = Object.fromEntries(historique.map((h) => [h.traitement, h._count]));
+  verifier(parTraitement.SUPPRIMEE === 2 && parTraitement.INSCRITE_EN_NEGATIF === 2, `historique · deux lignes par annulation (complément, sortie), retirées puis en négatif (lu ${JSON.stringify(parTraitement)})`);
+  const dot26 = await A.post(`/immobilisations/${pc.id}/dotation`, { exerciceId: e2026.id, journalId: od.id });
+  verifier(egal(dot26.montant, 100_000), `le bien rendu se dote de son annuité 2026 · 100 000 (lu ${dot26.montant})`);
+
+  console.log(' partielle');
+  const sortieLot = { ...SORTIE, dateSortie: '2026-06-30', datePieceSortie: '2026-06-30', exerciceId: e2026.id, journalId: od.id };
+  let part = await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, { ...sortieLot, quantiteSortie: 3 });
+  verifier(egal(part.part.complement, 26_250) && egal(part.part.depreciation, 30_000), 'trois chaises sorties · complément 26 250, dépréciation 30 000');
+  await A.post(`/immobilisations/${part.unites.id}/annuler-sortie`, { motif: 'Unités sorties par erreur' });
+  let lot = await prisma.immobilisation.findUnique({ where: { id: chaises.id }, include: { depreciations: true } });
+  const net = (d) => Math.round(d.reduce((t, x) => t + (x.sens === 'DOTATION' ? 1 : -1) * Number(x.montant), 0) * 100) / 100;
+  verifier(lot.quantite === 10 && egal(lot.valeurOrigine, 1_000_000) && egal(lot.amortissementsDetaches, 0) && egal(net(lot.depreciations), 100_000), `lot rendu · 10 unités, 1 000 000, 0 détaché, dépréciation 100 000 (lu ${lot.quantite}, ${lot.valeurOrigine}, ${lot.amortissementsDetaches}, ${net(lot.depreciations)})`);
+  verifier((await prisma.immobilisation.findUnique({ where: { id: part.unites.id } })) === null, 'la fiche des unités a disparu');
+  verifier(egal(await solde(tenantId, '7914', [e2026.id]), 0) && egal(await solde(tenantId, '812', [e2026.id]), 0) && egal(await solde(tenantId, '2944', deux), -100_000), '7914 et 812 de 2026 à zéro, 2944 = 100 000 au crédit');
+
+  console.log(' partielle validée, puis la dotation du lot qui l’a lue');
+  part = await A.post(`/immobilisations/${chaises.id}/sortie-partielle`, { ...sortieLot, quantiteSortie: 3 });
+  await A.post('/ecritures/valider-jusqua', { exerciceId: e2026.id, dateLimite: '2026-12-31' });
+  const dotLot = await A.post(`/immobilisations/${chaises.id}/dotation`, { exerciceId: e2026.id, journalId: od.id });
+  verifier(egal(dotLot.montant, 122_500), `dotation 2026 du lot réduit · 122 500 (lu ${dotLot.montant})`);
+  r = await A.statut('POST', `/immobilisations/${part.unites.id}/annuler-sortie`, { motif: 'Unités sorties par erreur' });
+  verifier(r.statut === 400 && /dotation/.test(JSON.stringify(r.corps)) && /Traitements/.test(JSON.stringify(r.corps)), `la dotation du lot a lu la sortie · refus nommé avec son issue (${r.statut} ${JSON.stringify(r.corps).slice(0, 260)})`);
+  const tr = await A.get(`/immobilisations/${chaises.id}/traitements`);
+  const dotation26 = tr.traitements.find((t) => t.nature === 'DOTATION' && t.exercice.id === e2026.id);
+  await A.post('/immobilisations/traitements/annulation', { nature: 'DOTATION', acteId: dotation26.acteId, motif: 'Annulée avant la sortie' });
+  const fin = await A.post(`/immobilisations/${part.unites.id}/annuler-sortie`, { motif: 'Unités sorties par erreur' });
+  verifier(fin.ecritures.length === 3 && fin.ecritures.every((x) => x.negatif), `trois négatifs · complément, sortie, reprise sur le lot (lu ${JSON.stringify(fin.ecritures.map((x) => x.role))})`);
+  lot = await prisma.immobilisation.findUnique({ where: { id: chaises.id }, include: { depreciations: true } });
+  verifier(lot.quantite === 10 && egal(lot.valeurOrigine, 1_000_000) && egal(lot.amortissementsDetaches, 0) && egal(net(lot.depreciations), 100_000), 'lot rendu au centime après négatifs');
+  verifier(egal(await solde(tenantId, '2441', deux), 1_300_000) && egal(await solde(tenantId, '2944', deux), -100_000) && egal(await solde(tenantId, '7914', [e2026.id]), 0), '2441 = 1 300 000 ; 2944 = 100 000 au crédit ; 7914 net à zéro');
+  const dotLot2 = await A.post(`/immobilisations/${chaises.id}/dotation`, { exerciceId: e2026.id, journalId: od.id });
+  verifier(egal(dotLot2.montant, 175_000), `le lot entier se dote de (1 000 000 − 200 000 − 100 000) / 4 = 175 000 (lu ${dotLot2.montant})`);
+  verifier(egal(await solde(tenantId, '2844', deux), -775_000 + 200_000), `2844 = 300 000 (2025, imprimante soldée) + 100 000 (ordinateur 2026) + 175 000 (lot 2026) = 575 000 au crédit (lu ${await solde(tenantId, '2844', deux)})`);
+}
+
 async function main() {
   const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -195,6 +298,7 @@ async function main() {
     const points = (process.env.POINTS || '1,2,3,4').split(',');
     if (points.includes('1')) await point1(new Client());
     if (points.includes('2')) await point2(new Client());
+    if (points.includes('3')) await point3(new Client());
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

@@ -36,6 +36,10 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // (transfert du 106 à une réserve, reprise du 154 au 861) · retirée seule,
   // les lignes de réévaluation se diraient soldées sans l'écriture qui le fait.
   'Immobilisation.ecritureSortieEcartReevaluationId',
+  // Ligne restes-immos-budgets, point 3 · la dotation complémentaire de la
+  // sortie, reconnue par sa liaison · retirée seule, le bien sorti garderait un
+  // cumul que le journal ne porte plus ; l'annulation de la sortie la libère.
+  'Immobilisation.ecritureComplementSortieId',
   'DotationAmortissement.ecritureId',
   'DepreciationImmobilisation.ecritureId',
   // Ligne sage-l4, n° 73 · chaque côté d'un transfert de bien dans le groupe

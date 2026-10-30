@@ -24,9 +24,19 @@ Branche de sauvegarde `travail/restes-immos-budgets`, partie de `origin/main`.
    fraction d'unité refusée ; aucun excédent créé (AUDCIF art. 43, la valeur
    d'entrée maintenue), aucun manquant passé d'office (CPCC, étapes 4 et 5).
 
+3. **Annulation d'une sortie, entière ou partielle** (`immobilisations/annulation-sortie.ts`,
+   `AnnulationSortieService`, `GET :id/annulation-sortie`, `POST :id/annuler-sortie`,
+   migration `20270242000000`). AUDCIF art. 20, al. 2 et 3 ; art. 22, 2° et 4° ·
+   brouillard retiré, validé inscrit en négatif, jamais dans un exercice clos ;
+   fiche rendue (lot rendu au centime pour une partielle, fiche des unités
+   retirée) ; refus nommés (transfert, échange, renouvellement, lettrée ou
+   pointée, détenteur tiers, acte postérieur, sortie ancienne indistincte).
+   L'onglet Traitements renvoie désormais à « Annuler la sortie ». Rejoué sur
+   vraie base · brouillard puis validée, entière puis partielle, à travers la
+   clôture de 2025.
+
 ## Reste
 
-3. Annulation d'une sortie d'immobilisation.
 4. Cas refusés de la sortie partielle, tranchés par la loi.
 
 ## Vérification

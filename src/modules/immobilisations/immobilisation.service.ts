@@ -1584,8 +1584,8 @@ export class ImmobilisationService {
     dotationId: string | null,
   ) {
     try {
-      if (dotationId) await this.prisma.dotationAmortissement.delete({ where: { id: dotationId } });
-      for (const ecritureId of [...ecritures].reverse()) await this.annulerEcritureOrpheline(ecritureId);
+      // La fiche lâche ses écritures AVANT qu'elles partent · ses liaisons sont
+      // en RESTRICT, une écriture encore nommée par la fiche ne se retire pas.
       await this.prisma.immobilisation.updateMany({
         where: { id, tenantId },
         data: {
@@ -1598,8 +1598,12 @@ export class ImmobilisationService {
           ecritureSortieId: null,
           ecritureProduitCessionId: null,
           ecritureSortieEcartReevaluationId: null,
+          ecritureComplementSortieId: null,
+          passesEcartSortie: Prisma.DbNull,
         },
       });
+      if (dotationId) await this.prisma.dotationAmortissement.delete({ where: { id: dotationId } });
+      for (const ecritureId of [...ecritures].reverse()) await this.annulerEcritureOrpheline(ecritureId);
     } catch {
       throw new InternalServerErrorException(
         `La sortie de « ${designation} » a échoué et n'a pas pu être entièrement défaite · vérifiez au journal ` +
@@ -5689,6 +5693,9 @@ export class ImmobilisationService {
 
     const ecrituresPosees: string[] = [];
     let dotationPoseeId: string | null = null;
+    // Point 3 de la ligne restes-immos-budgets · le complément RETENU par sa
+    // liaison, pour que l'annulation de la sortie le retire et lui seul.
+    let ecritureComplementId: string | null = null;
     try {
       if (montantComplement > EPSILON) {
         // Ligne immos, n° 70 · le complément se ventile comme la dotation.
@@ -5710,6 +5717,7 @@ export class ImmobilisationService {
           ],
         });
         ecrituresPosees.push(ecritureComplement.id);
+        ecritureComplementId = ecritureComplement.id;
         // Conflit théorique seulement ici : le verrou ci-dessus garantit déjà
         // qu'aucune autre sortie ne peut être en cours sur ce bien, mais
         // passerDotation() reste appelable en parallèle sur le même exercice.
@@ -5798,6 +5806,12 @@ export class ImmobilisationService {
             ecritureSortieId: ecritureSortie.id,
             ecritureProduitCessionId: ecritureProduitId,
             ecritureSortieEcartReevaluationId: ecritureEcartId,
+            // Point 3 · ce que l'annulation de la sortie devra rendre ou retirer.
+            // La liste des parts est TOUJOURS posée, vide sans écart · c'est
+            // elle qui distingue une sortie de la ligne d'une sortie d'avant
+            // (`annulation-sortie.ts`, nulle sur celle-ci).
+            ecritureComplementSortieId: ecritureComplementId,
+            passesEcartSortie: sortEcart.passes.map((x) => ({ ligneId: x.ligneId, traitement: x.traitement, montant: x.montant })) as Prisma.InputJsonValue,
             // Lot 15 · la reprise en stock se garde avec sa source, sur la fiche.
             ...(compteStockRecupere && valeurRecuperee > 0
               ? { valeurMaterielRecupere: valeurRecuperee, sourceMaterielRecupere: dto.sourceMaterielRecupere!.trim().slice(0, 1000) }
@@ -6020,6 +6034,9 @@ export class ImmobilisationService {
             },
           });
           reprise = { ecritureId: ecriture.id, ligneId: ligne.id };
+          // Point 3 · la fiche des unités nomme sa reprise sur le lot · c'est par
+          // ce lien, jamais par le libellé, que l'annulation la retrouve.
+          await this.prisma.immobilisation.update({ where: { id: unites.id }, data: { repriseDepreciationLotId: ligne.id } });
         } catch (err) {
           await this.annulerEcritureOrpheline(ecriture.id);
           throw err;
@@ -6034,6 +6051,7 @@ export class ImmobilisationService {
       };
     } catch (err) {
       if (reprise) {
+        await this.prisma.immobilisation.updateMany({ where: { id: unites.id, tenantId }, data: { repriseDepreciationLotId: null } });
         await this.prisma.depreciationImmobilisation.delete({ where: { id: reprise.ligneId } });
         await this.annulerEcritureOrpheline(reprise.ecritureId);
       }

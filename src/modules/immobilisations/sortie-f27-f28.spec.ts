@@ -1,4 +1,4 @@
-import { Referentiel, SystemeComptableSyscohada } from '@prisma/client';
+import { Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
 import { ImmobilisationService } from './immobilisation.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -205,7 +205,7 @@ describe('F28 · un refus ne laisse jamais le bien sorti sans écriture', () => 
     expect(updateMany).not.toHaveBeenCalled();
   });
 
-  it('une écriture refusée après le verrou défait tout · dotation, écritures, puis statut EN SERVICE', async () => {
+  it('une écriture refusée après le verrou défait tout · statut EN SERVICE et liaisons lâchées, puis dotation et écritures', async () => {
     // Le complément passe (appel 1), l'écriture de sortie est refusée (appel 2).
     const { svc, updateMany, supprimees, dotationSupprimee } = harnais({ echecCreation: 2 });
     await expect(svc.sortir('t1', 'u1', 'i1', sortie('2026-09-30') as never)).rejects.toThrow(/journal clôturé/);
@@ -225,6 +225,9 @@ describe('F28 · un refus ne laisse jamais le bien sorti sans écriture', () => 
         ecritureProduitCessionId: null,
         // Ligne A15 · l'écriture qui solde l'écart de réévaluation aussi.
         ecritureSortieEcartReevaluationId: null,
+        // Ligne restes-immos-budgets, point 3 · le complément lié et les parts gardées.
+        ecritureComplementSortieId: null,
+        passesEcartSortie: Prisma.DbNull,
       },
     });
   });
@@ -266,7 +269,9 @@ describe('F130 · l’écriture du produit de cession est retenue par la fiche',
     const produit = ecrituresPostees.find((e) => e.libelle.startsWith('Produit de cession'))!;
     const sortieE = ecrituresPostees.find((e) => e.libelle.startsWith('Cession'))!;
     expect(prisma.immobilisation.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({ data: { ecritureSortieId: sortieE.id, ecritureProduitCessionId: produit.id, ecritureSortieEcartReevaluationId: null } }),
+      expect.objectContaining({
+        data: expect.objectContaining({ ecritureSortieId: sortieE.id, ecritureProduitCessionId: produit.id, ecritureSortieEcartReevaluationId: null }),
+      }),
     );
   });
 
