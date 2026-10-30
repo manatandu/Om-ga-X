@@ -64,6 +64,7 @@ function service() {
   } as Record<string, unknown>;
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const svc = new ImmobilisationService(prisma as unknown as PrismaService, {} as EcritureService);
   return { svc, prisma: prisma as unknown as Record<string, Record<string, jest.Mock>> };
 }

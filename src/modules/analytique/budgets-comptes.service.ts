@@ -21,6 +21,7 @@ import type { DoterBudgetCompteDto, ModifierBudgetCompteMoisDto } from './dto/bu
 import { motifCompteHorsSaisie } from './compte-de-saisie';
 import { evaluerComparabilite } from '../etats-financiers/comparabilite-exercices';
 import { estContigu, motifSuivantNonContigu } from '../exercice/exercice-contigu';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /** Le doublon d'une clé unique, même enveloppé par la transaction. */
 function estDoublon(e: unknown): boolean {
@@ -70,6 +71,7 @@ export class BudgetsComptesService {
 
   /** Sérialise les gestes sur le budget d'un même compte · la ligne du compte, sous verrou. */
   private async verrouillerCompte(tx: Prisma.TransactionClient, tenantId: string, compteId: string) {
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT "id" FROM "comptes" WHERE "id" = ${compteId} AND "tenantId" = ${tenantId} FOR UPDATE`;
   }
 

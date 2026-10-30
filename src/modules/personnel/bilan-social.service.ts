@@ -10,6 +10,7 @@ import {
   type SaisieBilanSocial,
 } from './bilan-social';
 import { LIBELLE_FORME } from './situation-main-oeuvre';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LE BILAN SOCIAL DE L'ONEM, PAR EXERCICE (`bilan-social.ts`) · la saisie du
@@ -95,6 +96,7 @@ export class BilanSocialService {
       await transactionJournalisee(this.prisma, async (tx) => {
         // La ligne verrouillée le temps de juger sa version, puis retouchée par
         // une mise à jour unitaire (le journal d'audit garde avant et après).
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         const [existant] = await tx.$queryRaw<{ id: string; enregistreLe: Date }[]>`
           SELECT id, "enregistreLe" FROM "bilans_sociaux" WHERE "tenantId" = ${tenantId} AND exercice = ${exercice} FOR UPDATE`;
         if (existant) {

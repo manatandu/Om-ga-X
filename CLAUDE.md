@@ -2924,7 +2924,7 @@ clôture et le provisoire prennent ce même verrou en tête, en lecture validée
 qu'il a validé ; la réécriture des exercices ouverts qui faisait tomber la
 clôture sérialisable en 40001 est RETIRÉE avec elle. (2) Le doublon du CODE d'un
 lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
-`avecRetrySerialisable` · aucune autre unicité. (3) Une ligne ne se lettre que
+`transactionDeSaisie` · aucune autre unicité. (3) Une ligne ne se lettre que
 LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
 `scripts/rejouer-lettrage-concurrent.cjs`.
 
@@ -2945,9 +2945,14 @@ en-cours, pointage, confirmation, dissociation, annulation) ; le lettrage
 prend le même verrou (`transactionSousVerrouDuDossier`), sans plus réécrire
 les exercices. SIX RÈGLES À NE PAS DÉFAIRE. (1) UN SEUL ORDRE · le verrou du
 dossier, PUIS les lignes · la validation par période, le visa, les pièces
-jointes, la ventilation, les effets le prennent avant leurs `FOR UPDATE` ou
-`FOR SHARE` (`transaction-de-saisie.spec.ts`), les transferts du groupe
-prennent les deux dossiers dans un ordre fixe. (2) Le numéro de pièce se lit
+jointes, la ventilation, les effets, et depuis la ligne saisie-suites TOUT
+`FOR UPDATE` ou `FOR SHARE` de `src/` (fiches de bien, RIB, salariés,
+rappels, missions, formations, campagnes, budgets) le prennent avant leurs
+verrous de ligne (`ordre-des-verrous.spec.ts`, relu par structure, fonction
+par fonction), les transferts du groupe prennent les deux dossiers dans un
+ordre fixe ; un interblocage ou un conflit d'écriture qui s'échapperait
+encore rend un 409 nommé `GESTE_CONCURRENT` (`FiltrePannes`), que
+l'interface ne rejoue pas d'office, jamais une 500. (2) Le numéro de pièce se lit
 sous ce verrou, l'exercice relu OUVERT, DANS TOUS LES MODES, MANUELLE comprise
 (`prochainNumeroPiece`, `numeroteurDeLot`) · un import ou un module qui avait
 lu l'exercice ouvert avant le verrou n'entre plus dans celui qu'une clôture
@@ -2969,8 +2974,8 @@ l'écriture changée reste nommée par le module) · les fiches
 d'immobilisation, l'annulation d'une sortie et les créances douteuses
 comprises ; au brouillard un groupe figé ne se tolère pas (A7 ter, B2). La
 liasse du groupe purge et recrée ses pièces dans UNE transaction, sous le
-verrou du dossier de combinaison. `avecRetrySerialisable` n'a plus
-d'appelant. Rejeu · `scripts/rejouer-saisie-concurrente.cjs` (treize
+verrou du dossier de combinaison. `avecRetrySerialisable`, sans appelant,
+est retirée. Rejeu · `scripts/rejouer-saisie-concurrente.cjs` (treize
 mesures, clôture comprise).
 
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit

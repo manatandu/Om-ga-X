@@ -100,7 +100,7 @@ function service(etat: Etat = {}) {
     // Le verrou de la campagne à la clôture (relecture du paquet 1, mineur 3) ·
     // le faux le prend sans rien bloquer ; la course est jouée plus bas, sur
     // une doublure qui sérialise.
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn().mockResolvedValue([]),
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   } as unknown as PrismaService;
@@ -485,7 +485,7 @@ describe('deux clôtures simultanées · une seule passe', () => {
       let liberer: () => void = () => undefined;
       return {
         liberer: () => liberer(),
-        $queryRaw: jest.fn().mockImplementation(async () => {
+        $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn().mockImplementation(async () => {
           const precedent = verrou;
           verrou = new Promise<void>((r) => (liberer = r));
           await precedent;

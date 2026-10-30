@@ -45,6 +45,7 @@ import {
 import { ecartEnUnites, motifRefusQuantiteDuBien } from './ecart-en-unites';
 import { libelleLieuBien } from './lieu-sur-fiche';
 import { type CampagneEdition, editionFichesVierges, editionPvCaisse, editionPvInventaire } from './editions-inventaire';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * INVENTAIRE PHYSIQUE · l'obligation qu'OmegaX ne portait pas.
@@ -1340,6 +1341,7 @@ export class InventaireService {
    */
   async clore(tenantId: string, campagneId: string, userId: string) {
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const campagne = await this.campagneOuverte(
         tenantId,

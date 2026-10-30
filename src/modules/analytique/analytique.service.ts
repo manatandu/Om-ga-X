@@ -255,6 +255,7 @@ export class AnalytiqueService {
 
   /** Le verrou de la ligne du plan, dans la transaction qui l'emploie. */
   private async verrouillerPlan(db: Prisma.TransactionClient, tenantId: string, planId: string) {
+    await prendreLeVerrouDuDossierBorne(db, tenantId);
     await db.$queryRaw`SELECT "id" FROM "plans_analytiques" WHERE "id" = ${planId} AND "tenantId" = ${tenantId} FOR UPDATE`;
   }
 

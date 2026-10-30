@@ -70,7 +70,7 @@ function monterTiers(rib: Record<string, unknown>) {
   const etat = { ...rib };
   const update = jest.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(etat, data));
   const tx = {
-    $queryRaw: jest.fn(async () => []),
+    $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => []),
     ribTiers: {
       findFirst: jest.fn(async () => ({ ...etat })),
       updateMany: jest.fn(async () => ({ count: 1 })),
@@ -147,7 +147,7 @@ describe('RibsSalariesService · mêmes règles pour le RIB du salarié', () => 
   function monter(rib: Record<string, unknown>) {
     const etat = { ...rib };
     const update = jest.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(etat, data));
-    const tx = { $queryRaw: jest.fn(async () => []), ribSalarie: { findFirst: jest.fn(async () => ({ ...etat })), updateMany: jest.fn(), update } };
+    const tx = { $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => []), ribSalarie: { findFirst: jest.fn(async () => ({ ...etat })), updateMany: jest.fn(), update } };
     const prisma = {
       ribSalarie: { findFirst: jest.fn(async () => ({ ...etat })) },
       $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),

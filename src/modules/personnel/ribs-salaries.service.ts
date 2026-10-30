@@ -15,6 +15,7 @@ import {
   presenterVisa,
   saisieDesCoordonnees,
 } from '../tiers/visa-rib';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 const nul = (v: string | undefined) => (v === undefined || v.trim() === '' ? null : v.trim());
 
@@ -123,6 +124,7 @@ export class RibsSalariesService {
     await this.trouver(tenantId, id);
     const donnees = this.donnees(dto);
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "ribs_salaries" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const rib = await tx.ribSalarie.findFirst({ where: { id, tenantId } });
       if (!rib) throw new NotFoundException('RIB introuvable pour ce dossier.');
@@ -144,6 +146,7 @@ export class RibsSalariesService {
   async viser(tenantId: string, id: string, utilisateurId: string, saisiLeLu: string | null) {
     await this.trouver(tenantId, id);
     const vise = await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "ribs_salaries" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const rib = await tx.ribSalarie.findFirst({ where: { id, tenantId } });
       if (!rib) throw new NotFoundException('RIB introuvable pour ce dossier.');

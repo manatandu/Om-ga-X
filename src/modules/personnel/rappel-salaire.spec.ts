@@ -120,7 +120,7 @@ describe('rappel de salaires · le service', () => {
 
   it("à l'émission, un rappel payé entre-temps refuse tout (409) · libre, il est lié", async () => {
     const update = jest.fn();
-    const tx = (r: Record<string, unknown>) => ({ $queryRaw: async () => [], rappelSalaire: { findFirst: async () => r, update } }) as never;
+    const tx = (r: Record<string, unknown>) => ({ $executeRaw: jest.fn(async () => 1), $queryRaw: async () => [], rappelSalaire: { findFirst: async () => r, update } }) as never;
     await expect(lierRappelsAuBulletin(tx({ ...rappel(), bulletin: { statut: 'EMIS', numero: 9 } }), 't', 'b12', [{ rappelId: 'r1', totalFc: 60_000, lignes: [ligne], motif: 'x' }])).rejects.toBeInstanceOf(ConflictException);
     await lierRappelsAuBulletin(tx(rappel()), 't', 'b12', [{ rappelId: 'r1', totalFc: 60_000, lignes: [ligne], motif: 'x' }]);
     expect(update).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { bulletinId: 'b12' } });
@@ -141,7 +141,7 @@ describe('rappel de salaires · le service', () => {
   it("un rappel payé ne s'annule pas · le bulletin d'abord", async () => {
     const prisma = {
       $transaction: async (f: (tx: unknown) => unknown) => f(prisma),
-      $queryRaw: async () => [],
+      $executeRaw: jest.fn(async () => 1), $queryRaw: async () => [],
       rappelSalaire: { findFirst: async () => ({ id: 'r1', annuleLe: null, bulletin: { statut: 'EMIS', numero: 12 } }), update: jest.fn() },
     };
     await expect(new RappelsSalaireService(prisma as never).annuler('t', 'u', 'r1', { motif: 'erreur' })).rejects.toThrow(/annulez d'abord le bulletin/);

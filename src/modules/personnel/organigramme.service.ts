@@ -17,6 +17,7 @@ import {
   rattachementALaDate,
 } from './organigramme';
 import type { AnnulationRattachementDto, ModifierUniteOrganisationDto, RattachementUniteDto, UniteOrganisationDto } from './dto/organigramme.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /** Le doublon d'une clé unique, même enveloppé par la transaction. */
 function estDoublon(e: unknown): boolean {
@@ -272,6 +273,7 @@ export class OrganigrammeService {
   async rattacher(tenantId: string, creePar: string, salarieId: string, dto: RattachementUniteDto) {
     const dateEffet = jour(dto.dateEffet);
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       const verrou = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "salaries" WHERE id = ${salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       if (verrou.length === 0) throw new NotFoundException('Salarié introuvable dans ce dossier.');
       const unite = await tx.uniteOrganisation.findFirst({ where: { id: dto.uniteId, tenantId }, select: { id: true, code: true, estActive: true } });
@@ -296,6 +298,7 @@ export class OrganigrammeService {
     // passent pas toutes les deux, et l'`update` unitaire laisse au journal
     // d'audit l'état antérieur (un `updateMany` n'y laisserait que filtre et compte).
     return transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "rattachements_unite" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const r = await tx.rattachementUnite.findFirst({ where: { id, tenantId }, select: { id: true, annuleLe: true } });
       if (!r) throw new NotFoundException('Rattachement introuvable dans ce dossier.');

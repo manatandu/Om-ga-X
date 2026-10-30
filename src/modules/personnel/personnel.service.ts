@@ -167,6 +167,7 @@ import { lierMissionsAuBulletin, missionsAPorter, type MissionPortee } from './m
 import { elementsDesRappels, lierRappelsAuBulletin, motifRefusAnnulationSourceDeRappel, rappelsAPorter, type RappelPorte } from './rappels-salaire.service';
 import { libelleForfaitMission, libelleRemboursementMission } from './missions-salarie';
 import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
@@ -2572,6 +2573,7 @@ export class PersonnelService {
     // annulé ne s'annule pas · lu sous le verrou du salarié, que la
     // déclaration d'un rappel prend aussi.
     await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "salaries" WHERE id = ${b.salarieId} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const refus = await motifRefusAnnulationSourceDeRappel(tx, tenantId, { id, salarieId: b.salarieId, moisDePaie: b.moisDePaie, numero: b.numero });
       if (refus) throw new ConflictException(refus);

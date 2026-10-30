@@ -175,6 +175,7 @@ import {
   tauxDegressifLoi,
 } from './revision-plan-amortissement';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 const EPSILON = 0.005;
 
@@ -4333,6 +4334,7 @@ export class ImmobilisationService {
       // · ce que la dotation a lu est relu, et une base qui a bougé entre le
       // calcul et l'enregistrement ne laisse rien au journal.
       const dotation = await transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
         const relue = await tx.immobilisation.findFirst({ where: { id, tenantId }, include: { dotations: true, depreciations: true } });
         if (!relue || empreinteDuPlan(relue) !== empreinte) {
@@ -6026,6 +6028,7 @@ export class ImmobilisationService {
     // journal d'audit garde l'avant et l'après du lot.
     const designation = (dto.designationPartie?.trim() || `${lot.designation} · ${dto.quantiteSortie} unité(s) sur ${lot.quantite}`).slice(0, 200);
     const unites = await transactionJournalisee(this.prisma, async (tx) => {
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
       const relu = await tx.immobilisation.findFirst({ where: { id, tenantId }, select: { statut: true, quantite: true, valeurOrigine: true, amortissementsDetaches: true } });
       if (

@@ -325,7 +325,7 @@ describe('Détenteur d’un bien · l’annulation à rebours (relecture B1)', (
     const ordre: string[] = [];
     const salarie = { id: 's-1', nom: 'KABILA', postNom: null, prenoms: null, matricule: null };
     const tx = {
-      $queryRaw: jest.fn(async () => [{ id: 'b-1' }]),
+      $executeRaw: jest.fn(async () => 1), $queryRaw: jest.fn(async () => [{ id: 'b-1' }]),
       immobilisation: { findFirst: jest.fn(async () => ({ designation: 'Ordinateur', numeroInventaire: null, statut: 'EN_SERVICE', dateAcquisition: j('2026-01-01'), dateEntreeGroupe: null, dateSortie: null, lieuId: null })) },
       detentionBien: {
         findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {

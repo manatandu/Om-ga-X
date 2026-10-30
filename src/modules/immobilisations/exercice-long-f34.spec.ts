@@ -74,6 +74,7 @@ async function dotation(c: {
   // La dotation s'enregistre sous le verrou de la fiche (relecture de la ligne sage-l4).
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const ecritures = {
     creer: jest.fn().mockImplementation((_t: string, _u: string, dto: { lignes: { debit?: number }[] }) => {
       montant = dto.lignes[0].debit ?? 0;

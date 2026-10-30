@@ -29,6 +29,7 @@ import {
   valeurResiduelleAvant,
 } from './annulation-traitement';
 import { AnnulerTraitementDto } from './dto/annulation-traitement.dto';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 type Db = Prisma.TransactionClient | PrismaService;
 const n = (d: unknown) => Number(d ?? 0);
@@ -218,6 +219,7 @@ export class AnnulationTraitementService {
       // aurait posé est vu ici avant de juger.
       if (c.biens.length > 0) {
         const ids = [...c.biens].sort();
+        await prendreLeVerrouDuDossierBorne(tx, tenantId);
         await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE "tenantId" = ${tenantId} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
       }
       const refusDansTx = this.motifPour(c, await this.actesDesBiens(tx, tenantId, c.biens));

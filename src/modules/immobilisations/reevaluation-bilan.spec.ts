@@ -410,6 +410,7 @@ function monterService(fiches: Fiche[], o: { referentiel?: Referentiel; existant
   };
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
   prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   return { svc: new ReevaluationBilanService(prisma as never, { creer } as never), creer, prisma, mises, lignesCreees, revisions };
 }
 
@@ -615,6 +616,7 @@ describe('le câblage du module · dotation, dépréciation, révision', () => {
     };
     prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
     prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+    prisma.$executeRaw = jest.fn().mockResolvedValue(1);
     return { svc: new ImmobilisationService(prisma as never, { creer } as never), creer, prisma, majLignes };
   }
 
@@ -713,6 +715,7 @@ describe('après la réévaluation, le MOTEUR de dotation dote sur la valeur ré
     // La dotation s'enregistre sous le verrou de la fiche (relecture de la ligne sage-l4).
     prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
     prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+    prisma.$executeRaw = jest.fn().mockResolvedValue(1);
     return { svc: new ImmobilisationService(prisma as never, { creer } as never), creer };
   }
 
@@ -794,6 +797,7 @@ describe('le service · la reprise de la provision spéciale, D 154 / C 861', ()
     };
     prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
     prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+    prisma.$executeRaw = jest.fn().mockResolvedValue(1);
     return { svc: new ReevaluationBilanService(prisma as never, { creer } as never), creer, prisma, majLignes };
   }
 

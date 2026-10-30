@@ -13,6 +13,7 @@ import {
   type ElementFraisMission,
   type QualificationFraisMission,
 } from './missions-salarie';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /** Liste de travail bornée (§ 8 bis) · elle dit quand elle ne couvre pas tout. */
 export const PLAFOND_MISSIONS = 500;
@@ -128,6 +129,7 @@ export async function lierMissionsAuBulletin(
 
 /** Le verrou de la mission · l'émission et les gestes sur ses frais le prennent, dans le même ordre. */
 async function verrouillerMission(tx: Prisma.TransactionClient, tenantId: string, missionId: string) {
+  await prendreLeVerrouDuDossierBorne(tx, tenantId);
   await tx.$queryRaw`SELECT id FROM "missions_salarie" WHERE id = ${missionId} AND "tenantId" = ${tenantId} FOR UPDATE`;
 }
 
