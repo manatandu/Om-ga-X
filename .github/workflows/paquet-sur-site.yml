@@ -140,14 +140,17 @@ jobs:
           Start-Process -FilePath $exe.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
           $donnees = Join-Path $env:ProgramData 'OmegaX'
           $ok = $false
-          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+          for ($i = 0; $i -lt 36 -and -not $ok; $i++) {
             try { $ok = (Invoke-WebRequest 'http://localhost:8080/health' -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200 } catch { Start-Sleep -Seconds 5 }
           }
           if (-not $ok) {
             Write-Host '--- installation.log'
             Get-Content (Join-Path $donnees 'installation.log') -ErrorAction SilentlyContinue
-            Write-Host '--- services'
-            Get-Service 'OmegaX', 'OmegaX-PostgreSQL' -ErrorAction SilentlyContinue | Format-Table Name, Status
+            Write-Host '--- services (compte sous lequel ils tournent)'
+            Get-CimInstance Win32_Service -Filter "Name='OmegaX' OR Name='OmegaX-PostgreSQL'" | Format-Table Name, StartName, State
+            Write-Host '--- droits du dossier des données et de la configuration'
+            icacls $donnees
+            icacls (Join-Path $donnees 'omegax.env')
             Write-Host '--- journaux du service'
             Get-ChildItem (Join-Path $donnees 'journaux') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "== $($_.Name)"; Get-Content $_.FullName -Tail 40 }
             throw "Le service OmegaX ne répond pas sur /health après l'installation."
