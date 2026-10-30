@@ -16,6 +16,20 @@ et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
   heurt sur la lettre. Antérieur à la ligne sage-l1. Correction proposée et
   reproduction · `docs/comparaison-sage/reproduction/bugs.md`.
 
+## Relevés en attente · saisie hors de l'isolation sérialisable (2026-10-30)
+
+- Le banc `charge-k6.yml` n'a pas été relancé par la ligne saisie-serialisable
+  (k6 absent du conteneur) · le rejeu local (`scripts/rejouer-saisie-concurrente.cjs`)
+  passe de 4 à 7 refus sur 300 pièces entre dossiers à zéro sur 300 et 900. À
+  relancer avant l'intégration sur `main`.
+- Limite écrite · l'à-nouveau provisoire (`genererANouveauxProvisoires`),
+  resté sérialisable, qui reprend son numéro sans relire la séquence, n'écrit
+  aucune ligne d'exercice · une pièce de N saisie pendant son calcul peut lui
+  échapper. Il est provisoire par nature, se relance, et la clôture le refait.
+- Restent sérialisables, sous `avecRetrySerialisable` · clôture, à-nouveaux
+  provisoires, arrêt à la dissolution et ses suites, ouverture et réouverture
+  d'un rapprochement.
+
 ## Questions à Manasse · saisie, ligne sage-l1
 
 Aucune ne bloque · le corpus ne régit aucun de ces choix, d'organisation ou

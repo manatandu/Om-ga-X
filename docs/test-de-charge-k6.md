@@ -533,6 +533,18 @@ Dans un même dossier, la même paire envoyée trois fois en même temps est let
 
 *Banc du 2026-10-29 sur `d81fa8e98`, après les points 3 à 7 de la relecture lettrage-verrou* (`charge-k6.yml`, PostgreSQL 18, profil nominal, coureur GitHub, serveur sur un cœur) · 11 541 requêtes, 347 tours, 92 cabinets menés au bout, 3 680 écritures saisies · **un seul 409** de conflit, aucun refus inattendu, aucune réponse 5xx, aucune fuite entre dossiers, aucune incohérence comptable, aucun maillon d'audit manquant ; p50 379 ms, p95 1 664 ms. Le verdict rouge ne tient qu'à des latences p95 au-delà des seuils de la section 2.5 (contrôles, création d'un tiers, d'un bien et sa dotation, inscription, plan retenu, lettrage, saisie, TVA), dont l'inscription et le plan retenu dépassaient déjà au banc de référence de la section 3 · une capacité d'un cœur, pas un défaut. **La saisie reste en isolation sérialisable (point 8, décision du même jour)** · un conflit sur onze mille requêtes, rejoué par l'interface, ne justifie pas de retirer aux modules sérialisables qui relisent les écritures (clôture, TVA, réévaluation, à-nouveau) la protection qu'ils en tirent, qu'il faudrait reposer module par module et dont un oubli fausserait un état sans un mot.
 
+*La saisie sort de l'isolation sérialisable (ligne saisie-serialisable, 2026-10-30, demande de Manasse).* Le point 8 du 2026-10-29 la gardait sérialisable pour la protection qu'en tirent les transactions qui relisent les écritures ; cette protection se repose autrement (CLAUDE.md, « La saisie se sérialise par DOSSIER »). `transactionDeSaisie` (`src/common/transaction-de-saisie.ts`) · READ COMMITTED, verrou du dossier en tête, lignes des exercices ouverts réécrites avant le geste ; le numéro de pièce sous le verrou et la ligne de son exercice (`prochainNumeroPiece`) ; la clôture relit le brouillard dans sa transaction ; la caisse provisionnée jugée dans la transaction. Rejeu sur vraie base (`scripts/rejouer-saisie-concurrente.cjs`, PostgreSQL 16 local, serveur compilé sur un cœur, pool de 10, base neuve) :
+
+| | avant (deux lancements) | après (vingt dossiers, deux lancements) | après (soixante dossiers) |
+|---|---|---|---|
+| saisies entre dossiers, une à une par dossier | 296 et 293 × 201 sur 300, **4 et 7 × 409** | 300 × 201 sur 300 | 900 × 201 sur 900 |
+| échecs de sérialisation vus par PostgreSQL | 282 et 275 | 0 | 0 |
+| p95 entre dossiers | 2,5 et 2,9 s | 1,1 et 1,3 s | 3,1 s (un cœur saturé) |
+| même dossier, même journal, rafale | 29 et 30 × 201 sur 30 | 30 × 201 sur 30 | 60 × 201 sur 60 |
+| doublon ou trou de numéro, réponse 5xx | 0, 0, 0 | 0, 0, 0 | 0, 0, 0 |
+
+Clôture de 2026 et vingt saisies en 2026 et 2027 au même instant (mesure 6) · avant la relecture du brouillard dans la transaction, la clôture rejouée après son 40001 se validait avec dix pièces au brouillard dans l'exercice clos ; après, elle est refusée (400, brouillard nommé) ou la saisie l'est (exercice clôturé), séquences de 2026 et 2027 sans doublon ni trou. Le banc `charge-k6.yml` n'a pas été relancé par cette ligne (k6 absent du conteneur) · à rejouer avant l'intégration.
+
 ### 4.5 [MAJEUR · corrigé pour les maillons, 2026-10-21] Sous saturation, des erreurs 500 et des maillons d'audit manquants
 
 *Symptôme.* À 20 cabinets, un 500 isolé dans un des trois lancements ; à 40 cabinets simultanés les 5xx s'installent (1) ; à 80, 13 ; à 150, 194. Le journal du serveur contient alors « Maillon d'audit NON écrit » (30 fois à 80 cabinets, 85 en pointe, 118 pendant le flux d'inscriptions à 300 par minute) et « Maillon de connexion non écrit ».

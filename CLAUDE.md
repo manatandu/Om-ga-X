@@ -2923,6 +2923,31 @@ lettrage (`[compteId, code]`, sur `lettrages` seule) se rejoue, ici comme dans
 LIBRE, nombre relu (`creerGroupe`, `completer`). Rejeu ·
 `scripts/rejouer-lettrage-concurrent.cjs`.
 
+**La saisie se sérialise par DOSSIER, comme le lettrage (ligne
+saisie-serialisable, 2026-10-30, test de charge § 4.4).** Vingt dossiers
+saisissant chacun ses pièces une à une faisaient près d'un rejeu par pièce, et
+de 1,3 à 2,3 % des pièces refusées en 409 à cause d'un AUTRE dossier (MAJEUR) ;
+après, aucun refus ni rejeu sur 300 puis 900 pièces. `creerPlusieursAvec`
+(donc `creer` et `creerAvec` des modules), `modifier`, le transfert d'une
+situation, la réimputation, la correction en négatif et les gestes des
+titres et opérations de trésorerie passent par `transactionDeSaisie`
+(`common/transaction-de-saisie.ts`) · READ COMMITTED, attente bornée (409
+`DOSSIER_OCCUPE`), verrou du dossier EN TÊTE, puis la ligne de chaque exercice
+OUVERT réécrite sans changer de valeur, AVANT le geste. QUATRE RÈGLES À NE PAS
+DÉFAIRE. (1) Le numéro de pièce se lit sous le verrou du dossier ET la ligne de
+son exercice (`prochainNumeroPiece`, quelle que soit l'isolation de
+l'appelant · imports, Groupe, devises compris) · deux pièces ne lisent jamais
+le même maximum, et un appelant resté sérialisable tombe en 40001 plutôt que
+de doubler un numéro. (2) La marque passe en TÊTE, jamais en fin · une clôture
+qui a déjà écrit son exercice fait attendre la saisie, qui relit l'exercice
+clos et refuse. (3) La clôture relit le brouillard DANS sa transaction · sa
+reprise après le 40001 fermait sinon l'exercice avec les pièces saisies
+pendant elle, perdues du résultat (rejeu, mesure 6). (4) La caisse
+provisionnée se juge dans la transaction, sous le verrou. Restent
+sérialisables, gardés par `avecRetrySerialisable` · clôture, à-nouveaux
+provisoires, dissolution, rapprochement. Rejeu ·
+`scripts/rejouer-saisie-concurrente.cjs`.
+
 **Une ligne lettrée l'est aussi dans un groupe PARTIEL (2026-09-27, audit
 final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par
 `estTenueParUnLettrage` (`lettrage/ligne-lettree.ts`), qui lit aussi

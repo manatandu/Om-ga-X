@@ -30,14 +30,43 @@ serveur, avec près d'un rejeu par saisie et un p95 de trois secondes. L'issue
 existe (409 `CONFLIT_SERIALISATION`, rejoué par l'interface), d'où MAJEUR et
 non BLOQUANT · aucun montant faussé, aucune séquence rompue.
 
-## Correction (en cours)
+## Correction (faite, commit `cd695d303` et suivants)
 
 - `common/transaction-de-saisie.ts` · READ COMMITTED, verrou du dossier pris en
   PREMIER, lignes des exercices ouverts réécrites aussitôt (les transactions
   restées sérialisables · clôture, à-nouveaux, dissolution · tombent en 40001
-  sur une saisie validée après leur image).
+  sur une saisie validée après leur image). Employée par `creerPlusieursAvec`
+  (donc `creer`, `creerAvec`), `modifier`, `transfererDansUnJournalOrdinaire`,
+  `reimputer`, `corrigerParInscriptionEnNegatif`, et les cinq gestes des titres
+  et opérations de trésorerie (qui suivaient l'isolation de `creerAvec`).
 - `numerotation-piece.ts` · le numéro se lit sous le verrou du dossier et la
-  ligne de son exercice, quelle que soit l'isolation de l'appelant.
+  ligne de son exercice, quelle que soit l'isolation de l'appelant (imports,
+  Groupe, devises, en lecture validée depuis toujours, compris).
+- Caisse provisionnée jugée DANS la transaction (création, modification).
+- Clôture · le brouillard relu DANS sa transaction (trouvé par la mesure 6 · la
+  reprise après 40001 clôturait avec dix pièces au brouillard).
+
+## Mesure après correction
+
+| | vingt dossiers (deux lancements) | soixante dossiers |
+|---|---|---|
+| 1. entre dossiers | 300 × 201 / 300, 0 rejeu | 900 × 201 / 900, 0 rejeu |
+| 2. même journal, rafale | 30 × 201 | 60 × 201 |
+| 3. cinq journaux, rafale | 30 × 201 | 60 × 201 |
+| 4. modifications | 100 × 200 | 300 × 200 |
+| 6. clôture et vingt saisies ensemble | clôture refusée (brouillard), aucune pièce au brouillard dans un exercice clos | idem |
+| 5xx, doublon, trou | 0, 0, 0 | 0, 0, 0 |
+
+`scripts/rejouer-cloture-contre-lettrage.cjs` · la marque fait toujours tomber
+la clôture sérialisable en 40001 (PREUVE VERTE).
+
+## Reste
+
+- Banc `charge-k6.yml` à relancer (k6 absent du conteneur).
+- Limite écrite · l'à-nouveau provisoire, sérialisable, qui reprend son numéro
+  sans relire la séquence, peut ignorer une pièce de N saisie pendant son calcul ·
+  il est provisoire par nature et se refait à la clôture.
+- Intégration sur `main` non faite (demande).
 
 ## Commandes de vérification
 
