@@ -71,6 +71,7 @@ function prismaAvec(ecritures: unknown[], doubleRegard: boolean, referentiel = '
     // Sous le double regard, la partition se rejoue SOUS VERROU (ligne
     // microfina-m1) · la doublure sert la transaction et le verrou.
     $queryRaw: queryRaw,
+    $executeRaw: jest.fn().mockResolvedValue(1),
   };
   prisma.$transaction = jest.fn(async (fn: (tx: Faux) => Promise<unknown>) => fn(prisma));
   return { prisma, updateMany, queryRaw };

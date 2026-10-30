@@ -13,9 +13,7 @@ import { Prisma } from '@prisma/client';
  * un mot. Le filtre est posé SUR LA LIGNE MÊME, et le nombre relu · un lettrage
  * validé avant l'image est vu par le filtre ; en lecture validée, PostgreSQL
  * attend le verrou de la ligne que pose un lettrage en cours, puis réévalue la
- * condition sur sa version à jour ; en isolation sérialisable, une ligne
- * réécrite après l'image fait tomber la transaction en 40001, et sa reprise
- * relit (`scripts/rejouer-retrait-contre-lettrage.cjs`).
+ * condition sur sa version à jour (`scripts/rejouer-retrait-contre-lettrage.cjs`).
  */
 export const FILTRE_LIGNE_LIBRE = { lettrageId: null, lettre: null, rapprochementId: null } as const;
 
@@ -23,18 +21,33 @@ export const MOTIF_LIGNE_TENUE_ENTRE_TEMPS =
   "Une ligne de cette écriture a été lettrée, pointée ou validée pendant le geste · rien n'est modifié. " +
   'Rechargez · délettrez ou dépointez la ligne avant de recommencer.';
 
-/** Retire les lignes d'une écriture, toutes libres, ou rien. */
+/**
+ * Retire les lignes d'une écriture, toutes libres, ou rien.
+ *
+ * `laisserNommerLEcriture` · pour l'appelant qui retire ensuite l'écriture
+ * sous le même filtre et nomme lui-même son changement (« validée pendant
+ * l'annulation, relancez, elle s'inscrira en négatif ») · quand plus aucune
+ * ligne ne répond au filtre de l'écriture, rien n'est retiré et rien n'est
+ * refusé ici, l'appelant le dit (ligne saisie-serialisable, relecture,
+ * point 2). Une ligne lettrée ou pointée refuse toujours.
+ */
 export async function retirerLesLignesLibres(
   tx: Prisma.TransactionClient,
   tenantId: string,
   ecritureId: string,
   filtreEcriture: Prisma.EcritureWhereInput = {},
+  options: { laisserNommerLEcriture?: boolean } = {},
 ): Promise<void> {
   const attendues = await tx.ligneEcriture.count({ where: { ecritureId, ecriture: { tenantId } } });
   const { count } = await tx.ligneEcriture.deleteMany({
     where: { ecritureId, ecriture: { tenantId, ...filtreEcriture }, ...FILTRE_LIGNE_LIBRE },
   });
-  if (count !== attendues) throw new ConflictException(MOTIF_LIGNE_TENUE_ENTRE_TEMPS);
+  if (count === attendues) return;
+  if (options.laisserNommerLEcriture && count === 0) {
+    const sousLeFiltre = await tx.ligneEcriture.count({ where: { ecritureId, ecriture: { tenantId, ...filtreEcriture } } });
+    if (sousLeFiltre === 0) return;
+  }
+  throw new ConflictException(MOTIF_LIGNE_TENUE_ENTRE_TEMPS);
 }
 
 /**
@@ -42,10 +55,11 @@ export async function retirerLesLignesLibres(
  * corrigent par inscription en négatif dans une écriture nouvelle) · rien ne
  * ferait donc tomber la transaction si l'une d'elles était lettrée pendant
  * elle. Elles se RÉÉCRIVENT sans changer de valeur, sous le filtre des lignes
- * libres et VALIDÉES (les seules qu'on lui passe), nombre relu · une ligne tenue entre-temps manque au compte, et une
- * ligne réécrite par un autre après l'image de la transaction sérialisable la
- * fait tomber en 40001. En requête brute · aucune valeur ne change, il n'y a
- * rien à journaliser.
+ * libres et VALIDÉES (les seules qu'on lui passe), nombre relu · une ligne tenue entre-temps manque au compte. La
+ * réimputation tourne en lecture validée sous le verrou du dossier
+ * (`transactionDeSaisie`) · une ligne qu'un lettrage ou un pointage tient
+ * encore se fait attendre, puis la condition se relit sur sa version à jour.
+ * En requête brute · aucune valeur ne change, il n'y a rien à journaliser.
  */
 export async function retenirLesLignesLibres(tx: Prisma.TransactionClient, tenantId: string, ligneIds: string[]): Promise<void> {
   if (ligneIds.length === 0) return;

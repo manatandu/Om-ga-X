@@ -27,7 +27,7 @@ describe('budget · répartition sur les mois couverts par la convention', () =>
     const creees: Faux[] = [];
     return {
       creees,
-      prisma: {
+      prisma: { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
         sectionAnalytique: { findFirst: jest.fn().mockResolvedValue(section) },
         exercice: { findFirst: jest.fn().mockResolvedValue(exercice) },
         budgetSection: { findMany: jest.fn().mockResolvedValue([]) },
@@ -164,6 +164,8 @@ describe('ventilation · équilibre par plan', () => {
   // par la doublure décide si l'auteur de la ventilation est posé.
   let statutTete = 'BROUILLARD';
   const tx = {
+    // Le verrou du dossier, pris avant la tête (ligne saisie-serialisable, point 1).
+    $executeRaw: jest.fn().mockResolvedValue(1),
     $queryRaw: jest.fn(async () => [{ statut: statutTete }]),
     ecriture: { update: jest.fn().mockResolvedValue({}) },
     ventilationAnalytique: { deleteMany: jest.fn(), createMany: jest.fn() },

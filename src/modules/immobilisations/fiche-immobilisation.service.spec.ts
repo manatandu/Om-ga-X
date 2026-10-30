@@ -90,6 +90,7 @@ function fabrique(
   };
   const usages = options.usages ?? {};
   const base: Record<string, any> = {
+    $executeRaw: jest.fn().mockResolvedValue(1),
     immobilisation: {
       findFirst: jest.fn().mockResolvedValue(fiche),
       update: jest.fn().mockResolvedValue(fiche),

@@ -109,7 +109,7 @@ async function dossier(i) {
   return { c, ex26, od, journaux, charge, capital, tenantId, ecrire };
 }
 
-const ACCEPTES = [200, 201, 400, 409, 500, 502, 503];
+const ACCEPTES = [200, 201, 400, 403, 409, 500, 502, 503];
 function compter(issues) {
   const s = {};
   for (const r of issues) s[r.statut] = (s[r.statut] || 0) + 1;
@@ -248,7 +248,83 @@ async function main() {
     const s6b = await sequence(d3.tenantId, d3.od.id, ex27b.id);
     verifier(s6a.doublons === 0 && s6a.trous === 0 && s6b.doublons === 0 && s6b.trous === 0, `clôture et saisies · séquences sans doublon ni trou (2026 ${JSON.stringify(s6a)}, 2027 ${JSON.stringify(s6b)})`);
 
-    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues, ...m6.issues];
+    // 7. LA CLÔTURE DE N PENDANT LA SAISIE DE N+1 · le cas normal (on ouvre
+    // N+1 avant de clôturer N, AUDCIF art. 23). Quatre postes saisissent en
+    // 2027 sans arrêt pendant toute la clôture · elle doit passer, sans
+    // rejeu en série, et les séquences de 2027 restent continues.
+    const d4 = dossiers[4];
+    await d4.c.post('/ecritures/valider-jusqua', { exerciceId: d4.ex26.id, dateLimite: '2026-12-31' });
+    let ex27c = (await d4.c.get('/exercices')).find((e) => e.dateDebut.startsWith('2027'));
+    if (!ex27c) ex27c = await d4.c.post('/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
+    let enCours = true;
+    let clotureIssue = null;
+    const m7 = await mesurer('7. clôture de 2026 pendant que quatre postes saisissent en 2027', async () => {
+      const issues = [];
+      const postes = Array.from({ length: 4 }, async (_, p) => {
+        let k = 0;
+        while (enCours) issues.push(await d4.ecrire(d4.od.id, ex27c.id, '2027-02-01', `N+1 ${p}-${k++}`, 100 + k, ACCEPTES));
+      });
+      await attendre(300);
+      clotureIssue = await d4.c.appeler('POST', `/exercices/${d4.ex26.id}/cloturer`, {}, ACCEPTES);
+      enCours = false;
+      await Promise.all(postes);
+      return issues;
+    });
+    console.log(`  clôture · ${clotureIssue.statut} en ${clotureIssue.duree} ms${clotureIssue.statut >= 300 ? ' · ' + JSON.stringify(clotureIssue.corps).slice(0, 200) : ''}`);
+    verifier(clotureIssue.statut === 201, `clôture pendant la saisie de N+1 · elle passe (${clotureIssue.statut})`);
+    verifier(m7.issues.every((r) => r.statut < 500), `saisies de N+1 pendant la clôture · aucune réponse 5xx (${JSON.stringify(compter(m7.issues))})`);
+    const s7 = await sequence(d4.tenantId, d4.od.id, ex27c.id);
+    verifier(s7.doublons === 0 && s7.trous === 0, `2027 · séquence sans doublon ni trou, à-nouveau compris (${JSON.stringify(s7)})`);
+
+    // 8. DEUX CORRECTIONS DE LA MÊME ÉCRITURE AU MÊME INSTANT (relecture,
+    // point 6) · une passe, l'autre est refusée nommée, jamais un 500, et
+    // l'écriture n'a qu'une inscription en négatif.
+    const d5 = dossiers[5];
+    const aCorriger = await d5.ecrire(d5.od.id, d5.ex26.id, '2026-07-01', 'À corriger', 777, [201]);
+    await d5.c.post('/ecritures/valider-jusqua', { exerciceId: d5.ex26.id, dateLimite: '2026-12-31' });
+    const m8 = await mesurer('8. deux corrections de la même écriture au même instant', () => Promise.all(
+      [0, 1, 2].map(() => d5.c.appeler('POST', `/ecritures/${aCorriger.corps.id}/correction`, { motifCorrection: 'Erreur de compte' }, ACCEPTES)),
+    ));
+    const negatifs = await prisma.ecriture.count({ where: { corrigeEcritureId: aCorriger.corps.id } });
+    verifier(m8.issues.filter((r) => r.statut < 300).length === 1 && m8.issues.every((r) => r.statut < 500) && negatifs === 1,
+      `corrections simultanées · une seule passe, aucun 5xx, un seul négatif (${JSON.stringify(compter(m8.issues))}, ${negatifs})`);
+
+    // 9. CLÔTURE DE PÉRIODE ET SAISIES DANS LA PÉRIODE AU MÊME INSTANT (point 7) ·
+    // aucune pièce ne naît dans la période après sa clôture.
+    const d6 = dossiers[6];
+    const m9 = await mesurer('9. clôture de période et dix saisies dans la période au même instant', () => Promise.all([
+      d6.c.appeler('POST', `/exercices/${d6.ex26.id}/clotures/periode`, { dateLimite: '2026-08-31' }, ACCEPTES),
+      ...Array.from({ length: 10 }, (_, k) => d6.ecrire(d6.od.id, d6.ex26.id, '2026-08-15', `Période ${k}`, 600 + k, ACCEPTES)),
+    ]));
+    const clotureP = await prisma.cloture.findFirst({ where: { tenantId: d6.tenantId, granularite: 'PERIODE', annuleeAt: null }, select: { createdAt: true } });
+    const apres = clotureP ? await prisma.ecriture.count({ where: { tenantId: d6.tenantId, date: { lte: new Date('2026-08-31') }, libelle: { startsWith: 'Période' }, createdAt: { gt: clotureP.createdAt } } }) : -1;
+    verifier(m9.issues.every((r) => r.statut < 500) && apres === 0, `période close · aucune pièce saisie dans la période après sa clôture (${JSON.stringify(compter(m9.issues))}, ${apres} après)`);
+
+    // 10. POINTAGE ET SUPPRESSION DU MÊME BROUILLARD AU MÊME INSTANT (point 2) ·
+    // jamais une ligne pointée partie avec son écriture.
+    const d7 = dossiers[7];
+    const banque = (await d7.c.get('/comptes?typeCompte=DETAIL')).find((k) => k.numero === '52110000');
+    await d7.c.patch(`/comptes/${banque.id}`, { estRetenu: true });
+    const rap = await d7.c.appeler('POST', '/rapprochements', { compteId: banque.id, dateReleve: '2026-09-30', soldeReleve: 0 }, ACCEPTES);
+    if (rap.statut >= 300) {
+      console.log(`  10 non joué · ouverture du rapprochement ${rap.statut} · ${JSON.stringify(rap.corps).slice(0, 200)}`);
+    } else {
+      let deuxGagnes = 0, issues10 = [];
+      for (let k = 0; k < 10; k++) {
+        const e = await d7.c.appeler('POST', '/ecritures', { exerciceId: d7.ex26.id, journalId: d7.od.id, date: '2026-09-10', libelle: `Banque ${k}`,
+          lignes: [{ compteId: banque.id, libelle: 'B', debit: 50 + k, credit: 0 }, { compteId: d7.capital.id, libelle: 'B', debit: 0, credit: 50 + k }] }, [201]);
+        const ligneBanque = e.corps.lignes.find((l) => l.compteId === banque.id).id;
+        const [p, sup] = await Promise.all([
+          d7.c.appeler('POST', `/rapprochements/${rap.corps.id}/pointer`, { ligneIds: [ligneBanque] }, ACCEPTES.concat([404])),
+          d7.c.appeler('DELETE', `/ecritures/${e.corps.id}`, undefined, ACCEPTES.concat([404])),
+        ]);
+        issues10.push(p, sup);
+        if (p.statut < 300 && sup.statut < 300) deuxGagnes++;
+      }
+      verifier(deuxGagnes === 0 && issues10.every((r) => r.statut < 500), `pointage contre suppression · jamais les deux, aucun 5xx (${JSON.stringify(compter(issues10))}, ${deuxGagnes} doubles)`);
+    }
+
+    const toutes = [...m1.issues, ...m2.issues, ...m3.issues, ...m4.issues, ...m5.issues, ...m6.issues, ...m7.issues, ...m8.issues, ...m9.issues];
     const pannes = toutes.filter((r) => r.statut >= 500).length;
     verifier(pannes === 0, `aucune réponse 5xx sur l'ensemble (${pannes})`);
     verifier(!/Maillon d'audit NON écrit/.test(journal), 'aucun maillon d\'audit manqué au journal du serveur');

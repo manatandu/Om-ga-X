@@ -17,7 +17,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 const PIECES = 300;
 
 function service() {
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     $executeRaw: jest.fn().mockResolvedValue(0),
     ecriture: {
       // Le maximum existant de chaque série · OD en continu sur le fichier,
@@ -29,7 +29,7 @@ function service() {
     },
     ligneEcriture: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't', longueurCompte: 8, referentiel: 'SYSCOHADA' }) },
     exercice: {
       findFirst: jest.fn().mockResolvedValue({

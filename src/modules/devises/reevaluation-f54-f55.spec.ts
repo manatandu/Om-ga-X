@@ -144,7 +144,7 @@ function lectureDuReport(comptes: LigneJeu[]) {
     Object.fromEntries(
       Object.entries(select).map(([k, v]) => [k, v === true ? r[k] : { libelle: (r[k] as { libelle: string }).libelle }]),
     );
-  return {
+  return { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: {
       findMany: jest.fn(async (a: { where: unknown; select: Record<string, unknown>; include?: unknown }) => {
         if (a.include) throw new Error('doublure : include non honoré');
@@ -197,7 +197,7 @@ describe('F55 · la clôture passe la devise au report', () => {
       { id: '101', numero: '10100000', intitule: 'Capital', modeReportANouveau: 'SOLDE', lignesEcriture: [prismaLigne(0, 280_000, null)] },
     ];
     const lecture = lectureDuReport(comptes);
-    const tx = {
+    const tx = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       compte: { findMany: lecture.compte.findMany, findUnique: jest.fn().mockResolvedValue({ id: '131' }) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
       // Aucun exercice clôturé avant N · aucun groupe ancien à reconduire.
@@ -211,7 +211,7 @@ describe('F55 · la clôture passe la devise au report', () => {
       // comptes au report DÉTAIL · ce jeu n'a que des comptes au SOLDE.
       lettrage: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       exercice: {
         // Aucun exercice antérieur ouvert · l'ordre des réévaluations ne bloque rien (A5).
         findMany: jest.fn().mockResolvedValue([]),

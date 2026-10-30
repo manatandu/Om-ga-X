@@ -25,7 +25,7 @@ function monde(numerotation: string, exercice = exerciceOuvert) {
   const journal = { id: 'j1', code: 'ACH', numerotation, estActif: true };
   // La transaction RELIT l'écriture et son exercice (constat 10 de la
   // relecture de la dissolution) · la doublure les rend.
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     $executeRaw: jest.fn().mockResolvedValue(0),
     ligneEcriture: { deleteMany: jest.fn() },
     ecriture: { update: jest.fn().mockResolvedValue({ id: 'e1' }), findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1', statut: 'BROUILLARD' }) },
@@ -33,7 +33,7 @@ function monde(numerotation: string, exercice = exerciceOuvert) {
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
     exercice: { findFirst: jest.fn().mockResolvedValue(exercice) },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     ecriture: {
       findFirst: jest.fn().mockResolvedValue({
         id: 'e1',

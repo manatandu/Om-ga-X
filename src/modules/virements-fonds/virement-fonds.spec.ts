@@ -486,7 +486,7 @@ describe('VirementsFondsService.annuler', () => {
         },
       },
       ligneEcriture: {
-        deleteMany: async () => ({ count: 2 }),
+        count: async () => 2, deleteMany: async () => ({ count: 2 }),
         // Relues DANS la transaction · un lettrage posé entre la lecture et
         // la suppression (relecture M1).
         findMany: async () => [{ lettre: opts.lettreEnCours ?? null, lettrageId: opts.lettreEnCours ? 'g2' : null, rapprochementId: null }],

@@ -168,7 +168,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/comptabilite/circuit-visa.service.ts', fonction: 'ficheImputation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   // Relecture lettrage-verrou, M3 · le décompte des lignes d'UNE écriture désignée par son identifiant, confronté à
   // ce que le retrait sous filtre des lignes libres a emporté.
-  { fichier: 'src/modules/comptabilite/lignes-libres.ts', fonction: 'retirerLesLignesLibres', appel: 'ligneEcriture.count', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/comptabilite/lignes-libres.ts', fonction: 'retirerLesLignesLibres', appel: 'ligneEcriture.count', nombre: 2, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'verifierComptesCollectifs', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'trouverEnBrouillard', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
@@ -177,7 +177,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'retirerCompensation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'valider', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'reimputer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
-  { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'corrigerParInscriptionEnNegatif', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'corrigerParInscriptionEnNegatif', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'inscrireEnNegatifPourAnnulation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'chargerContreparties', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'FILTRE_DE_L_APPELANT' },
   { fichier: 'src/modules/comptes/compte.service.ts', fonction: 'modifier', appel: 'ligneEcriture.findFirst', nombre: 1, motif: 'USAGE' },
@@ -233,7 +233,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/personnel/comptabilisation-paie.service.ts', fonction: 'annulerComptabilisation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/plateforme/essais-echus/essais-echus.service.ts', fonction: 'lire', appel: 'ecriture.groupBy', nombre: 1, motif: 'DECOMPTE_DE_CE_QUI_PART' },
   { fichier: 'src/modules/plateforme/garnissage-demonstration.service.ts', fonction: 'garnirRapprochement', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
-  { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'pointer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'pointerDans', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'confirmer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/registre-donateurs/donation.service.ts', fonction: 'inscrire', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/registre-donateurs/donation.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },

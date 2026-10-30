@@ -39,7 +39,7 @@ const COMPTES = [
 
 function service() {
   const creerEcriture = jest.fn().mockResolvedValue({ id: 'e1' });
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     $executeRaw: jest.fn().mockResolvedValue(0),
     compte: {
       createMany: jest.fn(),
@@ -47,7 +47,7 @@ function service() {
     },
     ecriture: { create: creerEcriture },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     // Le référentiel du dossier · l'import le confronte désormais à l'intitulé
     // lu (voir referentiel-import.spec.ts). Aucun des libellés de ce fichier
     // n'est l'intitulé officiel du plan SYSCOHADA, la garde ne bouge donc pas.

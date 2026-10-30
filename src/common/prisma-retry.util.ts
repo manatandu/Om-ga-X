@@ -98,9 +98,11 @@ function attendre(ms: number) {
  * le 2026-10-29 pour le verrou du dossier
  * (`lettrage/transaction-sous-verrou-du-dossier.ts`), la saisie le 2026-10-30
  * (`common/transaction-de-saisie.ts`) · leurs conflits venaient des pages
- * d'index partagées par tous les cabinets. Restent ici la clôture, les
- * à-nouveaux provisoires, la dissolution et le rapprochement, qui écrivent la
- * ligne de leur exercice ou ne lisent rien qu'une saisie change.
+ * d'index partagées par tous les cabinets. La clôture, les à-nouveaux
+ * provisoires, la dissolution et le rapprochement ont suivi (relecture de la
+ * ligne saisie-serialisable, point 3) · AUCUN GESTE NE L'APPELLE PLUS. Gardée,
+ * avec ses tests, pour un geste qui devrait redevenir sérialisable · il
+ * faudrait alors reposer la marque des exercices que la saisie a retirée.
  *
  * `messageConflit` est utilisé pour le message renvoyé à l'utilisateur si
  * toutes les tentatives échouent (jamais un 500 brut).

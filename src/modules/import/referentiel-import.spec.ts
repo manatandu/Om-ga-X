@@ -141,7 +141,7 @@ const COMPTES = [
 function service(referentiel: Referentiel = Referentiel.SYCEBNL) {
   const creerEcriture = jest.fn().mockResolvedValue({ id: 'e1' });
   const creerComptes = jest.fn();
-  const tx = {
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     $executeRaw: jest.fn().mockResolvedValue(0),
     compte: {
       createMany: creerComptes,
@@ -149,7 +149,7 @@ function service(referentiel: Referentiel = Referentiel.SYCEBNL) {
     },
     ecriture: { create: creerEcriture },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't', longueurCompte: 8, referentiel }) },
     exercice: {
       findFirst: jest.fn().mockResolvedValue({

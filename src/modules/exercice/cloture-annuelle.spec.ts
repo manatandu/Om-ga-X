@@ -73,7 +73,7 @@ function lectureDuReport(comptes: LigneJeu[]) {
     Object.fromEntries(
       Object.entries(select).map(([k, v]) => [k, v === true ? r[k] : { libelle: (r[k] as { libelle: string }).libelle }]),
     );
-  return {
+  return { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: {
       findMany: jest.fn(async (a: { where: unknown; select: Record<string, unknown>; include?: unknown }) => {
         if (a.include) throw new Error('doublure : include non honoré');
@@ -107,7 +107,7 @@ function lectureDuReport(comptes: LigneJeu[]) {
 
 function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre: null; rapprochementId: null }[] } | null, creancesDouteuses: unknown[] = []) {
   const lecture = lectureDuReport(COMPTES);
-  const tx = {
+  const tx = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     compte: { findMany: lecture.compte.findMany, findUnique: jest.fn().mockResolvedValue({ id: '131' }) },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
     // Lu par son identifiant (contrôles relus dans la transaction, M2), l'exercice
@@ -148,7 +148,7 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     // lignes lettrées le sont par une lettre, ou sont celles du report de N+1.
     lettrage: { findMany: jest.fn().mockResolvedValue([]) },
   };
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     // L'exercice lu par son identifiant, et les deux questions d'ordre
     // (précédent encore ouvert, suivant déjà clos) · aucun par défaut.
     exercice: {

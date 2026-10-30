@@ -93,7 +93,7 @@ describe('le lettrage sous le verrou du dossier', () => {
   it('le service de lettrage ne retourne plus à l’isolation sérialisable', () => {
     const source = readFileSync(join(__dirname, 'lettrage.service.ts'), 'utf-8');
     expect(source).not.toMatch(/avecRetrySerialisable\(/);
-    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(7);
+    expect(source.match(/transactionSousVerrouDuDossier\(\s*this\.prisma,\s*tenantId,/g)).toHaveLength(8);
   });
 
   // Point 5 · la déclaration d'un à-nouveau au brouillard réécrit une ligne avant son premier maillon d'audit · elle

@@ -46,6 +46,7 @@ function monter(pieces: Faux[], options: { sousVerrou?: (ids: string[], appel: n
   const updateMany = jest.fn().mockResolvedValue({ count: 0 });
   const enTransaction = (ids: string[]) => ({
     $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(1),
     ecriture: {
       findMany: jest.fn(async ({ where, select }: Faux) => {
         transactions[transactions.length - 1].push(JSON.stringify(Object.keys(select)));

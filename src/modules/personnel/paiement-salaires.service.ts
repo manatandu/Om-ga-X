@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { ModePaiementSalaire, Prisma, StatutEcriture, StatutExercice, StatutOrdreVirement, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -592,7 +593,7 @@ export class PaiementSalairesService {
         const e = await tx.ecriture.findFirst({ where: { id: p.ecritureId, tenantId }, select: { statut: true } });
         if (!e) throw new ConflictException("La pièce du paiement n'existe plus · relisez le paiement avant de l'annuler.");
         if (e.statut === StatutEcriture.BROUILLARD) {
-          await tx.ligneEcriture.deleteMany({ where: { ecritureId: p.ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+          await retirerLesLignesLibres(tx, tenantId, p.ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
           const r = await tx.ecriture.deleteMany({ where: { id: p.ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
           if (r.count !== 1) {
             throw new ConflictException(

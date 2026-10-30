@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { PrismaService } from '../../common/prisma.service';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import {
@@ -27,7 +28,6 @@ import {
   reconnaitreColonnes,
   type ChampReleve,
 } from './releve-bancaire';
-import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { motifLigneFigee, type ClotureActive } from '../exercice/gel-cloture';
 
@@ -369,8 +369,8 @@ export class RapprochementService {
     return { ...base, soldeLivre, ecart: ecartDOuverture(soldeLivre, soldeDepart, encours), motif: null };
   }
 
-  private async trouverRapprochement(tenantId: string, id: string) {
-    const r = await this.prisma.rapprochementBancaire.findFirst({ where: { id, tenantId } });
+  private async trouverRapprochement(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const r = await db.rapprochementBancaire.findFirst({ where: { id, tenantId } });
     if (!r) {
       throw new NotFoundException('Rapprochement introuvable pour ce tenant');
     }
@@ -394,8 +394,9 @@ export class RapprochementService {
     // ouvertures simultanées sur le même compte pourraient toutes deux lire
     // "aucun EN_COURS" et créer chacune leur rapprochement, violant la
     // règle "un seul EN_COURS par compte" sans qu'aucune ne le remarque.
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const enCours = await tx.rapprochementBancaire.findFirst({
           where: { tenantId, compteId: dto.compteId, statut: StatutRapprochement.EN_COURS },
@@ -564,8 +565,8 @@ export class RapprochementService {
     };
   }
 
-  private async assurerEnCours(tenantId: string, id: string) {
-    const rapprochement = await this.trouverRapprochement(tenantId, id);
+  private async assurerEnCours(tenantId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const rapprochement = await this.trouverRapprochement(tenantId, id, db);
     if (rapprochement.statut !== StatutRapprochement.EN_COURS) {
       throw new BadRequestException('Ce rapprochement est déjà clôturé · plus aucun pointage possible');
     }
@@ -573,9 +574,24 @@ export class RapprochementService {
   }
 
   async pointer(tenantId: string, id: string, ligneIds: string[]) {
-    const rapprochement = await this.assurerEnCours(tenantId, id);
+    // SOUS LE VERROU DU DOSSIER (ligne saisie-serialisable, relecture, point 2) ·
+    // le pointage écrivait ses lignes sans le prendre · une ligne pointée entre
+    // la lecture et le retrait d'un brouillard partait en silence, et la clôture
+    // en lecture validée lisait un pointage changé pendant elle. Lignes relues
+    // dans la transaction, mise à jour filtrée sur les lignes encore libres ou
+    // déjà à ce rapprochement, nombre relu.
+    return transactionDeSaisie(
+      this.prisma,
+      tenantId,
+      (tx) => this.pointerDans(tx, tenantId, id, ligneIds),
+      'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.',
+    );
+  }
 
-    const lignes = await this.prisma.ligneEcriture.findMany({
+  private async pointerDans(tx: Prisma.TransactionClient, tenantId: string, id: string, ligneIds: string[]) {
+    const rapprochement = await this.assurerEnCours(tenantId, id, tx);
+
+    const lignes = await tx.ligneEcriture.findMany({
       where: { id: { in: ligneIds } },
       include: { ecriture: true },
     });
@@ -601,20 +617,31 @@ export class RapprochementService {
       }
     }
 
-    await this.prisma.ligneEcriture.updateMany({ where: { id: { in: ligneIds } }, data: { rapprochementId: id } });
+    const { count } = await tx.ligneEcriture.updateMany({
+      where: { id: { in: ligneIds }, ecriture: { tenantId }, OR: [{ rapprochementId: null }, { rapprochementId: id }] },
+      data: { rapprochementId: id },
+    });
+    if (count !== ligneIds.length) throw new ConflictException('Une des lignes a été pointée ailleurs pendant le geste · rien n\'est pointé, relisez le rapprochement.');
     return { nombreLignes: ligneIds.length };
   }
 
   async depointer(tenantId: string, id: string, ligneIds: string[]) {
-    await this.assurerEnCours(tenantId, id);
-    const resultat = await this.prisma.ligneEcriture.updateMany({
-      where: { id: { in: ligneIds }, rapprochementId: id, ecriture: { tenantId } },
-      // Dépointer dénoue aussi la correspondance avec le relevé · une ligne
-      // dépointée restée rattachée à une ligne du relevé la ferait passer pour
-      // rapprochée à l'écran sans compter dans le solde pointé.
-      data: { rapprochementId: null, ligneReleveId: null },
-    });
-    return { nombreLignes: resultat.count };
+    return transactionDeSaisie(
+      this.prisma,
+      tenantId,
+      async (tx) => {
+        await this.assurerEnCours(tenantId, id, tx);
+        const resultat = await tx.ligneEcriture.updateMany({
+          where: { id: { in: ligneIds }, rapprochementId: id, ecriture: { tenantId } },
+          // Dépointer dénoue aussi la correspondance avec le relevé · une ligne
+          // dépointée restée rattachée à une ligne du relevé la ferait passer pour
+          // rapprochée à l'écran sans compter dans le solde pointé.
+          data: { rapprochementId: null, ligneReleveId: null },
+        });
+        return { nombreLignes: resultat.count };
+      },
+      'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.',
+    );
   }
 
   // =========================================================================
@@ -786,29 +813,33 @@ export class RapprochementService {
    * couvert d'une erreur d'ouverture. Il se reclôt.
    */
   async annuler(tenantId: string, id: string) {
-    const rapprochement = await this.assurerEnCours(tenantId, id);
-    if (rapprochement.rouvertAt) {
-      throw new BadRequestException(
-        "Ce rapprochement a été clos puis rouvert · il ne s'annule pas, il se reclôt une fois corrigé.",
-      );
-    }
-    await this.prisma.ligneEcriture.updateMany({
-      where: { rapprochementId: rapprochement.id },
-      data: { rapprochementId: null, ligneReleveId: null },
-    });
-    await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { tenantId, pointeSurId: rapprochement.id },
-      data: { pointeSurId: null, ligneReleveId: null },
-    });
-    try {
-      await this.prisma.rapprochementBancaire.delete({ where: { id: rapprochement.id } });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-        throw new NotFoundException('Ce rapprochement a déjà été annulé');
+    // Sous le verrou du dossier (ligne saisie-serialisable, relecture, point 3) · le
+    // dépointage s'écrivait sans lui, et une clôture en lecture validée le lisait à moitié.
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      const rapprochement = await this.assurerEnCours(tenantId, id, tx);
+      if (rapprochement.rouvertAt) {
+        throw new BadRequestException(
+          "Ce rapprochement a été clos puis rouvert · il ne s'annule pas, il se reclôt une fois corrigé.",
+        );
       }
-      throw err;
-    }
-    return { supprime: true };
+      await tx.ligneEcriture.updateMany({
+        where: { rapprochementId: rapprochement.id },
+        data: { rapprochementId: null, ligneReleveId: null },
+      });
+      await tx.encoursOuvertureRapprochement.updateMany({
+        where: { tenantId, pointeSurId: rapprochement.id },
+        data: { pointeSurId: null, ligneReleveId: null },
+      });
+      try {
+        await tx.rapprochementBancaire.delete({ where: { id: rapprochement.id } });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          throw new NotFoundException('Ce rapprochement a déjà été annulé');
+        }
+        throw err;
+      }
+      return { supprime: true };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 
   /**
@@ -830,8 +861,9 @@ export class RapprochementService {
   async rouvrir(tenantId: string, userId: string, id: string, motif: string) {
     const m = (motif ?? '').trim();
     if (!m) throw new BadRequestException('Le motif de la réouverture est obligatoire · il reste sur le rapprochement.');
-    return avecRetrySerialisable(
+    return transactionDeSaisie(
       this.prisma,
+      tenantId,
       async (tx) => {
         const r = await tx.rapprochementBancaire.findFirst({ where: { id, tenantId } });
         if (!r) throw new NotFoundException('Rapprochement introuvable pour ce tenant');
@@ -1180,13 +1212,18 @@ export class RapprochementService {
         );
       }
     }
-    await transactionJournalisee(this.prisma, async (tx) => {
+    // Sous le verrou du dossier, nombre relu (ligne saisie-serialisable,
+    // relecture, point 2) · comme le pointage à la main.
+    await transactionDeSaisie(this.prisma, tenantId, async (tx) => {
       for (const c of dto.correspondances) {
         if ((c.ligneEcritureIds ?? []).length > 0) {
-          await tx.ligneEcriture.updateMany({
-            where: { id: { in: c.ligneEcritureIds }, ecriture: { tenantId }, ligneReleveId: null },
+          const { count } = await tx.ligneEcriture.updateMany({
+            where: { id: { in: c.ligneEcritureIds }, ecriture: { tenantId }, ligneReleveId: null, OR: [{ rapprochementId: null }, { rapprochementId: id }] },
             data: { rapprochementId: id, ligneReleveId: c.ligneReleveId },
           });
+          if (count !== new Set(c.ligneEcritureIds).size) {
+            throw new ConflictException('Une des lignes a été pointée ou rapprochée pendant la confirmation · rien n\'est confirmé, relisez les propositions.');
+          }
         }
         if ((c.encoursIds ?? []).length > 0) {
           await tx.encoursOuvertureRapprochement.updateMany({
@@ -1195,23 +1232,26 @@ export class RapprochementService {
           });
         }
       }
-    });
+    }, 'Trop de pointages au même instant sur ce rapprochement · veuillez réessayer.');
     return { nombreCorrespondances: dto.correspondances.length };
   }
 
   /** Dissocie une ligne du relevé de ses écritures et en-cours, et les dépointe. */
   async dissocier(tenantId: string, id: string, ligneReleveId: string) {
-    await this.assurerEnCours(tenantId, id);
-    const r = await this.prisma.ligneReleveBancaire.findFirst({ where: { id: ligneReleveId, tenantId, rapprochementId: id } });
-    if (!r) throw new NotFoundException('Ligne du relevé introuvable dans ce rapprochement.');
-    const res = await this.prisma.ligneEcriture.updateMany({
-      where: { ligneReleveId, ecriture: { tenantId } },
-      data: { ligneReleveId: null, rapprochementId: null },
-    });
-    const enc = await this.prisma.encoursOuvertureRapprochement.updateMany({
-      where: { ligneReleveId, tenantId },
-      data: { ligneReleveId: null, pointeSurId: null },
-    });
-    return { nombreLignes: res.count + enc.count };
+    // Sous le verrou du dossier (ligne saisie-serialisable, relecture, point 3).
+    return transactionDeSaisie(this.prisma, tenantId, async (tx) => {
+      await this.assurerEnCours(tenantId, id, tx);
+      const r = await tx.ligneReleveBancaire.findFirst({ where: { id: ligneReleveId, tenantId, rapprochementId: id } });
+      if (!r) throw new NotFoundException('Ligne du relevé introuvable dans ce rapprochement.');
+      const res = await tx.ligneEcriture.updateMany({
+        where: { ligneReleveId, ecriture: { tenantId } },
+        data: { ligneReleveId: null, rapprochementId: null },
+      });
+      const enc = await tx.encoursOuvertureRapprochement.updateMany({
+        where: { ligneReleveId, tenantId },
+        data: { ligneReleveId: null, pointeSurId: null },
+      });
+      return { nombreLignes: res.count + enc.count };
+    }, 'Trop de gestes au même instant sur ce rapprochement · veuillez réessayer.');
   }
 }

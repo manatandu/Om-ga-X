@@ -65,7 +65,7 @@ function monter(options: { referentiel?: string; lettrageEchoue?: boolean; statu
         return { count: 1 };
       }),
     },
-    ligneEcriture: { findMany: jest.fn(async () => []), deleteMany: jest.fn(async () => ({ count: 2 })) },
+    ligneEcriture: { findMany: jest.fn(async () => []), count: async () => 2, deleteMany: jest.fn(async () => ({ count: 2 })) },
     effetCommerce: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         appels.push('effet');

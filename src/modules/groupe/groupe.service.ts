@@ -2347,61 +2347,67 @@ export class GroupeService {
         );
       }
     }
-    for (const piece of pieces) {
-      const lignes = colonnes[piece.cle];
-      if (lignes.length === 0) continue;
-      const numeroPiece = await prochainNumeroPiece(this.prisma, combinaisonId, journal, exercice.id, piece.date);
-      await this.prisma.ecriture.create({
-        data: {
-          tenantId: combinaisonId,
-          exerciceId: exercice.id,
-          journalId: journal.id,
-          numeroPiece,
-          date: piece.date,
-          libelle: `Combinaison du groupe · ${piece.libelle} · ${agregat.dossiers.length} dossiers`,
-          reference: 'GROUPE',
-          createdBy,
-          estGenereeParCloture: piece.estGenereeParCloture,
-          estSoldeDesComptesDeGestion: piece.estSoldeDesComptesDeGestion,
-          // LE DOUBLE REGARD EST SANS OBJET ICI, et l'exclusion est ÉCRITE plutôt
-          // qu'omise · une règle posée à un seul endroit se contourne ailleurs
-          // sans que personne ne l'ait décidé, et c'est exactement le défaut que
-          // le chantier du double regard corrige.
-          //
-          // Le dossier de combinaison est TECHNIQUE : il est intégralement
-          // régénéré à chaque appel (voir la purge plus haut), aucun utilisateur
-          // n'y vit et personne n'y saisit. Il n'y a donc pas de saisie à faire
-          // relire par un second regard.
-          //
-          // ET UNE LIMITE À NE PAS ÉTENDRE À TOUT LE MODULE. Le siège fait aussi
-          // naître des écritures dans le dossier d'une CELLULE, en portant le
-          // `createdBy` d'un utilisateur du siège. Là, le double regard n'est pas
-          // sans objet : il est satisfait PAR CONSTRUCTION, puisque le comptable
-          // de la cellule qui les valide n'est jamais celui du siège qui les a
-          // créées. L'identité diffère, et personne dans la cellule n'a relu.
-          // C'est une limite du contrôle d'identité, pas un défaut d'ici.
-          statut: StatutEcriture.VALIDEE,
-          // LA PISTE MENTAIT PAR SILENCE. L'export du journal résout `valideeBy`
-          // en courriel ; nul, il imprimait une colonne « Validée par » VIDE sur
-          // une écriture pourtant VALIDÉE. L'AUDCIF art. 22, 1° demande que les
-          // données « puissent être restituées sur papier ou sous une forme
-          // directement intelligible » · une colonne vide en face d'un statut
-          // validé n'est ni l'un ni l'autre.
-          //
-          // `createdBy` est ici l'utilisateur qui a DÉCLENCHÉ la combinaison, pas
-          // un valideur au sens du double regard.
-          valideeBy: createdBy,
-          valideeAt: new Date(),
-          lignes: {
-            create: lignes.map((l) => ({
-              compteId: compteParNumero.get(l.numero)!,
-              debit: l.debit,
-              credit: l.credit,
-            })),
+    // DANS UNE TRANSACTION (ligne saisie-serialisable, relecture, point 5) ·
+    // le numéro se lit sous le verrou du dossier de combinaison, qu'un appel
+    // hors transaction relâchait aussitôt pris · deux générations simultanées
+    // de la liasse du groupe lisaient le même maximum.
+    await transactionJournalisee(this.prisma, async (tx) => {
+      for (const piece of pieces) {
+        const lignes = colonnes[piece.cle];
+        if (lignes.length === 0) continue;
+        const numeroPiece = await prochainNumeroPiece(tx, combinaisonId, journal, exercice.id, piece.date);
+        await tx.ecriture.create({
+          data: {
+            tenantId: combinaisonId,
+            exerciceId: exercice.id,
+            journalId: journal.id,
+            numeroPiece,
+            date: piece.date,
+            libelle: `Combinaison du groupe · ${piece.libelle} · ${agregat.dossiers.length} dossiers`,
+            reference: 'GROUPE',
+            createdBy,
+            estGenereeParCloture: piece.estGenereeParCloture,
+            estSoldeDesComptesDeGestion: piece.estSoldeDesComptesDeGestion,
+            // LE DOUBLE REGARD EST SANS OBJET ICI, et l'exclusion est ÉCRITE plutôt
+            // qu'omise · une règle posée à un seul endroit se contourne ailleurs
+            // sans que personne ne l'ait décidé, et c'est exactement le défaut que
+            // le chantier du double regard corrige.
+            //
+            // Le dossier de combinaison est TECHNIQUE : il est intégralement
+            // régénéré à chaque appel (voir la purge plus haut), aucun utilisateur
+            // n'y vit et personne n'y saisit. Il n'y a donc pas de saisie à faire
+            // relire par un second regard.
+            //
+            // ET UNE LIMITE À NE PAS ÉTENDRE À TOUT LE MODULE. Le siège fait aussi
+            // naître des écritures dans le dossier d'une CELLULE, en portant le
+            // `createdBy` d'un utilisateur du siège. Là, le double regard n'est pas
+            // sans objet : il est satisfait PAR CONSTRUCTION, puisque le comptable
+            // de la cellule qui les valide n'est jamais celui du siège qui les a
+            // créées. L'identité diffère, et personne dans la cellule n'a relu.
+            // C'est une limite du contrôle d'identité, pas un défaut d'ici.
+            statut: StatutEcriture.VALIDEE,
+            // LA PISTE MENTAIT PAR SILENCE. L'export du journal résout `valideeBy`
+            // en courriel ; nul, il imprimait une colonne « Validée par » VIDE sur
+            // une écriture pourtant VALIDÉE. L'AUDCIF art. 22, 1° demande que les
+            // données « puissent être restituées sur papier ou sous une forme
+            // directement intelligible » · une colonne vide en face d'un statut
+            // validé n'est ni l'un ni l'autre.
+            //
+            // `createdBy` est ici l'utilisateur qui a DÉCLENCHÉ la combinaison, pas
+            // un valideur au sens du double regard.
+            valideeBy: createdBy,
+            valideeAt: new Date(),
+            lignes: {
+              create: lignes.map((l) => ({
+                compteId: compteParNumero.get(l.numero)!,
+                debit: l.debit,
+                credit: l.credit,
+              })),
+            },
           },
-        },
-      });
-    }
+        });
+      }
+    });
 
     // 6 · Les moteurs existants produisent le classeur.
     const classeur = await this.exportService.liasseCompleteExcel(combinaisonId, exercice.id);

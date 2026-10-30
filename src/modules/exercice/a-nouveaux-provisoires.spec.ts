@@ -148,11 +148,12 @@ describe('À-nouveaux provisoires', () => {
     const r = await s.genererANouveauxProvisoires('t', 'n', 'u');
     const data = tx.ecriture.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ exerciceId: 'n1', estANouveauProvisoire: true, estGenereeParCloture: true, numeroPiece: 99 });
-    // Point 7 · la ligne de N est réécrite EN DERNIER, après l'écriture du provisoire · un lettrage validé après
-    // l'image fait tomber la transaction sérialisable, rejouée sur une image qui le voit.
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect((tx.$executeRaw.mock.calls[0] as unknown[]).slice(1)).toEqual(['n', 't']);
-    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeGreaterThan(tx.ecriture.create.mock.invocationCallOrder[0]);
+    // Ligne saisie-serialisable · le provisoire tourne sous le verrou du dossier, pris EN TÊTE, avant l'écriture ·
+    // le lettrage le prend aussi, et le provisoire ne lit plus d'image périmée.
+    const verrou = tx.$executeRaw.mock.calls.findIndex((c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).join('').includes('pg_advisory_xact_lock'));
+    expect(verrou).toBeGreaterThan(-1);
+    expect((tx.$executeRaw.mock.calls[verrou] as unknown[]).slice(1)).toEqual(['t']);
+    expect(tx.$executeRaw.mock.invocationCallOrder[verrou]).toBeLessThan(tx.ecriture.create.mock.invocationCallOrder[0]);
     expect(data.statut).toBeUndefined(); // brouillard par défaut, jamais validé d'office
     const lignes = data.lignes.create as { compteId: string; debit: number; credit: number }[];
     expect(lignes.find((l) => l.compteId === '131')).toMatchObject({ credit: 500 });

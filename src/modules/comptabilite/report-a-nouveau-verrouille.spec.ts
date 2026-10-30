@@ -33,6 +33,8 @@ function monter(ecriture: { exerciceId: string; estGenereeParCloture: boolean },
     get: (cible, cle: string) => cible[cle] ?? { count: jest.fn().mockResolvedValue(0) },
   });
   prisma.$transaction = jest.fn().mockImplementation((f: (tx: unknown) => unknown) => f(prisma));
+  // La suppression passe sous la pièce, verrou de l'écriture précédé de celui du dossier (ligne saisie-serialisable, point 1).
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
   const service = new EcritureService(avecComptages as unknown as PrismaService, {} as never, {} as never, {} as never);
   return { service, prisma };
 }

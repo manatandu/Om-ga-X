@@ -198,6 +198,7 @@ describe('1 · la date de l’écriture tombe dans son exercice', () => {
 describe('2 · toute écriture reçoit le numéro que son journal impose', () => {
   const tx = (max: number | null) => ({
     $executeRaw: jest.fn().mockResolvedValue(0),
+    $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),
     ecriture: { aggregate: jest.fn().mockResolvedValue({ _max: { numeroPiece: max } }) },
   }) as unknown as PrismaService;
 
@@ -544,7 +545,9 @@ describe('5 · les imports passent par les contrôles d’entrée de la saisie',
   function serviceImport(refus?: Error) {
     const creerEcriture = jest.fn().mockResolvedValue({ id: 'e-imp' });
     const tx = {
-    $executeRaw: jest.fn().mockResolvedValue(0),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      // L'exercice relu ouvert sous le verrou, journal sans numéro compris (ligne saisie-serialisable, point 4).
+      $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),
       compte: {
         createMany: jest.fn(),
         findMany: jest.fn().mockResolvedValue(COMPTES_IMPORT.map((c) => ({ id: c.id, numero: c.numero }))),
@@ -634,6 +637,8 @@ describe('5 · les imports passent par les contrôles d’entrée de la saisie',
     // impossible au dossier qui l'a posée. Tous les autres contrôles restent.
     const analytique = { verifierVentilationObligatoire: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]),
       exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE) },
       compte: {
         findMany: jest.fn().mockResolvedValue([

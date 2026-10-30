@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import {
   NatureDerogatoire,
   NatureMouvementDepreciation,
@@ -270,7 +271,7 @@ export class AnnulationTraitementService {
 
       if (traitement === 'SUPPRIMEE' && c.ecritureId) {
         // Une et une seule, ENCORE au brouillard, sinon rien ne part (409).
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: c.ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        await retirerLesLignesLibres(tx, tenantId, c.ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const r = await tx.ecriture.deleteMany({ where: { id: c.ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (r.count !== 1) {
           throw new ConflictException(

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import {
   ModeInteretsTresorerie,
   NatureActeTresorerie,
@@ -961,7 +962,7 @@ export class OperationsTresorerieService {
       if (tenue) throw new BadRequestException(tenue);
       // L'acte RETIENT sa pièce (RESTRICT) · le lien se dénoue AVANT le retrait, sinon la base refuse la suppression.
       await tx.acteOperationTresorerie.update({ where: { id: acteId, tenantId }, data: { ecritureId: null } });
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+      await retirerLesLignesLibres(tx, tenantId, ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
       const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
       if (r.count !== 1) throw new ConflictException(`La pièce ${objet} a été validée pendant l'annulation · rien n'est retiré. Relancez · validée, elle s'inscrira en négatif.`);
       return null;

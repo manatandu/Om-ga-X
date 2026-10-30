@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { NumerotationPiece, Prisma, TypeJournal } from '@prisma/client';
 import { prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { PrismaService } from '../../common/prisma.service';
@@ -29,18 +30,16 @@ import { PrismaService } from '../../common/prisma.service';
  * LE `tx` N'EST PAS FACULTATIF EN PRATIQUE. Lire le maximum puis l'écrire est
  * une lecture-puis-écriture non atomique : deux écritures créées au même
  * instant sur le même journal liraient le même maximum. LE MAXIMUM SE LIT SOUS
- * LE VERROU DU DOSSIER ET LA LIGNE DE L'EXERCICE (ligne saisie-serialisable,
+ * LE VERROU DU DOSSIER, L'EXERCICE RELU OUVERT (ligne saisie-serialisable,
  * 2026-10-30), quelle que soit l'isolation de l'appelant · la saisie est en
  * lecture validée (`common/transaction-de-saisie.ts`), et les imports, le
  * module Groupe, les déclarations de devises l'étaient déjà, si bien qu'un
  * import et une saisie simultanés pouvaient lire le même maximum sans
  * qu'aucune isolation ne les sépare. Deux appelants en lecture validée
- * s'attendent sur le verrou, puis le second relit un maximum à jour ; un
- * appelant resté SÉRIALISABLE (clôture, à-nouveau) dont l'image précède une
- * pièce validée depuis heurte la ligne de l'exercice qu'elle a réécrite et
- * tombe en 40001, que sa reprise rejoue · jamais deux pièces sous un même
- * numéro. Toutes les séries d'un exercice (journal, fichier, mois) passent par
- * la même ligne · une pièce est datée dans son exercice.
+ * s'attendent sur le verrou, puis le second relit un maximum à jour ·
+ * jamais deux pièces sous un même numéro. Plus aucune transaction
+ * sérialisable ne numérote (la clôture et les à-nouveaux sont passés sous le
+ * même verrou, en lecture validée).
  */
 /**
  * Le mode dont les journaux partagent UNE séquence, tous journaux confondus ·
@@ -80,14 +79,27 @@ export function modeEffectif(journal: { numerotation: NumerotationPiece; type?: 
 }
 
 /**
- * Le verrou du dossier (réentrant · l'audit le reprend sans attendre), puis la
- * ligne de l'exercice réécrite sans qu'aucune valeur change · en requête brute,
- * ni journal d'audit ni garde de cloisonnement à juger, la borne du dossier est
- * dans la requête. Toujours dans cet ordre, celui de la saisie et du lettrage.
+ * Le verrou du dossier (réentrant · l'audit le reprend sans attendre), puis
+ * l'exercice relu OUVERT · toujours dans cet ordre, celui de la saisie et du
+ * lettrage. Sous ce verrou, que tout geste qui écrit les écritures du dossier
+ * prend avant d'écrire, la lecture validée voit la dernière pièce validée et le
+ * dernier statut de l'exercice · deux pièces ne lisent jamais le même maximum.
+ *
+ * DANS TOUS LES MODES, MANUELLE COMPRISE (relecture de la ligne, point 4) · une
+ * pièce sans numéro naît aussi dans un exercice, et un appelant qui a lu
+ * l'exercice ouvert AVANT le verrou (un import, un module) entrait sinon dans
+ * l'exercice qu'une clôture venait de fermer, le brouillard laissé dans un
+ * exercice clos, perdu du résultat. Relu ici, sous le verrou que la clôture
+ * tient jusqu'à sa validation, l'exercice clos refuse (AUDCIF art. 20, al. 3).
+ * La clôture numérote sa propre pièce de solde AVANT d'écrire le statut, dans
+ * la même transaction.
  */
-async function prendreLaSequence(tx: Prisma.TransactionClient | PrismaService, tenantId: string, exerciceId: string): Promise<void> {
-  await prendreLeVerrouDuDossier(tx as Prisma.TransactionClient, tenantId);
-  await tx.$executeRaw`UPDATE "exercices" SET "statut" = "statut" WHERE "id" = ${exerciceId} AND "tenantId" = ${tenantId}`;
+export const MOTIF_EXERCICE_CLOTURE_SOUS_VERROU = "Impossible d'enregistrer une écriture sur un exercice clôturé";
+
+async function prendreLaSequence(tx: Prisma.TransactionClient, tenantId: string, exerciceId: string): Promise<void> {
+  await prendreLeVerrouDuDossier(tx, tenantId);
+  const [exercice] = await tx.$queryRaw<{ statut: string }[]>`SELECT "statut"::text AS "statut" FROM "exercices" WHERE "id" = ${exerciceId} AND "tenantId" = ${tenantId}`;
+  if (exercice?.statut !== 'OUVERT') throw new ForbiddenException(MOTIF_EXERCICE_CLOTURE_SOUS_VERROU);
 }
 
 export async function prochainNumeroPiece(
@@ -97,8 +109,7 @@ export async function prochainNumeroPiece(
   exerciceId: string,
   date: Date,
 ): Promise<number | null> {
-  if (modeEffectif(journal) === NumerotationPiece.MANUELLE) return null;
-  await prendreLaSequence(tx, tenantId, exerciceId);
+  await prendreLaSequence(tx as Prisma.TransactionClient, tenantId, exerciceId);
   switch (modeEffectif(journal)) {
     case NumerotationPiece.MANUELLE:
       return null;
@@ -153,9 +164,17 @@ export function numeroteurDeLot(
   exerciceId: string,
 ): (journal: { id: string; numerotation: NumerotationPiece; type?: TypeJournal }, date: Date) => Promise<number | null> {
   const prochains = new Map<string, number>();
+  let sequencePrise = false;
   return async (journal, date) => {
     const cle = serieDeNumerotation(journal, date);
-    if (cle === null) return null;
+    if (cle === null) {
+      // Un journal sans numéro prend AUSSI le verrou et relit l'exercice, une
+      // fois par lot (point 4) · le lot entier est dans le même exercice.
+      if (!sequencePrise) await prochainNumeroPiece(tx, tenantId, journal, exerciceId, date);
+      sequencePrise = true;
+      return null;
+    }
+    sequencePrise = true;
     const numero = prochains.get(cle) ?? (await prochainNumeroPiece(tx, tenantId, journal, exerciceId, date));
     if (numero === null) return null;
     prochains.set(cle, numero + 1);

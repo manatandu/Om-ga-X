@@ -52,7 +52,10 @@ import {
 
 /**
  * LES TRANSACTIONS SÉRIALISABLES QUI LISENT LE LETTRAGE (relecture de la ligne
- * lettrage-verrou, 2026-10-29, BLOQUANT 1). PostgreSQL ne surveille les
+ * lettrage-verrou, 2026-10-29, BLOQUANT 1) · SANS OBJET DEPUIS LA LIGNE
+ * saisie-serialisable (2026-10-30), qui a passé la clôture et le provisoire en
+ * lecture validée sous ce même verrou, pris en tête · la marque reste, sans
+ * effet sur eux, tant que cette ligne n'est pas relue à part. PostgreSQL ne surveille les
  * conflits lecture-écriture qu'entre transactions SERIALIZABLE · la CLÔTURE,
  * restée sérialisable, figeait son image avant ce lettrage, lisait les lignes
  * ouvertes, et reportait au Détail en N+1 une facture et son règlement que N

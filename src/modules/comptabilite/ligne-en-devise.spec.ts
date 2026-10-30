@@ -85,7 +85,7 @@ function serviceEcritures() {
     { id: 'cdf', code: 'CDF', tenantId: 't' },
     { id: 'usd-voisin', code: 'USD', tenantId: 'autre' },
   ];
-  const prisma = {
+  const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     exercice: {
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
@@ -157,7 +157,7 @@ describe('F49 · les contrôles d’entrée vérifient la devise d’une ligne',
 
 describe('F49 · l’import d’écritures porte la devise', () => {
   function serviceImport() {
-    const tx = {
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     $executeRaw: jest.fn().mockResolvedValue(0),
       ecriture: {
         aggregate: jest.fn().mockResolvedValue({ _max: { numeroPiece: 0 } }),
@@ -165,7 +165,7 @@ describe('F49 · l’import d’écritures porte la devise', () => {
       },
       ligneEcriture: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
-    const prisma = {
+    const prisma = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
       tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't', longueurCompte: 8, referentiel: 'SYSCOHADA' }) },
       exercice: {
         findFirst: jest.fn().mockResolvedValue({

@@ -1084,19 +1084,24 @@ export class LettrageService {
 
     // Aucun groupe : dossier dont un lettrage n'aurait pas été repris par la
     // migration. On retombe sur l'ancien chemin plutôt que de refuser.
-    const anciennes = await this.prisma.ligneEcriture.findMany({
-      where: { compteId, lettre: code, ecriture: { tenantId } },
-      select: { id: true },
-    });
-    await refuserSiLignesFigees(this.prisma, tenantId, anciennes.map((l) => l.id), 'délettrer');
-    const resultat = await this.prisma.ligneEcriture.updateMany({
-      where: { compteId, lettre: code, ecriture: { tenantId } },
-      data: { lettre: null, lettrageId: null },
-    });
-    if (resultat.count === 0) {
-      throw new NotFoundException(`Aucune ligne lettrée "${code}" trouvée sur ce compte`);
-    }
-    return { lettre: code, nombreLignes: resultat.count };
+    // Sous le verrou du dossier, comme le chemin du groupe (ligne
+    // saisie-serialisable, relecture, point 3) · la clôture en lecture
+    // validée ne lit jamais un délettrage à moitié.
+    return transactionSousVerrouDuDossier(this.prisma, tenantId, async (tx) => {
+      const anciennes = await tx.ligneEcriture.findMany({
+        where: { compteId, lettre: code, ecriture: { tenantId } },
+        select: { id: true },
+      });
+      await refuserSiLignesFigees(tx, tenantId, anciennes.map((l) => l.id), 'délettrer');
+      const resultat = await tx.ligneEcriture.updateMany({
+        where: { compteId, lettre: code, ecriture: { tenantId } },
+        data: { lettre: null, lettrageId: null },
+      });
+      if (resultat.count === 0) {
+        throw new NotFoundException(`Aucune ligne lettrée "${code}" trouvée sur ce compte`);
+      }
+      return { lettre: code, nombreLignes: resultat.count };
+    }, 'Trop de lettrages défaits au même instant sur ce compte · veuillez réessayer.');
   }
 
   /**

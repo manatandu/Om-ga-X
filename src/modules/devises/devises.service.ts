@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { PrismaService } from '../../common/prisma.service';
 import { Prisma, Referentiel, StatutEcriture, StatutExercice } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -2324,7 +2325,7 @@ export class DevisesService {
       if (!negatif) {
         // Filtrée sur le statut, lignes comprises · validée entre-temps, rien
         // n'est supprimé et la transaction tombe (M1 d'A7, même règle).
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: e.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        await retirerLesLignesLibres(tx, tenantId, e.id, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const { count } = await tx.ecriture.deleteMany({ where: { id: e.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (count !== 1) throw new ConflictException('La contre-passation a été validée entre-temps · relancez le geste.');
       }
@@ -3510,7 +3511,7 @@ export class DevisesService {
       // l'annulation relancée l'inscrit en négatif.
       for (const f of fait) {
         if (f.traitement !== 'SUPPRIMEE') continue;
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: f.ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        await retirerLesLignesLibres(tx, tenantId, f.ecritureId, { statut: StatutEcriture.BROUILLARD }, { laisserNommerLEcriture: true });
         const r = await tx.ecriture.deleteMany({ where: { id: f.ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (r.count !== 1) {
           throw new ConflictException(

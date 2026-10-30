@@ -55,7 +55,7 @@ function monter(p: {
       findFirstOrThrow: jest.fn().mockResolvedValue({ id: 'r1', annuleeLe: new Date() }),
     },
     ligneEcriture: {
-      deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      count: async () => 2, deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
       // Relues dans la transaction (m1) · libres par défaut.
       findMany: jest.fn().mockResolvedValue([{ lettre: null, lettrageId: null, rapprochementId: null }]),
     },
@@ -85,7 +85,7 @@ describe('annuler une réévaluation des devises (D6)', () => {
     // ENCORE AU BROUILLARD seulement (relecture sage-l6, mineur 8) · jamais l'écriture validée.
     expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'prov', tenantId: 't', statut: StatutEcriture.BROUILLARD } });
     expect(tx.ligneEcriture.deleteMany).toHaveBeenCalledWith({
-      where: { ecritureId: 'prov', ecriture: { tenantId: 't', statut: StatutEcriture.BROUILLARD } },
+      where: { ecritureId: 'prov', ecriture: { tenantId: 't', statut: StatutEcriture.BROUILLARD }, lettrageId: null, lettre: null, rapprochementId: null },
     });
     expect(tx.ecriture.deleteMany).toHaveBeenCalledTimes(1);
     // M2 · un `update` UNITAIRE, que le journal d'audit relit avant et après.

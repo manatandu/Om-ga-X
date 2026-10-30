@@ -410,7 +410,7 @@ describe('M1 · annuler une contre-passation', () => {
     const tx = {
       ligneEcriture: {
         findMany: jest.fn().mockResolvedValue(ecritureExtourne.lignes),
-        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+        count: async () => 2, deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
       ecriture: {
         findFirst: jest.fn().mockResolvedValue({ statut: o.statut }),
@@ -451,7 +451,8 @@ describe('M1 · annuler une contre-passation', () => {
         annulationsContrePassation: [expect.objectContaining({ ecritureId: 'cp', traitement: 'SUPPRIMEE', motif: 'Passée en 2028 au lieu de 2027' })],
       }),
     });
-    expect(tx.ligneEcriture.deleteMany).toHaveBeenCalledWith({ where: { ecritureId: 'cp', ecriture: { tenantId: 't', statut: 'BROUILLARD' } } });
+    // Libres seulement (FILTRE_LIGNE_LIBRE) · une ligne pointée pendant le geste ne part pas (saisie-serialisable, point 2).
+    expect(tx.ligneEcriture.deleteMany).toHaveBeenCalledWith({ where: { ecritureId: 'cp', ecriture: { tenantId: 't', statut: 'BROUILLARD' }, lettrageId: null, lettre: null, rapprochementId: null } });
     expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'cp', tenantId: 't', statut: 'BROUILLARD' } });
   });
 

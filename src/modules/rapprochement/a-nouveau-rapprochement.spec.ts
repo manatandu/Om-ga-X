@@ -192,7 +192,7 @@ function monter(options: { rapprochements: Rap[]; encours?: Encours[]; lignes?: 
     Object.assign(r, data);
     return r;
   });
-  const prisma: Record<string, unknown> = {
+  const prisma: Record<string, unknown> = { $executeRaw: jest.fn().mockResolvedValue(1), $queryRaw: jest.fn().mockResolvedValue([{ statut: 'OUVERT' }]), 
     rapprochementBancaire: {
       findFirst: jest.fn(async ({ where, orderBy }: { where: Filtre; orderBy?: Record<string, 'asc' | 'desc'> }) => {
         return trier(rapprochements.filter((r) => correspond(r, where)) as unknown as Record<string, unknown>[], orderBy)[0] ?? null;

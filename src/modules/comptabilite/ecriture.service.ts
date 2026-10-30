@@ -39,7 +39,7 @@ import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
 import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
-import { transactionDeSaisie } from '../../common/transaction-de-saisie';
+import { prendreLeVerrouDuDossierBorne, transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { FILTRE_LIGNE_LIBRE, retenirLesLignesLibres, retirerLesLignesLibres } from './lignes-libres';
@@ -520,10 +520,9 @@ function modesPortesPar(lignes: ReadonlyArray<{ modeReglementId?: string | null 
  * relecture de la dissolution) · lu avant, il pouvait être arrêté à la
  * dissolution entre la lecture et l'écriture, et l'écriture entrait datée
  * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous le verrou du
- * dossier et la marque des exercices ouverts (`transactionDeSaisie`), l'arrêt
- * et la saisie se rejouent l'un après l'autre · l'arrêt, sérialisable, tombe
- * sur la ligne de l'exercice que la saisie a réécrite, ou la saisie attend
- * qu'il soit validé et relit ici l'exercice qu'il a changé.
+ * dossier (`transactionDeSaisie`), que l'arrêt prend aussi en tête, l'arrêt
+ * et la saisie passent l'un après l'autre · la saisie relit l'exercice que
+ * l'arrêt a changé.
  */
 async function relireLExerciceDansLaTransaction(
   tx: Prisma.TransactionClient,
@@ -1416,6 +1415,8 @@ export class EcritureService {
         const ecritures = [];
         for (const { dto, journal, date, dateValeur, sectionsParId } of controles) {
           await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
+          // La clôture de période se relit aussi sous le verrou (point 7).
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, dto.journalId, date, tx);
           const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, dto.exerciceId, date, tx);
           ecritures.push(
             await tx.ecriture.create({
@@ -1704,6 +1705,8 @@ export class EcritureService {
           throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
         }
         await relireLExerciceDansLaTransaction(tx, tenantId, tenue.exerciceId, date);
+        // La clôture de période se relit aussi sous le verrou (point 7).
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, ecriture.journalId, date, tx);
         if (dto.lignes) {
           // Les ventilations analytiques suivent leurs lignes (onDelete: Cascade
           // sur VentilationAnalytique.ligne) : remplacer les lignes remplace
@@ -1822,6 +1825,8 @@ export class EcritureService {
           );
         }
         await relireLExerciceDansLaTransaction(tx, tenantId, relue.exerciceId, date);
+        // La clôture de période se relit aussi sous le verrou (point 7).
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, journal.id, date, tx);
         const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, relue.exerciceId, date, tx);
         // Mise à jour UNITAIRE · le journal d'audit en garde l'en-tête d'avant
         // (journal, numéro, date), seule trace de l'origine (art. 22, 1°).
@@ -2528,6 +2533,11 @@ export class EcritureService {
     exigences: { doubleRegard: boolean; visa: boolean },
     donneesValidation: Prisma.EcritureUpdateManyMutationInput,
   ) {
+    // LE VERROU DU DOSSIER EN TÊTE, AVANT LES LIGNES (relecture de la ligne
+    // saisie-serialisable, point 1) · la saisie le prend avant de réécrire
+    // les exercices ouverts ; pris après eux, la tranche et la saisie
+    // s'interbloquaient.
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${tenantId} AND "statut" = 'BROUILLARD' FOR UPDATE`;
     await tx.$queryRaw`SELECT x."id" FROM "exercices" x WHERE x."tenantId" = ${tenantId} AND x."id" IN (SELECT e."exerciceId" FROM "ecritures" e WHERE e."id" = ANY(${ids}::text[]) AND e."tenantId" = ${tenantId} AND e."statut" = 'BROUILLARD') FOR SHARE`;
     const base = {
@@ -3104,6 +3114,15 @@ export class EcritureService {
       this.prisma,
       tenantId,
       async (tx) => {
+        // Les clôtures de période se relisent sous le verrou (point 7) · au
+        // brouillard à la date de chaque pièce, validée à la date de la pièce exacte.
+        for (const id of brouillardsVus) {
+          const l = auBrouillard.find((x) => x.ecritureId === id)!;
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, l.ecriture.journalId, l.ecriture.date, tx);
+        }
+        for (const groupe of parEcriture.values()) {
+          await this.exerciceService.verifierEcritureAutorisee(tenantId, groupe[0].ecriture.journalId, date, tx);
+        }
         // Une requête pour tout le brouillard, jamais une par ligne (audit
         // final F2) · la fusion d'un compte chargé en faisait des milliers.
         if (auBrouillard.length) {
@@ -3320,18 +3339,16 @@ export class EcritureService {
     ecritureId: string,
     dto: CorrigerEcritureDto,
   ) {
-    const origine = await this.prisma.ecriture.findFirst({
-      where: { id: ecritureId, tenantId },
-      include: {
-        lignes: { include: { ventilations: true } },
-        journal: true,
-        exercice: true,
-        correction: { select: { id: true, numeroPiece: true } },
-        immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
-        immobilisationSortie: { select: { id: true, designation: true } },
-        dotationAmortissement: { select: { id: true } },
-      },
-    });
+    const inclusion = {
+      lignes: { include: { ventilations: true } },
+      journal: true,
+      exercice: true,
+      correction: { select: { id: true, numeroPiece: true } },
+      immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
+      immobilisationSortie: { select: { id: true, designation: true } },
+      dotationAmortissement: { select: { id: true } },
+    } satisfies Prisma.EcritureInclude;
+    const origine = await this.prisma.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: inclusion });
     if (!origine) throw new NotFoundException('Écriture introuvable pour ce dossier.');
 
     if (origine.statut === StatutEcriture.BROUILLARD) {
@@ -3391,10 +3408,20 @@ export class EcritureService {
 
     await this.exerciceService.verifierEcritureAutorisee(tenantId, origine.journalId, date);
 
-    return transactionDeSaisie(
+    try {
+    return await transactionDeSaisie(
       this.prisma,
       tenantId,
       async (tx) => {
+        // RELUE SOUS LE VERROU (ligne saisie-serialisable, relecture, point 6) ·
+        // « déjà corrigée », lettrage, pointage et exercice se jugeaient sur la
+        // lecture d'avant la transaction · deux corrections simultanées
+        // passaient toutes deux le contrôle, et la seconde tombait sur l'unicité
+        // de `corrigeEcritureId` en 500.
+        const relue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: inclusion });
+        if (!relue) throw new NotFoundException('Écriture introuvable pour ce dossier.');
+        this.verifierCorrigeable(relue);
+        await this.exerciceService.verifierEcritureAutorisee(tenantId, origine.journalId, date, tx);
         const numeroPiece = await this.journalService.prochainNumeroPiece(
           tenantId,
           origine.journal,
@@ -3428,6 +3455,16 @@ export class EcritureService {
       },
       `Trop d'écritures enregistrées au même instant sur le journal ${origine.journal.code} · veuillez réessayer.`,
     );
+    } catch (err) {
+      // L'UNICITÉ DE LA CORRECTION EST UN REFUS NOMMÉ, JAMAIS UN 500 · une
+      // correction passée par un autre chemin que ce geste (module, autre poste).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && JSON.stringify(err.meta?.target ?? '').includes('corrigeEcritureId')) {
+        throw new ConflictException(
+          'Cette écriture vient d\'être corrigée par un autre geste · rechargez le journal, une seconde inscription en négatif inverserait l\'erreur au lieu de l\'annuler.',
+        );
+      }
+      throw err;
+    }
   }
 
   /**
