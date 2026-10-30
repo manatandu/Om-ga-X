@@ -167,6 +167,14 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'ordresVirement',
       // Ligne sage-l5 · fonction 88 · la répartition analytique, la relation seule.
       'repartitionsAnalytiques',
+      // Ligne paie-suite · ses rattachements à l'organigramme, la relation seule.
+      'rattachementsUnite',
+      // Ligne paie-suite, fonction 87 · ses rappels de salaire, la relation seule.
+      'rappelsSalaire',
+      // Ligne paie-suite, fonction 76 · son compte individuel sous le 422 ·
+      // un fait de gestion, comme le compte d'un tiers.
+      'compteId',
+      'compte',
       // Ligne sage-l6 · fonction 22 · les documents du salarié, la relation seule
       // (nom, commentaire et binaire exclus de leur propre table).
       'piecesJointes',
@@ -268,6 +276,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'lignesPaiement',
       // Ligne microfina-m3, idée 3 · les missions qu'il porte · la relation seule.
       'missionsPortees',
+      // Ligne paie-suite, fonction 87 · les rappels qu'il paie · la relation seule.
+      'rappelsPortes',
     ],
     // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
     // rattachement à un bulletin, sa prise au-delà du solde et son
@@ -398,6 +408,11 @@ describe('la liste d’exclusion est fermée sur User', () => {
       // nombre de mois, aucun montant (la retenue mensuelle reste masquée).
       'premierMoisRetenue',
       'nombreEcheances',
+      // Ligne paie-suite · le visa du plan · des identifiants et des instants, aucun montant.
+      'planSaisiPar',
+      'planSaisiLe',
+      'planVisePar',
+      'planViseLe',
       'creePar',
       'createdAt',
       'retenues',

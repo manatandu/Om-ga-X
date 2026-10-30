@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { avecStatut } from '../comptabilite/ecritures-de-situation';
+import { compteDeLaPassation } from './compte-salarie';
 import { DETENTEUR_PAIE_DU_MOIS, EcritureService } from '../comptabilite/ecriture.service';
 import { moisValide } from './bulletin-paie';
 import {
@@ -47,7 +49,7 @@ export class ComptabilisationPaieService {
   async proposition(tenantId: string, mois: string) {
     this.verifierMois(mois);
     const [tenant, bulletins] = await Promise.all([
-      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true, comptesIndividuelsSalaries: true } }),
       this.prisma.bulletinPaie.findMany({
         where: { tenantId, moisDePaie: mois },
         orderBy: { numero: 'asc' },
@@ -62,6 +64,8 @@ export class ComptabilisationPaieService {
           entree: true,
           calcul: true,
           ecritureNegatifId: true,
+          // Fonction 76 · le compte individuel du salarié sous le 422.
+          salarie: { select: { compte: { select: { id: true, numero: true, intitule: true } } } },
         },
         // Un mois de paie ne dépasse pas l'effectif du dossier · la borne
         // est là pour qu'aucune route ne rende une collection sans limite.
@@ -113,6 +117,34 @@ export class ComptabilisationPaieService {
         },
       ]),
     );
+    // FONCTION 76 · un bulletin à passer DÉJÀ PAYÉ se passe sur le compte que
+    // son paiement a débité (`compteDeLaPassation`) · lu sur la pièce du
+    // paiement, une ligne par couple (pièce, compte).
+    const payeSurSonCompte = new Map<string, boolean>();
+    const payesAvant = bulletins.filter((b) => b.statut === 'EMIS' && !b.ecritureId && b.salarie?.compte);
+    if (payesAvant.length) {
+      const paiements = await this.prisma.lignePaiementSalaire.findMany({
+        where: { tenantId, annuleLe: null, bulletinId: { in: payesAvant.map((b) => b.id) } },
+        // Une ligne active par bulletin (index unique sur le bulletin et l'annulation).
+        take: payesAvant.length,
+        select: { bulletinId: true, paiement: { select: { ecritureId: true } } },
+      });
+      const pieces = [...new Set(paiements.flatMap((p) => (p.paiement.ecritureId ? [p.paiement.ecritureId] : [])))];
+      const comptesIds = [...new Set(payesAvant.map((b) => b.salarie!.compte!.id))];
+      const debitees = pieces.length
+        ? await this.prisma.ligneEcriture.findMany({
+            where: { ecriture: avecStatut({ tenantId, id: { in: pieces } }), compteId: { in: comptesIds } },
+            distinct: ['ecritureId', 'compteId'],
+            take: pieces.length * comptesIds.length,
+            select: { ecritureId: true, compteId: true },
+          })
+        : [];
+      const sur = new Set(debitees.map((l) => `${l.ecritureId}|${l.compteId}`));
+      for (const p of paiements) {
+        const b = payesAvant.find((x) => x.id === p.bulletinId)!;
+        payeSurSonCompte.set(p.bulletinId, sur.has(`${p.paiement.ecritureId}|${b.salarie!.compte!.id}`));
+      }
+    }
     const lus: BulletinAComptabiliser[] = bulletins.map((b) => ({
       id: b.id,
       numero: b.numero,
@@ -124,6 +156,21 @@ export class ComptabilisationPaieService {
       calcul: b.calcul,
       ecritureNegatifId: b.ecritureNegatifId,
       origine: b.statut === 'ANNULE' && b.ecritureId ? (origineDe.get(b.ecritureId) ?? null) : null,
+      // FONCTION 76 · règle de `compteDeLaPassation` · tout bulletin porté par
+      // une écriture lit le compte du salarié, l'option fût-elle retirée (sans
+      // quoi la reprise d'une pièce commune ne se reconstituait plus et était
+      // refusée, relecture indépendante, MAJEUR) ; un bulletin payé avant
+      // d'être passé, le compte de son paiement ; sinon l'option du jour.
+      compte422:
+        b.salarie?.compte &&
+        compteDeLaPassation({
+          compteIndividuel: true,
+          porte: b.ecritureId !== null,
+          payeSurSonCompte: payeSurSonCompte.get(b.id) ?? null,
+          option: tenant.comptesIndividuelsSalaries,
+        }) === 'INDIVIDUEL'
+          ? { numero: b.salarie.compte.numero, intitule: b.salarie.compte.intitule }
+          : null,
     }));
     const proposition = propositionPaieDuMois(mois, tenant.referentiel as Referentiel, lus);
 

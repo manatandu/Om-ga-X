@@ -351,9 +351,11 @@ describe('émettre · le serveur rejoue le calcul et fige ce qu’il rend', () =
 });
 
 describe('annuler et remettre · jamais modifier', () => {
-  function avecBulletin(b: Record<string, unknown>) {
+  function avecBulletin(b: Record<string, unknown>, rappels: unknown[] = []) {
     const update = jest.fn().mockResolvedValue({});
-    const prisma = {
+    const prisma: Record<string, unknown> = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      rappelSalaire: { findMany: jest.fn().mockResolvedValue(rappels) },
       bulletinPaie: {
         findFirst: jest.fn().mockImplementation(({ select }) =>
           Promise.resolve(
@@ -372,9 +374,34 @@ describe('annuler et remettre · jamais modifier', () => {
         ),
         update,
       },
-    } as unknown as PrismaService;
-    return { svc: new PersonnelService(prisma), update };
+    };
+    prisma.$transaction = (fn: (tx: unknown) => unknown) => fn(prisma);
+    return { svc: new PersonnelService(prisma as unknown as PrismaService), update };
   }
+
+  // Relecture indépendante, BLOQUANT · mars annulé puis réémis au nouveau
+  // contrat repayait l'arriéré que le rappel avait calculé sur mars.
+  it('refuse d’annuler le bulletin source d’un rappel non annulé, en nommant le rappel et l’issue', async () => {
+    const rappel = {
+      id: 'r-1',
+      motif: 'Avenant de février',
+      moisDebut: '2026-03',
+      moisFin: '2026-03',
+      lignes: [{ mois: '2026-03', bulletinId: 'b-1', numero: 3, salaireFigeFc: 780000, ancienneBase: 780000, arriereFc: 20000 }],
+      bulletin: { numero: 5, moisDePaie: '2026-05', statut: 'EMIS' },
+    };
+    const { svc, update } = avecBulletin({ statut: 'EMIS', salarieId: 's-1', moisDePaie: '2026-03', numero: 3 }, [rappel]);
+    await expect(svc.annulerBulletin('t-1', 'u-1', 'b-1', 'Réémis au nouveau contrat')).rejects.toThrow(
+      /rappel « Avenant de février ».*payé par le bulletin n° 5 de 2026-05.*Annulez d'abord le bulletin qui paie le rappel/s,
+    );
+    expect(update).not.toHaveBeenCalled();
+    // Un rappel calculé sur un AUTRE bulletin du mois ne retient rien.
+    const autre = avecBulletin({ statut: 'EMIS', salarieId: 's-1', moisDePaie: '2026-03', numero: 3 }, [
+      { ...rappel, lignes: [{ ...rappel.lignes[0], bulletinId: 'b-ancien' }] },
+    ]);
+    await autre.svc.annulerBulletin('t-1', 'u-1', 'b-1', 'Prime oubliée');
+    expect(autre.update).toHaveBeenCalledTimes(1);
+  });
 
   it('exige un motif, et n’annule qu’un bulletin émis', async () => {
     const { svc, update } = avecBulletin({ statut: 'EMIS' });

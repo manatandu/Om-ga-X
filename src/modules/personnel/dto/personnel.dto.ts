@@ -12,6 +12,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsISO8601,
   IsNumber,
   IsObject,
   IsOptional,
@@ -432,6 +433,12 @@ export class MissionPorteeDto {
   missionId!: string;
 }
 
+/** Ligne paie-suite, fonction 87 · un rappel de salaire que le bulletin paie · le serveur rejoue ses montants. */
+export class RappelPorteDto {
+  @IsUUID('4')
+  rappelId!: string;
+}
+
 /**
  * LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · des heures majorées du mois · la
  * majoration est celle que le cabinet a déclarée avec sa source, relue au
@@ -481,6 +488,14 @@ export class SimulationPaieDto {
   @ValidateNested({ each: true })
   @Type(() => MissionPorteeDto)
   missionsPortees?: MissionPorteeDto[];
+
+  /** Ligne paie-suite, fonction 87 · les rappels de salaire que ce bulletin paie. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => RappelPorteDto)
+  rappelsPortes?: RappelPorteDto[];
 
   /** Retenues d'avance, d'acompte et de prêt · le salarié doit être nommé. */
   @IsOptional()
@@ -1187,6 +1202,17 @@ export class EtalementAvanceDto {
   premierMoisRetenue?: string | null;
   @IsOptional() @IsInt() @Min(1) @Max(120) nombreEcheances?: number | null;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) retenueMensuelleFc?: number | null;
+}
+
+/**
+ * Ligne paie-suite · viser le plan d'étalement d'une avance
+ * (`visa-plan-etalement.ts`) · l'instant de la saisie que l'écran a montrée,
+ * null pour un plan d'avant le visa.
+ */
+export class VisaPlanEtalementDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsISO8601({ strict: true }, { message: "L'instant de la saisie lue est exigé (ou null pour un plan d'avant le visa)." })
+  saisiLeLu!: string | null;
 }
 
 /** La mainlevée d'une saisie-arrêt (AUPSRVE, art. 201) · déclarée une fois. */

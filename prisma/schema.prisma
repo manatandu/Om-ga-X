@@ -696,6 +696,21 @@ model Tenant {
   // (`tiers/visa-rib.ts`). Un RIB modifié en silence détourne un paiement ·
   // le visa met un second regard entre la saisie et l'argent qui part.
   visaRibs                      Boolean  @default(false)
+  // LIGNE PAIE-SUITE · VISA D'UN PLAN D'ÉTALEMENT PAR UN SECOND UTILISATEUR
+  // (gel levé par Manasse le 2026-10-29). Même modèle que le visa des RIB ·
+  // une OPTION, désactivée par défaut, aucun texte lu ne l'imposant (AUDCIF
+  // art. 69 ; SYCEBNL art. 16, 2)). Activée, la retenue d'un plan non visé
+  // n'est pas proposée au bulletin, et la simulation le dit
+  // (`personnel/visa-plan-etalement.ts`).
+  visaPlansEtalement            Boolean  @default(false)
+  // LIGNE PAIE-SUITE, FONCTION 76 · LE COMPTE INDIVIDUEL DU SALARIÉ sous le 422
+  // « Personnel, rémunérations dues » (fiche du compte 42 des deux plans ;
+  // AUDCIF art. 18, al. 3 ; SYCEBNL Partie 2 ch. 2, section 1), comme les
+  // comptes de tiers sous leur collectif. Une OPTION, désactivée par défaut ·
+  // aucun texte n'impose l'un ou l'autre modèle, et le compte individuel met
+  // au journal, que tout le dossier lit, le net de chaque salarié que la
+  // paie agrégée y taisait (`personnel/compte-salarie.ts`).
+  comptesIndividuelsSalaries    Boolean  @default(false)
   // CIRCUIT DE VISA AVANT VALIDATION (ligne microfina-m1, idée 1 · Microfina++,
   // « visa puis validation », M p. 130 à 133). Une OPTION, désactivée par
   // défaut, comme le double regard · aucun texte lu ne l'impose. AUDCIF
@@ -989,6 +1004,10 @@ model Tenant {
   piecesJointesImmobilisations         PieceJointeImmobilisation[]
   piecesJointesSalaries                PieceJointeSalarie[]
   detentionsBiens                      DetentionBien[]
+  // Ligne paie-suite · l'organigramme et les rattachements datés.
+  unitesOrganisation                   UniteOrganisation[]
+  rattachementsUnite                   RattachementUnite[]
+  rappelsSalaire                       RappelSalaire[]
   recusDetentionBiens                  RecuDetentionBien[]
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures                     ExportEcritures[]
@@ -1405,6 +1424,8 @@ model Compte {
   collectifId String?
   collectif   Compte?  @relation("CompteCollectif", fields: [collectifId], references: [id], onDelete: Restrict)
   individuels Compte[] @relation("CompteCollectif")
+  /// Ligne paie-suite, fonction 76 · le salarié dont c'est le compte individuel sous le 422.
+  salarie     Salarie? @relation("CompteDuSalarie")
 
   // Taux de taxe proposé automatiquement dès que ce compte est saisi · Sage
   // porte un code taxe sur la fiche compte (skill sage-i7,
@@ -3393,6 +3414,8 @@ model SectionAnalytique {
   // Ligne immos, fonction 70 · les biens et les familles dont la dotation s'y ventile.
   immobilisations       Immobilisation[]                 @relation("ImmoSection")
   famillesImmobilisation FamilleImmobilisation[]         @relation("FamilleImmoSection")
+  // Ligne paie-suite · les unités de l'organigramme qui la proposent à la paie.
+  unitesOrganisation    UniteOrganisation[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -8478,6 +8501,16 @@ model Salarie {
   piecesJointes           PieceJointeSalarie[]
   /// Ligne Microfina M4 · les biens que ce salarié a détenus (RESTRICT).
   detentionsBiens         DetentionBien[]
+  /// Ligne paie-suite · ses rattachements datés à l'organigramme (RESTRICT).
+  rattachementsUnite      RattachementUnite[]
+  /// Ligne paie-suite, fonction 87 · ses rappels de salaire (RESTRICT).
+  rappelsSalaire          RappelSalaire[]
+  /// LIGNE PAIE-SUITE, FONCTION 76 · son compte individuel sous le 422, né
+  /// sous le collectif (`Compte.collectifId`). RESTRICT · un compte qui porte
+  /// un salarié ne se supprime pas en le dénouant. Null tant qu'il n'est pas
+  /// ouvert · la paie passe alors au collectif.
+  compteId                String?                     @unique
+  compte                  Compte?                     @relation("CompteDuSalarie", fields: [compteId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   createdBy String
@@ -8802,6 +8835,8 @@ model BulletinPaie {
   // Ligne sage-l5 · les congés dont ce bulletin porte l'allocation (art. 142, 145).
   allocationsConge CongeSalarie[]
   missionsPortees  MissionSalarie[]
+  /// Ligne paie-suite, fonction 87 · les rappels de salaire que ce bulletin paie.
+  rappelsPortes    RappelSalaire[]
   // Ligne sage-l5 · les paiements qui ont versé son net (fonction 75).
   lignesPaiement   LignePaiementSalaire[]
 
@@ -8916,6 +8951,14 @@ model AvanceSalaire {
   /// la retenue mensuelle reste alors une simple indication.
   premierMoisRetenue String?                 @db.VarChar(7)
   nombreEcheances    Int?
+  /// LIGNE PAIE-SUITE · le visa du plan (`visa-plan-etalement.ts`) · qui l'a
+  /// saisi ou changé en dernier, qui l'a visé et quand. Nuls sur un plan
+  /// d'avant la règle (auteur inconnu, visable et dit) et sur une avance sans
+  /// plan. Des identifiants d'utilisateur, comme le visa des RIB.
+  planSaisiPar       String?
+  planSaisiLe        DateTime?
+  planVisePar        String?
+  planViseLe         DateTime?
   objet              String
   /// Reconnaissance de dette ou contrat de prêt · « éléments de contrôle » du
   /// compte 42 dans les deux plans.
@@ -8935,6 +8978,100 @@ model AvanceSalaire {
 
   @@index([tenantId, salarieId])
   @@map("avances_salaire")
+}
+
+/// LIGNE PAIE-SUITE · UNE UNITÉ DE L'ORGANIGRAMME (direction, département,
+/// service, ou ce que le dossier nomme · `personnel/organigramme.ts`). Arbre
+/// libre, sans limite de profondeur · aucun texte ne fixe l'organisation
+/// interne d'une entité. La parente est RESTRICT · une unité qui porte des
+/// filles ne se retire pas. La section analytique est PROPOSÉE à la
+/// répartition analytique de la paie, jamais imposée (RESTRICT · une section
+/// nommée par une unité ne se retire pas en silence).
+model UniteOrganisation {
+  id                  String             @id @default(uuid())
+  tenantId            String
+  tenant              Tenant             @relation(fields: [tenantId], references: [id])
+  code                String             @db.VarChar(20)
+  intitule            String             @db.VarChar(120)
+  /// Le niveau que le dossier nomme (« Direction », « Département »…) · libre, null permis.
+  niveau              String?            @db.VarChar(40)
+  parentId            String?
+  parent              UniteOrganisation? @relation("UniteParente", fields: [parentId], references: [id], onDelete: Restrict)
+  enfants             UniteOrganisation[] @relation("UniteParente")
+  sectionAnalytiqueId String?
+  sectionAnalytique   SectionAnalytique? @relation(fields: [sectionAnalytiqueId], references: [id], onDelete: Restrict)
+  /// En sommeil · ne reçoit plus de rattachement nouveau, l'historique reste.
+  estActive           Boolean            @default(true)
+  creePar             String
+  createdAt           DateTime           @default(now())
+  rattachements       RattachementUnite[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, parentId])
+  @@map("unites_organisation")
+}
+
+/// LIGNE PAIE-SUITE · LE RATTACHEMENT DATÉ D'UN SALARIÉ À UNE UNITÉ · une
+/// mutation est un rattachement nouveau, jamais une retouche · l'historique se
+/// garde. Une saisie fausse s'ANNULE avec son motif (`annuleLe`), et reste lue.
+model RattachementUnite {
+  id              String            @id @default(uuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  salarieId       String
+  salarie         Salarie           @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  uniteId         String
+  unite           UniteOrganisation @relation(fields: [uniteId], references: [id], onDelete: Restrict)
+  dateEffet       DateTime          @db.Date
+  creePar         String
+  createdAt       DateTime          @default(now())
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?
+
+  @@index([tenantId, salarieId, dateEffet])
+  @@index([tenantId, uniteId])
+  @@map("rattachements_unite")
+}
+
+/// LIGNE PAIE-SUITE, FONCTION 87 · UN RAPPEL DE SALAIRE · les arriérés d'une
+/// hausse de la base à effet passé, calculés par le serveur mois par mois sur
+/// les bulletins émis et FIGÉS (`lignes`), puis portés par le bulletin du
+/// mois où ils sont payés (`bulletinId`, RESTRICT · Code du travail, art. 213 ;
+/// arrêté du 8 août 2008, mention 13). Un bulletin porteur annulé libère le
+/// rappel. Un rappel faux s'ANNULE avec son motif, tant qu'aucun bulletin émis
+/// ne le porte (`personnel/rappel-salaire.ts`).
+model RappelSalaire {
+  id                 String        @id @default(uuid())
+  tenantId           String
+  tenant             Tenant        @relation(fields: [tenantId], references: [id])
+  salarieId          String
+  salarie            Salarie       @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  moisDebut          String        @db.VarChar(7)
+  moisFin            String        @db.VarChar(7)
+  /// La nouvelle base, dans l'unité du contrat figé (périodicité et monnaie).
+  nouvelleBase       Decimal       @db.Decimal(18, 2)
+  periodicite        String        @db.VarChar(10)
+  /// La monnaie de la nouvelle base · celle du contrat figé, jamais la monnaie de tenue.
+  deviseBase         String        @db.VarChar(3)
+  motif              String        @db.VarChar(200)
+  /// Avenant, décision, convention · la pièce qui fonde la hausse.
+  pieceJustificative String        @db.VarChar(300)
+  /// Le calcul figé, mois par mois (`LigneRappel[]`), et les mois exclus avec leur motif.
+  lignes             Json
+  exclus             Json
+  totalFc            Decimal       @db.Decimal(18, 2)
+  bulletinId         String?
+  bulletin           BulletinPaie? @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
+  annuleLe           DateTime?
+  annulePar          String?
+  motifAnnulation    String?       @db.VarChar(500)
+  creePar            String
+  createdAt          DateTime      @default(now())
+
+  @@index([tenantId, salarieId])
+  @@index([bulletinId])
+  @@map("rappels_salaire")
 }
 
 /// Ce qu'un bulletin a retenu sur une avance. Figé avec le bulletin · un

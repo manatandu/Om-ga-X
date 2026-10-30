@@ -61,6 +61,7 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'components/MaintenanceImmobilisations.tsx': "renumérotation des biens, structure du registre réservée à l'administrateur (ligne sage-l4, n° 73)",
   'components/NaturesCompte.tsx': "natures de compte (fourchettes, défauts, alignement), routes réservées à l'administrateur",
   'pages/PlanComptesPage.tsx': "ouverture et modification des comptes du plan, réservées à l'administrateur",
+  'components/paie/ComptesIndividuelsPaie.tsx': "ouverture des comptes individuels des salariés sous le 422 (ligne paie-suite, fonction 76), structure du plan réservée à l'administrateur comme le compte d'un tiers",
   'components/ModalePersonnaliser.tsx': "adopter un compte du plan ou ouvrir un sous-compte, structure du plan réservée à l'administrateur",
   'pages/PlansAnalytiquesPage.tsx': "structure analytique (sections, budgets, mise en sommeil), réservée à l'administrateur",
   'pages/TauxTvaPage.tsx': "paramétrage des taux de taxe, fenêtre réservée à l'administrateur",

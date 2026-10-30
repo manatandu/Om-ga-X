@@ -1135,6 +1135,8 @@ describe('F259 · rubriques, bulletins modèles et avances, bornés', () => {
       rubriquePaie: { findMany: lecture(r), count: compte(r) },
       modeleBulletin: { findMany: lecture(m), count: compte(m) },
       avanceSalaire: { findMany: lecture(a), count: compte(a) },
+      tenant: { findUnique: async () => ({ visaPlansEtalement: false }) },
+      user: { findMany: async () => [] },
     } as never);
   }
   const avance = (i: number, salarieId: string): Ligne => ({
@@ -1158,11 +1160,11 @@ describe('F259 · rubriques, bulletins modèles et avances, bornés', () => {
       ...Array.from({ length: 3 }, (_, i) => avance(900 + i, 's2')),
     ];
     const s = monter({ avances });
-    const tout = await s.listerAvances('t1');
+    const tout = await s.listerAvances('t1', 'u1');
     expect(tout.avances).toHaveLength(PLAFOND_LISTES_PAIE);
     expect(tout.total).toBe(PLAFOND_LISTES_PAIE + 4);
     expect(tout.tronque).toBe(true);
-    const duSalarie = await s.listerAvances('t1', 's2');
+    const duSalarie = await s.listerAvances('t1', 'u1', 's2');
     expect(duSalarie.avances).toHaveLength(3);
     expect(duSalarie.total).toBe(3);
     expect(duSalarie.tronque).toBe(false);

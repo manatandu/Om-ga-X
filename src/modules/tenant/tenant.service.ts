@@ -214,6 +214,10 @@ export class TenantService {
       echeanceObligatoireTiers: tenant.echeanceObligatoireTiers,
       // Visa des RIB (`tiers/visa-rib.ts`) · aux deux référentiels, comme le double regard.
       visaRibs: tenant.visaRibs,
+      // Ligne paie-suite · visa des plans d'étalement, aux deux référentiels.
+      visaPlansEtalement: tenant.visaPlansEtalement,
+      // Ligne paie-suite, fonction 76 · comptes individuels des salariés, aux deux référentiels.
+      comptesIndividuelsSalaries: tenant.comptesIndividuelsSalaries,
       // Circuit de visa avant validation (`comptabilite/circuit-visa.ts`) · aux deux référentiels.
       circuitVisa: tenant.circuitVisa,
       // Ligne sage-l2, fonction 36 · aux deux référentiels ; `null` = aucun seuil fixé.
@@ -1259,6 +1263,31 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaRibs } });
+    return this.parametres(tenantId);
+  }
+
+  /** Ligne paie-suite · le visa des plans d'étalement (`personnel/visa-plan-etalement.ts`), option du dossier. */
+  async modifierVisaPlansEtalement(tenantId: string, visaPlansEtalement: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { visaPlansEtalement } });
+    return this.parametres(tenantId);
+  }
+
+  /**
+   * Ligne paie-suite, fonction 76 · les comptes individuels des salariés
+   * (`personnel/compte-salarie.ts`), option du dossier. La retirer ne ferme
+   * aucun compte ouvert · la paie suivante retourne au collectif, et un
+   * bulletin passé sur un compte individuel se paie et se reprend sur lui.
+   */
+  async modifierComptesIndividuelsSalaries(tenantId: string, comptesIndividuelsSalaries: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { comptesIndividuelsSalaries } });
     return this.parametres(tenantId);
   }
 
