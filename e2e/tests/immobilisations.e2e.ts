@@ -363,6 +363,14 @@ test('SYSCOHADA · l’option non levée sort le bien, la dette du 17 pour prix'
     exerciceId: exercice.id,
     journalId: od.id,
   });
+  // LA DOTATION DE L'EXERCICE DE LA PRISE D'EFFET PASSE AVANT LA SORTIE ·
+  // l'exercice reste ouvert, et la sortie de N+1 refuse un antérieur ouvert
+  // qui n'a pas reçu l'annuité du bien (AUDCIF Titre VII, compte 81, « sous
+  // déduction des amortissements pratiqués » ; ligne restes-l8-immos).
+  const avant = await appelApi<Array<{ id: string; designation: string }>>(page, 'GET', '/immobilisations');
+  const bienAvant = avant.find((b) => b.designation === 'Option e2e');
+  if (!bienAvant) throw new Error('Bien de la location-acquisition introuvable');
+  await appelApi(page, 'POST', `/immobilisations/${bienAvant.id}/dotation`, { exerciceId: exercice.id, journalId: od.id });
   const annee = Number(debut.slice(0, 4)) + 1;
   const suivant = await appelApi<{ id: string }>(page, 'POST', '/exercices', { dateDebut: `${annee}-01-01`, dateFin: `${annee}-12-31` });
   const [contrat] = await appelApi<Array<{ id: string; dateOption: string; optionLevee: boolean | null }>>(
