@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { TypeNotification } from '@prisma/client';
 import { motifRefusEnvoi, TAILLE_BOITE } from './messagerie';
+import { notifierSansEchec } from '../notifications/notifications';
 import { CONSERVATION_JOURS, DELAI_CONNECTE_MS, estConnectee, sessionEncoreOuverte } from './presence';
 
 /** Au-delà de ce délai sans activité, une session ne se montre plus · convention d'OmegaX. */
@@ -103,6 +105,16 @@ export class MessagerieService {
         },
         select: { id: true, envoyeLe: true },
       }),
+    );
+    // LA NOTIFICATION (fonction 100) · aux destinataires seuls, après l'envoi,
+    // jamais levée · l'objet se dit à qui le lit de toute façon.
+    const expediteur = await this.prisma.user.findFirst({ where: { tenantId, id: userId }, select: { email: true } });
+    await notifierSansEchec(
+      this.prisma,
+      tenantId,
+      TypeNotification.MESSAGE_RECU,
+      { titre: `Message de ${expediteur?.email ?? 'un utilisateur du dossier'} · ${dto.objet.trim()}`, lien: '/messages' },
+      { userIds: ids, sauf: userId },
     );
     return { ...message, destinataires: ids.length };
   }

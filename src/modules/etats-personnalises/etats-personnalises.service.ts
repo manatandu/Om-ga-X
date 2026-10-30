@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { EtatPersonnaliseDto } from './dto/etat-personnalise.dto';
-import { calculerColonne, LigneDefinition, motifRefusDefinition, PLAFOND_EXERCICES } from './moteur-etat-personnalise';
+import { calculerColonne, LigneDefinition, lireLesRacines, motifRefusDefinition, PLAFOND_EXERCICES } from './moteur-etat-personnalise';
 
 /**
  * ÉTATS PERSONNALISÉS · définitions enregistrées, calculées à la demande sur
@@ -17,6 +17,33 @@ export class EtatsPersonnalisesService {
     private readonly prisma: PrismaService,
     private readonly ecritures: EcritureService,
   ) {}
+
+  /**
+   * L'AIDE À LA FORMULE (ligne dossier-l9, fonction 100) · les comptes de
+   * DÉTAIL du plan du dossier qu'une rubrique lit, par la règle du calcul
+   * (`lireLesRacines`). Bornée et dite · au plus cinquante comptes nommés par
+   * liste, le nombre toujours.
+   */
+  async formule(tenantId: string, racines: string) {
+    if (racines.length > 300) throw new BadRequestException('La formule tient en 300 caractères au plus.');
+    const comptes = await this.prisma.compte.findMany({
+      where: { tenantId, typeCompte: 'DETAIL' },
+      orderBy: { numero: 'asc' },
+      take: 20000,
+      select: { numero: true, intitule: true },
+    });
+    const lu = lireLesRacines(racines, comptes.map((c) => c.numero));
+    const intitules = new Map(comptes.map((c) => [c.numero, c.intitule]));
+    const nommer = (liste: string[]) => liste.slice(0, 50).map((numero) => ({ numero, intitule: intitules.get(numero) ?? '' }));
+    return {
+      motif: lu.motif,
+      inclus: nommer(lu.inclus),
+      nombreInclus: lu.inclus.length,
+      exclus: nommer(lu.exclus),
+      nombreExclus: lu.exclus.length,
+      racinesSansCompte: lu.racinesSansCompte,
+    };
+  }
 
   lister(tenantId: string) {
     return this.prisma.etatPersonnalise.findMany({ where: { tenantId }, orderBy: { nom: 'asc' } });

@@ -18,11 +18,19 @@ import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
 import { FinLiquidationDto } from './dto/fin-liquidation.dto';
 import { GesteDissolutionDto } from './dto/geste-dissolution.dto';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
+import { TypeNotification } from '@prisma/client';
+import { PrismaService } from '../../common/prisma.service';
+import { libelleExercice } from '../../common/libelle-exercice';
+import { notifierSansEchec } from '../notifications/notifications';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
 @Controller('exercices')
 export class ExerciceController {
-  constructor(private readonly exerciceService: ExerciceService) {}
+  constructor(
+    private readonly exerciceService: ExerciceService,
+    // Ligne dossier-l9, fonction 100 · la clôture se dit aux utilisateurs du dossier.
+    private readonly prisma?: PrismaService,
+  ) {}
 
   // Le sélecteur d'exercice se charge à l'ouverture de toute fenêtre · la
   // liste ne porte aucun chiffre comptable.
@@ -66,7 +74,22 @@ export class ExerciceController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/cloturer')
   async cloturer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CloturerExerciceDto) {
-    return this.exerciceService.cloturer(user.tenantId, id, user.userId, dto ?? {});
+    const resultat = await this.exerciceService.cloturer(user.tenantId, id, user.userId, dto ?? {});
+    // LA NOTIFICATION (ligne dossier-l9, fonction 100) · après la clôture,
+    // jamais levée · l'exercice ne reçoit plus d'écriture.
+    if (this.prisma) {
+      const exercice = await this.prisma.exercice.findFirst({ where: { id, tenantId: user.tenantId }, select: { dateDebut: true, dateFin: true } });
+      if (exercice) {
+        await notifierSansEchec(
+          this.prisma,
+          user.tenantId,
+          TypeNotification.EXERCICE_CLOTURE,
+          { titre: `Exercice ${libelleExercice(exercice)} clôturé par ${user.email}`, lien: '/exercice' },
+          { sauf: user.userId },
+        );
+      }
+    }
+    return resultat;
   }
 
   /**

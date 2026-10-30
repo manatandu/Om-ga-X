@@ -155,8 +155,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // 226 avec les envois reçus d'un autre dossier et leur registre, bornés
     // par leur tenantId (ligne dossier-l9, fonction 102) ; 229 avec les
     // sessions vues, les messages internes et leurs destinataires, bornés par
-    // leur tenantId (même ligne, fonction 95).
-    expect(modeles).toHaveLength(229);
+    // leur tenantId (même ligne, fonction 95) ; 231 avec les préférences et
+    // les notifications des utilisateurs (fonctions 96 et 100).
+    expect(modeles).toHaveLength(231);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

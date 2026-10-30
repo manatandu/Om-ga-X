@@ -82,6 +82,9 @@ describe('la liste d’exclusion est fermée sur User', () => {
     'presences',
     'messagesEnvoyes',
     'messagesRecus',
+    // Fonctions 96 et 100 · ses préférences et ses notifications, des relations de même.
+    'preferences',
+    'notifications',
   ];
 
   it('classe chaque colonne de User, sans exception ni oubli', () => {

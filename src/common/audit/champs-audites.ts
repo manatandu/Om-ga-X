@@ -480,6 +480,10 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  PreferenceUtilisateur:
+    "Préférences d'affichage d'un utilisateur (ligne dossier-l9, fonctions 96 et 100) · la langue, la taille du texte et les notifications qu'il coupe, réglées par lui seul pour lui seul, sans effet sur le dossier ni sur les autres.",
+  NotificationUtilisateur:
+    "Notification dans l'interface (ligne dossier-l9, fonction 100) · engendrée par un événement que son module journalise déjà (message, réception d'écritures, clôture) ; sa lecture est l'affaire de son seul destinataire.",
   PresenceSession:
     "Session vue en activité (ligne dossier-l9, fonction 95) · écrite par chaque requête admise, au plus une fois par minute, et retirée trente et un jours après sa dernière activité (Code du numérique, art. 193, 3°) ; la déconnexion, elle, se lit au compte.",
   DestinataireMessage:

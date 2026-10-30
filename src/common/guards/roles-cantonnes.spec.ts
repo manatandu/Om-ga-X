@@ -30,6 +30,7 @@ import { ExerciceController } from '../../modules/exercice/exercice.controller';
 import { AuthController } from '../../modules/auth/auth.controller';
 import { DevisesController } from '../../modules/devises/devises.controller';
 import { MessagerieController } from '../../modules/messagerie/messagerie.controller';
+import { NotificationsController, PreferencesController } from '../../modules/notifications/preferences.controller';
 
 /**
  * LES DEUX RÔLES CANTONNÉS (décision du 2026-09-24, plan item 13), et la garde
@@ -209,13 +210,13 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
     for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
-    for (const classe of [AuthController, ExerciceController, DevisesController, MessagerieController]) {
+    for (const classe of [AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController]) {
       expect([classe.name, acces(classe)]).toEqual([classe.name, undefined]);
     }
   });
 
   it('hors du personnel, route par route · se voir, son propre compte, les exercices, le cours du jour', () => {
-    expect([AuthController, ExerciceController, DevisesController, MessagerieController].flatMap(methodesOuvertes).sort()).toEqual(
+    expect([AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController].flatMap(methodesOuvertes).sort()).toEqual(
       [
         // Entrer, et tenir son propre compte · CLAUDE.md § 8.
         'AuthController.me',
@@ -243,6 +244,13 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
         'MessagerieController.envoyer',
         'MessagerieController.marquerLu',
         'MessagerieController.retirer',
+        // Fonctions 96 et 100 · ses préférences (langue comprise) et ses notifications.
+        'PreferencesController.lire',
+        'PreferencesController.regler',
+        'NotificationsController.lister',
+        'NotificationsController.nonLues',
+        'NotificationsController.toutLu',
+        'NotificationsController.marquerLue',
       ].sort(),
     );
   });
@@ -265,6 +273,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/exercice/exercice.controller.ts',
       // Ligne dossier-l9, fonction 95 · la messagerie interne, route par route.
       'modules/messagerie/messagerie.controller.ts',
+      // Fonctions 96 et 100 · préférences et notifications, route par route.
+      'modules/notifications/preferences.controller.ts',
       // Ligne sage-l5 · les absences font partie du registre (fonction 78).
       'modules/personnel/absences.controller.ts',
       'modules/personnel/avances-rubriques.controller.ts',

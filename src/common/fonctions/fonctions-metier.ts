@@ -214,6 +214,8 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
   MessagerieController:
     "Messagerie interne (ligne dossier-l9, fonction 95) · chacun écrit, lit et retire ses propres messages, sans effet sur les livres, que le profil ne ferme pas.",
   UtilisateursConnectesController: "Utilisateurs connectés (ligne dossier-l9, fonction 95) · une lecture de l'administrateur, que le profil ne restreint jamais.",
+  PreferencesController: "Préférences d'affichage (ligne dossier-l9, fonctions 96 et 100) · chacun règle les siennes, sans effet sur les livres, que le profil ne ferme pas.",
+  NotificationsController: "Notifications dans l'interface (ligne dossier-l9, fonction 100) · chacun marque les siennes lues, sans effet sur les livres.",
   ImpressionsDiffereesController:
     "Impression différée (ligne sage-l7, fonction 59) · demander et faire produire une édition est une lecture des livres, ouverte à qui peut les exporter, que le profil ne ferme pas.",
 };

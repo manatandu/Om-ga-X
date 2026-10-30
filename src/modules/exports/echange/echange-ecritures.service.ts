@@ -3,9 +3,11 @@ import {
   EtatEcritureRecue,
   EtatReceptionEchange,
   Prisma,
+  RoleUtilisateur,
   StatutEcriture,
   StatutExercice,
   TypeCompteDetailTotal,
+  TypeNotification,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma.service';
@@ -15,6 +17,7 @@ import { coursDeLaLigne } from '../../comptabilite/ligne-en-devise';
 import { numeroteurDeLot } from '../../journaux/numerotation-piece';
 import { estTenueParUnLettrage } from '../../lettrage/ligne-lettree';
 import { lireDeviseDeLaLigne } from '../../import/import.service';
+import { notifierSansEchec } from '../../notifications/notifications';
 import {
   DELAI_RECEPTION_TOMBEE_MS,
   EnvoiIllisible,
@@ -452,6 +455,21 @@ export class EchangeEcrituresService {
         compteRendu: { pieces: pieces.slice(0, PLAFOND_COMPTE_RENDU), total: pieces.length, avertissements } as unknown as Prisma.InputJsonValue,
       },
     });
+    // LA NOTIFICATION (fonction 100) · à ceux qui valident, sauf celui qui a
+    // reçu · les pièces nées au brouillard attendent leur validation.
+    if (creees + modifiees + retirees > 0) {
+      const n = creees + modifiees + retirees;
+      await notifierSansEchec(
+        this.prisma,
+        tenantId,
+        TypeNotification.ECRITURES_RECUES,
+        {
+          titre: `${n} écriture${n > 1 ? 's' : ''} reçue${n > 1 ? 's' : ''} de « ${envoi.dossierSource} » (envoi n° ${envoi.numeroExport}) · au brouillard, à valider`,
+          lien: '/echanges-ecritures',
+        },
+        { roles: [RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE], sauf: userId },
+      );
+    }
     return rendu(receptionId, creees, modifiees, retirees);
   }
 

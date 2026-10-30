@@ -999,6 +999,9 @@ model Tenant {
   presencesSessions                    PresenceSession[]
   messagesInternes                     MessageInterne[]
   destinatairesMessages                DestinataireMessage[]
+  // Ligne dossier-l9, fonctions 96 et 100 · préférences et notifications de ses utilisateurs.
+  preferencesUtilisateurs              PreferenceUtilisateur[]
+  notificationsUtilisateurs            NotificationUtilisateur[]
   ecrituresRecues                      EcritureRecue[]
   // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
   impressionsDifferees                 ImpressionDifferee[]
@@ -1215,6 +1218,9 @@ model User {
   presences              PresenceSession[]     @relation("PresenceDeLUtilisateur")
   messagesEnvoyes        MessageInterne[]      @relation("MessagesEnvoyes")
   messagesRecus          DestinataireMessage[] @relation("MessagesRecus")
+  // Ligne dossier-l9, fonctions 96 et 100 · ses préférences et ses notifications.
+  preferences            PreferenceUtilisateur?    @relation("PreferencesDeLUtilisateur")
+  notifications          NotificationUtilisateur[] @relation("NotificationsDeLUtilisateur")
   tenantId               String
   tenant                 Tenant          @relation(fields: [tenantId], references: [id])
   email                  String          @unique
@@ -13503,4 +13509,69 @@ model DestinataireMessage {
   @@unique([messageId, destinataireId])
   @@index([tenantId, destinataireId, retireLe])
   @@map("destinataires_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne dossier-l9 · fonctions 96 et 100, préférences et notifications
+// ---------------------------------------------------------------------------
+
+/// La langue de l'INTERFACE · le français reste la langue de référence, et la
+/// seule des documents légaux, des états et des messages du serveur.
+enum LangueInterface {
+  FR
+  EN
+}
+
+/// La taille du texte de l'espace de travail, préférence du titulaire.
+enum TailleTexte {
+  NORMALE
+  GRANDE
+  TRES_GRANDE
+}
+
+/// Les événements du dossier qui donnent une notification dans l'interface.
+enum TypeNotification {
+  MESSAGE_RECU
+  ECRITURES_RECUES
+  EXERCICE_CLOTURE
+}
+
+/// LES PRÉFÉRENCES D'UN UTILISATEUR · langue, taille du texte, notifications
+/// coupées. Les siennes seules · chacun les règle pour lui-même, elles ne
+/// touchent ni le dossier ni les autres. Une ligne par utilisateur, née à la
+/// première modification · sans elle, les défauts valent.
+model PreferenceUtilisateur {
+  id                   String             @id @default(uuid())
+  tenantId             String
+  tenant               Tenant             @relation(fields: [tenantId], references: [id])
+  userId               String             @unique
+  user                 User               @relation("PreferencesDeLUtilisateur", fields: [userId], references: [id], onDelete: Cascade)
+  langue               LangueInterface    @default(FR)
+  tailleTexte          TailleTexte        @default(NORMALE)
+  notificationsCoupees TypeNotification[] @default([])
+  modifieeLe           DateTime           @updatedAt
+
+  @@index([tenantId])
+  @@map("preferences_utilisateurs")
+}
+
+/// UNE NOTIFICATION DANS L'INTERFACE · un événement du dossier dit à un
+/// utilisateur (un message reçu, des écritures reçues à valider, un exercice
+/// clôturé). Jamais envoyée hors du logiciel · ni courriel, ni téléphone.
+/// Une notification lue se retire quatre-vingt-dix jours après sa lecture.
+model NotificationUtilisateur {
+  id             String           @id @default(uuid())
+  tenantId       String
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  destinataireId String
+  destinataire   User             @relation("NotificationsDeLUtilisateur", fields: [destinataireId], references: [id], onDelete: Cascade)
+  type           TypeNotification
+  titre          String           @db.VarChar(250)
+  /// L'adresse de la fenêtre où l'événement se lit, s'il y en a une.
+  lien           String?          @db.VarChar(200)
+  creeeLe        DateTime         @default(now())
+  lueLe          DateTime?
+
+  @@index([tenantId, destinataireId, lueLe, creeeLe])
+  @@map("notifications_utilisateurs")
 }
