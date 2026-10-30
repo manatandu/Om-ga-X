@@ -40,7 +40,16 @@ test('SYSCOHADA · export des modifications, impressions différées et modèle 
       await page.goto(adresse);
       // La fenêtre d'abord, sa commande ensuite · un échec dit lequel des deux
       // manque, la fenêtre jamais ouverte ou la commande absente d'elle.
-      await expect(page.getByRole('button', { name: fermer })).toBeVisible();
+      try {
+        await expect(page.getByRole('button', { name: fermer })).toBeVisible();
+      } catch (e) {
+        // Le rapport du run ne se lit pas hors d'Actions · ce que l'écran
+        // montrait part dans le journal du job (runs 511, 516, 517, WebKit).
+        const texte = await page.locator('body').innerText().catch(() => '(illisible)');
+        const inertes = await page.locator('[inert]').count().catch(() => -1);
+        console.log(`[sage-l7-largeurs] ${largeur} px · ${page.url()} · inertes ${inertes}\n${texte.slice(0, 1500)}`);
+        throw e;
+      }
       await dansLEcran(page, commande, largeur);
       await sansDebordement(page, largeur);
       await page.getByRole('button', { name: fermer }).click();
