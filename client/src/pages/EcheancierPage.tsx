@@ -30,11 +30,18 @@ export function EcheancierPage() {
   useEffect(() => {
     if (!exerciceCourant) return;
     let annule = false;
+    setErreur(null);
     api
       .get<Echeancier>(`/ecritures/echeancier?exerciceId=${exerciceCourant.id}&dateReference=${dateReference}`)
       .then(
         (r) => !annule && setEtat(r),
-        (e) => !annule && setErreur(e.message),
+        // Un refus retire l'ancien échéancier (second tour du paquet 1, ligne
+        // B, mineur 5) · gardé, il se lisait comme celui de la date choisie.
+        (e) => {
+          if (annule) return;
+          setEtat(null);
+          setErreur(e.message);
+        },
       );
     return () => {
       annule = true;

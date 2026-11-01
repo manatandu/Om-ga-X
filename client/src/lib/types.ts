@@ -266,14 +266,14 @@ export interface Ecriture {
   valideeBy: string | null;
   lignes: LigneEcriture[];
 
+  /** Écriture de solde des classes 6/7 ou de report à-nouveau : non corrigeable à la main. */
+  estGenereeParCloture?: boolean;
   /**
    * Correction d'erreur par inscription en négatif · art. 20 de l'AUDCIF,
    * repris par la Partie 2 ch. 2 du SYCEBNL. `correction` est posé sur
    * l'écriture ERRONÉE (elle a été annulée par celle-ci) ; `corrigeEcriture`
    * et `motifCorrection` sur l'écriture de CORRECTION.
    */
-  /** Écriture de solde des classes 6/7 ou de report à-nouveau : non corrigeable à la main. */
-  estGenereeParCloture?: boolean;
   corrigeEcritureId: string | null;
   motifCorrection: string | null;
   correction?: { id: string; numeroPiece: number | null; date: string } | null;
@@ -943,11 +943,6 @@ export interface DeclarationTva {
   totalCollecte: number;
   totalDeductible: number;
   totalDeductibleAdmise: number;
-  /**
-   * Net de la SEULE période, avant report du crédit antérieur. C'est le
-   * chiffre qu'un contrôleur rapproche des comptes de la période ; `net` en
-   * diffère dès qu'un crédit s'impute.
-   */
   /** Avoirs sur ventes constatés sur la période · reportés (décret art. 126). */
   avoirsCollecteConstates: number;
   /** Avoirs antérieurs inscrits en déduction sur cette période (art. 52). */
@@ -962,6 +957,11 @@ export interface DeclarationTva {
   tvaNatureDepenseIllisible: number;
   /** TVA d'amont dont le délai de déduction est expiré (art. 37 al. 2). */
   tvaDeductibleDechue: number;
+  /**
+   * Net de la SEULE période, avant report du crédit antérieur. C'est le
+   * chiffre qu'un contrôleur rapproche des comptes de la période ; `net` en
+   * diffère dès qu'un crédit s'impute.
+   */
   netAvantImputation: number;
   /**
    * Crédit de TVA venu de la dernière liquidation · art. 63 O.-L. 10/001 :
@@ -1379,11 +1379,6 @@ export interface LigneFicheRecapitulative {
 }
 
 /**
- * Les groupes de lettrage qu'un état a lus ligne à ligne, leur reste ne se
- * répartissant pas sûrement entre leurs factures (paquet 1, B5) · servis
- * bornés, le total dit.
- */
-/**
  * Pourquoi un groupe de lettrage est nommé (paquet 1, B5 ; relecture
  * « échecs silencieux », mineur 7) · servi par le serveur
  * (`lettrage/reste-des-lignes-ouvertes.ts`).
@@ -1396,6 +1391,11 @@ export type MotifGroupeNomme =
   | 'RESTE_NON_REPARTI'
   | 'A_NOUVEAU_SANS_ORIGINE';
 
+/**
+ * Les groupes de lettrage qu'un état a lus ligne à ligne, leur reste ne se
+ * répartissant pas sûrement entre leurs factures (paquet 1, B5) · servis
+ * bornés, le total dit.
+ */
 export interface GroupesLusLigneALigne {
   total: number;
   groupes: { code: string; compte: string; motif: MotifGroupeNomme }[];

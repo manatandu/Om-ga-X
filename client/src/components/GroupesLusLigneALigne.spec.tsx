@@ -19,7 +19,7 @@ describe('GroupesLusLigneALigne', () => {
       />,
     );
     expect(html).toContain('le groupe se réclame pour son net');
-    expect(html).toContain('Le dû est exact');
+    expect(html).toContain('Le net de ces groupes est exact');
   });
 
   it('rien quand la lecture n’en a trouvé aucun, ni quand le serveur ne le sert pas', () => {

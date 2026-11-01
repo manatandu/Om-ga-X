@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { raisonGroupesLusLigneALigne, texteGroupesLusLigneALigne } from './groupes-lus-ligne-a-ligne';
+import { LIBELLE_MOTIF, raisonGroupesLusLigneALigne, texteGroupesLusLigneALigne } from './groupes-lus-ligne-a-ligne';
 
 /**
  * Paquet 1, B5 · un groupe de lettrage lu ligne à ligne se dit en une ligne,
@@ -72,7 +72,7 @@ describe('raisonGroupesLusLigneALigne', () => {
       ),
     ).toBe(
       "Une facture en devise réglée en partie à un autre cours · son reste au coût historique ne rend pas le solde en francs, et l'écart réalisé ne se passe qu'au groupe soldé · le groupe se réclame pour son net, à l'échéance de sa facture encore ouverte la plus ancienne. " +
-        "Le dû est exact ; l'échéance réclamée de ces groupes n'est pas sûre.",
+        "Le net de ces groupes est exact ; l'échéance qui leur est prêtée n'est pas sûre, et avec elle leur place parmi les sommes échues ou à venir.",
     );
   });
 
@@ -80,7 +80,7 @@ describe('raisonGroupesLusLigneALigne', () => {
     const g = { total: 1, groupes: [{ code: 'ad', compte: '41110002', motif: 'A_NOUVEAU_SANS_ORIGINE' as const }], tronque: false };
     expect(texteGroupesLusLigneALigne(g)).toBe('1 groupe de lettrage à la répartition incertaine · ad (41110002, à-nouveau sans pièce d’origine)');
     expect(raisonGroupesLusLigneALigne(g)).toBe(
-      "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent · les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles. " +
+      "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent · les lignes d'à-nouveau du groupe prennent la date du report · les échues d'abord, puis au prorata entre elles. " +
         "Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.",
     );
   });
@@ -120,4 +120,33 @@ describe('les écrans qui lisent les restes le disent (paquet 1, B5)', () => {
   for (const [f, motif] of ecrans) {
     it(f, () => expect(lire(f)).toMatch(motif));
   }
+});
+
+/**
+ * LES MOTIFS EN MIROIR (second tour du paquet 1, ligne B, mineur 6) · le
+ * serveur nomme chaque groupe par un motif (`MotifGroupeNomme`,
+ * `reste-des-lignes-ouvertes.ts`) ; un motif ajouté là sans son libellé ici
+ * s'afficherait sans texte, et l'infobulle tairait sa cause. Les deux unions
+ * se relisent l'une contre l'autre, et chaque motif a son libellé.
+ */
+describe('motifs des groupes nommés · le client en miroir du serveur', () => {
+  const membres = (source: string) => {
+    const bloc = /export type MotifGroupeNomme =([\s\S]*?);/.exec(source)?.[1] ?? '';
+    return [...bloc.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]).sort();
+  };
+  const serveur = membres(readFileSync(join(__dirname, '../../../src/modules/lettrage/reste-des-lignes-ouvertes.ts'), 'utf8'));
+  const client = membres(readFileSync(join(__dirname, 'types.ts'), 'utf8'));
+
+  it('les deux unions portent les mêmes motifs', () => {
+    expect(serveur.length).toBeGreaterThan(0);
+    expect(client).toEqual(serveur);
+  });
+
+  it('chaque motif du serveur a son libellé et sa raison', () => {
+    expect(Object.keys(LIBELLE_MOTIF).sort()).toEqual(serveur);
+    for (const motif of serveur) {
+      const raison = raisonGroupesLusLigneALigne({ total: 1, groupes: [{ code: 'A', compte: '411', motif: motif as never }] });
+      expect(raison?.split(' · ').length, motif).toBeGreaterThan(1);
+    }
+  });
 });

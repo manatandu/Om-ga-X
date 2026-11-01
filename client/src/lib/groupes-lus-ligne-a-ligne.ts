@@ -53,11 +53,21 @@ const CONSEQUENCE_LIGNE_A_LIGNE: Record<LectureDesGroupes, string> = {
   relance: "le groupe se réclame pour son net, à l'échéance de sa facture encore ouverte la plus ancienne",
 };
 
-const CONSEQUENCE_A_NOUVEAU = "les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles";
+// La date du report range ces lignes ensemble · l'imputation lit d'abord les
+// échues à la date du paiement, puis la plus ancienne, et le prorata ne joue
+// qu'entre elles à échéance égale (Code civil, Livre III, art. 154 ; second
+// tour du paquet 1, ligne B, mineur 4 · « au prorata entre elles » était
+// faux dès que leurs échéances différaient).
+const CONSEQUENCE_A_NOUVEAU =
+  "les lignes d'à-nouveau du groupe prennent la date du report · les échues d'abord, puis au prorata entre elles";
 
 const CONCLUSION: Record<LectureDesGroupes, string> = {
   etat: "Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.",
-  relance: "Le dû est exact ; l'échéance réclamée de ces groupes n'est pas sûre.",
+  // Le NET du groupe est exact ; en rappel et en préventif, l'échéance qui lui
+  // est prêtée décide s'il se réclame ou non · le dû de la lettre peut donc
+  // changer (second tour, ligne B, mineur 4 · « le dû est exact » était faux).
+  relance:
+    "Le net de ces groupes est exact ; l'échéance qui leur est prêtée n'est pas sûre, et avec elle leur place parmi les sommes échues ou à venir.",
 };
 
 function raisonDuMotif(m: MotifGroupeNomme, lecture: LectureDesGroupes): string {
