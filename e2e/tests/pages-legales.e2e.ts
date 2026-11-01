@@ -105,7 +105,8 @@ test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptat
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Politique de confidentialité' }).click();
   // La date suit la politique en vigueur · elle se lit, elle ne se recopie pas.
-  await expect(page.getByText(/^Dernière mise à jour · \d{1,2} \S+ \d{4}$/)).toBeVisible();
+  // Le premier du mois s'écrit « 1er », jamais « 1 » (mise à jour du 1er novembre 2026).
+  await expect(page.getByText(/^Dernière mise à jour · (?:1er|\d{1,2}) \S+ \d{4}$/)).toBeVisible();
   // Dans une fenêtre, la barre de titre porte le titre · pas de titre de page.
   await expect(page.getByRole('heading', { level: 1, name: 'Politique de confidentialité d’OmegaX' })).toHaveCount(0);
   // Le lien vers le contrat ouvre la FENÊTRE du contrat, sans quitter
