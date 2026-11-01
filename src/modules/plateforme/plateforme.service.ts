@@ -836,35 +836,40 @@ export class PlateformeService implements OnModuleInit {
       ...(referentiel === Referentiel.SYSCOHADA ? { systemeComptableSyscohada: SystemeComptableSyscohada.NORMAL } : {}),
     });
 
-    await horsCloisonnement('console · marquage du dossier de démonstration', async () => {
-      await this.prisma.tenant.update({
-        where: { id: resultat.tenant.id },
-        data: {
-          estDemonstration: true,
-          // LE VERROU DU GARNISSAGE EST PRIS AU MARQUAGE (relevé H D1) · un
-          // second « Ouvrir » ne trouve la vitrine qu'une fois marquée, et la
-          // trouve alors déjà tenue · il n'y a pas d'instant où elle soit
-          // visible et libre.
-          garnissageDemonstrationDepuis: new Date(),
-          // LA VITRINE MONTRE TOUT · un dossier neuf part sans les modules
-          // optionnels, la démonstration les a tous (`tenant/modules-optionnels.ts`).
-          modulesActives: [...MODULES_OPTIONNELS],
-          ...(referentiel === Referentiel.SYSCOHADA ? { formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE } : {}),
-        },
-      });
-      // Voir le point 2 du commentaire ci-dessus · sans cette ligne, la
-      // vitrine ne s'ouvre jamais sur autre chose que l'écran de changement de
-      // mot de passe.
-      await this.prisma.user.updateMany({
-        where: { tenantId: resultat.tenant.id },
-        data: { doitChangerMotDePasse: false },
-      });
-    });
-
-    // GARNI · par les chemins ordinaires de saisie, dans le dossier qui vient
-    // de naître et qui n'est pas celui de la session de l'opérateur.
+    // LE VERROU EST RENDU QUOI QU'IL ARRIVE DÈS QU'IL EST PRIS (relecture du
+    // 2026-11-01, point 4) · le `try` s'ouvre avant le marquage qui le pose,
+    // jamais après · un échec entre les deux laissait la vitrine tenue trente
+    // minutes. Le dossier vient de naître · aucun autre geste ne tient son
+    // verrou, et le rendre sans l'avoir pris ne retire rien à personne.
     let garni: { tiers: number; ecritures: number } | null = null;
     try {
+      await horsCloisonnement('console · marquage du dossier de démonstration', async () => {
+        await this.prisma.tenant.update({
+          where: { id: resultat.tenant.id },
+          data: {
+            estDemonstration: true,
+            // LE VERROU DU GARNISSAGE EST PRIS AU MARQUAGE (relevé H D1) · un
+            // second « Ouvrir » ne trouve la vitrine qu'une fois marquée, et la
+            // trouve alors déjà tenue · il n'y a pas d'instant où elle soit
+            // visible et libre.
+            garnissageDemonstrationDepuis: new Date(),
+            // LA VITRINE MONTRE TOUT · un dossier neuf part sans les modules
+            // optionnels, la démonstration les a tous (`tenant/modules-optionnels.ts`).
+            modulesActives: [...MODULES_OPTIONNELS],
+            ...(referentiel === Referentiel.SYSCOHADA ? { formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE } : {}),
+          },
+        });
+        // Voir le point 2 du commentaire ci-dessus · sans cette ligne, la
+        // vitrine ne s'ouvre jamais sur autre chose que l'écran de changement de
+        // mot de passe.
+        await this.prisma.user.updateMany({
+          where: { tenantId: resultat.tenant.id },
+          data: { doitChangerMotDePasse: false },
+        });
+      });
+
+      // GARNI · par les chemins ordinaires de saisie, dans le dossier qui vient
+      // de naître et qui n'est pas celui de la session de l'opérateur.
       if (this.garnissage) {
         const garnissage = this.garnissage;
         garni = await horsCloisonnement('console · garnissage du dossier de démonstration', async () => {

@@ -166,6 +166,13 @@ describe("l'ouverture du dossier de démonstration", () => {
     expect(tenantUpdateMany.mock.calls[0][0]).toMatchObject({ where: { id: 't1', OR: [{ garnissageDemonstrationDepuis: null }, expect.anything()] } });
   });
 
+  it('relecture point 4 · un échec juste après le marquage qui prend le verrou le rend quand même', async () => {
+    const { service: s, prisma, tenantUpdateMany } = service();
+    (prisma.user as { updateMany: jest.Mock }).updateMany.mockRejectedValueOnce(new Error('panne'));
+    await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow('panne');
+    expect(tenantUpdateMany.mock.calls.at(-1)![0]).toEqual({ where: { id: 't-demo' }, data: { garnissageDemonstrationDepuis: null } });
+  });
+
   it('relevé H D1 · le verrou est rendu après le garnissage, même en échec', async () => {
     const garnissage = { garnir: jest.fn().mockRejectedValue(new Error('panne')) };
     const { service: s, tenantUpdateMany } = service({
