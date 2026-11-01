@@ -37,7 +37,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
-import { PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
+import { PositionDOuverturePassee, filtreOuverturePasseeAuPremierJour, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { prendreLeVerrouDuDossierBorne, transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -5118,6 +5118,27 @@ export class EcritureService {
    * comme des flux de l'exercice ; les états le NOMMENT. `AUCUNE` · aucun
    * exercice de ce dossier sous cet identifiant, ou rien au premier jour.
    */
+  /**
+   * LA POSITION D'OUVERTURE PASSÉE EN OD AU PREMIER JOUR, COMPTE PAR COMPTE
+   * (relevés du paquet 1, ligne A, m2), au livre-journal · même périmètre que
+   * la clôture, et seulement si elle n'est pas nulle. Un exercice précédent
+   * TENU dont la clôture a trouvé cette position concordante ne passe aucun
+   * report (AU2, « concordante, rien ») · elle EST l'ouverture, et le tableau
+   * des flux la lisait comme des flux de l'exercice, son apport et ses biens
+   * comptés une seconde fois à côté de la trésorerie d'ouverture.
+   */
+  async positionsOuvertureEnOdParCompte(tenantId: string, exerciceId: string): Promise<Map<string, { debit: number; credit: number }>> {
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
+    if (!exercice) return new Map();
+    if ((await ouverturePasseeNonNulle(this.prisma, tenantId, exercice, { validees: true })) === null) return new Map();
+    const parCompte = await this.prisma.ligneEcriture.groupBy({
+      by: ['compteId'],
+      where: { ecriture: { ...filtreOuverturePasseeAuPremierJour(tenantId, exercice), statut: StatutEcriture.VALIDEE } },
+      _sum: { debit: true, credit: true },
+    });
+    return new Map(parCompte.map((g) => [g.compteId, { debit: Number(g._sum.debit ?? 0), credit: Number(g._sum.credit ?? 0) }]));
+  }
+
   async positionDOuvertureAuPremierJour(tenantId: string, exerciceId: string): Promise<PositionDOuverturePassee> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return { etat: 'AUCUNE' };

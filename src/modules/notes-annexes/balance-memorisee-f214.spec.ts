@@ -101,6 +101,7 @@ function balanceComptee(): EcritureService {
     virementsDeMiseEnService: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
   } as unknown as EcritureService;
 }
 

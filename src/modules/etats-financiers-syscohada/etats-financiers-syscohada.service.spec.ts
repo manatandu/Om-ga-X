@@ -102,6 +102,7 @@ function serviceAvecExercices(
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
     // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
     positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.

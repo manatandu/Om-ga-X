@@ -260,6 +260,7 @@ function service(
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
   } as unknown as EcritureService;
 
   const exerciceService = {
