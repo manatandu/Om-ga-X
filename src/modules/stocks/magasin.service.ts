@@ -31,6 +31,7 @@ import {
   EnregistrerRegularisationInventaireDto,
 } from './dto/magasin.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LE MAGASIN · la fiche de stock, article par article, et la confrontation au
@@ -367,6 +368,10 @@ export class MagasinService {
     // puis relit les mouvements déjà liés.
     const ecritureId = dto.ecritureId;
     return transactionJournalisee(this.prisma, async (tx) => {
+      // Le dossier, puis la ligne · l'ordre des verrous de tout le serveur
+      // (`common/ordre-des-verrous.spec.ts`), sans quoi la création auditée
+      // du mouvement attendait le dossier en tenant l'écriture.
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
       await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} AND "statut" <> 'SITUATION' FOR UPDATE`;
       const motif = await this.motifRefusLien(tx, tenantId, article, dto, ordre);
       if (motif) throw new BadRequestException(motif);

@@ -24,6 +24,11 @@ function monter(
       verrous.push(morceaux.join('?'));
       return [];
     }),
+    // Le verrou du dossier, pris d'abord (`common/ordre-des-verrous.spec.ts`).
+    $executeRaw: jest.fn(async (morceaux: TemplateStringsArray | { sql: string }) => {
+      verrous.push('raw' in morceaux ? morceaux.join('?') : (morceaux as { sql: string }).sql);
+      return 0;
+    }),
     tenant: { findUnique: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     // Le plan du dossier · le 31100000 semé, ouvert dessous en 31100001, et le
     // 31200000, autre compte du plan.
@@ -131,8 +136,12 @@ describe('relevé MAG-LIEN · l’écriture liée porte le mouvement, sur le com
   it('relecture point 5 · le lien se juge sous le verrou de l’écriture, avant la création', async () => {
     const m = monter(true);
     await m.service.enregistrerMouvement('t1', 'u', 'a1', DTO as never);
-    expect(m.verrous).toHaveLength(1);
-    expect(m.verrous[0]).toMatch(/FROM "ecritures" .*FOR UPDATE/);
+    const ligne = m.verrous.findIndex((v) => /FROM "ecritures" .*FOR UPDATE/.test(v));
+    const dossier = m.verrous.findIndex((v) => /pg_advisory_xact_lock/.test(v));
+    expect(ligne).toBeGreaterThan(-1);
+    // Le dossier, puis la ligne.
+    expect(dossier).toBeGreaterThan(-1);
+    expect(dossier).toBeLessThan(ligne);
   });
 
   it('relecture point 5 · une sortie que la méthode ne valorise pas est refusée nommément, jamais comptée nulle', async () => {
