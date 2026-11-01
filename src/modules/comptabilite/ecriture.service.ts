@@ -5168,6 +5168,16 @@ export class EcritureService {
     return this.mouvementsLiesParCompte(tenantId, exerciceId, { OR: [{ transfertGroupe: { isNot: null } }, { transfertGroupeNegatif: { isNot: null } }] }, arreteAu);
   }
 
+  /**
+   * RELEVÉ F D3 · les mouvements des reprises de révision RÉTROACTIVE du plan
+   * (D 28 / C 798, lot 11), par compte, reconnus par la LIAISON
+   * (`RevisionPlanAmortissement.ecritureId`). Lus par le tableau des flux du
+   * SYSCOHADA, qui lisait sinon le débit du 28 en amortissement d'un bien cédé.
+   */
+  async mouvementsDeRevisionPlan(tenantId: string, exerciceId: string | null, arreteAu?: Date): Promise<VirementsParCompte> {
+    return this.mouvementsLiesParCompte(tenantId, exerciceId, { revisionPlanAmortissement: { isNot: null } }, arreteAu);
+  }
+
   /** Une seule lecture des écritures LIÉES à un module, par compte · une somme demandée à la base. */
   private async mouvementsLiesParCompte(
     tenantId: string,

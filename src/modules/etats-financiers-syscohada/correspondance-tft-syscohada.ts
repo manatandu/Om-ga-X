@@ -499,8 +499,10 @@ export interface TermeComptes {
    * jamais par le compte · seulement en MOUVEMENT_DEBIT ou MOUVEMENT_CREDIT.
    * Ligne sage-l4, n° 73 · de même la pièce d'un transfert de bien dans le
    * groupe et son négatif (`TransfertImmobilisationGroupe`), `TRANSFERT_GROUPE`.
+   * Relevé F D3 · de même la reprise d'une révision RÉTROACTIVE du plan
+   * (`RevisionPlanAmortissement.ecritureId`), `REVISION_PLAN`.
    */
-  liaison?: 'REEVALUATION' | 'TRANSFERT_GROUPE';
+  liaison?: 'REEVALUATION' | 'TRANSFERT_GROUPE' | 'REVISION_PLAN';
 }
 
 /**
@@ -635,6 +637,26 @@ const MOTIF_REEVALUATION_LIEE =
 const MOTIF_TRANSFERT_GROUPE_LIE =
   "Transfert d'un bien entre deux dossiers du groupe (fiche du compte 18), reconnu par sa liaison · sans trésorerie " +
   "(ch. 5 § 1.3), relu ici en sens inverse pour que sa contribution au poste soit nulle.";
+
+/**
+ * RELEVÉ F D3 DE LA SIMULATION DU 2026-10-08 · LA REPRISE D'UNE RÉVISION
+ * RÉTROACTIVE DU PLAN, NEUTRALISÉE PAR SA LIAISON. Le module la passe D 28 /
+ * C 798 (lot 11, `reprisesAmortissement`) · FF et FG lisaient ce débit du 28
+ * comme l'amortissement d'un bien cédé, et la reprise ressortait en fausse
+ * acquisition (anomalie n° 22 · « débité de la reprise des amortissements par
+ * le crédit du 798 »). Reconnue par sa LIAISON
+ * (`RevisionPlanAmortissement.ecritureId`), jamais par le compte, elle y est
+ * relue en sens inverse · sa contribution est nulle, et elle ne déclenche
+ * plus la réserve du 798. Une reprise passée à la main garde l'anomalie.
+ */
+const MOTIF_REVISION_PLAN_LIEE =
+  "Reprise d'amortissements d'une révision rétroactive du plan passée par le module (D 28 / C 798), reconnue par sa " +
+  "liaison · sans trésorerie (ch. 5 § 1.3), relue ici en sens inverse pour que sa contribution au poste soit nulle " +
+  '(anomalies n° 3 et 22).';
+
+function revisionLiee(prefixes: string[]): TermeFluxTresorerie {
+  return { signe: 1, comptes: { prefixes, lecture: 'MOUVEMENT_DEBIT', liaison: 'REVISION_PLAN' }, motif: MOTIF_REVISION_PLAN_LIEE };
+}
 
 function transfertLie(signe: 1 | -1, lecture: 'MOUVEMENT_DEBIT' | 'MOUVEMENT_CREDIT', prefixes: string[]): TermeFluxTresorerie {
   return { signe, comptes: { prefixes, lecture, liaison: 'TRANSFERT_GROUPE' }, motif: MOTIF_TRANSFERT_GROUPE_LIE };
@@ -892,6 +914,7 @@ export const POSTES_INVESTISSEMENT_SYSCOHADA: PosteFluxTresorerieSyscohada[] = [
       transfertLie(1, 'MOUVEMENT_DEBIT', ['21']),
       transfertLie(-1, 'MOUVEMENT_CREDIT', ['21']),
       transfertLie(1, 'MOUVEMENT_DEBIT', ['281']),
+      revisionLiee(['281']),
     ],
     nonDeterminables: [
       {
@@ -942,6 +965,7 @@ export const POSTES_INVESTISSEMENT_SYSCOHADA: PosteFluxTresorerieSyscohada[] = [
       transfertLie(1, 'MOUVEMENT_DEBIT', ['22', '23', '24']),
       transfertLie(-1, 'MOUVEMENT_CREDIT', ['22', '23', '24']),
       transfertLie(1, 'MOUVEMENT_DEBIT', ['282', '283', '284']),
+      revisionLiee(['282', '283', '284']),
     ],
     nonDeterminables: [
       {

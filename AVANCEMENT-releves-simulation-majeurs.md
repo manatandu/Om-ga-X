@@ -21,10 +21,14 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   retranchent aussi, sur les comptes dont l'à-nouveau est passé, ce que le
   module a posté dans les exercices antérieurs (dépréciations de la table ;
   écritures de réévaluation, de transfert de l'écart et leurs annulations).
+- F D3 · TFT SYSCOHADA · la reprise D 28 / C 798 d'une révision rétroactive
+  se reconnaît par sa liaison (`mouvementsDeRevisionPlan`), relue en sens
+  inverse en FF et FG, et ne déclenche plus la réserve du 798. Le TFT
+  SYCEBNL ne lit pas le débit du 28 (« sans flux »), rien à y faire.
 
 ## Reste
 
-G2, D2, F D3, MAG-LIEN, H D1, 585 du groupe et AU2.
+G2, D2, MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
 

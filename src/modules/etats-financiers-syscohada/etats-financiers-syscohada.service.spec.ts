@@ -82,6 +82,8 @@ function serviceAvecExercices(
   ouverturesParExercice: Record<string, LigneBalance[]> = {},
   // Ligne sage-l4, n° 73 · les pièces de transfert de bien dans le groupe, par exercice.
   transfertsParExercice: Record<string, Map<string, { debit: number; credit: number }>> = {},
+  // Relevé F D3 · les reprises de révision rétroactive du plan, par exercice.
+  revisionsParExercice: Record<string, Map<string, { debit: number; credit: number }>> = {},
 ) {
   const ecritureService = {
     balance: jest.fn().mockImplementation((
@@ -111,6 +113,9 @@ function serviceAvecExercices(
     ),
     mouvementsDeTransfertGroupe: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && transfertsParExercice[exerciceId]) || new Map()),
+    ),
+    mouvementsDeRevisionPlan: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
+      Promise.resolve((exerciceId && revisionsParExercice[exerciceId]) || new Map()),
     ),
   } as unknown as EcritureService;
   const exerciceService = {
@@ -1107,6 +1112,29 @@ describe('EtatsFinanciersSyscohadaService', () => {
         expect(montant(tft, 'FI').montant).toBe(0);
         const sansLiaison = await serviceAvecExercices({ e1, e2 }, EXERCICES).tableauFluxTresorerie('t1', 'e2');
         expect(montant(sansLiaison, 'FG').montant).toBe(840_000);
+      });
+    });
+
+    // RELEVÉ F D3 DE LA SIMULATION DU 2026-10-08 · la révision rétroactive
+    // du plan (lot 11) passe D 28 / C 798 la seule réduction du cumul. Bien
+    // de 1 000 000 amorti de 400 000 · reprise de 100 000. Aucune trésorerie,
+    // FG doit valoir zéro ; sans la liaison, la reprise sort en fausse
+    // acquisition de 100 000 (anomalie n° 22).
+    describe('relevé F D3 · la reprise d’une révision rétroactive du plan', () => {
+      it('FG à zéro, la réserve du 798 levée, et −100 000 sans la liaison', async () => {
+        const e1 = [ligne('10130000', C1, 0, 600_000), ligne('24110000', C2, 1_000_000, 0), ligne('28410000', C2, 0, 400_000)];
+        const e2 = [
+          ligne('10130000', C1, 0, 0, { credit: 600_000 }),
+          ligne('24110000', C2, 0, 0, { debit: 1_000_000 }),
+          ligne('28410000', C2, 100_000, 0, { credit: 400_000 }),
+          ligne('79800000', ClasseCompte.CLASSE_7, 0, 100_000),
+        ];
+        const revision = new Map([['id-28410000', { debit: 100_000, credit: 0 }], ['id-79800000', { debit: 0, credit: 100_000 }]]);
+        const tft = await serviceAvecExercices({ e1, e2 }, EXERCICES, {}, {}, {}, { e2: revision }).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(tft, 'FG').montant).toBe(0);
+        expect(tft.postesNonCalculables.filter((p) => p.ref === 'FG' && /798/.test(p.raison))).toEqual([]);
+        const sansLiaison = await serviceAvecExercices({ e1, e2 }, EXERCICES).tableauFluxTresorerie('t1', 'e2');
+        expect(montant(sansLiaison, 'FG').montant).toBe(-100_000);
       });
     });
 
