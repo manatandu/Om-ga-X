@@ -238,6 +238,10 @@ describe('demande d\'information de la page publique', () => {
     limite.remplir();
     await limite.envoyer();
     expect(limite.ids['demande-etat'].textContent).toMatch(/Trop de demandes/);
+    const global = await monterDemande({ status: 429, corps: { message: "Trop de demandes ont été reçues dans l'heure · réessayez plus tard." } });
+    global.remplir();
+    await global.envoyer();
+    expect(global.ids['demande-etat'].textContent).toMatch(/reçues dans l'heure/);
     const panne = await monterDemande('echec');
     panne.remplir();
     await panne.envoyer();

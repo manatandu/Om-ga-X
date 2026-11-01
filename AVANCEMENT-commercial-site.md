@@ -46,6 +46,21 @@ Décisions
 - Politique de confidentialité · catégorie, traitement, fondement ; date au
   1er novembre 2026 (le bandeau de mesure se rouvre une fois).
 
+## Relecture indépendante (2026-11-01) · corrigée
+
+- M1 · l'accueil lit `GET /controles/synthese` (compteurs et intitulé) ; le
+  rapport complet reste à la Comptabilité et à la Révision.
+- M2 · courrier filtré par l'origine du message (liste, cloche, fiche, reprise),
+  table fermée `courrier/origines-par-logiciel.ts` ; origine non rangée,
+  non servie à l'utilisateur restreint.
+- M3 · message de demande non parti en avertissement ; console de l'éditeur ·
+  nombre de demandes non envoyées et geste « Relancer l'envoi ».
+- m1 · adresses calculées éprouvées par le spec (liste fermée motivée, pièces
+  jointes par objet rendu) ; m2 · refus et écran d'attribution le disent ;
+  m3 · champ piège, plafond global par heure lu en base (429 nommé).
+- Gardés au suivi · durée de conservation des demandes ; lecture du livre
+  entier par les tuiles Tiers et Révision.
+
 ## Vérification
 
 ```bash

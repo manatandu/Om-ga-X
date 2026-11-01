@@ -188,8 +188,9 @@
   }
   // Ce que le serveur rend d'un refus · son message, en français, jamais un code nu.
   function motifDuServeur(r, corps) {
-    if (r.status === 429) return 'Trop de demandes depuis cette adresse. Réessayez plus tard.';
     var m = corps && corps.message;
+    // Le plafond global du serveur se dit en français ; celui du limiteur par adresse, non.
+    if (r.status === 429 && !(typeof m === 'string' && /^Trop de demandes/.test(m))) return 'Trop de demandes depuis cette adresse. Réessayez plus tard.';
     if (Array.isArray(m)) m = m.join(' ');
     if (typeof m === 'string' && m.length > 0) return m;
     return 'La demande n\'a pas pu être enregistrée (erreur ' + r.status + '). Réessayez plus tard.';

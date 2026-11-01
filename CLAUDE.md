@@ -324,11 +324,14 @@ contrôleur, appliquée par `JwtAuthGuard` après le profil de fonctions, 403
 nommé, lectures comprises sauf ce qu'un logiciel attribué lit d'un autre,
 écrit dans la table et rejoué sur les écrans de chaque tuile par son spec ;
 l'attribution ferme les sessions ; les impressions différées quittent le menu
-commun), et le FORMULAIRE DE DEMANDE de la page publique (`POST
+commun ; l'accueil lit la seule synthèse des contrôles, le courrier se filtre
+par l'origine du message, `courrier/origines-par-logiciel.ts`), et le FORMULAIRE DE DEMANDE de la page publique (`POST
 /demandes/information`, sans session, en JSON, cinq par heure, consentement
 exigé, Code du numérique art. 192 et 196 ; mis en file dans le dossier de
 l'éditeur vers `OPERATEURS_PLATEFORME`, jamais rendu au client ; sans
-messagerie, 503 nommé et rien d'écrit). Le paiement en ligne reste exclu.
+messagerie, 503 nommé et rien d'écrit ; champ piège, plafond global de
+soixante par heure lu en base ; les demandes non parties comptées et reprises
+dans la console de l'éditeur). Le paiement en ligne reste exclu.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
