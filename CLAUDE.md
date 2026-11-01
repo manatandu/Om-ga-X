@@ -317,6 +317,18 @@ posé écrasé ; la quantité du bien sur la fiche de comptage, l'écart dit en
 unités, jamais un excédent créé (AUDCIF art. 43) ; l'annulation d'une sortie
 d'immobilisation, partielle comprise (art. 20, al. 2 et 3 ; art. 22, 2° et
 4°) ; et les cas refusés de la sortie partielle, chacun tranché par son texte.
+Puis, le 2026-11-01, la PAIE ET LE COMMERCIAL restés gelés le 2026-10-29
+(« Fais tout le point 1 », propre et avec le moins d'erreur) · paramètres de
+paie DÉCLARÉS au dossier, jamais présumés (nature de l'employeur et effectif
+INPP avec leur mois d'effet, régime de l'art. 121 de l'employeur seul), le
+salaire du contrat repris au bulletin, la PAIE DU MOIS EN LOT (cases
+décochées, émission par la route unitaire, jours payés du salarié jamais du
+dossier, une allocation de congé non portable rend la ligne non émissible),
+les soldes de congés du personnel et les bulletins émis du mois imprimés
+ensemble ; la déclaration CNSS préparée, l'accès du gestionnaire de paie au
+registre des retenues, l'avance de mission et sa régularisation ; le refus
+par le serveur des logiciels non attribués et le formulaire de demande de la
+page publique. Le paiement en ligne de l'abonnement reste exclu.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
