@@ -145,6 +145,22 @@ describe('les mentions de Notes annexes que le texte impose', () => {
     expect(mention).toContain('SANS ÉCRIT SIGNÉ');
     expect(mention).not.toContain('CONDITIONNEL');
   });
+
+  it('ne mentionne pas une convention soldée · plus rien n’est à recevoir (relecture du 2026-11-01)', async () => {
+    const soldee = (caractere: string) => ({
+      reference: `UE-${caractere}`,
+      objet: 'Volet soldé',
+      montantAccorde: 80_000_000,
+      caractere,
+      ecritSigne: false,
+      conditions: 'Rapport',
+      statut: 'EN_COURS',
+      bailleur: { code: 'UE-01', nom: 'Union européenne' },
+      tranches: [{ montantEncaisse: 50_000_000 }, { montantEncaisse: 30_000_000 }],
+    });
+    const { service: s } = service({ conventions: [soldee('FERME_INCONDITIONNEL'), soldee('CONDITIONNEL')] });
+    expect(await s.mentionsEngagementsConditionnels('t1')).toEqual([]);
+  });
 });
 
 describe('les créances à recevoir', () => {

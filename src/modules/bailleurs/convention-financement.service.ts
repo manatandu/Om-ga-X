@@ -150,8 +150,13 @@ export class ConventionFinancementService {
       orderBy: [{ dateDebut: 'asc' }],
       include: { bailleur: { select: { code: true, nom: true } }, tranches: { select: { montantEncaisse: true } } },
     });
-    return conventions.map((c) => {
-      const reste = ConventionFinancementService.resteARecevoir(c);
+    // UNE CONVENTION SOLDÉE NE SE MENTIONNE PLUS (relecture du 2026-11-01) ·
+    // la mention dit un engagement « restant à recevoir » non comptabilisé ;
+    // tout encaissé, il n'y a plus rien à annoncer.
+    const nonSoldees = conventions
+      .map((c) => ({ c, reste: ConventionFinancementService.resteARecevoir(c) }))
+      .filter(({ reste }) => Math.round(reste * 100) > 0);
+    return nonSoldees.map(({ c, reste }) => {
       const tete = `${c.bailleur.nom} (${c.bailleur.code}) · convention ${c.reference}, ${c.objet}. `;
       if (c.caractere !== CaractereEngagement.CONDITIONNEL) {
         return (
