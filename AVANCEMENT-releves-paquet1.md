@@ -41,10 +41,22 @@ retouché ici (l'intégrateur le fera depuis le rapport).
 - Voisins A9, A10 · solde XC dit sans verdict ; écart de clôture et nature
   non ventilée dits à l'écran des notes.
 
-## Reste (voir rapport)
+### Voisins de la ligne A, puis seconde relecture
+- A4 · virement de clôture du 13 hors de « au <veille> » (balance FPM et
+  feuilles BALANCE de la liasse), rejoué dans le second jeu, IFRS 1 lu avant
+  la clôture du comparatif.
+- A7 · livre d'inventaire · contrôle non effectué dit, N-1 d'un poste non lu
+  vide, totaux à côté de postes vides signalés (avec le point 7).
+- m2 · ouverture en OD derrière un précédent tenu passée au report du
+  tableau des flux (SYCEBNL et SYSCOHADA), éprouvée rouge puis verte.
+- G1 · le refus du 585 du groupe nomme l'exercice antérieur ouvert et l'issue.
+- Seconde relecture · 1 (PV à écart en arbitrage), 2 (reconstitution sous les
+  deux règles), 3 (moyennes), 4 (origine réelle avant l'import), 5 (valeur
+  lue aujourd'hui), 6 (net exact), 7 (livre d'inventaire).
 
-A3 (comparatif sur l'ouverture, tranché par la loi mais d'ampleur), A4, A7,
-m2 (raisonné), G1 de la ligne A ; limites écrites gardées.
+## Reste
+
+A3 et A6, questions ouvertes ; limites écrites gardées.
 
 ## Commandes de vérification
 

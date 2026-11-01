@@ -57,6 +57,15 @@ class Client {
   patch(c, b, a) { return this.appeler('PATCH', c, b, a).then((r) => r.corps); }
   put(c, b, a) { return this.appeler('PUT', c, b ?? {}, a).then((r) => r.corps); }
   async refus(m, c, b) { try { await this.appeler(m, c, b); return null; } catch (e) { return e; } }
+  async classeur(chemin) {
+    const h = { Cookie: [...this.cookies].map(([a, b]) => `${a}=${b}`).join('; ') };
+    const r = await fetch(API + chemin, { headers: h });
+    if (r.status !== 200) throw new Error(`GET ${chemin} · ${r.status} · ${(await r.text()).slice(0, 300)}`);
+    const ExcelJS = require(join(RACINE, 'node_modules', 'exceljs'));
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await r.arrayBuffer()));
+    return wb;
+  }
 }
 
 async function dossier(nom) {
@@ -160,6 +169,10 @@ async function main() {
     const lus = agee.groupesLusLigneALigne ?? { total: -1, groupes: [] };
     verifier(lus.total === 0, `B7 · aucun groupe lu ligne à ligne (${lus.total} · ${JSON.stringify(lus.groupes)})`);
     verifier(Math.abs(agee.totaux.net - 1_000_000) < 0.01, `B7 · le net client reste 1 000 000 (${agee.totaux.net})`);
+
+    // --- Second tour · A4 (virement du 13), m2 (ouverture en OD derrière un
+    // précédent tenu), MAJEUR 1 (PV à écart en arbitrage).
+    await scenarioA4m2();
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();
@@ -168,4 +181,69 @@ async function main() {
   console.log(echecs.length ? `PREUVE ROUGE · ${echecs.length} échec(s)` : 'PREUVE VERTE');
   process.exit(echecs.length ? 1 : 0);
 }
+async function scenarioA4m2() {
+  const { A: C } = await dossier('c');
+  const ex26 = (await C.get('/exercices')).find((e) => e.dateDebut.startsWith('2026'));
+  const ex25 = await C.post('/exercices', { dateDebut: '2025-01-01', dateFin: '2025-12-31' });
+  const ex24 = await C.post('/exercices', { dateDebut: '2024-01-01', dateFin: '2024-12-31' });
+  const comptes = await C.get('/comptes?typeCompte=DETAIL');
+  const adopter = async (numero) => { const x = comptes.find((c) => c.numero === numero); if (!x) throw new Error(`compte ${numero}`); await C.patch(`/comptes/${x.id}`, { estRetenu: true }); return x; };
+  const banque = await adopter('52110000');
+  const capital = await adopter('10130000');
+  const vente = await adopter('70110000');
+  const stock = await adopter('31110000');
+  const report = await adopter('12100000');
+  const journaux = await C.get('/journaux');
+  const od = journaux.find((j) => j.type === 'GENERAL');
+  const ca = journaux.find((j) => j.type === 'TRESORERIE' && /CA|caisse/i.test(`${j.code} ${j.libelle}`));
+  const caisseId = ca?.compteId ?? ca?.compte?.id ?? comptes.find((c) => c.numero.startsWith('571'))?.id;
+  const piece = (ex, jr, date, libelle, lignes) => C.post('/ecritures', { exerciceId: ex.id, journalId: jr.id, date, libelle, lignes });
+  // 2024 · apport 1 000 000, vente 300 000 · résultat 300 000, non affecté.
+  await piece(ex24, od, '2024-02-01', 'Apport', [{ compteId: banque.id, debit: 1_000_000, credit: 0 }, { compteId: capital.id, debit: 0, credit: 1_000_000 }]);
+  await piece(ex24, od, '2024-06-01', 'Vente', [{ compteId: banque.id, debit: 300_000, credit: 0 }, { compteId: vente.id, debit: 0, credit: 300_000 }]);
+  await C.post('/ecritures/valider-jusqua', { exerciceId: ex24.id, dateLimite: '2024-12-31' });
+  await C.post(`/exercices/${ex24.id}/cloturer`, {});
+  // 2025 · une caisse comptée à écart en arbitrage (MAJEUR 1), sans activité.
+  await piece(ex25, ca, '2025-03-01', 'Retrait en caisse', [{ compteId: caisseId, debit: 50_000, credit: 0 }, { compteId: banque.id, debit: 0, credit: 50_000 }]);
+  await C.post('/ecritures/valider-jusqua', { exerciceId: ex25.id, dateLimite: '2025-12-31' });
+  const camp = await C.post('/inventaire', { exerciceId: ex25.id, dateInventaire: '2025-12-20', libelle: 'Stock et caisse' });
+  const sc = await C.post(`/inventaire/${camp.id}/sous-commissions`, { nom: 'Équipe' });
+  await C.post(`/inventaire/sous-commissions/${sc.id}/membres`, { nom: 'Compteur', role: 'INVENTORIANT' });
+  await C.post(`/inventaire/sous-commissions/${sc.id}/membres`, { nom: 'Témoin', role: 'TEMOIN' });
+  const f = await C.post(`/inventaire/${camp.id}/fiches`, { compteId: stock.id, designation: 'Stock' });
+  await C.patch(`/inventaire/fiches/${f.id}`, { valeurInventaire: 0 });
+  await C.post(`/inventaire/${camp.id}/rapprocher`, {});
+  const pvRefuse = await C.refus('POST', `/inventaire/${camp.id}/pv-caisse`, { compteId: caisseId, sousCommissionId: sc.id, dateComptage: '2025-12-20', modeComparaison: 'FRANCS', especesComptees: 45_000 });
+  verifier(pvRefuse?.statut === 400 && /n'y a pas de fiche/.test(pvRefuse?.corps?.message ?? ''), `MAJEUR 1 · PV à écart en arbitrage sans fiche refusé (${pvRefuse?.statut})`);
+  verifier((await prisma.procesVerbalComptageCaisse.count({ where: { campagneId: camp.id } })) === 0, 'MAJEUR 1 · aucun PV créé');
+  // m2 · l'ouverture de 2026 passée en OD au premier jour AVANT la clôture de
+  // 2025, concordante · 52 950 000, 57 50 000, 101 1 000 000, 121 300 000.
+  await piece(ex26, od, '2026-01-01', 'Ouverture 2026', [
+    { compteId: banque.id, debit: 1_250_000, credit: 0 },
+    { compteId: caisseId, debit: 50_000, credit: 0 },
+    { compteId: capital.id, debit: 0, credit: 1_000_000 },
+    { compteId: report.id, debit: 0, credit: 300_000 },
+  ]);
+  await C.post('/ecritures/valider-jusqua', { exerciceId: ex26.id, dateLimite: '2026-01-01' });
+  const c25 = await C.refus('POST', `/exercices/${ex25.id}/cloturer`, {});
+  if (c25) console.log(`  (clôture 2025 · ${c25.statut} · ${(c25.corps?.message ?? '').slice(0, 300)})`);
+  verifier(!c25, 'm2 · clôture 2025 passée, ouverture en OD concordante');
+  const reports26 = await prisma.ecriture.count({ where: { exerciceId: ex26.id, estGenereeParCloture: true } });
+  verifier(reports26 === 0, `m2 · aucun report passé en 2026 (${reports26})`);
+  const tft = await C.get(`/etats-financiers-syscohada/tableau-flux-tresorerie?exerciceId=${ex26.id}`);
+  verifier(tft.controle.coherent === true, `m2 · le tableau des flux 2026 boucle (écart ${tft.controle.ecart})`);
+  const za = tft.lignes.find((l) => l.ref === 'ZA');
+  verifier(Math.abs((za?.montant ?? 0) - 1_300_000) < 0.01, `m2 · ZA 1 300 000 (${za?.montant})`);
+  // A4 · la balance FPM de 2025 · le virement du 13 au 121 est un mouvement.
+  const wb = await C.classeur(`/exports/balance?exerciceId=${ex25.id}&grandsLivres=non`);
+  const ws = wb.worksheets[0];
+  const parNumero = {};
+  ws.eachRow((r) => { const n = String(r.getCell(1).value ?? ''); if (/^\d{8}$/.test(n)) parNumero[n] = [3, 4, 5, 6].map((c) => Number(r.getCell(c).value ?? 0)); });
+  const l13 = Object.entries(parNumero).find(([n]) => n.startsWith('13'));
+  const l121 = parNumero['12100000'];
+  console.log(`  (balance FPM 2025 · 13 ${JSON.stringify(l13)} · 121 ${JSON.stringify(l121)})`);
+  verifier(l13 && l13[1][1] === 300_000 && l13[1][2] === 300_000, 'A4 · le 13 garde 300 000 « au <veille> », le virement passe aux mouvements');
+  verifier(l121 && l121[1] === 0 && l121[3] === 300_000, 'A4 · le 121 n’a rien « au <veille> », 300 000 en mouvement');
+}
+
 main().catch((e) => { console.error(e); process.exit(1); });
