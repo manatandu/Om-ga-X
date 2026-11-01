@@ -326,3 +326,33 @@ describe('les frais financiers prélevés en trésorerie sont nommés (B2)', () 
     expect((await trouver(svc))!.occurrences[0].detail).not.toMatch(/fiche du compte 67/);
   });
 });
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE B, VOISIN · LES FRAIS BANCAIRES DU RELEVÉ.
+ * La fiche des comptes 62 et 63 des deux plans fait débiter le 63 « par le
+ * crédit d'un compte de tiers ou de trésorerie » · le 631 prélevé par la
+ * banque est nommé comme le 67, le signal reste.
+ */
+describe('les frais bancaires prélevés en trésorerie sont nommés (voisin de B2)', () => {
+  it('frais de tenue de compte prélevés · signalés ET nommés', async () => {
+    const svc = service([ecriture('Frais de tenue de compte', [ligne('63180000', 15_000), ligne('52110000', 0, 15_000)])]);
+    const a = await trouver(svc);
+    expect(a!.gravite).toBe('AVERTISSEMENT');
+    expect(a!.occurrences[0].detail).toMatch(/frais bancaires, que la fiche des comptes 62 et 63/);
+    expect(a!.occurrences[0].detail).toMatch(/compte de tiers ou de trésorerie/);
+  });
+
+  it('frais bancaires et intérêts sur la même pièce · nommés comme frais bancaires', async () => {
+    const svc = service([
+      ecriture('Agios et frais', [ligne('67410000', 40_000), ligne('63180000', 5_000), ligne('52110000', 0, 45_000)]),
+    ]);
+    expect((await trouver(svc))!.occurrences[0].detail).toMatch(/frais bancaires/);
+  });
+
+  it('frais bancaires mêlés à un loyer · non nommés', async () => {
+    const svc = service([
+      ecriture('Loyer et frais', [ligne('63180000', 5_000), ligne('62210000', 300_000), ligne('52110000', 0, 305_000)]),
+    ]);
+    expect((await trouver(svc))!.occurrences[0].detail).not.toMatch(/frais bancaires|fiche du compte 67/);
+  });
+});
