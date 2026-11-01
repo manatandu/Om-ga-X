@@ -190,6 +190,12 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/etats-financiers/smt/compte-de-resultat': 'état financier, tout le plan',
   '/etats-financiers-syscohada/compte-de-resultat': 'état financier, tout le plan',
   '/etats-financiers-syscohada/smt/compte-de-resultat': 'état financier, tout le plan',
+  // Ligne origine-des-montants · les comptes qu'un état ou une note a lus pour
+  // un montant, rendus avec leur identifiant pour ouvrir le grand livre.
+  '/etats-financiers/origine': "origine d'un montant d'état, les comptes que le calcul a lus, aucun choix",
+  '/etats-financiers-syscohada/origine': "origine d'un montant d'état, les comptes que le calcul a lus, aucun choix",
+  '/etats-financiers-syscohada/notes/origine': "origine d'un montant de note, les comptes que le calcul a lus, aucun choix",
+  '/notes-annexes/origine': "origine d'un montant de note, les comptes que le calcul a lus, aucun choix",
   '/comptabilite-gestion/comportements': 'déclaration du comportement des comptes de gestion mouvementés (A20), tout compte des classes 6 et 7, aucun choix',
   '/comptabilite-gestion/seuil-rentabilite': 'calcul de gestion sur les comptes mouvementés (A20), aucun compte à choisir',
   '/comptabilite-gestion/couts-production': 'calcul de gestion sur les comptes ventilés de la section (A20), aucun compte à choisir',

@@ -4,6 +4,7 @@ import { EtatsFinanciersProjetService } from './etats-financiers-projet.service'
 import { EtatsFinanciersSmtService } from './etats-financiers-smt.service';
 import { EtatsFinanciersProjetBudgetService } from './etats-financiers-projet-budget.service';
 import { EtatsFinanciersController } from './etats-financiers.controller';
+import { ComptesDuZoomService } from './comptes-du-zoom.service';
 import { ComptabiliteModule } from '../comptabilite/comptabilite.module';
 import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
@@ -23,6 +24,8 @@ import {
     EtatsFinanciersProjetService,
     EtatsFinanciersSmtService,
     EtatsFinanciersProjetBudgetService,
+    // Les identifiants des comptes cités par la remontée d'un montant.
+    ComptesDuZoomService,
     // Lus par la clôture, qui refuse un bilan déséquilibré (common/lecteurs-bilan.ts).
     { provide: LECTEUR_BILAN_SYCEBNL_ASSOCIATIONS, useExisting: EtatsFinanciersService },
     { provide: LECTEUR_BILAN_SYCEBNL_PROJETS, useExisting: EtatsFinanciersProjetService },

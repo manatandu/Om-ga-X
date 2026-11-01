@@ -582,6 +582,11 @@ export interface LigneGrandLivre {
   soldeProgressif: number;
   /** Comptes de sens opposé dans la même écriture · voir ExportService.grandLivreExcel. */
   contrepartie: string[];
+  /** La pièce, ouverte depuis la remontée d'un montant d'état (ligne origine-des-montants). */
+  ecritureId?: string;
+  statut?: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
+  /** L'écriture qui solde les comptes de gestion à la clôture · les états la lisent avant elle. */
+  soldeDesComptesDeGestion?: boolean;
 }
 
 /**

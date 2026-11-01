@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClasseCompte } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
@@ -44,8 +44,24 @@ import {
   POSTES_HAO,
   POSTES_PRODUITS,
   PosteCompteResultat,
+  SOLDES_COMPTE_RESULTAT,
+  TOUS_LES_POSTES,
   posteDuCompte,
 } from './correspondance-compte-resultat';
+import {
+  ColonneOrigine,
+  EtatZoomable,
+  GroupeOrigine,
+  MOTIF_COLONNE_SANS_OBJET,
+  MOTIF_POSTE_INTROUVABLE,
+  OrigineDuMontant,
+  contributions,
+  groupe,
+  origineHorsBalance,
+  origineParComptes,
+  origineParFormule,
+  regleDesPrefixes,
+} from './origine-des-montants';
 import {
   COMPTES_TRESORERIE_PASSIF_SI_CREDITEUR,
   ORDRE_AFFICHAGE_ACTIF,
@@ -63,6 +79,7 @@ import {
   PosteFluxTresorerie,
   TOTAUX_FLUX,
   TOUS_LES_POSTES_FLUX,
+  trouvePosteFlux,
 } from './correspondance-tft';
 
 /**
@@ -301,6 +318,15 @@ export class EtatsFinanciersService {
   }
 
   async bilan(tenantId: string, exerciceId: string) {
+    return (await this.bilanDetaille(tenantId, exerciceId)).etat;
+  }
+
+  /**
+   * Le bilan ET les résolutions qui l'ont calculé · elles servent la remontée
+   * d'un montant vers ses comptes (`origine`), lue sur les mêmes postes que
+   * l'état, jamais recalculée à part. Le bilan servi est inchangé.
+   */
+  private async bilanDetaille(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
@@ -374,7 +400,7 @@ export class EtatsFinanciersService {
     const totalActifN1 = comparatif.provenance ? parRefN1.get('BZ')!.montant : undefined;
     const totalPassifN1 = comparatif.provenance ? parRefN1.get('DZ')!.montant : undefined;
 
-    return {
+    const etat = {
       actif,
       passif,
       totalActif,
@@ -410,6 +436,7 @@ export class EtatsFinanciersService {
         'SYCEBNL',
       ),
     };
+    return { etat, parRefN, parRefN1: comparatif.provenance ? parRefN1 : null, exerciceN1Id };
   }
 
   /**
@@ -484,6 +511,11 @@ export class EtatsFinanciersService {
    * « Net exercice au 31/12/N-1 »).
    */
   async compteDeResultat(tenantId: string, exerciceId: string) {
+    return (await this.compteDeResultatDetaille(tenantId, exerciceId)).etat;
+  }
+
+  /** Le compte de résultat ET ses deux résolutions · même rôle que `bilanDetaille`. */
+  private async compteDeResultatDetaille(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     const [lignesN, lignesN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
@@ -536,7 +568,7 @@ export class EtatsFinanciersService {
     // « Anomalies » de l'export : un état qui ne boucle pas doit se voir.
     const ecartControle = resN.resultatToutesClassesDeGestion - resultatNet;
 
-    return {
+    const etat = {
       produits,
       totalProduits, // XA
       totalProduitsN1,
@@ -561,6 +593,7 @@ export class EtatsFinanciersService {
         coherent: Math.abs(ecartControle) < 0.01,
       },
     };
+    return { etat, resN, resN1: exerciceN1Id ? resN1 : null, exerciceN1Id };
   }
 
   // ==========================================================================
@@ -647,13 +680,17 @@ export class EtatsFinanciersService {
    */
   private contrepartieDuPoste(poste: PosteFluxTresorerie, lignes: LigneBalancePourBilan[]): number {
     if (!poste.comptesContrepartie) return 0;
-    const soldes = lignes
-      .filter((l) => correspond(l.numero, poste.comptesContrepartie!, poste.exclusionsContrepartie))
-      .reduce((s, l) => s + l.solde, 0);
+    const soldes = this.lignesDeContrepartie(poste, lignes).reduce((s, l) => s + l.solde, 0);
     // Une créance (encaissement à venir) est débitrice, une dette
     // (décaissement à venir) créditrice : on ramène les deux à une magnitude
     // positive pour que la formule s'écrive à l'identique dans les deux sens.
     return poste.sens === 'ENCAISSEMENT' ? soldes : -soldes;
+  }
+
+  /** Les lignes des créances ou dettes d'un poste · lues ici seulement, par le calcul et par son origine. */
+  private lignesDeContrepartie(poste: PosteFluxTresorerie, lignes: LigneBalancePourBilan[]): LigneBalancePourBilan[] {
+    if (!poste.comptesContrepartie) return [];
+    return lignes.filter((l) => correspond(l.numero, poste.comptesContrepartie!, poste.exclusionsContrepartie));
   }
 
   /**
@@ -743,6 +780,9 @@ export class EtatsFinanciersService {
     /** Postes laissés vides, et les totaux qui en dépendent · jamais des zéros constatés. */
     nonCalcules: Set<string>;
     postesNonCalculables: PosteDeFluxVide[];
+    /** Les lignes lues, rendues pour l'origine des montants · jamais relues ailleurs. */
+    lignesCourant: LigneBalancePourBilan[];
+    lignesAnterieur: LigneBalancePourBilan[];
   } {
     const parRef = new Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>();
     const nonCalcules = new Set<string>();
@@ -813,10 +853,25 @@ export class EtatsFinanciersService {
     });
     if (nonCalcules.has('ZA') || nonCalcules.has('ZF')) nonCalcules.add('ZG');
 
-    return { parRef, tresorerieOuverture, tresorerieClotureParFlux, tresorerieClotureParBilan, ecart, nonCalcules, postesNonCalculables };
+    return {
+      parRef,
+      tresorerieOuverture,
+      tresorerieClotureParFlux,
+      tresorerieClotureParBilan,
+      ecart,
+      nonCalcules,
+      postesNonCalculables,
+      lignesCourant,
+      lignesAnterieur,
+    };
   }
 
   async tableauFluxTresorerie(tenantId: string, exerciceId: string) {
+    return (await this.tableauFluxDetaille(tenantId, exerciceId)).etat;
+  }
+
+  /** Le tableau des flux ET ses deux résolutions · même rôle que `bilanDetaille`. */
+  private async tableauFluxDetaille(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     const exerciceN2Id = exerciceN1Id ? await this.trouverExerciceN1(tenantId, exerciceN1Id) : null;
     const [lignesN, lignesN1, lignesN2, virementsN, virementsN1, reevaluationsN, reevaluationsN1, incorporationsN, incorporationsN1] = await Promise.all([
@@ -992,7 +1047,7 @@ export class EtatsFinanciersService {
       }
     }
 
-    return {
+    const etat = {
       lignes: lignesAffichees,
       exerciceN1Disponible: exerciceN1Id !== null,
       comptesNonVentiles,
@@ -1030,6 +1085,289 @@ export class EtatsFinanciersService {
         vides: resN.nonCalcules,
       }),
     };
+    return { etat, resN, resN1, exerciceN1Id, n1Tenu, exerciceN2Id, n2Tenu };
   }
 
+  // =========================================================================
+  // D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 (`origine-des-montants.ts`).
+  // Chaque origine se lit sur la résolution qui a calculé l'état servi
+  // (`bilanDetaille`, `compteDeResultatDetaille`, `tableauFluxDetaille`) ·
+  // mêmes lignes de balance, mêmes postes. Rien n'est recalculé à part, et
+  // l'écart avec le montant affiché se dit.
+  // =========================================================================
+
+  async origine(
+    tenantId: string,
+    exerciceId: string,
+    etat: EtatZoomable,
+    ref: string,
+    colonne: ColonneOrigine,
+  ): Promise<OrigineDuMontant> {
+    if (etat === 'bilan') return this.origineBilan(tenantId, exerciceId, ref, colonne);
+    if (colonne === 'BRUT' || colonne === 'AMORTISSEMENT') throw new BadRequestException(MOTIF_COLONNE_SANS_OBJET);
+    if (etat === 'compte-de-resultat') return this.origineCompteDeResultat(tenantId, exerciceId, ref, colonne);
+    return this.origineFlux(tenantId, exerciceId, ref, colonne);
+  }
+
+  private async origineBilan(tenantId: string, exerciceId: string, ref: string, colonne: ColonneOrigine): Promise<OrigineDuMontant> {
+    const d = await this.bilanDetaille(tenantId, exerciceId);
+    const ligne = [...d.etat.actif, ...d.etat.passif].find((l) => l.ref === ref);
+    if (!ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const actif = d.etat.actif.includes(ligne);
+    if ((colonne === 'BRUT' || colonne === 'AMORTISSEMENT') && !actif) throw new BadRequestException(MOTIF_COLONNE_SANS_OBJET);
+    const enTete = {
+      etat: 'bilan' as const,
+      ref,
+      libelle: ligne.libelle,
+      colonne,
+      montant:
+        colonne === 'N'
+          ? ligne.montant
+          : colonne === 'N1'
+            ? (ligne.montantN1 ?? null)
+            : colonne === 'BRUT'
+              ? (ligne.brut ?? ligne.montant)
+              : (ligne.amortissement ?? 0),
+      // La colonne N-1 lit l'exercice précédent, ou l'ouverture de N quand il
+      // n'est pas tenu (`comparatifDuBilan`) · son grand livre est alors celui de N.
+      exerciceDesComptesId: colonne === 'N1' ? (d.exerciceN1Id ?? exerciceId) : exerciceId,
+      mention: colonne === 'N1' ? d.etat.mentionComparatif : null,
+    };
+    const parRef = colonne === 'N1' ? d.parRefN1 : d.parRefN;
+    if (!parRef) {
+      return origineHorsBalance(
+        enTete,
+        d.etat.mentionComparatif ?? "Aucun exercice antérieur ni bilan d'ouverture dans le dossier : la colonne N-1 reste vide.",
+      );
+    }
+    const total = [...TOTAUX_ACTIF, ...TOTAUX_PASSIF].find((t) => t.ref === ref);
+    if (total) {
+      return origineParFormule(
+        { ...enTete, formule: `Somme ${total.deRefs.join(' + ')}` },
+        total.deRefs.map((r) => {
+          const p = parRef.get(r)!;
+          const valeur =
+            colonne === 'BRUT' ? (p.brut ?? p.montant) : colonne === 'AMORTISSEMENT' ? (p.amortissement ?? 0) : p.montant;
+          return { ref: r, libelle: p.libelle, signe: 1 as const, montant: valeur };
+        }),
+      );
+    }
+    const p = parRef.get(ref)!;
+    if (ref === 'CH') {
+      const du13 = p.comptes.filter((c) => estCompteDuResultatDeLExercice(c.numero));
+      const deGestion = p.comptes.filter((c) => !estCompteDuResultatDeLExercice(c.numero));
+      return origineParComptes(
+        {
+          ...enTete,
+          regle: "Compte 13 (131 ou 139) et classes 6 à 8 lues avant l'écriture qui solde la gestion · les deux sources s'additionnent",
+        },
+        [
+          groupe('Compte 13', 'Crédit − débit', contributions(du13)),
+          groupe('Classes 6 à 8', 'Crédit − débit, avant le solde des comptes de gestion', contributions(deGestion)),
+        ],
+      );
+    }
+    const posteActif = POSTES_ACTIF.find((x) => x.ref === ref);
+    if (posteActif) {
+      const amortNumeros = new Set(
+        posteActif.comptesAmortissement
+          ? p.comptes
+              .filter((c) => correspond(c.numero, posteActif.comptesAmortissement!, posteActif.exclusionsAmortissement))
+              .map((c) => c.numero)
+          : [],
+      );
+      // Un compte lu au brut ET à l'amortissement n'existe pas dans la table ·
+      // la partition se fait sur la règle d'amortissement, celle que le calcul applique.
+      const brut = p.comptes.filter((c) => !amortNumeros.has(c.numero));
+      const amort = p.comptes.filter((c) => amortNumeros.has(c.numero));
+      const regle =
+        `Brut · ${regleDesPrefixes(posteActif.comptes, posteActif.exclusions, posteActif.sens_qualificatif)}` +
+        (posteActif.comptesAmortissement
+          ? ` ; amortissements et dépréciations · ${regleDesPrefixes(posteActif.comptesAmortissement, posteActif.exclusionsAmortissement)}`
+          : '') +
+        (posteActif.comptesTransferesSiCrediteur
+          ? ` ; ${posteActif.comptesTransferesSiCrediteur.join(', ')} créditeurs portés au passif (DW)`
+          : '');
+      const groupes: GroupeOrigine[] =
+        colonne === 'BRUT'
+          ? [groupe('Brut', 'Solde débit − crédit', contributions(brut))]
+          : colonne === 'AMORTISSEMENT'
+            ? [groupe('Amortissements et dépréciations', 'Solde crédit − débit', contributions(amort, -1))]
+            : [
+                groupe('Brut', 'Solde débit − crédit', contributions(brut)),
+                groupe('Amortissements et dépréciations', 'Solde débit − crédit, en déduction du brut', contributions(amort)),
+              ];
+      return origineParComptes({ ...enTete, regle }, groupes);
+    }
+    const postePassif = POSTES_PASSIF.find((x) => x.ref === ref);
+    const regle = postePassif
+      ? regleDesPrefixes(postePassif.comptes, postePassif.exclusions, postePassif.sens_qualificatif) +
+        (ref === 'DW' ? ` ; et ${COMPTES_TRESORERIE_PASSIF_SI_CREDITEUR.join(', ')} créditeurs` : '')
+      : null;
+    return origineParComptes({ ...enTete, regle }, [
+      groupe('Comptes du poste', 'Solde crédit − débit', contributions(p.comptes)),
+    ]);
+  }
+
+  private async origineCompteDeResultat(
+    tenantId: string,
+    exerciceId: string,
+    ref: string,
+    colonne: ColonneOrigine,
+  ): Promise<OrigineDuMontant> {
+    const d = await this.compteDeResultatDetaille(tenantId, exerciceId);
+    const cr = d.etat;
+    const postes = [...cr.produits, ...cr.charges, cr.produitsHao, cr.chargesHao];
+    const solde = SOLDES_COMPTE_RESULTAT.find((s) => s.ref === ref);
+    const ligne = postes.find((p) => p.ref === ref);
+    if (!solde && !ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    // Les cinq lignes calculées, telles que l'état les sert · lues par leur
+    // champ, jamais recalculées ici.
+    const valeurs: Record<string, [number, number | undefined]> = {
+      XA: [cr.totalProduits, cr.totalProduitsN1],
+      XB: [cr.totalCharges, cr.totalChargesN1],
+      XC: [cr.resultatActivitesOrdinaires, cr.resultatActivitesOrdinairesN1],
+      XD: [cr.resultatHao, cr.resultatHaoN1],
+      XE: [cr.resultatNet, cr.resultatNetN1],
+    };
+    for (const p of postes) valeurs[p.ref] = [p.montant, p.montantN1];
+    const lire = (r: string): number | null => {
+      const v = valeurs[r];
+      if (!v) return null;
+      return colonne === 'N' ? v[0] : (v[1] ?? null);
+    };
+    const enTete = {
+      etat: 'compte-de-resultat' as const,
+      ref,
+      libelle: solde?.libelle ?? ligne!.libelle,
+      colonne,
+      montant: lire(ref),
+      exerciceDesComptesId: colonne === 'N1' ? d.exerciceN1Id : exerciceId,
+    };
+    const res = colonne === 'N1' ? d.resN1 : d.resN;
+    if (!res) {
+      return origineHorsBalance(
+        enTete,
+        cr.motifComparatifAbsent ?? "Aucun exercice antérieur dans le dossier : la colonne N-1 reste vide, ce n'est pas un zéro.",
+      );
+    }
+    if (solde) {
+      const libelleDe = (r: string) => SOLDES_COMPTE_RESULTAT.find((s) => s.ref === r)?.libelle ?? postes.find((p) => p.ref === r)?.libelle ?? r;
+      return origineParFormule({ ...enTete, formule: solde.formule }, [
+        ...solde.plus.map((r) => ({ ref: r, libelle: libelleDe(r), signe: 1 as const, montant: lire(r) })),
+        ...solde.moins.map((r) => ({ ref: r, libelle: libelleDe(r), signe: -1 as const, montant: lire(r) })),
+      ]);
+    }
+    const posteTable = TOUS_LES_POSTES.find((x) => x.ref === ref)!;
+    const parRef = new Map([...res.produits, ...res.charges, res.produitsHao, res.chargesHao].map((p) => [p.ref, p]));
+    return origineParComptes(
+      { ...enTete, regle: `${regleDesPrefixes(posteTable.comptes)} · le préfixe le plus long l'emporte` },
+      [
+        groupe(
+          'Comptes du poste',
+          posteTable.sens === 'PRODUIT' ? 'Crédit − débit' : 'Débit − crédit',
+          contributions(parRef.get(ref)?.comptes ?? []),
+        ),
+      ],
+    );
+  }
+
+  private async origineFlux(tenantId: string, exerciceId: string, ref: string, colonne: ColonneOrigine): Promise<OrigineDuMontant> {
+    const d = await this.tableauFluxDetaille(tenantId, exerciceId);
+    const ligne = d.etat.lignes.find((l) => 'ref' in l && l.ref === ref) as (PosteCalcule & { montantN1?: number }) | undefined;
+    if (!ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const res = colonne === 'N1' ? d.resN1 : d.resN;
+    const vide = !res || res.nonCalcules.has(ref);
+    const motifs = (res?.postesNonCalculables ?? []).filter((x) => x.ref === ref).map((x) => x.raison);
+    // Le grand livre qui porte les positions d'ouverture · l'exercice
+    // précédent tenu, sinon l'ouverture de l'exercice de la colonne.
+    const exerciceDeLOuverture =
+      colonne === 'N1' ? (d.n2Tenu ? d.exerciceN2Id : d.exerciceN1Id) : d.n1Tenu ? d.exerciceN1Id : exerciceId;
+    const enTete = {
+      etat: 'tableau-flux-tresorerie' as const,
+      ref,
+      libelle: ligne.libelle,
+      colonne,
+      montant: colonne === 'N' ? (vide ? null : ligne.montant) : (ligne.montantN1 ?? null),
+      exerciceDesComptesId: ref === 'ZA' ? exerciceDeLOuverture : colonne === 'N1' ? d.exerciceN1Id : exerciceId,
+      mention:
+        ref === 'ZA'
+          ? null
+          : "Formule officielle · flux de l'exercice, plus les créances ou dettes d'ouverture, moins celles de clôture · le grand livre ouvert est celui de l'exercice de la colonne, à-nouveaux compris.",
+    };
+    if (!res) {
+      return origineHorsBalance(enTete, "Aucun exercice antérieur dans le dossier : la colonne N-1 reste vide, ce n'est pas un zéro.");
+    }
+    const total = TOTAUX_FLUX.find((t) => t.ref === ref);
+    if (vide && !total && ref !== 'ZG') return origineHorsBalance(enTete, motifs.join(' ') || 'Poste laissé vide par le tableau.');
+    const montantDe = (r: string) => (res.nonCalcules.has(r) ? null : (res.parRef.get(r)?.montant ?? 0));
+    const libelleDe = (r: string) => res.parRef.get(r)?.libelle ?? r;
+    if (total) {
+      return origineParFormule(
+        { ...enTete, formule: total.libelle },
+        total.deRefs.map((r) => ({ ref: r, libelle: libelleDe(r), signe: 1 as const, montant: montantDe(r) })),
+      );
+    }
+    if (ref === 'ZG') {
+      return origineParFormule({ ...enTete, formule: 'G + A' }, [
+        { ref: 'ZF', libelle: libelleDe('ZF'), signe: 1, montant: montantDe('ZF') },
+        { ref: 'ZA', libelle: libelleDe('ZA'), signe: 1, montant: montantDe('ZA') },
+      ]);
+    }
+    if (ref === 'ZA') {
+      // « Trésorerie actif N-1 – Trésorerie passif N-1 », lue sur les postes
+      // du bilan (BX, DX) des lignes d'ouverture, comme `tresorerieNette`.
+      const { parRef } = this.resoudreTousLesPostesBilan(res.lignesAnterieur);
+      return origineParComptes({ ...enTete, regle: 'Trésorerie actif (BX) moins trésorerie passif (DX) du bilan de clôture N-1' }, [
+        groupe('Trésorerie actif (BX)', 'Postes BU, BV et BW, solde débit − crédit', contributions(comptesDuTotal(parRef, 'BX'))),
+        groupe('Trésorerie passif (DX)', 'Poste DW, solde crédit − débit, en déduction', contributions(comptesDuTotal(parRef, 'DX'), -1)),
+      ]);
+    }
+    const poste = trouvePosteFlux(ref)!;
+    const signe: 1 | -1 = poste.sens === 'ENCAISSEMENT' ? 1 : -1;
+    const lecture: Record<string, string> = {
+      NET_PRODUIT: 'Mouvements crédit − débit de l’exercice',
+      NET_CHARGE: 'Mouvements débit − crédit de l’exercice',
+      DEBIT_SEUL: 'Mouvements débit de l’exercice',
+      CREDIT_SEUL: 'Mouvements crédit de l’exercice',
+    };
+    const p = res.parRef.get(ref)!;
+    const enLigne = (l: LigneBalancePourBilan, montant: number) => ({ numero: l.numero, intitule: l.intitule, montant: montant || 0, compteId: null });
+    // Encaissement ou décaissement, la variation entre au même signe ·
+    // contrepartie d'ouverture plus, contrepartie de clôture moins
+    // (`calculerPosteFlux`, signe du poste appliqué au tout).
+    return origineParComptes(
+      {
+        ...enTete,
+        regle:
+          `Flux · ${regleDesPrefixes(poste.comptesFlux, poste.exclusionsFlux)}` +
+          (poste.comptesContrepartie ? ` ; contreparties · ${regleDesPrefixes(poste.comptesContrepartie, poste.exclusionsContrepartie)}` : ''),
+      },
+      [
+        groupe(
+          "Flux de l'exercice",
+          `${lecture[poste.lectureFlux]}${signe === -1 ? ', en décaissement' : ''}`,
+          contributions(p.comptes, signe),
+          poste.note ?? null,
+        ),
+        groupe(
+          "Contreparties à l'ouverture",
+          'Solde de clôture N-1, débit − crédit',
+          this.lignesDeContrepartie(poste, res.lignesAnterieur).map((l) => enLigne(l, l.solde)),
+        ),
+        groupe(
+          'Contreparties à la clôture',
+          'Solde de clôture N, débit − crédit, en déduction',
+          this.lignesDeContrepartie(poste, res.lignesCourant).map((l) => enLigne(l, -l.solde)),
+        ),
+      ],
+    );
+  }
+}
+
+/** Les comptes d'un total du bilan, développé jusqu'à ses postes de détail. */
+function comptesDuTotal(parRef: Map<string, PosteCalcule>, ref: string): CompteDuPoste[] {
+  const total = [...TOTAUX_ACTIF, ...TOTAUX_PASSIF].find((t) => t.ref === ref);
+  if (!total) return parRef.get(ref)?.comptes ?? [];
+  return total.deRefs.flatMap((r) => comptesDuTotal(parRef, r));
 }

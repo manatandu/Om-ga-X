@@ -10,6 +10,17 @@ import { EtatsFinanciersSyscohadaService } from './etats-financiers-syscohada.se
 import { EtatsFinanciersSmtSyscohadaService } from './etats-financiers-smt-syscohada.service';
 import { NoteAnnexeService } from '../notes-annexes/note-annexe.service';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { ComptesDuZoomService } from '../etats-financiers/comptes-du-zoom.service';
+import {
+  lireCodeDeNote,
+  lireColonneDeNote,
+  lireColonneOrigine,
+  lireEtatZoomable,
+  lireLigneDeNote,
+  lireRefPoste,
+  lireSousTableau,
+} from '../etats-financiers/origine-des-montants';
+import { JeuNotesAnnexes } from '@prisma/client';
 
 // RolesGuard présent pour que tout `@Roles` ajouté plus tard soit réellement
 // appliqué (sans lui, il serait silencieusement ignoré).
@@ -33,7 +44,36 @@ export class EtatsFinanciersSyscohadaController {
     private readonly etatsFinanciersSyscohadaService: EtatsFinanciersSyscohadaService,
     private readonly etatsFinanciersSmtSyscohadaService: EtatsFinanciersSmtSyscohadaService,
     private readonly noteAnnexeService: NoteAnnexeService,
+    private readonly comptesDuZoom: ComptesDuZoomService,
   ) {}
+
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 (double-clic sur un montant
+   * d'état, puis le grand livre du compte, puis la pièce). Une cellule du
+   * bilan, du compte de résultat ou du tableau des flux, remontée vers ses
+   * comptes ou vers les postes qui la font, lue sur la MÊME résolution que
+   * l'état (`EtatsFinanciersSyscohadaService.origine`). Lecture seule, même
+   * garde de référentiel et de logiciel que les états.
+   */
+  @Get('origine')
+  async origine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('etat') etat?: string,
+    @Query('ref') ref?: string,
+    @Query('colonne') colonne?: string,
+    @Query('arreteAu') arreteAu?: string,
+  ) {
+    const origine = await this.etatsFinanciersSyscohadaService.origine(
+      user.tenantId,
+      exerciceId,
+      lireEtatZoomable(etat),
+      lireRefPoste(ref),
+      lireColonneOrigine(colonne),
+      arreteAu,
+    );
+    return this.comptesDuZoom.attacher(user.tenantId, origine);
+  }
 
   // =========================================================================
   // SYSTÈME NORMAL · AUDCIF art. 26 : « Le Système normal comporte
@@ -106,6 +146,29 @@ export class EtatsFinanciersSyscohadaController {
    * `NOTES_SYSCOHADA` et aucune ligne n'étant reprise du SYCEBNL
    * (CLAUDE.md §6).
    */
+  @Get('notes/origine')
+  async origineNote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('ref') ref?: string,
+    @Query('sousTableau') sousTableau?: string,
+    @Query('ligne') ligne?: string,
+    @Query('colonne') colonne?: string,
+  ) {
+    // D'où vient ce chiffre, sur une ligne des 36 notes du Titre IX ch. 6 ·
+    // même résolution que la note (`NoteAnnexeService.origineLigne`).
+    const origine = await this.noteAnnexeService.origineLigne(
+      user.tenantId,
+      exerciceId,
+      JeuNotesAnnexes.SYSCOHADA_SYSTEME_NORMAL,
+      lireCodeDeNote(ref),
+      lireSousTableau(sousTableau),
+      lireLigneDeNote(ligne),
+      lireColonneDeNote(colonne),
+    );
+    return this.comptesDuZoom.attacher(user.tenantId, origine);
+  }
+
   @Get('notes')
   async notes(@CurrentUser() user: AuthenticatedUser, @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string) {
     return this.noteAnnexeService.notesSyscohada(user.tenantId, exerciceId);

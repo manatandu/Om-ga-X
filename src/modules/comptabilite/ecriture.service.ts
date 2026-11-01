@@ -3915,6 +3915,8 @@ export class EcritureService {
         libelle: string;
         reference: string | null;
         numeroPiece: number | null;
+        statut: StatutEcriture;
+        estSoldeDesComptesDeGestion: boolean;
         journal: { code: string };
       };
     },
@@ -3934,6 +3936,14 @@ export class EcritureService {
       lettre: l.lettre,
       soldeProgressif,
       contrepartie: contreparties.get(l.ecritureId)?.[sens] ?? [],
+      // La pièce, son statut et l'écriture qui solde la gestion · la remontée
+      // d'un montant d'état (ligne origine-des-montants) ouvre la pièce par
+      // son identifiant et dit les lignes que les états ne lisent pas (le
+      // brouillard, hors du livre-journal ; le solde des comptes de gestion,
+      // lu avant lui · `avantSoldeDesComptesDeGestion`).
+      ecritureId: l.ecritureId,
+      statut: l.ecriture.statut,
+      soldeDesComptesDeGestion: l.ecriture.estSoldeDesComptesDeGestion,
     };
   }
 

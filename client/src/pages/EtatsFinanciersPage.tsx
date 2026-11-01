@@ -38,6 +38,8 @@ import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
+import { FenetreOrigineMontant, celluleOrigine } from '../components/OrigineMontant';
+import type { CelluleOrigine, ColonneOrigine, EtatZoomable } from '../lib/origine-montant';
 
 /**
  * Onglets du jeu « associations et ordres professionnels » (Partie 4, ch. 2)
@@ -229,6 +231,16 @@ function EtatsSystemeNormalPage() {
     }
   };
 
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100. Double-clic ou Entrée sur un
+   * montant du jeu « associations » ouvre son origine (poste, comptes, grand
+   * livre, pièce), servie par `GET /etats-financiers/origine`. Le jeu des
+   * projets n'est pas encore servi · ses cellules restent inertes.
+   */
+  const [zoom, setZoom] = useState<CelluleOrigine | null>(null);
+  const cellule = (etat: EtatZoomable, ref: string, colonne: ColonneOrigine) =>
+    jeuProjet ? {} : celluleOrigine(() => setZoom({ etat, ref, colonne }), `${etat}:${ref}:${colonne}`);
+
   // --- Compte de résultat : REF | Libellé | Montant (N) | Montant (N-1) ---
   // `cle` : par défaut `p.ref`, mais explicite côté compte d'exploitation
   // projet · TJ et TK y apparaissent deux fois (doublon officiel, voir
@@ -242,8 +254,12 @@ function EtatsSystemeNormalPage() {
     >
       <span className="font-mono text-[11.5px] text-text-dim">{p.ref}</span>
       <span>{p.libelle}</span>
-      <span className="font-mono text-right">{montant(p.montant)}</span>
-      <span className="font-mono text-right text-text-dim">{montant(p.montantN1)}</span>
+      <span {...cellule('compte-de-resultat', p.ref, 'N')} className="font-mono text-right">
+        {montant(p.montant)}
+      </span>
+      <span {...cellule('compte-de-resultat', p.ref, 'N1')} className="font-mono text-right text-text-dim">
+        {montant(p.montantN1)}
+      </span>
     </div>
   );
 
@@ -260,8 +276,12 @@ function EtatsSystemeNormalPage() {
     >
       <span className="font-mono text-[11.5px] text-text-dim">{l.ref}</span>
       <span>{l.libelle}</span>
-      <span className="font-mono text-right">{montant(montantDuPosteDeFlux(l.ref, l.montant, vides))}</span>
-      <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+      <span {...cellule('tableau-flux-tresorerie', l.ref, 'N')} className="font-mono text-right">
+        {montant(montantDuPosteDeFlux(l.ref, l.montant, vides))}
+      </span>
+      <span {...cellule('tableau-flux-tresorerie', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+        {montant(l.montantN1)}
+      </span>
     </div>
   );
 
@@ -269,8 +289,12 @@ function EtatsSystemeNormalPage() {
     <div className="grid grid-cols-[46px_1fr_120px_120px] min-w-[500px] gap-2 px-4 py-1.5 bg-surface-alt border-y border-border text-[11.5px] font-bold">
       <span className="font-mono text-[11.5px]">{ref}</span>
       <span>{libelle}</span>
-      <span className="font-mono text-right">{montant(valeur)}</span>
-      <span className="font-mono text-right text-text-dim font-normal">{montant(valeurN1)}</span>
+      <span {...cellule('compte-de-resultat', ref, 'N')} className="font-mono text-right">
+        {montant(valeur)}
+      </span>
+      <span {...cellule('compte-de-resultat', ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+        {montant(valeurN1)}
+      </span>
     </div>
   );
 
@@ -285,10 +309,18 @@ function EtatsSystemeNormalPage() {
     >
       <span className="font-mono text-[11px] text-text-dim">{l.ref}</span>
       <span>{l.libelle}</span>
-      <span className="font-mono text-right">{montant(l.brut)}</span>
-      <span className="font-mono text-right text-text-dim">{l.amortissement ? `(${montant(l.amortissement)})` : montant(l.amortissement)}</span>
-      <span className="font-mono text-right">{montant(l.montant)}</span>
-      <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+      <span {...cellule('bilan', l.ref, 'BRUT')} className="font-mono text-right">
+        {montant(l.brut)}
+      </span>
+      <span {...cellule('bilan', l.ref, 'AMORTISSEMENT')} className="font-mono text-right text-text-dim">
+        {l.amortissement ? `(${montant(l.amortissement)})` : montant(l.amortissement)}
+      </span>
+      <span {...cellule('bilan', l.ref, 'N')} className="font-mono text-right">
+        {montant(l.montant)}
+      </span>
+      <span {...cellule('bilan', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+        {montant(l.montantN1)}
+      </span>
     </div>
   );
 
@@ -303,8 +335,12 @@ function EtatsSystemeNormalPage() {
     >
       <span className="font-mono text-[11px] text-text-dim">{l.ref}</span>
       <span>{l.libelle}</span>
-      <span className="font-mono text-right">{montant(l.montant)}</span>
-      <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+      <span {...cellule('bilan', l.ref, 'N')} className="font-mono text-right">
+        {montant(l.montant)}
+      </span>
+      <span {...cellule('bilan', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+        {montant(l.montantN1)}
+      </span>
     </div>
   );
 
@@ -576,8 +612,12 @@ function EtatsSystemeNormalPage() {
                 <div className="grid grid-cols-[46px_1fr_120px_120px] min-w-[500px] gap-2 px-4 py-2 bg-chrome border-t border-border-dark text-[11.5px] font-bold">
                   <span className="font-mono text-[11.5px]">XE</span>
                   <span>RÉSULTAT NET DE L'EXERCICE (+excédent, −déficit)</span>
-                  <span className="font-mono text-right">{montant(cr.resultatNet)}</span>
-                  <span className="font-mono text-right text-text-dim font-normal">{montant(cr.resultatNetN1)}</span>
+                  <span {...cellule('compte-de-resultat', 'XE', 'N')} className="font-mono text-right">
+                    {montant(cr.resultatNet)}
+                  </span>
+                  <span {...cellule('compte-de-resultat', 'XE', 'N1')} className="font-mono text-right text-text-dim font-normal">
+                    {montant(cr.resultatNetN1)}
+                  </span>
                 </div>
               </div>
 
@@ -1220,6 +1260,15 @@ function EtatsSystemeNormalPage() {
 
       {/* Encadré de signature · CPCC § 7.4 règle 7-b, imprimé uniquement. */}
       <BlocCertification />
+
+      {zoom && exerciceCourant && (
+        <FenetreOrigineMontant
+          source={{ type: 'etats', base: '/etats-financiers' }}
+          exerciceId={exerciceCourant.id}
+          cellule={zoom}
+          onFermer={() => setZoom(null)}
+        />
+      )}
     </div>
   );
 }

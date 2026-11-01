@@ -2699,3 +2699,77 @@ describe('NOTE 28 et 5F · transfert de dépréciation à la mise en service', (
     expect(r.notes.filter((n: any) => n.commentaireServi).map((n: any) => n.code)).toEqual(['28']);
   });
 });
+
+/**
+ * D'OÙ VIENT CE CHIFFRE, NOTES ANNEXES (ligne origine-des-montants) · le zoom
+ * de Sage 100 sur une ligne de note. TOUTES les lignes servies de TOUTES les
+ * notes des trois jeux, colonnes N et N-1, sur un jeu d'essai à deux
+ * exercices · la somme des contributions (ou des rubriques d'un total) doit
+ * refaire le montant de la ligne au centime, sinon la remontée justifierait
+ * un chiffre par d'autres comptes que ceux qui le font.
+ */
+describe("NoteAnnexeService.origineLigne · d'où vient ce chiffre", () => {
+  const BRUT: Array<[string, number, number, number, number]> = [
+    ['10100000', 0, 4_000_000, 0, 500_000], ['13100000', 0, 700_000, 0, 0], ['14100000', 0, 500_000, 100_000, 0],
+    ['16200000', 0, 800_000, 300_000, 450_000], ['18100000', 0, 600_000, 150_000, 200_000], ['19100000', 0, 50_000, 0, 30_000],
+    ['21100000', 250_000, 0, 40_000, 0], ['22100000', 1_000_000, 0, 0, 0], ['23100000', 1_800_000, 0, 400_000, 0],
+    ['24410000', 700_000, 0, 200_000, 80_000], ['27500000', 40_000, 0, 10_000, 0], ['28310000', 0, 400_000, 0, 90_000],
+    ['28440000', 0, 250_000, 50_000, 70_000], ['31100000', 200_000, 0, 60_000, 0], ['39100000', 0, 15_000, 0, 4_000],
+    ['40110000', 0, 500_000, 1_600_000, 1_800_000], ['40910000', 30_000, 0, 20_000, 0], ['41100000', 300_000, 0, 900_000, 700_000],
+    ['41200000', 400_000, 0, 1_200_000, 1_100_000], ['42200000', 0, 90_000, 600_000, 620_000], ['43100000', 0, 40_000, 150_000, 160_000],
+    ['44310000', 0, 70_000, 200_000, 230_000], ['44510000', 60_000, 0, 180_000, 160_000], ['47100000', 12_000, 0, 3_000, 0],
+    ['49100000', 0, 30_000, 0, 8_000], ['50100000', 90_000, 0, 30_000, 0], ['52100000', 900_000, 0, 3_000_000, 2_800_000],
+    ['57100000', 50_000, 0, 400_000, 380_000], ['60100000', 0, 0, 900_000, 10_000], ['60400000', 0, 0, 120_000, 0],
+    ['61000000', 0, 0, 45_000, 0], ['62200000', 0, 0, 130_000, 0], ['64100000', 0, 0, 35_000, 0], ['66100000', 0, 0, 600_000, 0],
+    ['67100000', 0, 0, 70_000, 0], ['68100000', 0, 0, 160_000, 0], ['70100000', 0, 0, 0, 1_100_000], ['70400000', 0, 0, 0, 700_000],
+    ['70110000', 0, 0, 0, 800_000], ['71100000', 0, 0, 0, 300_000], ['77100000', 0, 0, 0, 18_000], ['79100000', 0, 0, 0, 15_000],
+    ['81200000', 0, 0, 40_000, 0], ['82200000', 0, 0, 0, 60_000], ['89100000', 0, 0, 90_000, 0],
+  ];
+  const lignes = (f: number) =>
+    BRUT.map(([n, rd, rc, md, mc]) =>
+      ligne(n, `CLASSE_${n[0]}` as ClasseCompte, Math.round(md * f), Math.round(mc * f), [Math.round(rd * f), Math.round(rc * f)]),
+    );
+  const exercices = [
+    { id: 'e0', dateDebut: new Date('2025-01-01') },
+    { id: 'e1', dateDebut: new Date('2026-01-01') },
+  ];
+
+  it.each([
+    [JeuNotesAnnexes.ASSOCIATIONS_ORDRES_PROFESSIONNELS, 'notesAssociations'],
+    [JeuNotesAnnexes.PROJETS_DEVELOPPEMENT, 'notesProjet'],
+    [JeuNotesAnnexes.SYSCOHADA_SYSTEME_NORMAL, 'notesSyscohada'],
+  ] as const)('%s · toute ligne servie, colonnes N et N-1, refaite au centime', async (jeu, methode) => {
+    const s = service({ e0: lignes(0.8), e1: lignes(1) }, exercices);
+    const r = await (s as any)[methode]('t', 'e1');
+    let chiffres = 0;
+    for (const note of r.notes) {
+      for (let i = 0; i < note.lignes.length; i++) {
+        for (const colonne of ['N', 'N1'] as const) {
+          const o = await s.origineLigne('t', 'e1', jeu, note.code, note.sousTableau, i, colonne);
+          const contexte = `${note.code} ${note.sousTableau ?? ''} ligne ${i} ${colonne}`;
+          expect({ contexte, montant: o.montant }).toEqual({
+            contexte,
+            montant: colonne === 'N' ? note.lignes[i].montantN : (note.lignes[i].montantN1 ?? null),
+          });
+          if (o.nature === 'HORS_BALANCE' || o.montant === null) continue;
+          expect({ contexte, ecart: o.ecart }).toEqual({ contexte, ecart: 0 });
+          if (Math.abs(o.montant) > 0.005) chiffres++;
+        }
+      }
+    }
+    expect(chiffres).toBeGreaterThan(15);
+  });
+
+  it('un total se lit par ses rubriques, et une ligne hors de la note est introuvable', async () => {
+    const s = service({ e0: lignes(0.8), e1: lignes(1) }, exercices);
+    const r = await s.notesAssociations('t', 'e1');
+    const estTotalChiffre = (l: any) => l.estTotal && Math.abs(l.montantN) > 0.005 && !l.saisie;
+    const note = r.notes.find((n: any) => n.lignes.some(estTotalChiffre))!;
+    const rang = note.lignes.findIndex(estTotalChiffre);
+    const jeu = JeuNotesAnnexes.ASSOCIATIONS_ORDRES_PROFESSIONNELS;
+    const o = await s.origineLigne('t', 'e1', jeu, note.code, note.sousTableau, rang, 'N');
+    expect(o.nature).toBe('FORMULE');
+    expect(o.composants.length).toBeGreaterThan(0);
+    await expect(s.origineLigne('t', 'e1', jeu, note.code, note.sousTableau, 999, 'N')).rejects.toThrow();
+  });
+});

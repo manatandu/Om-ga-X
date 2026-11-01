@@ -33,6 +33,20 @@ import {
   trouverExerciceN1,
 } from '../etats-financiers/etats-financiers.communs';
 import {
+  ColonneOrigine,
+  EtatZoomable,
+  GroupeOrigine,
+  MOTIF_COLONNE_SANS_OBJET,
+  MOTIF_POSTE_INTROUVABLE,
+  OrigineDuMontant,
+  contributions,
+  groupe,
+  origineHorsBalance,
+  origineParComptes,
+  origineParFormule,
+  regleDesPrefixes,
+} from '../etats-financiers/origine-des-montants';
+import {
   BornesExercice,
   finDeJournee,
   memePeriodeExercicePrecedent,
@@ -50,6 +64,8 @@ import {
   PosteBilanDeBase,
   REF_RESULTAT_SYSCOHADA,
   REF_TRESORERIE_PASSIF_SYSCOHADA,
+  trouvePosteActifSyscohada,
+  trouvePostePassifSyscohada,
   TOTAUX_ACTIF_SYSCOHADA,
   TOTAUX_PASSIF_SYSCOHADA,
   TotalBilan,
@@ -78,6 +94,7 @@ import {
   TermeComptes,
   TermeFluxTresorerie,
   besoinsDuPoste,
+  trouvePosteFluxSyscohada,
 } from './correspondance-tft-syscohada';
 import {
   resultatEnInstanceAuBilan,
@@ -877,6 +894,24 @@ export class EtatsFinanciersSyscohadaService {
   }
 
   async bilan(tenantId: string, exerciceId: string, arreteAu?: string): Promise<BilanSyscohada> {
+    return (await this.bilanDetaille(tenantId, exerciceId, arreteAu)).etat;
+  }
+
+  /**
+   * Le bilan ET la résolution qui l'a calculé · la seconde sert la remontée
+   * d'un montant vers ses comptes (`origine`), lue sur les mêmes postes que
+   * l'état, jamais recalculée à part. Le bilan servi est inchangé.
+   */
+  private async bilanDetaille(
+    tenantId: string,
+    exerciceId: string,
+    arreteAu?: string,
+  ): Promise<{
+    etat: BilanSyscohada;
+    resolutionN: ResolutionBilan;
+    resolutionN1: ResolutionBilan | null;
+    exerciceN1Id: string | null;
+  }> {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     // Ch. 39 § 2.1.2, premier tiret · « le bilan à la fin de la période
     // intermédiaire concernée ET le bilan à la DATE DE CLÔTURE de l'exercice
@@ -968,7 +1003,7 @@ export class EtatsFinanciersSyscohadaService {
       'SYSCOHADA',
     );
 
-    return {
+    const etat: BilanSyscohada = {
       actif,
       passif,
       totalActif,
@@ -994,6 +1029,7 @@ export class EtatsFinanciersSyscohadaService {
       resultatAnterieurNonVireN1: nonVireN1,
       resultatEnInstance: resultatEnInstanceAuBilan(lignesN),
     };
+    return { etat, resolutionN, resolutionN1: comparatif.provenance ? resolutionN1 : null, exerciceN1Id };
   }
 
   // =========================================================================
@@ -1082,6 +1118,20 @@ export class EtatsFinanciersSyscohadaService {
     exerciceId: string,
     arreteAu?: string,
   ): Promise<CompteResultatSyscohada> {
+    return (await this.compteDeResultatDetaille(tenantId, exerciceId, arreteAu)).etat;
+  }
+
+  /** Le compte de résultat ET ses deux résolutions · même rôle que `bilanDetaille`. */
+  private async compteDeResultatDetaille(
+    tenantId: string,
+    exerciceId: string,
+    arreteAu?: string,
+  ): Promise<{
+    etat: CompteResultatSyscohada;
+    resN: ResolutionCompteResultat;
+    resN1: ResolutionCompteResultat | null;
+    exerciceN1Id: string | null;
+  }> {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     // Ch. 39 § 2.1.2, deuxième tiret · le compte de résultat d'une situation
     // intermédiaire porte TROIS colonnes : « le compte de résultat cumulé du
@@ -1158,7 +1208,7 @@ export class EtatsFinanciersSyscohadaService {
     const resultatNet = resN.montantsParRef.XI ?? 0;
     const ecart = resN.resultatToutesClassesDeGestion - resultatNet;
 
-    return {
+    const etat: CompteResultatSyscohada = {
       lignes,
       soldes: this.soldesNommes(resN.montantsParRef),
       soldesN1: exerciceN1Id ? this.soldesNommes(resN1.montantsParRef) : undefined,
@@ -1178,6 +1228,7 @@ export class EtatsFinanciersSyscohadaService {
         coherent: Math.abs(ecart) < 0.01,
       },
     };
+    return { etat, resN, resN1: exerciceN1Id ? resN1 : null, exerciceN1Id };
   }
 
   // =========================================================================
@@ -1590,6 +1641,20 @@ export class EtatsFinanciersSyscohadaService {
     exerciceId: string,
     arreteAu?: string,
   ): Promise<TableauFluxTresorerieSyscohada> {
+    return (await this.tableauFluxDetaille(tenantId, exerciceId, arreteAu)).etat;
+  }
+
+  /** Le tableau des flux ET ses deux résolutions, contexte des termes compris · même rôle que `bilanDetaille`. */
+  private async tableauFluxDetaille(
+    tenantId: string,
+    exerciceId: string,
+    arreteAu?: string,
+  ): Promise<{
+    etat: TableauFluxTresorerieSyscohada;
+    resN: ReturnType<EtatsFinanciersSyscohadaService['resoudreFluxPourExercice']>;
+    resN1: ReturnType<EtatsFinanciersSyscohadaService['resoudreFluxPourExercice']> | null;
+    exerciceN1Id: string | null;
+  }> {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
     const exerciceN2Id = exerciceN1Id ? await this.trouverExerciceN1(tenantId, exerciceN1Id) : null;
     // Ch. 39 § 2.1.2, quatrième tiret · « un tableau des flux de trésorerie
@@ -1725,7 +1790,7 @@ export class EtatsFinanciersSyscohadaService {
       vides: resN.nonCalcules,
     });
 
-    return {
+    const etat: TableauFluxTresorerieSyscohada = {
       lignes,
       exerciceN1Disponible: exerciceN1Id !== null,
       // Calculés sur N seulement : N-1 n'est qu'un comparatif d'affichage, pas
@@ -1757,5 +1822,264 @@ export class EtatsFinanciersSyscohadaService {
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
       controle,
     };
+    return { etat, resN, resN1, exerciceN1Id };
   }
+
+  // =========================================================================
+  // D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 (`origine-des-montants.ts`).
+  // Chaque origine se lit sur la résolution qui a calculé l'état servi
+  // (`bilanDetaille`, `compteDeResultatDetaille`, `tableauFluxDetaille`) ·
+  // mêmes lignes de balance, mêmes postes, mêmes termes. Rien n'est
+  // recalculé à part, et l'écart avec le montant affiché se dit.
+  // =========================================================================
+
+  async origine(
+    tenantId: string,
+    exerciceId: string,
+    etat: EtatZoomable,
+    ref: string,
+    colonne: ColonneOrigine,
+    arreteAu?: string,
+  ): Promise<OrigineDuMontant> {
+    if (etat === 'bilan') return this.origineBilan(tenantId, exerciceId, ref, colonne, arreteAu);
+    if (colonne === 'BRUT' || colonne === 'AMORTISSEMENT') throw new BadRequestException(MOTIF_COLONNE_SANS_OBJET);
+    if (etat === 'compte-de-resultat') return this.origineCompteDeResultat(tenantId, exerciceId, ref, colonne, arreteAu);
+    return this.origineFlux(tenantId, exerciceId, ref, colonne, arreteAu);
+  }
+
+  private async origineBilan(
+    tenantId: string,
+    exerciceId: string,
+    ref: string,
+    colonne: ColonneOrigine,
+    arreteAu?: string,
+  ): Promise<OrigineDuMontant> {
+    const d = await this.bilanDetaille(tenantId, exerciceId, arreteAu);
+    const ligne = [...d.etat.actif, ...d.etat.passif].find((l) => l.ref === ref);
+    if (!ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const actif = d.etat.actif.includes(ligne);
+    if ((colonne === 'BRUT' || colonne === 'AMORTISSEMENT') && !actif) throw new BadRequestException(MOTIF_COLONNE_SANS_OBJET);
+    const montant =
+      colonne === 'N'
+        ? ligne.montant
+        : colonne === 'N1'
+          ? (ligne.montantN1 ?? null)
+          : colonne === 'BRUT'
+            ? (ligne.brut ?? ligne.montant)
+            : (ligne.amortissement ?? 0);
+    const enTete = {
+      etat: 'bilan' as const,
+      ref,
+      libelle: ligne.libelle,
+      colonne,
+      montant,
+      // La colonne N-1 lit l'exercice précédent, ou l'ouverture de N quand il
+      // n'est pas tenu (`comparatifDuBilan`) · son grand livre est alors celui de N.
+      exerciceDesComptesId: colonne === 'N1' ? (d.exerciceN1Id ?? exerciceId) : exerciceId,
+      mention: colonne === 'N1' ? d.etat.mentionComparatif : mentionSituation(arreteAu),
+    };
+    const resolution = colonne === 'N1' ? d.resolutionN1 : d.resolutionN;
+    if (!resolution) {
+      return origineHorsBalance(
+        enTete,
+        d.etat.mentionComparatif ?? "Aucun exercice antérieur ni bilan d'ouverture dans le dossier : la colonne N-1 reste vide.",
+      );
+    }
+    const total = [...TOTAUX_ACTIF_SYSCOHADA, ...TOTAUX_PASSIF_SYSCOHADA].find((t) => t.ref === ref);
+    if (total) {
+      return origineParFormule(
+        { ...enTete, formule: `Somme ${total.deRefs.join(' + ')}` },
+        total.deRefs.map((r) => {
+          const p = resolution.parRef.get(r)!;
+          const valeur =
+            colonne === 'BRUT' ? (p.brut ?? p.montant) : colonne === 'AMORTISSEMENT' ? (p.amortissement ?? 0) : p.montant;
+          return { ref: r, libelle: p.libelle, signe: 1 as const, montant: valeur };
+        }),
+      );
+    }
+    const p = resolution.parRef.get(ref)!;
+    if (ref === REF_RESULTAT_SYSCOHADA) {
+      const du13 = p.comptes.filter((c) => correspond(c.numero, COMPTES_RESULTAT_SYSCOHADA));
+      const deGestion = p.comptes.filter((c) => !correspond(c.numero, COMPTES_RESULTAT_SYSCOHADA));
+      return origineParComptes(
+        {
+          ...enTete,
+          regle: "Compte 13 (130 à 139) et classes 6 à 8 lues avant l'écriture qui solde la gestion · les deux sources s'additionnent",
+        },
+        [
+          groupe('Compte 13', 'Crédit − débit', contributions(du13)),
+          groupe('Classes 6 à 8', 'Crédit − débit, avant le solde des comptes de gestion', contributions(deGestion)),
+        ],
+      );
+    }
+    const posteActif = trouvePosteActifSyscohada(ref);
+    if (posteActif && actif) {
+      const brutNumeros = new Set(p.comptesBrut.map((c) => c.numero));
+      const brut = p.comptes.filter((c) => brutNumeros.has(c.numero));
+      const amort = p.comptes.filter((c) => !brutNumeros.has(c.numero));
+      const regle =
+        `Brut · ${regleDesPrefixes(posteActif.comptes, posteActif.exclusions, posteActif.sens_qualificatif)}` +
+        (posteActif.comptesAmortissement
+          ? ` ; amortissements et dépréciations · ${regleDesPrefixes(posteActif.comptesAmortissement, posteActif.exclusionsAmortissement)}`
+          : '') +
+        (posteActif.comptesTransferesSiCrediteur
+          ? ` ; ${posteActif.comptesTransferesSiCrediteur.join(', ')} créditeurs portés au passif (${REF_TRESORERIE_PASSIF_SYSCOHADA})`
+          : '');
+      const groupes: GroupeOrigine[] =
+        colonne === 'BRUT'
+          ? [groupe('Brut', 'Solde débit − crédit', contributions(brut))]
+          : colonne === 'AMORTISSEMENT'
+            ? [groupe('Amortissements et dépréciations', 'Solde crédit − débit', contributions(amort, -1))]
+            : [
+                groupe('Brut', 'Solde débit − crédit', contributions(brut)),
+                groupe('Amortissements et dépréciations', 'Solde débit − crédit, en déduction du brut', contributions(amort)),
+              ];
+      return origineParComptes({ ...enTete, regle }, groupes);
+    }
+    const postePassif = trouvePostePassifSyscohada(ref);
+    const regle = postePassif
+      ? regleDesPrefixes(postePassif.comptes, postePassif.exclusions, postePassif.sens_qualificatif) +
+        (ref === REF_TRESORERIE_PASSIF_SYSCOHADA
+          ? ` ; et ${COMPTES_TRESORERIE_PASSIF_SI_CREDITEUR_SYSCOHADA.join(', ')} créditeurs`
+          : '')
+      : null;
+    return origineParComptes({ ...enTete, regle }, [
+      groupe('Comptes du poste', 'Solde crédit − débit', contributions(p.comptes)),
+    ]);
+  }
+
+  private async origineCompteDeResultat(
+    tenantId: string,
+    exerciceId: string,
+    ref: string,
+    colonne: ColonneOrigine,
+    arreteAu?: string,
+  ): Promise<OrigineDuMontant> {
+    const d = await this.compteDeResultatDetaille(tenantId, exerciceId, arreteAu);
+    const ligne = d.etat.lignes.find((l) => l.ref === ref);
+    if (!ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const enTete = {
+      etat: 'compte-de-resultat' as const,
+      ref,
+      libelle: ligne.libelle,
+      colonne,
+      montant: colonne === 'N' ? ligne.montant : (ligne.montantN1 ?? null),
+      exerciceDesComptesId: colonne === 'N1' ? d.exerciceN1Id : exerciceId,
+      mention: colonne === 'N' ? mentionSituation(arreteAu) : null,
+    };
+    const res = colonne === 'N1' ? d.resN1 : d.resN;
+    if (!res) {
+      return origineHorsBalance(
+        enTete,
+        d.etat.motifComparatifAbsent ?? "Aucun exercice antérieur dans le dossier : la colonne N-1 reste vide, ce n'est pas un zéro.",
+      );
+    }
+    const solde = trouveSoldeIntermediaire(ref);
+    if (solde) {
+      return origineParFormule(
+        { ...enTete, formule: solde.formuleOfficielle },
+        solde.deRefs.map((r) => ({
+          ref: r,
+          libelle: trouveSoldeIntermediaire(r)?.libelle ?? trouvePosteCompteResultat(r)?.libelle ?? r,
+          signe: 1 as const,
+          montant: res.montantsParRef[r] ?? 0,
+        })),
+      );
+    }
+    const poste = trouvePosteCompteResultat(ref)!;
+    return origineParComptes({ ...enTete, regle: `${regleDesPrefixes(poste.comptes)} · le préfixe le plus long l'emporte` }, [
+      groupe('Comptes du poste', 'Crédit − débit, une charge ressort négative', contributions(res.comptesParRef.get(ref) ?? [])),
+    ]);
+  }
+
+  private async origineFlux(
+    tenantId: string,
+    exerciceId: string,
+    ref: string,
+    colonne: ColonneOrigine,
+    arreteAu?: string,
+  ): Promise<OrigineDuMontant> {
+    const d = await this.tableauFluxDetaille(tenantId, exerciceId, arreteAu);
+    const ligne = d.etat.lignes.find((l): l is LigneFluxSyscohada => 'ref' in l && l.ref === ref);
+    if (!ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const res = colonne === 'N1' ? d.resN1 : d.resN;
+    const vide = !res || res.nonCalcules.has(ref);
+    const reserves = (colonne === 'N1' ? d.etat.postesNonCalculablesN1 : d.etat.postesNonCalculables)
+      .filter((x) => x.ref === ref)
+      .map((x) => x.raison);
+    const enTete = {
+      etat: 'tableau-flux-tresorerie' as const,
+      ref,
+      libelle: ligne.libelle,
+      colonne,
+      montant: colonne === 'N' ? (vide ? null : ligne.montant) : (ligne.montantN1 ?? null),
+      exerciceDesComptesId: colonne === 'N1' ? d.exerciceN1Id : exerciceId,
+      mention: MENTION_VARIATION,
+    };
+    if (!res) {
+      return origineHorsBalance(enTete, "Aucun exercice antérieur dans le dossier : la colonne N-1 reste vide, ce n'est pas un zéro.");
+    }
+    const total = TOTAUX_FLUX_SYSCOHADA.find((t) => t.ref === ref);
+    if (vide && !total) return origineHorsBalance(enTete, reserves.join(' ') || 'Poste laissé vide par le tableau.');
+    if (total) {
+      return origineParFormule(
+        { ...enTete, formule: total.libelle },
+        total.deRefs.map((r) => ({
+          ref: r,
+          libelle: res.parRef.get(r)?.libelle ?? r,
+          signe: 1 as const,
+          montant: res.nonCalcules.has(r) ? null : (res.parRef.get(r)?.montant ?? 0),
+        })),
+      );
+    }
+    const poste = trouvePosteFluxSyscohada(ref)!;
+    return origineParComptes(
+      { ...enTete, regle: poste.note ?? null, mention: [MENTION_VARIATION, ...reserves].join(' ') },
+      poste.termes.map((terme) =>
+        groupe(titreDuTerme(terme), lectureDuTerme(terme), contributions(this.evaluerTerme(terme, res.ctx)), terme.motif),
+      ),
+    );
+  }
+}
+
+const MENTION_VARIATION =
+  "Une variation lit, compte par compte, le solde de clôture moins le solde d'ouverture · le grand livre ouvert est celui de l'exercice de la colonne.";
+
+/** La situation intermédiaire, dite au-dessus des comptes · le grand livre, lui, porte tout l'exercice. */
+function mentionSituation(arreteAu?: string): string | null {
+  return arreteAu
+    ? `Situation arrêtée au ${arreteAu.split('-').reverse().join('/')} · le grand livre ouvert porte l'exercice entier.`
+    : null;
+}
+
+const LECTURE_POSTE: Record<string, string> = { N: 'exercice N', N1: 'exercice N-1', VARIATION: 'écart N − N-1' };
+const LECTURE_COMPTES: Record<string, string> = {
+  SOLDE_GESTION: "Crédit − débit de l'exercice",
+  MOUVEMENT_DEBIT: "Mouvements débit de l'exercice, report exclu",
+  MOUVEMENT_CREDIT: "Mouvements crédit de l'exercice, report exclu",
+  VARIATION_SOLDE: 'Solde N moins solde N-1',
+};
+
+/** Le terme tel que la table l'écrit · le signe et ce qu'il lit. */
+function titreDuTerme(terme: TermeFluxTresorerie): string {
+  const signe = terme.signe === 1 ? '+' : '−';
+  if (terme.poste) {
+    const etat = terme.poste.etat === 'BILAN' ? 'bilan' : 'compte de résultat';
+    const brut = terme.poste.colonne === 'BRUT' ? ', colonne Brut' : '';
+    return `${signe} ${terme.poste.ref} du ${etat}${brut}`;
+  }
+  return `${signe} ${regleDesPrefixes(terme.comptes!.prefixes, terme.comptes!.exclusions)}`;
+}
+
+function lectureDuTerme(terme: TermeFluxTresorerie): string {
+  if (terme.poste) return `Poste lu sur ${LECTURE_POSTE[terme.poste.lecture]}`;
+  const c = terme.comptes!;
+  const sens = c.sensSolde === 'CREDITEUR' ? ', soldes créditeurs' : c.sensSolde === 'DEBITEUR' ? ', soldes débiteurs' : '';
+  const liaison =
+    c.liaison === 'REEVALUATION'
+      ? ', écriture de réévaluation du module seule'
+      : c.liaison === 'TRANSFERT_GROUPE'
+        ? ', transferts dans le groupe seuls'
+        : '';
+  return `${LECTURE_COMPTES[c.lecture]}${sens}${liaison}`;
 }

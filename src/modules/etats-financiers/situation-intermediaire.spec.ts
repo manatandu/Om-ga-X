@@ -154,12 +154,17 @@ describe('la borne traverse tout le chemin, de la balance aux trois états', () 
     // sur le fichier entier passerait au vert grâce à la ligne d'une autre,
     // ce qui a laissé survivre une mutation à la première écriture de ce test.
     const corps = (nom: string) => {
-      const debut = etats.indexOf(`async ${nom}(`);
+      const debut = etats.indexOf(`private async ${nom}(`);
       expect(debut).toBeGreaterThan(0);
-      const fin = etats.indexOf('\n  }', debut);
+      // La fin du CORPS, accolade seule sur sa ligne · le type de retour de la
+      // version détaillée se ferme aussi par « }> {».
+      const fin = etats.indexOf('\n  }\n', debut);
       return etats.slice(debut, fin);
     };
-    for (const nom of ['bilan', 'compteDeResultat', 'tableauFluxTresorerie']) {
+    // Le corps vit dans la version DÉTAILLÉE de chaque état, que la route de
+    // l'état et la remontée d'un montant (ligne origine-des-montants) lisent
+    // toutes deux · la route de l'état n'en rend que l'état.
+    for (const nom of ['bilanDetaille', 'compteDeResultatDetaille', 'tableauFluxDetaille']) {
       const bloc = corps(nom);
       expect([nom, bloc.includes('this.chargerLignes(tenantId, exerciceId, borneN)')]).toEqual([nom, true]);
       // La colonne comparative de RÉFÉRENCE n'est jamais bornée par borneN.
@@ -169,7 +174,8 @@ describe('la borne traverse tout le chemin, de la balance aux trois états', () 
   });
 
   it('les trois routes exposent la date, et une seule des trois ouvre la colonne comparative', () => {
-    expect((controleur.match(/@Query\('arreteAu'\) arreteAu\?: string/g) ?? [])).toHaveLength(3);
+    // Trois états, plus la remontée d'un de leurs montants, qui lit la même situation.
+    expect((controleur.match(/@Query\('arreteAu'\) arreteAu\?: string/g) ?? [])).toHaveLength(4);
     expect(etats).toContain('borneMemePeriodeN1');
   });
 });

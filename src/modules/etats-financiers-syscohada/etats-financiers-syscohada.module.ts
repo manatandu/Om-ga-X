@@ -8,6 +8,7 @@ import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
 import { ExerciceModule } from '../exercice/exercice.module';
 import { NotesAnnexesModule } from '../notes-annexes/notes-annexes.module';
+import { ComptesDuZoomService } from '../etats-financiers/comptes-du-zoom.service';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · module distinct de
@@ -33,6 +34,8 @@ import { NotesAnnexesModule } from '../notes-annexes/notes-annexes.module';
   providers: [
     EtatsFinanciersSyscohadaService,
     EtatsFinanciersSmtSyscohadaService,
+    // Les identifiants des comptes cités par la remontée d'un montant.
+    ComptesDuZoomService,
     // Lus par la clôture, qui refuse un bilan déséquilibré (common/lecteurs-bilan.ts).
     { provide: LECTEUR_BILAN_SYSCOHADA_NORMAL, useExisting: EtatsFinanciersSyscohadaService },
     { provide: LECTEUR_BILAN_SYSCOHADA_SMT, useExisting: EtatsFinanciersSmtSyscohadaService },
