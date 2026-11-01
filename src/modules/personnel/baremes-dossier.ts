@@ -111,8 +111,10 @@ export function lireValeurs(
     // borne : au-delà de dix fois le SMIG livré, c'est une autre unité.
     const x = v.smigJournalierFc;
     const plafond = ANNEXES[ANNEXES.length - 1].smigJournalierFc * 10;
-    if (typeof x !== 'number' || !Number.isFinite(x) || x <= 0 || x > plafond) {
-      return { ok: false, motif: `SMIG · le taux JOURNALIER du manœuvre ordinaire, en francs, strictement positif et au plus ${plafond} FC · un montant mensuel se divise par 26 (décret n° 25/22, art. 7).` };
+    // Au centime (second tour du paquet 1, ligne C, m2) · un taux saisi à
+    // trois décimales s'arrondissait en silence dans la grille.
+    if (typeof x !== 'number' || !Number.isFinite(x) || x <= 0 || x > plafond || Math.round(x * 100) / 100 !== x) {
+      return { ok: false, motif: `SMIG · le taux JOURNALIER du manœuvre ordinaire, en francs au centime, strictement positif et au plus ${plafond} FC · un montant mensuel se divise par 26 (décret n° 25/22, art. 7).` };
     }
     return { ok: true, valeurs: { smigJournalierFc: x } };
   }
