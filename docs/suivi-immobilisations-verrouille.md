@@ -193,6 +193,18 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **PAQUET 1, LIGNES A, B ET C · RELEVÉS TRAITÉS (gel levé le 2026-11-01,
+  ligne `releves-paquet1`).** Les trois entrées « PAQUET 1, LIGNE A, B, C »
+  ci-dessous sont traitées · B7 (bilan d'ouverture importé comme origine,
+  la pièce réelle de N-1 cherchée d'abord quand N-1 est tenu et clôturé),
+  mineurs de B, M1 à M4, m2, m3 de C, MAJEUR et mineurs 3 à 5 de A, et les
+  voisins A4, A7, A9, A10, m2, G1, chacun avec son test et le rejeu sur
+  vraie base de 2024 à 2026 ; plus, en relecture, le PV de caisse à écart
+  refusé en arbitrage sur une caisse sans fiche. RESTENT · A3 (comparatif
+  du compte de résultat lu sur l'ouverture, aucun texte pour le compte de
+  résultat) et A6 (proposer le virement au 130), questions ouvertes ; les
+  limites écrites du BLOQUANT 1, gardées.
+
 - **MAJEURS DE LA SIMULATION TRAITÉS (gel levé le 2026-11-01, ligne
   `releves-simulation-majeurs`).** G2, SMT D2, F D2 K1, F D3, MAG-LIEN,
   H D1, PA1, J1 et J2 ci-dessous sont corrigés, chacun avec son test et le
