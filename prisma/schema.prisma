@@ -568,6 +568,12 @@ model Tenant {
   // par être confondu avec un vrai, et c'est la remise à zéro qui se
   // tromperait de cible.
   estDemonstration Boolean @default(false)
+  /// Relevé H D1 de la simulation du 2026-10-08 · l'instant où le garnissage
+  /// de la vitrine a commencé, tant qu'il dure (`plateforme.service.ts`,
+  /// `sousVerrouDeGarnissage`). Un second « Ouvrir » pendant le garnissage le
+  /// doublait (écritures au brouillard en double, 500) · il reçoit un 409. Au
+  /// delà de trente minutes, un garnissage tombé se reprend.
+  garnissageDemonstrationDepuis DateTime?
 
   /// L'ACCEPTATION DES CONDITIONS DE LICENCE (ligne pages-legales,
   /// 2026-10-15) · Code du numérique (ordonnance-loi n° 23/10 du 13 mars

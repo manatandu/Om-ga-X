@@ -39,11 +39,17 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   au débit (entrée) ou au crédit (sortie), et que la valeur des mouvements
   liés à elle sur ce compte et ce sens (sortie valorisée par la méthode) ne
   dépasse pas ce qu'elle y porte.
+- H D1 · verrou du garnissage de la vitrine (`Tenant.garnissageDemonstrationDepuis`,
+  migration `20270247000000_verrou_garnissage_demonstration`, diff vérifié),
+  pris au marquage ou à la reprise, rendu en `finally` ; un second « Ouvrir »
+  reçoit un 409 qui dit depuis quand ; tombé, repris après trente minutes.
 
 ## Reste
 
  MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
+
+- `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url <base jetable> --exit-code`
 
 - `npx tsc --noEmit`, `npx jest`, `npm run build` (racine et `client/`).

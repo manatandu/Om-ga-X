@@ -21,13 +21,19 @@ const TOUS_LES_MODULES = ['PAIE', 'REVISION', 'GESTION_COMMERCIALE', 'CONSOLIDAT
 
 type Faux = Record<string, unknown>;
 
-function service(options: { existant?: unknown; garnissage?: unknown; valideesExistant?: number } = {}) {
+function service(options: { existant?: unknown; garnissage?: unknown; valideesExistant?: number; verrouTenu?: boolean } = {}) {
   const tenantUpdate = jest.fn().mockResolvedValue({});
+  // Relevé H D1 · le verrou du garnissage, pris par une mise à jour conditionnelle.
+  const tenantUpdateMany = jest.fn(async ({ data }: { data: { garnissageDemonstrationDepuis: Date | null } }) => ({
+    count: data.garnissageDemonstrationDepuis !== null && options.verrouTenu ? 0 : 1,
+  }));
   const userUpdateMany = jest.fn().mockResolvedValue({});
   const prisma = {
     tenant: {
       findFirst: jest.fn().mockResolvedValue(options.existant ?? null),
+      findUnique: jest.fn().mockResolvedValue({ garnissageDemonstrationDepuis: new Date('2026-11-01T10:00:00Z') }),
       update: tenantUpdate,
+      updateMany: tenantUpdateMany,
     },
     // Les écritures VALIDÉES de la vitrine existante · la doublure honore le
     // statut demandé, sans quoi un comptage de tout le brouillard passerait.
@@ -45,6 +51,7 @@ function service(options: { existant?: unknown; garnissage?: unknown; valideesEx
     prisma,
     authService,
     tenantUpdate,
+    tenantUpdateMany,
     userUpdateMany,
   };
 }
@@ -58,14 +65,23 @@ describe("l'ouverture du dossier de démonstration", () => {
     // remise à zéro effacerait.
     const { service: s, tenantUpdate } = service();
     await s.preparerDossierDemonstration(DTO);
-    expect(tenantUpdate.mock.calls[0][0].data).toEqual({ estDemonstration: true, modulesActives: TOUS_LES_MODULES });
+    expect(tenantUpdate.mock.calls[0][0].data).toEqual({
+      estDemonstration: true,
+      garnissageDemonstrationDepuis: expect.any(Date),
+      modulesActives: TOUS_LES_MODULES,
+    });
   });
 
   it('une SARL au SYSCOHADA · système normal, forme SARL', async () => {
     const { service: s, tenantUpdate, authService } = service();
     await s.preparerDossierDemonstration({ ...DTO, referentiel: 'SYSCOHADA' as never });
     expect((authService.register as jest.Mock).mock.calls[0][0]).toMatchObject({ referentiel: 'SYSCOHADA', systemeComptableSyscohada: 'NORMAL' });
-    expect(tenantUpdate.mock.calls[0][0].data).toEqual({ estDemonstration: true, formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE', modulesActives: TOUS_LES_MODULES });
+    expect(tenantUpdate.mock.calls[0][0].data).toEqual({
+      estDemonstration: true,
+      garnissageDemonstrationDepuis: expect.any(Date),
+      formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE',
+      modulesActives: TOUS_LES_MODULES,
+    });
   });
 
   it('le dossier naît garni, par l’utilisateur du dossier lui-même', async () => {
@@ -134,6 +150,31 @@ describe("l'ouverture du dossier de démonstration", () => {
     expect(authService.register).not.toHaveBeenCalled();
     expect(r).toMatchObject({ tenantId: 't1', repris: true, email: 'demo@exemple.cd', garni: { tiers: 4, ecritures: 9 } });
     expect(r.rappel).toContain('ceux saisis maintenant ne sont pas repris');
+  });
+
+  it('relevé H D1 · un second « Ouvrir » pendant le garnissage reçoit un 409, sans garnir une seconde fois', async () => {
+    const garnissage = { garnir: jest.fn() };
+    const { service: s, tenantUpdateMany } = service({
+      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@exemple.cd' }] },
+      garnissage,
+      valideesExistant: 0,
+      verrouTenu: true,
+    });
+    await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow(/en cours depuis 2026-11-01T10:00:00.000Z/);
+    expect(garnissage.garnir).not.toHaveBeenCalled();
+    // Le verrou se prend sur la seule vitrine, libre ou tombé depuis trente minutes.
+    expect(tenantUpdateMany.mock.calls[0][0]).toMatchObject({ where: { id: 't1', OR: [{ garnissageDemonstrationDepuis: null }, expect.anything()] } });
+  });
+
+  it('relevé H D1 · le verrou est rendu après le garnissage, même en échec', async () => {
+    const garnissage = { garnir: jest.fn().mockRejectedValue(new Error('panne')) };
+    const { service: s, tenantUpdateMany } = service({
+      existant: { id: 't1', nom: 'Démo OmegaX', users: [{ email: 'demo@exemple.cd' }] },
+      garnissage,
+      valideesExistant: 0,
+    });
+    await expect(s.preparerDossierDemonstration(DTO)).rejects.toThrow('panne');
+    expect(tenantUpdateMany.mock.calls.at(-1)![0]).toEqual({ where: { id: 't1' }, data: { garnissageDemonstrationDepuis: null } });
   });
 
   it('une vitrine garnie (écritures validées) n’est pas regarnie · la seconde reste refusée', async () => {

@@ -35,6 +35,9 @@ export const MOTIF_SUR_SITE_NON_ATTRIBUABLE =
 export const MOTIF_RATTACHEMENT_PAR_LA_CONSOLE =
   "La console ne rattache pas à un groupe un dossier qui existe déjà · le dossier mère lirait sa balance sans aucun geste du cabinet client, et l'éditeur ne voit jamais les informations d'un client. Une cellule se crée rattachée (création du cabinet, ou « Nouvelle cellule » du siège) ; un rattachement se détache toujours."
 
+/** Relevé H D1 · au-delà, un garnissage de vitrine tombé se reprend (convention d'OmegaX). */
+const DUREE_VERROU_GARNISSAGE_MS = 30 * 60_000;
+
 @Injectable()
 export class PlateformeService implements OnModuleInit {
   private readonly logger = new Logger(PlateformeService.name);
@@ -799,7 +802,7 @@ export class PlateformeService implements OnModuleInit {
       // est une vitrine dont le garnissage n'a pas abouti. Elle était marquée,
       // donc introuvable à côté et impossible à refaire · on reprend son
       // garnissage, qui ne recrée rien de ce qui existe.
-      const repris = await this.reprendreGarnissage(existant.id);
+      const repris = await this.sousVerrouDeGarnissage(existant.id, () => this.reprendreGarnissage(existant.id));
       if (repris) {
         this.logger.log(`Garnissage du dossier de démonstration repris · ${existant.nom}`);
         return {
@@ -838,6 +841,11 @@ export class PlateformeService implements OnModuleInit {
         where: { id: resultat.tenant.id },
         data: {
           estDemonstration: true,
+          // LE VERROU DU GARNISSAGE EST PRIS AU MARQUAGE (relevé H D1) · un
+          // second « Ouvrir » ne trouve la vitrine qu'une fois marquée, et la
+          // trouve alors déjà tenue · il n'y a pas d'instant où elle soit
+          // visible et libre.
+          garnissageDemonstrationDepuis: new Date(),
           // LA VITRINE MONTRE TOUT · un dossier neuf part sans les modules
           // optionnels, la démonstration les a tous (`tenant/modules-optionnels.ts`).
           modulesActives: [...MODULES_OPTIONNELS],
@@ -856,13 +864,17 @@ export class PlateformeService implements OnModuleInit {
     // GARNI · par les chemins ordinaires de saisie, dans le dossier qui vient
     // de naître et qui n'est pas celui de la session de l'opérateur.
     let garni: { tiers: number; ecritures: number } | null = null;
-    if (this.garnissage) {
-      const garnissage = this.garnissage;
-      garni = await horsCloisonnement('console · garnissage du dossier de démonstration', async () => {
-        const auteur = await this.prisma.user.findFirstOrThrow({ where: { tenantId: resultat.tenant.id }, select: { id: true } });
-        const r = await garnissage.garnir(resultat.tenant.id, auteur.id);
-        return { tiers: r.tiers, ecritures: r.ecritures };
-      });
+    try {
+      if (this.garnissage) {
+        const garnissage = this.garnissage;
+        garni = await horsCloisonnement('console · garnissage du dossier de démonstration', async () => {
+          const auteur = await this.prisma.user.findFirstOrThrow({ where: { tenantId: resultat.tenant.id }, select: { id: true } });
+          const r = await garnissage.garnir(resultat.tenant.id, auteur.id);
+          return { tiers: r.tiers, ecritures: r.ecritures };
+        });
+      }
+    } finally {
+      await this.libererVerrouDeGarnissage(resultat.tenant.id);
     }
 
     this.logger.log(`Dossier de démonstration ouvert · ${dto.email}`);
@@ -879,6 +891,63 @@ export class PlateformeService implements OnModuleInit {
         "Ce dossier est une vitrine : ses écritures doivent rester fictives, et son adresse comme son mot de passe " +
         'sont destinés à figurer dans un formulaire de soumission public.',
     };
+  }
+
+  /**
+   * UN SEUL GARNISSAGE À LA FOIS PAR VITRINE (relevé H D1 de la simulation du
+   * 2026-10-08). Un second « Ouvrir » pendant le garnissage voyait une vitrine
+   * sans écriture validée, la croyait interrompue et la garnissait en même
+   * temps · écritures au brouillard en double, puis un 500 sur le code d'un
+   * tiers déjà créé. Le verrou est une colonne de la vitrine, prise par une
+   * mise à jour conditionnelle (aucune connexion retenue pendant le
+   * garnissage, qui passe par les chemins ordinaires de saisie) ; au-delà de
+   * `DUREE_VERROU_GARNISSAGE_MS`, convention d'OmegaX, un garnissage tombé se
+   * reprend. Le second geste reçoit un 409 qui dit depuis quand.
+   */
+  private async sousVerrouDeGarnissage<T>(tenantId: string, faire: () => Promise<T>): Promise<T> {
+    const maintenant = new Date();
+    const pris = await horsCloisonnement('console · verrou du garnissage de la vitrine', () =>
+      this.prisma.tenant.updateMany({
+        where: {
+          id: tenantId,
+          OR: [
+            { garnissageDemonstrationDepuis: null },
+            { garnissageDemonstrationDepuis: { lt: new Date(maintenant.getTime() - DUREE_VERROU_GARNISSAGE_MS) } },
+          ],
+        },
+        data: { garnissageDemonstrationDepuis: maintenant },
+      }),
+    );
+    if (pris.count === 0) {
+      const tenu = await horsCloisonnement('console · verrou du garnissage de la vitrine', () =>
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { garnissageDemonstrationDepuis: true } }),
+      );
+      throw new ConflictException(
+        'Le garnissage de cette vitrine est en cours' +
+          (tenu?.garnissageDemonstrationDepuis ? ` depuis ${tenu.garnissageDemonstrationDepuis.toISOString()}` : '') +
+          ' · attendez qu’il s’achève. S’il a été interrompu, « Ouvrir » le reprend une fois passées trente minutes.',
+      );
+    }
+    try {
+      return await faire();
+    } finally {
+      await this.libererVerrouDeGarnissage(tenantId);
+    }
+  }
+
+  /** Retire le verrou · un échec est consigné et ne masque jamais l'issue du garnissage. */
+  private async libererVerrouDeGarnissage(tenantId: string): Promise<void> {
+    try {
+      await horsCloisonnement('console · verrou du garnissage de la vitrine', () =>
+        this.prisma.tenant.updateMany({ where: { id: tenantId }, data: { garnissageDemonstrationDepuis: null } }),
+      );
+    } catch (erreur) {
+      this.logger.error(
+        `Verrou du garnissage de la vitrine ${tenantId} non retiré · il tombera de lui-même après trente minutes (${
+          erreur instanceof Error ? erreur.message : String(erreur)
+        })`,
+      );
+    }
   }
 
   /**
