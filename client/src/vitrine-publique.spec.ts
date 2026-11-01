@@ -110,7 +110,11 @@ describe('l’essai ne s’annonce que sur une porte lue ouverte', () => {
     // Une lecture qui échoue est tue, jamais lue comme « ouverte ».
     expect(js).toMatch(/\.catch\(function \(\) \{[^}]*\}\)/);
     // Une lecture ne porte ni Content-Type ni jeton CSRF (CLAUDE.md § 6, temps de chargement).
-    expect(js).not.toMatch(/Content-Type|X-CSRF-Token/i);
+    const lecture = js.slice(js.indexOf("fetch('/api/auth/inscription-essai/etat'"), js.indexOf('.then', js.indexOf("fetch('/api/auth/inscription-essai/etat'")));
+    expect(lecture).toContain("method: 'GET'");
+    expect(lecture).not.toMatch(/Content-Type|X-CSRF-Token/i);
+    // La page n'a aucune session · aucun jeton CSRF nulle part.
+    expect(js).not.toMatch(/X-CSRF-Token/i);
   });
 
   it('le texte par défaut ne promet aucune durée : la durée vient de la lecture', () => {
@@ -307,6 +311,11 @@ describe('le mouvement sert la lecture et se coupe', () => {
   });
 
   it('rien n’est caché sans script, sauf les contrôles interactifs (sinon des boutons sans effet)', () => {
+    // L'envoi de la demande part caché ET désactivé · sans script, Entrée dans un champ ne poste
+    // rien (un envoi natif écrirait les champs dans l'adresse de la page), et la page le dit.
+    expect(html).toMatch(/id="demande-envoyer" hidden disabled>/);
+    expect(html).toMatch(/<form class="demande" id="demande-form" action="#" method="post" novalidate>/);
+    expect(html).toContain('id="demande-sans-script"');
     expect(html).toMatch(/id="valider" hidden/);
     expect(html).toMatch(/id="remettre" hidden/);
     expect(html.match(/ readonly>/g)!.length).toBe(2);
@@ -345,5 +354,61 @@ describe('le mouvement sert la lecture et se coupe', () => {
     for (const n of new Set([...fig.matchAll(/class="code">(\d+)</g)].map((m) => m[1]))) {
       for (const s of semis) expect(s).toContain(`'${n.padEnd(8, '0')}'`);
     }
+  });
+});
+
+describe('la demande d’information (ligne commercial-site)', () => {
+  const serveur = (f: string) => lire(f);
+  const dto = serveur('src/modules/demande-information/demande-information.dto.ts');
+  const service = serveur('src/modules/demande-information/demande-information.service.ts');
+  const controleur = serveur('src/modules/demande-information/demande-information.controller.ts');
+
+  it('la page poste en JSON à la route publique du serveur, sans session', () => {
+    expect(controleur).toContain("@Controller('demandes')");
+    expect(controleur).toContain("@Post('information')");
+    expect(controleur).toMatch(/@Throttle\(/);
+    expect(js).toContain("window.fetch('/api/demandes/information'");
+    expect(js).toContain("method: 'POST'");
+    expect(js).toContain("'Content-Type': 'application/json'");
+    expect(js).toContain("credentials: 'omit'");
+  });
+
+  it('les champs de la page sont ceux du DTO, et le consentement est une case à cocher', () => {
+    for (const nom of ['nom', 'organisation', 'email', 'telephone', 'message', 'consentement']) {
+      expect(html).toContain(`name="${nom}"`);
+      expect(dto).toMatch(new RegExp(`\\b${nom}[!?]:`));
+    }
+    expect(html).toMatch(/<input id="d-consentement" name="consentement" type="checkbox" required>/);
+    expect(dto).toMatch(/@Equals\(true/);
+    // Les longueurs de la page sont celles du serveur.
+    expect(html).toMatch(/id="d-nom"[^>]*maxlength="120"/);
+    expect(html).toMatch(/id="d-organisation"[^>]*maxlength="160"/);
+    expect(html).toMatch(/id="d-message"[^>]*maxlength="3000"/);
+    expect(dto).toContain('MaxLength(3000');
+  });
+
+  it('chaque champ a son étiquette', () => {
+    for (const m of html.matchAll(/<(?:input|textarea) id="(d-[a-z]+)"/g)) expect(html).toContain(`<label for="${m[1]}"`);
+  });
+
+  it('la page dit ce qui arrive après l’envoi, sans promettre de délai, et rend le motif d’un 503', () => {
+    const reponse = service.match(/REPONSE_DEMANDE_RECUE =\s*"([^"]+)"/)?.[1] ?? '';
+    expect(reponse).toContain('vous répondra à l');
+    for (const t of [reponse, html.slice(html.indexOf('id="demande"'), html.indexOf('</section>', html.indexOf('id="demande"')))]) {
+      expect(t).not.toMatch(/sous \d|\d+\s*(heures?|jours?)|rapidement|dans les plus brefs/i);
+    }
+    expect(js).toContain('j.message');
+    expect(js).toContain('motifDuServeur(r, j)');
+    expect(service).toContain('ServiceUnavailableException(MOTIF_SANS_MESSAGERIE)');
+  });
+
+  it('aucune adresse de l’éditeur n’est écrite dans la page', () => {
+    for (const t of [html, js]) expect(t).not.toMatch(/mailto:|@omegax|@[a-z0-9-]+\.(cd|com|net|org)\b/i);
+  });
+
+  it('la politique de confidentialité nomme le formulaire', () => {
+    const politique = lire('client/src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ');
+    expect(politique).toContain('demande d’information');
+    expect(html).toContain('href="/#/confidentialite"');
   });
 });

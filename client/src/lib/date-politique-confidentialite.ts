@@ -15,4 +15,4 @@
 // traitement n'est plus nommé ; son identité et ses coordonnées sont dites
 // « à arrêter par l'éditeur », comme dans le contrat de licence. Changer de
 // responsable change ce que la personne a accepté · le bandeau se rouvre.
-export const DATE_DE_MISE_A_JOUR = '28 octobre 2026';
+export const DATE_DE_MISE_A_JOUR = '1er novembre 2026';

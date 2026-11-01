@@ -291,10 +291,10 @@ describe('la politique présentée sur le modèle des grands éditeurs (2026-10-
     expect(deplie).toContain('Les sauvegardes chiffrées de la nuit gardent une trace du dossier jusqu’à leur propre terme');
     expect(deplie).not.toContain('quatre-vingt-dix jours après le terme');
     // Le fond a changé · la politique porte la date de sa dernière modification
-    // (le 28 octobre 2026, le responsable n'est plus nommé), et le bandeau de
-    // consentement se rouvre une fois, c'est voulu.
+    // (le 1er novembre 2026, la demande d'information de la page publique), et
+    // le bandeau de consentement se rouvre une fois, c'est voulu.
     const date = readFileSync(join(__dirname, '../lib/date-politique-confidentialite.ts'), 'utf8');
-    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '28 octobre 2026';");
+    expect(date).toContain("export const DATE_DE_MISE_A_JOUR = '1er novembre 2026';");
     expect(page).toContain('Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}');
     expect(deplie).not.toContain('n’est pas encore en service');
     // Les deux nombres de la page sont ceux du calendrier du serveur.

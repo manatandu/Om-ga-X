@@ -123,3 +123,124 @@ describe('lien d\'essai de la page publique', () => {
     expect((m.fenetre.optionsFetch as { cache: string }).cache).toBe('no-store');
   });
 });
+
+/* ---- La demande d'information (ligne commercial-site) ---- */
+
+type Champ = ReturnType<typeof element> & { type?: string; checked?: boolean; attributs?: Record<string, string> };
+
+async function monterDemande(reponse: { status: number; corps: unknown } | 'echec') {
+  const ids: Record<string, Champ> = {};
+  for (const id of ['d-nom', 'd-organisation', 'd-email', 'd-telephone', 'd-message']) {
+    const e: Champ = element();
+    const attributs: Record<string, string> = {};
+    e.attributs = attributs;
+    (e as unknown as { setAttribute: (k: string, v: string) => void }).setAttribute = (k, v) => {
+      attributs[k] = v;
+    };
+    ids[id] = e;
+  }
+  ids['d-consentement'] = Object.assign(element(), { type: 'checkbox', checked: false });
+  ids['demande-envoyer'] = Object.assign(element(), { hidden: true, disabled: true });
+  ids['demande-etat'] = element();
+  let remis = 0;
+  ids['demande-form'] = Object.assign(element(), { reset: () => { remis += 1; } });
+  const appels: Array<{ url: string; opts: Record<string, unknown> }> = [];
+  const document = {
+    documentElement: element(),
+    getElementById: (id: string) => ids[id] ?? null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const fenetre: Record<string, unknown> = {
+    document, Intl, Number, Math, String, Date, Array, Promise, JSON,
+    addEventListener() {}, requestAnimationFrame: (f: () => void) => f(), innerHeight: 800,
+    fetch: (url: string, opts: Record<string, unknown>) => {
+      appels.push({ url, opts });
+      if (url.includes('inscription-essai')) return Promise.reject(new Error('sans objet'));
+      if (reponse === 'echec') return Promise.reject(new Error('réseau'));
+      return Promise.resolve({ ok: reponse.status < 300, status: reponse.status, json: () => Promise.resolve(reponse.corps) });
+    },
+  };
+  fenetre.window = fenetre;
+  runInContext(source, createContext(fenetre));
+  await new Promise((r) => setTimeout(r, 0));
+  const remplir = () => {
+    ids['d-nom'].value = 'Ruth Kabeya';
+    ids['d-organisation'].value = 'ASBL Lumière';
+    ids['d-email'].value = 'ruth@exemple.cd';
+    ids['d-message'].value = 'Nous voulons tenir notre comptabilité.';
+    ids['d-consentement'].checked = true;
+  };
+  const envoyer = async () => {
+    ids['demande-form'].emettre('submit');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  return { ids, appels, remplir, envoyer, remis: () => remis };
+}
+
+describe('demande d\'information de la page publique', () => {
+  it('le script montre et active l\'envoi, et efface la mention « sans script »', async () => {
+    const m = await monterDemande({ status: 200, corps: { recue: true, message: 'ok' } });
+    expect(m.ids['demande-envoyer'].hidden).toBe(false);
+    expect(m.ids['demande-envoyer'].disabled).toBe(false);
+    expect(m.ids['demande-etat'].textContent).toBe('');
+  });
+
+  it('refuse sans la case cochée, sans rien envoyer', async () => {
+    const m = await monterDemande({ status: 200, corps: { recue: true } });
+    m.remplir();
+    m.ids['d-consentement'].checked = false;
+    await m.envoyer();
+    expect(m.appels.filter((a) => a.url.includes('demandes'))).toHaveLength(0);
+    expect(m.ids['demande-etat'].textContent).toMatch(/Cochez la case/);
+  });
+
+  it('marque le champ fautif', async () => {
+    const m = await monterDemande({ status: 200, corps: { recue: true } });
+    m.remplir();
+    m.ids['d-email'].value = 'pas-une-adresse';
+    await m.envoyer();
+    expect(m.ids['d-email'].attributs?.['aria-invalid']).toBe('true');
+    expect(m.ids['d-nom'].attributs?.['aria-invalid']).toBe('false');
+  });
+
+  it('poste en JSON, sans témoin, et dit le message du serveur', async () => {
+    const m = await monterDemande({ status: 200, corps: { recue: true, message: 'Votre demande est enregistrée.' } });
+    m.remplir();
+    await m.envoyer();
+    const a = m.appels.find((x) => x.url === '/api/demandes/information')!;
+    expect(a.opts.method).toBe('POST');
+    expect(a.opts.credentials).toBe('omit');
+    expect(JSON.parse(a.opts.body as string)).toEqual({
+      nom: 'Ruth Kabeya',
+      organisation: 'ASBL Lumière',
+      email: 'ruth@exemple.cd',
+      message: 'Nous voulons tenir notre comptabilité.',
+      consentement: true,
+    });
+    expect(m.ids['demande-etat'].textContent).toBe('Votre demande est enregistrée.');
+    expect(m.ids['demande-etat'].classes.has('reussite')).toBe(true);
+    expect(m.remis()).toBe(1);
+  });
+
+  it('sans messagerie (503), la page dit le motif du serveur et l\'envoi reste possible', async () => {
+    const m = await monterDemande({ status: 503, corps: { message: 'Aucune messagerie n\'est configurée.' } });
+    m.remplir();
+    await m.envoyer();
+    expect(m.ids['demande-etat'].textContent).toBe('Aucune messagerie n\'est configurée.');
+    expect(m.ids['demande-etat'].classes.has('erreur')).toBe(true);
+    expect(m.ids['demande-envoyer'].disabled).toBe(false);
+    expect(m.remis()).toBe(0);
+  });
+
+  it('dit une limite de débit et une panne réseau, jamais un succès', async () => {
+    const limite = await monterDemande({ status: 429, corps: { message: 'ThrottlerException: Too Many Requests' } });
+    limite.remplir();
+    await limite.envoyer();
+    expect(limite.ids['demande-etat'].textContent).toMatch(/Trop de demandes/);
+    const panne = await monterDemande('echec');
+    panne.remplir();
+    await panne.envoyer();
+    expect(panne.ids['demande-etat'].textContent).toMatch(/n'est pas partie/);
+  });
+});

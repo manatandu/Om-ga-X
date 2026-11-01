@@ -280,6 +280,26 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:72px;height:5px;bor
 .haut.visible{opacity:1;transform:none;pointer-events:auto}
 .haut:hover{background:var(--encre-douce)}
 
+/* La demande d'information · un formulaire au registre de la feuille de journal */
+.demande{margin-top:32px;max-width:46em}
+.champs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 24px}
+.champ{margin:0;display:flex;flex-direction:column;gap:6px}
+.champ-large{grid-column:1/-1}
+.champ label{font-size:14px;font-weight:600;color:var(--encre)}
+.facultatif{font-weight:400;color:var(--discret)}
+.champ input,.champ textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--regle);border-radius:var(--rayon);background:#fff;color:var(--texte);font:400 16px/1.5 'IBM Plex Sans',sans-serif;transition:border-color .18s ease}
+.champ textarea{resize:vertical;min-height:140px}
+.champ input:focus,.champ textarea:focus{border-color:var(--violet)}
+.champ [aria-invalid="true"]{border-color:var(--signal)}
+.consentement{display:flex;align-items:flex-start;gap:10px;margin:22px 0 0;font-size:15px}
+.consentement input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--encre)}
+.mention{margin:10px 0 0;font-size:14px;color:var(--discret)}
+.mention a{color:var(--violet)}
+.demande-etat{margin:18px 0 0;min-height:1.6em;font-size:15px;color:var(--discret)}
+.demande-etat.erreur{color:var(--signal)}
+.demande-etat.reussite{color:var(--encre);font-weight:600}
+.demande .gestes{margin:14px 0 0}
+
 /* Mouvement · seulement si le script tourne (classe js) ; sans script, tout est visible */
 .js .revele{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d,0s)}
 .js .revele.vu{opacity:1;transform:none}
@@ -322,6 +342,7 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:72px;height:5px;bor
   .lib{display:none}
   .chemin>li{padding-left:40px}
   .questions details>div{padding-right:0}
+  .champs{grid-template-columns:minmax(0,1fr)}
   .entete .bouton{padding:0 16px;min-height:42px;font-size:14px}
 }
 @media (prefers-reduced-motion:reduce){
