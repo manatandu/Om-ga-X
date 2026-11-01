@@ -855,4 +855,26 @@ describe('le résultat antérieur non affecté encore au 13 (relevé J1)', () =>
     );
     expect(cumulerConsolidation(EX, [Mc], [], []).capitauxPropres).toMatchObject({ reservesGroupe: 0, resultatEnsemble: 500 });
   });
+
+  it('relecture point 3 · gestion mouvementée et soldée par la clôture, 13 sans mouvement lisible · reste le résultat, et l’avertissement tient', () => {
+    // Balance arrêtée après clôture, sans colonne de report · le 13 n'a pas
+    // de mouvement propre lisible, mais la gestion mouvementée à solde nul
+    // dit que l'écriture de clôture l'a soldée.
+    const Mf = ent(
+      'M',
+      'IG',
+      100,
+      [
+        ligneMv('52100000', 1500, 700, 200),
+        ligneMv('10100000', -1000, 0, 0),
+        ligneMv('13100000', -500, 0, 0),
+        ligneMv('70100000', 0, 700, 700),
+        ligneMv('60100000', 0, 200, 200),
+      ],
+      true,
+    );
+    const rf = cumulerConsolidation(EX, [Mf], [], []);
+    expect(rf.capitauxPropres).toMatchObject({ reservesGroupe: 0, resultatEnsemble: 500 });
+    expect(rf.obstaclesFlux.join(' ')).toMatch(/arrêtée APRÈS clôture/);
+  });
 });

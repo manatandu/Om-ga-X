@@ -511,6 +511,20 @@ export function cumulerConsolidation(
     const gestionNonSoldee = e.balance.some((l) => /^[678]/.test(l.numero) && Math.abs(l.solde) > 0.005);
     const lignes13 = e.balance.filter((l) => estResultat13(l.numero));
     if (!lignes13.some((l) => Math.abs(l.solde) > 0.005)) return e;
+    // UNE GESTION SOLDÉE PAR LA CLÔTURE (relecture du 2026-11-01, point 3) ·
+    // des comptes 6 à 8 mouvementés mais à solde nul disent une balance
+    // arrêtée APRÈS l'écriture qui solde la gestion · le 13 y porte le
+    // résultat de l'exercice, pas un antérieur. Sans colonne de report, son
+    // mouvement propre n'est pas lisible ; le renommer sous 130 retirait le
+    // résultat de l'exercice et taisait l'avertissement « arrêtée APRÈS
+    // clôture ».
+    const gestionSoldeeParLaCloture = e.balance.some(
+      (l) =>
+        /^[678]/.test(l.numero) &&
+        Math.abs(l.solde) <= 0.005 &&
+        (Math.abs(l.mouvementDebit ?? 0) > 0.005 || Math.abs(l.mouvementCredit ?? 0) > 0.005),
+    );
+    if (!gestionNonSoldee && gestionSoldeeParLaCloture) return e;
     const mouvementsConnus = lignes13.every((l) => l.mouvementDebit != null && l.mouvementCredit != null);
     const mouvementPropre13 = mouvementsConnus
       ? lignes13.some((l) => Math.abs(l.mouvementDebit!) > 0.005 || Math.abs(l.mouvementCredit!) > 0.005)
