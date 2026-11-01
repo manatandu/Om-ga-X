@@ -177,6 +177,35 @@ describe('tranche 4a · l’écart d’évaluation d’un stock sorti ne se lit 
   });
 });
 
+describe('478 et 479 retraités (relevé J2) · la perte latente ne se lit pas comme un encaissement', () => {
+  // F vend 300 à crédit en N, puis constate une perte de change latente de 30
+  // sur la créance (D 4781 / C 411). Le retraitement (tranche 4b) annule le
+  // 478 et porte 30 au résultat consolidé, sur un poste que le tableau ne lit
+  // pas · la baisse de la créance passait dans la variation du besoin de
+  // financement pour 30 encaissés que personne n'a reçus. Attendu · CAFG
+  // 1 000 + 300 − 30 = 1 270, trésorerie inchangée, contrôle bouclé.
+  const f26: L[] = F26.map(([n, s, md, mc]) => (n === '70100000' ? ['70100000', -900, 0, 900] : [n, s, md, mc]) as L);
+  f26.push(['41100000', 270, 300, 30], ['47810000', 30, 30, 0]);
+  it('la CAFG est diminuée de la perte latente, et le contrôle par le bilan boucle', () => {
+    const cumulN1 = cumulerConsolidation(EX25, [ent('M', 100, b(M25), true), ent('F', 80, b(F25))], [acq()], []);
+    const cumulN = cumulerConsolidation(
+      EX26,
+      [ent('M', 100, b(M26), true), ent('F', 80, b(f26))],
+      [acq({ dividendesExercice: 80, compteDividendes: '77200000' })],
+      [],
+      [],
+      [],
+      [{ entiteId: 'F', actifN1: 0, passifN1: 0, provisions: [] }],
+    );
+    const t = construireTableauFluxConsolide(
+      { cumulN, cumulN1, consolidanteN: lignesMere(M26), consolidanteN1: lignesMere(M25), variationsPerimetre: [] },
+      flux,
+    );
+    expect(net(t, 'CAFG')).toBe(1270);
+    expect(t.controle).toMatchObject({ ecart: 0, ok: true });
+  });
+});
+
 describe('tableau des flux consolidé · les refus, chacun nommé', () => {
   it('une filiale importée sans mouvements', () => {
     const t = construireTableauFluxConsolide(groupe({ f26: F26.map(([n, s]) => [n, s]) }), flux);

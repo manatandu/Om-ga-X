@@ -14,10 +14,13 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
 - J1 · le cumul de consolidation lit le 13 par la règle des états individuels
   (`resultatDeLExerciceAuxClassesDeGestion`) · un résultat antérieur non
   affecté y est des capitaux propres (lu sous 130), plus le résultat.
+- J2 · TFT consolidé · la CAFG retranche le poste des 478 et 479 retraités
+  (`ECARTS_CONVERSION_INDIVIDUELS_RESULTAT`), et un contrôle par le bilan en
+  échec devient un motif du jeu non publiable.
 
 ## Reste
 
-G2, D2, F D2 K1, F D3, MAG-LIEN, H D1, J2, 585 du groupe et AU2.
+G2, D2, F D2 K1, F D3, MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
 

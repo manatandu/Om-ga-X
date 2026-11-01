@@ -124,6 +124,16 @@ export class EtatsConsolidesService {
       }
     }
     if (!tft.lignes) motifsJeu.push('Tableau consolidé des flux de trésorerie non établi · le jeu complet est indissociable (D4C ch. XII-8 § 1).');
+    // UN CONTRÔLE EN ÉCHEC EST UN MOTIF (relevé J2 de la simulation du
+    // 2026-10-08) · un tableau dont la trésorerie par les flux ne retombe pas
+    // sur celle du bilan est faux, et le jeu qui le porte ne se dit pas
+    // publiable.
+    else if (tft.controle && !tft.controle.ok) {
+      motifsJeu.push(
+        `Tableau consolidé des flux de trésorerie en écart avec le bilan · trésorerie par les flux ${tft.controle.tresorerieParLesFlux}, ` +
+          `par le bilan ${tft.controle.tresorerieParLeBilan}, écart ${tft.controle.ecart} (D4C ch. XII-8 § 4).`,
+      );
+    }
     if (!tvcp) motifsJeu.push('Tableau de variation des capitaux propres consolidés non établi (D4C ch. XII-8 § 1 et § 5).');
     motifsJeu.push(NOTES_D4C_NON_PRODUITES);
 
