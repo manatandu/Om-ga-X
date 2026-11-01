@@ -343,7 +343,7 @@ export class ComptabilisationPaieService {
       journalId: dto.journalId,
       date: dto.date,
       libelle: dto.libelle?.trim() || `Paie du mois ${mois}`,
-      reference: `Bulletins n° ${p.aPasser.map((b) => b.numero).join(', ')}`.slice(0, 190),
+      reference: referencePaie(p.aPasser, p.negatifsAPasser),
       lignes: p.lignes.map((l, i) => {
         const ventilations = (p.ventilation.parLigne[i] ?? []).map((v) => ({
           sectionId: v.sectionId,
@@ -432,4 +432,17 @@ export class ComptabilisationPaieService {
     });
     return { annule: true, bulletinsLiberes: porte };
   }
+}
+
+/**
+ * LA RÉFÉRENCE DE LA PIÈCE DE PAIE · les bulletins passés ET les bulletins
+ * repris en négatif (relevé de la ligne des corrections de la paie · une paie
+ * qui ne faisait que reprendre portait « Bulletins n° », vide). AUDCIF
+ * art. 17, 3° · la pièce justificative se retrouve par sa référence.
+ */
+export function referencePaie(aPasser: readonly { numero: number | string }[], repris: readonly { numero: number | string }[]): string {
+  const parts: string[] = [];
+  if (aPasser.length > 0) parts.push(`Bulletins n° ${aPasser.map((b) => b.numero).join(', ')}`);
+  if (repris.length > 0) parts.push(`repris en négatif n° ${repris.map((b) => b.numero).join(', ')}`);
+  return parts.join(' · ').slice(0, 190);
 }
