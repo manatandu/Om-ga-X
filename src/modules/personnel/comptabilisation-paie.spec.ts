@@ -1,5 +1,6 @@
 import {
   dernierJourDuMois,
+  enCentimes,
   MOTIF_ORIGINE_INTROUVABLE,
   motifPartIllisible,
   propositionPaieDuMois,
@@ -489,5 +490,19 @@ describe('M3 · la reprise en négatif recopie l’écriture d’origine', () =>
     expect(p.refus).toEqual([]);
     expect(p.equilibree).toBe(true);
     expect(net(p)['66110000']).toBe(10_000);
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE C, m2 · la passation prend le centime sur la
+ * valeur EXACTE, loin de zéro, comme la colonne du bulletin et l'affichage ·
+ * `Math.round` passait l'ONEM de 285 340,725 à ,72.
+ */
+describe('passation · le centime loin de zéro, sur la valeur exacte', () => {
+  it('285 340,725 se passe 285 340,73', () => {
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
+    expect(enCentimes(-0.005)).toBe(-1);
+    expect(enCentimes(0.004)).toBe(0);
+    expect(enCentimes(13_303.745)).toBe(1_330_375);
   });
 });

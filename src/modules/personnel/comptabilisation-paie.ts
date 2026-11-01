@@ -60,6 +60,7 @@ import {
   type Referentiel,
   type SensLigne,
 } from './passation-paie';
+import { centimesLoinDeZero, depuisNombre } from '../../common/decimal-exact';
 
 export type BulletinAComptabiliser = {
   readonly id: string;
@@ -204,7 +205,12 @@ export const TOTAL_DU_BLOC: Readonly<
   AVANTAGES_EN_NATURE: { role: 'TRANSFERTS_DE_CHARGES', sens: 'CREDIT' },
 };
 
-const enCentimes = (fc: number) => Math.round(fc * 100);
+// LE CENTIME SE PREND SUR LA VALEUR EXACTE, LOIN DE ZÉRO (second tour du
+// paquet 1, ligne C, m2) · `Math.round` sur un produit flottant passait
+// l'ONEM de 285 340,725 à ,72 (le produit tombe juste sous le demi-centime),
+// là où la colonne `Decimal(18,2)` du bulletin et l'affichage disent ,73. Une
+// seule règle, celle des centimes figés (`centimesLoinDeZero`).
+export const enCentimes = (fc: number) => Number(centimesLoinDeZero(depuisNombre(fc)));
 const enFrancs = (centimes: number) => centimes / 100;
 
 type Json = Record<string, unknown> | null | undefined;
