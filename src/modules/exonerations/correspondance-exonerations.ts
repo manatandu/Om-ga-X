@@ -99,9 +99,20 @@ export const MODELES_DEMANDE: ModeleDemande[] = [
       { cle: 'personnaliteJuridique', libelle: "Ordonnance, décret ou arrêté d'octroi de la personnalité juridique" },
       { cle: 'listeBiens', libelle: "Liste QUANTIFIÉE des biens à importer, en relation avec l'objet de l'ONG" },
       { cle: 'attestationDon', libelle: "Attestation de don ou factures d'achat" },
-      { cle: 'lettreTransport', libelle: 'Lettre de transport (BL ou LTA) pour les biens importés' },
-      { cle: 'projetUtilisation', libelle: "Projet d'utilisation des biens à exonérer" },
+      // LA SECTION B.II N'A NI LETTRE DE TRANSPORT NI PROJET D'UTILISATION
+      // (relevé PA1 de la simulation du 2026-10-08). Ces deux pièces sont les
+      // points 6 et 7 de la section B.I, propres à UNE opération identifiée ;
+      // la liste du prévisionnel les reprenait et omettait ses propres points
+      // 7 et 8. Texte de la note circulaire, section B.II · « 6. Le certificat
+      // d'enregistrement en cours de validité délivré par le Ministère ayant
+      // le Plan dans ses attributions ; 7. Le numéro impôt ; 8. L'avis du
+      // Ministère ayant dans ses attributions le secteur d'activités visé ;
+      // 9. Le rapport annuel d'activités le plus récent pour une ONG
+      // opérationnelle ». Une clé cochée avant la correction et absente
+      // d'ici est ignorée par `etatDossier`, jamais comptée.
       { cle: 'certificatEnregistrement', libelle: "Certificat d'enregistrement en cours de validité (Ministère du Plan)" },
+      { cle: 'numeroImpot', libelle: 'Numéro Impôt' },
+      { cle: 'avisMinistereSectoriel', libelle: "Avis du Ministère ayant le secteur d'activités dans ses attributions" },
       {
         cle: 'rapportAnnuel',
         libelle: "Rapport annuel d'activités le plus récent",
