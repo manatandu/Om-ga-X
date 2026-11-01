@@ -6,6 +6,7 @@ import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentio
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
 import type { Writable } from 'stream';
 import type { PerimetreBalanceAgee } from '../comptabilite/ecriture.service';
+import { mentionGroupesLusLigneALigne, type GroupesLusLigneALigne } from '../lettrage/reste-des-lignes-ouvertes';
 import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
@@ -1623,6 +1624,15 @@ export class ExportService {
       etat.totaux.net,
     );
     net.font = ENTETE_FONT;
+    // Les groupes à la répartition incertaine se DISENT, comme à l'écran
+    // (second tour du paquet 1, ligne B, voisin) · le total est exact, leur
+    // ventilation par tranche ne l'est pas.
+    const mentionGroupes = mentionGroupesLusLigneALigne(etat.groupesLusLigneALigne);
+    if (mentionGroupes) {
+      const r = feuille.addRow([]);
+      r.getCell(1).value = mentionGroupes;
+      r.font = { size: 9, italic: true };
+    }
 
     for (let i = 2; i <= nbColonnes; i++) feuille.getColumn(i).numFmt = FORMAT_MONTANT;
     this.piedDePageEtat(feuille, identite);
@@ -3397,7 +3407,12 @@ export class ExportService {
   }
 
   private construireClasseurNotes(
-    resultat: { notes: NoteCalculee[]; ficheRecapitulative: any[]; couverture: { transcrites: number; attendues: number } },
+    resultat: {
+      notes: NoteCalculee[];
+      ficheRecapitulative: any[];
+      couverture: { transcrites: number; attendues: number };
+      groupesLusLigneALigne?: GroupesLusLigneALigne;
+    },
     ident: IdentiteLiasse,
     parties?: Array<[string, string[]]>,
     classeur?: ExcelJS.Workbook,
@@ -3444,6 +3459,20 @@ export class ExportService {
       const propre = feuillesPropres[code];
       if (propre) propre(cible, parCode.get(code)!);
       else this.feuilleNote(cible, parCode.get(code)!, ident);
+    }
+    // LES GROUPES LUS LIGNE À LIGNE SE DISENT (second tour du paquet 1, ligne
+    // B, voisin) · la ventilation par échéance des notes (créances, dettes)
+    // les lit ligne à ligne ; l'écran les nomme, le classeur remis les
+    // taisait. Une feuille à part, en dernier, et seulement quand il y en a ·
+    // un classeur sans groupe incertain reste celui d'avant.
+    const mention = mentionGroupesLusLigneALigne(resultat.groupesLusLigneALigne);
+    if (mention) {
+      const ws = cible.addWorksheet('Mentions');
+      ws.getCell('A1').value = 'Répartition par échéance · groupes de lettrage lus ligne à ligne';
+      ws.getCell('A1').font = ENTETE_FONT;
+      ws.getCell('A3').value = mention;
+      ws.getCell('A3').alignment = { wrapText: true, vertical: 'top' };
+      ws.getColumn(1).width = 120;
     }
     return cible;
   }

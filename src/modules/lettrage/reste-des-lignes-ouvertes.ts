@@ -400,6 +400,35 @@ export interface GroupesLusLigneALigne {
   tronque: boolean;
 }
 
+/**
+ * LES GROUPES SE DISENT AUSSI DANS LES CLASSEURS (second tour du paquet 1,
+ * ligne B, voisin) · l'écran les nommait (`groupes-lus-ligne-a-ligne.ts` du
+ * client), la balance âgée et les notes exportées les taisaient, et un
+ * classeur remis au réviseur présentait une répartition par échéance
+ * incertaine comme sûre. Le libellé de chaque motif est celui de l'écran,
+ * tenu en miroir par le spec du client.
+ */
+export const LIBELLE_MOTIF_GROUPE: Record<MotifGroupeNomme, string> = {
+  NEGATIF_SANS_ORIGINE: 'négatif sans son origine',
+  IMPUTATION_DECLAREE_NON_LUE: 'imputation déclarée illisible',
+  DEVISE_SOLDEE_ECART_NON_PASSE: 'soldé en devise, écart de change non passé',
+  DEVISE_REGLEE_EN_PARTIE: 'facture en devise réglée en partie',
+  RESTE_NON_REPARTI: 'reste non réparti',
+  A_NOUVEAU_SANS_ORIGINE: 'à-nouveau sans pièce d’origine',
+};
+
+/** La mention d'un classeur · `null` quand aucun groupe n'a été lu ligne à ligne. */
+export function mentionGroupesLusLigneALigne(g: GroupesLusLigneALigne | null | undefined): string | null {
+  if (!g || g.total <= 0) return null;
+  const nommes = g.groupes.map((x) => `${x.code} (${x.compte}, ${LIBELLE_MOTIF_GROUPE[x.motif] ?? x.motif})`);
+  const autres = g.total - g.groupes.length;
+  if (autres > 0) nommes.push(`${autres} autre${autres > 1 ? 's' : ''}`);
+  return (
+    `${g.total} groupe${g.total > 1 ? 's' : ''} de lettrage à la répartition incertaine · ${nommes.join(', ')} · ` +
+    "le total est exact ; la répartition par échéance de ces groupes n'est pas sûre (ils sont lus ligne à ligne)."
+  );
+}
+
 interface GroupeNomme {
   id: string;
   code: string;

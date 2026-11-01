@@ -142,6 +142,12 @@ describe('motifs des groupes nommés · le client en miroir du serveur', () => {
     expect(client).toEqual(serveur);
   });
 
+  it('le classeur du serveur nomme chaque motif par le libellé de l’écran (LIBELLE_MOTIF_GROUPE)', () => {
+    const source = readFileSync(join(__dirname, '../../../src/modules/lettrage/reste-des-lignes-ouvertes.ts'), 'utf8');
+    const bloc = /export const LIBELLE_MOTIF_GROUPE[^=]*=\s*\{([\s\S]*?)\};/.exec(source)?.[1] ?? '';
+    for (const [motif, libelle] of Object.entries(LIBELLE_MOTIF)) expect(bloc).toContain(`${motif}: '${libelle}'`);
+  });
+
   it('chaque motif du serveur a son libellé et sa raison', () => {
     expect(Object.keys(LIBELLE_MOTIF).sort()).toEqual(serveur);
     for (const motif of serveur) {
