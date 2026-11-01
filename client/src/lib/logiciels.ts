@@ -13,10 +13,13 @@ import { estGroupe } from '../components/chrome/menu-groupes';
  * rangé dans aucune tuile (il disparaîtrait de la barre dès qu'on choisit un
  * logiciel) ou si une tuile nomme un chemin que le menu n'a plus.
  *
- * C'EST UN AFFICHAGE, JAMAIS UN DROIT (« masquer n'est pas refuser », comme
- * `profil-dossier.ts`). La route reste ouverte : une adresse tapée ou collée
- * ouvre sa fenêtre, et le serveur ne refuse rien sur le fondement d'un
- * logiciel. Refuser module par module est le niveau 3, au suivi.
+ * LE MENU MASQUE, LE SERVEUR REFUSE (ligne commercial-site, 2026-11-01).
+ * La tuile restreint la barre de menus ; le serveur refuse, lectures
+ * comprises, ce qu'aucune tuile attribuée n'ouvre
+ * (`src/common/logiciels/logiciels-des-routes.ts`), sauf ce qu'un logiciel
+ * attribué lit d'un autre. Les deux se tiennent · `logiciels-des-routes.spec.ts`
+ * relit les fenêtres de chaque tuile et fait tomber le test si l'une appelle
+ * une route que le serveur refuserait à un utilisateur qui n'a qu'elle.
  *
  * UNE TUILE N'EXISTE QUE SI LE DOSSIER LA SERT. On ne recopie aucune règle
  * de référentiel, de module, de profil ou de rôle : une tuile est servie si
@@ -98,6 +101,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
       '/retenues',
       '/fiscalite',
       '/controles',
+      '/impressions-differees',
     ],
   },
   {
@@ -126,6 +130,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
       '/balance-agee',
       '/balance-auxiliaire',
       '/echeancier',
+      '/impressions-differees',
     ],
   },
   {
@@ -153,6 +158,7 @@ export const LOGICIELS: readonly LogicielDef[] = [
       '/provisions',
       '/questionnaire-revision',
       '/faiblesses',
+      '/impressions-differees',
     ],
   },
   {
@@ -194,13 +200,19 @@ export const LOGICIELS: readonly LogicielDef[] = [
 ];
 
 /**
- * CE QUI RESTE AU MENU QUEL QUE SOIT LE LOGICIEL · le courrier sortant et les
- * impressions différées (outils du dossier, ouverts à tous les rôles), la
+ * CE QUI RESTE AU MENU QUEL QUE SOIT LE LOGICIEL · le courrier sortant (outil
+ * du dossier, ouvert à tous les rôles), la
  * console de l'éditeur (c'est la raison d'être d'un dossier d'opérateur) et
  * l'aide (« ? »). Les commandes sans fenêtre (Mon compte, Fermer le dossier,
  * Imprimer, menu Fenêtre) n'ont pas de chemin et ne se filtrent jamais.
  */
-export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/impressions-differees', '/plateforme', '/messages', '/notifications', '/preferences'];
+/*
+ * Les impressions différées ne sont PAS communes (ligne commercial-site) ·
+ * elles produisent le journal, le grand livre et la balance, que le serveur
+ * refuse à qui n'a ni la comptabilité, ni les tiers, ni la révision. Laissées
+ * au menu de toute tuile, elles ouvraient une fenêtre qui tombait sur un refus.
+ */
+export const CHEMINS_COMMUNS: readonly string[] = ['/courrier', '/plateforme', '/messages', '/notifications', '/preferences'];
 export const PREFIXES_COMMUNS: readonly string[] = ['/aide/'];
 
 /** Le chemin sans sa chaîne de requête · `/journal?onglet=balance` devient `/journal`. */

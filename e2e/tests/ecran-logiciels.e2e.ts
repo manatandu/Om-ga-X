@@ -8,12 +8,11 @@ import { MOT_DE_PASSE, appelApi, creerDossier, surveiller } from './outils';
  * logiciels de chaque collaborateur ; null = tous.
  *
  * Sur le serveur réel et une vraie base · les suites unitaires tournent sur
- * des Prisma factices, et seule une vraie session prouve que /auth/me rend
- * l'attribution relue à chaque appel (donc sans fermer de session).
- *
- * C'EST UN AFFICHAGE : la dernière assertion vérifie qu'une fenêtre hors du
- * logiciel choisi s'ouvre encore par son adresse (masquer n'est pas refuser ;
- * le refus par le serveur est le niveau 3, au suivi).
+ * des Prisma factices. Depuis la ligne commercial-site (2026-11-01), le
+ * serveur REFUSE ce qui n'est pas attribué et l'attribution ferme les
+ * sessions du collaborateur, qui se reconnecte pour la lire
+ * (logiciels-refus.e2e.ts éprouve le refus). L'administrateur n'est jamais
+ * restreint · le logiciel qu'il choisit ne fait que restreindre sa barre.
  */
 test('l’écran des logiciels : choix, rappel, attribution par l’administrateur', async ({ page, browser }) => {
   const pannes = surveiller(page);
@@ -41,7 +40,7 @@ test('l’écran des logiciels : choix, rappel, attribution par l’administrate
   await expect(croix).toHaveCount(1);
   await expect(page).toHaveURL(/#\/tiers/);
 
-  // Masquer n'est pas refuser : la fenêtre hors du logiciel s'ouvre encore par son adresse.
+  // L'administrateur n'est jamais restreint · la fenêtre hors du logiciel choisi s'ouvre par son adresse.
   await page.goto('/#/comptes');
   await expect(croix).toHaveCount(2);
 
@@ -89,9 +88,15 @@ test('l’écran des logiciels : choix, rappel, attribution par l’administrate
   const ecranAutre = autre.getByRole('region', { name: 'Choix du logiciel' });
   await expect(ecranAutre.getByRole('button', { name: 'Comptabilité', exact: true })).toBeVisible();
 
+  // L'ATTRIBUTION FERME LES SESSIONS (le serveur la refuse désormais) · le
+  // collaborateur se reconnecte pour la lire.
+  const reconnecter = async () => {
+    await autre.waitForTimeout(1_100);
+    await appelApi(autre, 'POST', '/auth/login', { email: collaborateur, motDePasse: sonMotDePasse }, entetes);
+    await autre.reload();
+  };
   await appelApi(page, 'PUT', `/utilisateurs/${cree.id}/logiciels`, { restreindre: true, logiciels: ['TIERS_TRESORERIE', 'IMMOBILISATIONS'] });
-  // Aucune session fermée : l'attribution se lit à la prochaine ouverture, sans nouvelle connexion.
-  await autre.reload();
+  await reconnecter();
   await expect(ecranAutre.getByRole('button', { name: 'Tiers et trésorerie', exact: true })).toBeVisible();
   await expect(ecranAutre.getByRole('button', { name: 'Immobilisations', exact: true })).toBeVisible();
   await expect(ecranAutre.getByRole('button', { name: 'Comptabilité', exact: true })).toHaveCount(0);
@@ -99,7 +104,7 @@ test('l’écran des logiciels : choix, rappel, attribution par l’administrate
 
   // Un seul logiciel : on y entre directement, sans écran.
   await appelApi(page, 'PUT', `/utilisateurs/${cree.id}/logiciels`, { restreindre: true, logiciels: ['IMMOBILISATIONS'] });
-  await autre.reload();
+  await reconnecter();
   await expect(autre.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
   await expect(ecranAutre).toHaveCount(0);
   await expect(autre.getByRole('button', { name: 'Logiciels', exact: true })).toHaveCount(0);
@@ -109,7 +114,7 @@ test('l’écran des logiciels : choix, rappel, attribution par l’administrate
 
   // Lever la restriction rend toutes les tuiles.
   await appelApi(page, 'PUT', `/utilisateurs/${cree.id}/logiciels`, { restreindre: false, logiciels: [] });
-  await autre.reload();
+  await reconnecter();
   await expect(ecranAutre.getByRole('button', { name: 'Comptabilité', exact: true })).toBeVisible();
 
   await autre.context().close();

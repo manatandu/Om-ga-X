@@ -10,15 +10,16 @@ import { PortailModale } from './PortailModale';
 /**
  * LOGICIELS ATTRIBUÉS · l'administrateur coche les logiciels (tuiles) que
  * l'utilisateur voit après sa connexion. Décoché, tout est ouvert (les
- * utilisateurs existants ne changent pas). C'est un AFFICHAGE : le serveur
- * refuse ce que le rôle et les fonctions refusent, et rien de plus. Aucune
- * session n'est fermée · l'intéressé voit l'attribution à sa prochaine
- * ouverture, à un rechargement, ou en revenant sur son onglet.
+ * utilisateurs existants ne changent pas). C'EST UN DROIT depuis la ligne
+ * commercial-site (2026-11-01) · le serveur refuse, lectures comprises, ce
+ * qu'aucun logiciel attribué n'ouvre (`src/common/logiciels/`), et
+ * l'enregistrement ferme les sessions de l'intéressé, qui se reconnecte.
  *
  * LA LISTE PROPOSÉE EST CELLE DE TOUS LES LOGICIELS, et ceux que ce dossier ne
  * sert pas sont MARQUÉS (lus sur le menu de la session de l'administrateur,
  * `servisParLeDossier`) · cochés seuls, ils enfermeraient l'utilisateur
- * devant un écran sans tuile, d'où l'avertissement. Le serveur ne juge pas ce
+ * devant un écran sans tuile, et le serveur lui refuserait presque tout ·
+ * d'où l'avertissement, qui le dit. Le serveur ne juge pas ce
  * point (il recopierait la règle du menu) ; le refus reste « au moins un ».
  * Une clé attribuée d'un logiciel retiré depuis est nommée, puis abandonnée
  * à l'enregistrement.
@@ -98,7 +99,7 @@ export function ModaleLogiciels({
             <div className="flex items-center gap-2">
               <Aide
                 titre="Logiciels attribués"
-                texte="Choisit les logiciels (tuiles) que l'utilisateur voit après sa connexion : comptabilité, tiers et trésorerie, paie, révision, administration. Sa barre de menus se limite à ce qu'il choisit. C'est un affichage, pas un droit : les droits restent ceux de son rôle et de son profil de fonctions, et rien n'est refusé par le serveur sur ce fondement. Décoché, tous les logiciels que le dossier sert lui sont ouverts. Un logiciel que ce dossier ne sert pas (module non activé, fonction absente du référentiel) ne lui donnera aucune tuile. Un administrateur ou un gestionnaire de paie n'est jamais restreint. Aucune session n'est fermée : l'utilisateur voit l'attribution à sa prochaine ouverture du logiciel, à un rechargement, ou en revenant sur son onglet."
+                texte="Choisit les logiciels (tuiles) que l'utilisateur voit après sa connexion : comptabilité, tiers et trésorerie, paie, révision, administration. Sa barre de menus se limite à ce qu'il choisit. Le serveur refuse aussi ce qu'aucun logiciel coché n'ouvre, lectures comprises, sauf ce qu'un logiciel coché lit d'un autre (comptes, journaux, tiers pour la paie, par exemple) ; les droits du rôle et du profil de fonctions s'y ajoutent. Décoché, tous les logiciels que le dossier sert lui sont ouverts. Un logiciel que ce dossier ne sert pas (module non activé, fonction absente du référentiel) ne lui donnera aucune tuile. Un administrateur ou un gestionnaire de paie n'est jamais restreint. L'enregistrement ferme ses sessions : il se reconnecte pour lire son attribution."
                 source="Règle d'OmegaX"
               />
               <button onClick={fermer} disabled={envoi} aria-label="Fermer">
@@ -138,7 +139,8 @@ export function ModaleLogiciels({
             )}
             {aucuneCocheeServie && (
               <div role="alert" className="text-warning bg-warning-soft border border-warning/30 px-3 py-2">
-                Aucun logiciel coché n'est servi par ce dossier · l'utilisateur n'aurait aucune tuile.
+                Aucun logiciel coché n'est servi par ce dossier · l'utilisateur n'aurait aucune tuile, et le serveur lui refuserait
+                presque tout. Cochez un logiciel servi, ou décochez la restriction.
               </div>
             )}
             <div className="flex justify-end">

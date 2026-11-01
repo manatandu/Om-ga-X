@@ -13,6 +13,9 @@ export interface AuthenticatedUser {
   /** Journaux où l'utilisateur peut saisir (priorité 5) · relus à chaque requête. */
   restreindreJournaux?: boolean;
   journauxAutorises?: string[];
+  /** Logiciels attribués (ligne commercial-site) · relus à chaque requête, refusés par JwtAuthGuard. */
+  restreindreLogiciels?: boolean;
+  logicielsAutorises?: string[];
   /**
    * Préchargés par JwtStrategy dans LA MÊME requête que l'utilisateur, pour
    * que LicenceGuard et ReferentielGuard n'aient plus à requêter la base à

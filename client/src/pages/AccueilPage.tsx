@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { AProposModale } from '../components/chrome/AProposModale';
-import type { PlanningCloture, RapportControles, Referentiel } from '../lib/types';
+import type { PlanningCloture, Referentiel, SyntheseControles } from '../lib/types';
 import { fenetreDisponible } from '../lib/referentiel-fenetre';
 import { cheminAuMenu } from '../lib/profil-dossier';
 import { tachesDuRole } from '../lib/accueil-par-metier';
@@ -192,7 +192,7 @@ export function AccueilPage() {
     ecrire(cleFavoris(tenantId), JSON.stringify(suivants));
   };
   const [planning, setPlanning] = useState<PlanningCloture | null>(null);
-  const [controles, setControles] = useState<RapportControles | null>(null);
+  const [controles, setControles] = useState<SyntheseControles | null>(null);
   const [chargement, setChargement] = useState(true);
 
   // DÉMARRAGE GUIDÉ · l'état se lit dans le dossier (`GET /dossier/demarrage`),
@@ -244,7 +244,10 @@ export function AccueilPage() {
     // faites pour ça (Fin d'exercice, Analyse et contrôles).
     Promise.allSettled([
       api.get<PlanningCloture>(`/exercices/${exerciceCourant.id}/planning-cloture`),
-      api.get<RapportControles>(`/controles?exerciceId=${exerciceCourant.id}`),
+      // LA SYNTHÈSE, jamais le rapport complet · l'accueil est monté pour toute
+      // tuile, et les occurrences des contrôles (comptes, tiers, montants) sont
+      // réservées à la Comptabilité et à la Révision (ligne commercial-site).
+      api.get<SyntheseControles>(`/controles/synthese?exerciceId=${exerciceCourant.id}`),
     ])
       .then(([p, c]) => {
         if (!vivant) return;
@@ -281,7 +284,7 @@ export function AccueilPage() {
   // de bien les tenir.
   const bloquants = controles?.totaux?.bloquants ?? 0;
   const avertissements = controles?.totaux?.avertissements ?? 0;
-  const pireAnomalie = controles?.anomalies?.find((a) => a.gravite !== 'INFORMATION') ?? null;
+  const pireAnomalie = controles?.premiereAnomalie ?? null;
 
   // Un dossier SYSCOHADA n'a pas de jeu d'états SYCEBNL : il a un système
   // comptable (AUDCIF art. 11). La bande affichait « Associations et ordres

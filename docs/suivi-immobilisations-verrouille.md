@@ -212,6 +212,14 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   mission, versée au plus tard au retour prévu, régularisée après la fin
   constatée.
 
+- **COMMERCIAL ET SITE (gel levé le 2026-11-01), à décider.** (1) Durée de
+  conservation des demandes reçues par le formulaire de la page publique,
+  « à arrêter par l'éditeur » dans la politique de confidentialité (Code du
+  numérique, art. 196). (2) Les logiciels Tiers et Révision lisent le livre
+  entier, écritures de paie comprises · à resserrer si la paie doit rester
+  confidentielle. (3) Le paiement en ligne de l'abonnement attend le choix
+  d'un prestataire.
+
 - **RATTACHEMENT D'UN COLLABORATEUR À PLUSIEURS DOSSIERS (décision de
   Manasse du 2026-10-30, D9), après le pilote.** Un cabinet qui tient
   plusieurs dossiers ouvre aujourd'hui un compte par personne et par dossier.

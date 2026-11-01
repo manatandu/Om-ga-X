@@ -37,6 +37,11 @@ import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 export { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 import { DATE_DE_MISE_A_JOUR } from '../lib/date-politique-confidentialite';
 
+// Mise à jour du 1er novembre 2026 (ligne commercial-site) · la demande
+// d'information de la page publique · ce qu'elle porte, à qui elle part, sur
+// quel fondement (Code du numérique, art. 192, consentement par la case du
+// formulaire ; art. 220, informations données à la collecte).
+//
 // Mise à jour du 21 octobre 2026 · le sort des dossiers d'essai non souscrits
 // (cent quatre-vingts jours après le terme, rappel d'au moins trente jours,
 // suppression par l'éditeur depuis sa console), ligne suppression-essais.
@@ -172,7 +177,7 @@ export function ContenuConfidentialite() {
         <Sommaire />
 
         <Titre id="champ">1. À qui s’applique cette politique</Titre>
-        <P>Elle vise six catégories de personnes :</P>
+        <P>Elle vise sept catégories de personnes :</P>
         <ul className="text-[11.5px] leading-relaxed mb-2 list-disc pl-5">
           <li>
             <strong>Les visiteurs</strong> des pages publiques d’OmegaX · écran d’ouverture, page de présentation,
@@ -180,6 +185,10 @@ export function ContenuConfidentialite() {
           </li>
           <li>
             <strong>Les personnes qui demandent un essai gratuit</strong> par le formulaire d’essai.
+          </li>
+          <li>
+            <strong>Les personnes qui écrivent à l’équipe d’OmegaX</strong> par la demande d’information de la page de
+            présentation.
           </li>
           <li>
             <strong>Les utilisateurs</strong> des dossiers · comptables, aides-comptables, gestionnaires de paie,
@@ -232,6 +241,19 @@ export function ContenuConfidentialite() {
           </em>
         </P>
 
+        <P>
+          <strong>La demande d’information</strong> · le nom, l’organisation, l’adresse de courriel, le téléphone
+          s’il est donné, et le message. Ils servent à répondre à la demande, et à rien d’autre. Ils partent par
+          courriel aux opérateurs de l’éditeur, et le message est gardé dans la file des courriers sortants du
+          dossier de l’éditeur, avec l’accord donné en cochant la case du formulaire et l’heure de la réception ;
+          rien d’autre n’est conservé, aucune liste n’est constituée. L’adresse réseau d’où part la demande sert à
+          limiter leur nombre, comme pour la demande d’essai.{' '}
+          <em>
+            La durée de conservation de ces messages doit être arrêtée par l’éditeur et portée ici avant toute
+            publication de cette page sur un magasin d’applications.
+          </em>
+        </P>
+
         <Titre id="fondements">3. Pourquoi, et sur quel fondement</Titre>
         <P>
           Le Code du numérique (ordonnance-loi n° 23/10 du 13 mars 2023) n’admet que deux fondements à un traitement
@@ -275,6 +297,11 @@ export function ContenuConfidentialite() {
                 <td>Consentement, donné en envoyant le formulaire</td>
               </tr>
               <tr>
+                <td>Demande d’information</td>
+                <td>Vous répondre</td>
+                <td>Consentement, donné en cochant la case du formulaire (articles 192 et 196)</td>
+              </tr>
+              <tr>
                 <td>Mesure de fréquentation et erreurs de l’interface</td>
                 <td>Savoir quels écrans servent, corriger les pannes</td>
                 <td>Consentement, demandé avant tout envoi et retirable à tout moment (section 4)</td>
@@ -284,7 +311,8 @@ export function ContenuConfidentialite() {
         </div>
         <P>
           Sans adresse de courriel, aucun compte ne peut être ouvert ni aucun accès remis ; la demande d’essai exige en
-          outre le type et le nom de l’entité (article 220, 7°). Refuser la mesure de fréquentation ne change rien au fonctionnement du
+          outre le type et le nom de l’entité, et la demande d’information le nom, l’organisation, l’adresse et le
+          message, le téléphone restant facultatif (article 220, 7°). Refuser la mesure de fréquentation ne change rien au fonctionnement du
           logiciel.
         </P>
 

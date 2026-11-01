@@ -14,8 +14,8 @@
 <link rel="icon" href="/icone.svg" type="image/svg+xml">
 <link rel="preload" href="/polices/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/polices/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="vitrine.css?v=20261028">
-<script src="vitrine.js?v=20261028" defer></script>
+<link rel="stylesheet" href="vitrine.css?v=20261101">
+<script src="vitrine.js?v=20261101" defer></script>
 </head>
 <body>
 <a class="evitement" href="#principal">Aller au contenu</a>
@@ -29,6 +29,7 @@
     <a href="#domaines">Modules</a>
     <a href="#referentiels">Référentiels</a>
     <a href="#questions">Questions</a>
+    <a href="#demande">Contact</a>
   </nav>
   <a class="bouton bouton-clair" href="/#/connexion">Se connecter</a>
 </header>
@@ -344,11 +345,33 @@
   </div>
 </section>
 
+<section id="demande" class="bloc bloc-lavis" aria-labelledby="t-demande">
+  <div class="colonne etroite">
+    <p class="etiquette revele">Contact</p>
+    <h2 id="t-demande" class="revele">Demande d'information</h2>
+    <p class="intro">Une question sur OmegaX, un dossier à ouvrir, une installation sur site : écrivez à l'équipe d'OmegaX. La réponse vient à l'adresse électronique que vous indiquez.</p>
+    <form class="demande" id="demande-form" action="#" method="post" novalidate>
+      <div class="champs">
+        <p class="champ"><label for="d-nom">Nom</label><input id="d-nom" name="nom" type="text" autocomplete="name" required minlength="2" maxlength="120"></p>
+        <p class="champ"><label for="d-organisation">Organisation</label><input id="d-organisation" name="organisation" type="text" autocomplete="organization" required minlength="2" maxlength="160"></p>
+        <p class="champ"><label for="d-email">Adresse électronique</label><input id="d-email" name="email" type="email" autocomplete="email" required maxlength="254" spellcheck="false"></p>
+        <p class="champ"><label for="d-telephone">Téléphone <span class="facultatif">facultatif</span></label><input id="d-telephone" name="telephone" type="tel" autocomplete="tel" maxlength="40"></p>
+        <p class="champ champ-large"><label for="d-message">Message</label><textarea id="d-message" name="message" rows="6" required minlength="10" maxlength="3000"></textarea></p>
+      </div>
+      <p class="piege" aria-hidden="true"><label for="d-site">Ne remplissez pas ce champ</label><input id="d-site" name="site" type="text" tabindex="-1" autocomplete="off"></p>
+      <p class="consentement"><input id="d-consentement" name="consentement" type="checkbox" required><label for="d-consentement">J'accepte que ces informations servent à répondre à ma demande.</label></p>
+      <p class="mention">Nom, organisation, adresse et message sont nécessaires pour vous répondre ; le téléphone est facultatif. Ces informations partent par courriel à l'équipe d'OmegaX et ne servent à rien d'autre. Voir la <a href="/#/confidentialite">politique de confidentialité</a>.</p>
+      <p class="demande-etat" id="demande-etat" role="status" aria-live="polite"><span id="demande-sans-script">L'envoi passe par le script de cette page, qui doit être permis dans votre navigateur.</span></p>
+      <p class="gestes"><button type="submit" class="bouton bouton-plein" id="demande-envoyer" hidden disabled>Envoyer la demande</button></p>
+    </form>
+  </div>
+</section>
+
 <section class="bloc appel" aria-labelledby="t-appel">
   <div class="carte revele">
     <div data-sans-essai>
       <h2 id="t-appel">Ouvrir un dossier</h2>
-      <p>Pour ouvrir un dossier ou poser une question, adressez-vous à l'éditeur d'OmegaX. Si vous avez déjà un dossier, connectez-vous.</p>
+      <p>Pour ouvrir un dossier ou poser une question, écrivez à l'équipe d'OmegaX par la <a href="#demande">demande d'information</a>. Si vous avez déjà un dossier, connectez-vous.</p>
     </div>
     <div data-avec-essai hidden>
       <h2 id="t-appel-essai">Essai de <span data-jours></span> jours</h2>

@@ -332,6 +332,10 @@ describe('balayage du code · toute collection porte sa borne', () => {
       // relecture ; c'est lui qui juge l'écriture elle-même, après.
       'src/common/perimetre/extension-perimetre-journaux.ts',
       'src/modules/auth/auth.service.ts',
+      // La demande d'information de la page publique (ligne commercial-site) ·
+      // une porte sans session, qui trouve le dossier de l'éditeur et y met le
+      // message en file pour les opérateurs, rien d'autre.
+      'src/modules/demande-information/demande-information.service.ts',
       'src/modules/groupe/groupe.service.ts',
       // La console lit et supprime des dossiers d'essai échus qui ne sont pas celui de
       // l'opérateur (ligne suppression-essais, 2026-10-17) · identifiants, dates et

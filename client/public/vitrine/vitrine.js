@@ -1,7 +1,9 @@
-// Page publique d'OmegaX · aucune donnée du dossier, un seul appel en lecture (l'état de l'essai).
-// Le script fait trois choses : le mouvement de la page (charte § 9 ter), l'annonce de l'essai
-// quand sa porte est lue ouverte, et la pièce de journal modifiable. Sans script, la page est
-// complète et lisible ; seuls les deux boutons de la pièce restent cachés.
+// Page publique d'OmegaX · aucune donnée du dossier. Une lecture (l'état de l'essai) et un seul
+// envoi, la demande d'information que le visiteur écrit lui-même.
+// Le script fait quatre choses : le mouvement de la page (charte § 9 ter), l'annonce de l'essai
+// quand sa porte est lue ouverte, la pièce de journal modifiable, et l'envoi de la demande. Sans
+// script, la page est complète et lisible ; seuls les boutons de la pièce et l'envoi de la
+// demande restent cachés, et la page le dit.
 (function () {
   'use strict';
 
@@ -166,5 +168,109 @@
       champD.focus();
     });
     majPiece();
+  }
+
+  // ---- La demande d'information · envoyée en JSON à la route publique du serveur, qui la met
+  // en file pour l'équipe d'OmegaX. Sans script, le formulaire se lit mais ne part pas (bouton
+  // caché et désactivé, la page le dit) · jamais un envoi natif qui écrirait les champs dans
+  // l'adresse de la page. Le serveur juge tout de nouveau ; ce contrôle-ci ne sert qu'à dire plus tôt.
+  var demande = document.getElementById('demande-form');
+  var envoyer = document.getElementById('demande-envoyer');
+  var etatDemande = document.getElementById('demande-etat');
+  var COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  var TELEPHONE = /^[0-9+().\s-]*$/;
+
+  function champ(id) { return document.getElementById(id); }
+  function dire(texte, genre) {
+    etatDemande.textContent = texte;
+    etatDemande.classList.toggle('erreur', genre === 'erreur');
+    etatDemande.classList.toggle('reussite', genre === 'reussite');
+  }
+  // Ce que le serveur rend d'un refus · son message, en français, jamais un code nu.
+  function motifDuServeur(r, corps) {
+    var m = corps && corps.message;
+    // Le plafond global du serveur se dit en français ; celui du limiteur par adresse, non.
+    if (r.status === 429 && !(typeof m === 'string' && /^Trop de demandes/.test(m))) return 'Trop de demandes depuis cette adresse. Réessayez plus tard.';
+    if (Array.isArray(m)) m = m.join(' ');
+    if (typeof m === 'string' && m.length > 0) return m;
+    return 'La demande n\'a pas pu être enregistrée (erreur ' + r.status + '). Réessayez plus tard.';
+  }
+
+  if (demande && envoyer && etatDemande && window.fetch && window.JSON) {
+    var nom = champ('d-nom');
+    var organisation = champ('d-organisation');
+    var courriel = champ('d-email');
+    var telephone = champ('d-telephone');
+    var message = champ('d-message');
+    var consentement = champ('d-consentement');
+    dire('', null);
+    envoyer.hidden = false;
+    envoyer.disabled = false;
+    var enCours = false;
+
+    function verifier() {
+      var fautes = [
+        [nom, nom.value.trim().length >= 2, 'Indiquez votre nom.'],
+        [organisation, organisation.value.trim().length >= 2, 'Indiquez votre organisation.'],
+        [courriel, COURRIEL.test(courriel.value.trim()), 'Indiquez une adresse électronique valide.'],
+        [telephone, TELEPHONE.test(telephone.value), 'Le téléphone ne porte que des chiffres, des espaces et les signes + ( ) . -'],
+        [message, message.value.trim().length >= 10, 'Écrivez votre message (dix caractères au moins).'],
+        [consentement, consentement.checked === true, 'Cochez la case d\'acceptation · sans elle, la demande ne peut pas être traitée.']
+      ];
+      var premiere = null;
+      fautes.forEach(function (f) {
+        if (f[0].type !== 'checkbox') f[0].setAttribute('aria-invalid', f[1] ? 'false' : 'true');
+        if (!f[1] && !premiere) premiere = f;
+      });
+      return premiere;
+    }
+
+    demande.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (enCours) return;
+      var faute = verifier();
+      if (faute) {
+        dire(faute[2], 'erreur');
+        try { faute[0].focus(); } catch (x) { /* sans effet */ }
+        return;
+      }
+      var corps = {
+        nom: nom.value.trim(),
+        organisation: organisation.value.trim(),
+        email: courriel.value.trim(),
+        message: message.value.trim(),
+        consentement: true
+      };
+      if (telephone.value.trim()) corps.telephone = telephone.value.trim();
+      // Le champ piège · une personne ne le voit pas, un robot le remplit ; le serveur l'écarte sans rien écrire.
+      var piege = champ('d-site');
+      if (piege && piege.value) corps.site = piege.value;
+      enCours = true;
+      envoyer.disabled = true;
+      dire('Envoi en cours…', null);
+      window.fetch('/api/demandes/information', {
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(corps)
+      })
+        .then(function (r) {
+          return r.json().then(function (j) { return j; }, function () { return null; }).then(function (j) {
+            if (r.ok && j && j.recue === true) {
+              dire(typeof j.message === 'string' ? j.message : 'Votre demande est enregistrée.', 'reussite');
+              demande.reset();
+              return;
+            }
+            dire(motifDuServeur(r, j), 'erreur');
+            envoyer.disabled = false;
+          });
+        })
+        .catch(function () {
+          dire('La demande n\'est pas partie : le service n\'a pas pu être joint. Vérifiez votre connexion et réessayez.', 'erreur');
+          envoyer.disabled = false;
+        })
+        .then(function () { enCours = false; });
+    });
   }
 })();

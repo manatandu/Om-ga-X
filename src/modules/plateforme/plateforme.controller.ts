@@ -6,6 +6,7 @@ import { LicencesSurSiteService } from './licences-sur-site.service';
 import { AbonnementsService } from './abonnements/abonnements.service';
 import { CourrielsEditeurService } from './abonnements/courriels-editeur.service';
 import { EssaisEchusService } from './essais-echus/essais-echus.service';
+import { DemandeInformationService } from '../demande-information/demande-information.service';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import {
   CreerCabinetDto,
@@ -41,7 +42,23 @@ export class PlateformeController {
     private readonly abonnements: AbonnementsService,
     private readonly courriels: CourrielsEditeurService,
     private readonly essaisEchus: EssaisEchusService,
+    private readonly demandes: DemandeInformationService,
   ) {}
+
+  /**
+   * Les demandes d'information de la page publique qui ne sont pas parties ·
+   * des nombres seuls. Aucun ordonnanceur ne reprend la file · c'est ici que
+   * l'opérateur le voit, et qu'il les reprend.
+   */
+  @Get('demandes-information')
+  etatDemandes(@CurrentUser() operateur: AuthenticatedUser) {
+    return this.demandes.etatPourLaConsole(operateur.tenantId);
+  }
+
+  @Post('demandes-information/reprendre')
+  reprendreDemandes(@CurrentUser() operateur: AuthenticatedUser) {
+    return this.demandes.reprendre(operateur.tenantId);
+  }
 
   @Get('formules')
   formules() {
