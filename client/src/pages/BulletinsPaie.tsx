@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { PaieDuMois } from './PaieDuMois';
@@ -109,6 +109,13 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
   const [motif, setMotif] = useState('');
   const [remisLe, setRemisLe] = useState('');
   const [enCours, setEnCours] = useState(false);
+  // LIGNE PAIE-LOT · les bulletins émis du mois, lus un à un pour être
+  // imprimés en un seul document · `null` hors de l'aperçu.
+  const [impression, setImpression] = useState<Bulletin[] | null>(null);
+  const [lectureImpression, setLectureImpression] = useState(false);
+  // Le mois affiché, lu par une lecture en vol · `mois` de sa fermeture est figé.
+  const moisCourantRef = useRef(mois);
+  moisCourantRef.current = mois;
 
   const charger = useCallback(() => {
     setErreur('');
@@ -118,7 +125,52 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
   useEffect(() => {
     charger();
     setOuvert(null);
+    setImpression(null);
   }, [charger]);
+
+  /**
+   * IMPRIMER LES BULLETINS ÉMIS DU MOIS · chacun relu tel qu'il a été figé,
+   * aucun calcul. Tout ou rien · une liste tronquée ou une lecture qui échoue
+   * refuse l'aperçu, jamais un document qui se dirait complet sans l'être.
+   */
+  const preparerImpression = async () => {
+    if (!liste || lectureImpression) return;
+    setErreur('');
+    // LE MOIS DEMANDÉ EST FIGÉ AU CLIC · un changement de mois pendant la
+    // lecture mettrait les bulletins d'un mois sous l'en-tête d'un autre.
+    const moisDemande = mois;
+    const nombreAffiche = liste.totauxEmis.nombre;
+    setLectureImpression(true);
+    try {
+      // La liste du mois RELUE juste avant · un bulletin émis ou annulé
+      // depuis l'affichage ferait un document qui ne serait pas celui du mois.
+      const relue = await api.get<ListeBulletins>(`/personnel/bulletins?mois=${moisDemande}`);
+      if (moisCourantRef.current !== moisDemande) return;
+      if (relue.tronque) return setErreur(`Plus de ${relue.bulletins.length} bulletins ce mois · imprimez-les un par un.`);
+      const emis = relue.bulletins.filter((b) => b.statut === 'EMIS').sort((a, b) => a.numero - b.numero);
+      if (emis.length !== relue.totauxEmis.nombre || relue.totauxEmis.nombre !== nombreAffiche) {
+        setListe(relue);
+        return setErreur(`La liste du mois a changé (${nombreAffiche} bulletin(s) émis affichés, ${relue.totauxEmis.nombre} à présent) · relisez-la, rien n’est imprimé.`);
+      }
+      if (emis.length === 0) return setErreur('Aucun bulletin émis ce mois.');
+      const lus: Bulletin[] = [];
+      for (const b of emis) {
+        lus.push(await api.get<Bulletin>(`/personnel/bulletins/${b.id}`));
+        if (moisCourantRef.current !== moisDemande) return;
+      }
+      // Un bulletin annulé ou d'un autre mois entre la liste et la lecture ne s'imprime pas.
+      if (lus.some((b) => b.statut !== 'EMIS' || b.moisDePaie !== moisDemande)) {
+        charger();
+        return setErreur('Un bulletin a changé depuis la liste · relisez-la, rien n’est imprimé.');
+      }
+      setOuvert(null);
+      setImpression(lus);
+    } catch (e) {
+      setErreur(`Lecture d’un bulletin impossible · ${e instanceof Error ? e.message : 'erreur'} · rien n’est imprimé.`);
+    } finally {
+      setLectureImpression(false);
+    }
+  };
 
   const ouvrir = (id: string) => {
     setErreur('');
@@ -146,6 +198,34 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
 
   const t = liste?.totauxEmis;
 
+  if (impression) {
+    return (
+      <div className="max-w-[1240px] text-[11.5px]">
+        <div className="ecran-seul flex flex-wrap items-center gap-3 mb-2.5">
+          <span>
+            {impression.length} bulletin(s) émis · {mois}
+          </span>
+          <button type="button" onClick={() => window.print()} className="bg-sel text-white px-4 py-1.5 rounded-full">
+            Imprimer
+          </button>
+          <button type="button" onClick={() => setImpression(null)} className="px-3 py-1.5 border border-border">
+            Fermer l’aperçu
+          </button>
+        </div>
+        {impression.map((b, i) => (
+          <div
+            key={b.id}
+            className="border border-border bg-surface px-5 py-4 mb-3"
+            // Un saut de page entre deux bulletins, aucun après le dernier.
+            style={i < impression.length - 1 ? { breakAfter: 'page' } : undefined}
+          >
+            <CorpsBulletin ouvert={b} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[1240px] text-[11.5px]">
       <div className="ecran-seul flex flex-wrap items-center gap-3 mb-2.5">
@@ -170,6 +250,16 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
             texte={`On émet un bulletin depuis l’onglet Simulation, salarié choisi. ${liste.textes.numerotation} ${liste.textes.inalterabilite} ${liste.textes.article103}`}
             source="Code du travail, art. 103 et 214 · arrêté n° 12/CAB.MIN/ETPS/042, art. 4"
           />
+        )}
+        {liste && liste.totauxEmis.nombre > 0 && (
+          <button
+            type="button"
+            onClick={() => void preparerImpression()}
+            disabled={lectureImpression}
+            className="px-3 py-1 border border-border disabled:opacity-50"
+          >
+            {lectureImpression ? 'Lecture des bulletins…' : 'Imprimer les bulletins du mois'}
+          </button>
         )}
       </div>
 
@@ -249,6 +339,64 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
       {ouvert && (
         <div className="border border-border bg-surface px-5 py-4">
           {/* LE BULLETIN · c'est la partie qui s'imprime. */}
+          <CorpsBulletin ouvert={ouvert} />
+
+          <div className="ecran-seul flex flex-wrap items-center gap-3 border-t border-border pt-3">
+            <button type="button" onClick={() => window.print()} className="px-3 py-1.5 border border-border">
+              Imprimer
+            </button>
+            {peutEcrire && ouvert.statut === 'EMIS' && !ouvert.remisLe && (
+              <span className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={remisLe}
+                  onChange={(e) => setRemisLe(e.target.value)}
+                  className="border border-border px-2 py-1"
+                />
+                <button
+                  type="button"
+                  disabled={enCours || !remisLe}
+                  onClick={() => agir('remise', { remisLe })}
+                  className="px-3 py-1.5 border border-border disabled:opacity-50"
+                >
+                  Déclarer la remise
+                </button>
+              </span>
+            )}
+            {peutEcrire && ouvert.statut === 'EMIS' && (
+              <span className="flex items-center gap-2">
+                <input
+                  value={motif}
+                  onChange={(e) => setMotif(e.target.value)}
+                  placeholder="Motif de l’annulation"
+                  className="border border-border px-2 py-1 w-[240px]"
+                />
+                <button
+                  type="button"
+                  disabled={enCours || motif.trim().length < 5}
+                  onClick={() => agir('annulation', { motif })}
+                  className="px-3 py-1.5 border border-danger/40 text-danger disabled:opacity-50"
+                >
+                  Annuler le bulletin
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+/**
+ * LE CORPS D'UN BULLETIN ÉMIS, tel qu'il s'imprime · une seule écriture pour
+ * le bulletin ouvert et pour l'impression des bulletins du mois (ligne
+ * paie-lot), sans aucun calcul · tout est figé par le serveur.
+ */
+function CorpsBulletin({ ouvert }: { ouvert: Bulletin }) {
+  return (
+    <>
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="text-[13px] font-semibold">
               {natureDuBulletin(ouvert.nature)} n° {ouvert.numero} · {ouvert.moisDePaie}
@@ -379,50 +527,6 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
             ))}
           </ul>
 
-          <div className="ecran-seul flex flex-wrap items-center gap-3 border-t border-border pt-3">
-            <button type="button" onClick={() => window.print()} className="px-3 py-1.5 border border-border">
-              Imprimer
-            </button>
-            {peutEcrire && ouvert.statut === 'EMIS' && !ouvert.remisLe && (
-              <span className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={remisLe}
-                  onChange={(e) => setRemisLe(e.target.value)}
-                  className="border border-border px-2 py-1"
-                />
-                <button
-                  type="button"
-                  disabled={enCours || !remisLe}
-                  onClick={() => agir('remise', { remisLe })}
-                  className="px-3 py-1.5 border border-border disabled:opacity-50"
-                >
-                  Déclarer la remise
-                </button>
-              </span>
-            )}
-            {peutEcrire && ouvert.statut === 'EMIS' && (
-              <span className="flex items-center gap-2">
-                <input
-                  value={motif}
-                  onChange={(e) => setMotif(e.target.value)}
-                  placeholder="Motif de l’annulation"
-                  className="border border-border px-2 py-1 w-[240px]"
-                />
-                <button
-                  type="button"
-                  disabled={enCours || motif.trim().length < 5}
-                  onClick={() => agir('annulation', { motif })}
-                  className="px-3 py-1.5 border border-danger/40 text-danger disabled:opacity-50"
-                >
-                  Annuler le bulletin
-                </button>
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-    </div>
+    </>
   );
 }

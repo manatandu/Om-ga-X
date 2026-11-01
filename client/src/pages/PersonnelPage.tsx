@@ -31,6 +31,10 @@ import { TITRE_BLOC_PAIE } from './PaieDuMois';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { lignesDepuisModele, lignesVersModele, type ModeleBulletin } from '../lib/modeles-bulletin';
 import { ONGLETS_PERSONNEL, ongletPersonnelDe, type OngletPersonnel } from '../lib/onglets-personnel';
+import { OngletParametresPaie } from '../components/paie/ParametresPaie';
+import { OngletPaieEnLot } from '../components/paie/PaieEnLot';
+import { OngletSoldesConges } from '../components/paie/SoldesConges';
+import { prerempliParametres, type CorpsPropose, type ParametresPaie } from '../lib/paie-en-lot';
 import { montant } from '../lib/montants';
 import { montantPourChamp } from '../lib/creances-douteuses';
 import { motifReductionInppIllisible } from '../lib/reduction-inpp';
@@ -797,6 +801,98 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [regimeSalarial, setRegimeSalarial] = useState('');
   // Ligne sage-l5, fonction 85 · le questionnaire de paie, ouvert depuis la simulation.
   const [questionnaireOuvert, setQuestionnaireOuvert] = useState(false);
+  // LIGNE PAIE-LOT · le salaire du contrat ne s'est pas repris, et pourquoi.
+  const [salaireNonRepris, setSalaireNonRepris] = useState<string | null>(null);
+  // Les lignes que la reprise a posées · tant que le cabinet n'y a pas touché,
+  // un autre salarié ou un autre mois les REMPLACE (sinon le salaire des
+  // jours dus de décembre restait sur la paie de janvier, sans un mot).
+  const lignesReprises = useRef<string | null>(null);
+  // Les lignes du rendu courant, lues par la réponse de la reprise.
+  const lignesCourantes = useRef(lignes);
+  lignesCourantes.current = lignes;
+
+  // LIGNE PAIE-LOT · LES PARAMÈTRES DE PAIE DU DOSSIER préremplissent les
+  // champs VIDES de la simulation · un champ tapé n'est jamais écrasé, un
+  // paramètre non déclaré laisse le champ vide (le serveur s'abstient ou le
+  // dit), et nature et effectif INPP ne valent que pour un mois couvert par
+  // leur déclaration · un champ prérempli et intact se retire pour un mois
+  // antérieur, au lieu d'y appliquer une déclaration qui ne le régit pas.
+  const prerempli = useRef<{ natureInpp: string; effectifInpp: string; regimeSalarial: string }>({ natureInpp: '', effectifInpp: '', regimeSalarial: '' });
+  const champsCourants = useRef({ natureInpp, effectifInpp, regimeSalarial });
+  champsCourants.current = { natureInpp, effectifInpp, regimeSalarial };
+  useEffect(() => {
+    if (onglet !== 'simulation') return;
+    let actuel = true;
+    api.get<ParametresPaie>('/personnel/parametres-paie').then(
+      (p) => {
+        if (!actuel) return;
+        const c = champsCourants.current;
+        const avant = prerempli.current;
+        // Un champ resté à sa valeur préremplie compte pour vide.
+        const libres = {
+          natureInpp: c.natureInpp === avant.natureInpp ? '' : c.natureInpp,
+          effectifInpp: c.effectifInpp === avant.effectifInpp ? '' : c.effectifInpp,
+          regimeSalarial: c.regimeSalarial === avant.regimeSalarial ? '' : c.regimeSalarial,
+        };
+        const r = prerempliParametres(libres, p, moisDePaie);
+        prerempli.current = {
+          natureInpp: libres.natureInpp ? '\u0000' : r.natureInpp,
+          effectifInpp: libres.effectifInpp ? '\u0000' : r.effectifInpp,
+          regimeSalarial: libres.regimeSalarial ? '\u0000' : r.regimeSalarial,
+        };
+        if (r.natureInpp !== c.natureInpp) setNatureInpp(r.natureInpp as '' | 'PUBLIC' | 'PRIVE');
+        if (r.effectifInpp !== c.effectifInpp) setEffectifInpp(r.effectifInpp);
+        if (r.regimeSalarial !== c.regimeSalarial) setRegimeSalarial(r.regimeSalarial);
+      },
+      (e: ApiError) => actuel && setErreur(e.message),
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, moisDePaie]);
+
+  // LIGNE PAIE-LOT · LE SALAIRE DU CONTRAT, PREMIER ÉLÉMENT, DANS SA MONNAIE
+  // (salaire des jours dus quand le mois porte des absences ou des congés).
+  // Posé seulement sur une saisie VIERGE · une ligne tapée n'est jamais
+  // remplacée ; ensuite il se modifie comme toute ligne.
+  useEffect(() => {
+    setSalaireNonRepris(null);
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) return;
+    let actuel = true;
+    api.get<{ corps: CorpsPropose; manques: string[]; salaireRepris: boolean }>(`/personnel/salaries/${selection}/proposition-bulletin/${moisDePaie}`).then(
+      (r) => {
+        if (!actuel) return;
+        const vierge = (ls: LignePaie[]) =>
+          (ls.length === 1 && ls[0].montantFc === '' && ls[0].libelle === '' && !ls[0].rubriqueId) ||
+          (lignesReprises.current !== null && JSON.stringify(ls) === lignesReprises.current);
+        const intactes = vierge(lignesCourantes.current);
+        if (!r.salaireRepris) {
+          setSalaireNonRepris(r.manques[0] ?? null);
+          // Une reprise d'un autre salarié ou d'un autre mois, intacte, ne reste pas.
+          if (intactes && lignesReprises.current !== null) {
+            lignesReprises.current = null;
+            setLignes([{ ...LIGNE_VIERGE }]);
+          }
+          return;
+        }
+        if (!intactes) return;
+        const reprises: LignePaie[] = r.corps.elements.map((e) => ({
+          ...LIGNE_VIERGE,
+          nature: e.nature,
+          libelle: e.libelle,
+          montantFc: montantPourChamp(e.montantUsd ?? e.montantFc ?? null),
+        }));
+        lignesReprises.current = JSON.stringify(reprises);
+        setLignes(reprises);
+        setDeviseStipulation(r.corps.deviseStipulation === 'USD' ? 'USD' : 'CDF');
+        if (r.corps.classeProfessionnelle !== undefined) setClassePro((c) => c || String(r.corps.classeProfessionnelle));
+      },
+      (e: ApiError) => actuel && setErreur(e.message),
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
 
   const charger = useCallback(() => {
     const parametres = [tous ? 'tous=true' : '', aCompleter ? 'aCompleter=true' : ''].filter(Boolean).join('&');
@@ -1609,7 +1705,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   ? 'Effectif'
                   : o === 'simulation'
                     ? 'Simulation'
-                    : o === 'bulletins'
+                    : o === 'parametres'
+                      ? 'Paramètres de paie'
+                      : o === 'lot'
+                      ? 'Paie en lot'
+                      : o === 'soldes'
+                      ? 'Soldes de congés'
+                      : o === 'bulletins'
                       ? 'Bulletins'
                       : o === 'conges'
                       ? 'Congés'
@@ -3441,6 +3543,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {salaireNonRepris && selection && <div className="text-text-dim mt-1.5">{salaireNonRepris}</div>}
           <div className="flex gap-2 mt-2">
             <button
               type="button"
@@ -4007,6 +4110,9 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         <OngletBulletins moisInitial={moisDePaie} peutEcrire={peutEcrire} />
       )}
 
+      {onglet === 'parametres' && <OngletParametresPaie peutEcrire={peutEcrire} />}
+      {onglet === 'lot' && <OngletPaieEnLot peutEcrire={peutEcrire} />}
+      {onglet === 'soldes' && <OngletSoldesConges />}
       {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'temps' && <OngletFeuillesTempsPaie salaries={salaries} peutEcrire={peutEcrire} />}

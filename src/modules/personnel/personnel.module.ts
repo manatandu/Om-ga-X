@@ -40,6 +40,7 @@ import { FicheIndividuelleService } from './fiche-individuelle.service';
 import { ImportPersonnelService } from './import-personnel.service';
 import { RappelsSalaireService } from './rappels-salaire.service';
 import { ComptesSalariesService } from './comptes-salaries.service';
+import { PaieEnLotService } from './paie-en-lot.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -75,6 +76,8 @@ import { ComptesSalariesService } from './comptes-salaries.service';
     BaremesPaieService,
     CongesService,
     AbsencesService,
+    // Ligne paie-lot · paramètres de paie, paie du mois en lot, soldes de congés.
+    PaieEnLotService,
     MajorationsHeuresService,
     FeuillesTempsService,
     PaiementSalairesService,
