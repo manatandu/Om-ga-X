@@ -43,7 +43,7 @@ function service(referentiel: 'SYCEBNL' | 'SYSCOHADA') {
     ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
     // Aucun report à-nouveau · le solde d'ouverture (audit final F26) se lit
     // alors sur le livre-journal, vide ici.
-    ecriture: { findFirst: jest.fn().mockResolvedValue(null) },
+    ecriture: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
     compte: { findMany: jest.fn().mockResolvedValue([]) },
     // Un mandat de commissaire aux comptes qui couvre 2026 · sans lui, le
     // procès-verbal de la LPF art. 13 bis n'est pas servi (décision par la
@@ -406,7 +406,7 @@ describe('Échéancier d’une société dissoute', () => {
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-05-15') }) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(tenant) },
       ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
-      ecriture: { findFirst: jest.fn().mockResolvedValue(null) },
+      ecriture: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
       compte: { findMany: jest.fn().mockResolvedValue([]) },
       mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;

@@ -3181,6 +3181,12 @@ export interface NatureRetenueCalculee {
 export interface RegistreRetenues {
   dateReference: string;
   derniereVerificationEcheances: string;
+  /**
+   * Les pièces de paie (passation du mois ou reprise en négatif) encore au
+   * brouillard · le registre ne lit que le livre-journal, leurs retenues n'y
+   * sont pas. Absent d'un serveur plus ancien · rien n'est dit.
+   */
+  piecesDePaieAuBrouillard?: number;
   natures: NatureRetenueCalculee[];
   totalRetenu: number;
   totalReverse: number;
@@ -3205,6 +3211,7 @@ export interface RegistreRetenues {
 export interface EcheancierFiscal {
   dateReference: string;
   derniereVerificationEcheances: string;
+  piecesDePaieAuBrouillard?: number;
   echeances: {
     cle: string;
     libelle: string;

@@ -33,6 +33,7 @@ import { AuthController } from '../../modules/auth/auth.controller';
 import { DevisesController } from '../../modules/devises/devises.controller';
 import { MessagerieController } from '../../modules/messagerie/messagerie.controller';
 import { NotificationsController, PreferencesController } from '../../modules/notifications/preferences.controller';
+import { RetenuesController } from '../../modules/retenues/retenues.controller';
 
 /**
  * LES DEUX RÔLES CANTONNÉS (décision du 2026-09-24, plan item 13), et la garde
@@ -212,13 +213,13 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
     for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, FeuillesTempsController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController, MissionsController, SuiviPersonnelController, BilanSocialController, OrganigrammeController, PersonnelSuiteController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
-    for (const classe of [AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController]) {
+    for (const classe of [AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController, RetenuesController]) {
       expect([classe.name, acces(classe)]).toEqual([classe.name, undefined]);
     }
   });
 
   it('hors du personnel, route par route · se voir, son propre compte, les exercices, le cours du jour', () => {
-    expect([AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController].flatMap(methodesOuvertes).sort()).toEqual(
+    expect([AuthController, ExerciceController, DevisesController, MessagerieController, PreferencesController, NotificationsController, RetenuesController].flatMap(methodesOuvertes).sort()).toEqual(
       [
         // Entrer, et tenir son propre compte · CLAUDE.md § 8.
         'AuthController.me',
@@ -253,6 +254,10 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
         'NotificationsController.nonLues',
         'NotificationsController.toutLu',
         'NotificationsController.marquerLue',
+        // Ligne paie-declarations (gel levé le 2026-11-01) · le registre des
+        // retenues et l'échéancier, EN LECTURE · ce que la paie retient, et quand le reverser.
+        'RetenuesController.registre',
+        'RetenuesController.echeancier',
       ].sort(),
     );
   });
@@ -305,6 +310,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       'modules/personnel/repartitions-analytiques-paie.controller.ts',
       // Ligne microfina-m3, lot 2 · demandes de congé, échéancier, formation, main-d'œuvre.
       'modules/personnel/suivi-personnel.controller.ts',
+      // Ligne paie-declarations · le registre des retenues et l'échéancier, en lecture, route par route.
+      'modules/retenues/retenues.controller.ts',
     ]);
   });
 });

@@ -24,6 +24,8 @@ export const ONGLETS_PERSONNEL = [
   'echeances',
   'formation',
   'declaration',
+  // Ligne paie-declarations, point 1 · la déclaration CNSS du mois préparée depuis les bulletins.
+  'cnss',
   // Ligne paie-suite · départements et directions.
   'organisation',
   // Ligne paie-suite, fonction 89 · fiche individuelle et cumuls annuels.

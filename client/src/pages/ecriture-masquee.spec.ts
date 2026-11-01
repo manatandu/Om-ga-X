@@ -45,6 +45,7 @@ const EXEMPTS: Record<string, string> = {
  * d'administration peut encore montrer à la lecture seule tout le reste.
  */
 const ADMIN_SEULEMENT: Record<string, string> = {
+  'components/paie/AmorcePaie.tsx': "activation du module de paie, route PATCH /dossier/modules réservée à l'administrateur (ligne paie-declarations)",
   'components/DemarrageGuide.tsx': "choix des modules du dossier, route PATCH /dossier/modules réservée à l'administrateur",
   'components/AcceptationConditionsLicence.tsx': "acceptation des conditions de licence au nom du client, route POST /conditions-licence/acceptation réservée à l'administrateur",
   'pages/CollaborateursPage.tsx': "collaborateurs et leurs rôles commerciaux, structure réservée à l'administrateur (ligne commercial-l8, fonction 91)",

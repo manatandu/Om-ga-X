@@ -10,6 +10,8 @@ import { OngletCongesPaie } from '../components/paie/CongesPaie';
 import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { OngletFeuillesTempsPaie } from '../components/paie/FeuillesTempsPaie';
 import { OngletMissionsPaie, type MissionLue } from '../components/paie/MissionsPaie';
+import { AmorcePaie } from '../components/paie/AmorcePaie';
+import { OngletDeclarationCnss } from '../components/paie/DeclarationCnssPaie';
 import { OngletBilanSocial, OngletDeclarationMainOeuvre, OngletDemandesConge, OngletEcheancierContrats, OngletFormation } from '../components/paie/SuiviPersonnelPaie';
 import { OngletOrganigramme } from '../components/paie/OrganigrammePaie';
 import { OngletFicheIndividuelle } from '../components/paie/FicheIndividuellePaie';
@@ -599,7 +601,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // (`@Roles` ADMIN_CABINET, COMPTABLE). Simulation, décompte final et livre
   // de paie restent ouverts à la lecture seule · le serveur les lui ouvre,
   // ils calculent sans rien conserver.
-  const { peutEcrire, estAdmin } = useAuth();
+  const { peutEcrire, estAdmin, utilisateur } = useAuth();
   const [salaries, setSalaries] = useState<Salarie[]>([]);
   // Ce que la liste du registre dit d'elle-même · null tant qu'elle n'est
   // pas lue, et « Aucun salarié » ne se dit que sur une liste LUE (audit
@@ -1560,6 +1562,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   return (
     <div className="p-2">
       <EnteteImpression titre="Registre du personnel" />
+      {/* Ligne paie-declarations · la paie non activée se dit, avec le geste qui l'active (`lib/amorce-paie.ts`). */}
+      <div className="ecran-seul">
+        <AmorcePaie modulesActives={utilisateur?.tenant.modulesActives} />
+      </div>
       <div className="ecran-seul mb-1.5 max-w-[1240px] text-[11px] text-text-dim">
         L’onglet Simulation rend l’écriture de passation <strong>proposée</strong>,
         sans rien conserver ni poster. L’onglet <strong>Bulletins</strong> tient les bulletins émis, numérotés et figés : le décompte
@@ -1627,6 +1633,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Formation'
                       : o === 'declaration'
                       ? 'Main-d’œuvre'
+                      : o === 'cnss'
+                      ? 'Déclaration CNSS'
                       : o === 'organisation'
                       ? 'Organigramme'
                       : o === 'fiche'
@@ -4026,6 +4034,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
           <DeclarationEtablissement />
         </div>
       )}
+      {onglet === 'cnss' && <OngletDeclarationCnss />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}

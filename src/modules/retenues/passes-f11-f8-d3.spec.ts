@@ -32,6 +32,7 @@ const servie = (cle: string, referentiel: string, forme: string | null = null) =
 function service(tenant: Record<string, unknown>) {
   const prisma = {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(tenant) },
+    ecriture: { count: jest.fn().mockResolvedValue(0) },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
     exercice: { findFirst: jest.fn().mockResolvedValue(null) },
     mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },
