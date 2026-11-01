@@ -35,6 +35,36 @@ export interface LigneBalanceFpm {
   totalCredit: number;
 }
 
+/**
+ * « MOUVEMENTS AU <VEILLE> » NE PORTE QUE CE QUI PRÉCÈDE LE PREMIER JOUR
+ * (relevés du paquet 1, ligne A, voisin A4). La colonne report de la balance
+ * d'un exercice CLÔTURÉ porte aussi le virement du résultat antérieur non
+ * affecté, que la clôture date du DERNIER jour (fiche du compte 13 des deux
+ * plans, `virement-resultat-non-affecte.ts`) · rangé « au <veille> », il
+ * faisait lire au 12 et au 13 d'ouverture un résultat déjà viré.
+ * `reportsAvantCloture` est la colonne report de la même balance lue avant
+ * la date de clôture (`balance(…, { avantLaCloture: true })`, la lecture de
+ * l'ouverture des états) · l'écart passe aux mouvements, les totaux restent.
+ */
+export function virementDeClotureAuxMouvements(
+  lignes: readonly LigneBalanceFpm[],
+  reportsAvantCloture: ReadonlyMap<string, { reportDebit: number; reportCredit: number }>,
+): LigneBalanceFpm[] {
+  return lignes.map((l) => {
+    const avant = reportsAvantCloture.get(l.compteId) ?? { reportDebit: 0, reportCredit: 0 };
+    const deplaceDebit = arrondi(l.avantDebit - avant.reportDebit);
+    const deplaceCredit = arrondi(l.avantCredit - avant.reportCredit);
+    if (deplaceDebit === 0 && deplaceCredit === 0) return l;
+    return {
+      ...l,
+      avantDebit: avant.reportDebit,
+      avantCredit: avant.reportCredit,
+      mouvementDebit: arrondi(l.mouvementDebit + deplaceDebit),
+      mouvementCredit: arrondi(l.mouvementCredit + deplaceCredit),
+    };
+  });
+}
+
 /** Les six colonnes de montants d'une ligne de total. */
 export interface TotauxBalance {
   avantDebit: number;

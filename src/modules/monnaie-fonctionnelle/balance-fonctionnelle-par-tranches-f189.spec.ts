@@ -290,7 +290,9 @@ describe('F189 · l’à-nouveau ne se relit que s’il faut le convertir', () =
     expect(lu2026.map((l) => l.rendues)).toEqual([LOT_ECRITURES, LOT_ECRITURES, 7]);
     // Aucune lecture des écritures d'à-nouveau · une ligne a suffi à dire
     // qu'il existe.
-    expect(lectures.filter((l) => l.where.estGenereeParCloture === true)).toEqual([]);
+    // Seule la recherche du virement de clôture du 13 (A4), bornée à son
+    // dernier jour, lit l'exercice précédent sous ce drapeau.
+    expect(lectures.filter((l) => l.where.estGenereeParCloture === true && !(l.where as { date?: unknown }).date)).toEqual([]);
     // Le 521 ouvre au solde du jeu 2026 (67 100) et reçoit la recette de mars
     // (320 000 / 3200 = 100) · jamais l'à-nouveau converti par-dessus.
     expect(r.lignes.find((l) => l.numero === '52100000')).toMatchObject({ ouvertureDebit: 67_100, debit: 67_200 });
@@ -343,6 +345,8 @@ describe('F189 · l’à-nouveau ne se relit que s’il faut le convertir', () =
       exerciceId: 'ex27',
       estGenereeParCloture: true,
       estSoldeDesComptesDeGestion: false,
+      // Le virement du 13, au dernier jour, n'est pas l'à-nouveau (A4).
+      date: { lt: new Date('2027-12-31T00:00:00.000Z') },
       statut: { not: 'SITUATION' },
     });
   });

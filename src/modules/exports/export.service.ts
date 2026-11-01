@@ -99,7 +99,7 @@ import {
   sommeColonneBalance,
   titreNote,
 } from './theme-etafi';
-import { arrondi as arrondi2, divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
+import { arrondi as arrondi2, divisionsDeLaClasse9, type LigneBalanceFpm, virementDeClotureAuxMouvements } from './balance-fpm';
 import { PLAFOND_PERIMETRE } from '../immobilisations/reevaluation-bilan.service';
 import {
   construireFeuilleEtat,
@@ -5418,8 +5418,10 @@ export class ExportService {
    * d'équilibre ne le voie.
    */
   private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<BalanceLiasse> {
-    const [balance, exercice, identite] = await Promise.all([
+    const [balance, avantCloture, exercice, identite] = await Promise.all([
       this.ecritureService.balance(tenantId, exerciceId, false),
+      // Le virement de clôture du 13 n'est pas « au <veille> » (A4).
+      this.ecritureService.balance(tenantId, exerciceId, false, undefined, { avantLaCloture: true }),
       this.prisma.exercice.findFirstOrThrow({
         where: { id: exerciceId, tenantId },
         select: { dateDebut: true, dateFin: true },
@@ -5429,7 +5431,7 @@ export class ExportService {
       this.identiteEtat(tenantId, { exerciceId }),
     ]);
     const soldeRetire = balance.lignes.some((l) => (l.clotureDebit ?? 0) !== 0 || (l.clotureCredit ?? 0) !== 0);
-    const lignes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
+    const lignesBrutes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
       // Redondant par construction, gardé contre le double comptage.
       .filter((l) => l.typeCompte !== 'TOTAL')
       .map((l) => ({
@@ -5448,6 +5450,7 @@ export class ExportService {
         totalDebit: l.totalDebit,
         totalCredit: l.totalCredit,
       }));
+    const lignes = virementDeClotureAuxMouvements(lignesBrutes, new Map(avantCloture.lignes.map((l) => [l.compteId, l])));
     const divisions = divisionsDeLaClasse9(lignes);
     const intitulesDivisions = divisions.length
       ? new Map(

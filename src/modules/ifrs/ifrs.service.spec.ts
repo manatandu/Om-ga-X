@@ -340,7 +340,7 @@ describe('IfrsService · première application (IFRS 1)', () => {
   }
 
   it('trois rapprochements chiffrés à la main, reclassement et méthodes avant erreurs (§ 24 a i, a ii, b, § 26)', async () => {
-    const { service } = await dossier();
+    const { service, ecritures } = await dossier();
     // Coût présumé à la transition (§ D5) · +100 aux immobilisations, aux réserves.
     await service.ajouterRetraitement(T, { exerciceId: EX1, libelle: 'Coût présumé', fondement: 'IFRS 1 § D5', lignes: lignes(100, 'SF_RESERVES'), aLaTransition: true });
     // Le même écart, redéclaré à la clôture du comparatif, plus l'amortissement de l'écart et une erreur.
@@ -376,6 +376,10 @@ describe('IfrsService · première application (IFRS 1)', () => {
     // Résultat global 2025 · 100 − 20 − 10 = 70 ; le report de bilan n'y figure pas.
     expect(global.lignes.map((l) => l.montant)).toEqual([100, -20, -10, 70]);
     expect(pa.rapprochements.every((r) => r.ecart === 0)).toBe(true);
+    // Relevés du paquet 1, ligne A, voisin A4 · l'état d'ouverture se lit
+    // AVANT la clôture du comparatif, jamais sur son report brut, qui porte
+    // le virement du résultat antérieur non affecté daté du dernier jour.
+    expect(ecritures.balance).toHaveBeenCalledWith(T, EX1, false, undefined, { avantLaCloture: true });
     // L'ajustement de transition n'entre pas dans la clôture du comparatif · sinon 1 070.
     expect(e.n1!.rapprochements.capitauxPropresIfrs).toBe(970);
     expect(e.ajustementsTransition.map((r: any) => r.libelle)).toEqual(['Coût présumé']);

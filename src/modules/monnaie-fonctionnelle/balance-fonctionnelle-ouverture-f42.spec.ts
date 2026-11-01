@@ -56,9 +56,14 @@ function service(lignes: Ligne[], exercices = [EX26, EX27], cours = COURS) {
     ecriture: { id: x.ecritureId, date: x.date },
     compte: { id: `c${x.numero}`, numero: x.numero, intitule: `Compte ${x.numero}` },
   });
-  type Filtre = { ecriture: { exerciceId: string; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean }; compte?: { numero: { startsWith: string } } };
+  type Filtre = {
+    ecriture: { exerciceId: string; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean; date?: { gte?: Date; lt?: Date } };
+    compte?: { numero: { startsWith: string } };
+  };
   const retient = (x: Ligne, w: Filtre) =>
     x.exerciceId === w.ecriture.exerciceId &&
+    (!w.ecriture.date?.gte || x.date.getTime() >= w.ecriture.date.gte.getTime()) &&
+    (!w.ecriture.date?.lt || x.date.getTime() < w.ecriture.date.lt.getTime()) &&
     (w.ecriture.estGenereeParCloture === undefined || (x.gpc ?? false) === w.ecriture.estGenereeParCloture) &&
     (w.ecriture.estSoldeDesComptesDeGestion === undefined || (x.sdcg ?? false) === w.ecriture.estSoldeDesComptesDeGestion) &&
     (!w.compte || x.numero.startsWith(w.compte.numero.startsWith));
@@ -97,6 +102,7 @@ function service(lignes: Ligne[], exercices = [EX26, EX27], cours = COURS) {
       }),
     },
     ligneEcriture: {
+      findMany: jest.fn(({ where }: { where: Filtre }) => Promise.resolve(lignes.filter((y) => retient(y, where)).map(vue))),
       findFirst: jest.fn(({ where }: { where: Filtre }) => {
         const x = lignes.find((y) => retient(y, where));
         return Promise.resolve(x ? vue(x) : null);
@@ -197,5 +203,52 @@ describe('F42 · l’ouverture est la clôture du même jeu pour l’exercice pr
     const erreur = await service(seul, [EX27], tard).balance('t1', 'ex27').catch((e: Error) => e.message);
     expect(erreur).toContain("dans l'exercice du 2027-01-01 au 2027-12-31.");
     expect(erreur).not.toContain('antérieur');
+  });
+});
+
+/**
+ * RELEVÉS DU PAQUET 1, LIGNE A, VOISIN A4 · le virement du résultat antérieur
+ * non affecté, que la clôture passe au DERNIER jour sous le drapeau de
+ * l'à-nouveau, se rejoue dans le second jeu · omis, le 13 de l'exercice
+ * suivant cumulait deux résultats et le report à nouveau restait vide.
+ */
+describe('A4 · le virement du 13 au report à nouveau se rejoue dans le second jeu', () => {
+  const EX25 = { id: 'ex25', tenantId: 't1', dateDebut: j('2025-01-01'), dateFin: j('2025-12-31') };
+  const COURS_3 = [{ date: j('2025-01-01'), cours: 2500 }, ...COURS];
+  const TROIS_EXERCICES: Ligne[] = [
+    // 2025 · un produit de 2 500 000 (1 000 au cours de 2500), soldé au 1310.
+    l('ex25', 'p25', '2025-06-10', '52100000', 2_500_000, 0),
+    l('ex25', 'p25', '2025-06-10', '70100000', 0, 2_500_000),
+    l('ex25', 'c25', '2025-12-31', '70100000', 2_500_000, 0, { gpc: true, sdcg: true }),
+    l('ex25', 'c25', '2025-12-31', '13100000', 0, 2_500_000, { gpc: true, sdcg: true }),
+    // 2026 · l'à-nouveau, un produit de décembre (1 000 au cours de 3100), le
+    // virement du résultat 2025 non affecté au 121 au dernier jour, la clôture.
+    l('ex26', 'an', '2026-01-01', '52100000', 2_500_000, 0, { gpc: true }),
+    l('ex26', 'an', '2026-01-01', '13100000', 0, 2_500_000, { gpc: true }),
+    l('ex26', 'p26', '2026-12-10', '52100000', 3_100_000, 0),
+    l('ex26', 'p26', '2026-12-10', '70100000', 0, 3_100_000),
+    l('ex26', 'vir', '2026-12-31', '13100000', 2_500_000, 0, { gpc: true }),
+    l('ex26', 'vir', '2026-12-31', '12100000', 0, 2_500_000, { gpc: true }),
+    l('ex26', 'clo', '2026-12-31', '70100000', 3_100_000, 0, { gpc: true, sdcg: true }),
+    l('ex26', 'clo', '2026-12-31', '13100000', 0, 3_100_000, { gpc: true, sdcg: true }),
+    l('ex27', 'an', '2027-01-01', '52100000', 5_600_000, 0, { gpc: true }),
+    l('ex27', 'an', '2027-01-01', '12100000', 0, 2_500_000, { gpc: true }),
+    l('ex27', 'an', '2027-01-01', '13100000', 0, 3_100_000, { gpc: true }),
+  ];
+
+  it('2027 ouvre avec le résultat 2025 au 121 et le seul résultat 2026 au 131', async () => {
+    const r = await service(TROIS_EXERCICES, [EX25, EX26, EX27], COURS_3).balance('t1', 'ex27');
+    expect(parNumero(r)).toEqual({
+      '12100000': [0, 1000, -1000],
+      '13100000': [0, 1000, -1000],
+      '52100000': [2000, 0, 2000],
+    });
+  });
+
+  it('2026 ne lit pas le virement de son dernier jour comme une ouverture', async () => {
+    const r = await service(TROIS_EXERCICES, [EX25, EX26, EX27], COURS_3).balance('t1', 'ex26');
+    // Le jeu s'arrête avant la clôture · le 13 porte encore le résultat 2025.
+    expect(parNumero(r)['12100000']).toBeUndefined();
+    expect(parNumero(r)['13100000']).toEqual([0, 1000, -1000]);
   });
 });

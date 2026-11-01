@@ -122,6 +122,44 @@ const MOUVEMENTS = { estGenereeParCloture: false } as const;
 /** L'à-nouveau · engendré par la clôture, sans être le solde des comptes de gestion. */
 const A_NOUVEAU = { estGenereeParCloture: true, estSoldeDesComptesDeGestion: false } as const;
 
+/**
+ * L'À-NOUVEAU EST DATÉ AVANT LE DERNIER JOUR (relevés du paquet 1, ligne A,
+ * voisin A4) · la clôture écrit au DERNIER jour, sous le même drapeau, le
+ * virement du résultat antérieur non affecté (fiche du compte 13 des deux
+ * plans, `virement-resultat-non-affecte.ts`). Lu comme une ouverture, il
+ * rangeait au 12 d'ouverture un résultat que le 13 portait encore.
+ */
+const aNouveauDe = (exercice: { dateFin: Date }) => ({ ...A_NOUVEAU, date: { lt: exercice.dateFin } });
+
+/**
+ * LE VIREMENT DU RÉSULTAT NON AFFECTÉ, RECALCULÉ DANS LE SECOND JEU (A4) ·
+ * comme le solde des comptes de gestion, il appartient à la clôture, qui ne
+ * se convertit pas · il se REJOUE. Chaque compte 13 qu'il solde en francs est
+ * soldé dans le second jeu à SON solde converti, et la somme va au compte de
+ * destination (seul compte de l'écriture hors du 13). Converti au cours du
+ * dernier jour, il laissait au 13 un reliquat de change, et omis, le 13 de
+ * l'exercice suivant cumulait deux résultats. Une écriture qui n'a pas une
+ * destination et une seule n'est pas rejouée · les soldes restent tels quels.
+ */
+export function rejouerVirementDuResultat(
+  soldes: Map<string, { numero: string; intitule: string; solde: number }>,
+  lignes: readonly { compteId: string; numero: string; intitule: string }[],
+): void {
+  const destinations = [...new Map(lignes.filter((l) => !l.numero.startsWith('13')).map((l) => [l.compteId, l])).values()];
+  if (destinations.length !== 1) return;
+  let vire = 0;
+  for (const id of new Set(lignes.filter((l) => l.numero.startsWith('13')).map((l) => l.compteId))) {
+    const c = soldes.get(id);
+    if (!c) continue;
+    vire += c.solde;
+    c.solde = 0;
+  }
+  const d = destinations[0];
+  const cible = soldes.get(d.compteId) ?? { numero: d.numero, intitule: d.intitule, solde: 0 };
+  cible.solde += vire;
+  soldes.set(d.compteId, cible);
+}
+
 @Injectable()
 export class BalanceFonctionnelleService {
   constructor(private readonly prisma: PrismaService) {}
@@ -337,7 +375,7 @@ export class BalanceFonctionnelleService {
     // plus hier qu'aujourd'hui.
     const aUnANouveau =
       (await this.prisma.ligneEcriture.findFirst({
-        where: { ecriture: { ...bornes, ...A_NOUVEAU } },
+        where: { ecriture: { ...bornes, ...aNouveauDe(exercice) } },
         select: { id: true },
       })) !== null;
 
@@ -412,7 +450,7 @@ export class BalanceFonctionnelleService {
     // Ce qui se convertit au cours de sa date · les mouvements, et l'à-nouveau
     // d'une reprise qui n'a aucun exercice précédent dans le dossier.
     await this.lireEcritures({ ...bornes, ...MOUVEMENTS }, convertir(false));
-    if (aUnANouveau && !precedent) await this.lireEcritures({ ...bornes, ...A_NOUVEAU }, convertir(true));
+    if (aUnANouveau && !precedent) await this.lireEcritures({ ...bornes, ...aNouveauDe(exercice) }, convertir(true));
 
     if (sansCours.size > 0) {
       const distinctes = [...sansCours].sort();
@@ -444,12 +482,23 @@ export class BalanceFonctionnelleService {
         if (solde >= 0) c.ouvertureDebit += solde;
         else c.ouvertureCredit += -solde;
       };
+      const bilan = new Map<string, { numero: string; intitule: string; solde: number }>();
       for (const [id, v] of jeuPrecedent.parCompte) {
         const solde = v.ouvertureDebit + v.debit - v.ouvertureCredit - v.credit;
-        if (['1', '2', '3', '4', '5'].includes(v.numero[0])) {
-          if (Math.abs(solde) > 0.000001) reporter(id, v.numero, v.intitule, solde);
-        } else resultat += solde;
+        if (['1', '2', '3', '4', '5'].includes(v.numero[0])) bilan.set(id, { numero: v.numero, intitule: v.intitule, solde });
+        else resultat += solde;
       }
+      // Le virement que la clôture de l'exercice précédent a passé au dernier
+      // jour, rejoué sur les soldes du second jeu (A4).
+      const virements = await this.prisma.ligneEcriture.findMany({
+        where: { ecriture: { tenantId, exerciceId: precedent.id, ...A_NOUVEAU, ...HORS_SITUATION, date: { gte: precedent.dateFin } } },
+        select: { compte: { select: { id: true, numero: true, intitule: true } } },
+      });
+      rejouerVirementDuResultat(
+        bilan,
+        virements.map((l) => ({ compteId: l.compte.id, numero: l.compte.numero, intitule: l.compte.intitule })),
+      );
+      for (const [id, v] of bilan) if (Math.abs(v.solde) > 0.000001) reporter(id, v.numero, v.intitule, v.solde);
       if (Math.abs(resultat) > 0.000001) {
         const ligneResultat = await this.prisma.ligneEcriture.findFirst({
           where: {
@@ -485,7 +534,10 @@ export class BalanceFonctionnelleService {
    * l'appel même.
    */
   private lireEcritures(
-    { tenantId, ...filtre }: { tenantId: string; exerciceId: string; estGenereeParCloture: boolean; estSoldeDesComptesDeGestion?: boolean },
+    {
+      tenantId,
+      ...filtre
+    }: { tenantId: string; exerciceId: string; estGenereeParCloture: boolean; estSoldeDesComptesDeGestion?: boolean; date?: { lt: Date } },
     traiter: (e: EcritureLue) => void,
   ): Promise<void> {
     return lireParLots(
