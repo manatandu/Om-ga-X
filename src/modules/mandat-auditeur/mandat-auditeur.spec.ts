@@ -242,6 +242,22 @@ describe('Enregistrement du mandat · ce que les textes refusent', () => {
     ).resolves.toBeDefined();
   });
 
+  it('REFUSE un rang déclaré plus bas que celui du registre, en nommant les deux (relecture du 2026-11-01)', async () => {
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    await svc.enregistrer('t', mandatValide);
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2029, rang: 1 })).rejects.toThrow(
+      /Rang déclaré 1, quand le registre .* rang 2/,
+    );
+    expect(cree).toHaveLength(1);
+  });
+
+  it('compte le mandat d’origine d’un remplaçant renouvelé · le renouvellement vise le mandat poursuivi', async () => {
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    // Le remplaçant a fini en 2028 un mandat d'origine de rang 2.
+    cree.push({ ...mandatValide, premierExercice: 2027, nombreExercices: 2, rang: 1, mandatOrigineId: 'o', mandatOrigine: { rang: 2 } });
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2029 })).rejects.toThrow(/renouvelables UNE FOIS/i);
+  });
+
   it('N’INVENTE PAS cette limite pour une SARL', async () => {
     // Aucun article lu de l'AUSCGIE ne borne le renouvellement · refuser ici
     // serait un signalement faux du § 10 bis.
