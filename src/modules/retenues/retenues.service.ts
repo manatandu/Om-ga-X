@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { FormeJuridiqueSyscohada, Referentiel, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -416,13 +416,19 @@ export class RetenuesService {
     // INPP trimestriel) · une exception levée en relisant le registre de
     // l'exercice précédent faisait tomber TOUT le registre de l'exercice. Elle
     // retombe sur le repli déjà écrit (bloc daté au trimestre), consignée au
-    // journal du serveur et DITE dans la mention, jamais avalée.
+    // journal du serveur et DITE dans la mention, jamais avalée · quand c'est
+    // un refus de la lecture, et seulement alors.
     let ouvertureInpp: Awaited<ReturnType<RetenuesService['ouvertureVentileeInpp']>> = null;
     let lectureN1EnEchec = false;
     if (exercice && !params.sansVentilationDOuverture) {
       try {
         ouvertureInpp = await this.ouvertureVentileeInpp(tenantId, exercice.dateDebut, params.dateReference);
       } catch (e) {
+        // SEUL L'ÉCHEC ATTENDU RETOMBE SUR LE REPLI · un refus nommé de la
+        // lecture (HttpException). Une erreur de programmation ou une perte de
+        // connexion REMONTE · repliée, elle rendrait un registre plausible
+        // sur une base qui ne répond plus (relecture du 2026-11-01).
+        if (!(e instanceof HttpException)) throw e;
         lectureN1EnEchec = true;
         this.journal.error(
           `Registre des retenues · lecture de l'exercice précédent impossible (dossier ${tenantId}), ouverture de l'INPP et de l'ONEM laissée en bloc`,
