@@ -93,7 +93,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * client légitime : l'en-tête X-CSRF-Token doit égaler le claim `csrf` du
    * JWT · un site tiers ne peut ni lire ce claim (cookie httpOnly, réponse
    * protégée par CORS) ni poser un en-tête personnalisé en soumission
-   * inter-site. Une requête authentifiée par l'en-tête Authorization est
+   * inter-site. Une requête authentifiée par l'en-tête Authorization SEUL est
    * exemptée : un en-tête personnalisé ne peut pas être forgé inter-site,
    * c'est sa présence même qui prouve l'origine.
    */
@@ -101,7 +101,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // L'émission d'une éventuelle prolongation (plus bas) · une révocation
     // postérieure l'atteint par l'authentification recopiée, pas par elle.
     const maintenant = Date.now();
-    const porteParCookie = !req.headers.authorization && !!extraireJetonDuCookie(req);
+    // Le cookie est lu AVANT l'en-tête (`jwtFromRequest`) · dès qu'il est là,
+    // c'est lui qui authentifie, et la présence d'un en-tête Authorization à
+    // côté n'exempte de rien (relevé de sécurité du 2026-10-09).
+    const porteParCookie = !!extraireJetonDuCookie(req);
     if (porteParCookie && METHODES_MUTANTES.has(req.method)) {
       const jetonRecu = req.headers[ENTETE_CSRF];
       // Un jeton d'avant la migration (sans claim csrf) ne peut pas prouver
