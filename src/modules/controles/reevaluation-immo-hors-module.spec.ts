@@ -191,4 +191,16 @@ describe('l’à-nouveau d’un écart posé par le module ne compte pas (relev�
   it('signale la part de l’ouverture passée à la main', async () => {
     expect((await avecAnterieur(15_000_000, 12_000_000))!.occurrences[0].montant).toBe(3_000_000);
   });
+
+  it('relecture point 2 · sous un à-nouveau PROVISOIRE, une réévaluation antérieure restée au brouillard ne se retranche pas', async () => {
+    const svc = service([], 4);
+    const prisma = (svc as unknown as { prisma: { ligneEcriture: { findMany: jest.Mock } } }).prisma;
+    prisma.ligneEcriture.findMany.mockImplementation(async (args: { where?: { ecriture?: { OR?: object[] } } }) =>
+      args.where?.ecriture?.OR?.some((o) => 'reevaluationBilan' in o)
+        ? [{ debit: 0, credit: 12_000_000, compte: { numero: '10610000' }, ecriture: { statut: 'BROUILLARD' } }]
+        : [{ ...ouverture(12_000_000), ecriture: { estANouveauProvisoire: true, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false } }],
+    );
+    const a = (await svc.analyser('t', 'ex')).anomalies.find((x) => x.code === 'REEVALUATION_IMMO_HORS_MODULE');
+    expect(a!.occurrences[0].montant).toBe(12_000_000);
+  });
 });

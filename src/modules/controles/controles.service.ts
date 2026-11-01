@@ -557,15 +557,14 @@ function estFactureDUneCreanceReclassee(e: EcritureControlee): boolean {
   });
 }
 
-/** Plafond des occurrences montrées par contrôle · le nombre trouvé est dit à côté. */
+/** Les traitements dont l'annulation peut porter sur le 106 · la réévaluation, et la sortie (transfert de l'écart). */
+const NATURES_ANNULEES_SUR_LE_106 = [NatureTraitementImmobilisation.REEVALUATION, NatureTraitementImmobilisation.SORTIE];
+
 /**
  * L'écriture porte-t-elle l'À-NOUVEAU de l'exercice · provisoire, ou de
  * clôture hors solde des comptes de gestion (mêmes drapeaux que
  * `ECRITURE_D_A_NOUVEAU`, `lettrage/paires-a-cheval.ts`).
  */
-/** Les traitements dont l'annulation peut porter sur le 106 · la réévaluation, et la sortie (transfert de l'écart). */
-const NATURES_ANNULEES_SUR_LE_106 = [NatureTraitementImmobilisation.REEVALUATION, NatureTraitementImmobilisation.SORTIE];
-
 function estLigneDANouveau(
   e: { estANouveauProvisoire: boolean; estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean } | undefined,
 ): boolean {
@@ -573,6 +572,7 @@ function estLigneDANouveau(
   return e.estANouveauProvisoire || (e.estGenereeParCloture && !e.estSoldeDesComptesDeGestion);
 }
 
+/** Plafond des occurrences montrées par contrôle · le nombre trouvé est dit à côté. */
 const PLAFOND_OCCURRENCES = 200;
 
 /** Les racines que les modèles du Système minimal n'ouvrent pas (contrôle 6 ter). */
@@ -2907,6 +2907,11 @@ export class ControlesService {
     // Les comptes 29 que l'À-NOUVEAU de l'exercice porte (relevé F D2 K1 de la
     // simulation du 2026-10-08) · voir plus bas.
     const ouverts29 = new Set<string>();
+    // Ceux dont l'à-nouveau est PROVISOIRE · il ne lit que le livre-journal
+    // (relecture du 2026-11-01, point 2), et seul ce qui y est entré se
+    // retranche · une dotation restée au brouillard en N-1 masquait sinon une
+    // dépréciation passée à la main en N du même montant.
+    const provisoires29 = new Set<string>();
     for (const l of lignes29) {
       const acc = soldes29.get(l.compte.numero) ?? { intitule: l.compte.intitule, solde: 0 };
       // Une dépréciation est CRÉDITRICE · le solde retenu est donc crédit
@@ -2914,6 +2919,7 @@ export class ControlesService {
       acc.solde += Number(l.credit) - Number(l.debit);
       soldes29.set(l.compte.numero, acc);
       if (estLigneDANouveau(l.ecriture)) ouverts29.add(l.compte.numero);
+      if (l.ecriture?.estANouveauProvisoire) provisoires29.add(l.compte.numero);
     }
     /*
       CE QUE LE MODULE A LUI-MÊME POSTÉ NE COMPTE PAS.
@@ -2941,8 +2947,22 @@ export class ControlesService {
           immobilisation: { tenantId },
           OR: [
             { exerciceId },
-            ...(ouverts29.size > 0
-              ? [{ exercice: { tenantId, dateDebut: { lt: ex.dateDebut } }, compteDepreciation: { numero: { in: [...ouverts29] } } }]
+            ...(ouverts29.size > provisoires29.size
+              ? [
+                  {
+                    exercice: { tenantId, dateDebut: { lt: ex.dateDebut } },
+                    compteDepreciation: { numero: { in: [...ouverts29].filter((n) => !provisoires29.has(n)) } },
+                  },
+                ]
+              : []),
+            ...(provisoires29.size > 0
+              ? [
+                  {
+                    exercice: { tenantId, dateDebut: { lt: ex.dateDebut } },
+                    compteDepreciation: { numero: { in: [...provisoires29] } },
+                    ecriture: { statut: StatutEcriture.VALIDEE },
+                  },
+                ]
               : []),
           ],
         },
@@ -3163,12 +3183,15 @@ export class ControlesService {
     });
     const soldes106 = new Map<string, { intitule: string; solde: number }>();
     const ouverts106 = new Set<string>();
+    // Ceux dont l'à-nouveau est PROVISOIRE · voir le contrôle du 29.
+    const provisoires106 = new Set<string>();
     for (const l of lignes106) {
       const acc = soldes106.get(l.compte.numero) ?? { intitule: l.compte.intitule, solde: 0 };
       // L'écart de réévaluation est CRÉDITEUR · c'est une contrepartie de passif.
       acc.solde += Number(l.credit) - Number(l.debit);
       soldes106.set(l.compte.numero, acc);
       if (estLigneDANouveau(l.ecriture)) ouverts106.add(l.compte.numero);
+      if (l.ecriture?.estANouveauProvisoire) provisoires106.add(l.compte.numero);
     }
     // L'À-NOUVEAU REPORTE L'ÉCART QUE LE MODULE A POSÉ AVANT (relevé F D2 K1
     // de la simulation du 2026-10-08) · sans ce retrait, l'écart de la
@@ -3197,9 +3220,11 @@ export class ControlesService {
             ],
           },
         },
-        select: { debit: true, credit: true, compte: { select: { numero: true } } },
+        select: { debit: true, credit: true, compte: { select: { numero: true } }, ecriture: { select: { statut: true } } },
       });
       for (const l of anterieuresDuModule) {
+        // L'à-nouveau provisoire ne lit que le livre-journal · seul ce qui y est entré se retranche.
+        if (provisoires106.has(l.compte.numero) && l.ecriture.statut !== StatutEcriture.VALIDEE) continue;
         const acc = soldes106.get(l.compte.numero);
         if (acc) acc.solde -= Number(l.credit) - Number(l.debit);
       }
