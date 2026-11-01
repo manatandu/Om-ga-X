@@ -153,7 +153,10 @@ async function main() {
     verifier(so.aLa === '2027-01-15' && so.lignes.length === 5 && !so.tronque, `cinq salariés actifs lus au 15 janvier 2027 (${so.lignes.length})`);
     verifier(so.lignes.every((l) => l.refus !== null || l.solde === null || typeof l.solde === 'number'), 'chaque solde chiffré ou nul avec son motif');
     const sol1 = so.lignes.find((l) => l.salarieId === s1.id);
-    console.log(`  info · S1 · droits nés ${sol1.droitsNes}, pris ${sol1.pris}, solde ${sol1.solde}, en cours ${sol1.enCours}, ${sol1.signaux.length} signal(aux)`);
+    // À la main · année de service 2026 révolue le 31 décembre ; seul décembre
+    // porte un bulletin émis, un jour ouvrable par mois entier au-delà de
+    // dix-huit ans (Code du travail, art. 141) · un jour né, rien de pris.
+    verifier(sol1.droitsNes === 1 && sol1.pris === 0 && sol1.solde === 1 && sol1.signaux.length > 0, `S1 · un jour né (décembre seul payé), solde 1, les mois sans bulletin signalés (${sol1.droitsNes}, ${sol1.solde}, ${sol1.signaux.length})`);
     const mauvaiseDate = await A.statut('GET', '/personnel/soldes-conges?ala=2027-13-45');
     verifier(mauvaiseDate.statut === 400, `date illisible refusée une fois (${mauvaiseDate.statut})`);
 

@@ -803,6 +803,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [questionnaireOuvert, setQuestionnaireOuvert] = useState(false);
   // LIGNE PAIE-LOT · le salaire du contrat ne s'est pas repris, et pourquoi.
   const [salaireNonRepris, setSalaireNonRepris] = useState<string | null>(null);
+  // Les lignes que la reprise a posées · tant que le cabinet n'y a pas touché,
+  // un autre salarié ou un autre mois les REMPLACE (sinon le salaire des
+  // jours dus de décembre restait sur la paie de janvier, sans un mot).
+  const lignesReprises = useRef<string | null>(null);
+  // Les lignes du rendu courant, lues par la réponse de la reprise.
+  const lignesCourantes = useRef(lignes);
+  lignesCourantes.current = lignes;
 
   // LIGNE PAIE-LOT · LES PARAMÈTRES DE PAIE DU DOSSIER préremplissent les
   // champs VIDES de la simulation · un champ tapé n'est jamais écrasé, un
@@ -840,21 +847,29 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     api.get<{ corps: CorpsPropose; manques: string[]; salaireRepris: boolean }>(`/personnel/salaries/${selection}/proposition-bulletin/${moisDePaie}`).then(
       (r) => {
         if (!actuel) return;
+        const vierge = (ls: LignePaie[]) =>
+          (ls.length === 1 && ls[0].montantFc === '' && ls[0].libelle === '' && !ls[0].rubriqueId) ||
+          (lignesReprises.current !== null && JSON.stringify(ls) === lignesReprises.current);
+        const intactes = vierge(lignesCourantes.current);
         if (!r.salaireRepris) {
           setSalaireNonRepris(r.manques[0] ?? null);
+          // Une reprise d'un autre salarié ou d'un autre mois, intacte, ne reste pas.
+          if (intactes && lignesReprises.current !== null) {
+            lignesReprises.current = null;
+            setLignes([{ ...LIGNE_VIERGE }]);
+          }
           return;
         }
-        const vierge = (ls: LignePaie[]) => ls.length === 1 && ls[0].montantFc === '' && ls[0].libelle === '' && !ls[0].rubriqueId;
-        setLignes((ls) => {
-          if (!vierge(ls)) return ls;
-          setDeviseStipulation(r.corps.deviseStipulation === 'USD' ? 'USD' : 'CDF');
-          return r.corps.elements.map((e) => ({
-            ...LIGNE_VIERGE,
-            nature: e.nature,
-            libelle: e.libelle,
-            montantFc: montantPourChamp(e.montantUsd ?? e.montantFc ?? null),
-          }));
-        });
+        if (!intactes) return;
+        const reprises: LignePaie[] = r.corps.elements.map((e) => ({
+          ...LIGNE_VIERGE,
+          nature: e.nature,
+          libelle: e.libelle,
+          montantFc: montantPourChamp(e.montantUsd ?? e.montantFc ?? null),
+        }));
+        lignesReprises.current = JSON.stringify(reprises);
+        setLignes(reprises);
+        setDeviseStipulation(r.corps.deviseStipulation === 'USD' ? 'USD' : 'CDF');
         if (r.corps.classeProfessionnelle !== undefined) setClassePro((c) => c || String(r.corps.classeProfessionnelle));
       },
       (e: ApiError) => actuel && setErreur(e.message),

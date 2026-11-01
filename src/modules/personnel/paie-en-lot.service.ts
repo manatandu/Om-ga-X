@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { StatutBulletinPaie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { jourDeKinshasaIso } from '../../common/echeance';
 import { PersonnelService } from './personnel.service';
 import { AbsencesService } from './absences.service';
 import { CongesService } from './conges.service';
@@ -130,7 +131,7 @@ export class PaieEnLotService {
   async proposerLeMois(tenantId: string, mois: string, maintenant: Date = new Date()) {
     if (!moisValide(mois)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
     const parametres = lireParametresPaie(await this.parametresLus(tenantId));
-    const [salaries, totalActifs, actifsDuMois] = await Promise.all([
+    const [salaries, totalActifs] = await Promise.all([
       this.prisma.salarie.findMany({
         where: { tenantId, actif: true },
         orderBy: [{ nom: 'asc' }, { postNom: 'asc' }, { id: 'asc' }],
@@ -146,16 +147,18 @@ export class PaieEnLotService {
         },
       }),
       this.prisma.salarie.count({ where: { tenantId, actif: true } }),
-      // Les bulletins ACTIFS du mois, toutes natures · un décompte final
-      // remplace le bulletin du dernier mois (décision du 2026-10-02).
-      this.prisma.bulletinPaie.findMany({
-        where: { tenantId, moisDePaie: mois, statut: StatutBulletinPaie.EMIS },
-        select: { salarieId: true, numero: true, nature: true },
-        take: 5000,
-      }),
     ]);
     const tronque = salaries.length > PLAFOND_LOT_PAIE;
     const lus = salaries.slice(0, PLAFOND_LOT_PAIE);
+    // Les bulletins ACTIFS du mois des salariés LUS, toutes natures · un
+    // décompte final remplace le bulletin du dernier mois (décision du
+    // 2026-10-02). Bornée par la liste · un seul bulletin actif par salarié
+    // et par mois (émission sous verrou), une marge pour l'héritage.
+    const actifsDuMois = await this.prisma.bulletinPaie.findMany({
+      where: { tenantId, moisDePaie: mois, statut: StatutBulletinPaie.EMIS, salarieId: { in: lus.map((s) => s.id) } },
+      select: { salarieId: true, numero: true, nature: true },
+      take: lus.length * 4 + 1,
+    });
     const dejaEmis = new Map(actifsDuMois.map((b) => [b.salarieId, b]));
 
     const lignes = [];
@@ -244,13 +247,13 @@ export class PaieEnLotService {
       }),
       this.prisma.salarie.count({ where: { tenantId, actif: true } }),
     ]);
-    let aLa: string | null = null;
+    // Le jour de lecture se dit même sans salarié · celui de Kinshasa à défaut.
+    const aLa = aLaBrut ?? jourDeKinshasaIso(new Date());
     const lignes = [];
     for (const s of salaries) {
       const base = { salarieId: s.id, nomComplet: [s.nom, s.postNom, s.prenoms].filter(Boolean).join(' '), matricule: s.matricule };
       try {
-        const c = await this.conges.compteur(tenantId, s.id, aLaBrut);
-        aLa = c.aLa;
+        const c = await this.conges.compteur(tenantId, s.id, aLa);
         if ('refus' in c.compteur) {
           lignes.push({ ...base, refus: c.compteur.refus as string, droitsNes: null, pris: null, solde: null, enCours: null, signaux: [] as string[] });
         } else {

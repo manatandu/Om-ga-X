@@ -140,6 +140,11 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
     const lus: Bulletin[] = [];
     try {
       for (const b of emis) lus.push(await api.get<Bulletin>(`/personnel/bulletins/${b.id}`));
+      // Un bulletin annulé entre la liste et la lecture ne s'imprime pas comme émis.
+      if (lus.some((b) => b.statut !== 'EMIS')) {
+        charger();
+        return setErreur('Un bulletin a changé depuis la liste · relisez-la, rien n’est imprimé.');
+      }
       setOuvert(null);
       setImpression(lus);
     } catch (e) {

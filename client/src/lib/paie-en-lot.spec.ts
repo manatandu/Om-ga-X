@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { corpsAEmettre, emettreLesCoches, entierSaisi, prerempliParametres, type CorpsPropose } from './paie-en-lot';
+
+// Aucun import de « vitest » · convention du dépôt (la suite tourne aussi sous Jest).
 
 const CORPS: CorpsPropose = { moisDePaie: '2026-03', elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire du contrat', montantFc: 800000 }] };
 
