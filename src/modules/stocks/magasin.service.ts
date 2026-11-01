@@ -274,7 +274,7 @@ export class MagasinService {
   ) {
     const article = await this.prisma.articleStock.findFirst({
       where: { id: articleId, tenantId },
-      select: { id: true, actif: true, code: true },
+      select: { id: true, actif: true, code: true, compteId: true, methodeValorisation: true, compte: { select: { numero: true } } },
     });
     if (!article) throw new NotFoundException('Article introuvable dans ce dossier.');
     if (!article.actif) {
@@ -345,6 +345,10 @@ export class MagasinService {
         refus.ordre === ordre ? refus.explication : `Ce mouvement rendrait impossible ${refus.designation} · ${refus.explication}`,
       );
     }
+    if (dto.ecritureId) {
+      const motif = await this.motifRefusLien(tenantId, article, dto, ordre);
+      if (motif) throw new BadRequestException(motif);
+    }
     return this.prisma.mouvementStock.create({
       data: {
         tenantId,
@@ -360,6 +364,90 @@ export class MagasinService {
         createdBy: userId,
       },
     });
+  }
+
+  /**
+   * L'ÉCRITURE LIÉE PORTE LE MOUVEMENT (relevé MAG-LIEN de la simulation du
+   * 2026-10-08). Un mouvement se liait à n'importe quelle écriture du dossier,
+   * sans contrôle de compte ni de montant · liée à une écriture qui ne touche
+   * pas le compte de stock de l'article, ou pour plus qu'elle n'y porte, la
+   * fiche (inventaire comptable permanent) et le compte de classe 3 divergeaient
+   * sans un mot, et l'écart remontait au comptage sous la forme d'un faux boni
+   * ou d'un faux mali. Deux règles, fiches des comptes 31 à 38 des deux plans ·
+   * le stock est « débité […] des entrées » et « crédité […] des sorties » :
+   *  · l'écriture porte une ligne sur le compte de l'article, au DÉBIT pour une
+   *    entrée, au CRÉDIT pour une sortie ;
+   *  · la valeur des mouvements liés à cette écriture sur ce compte et dans ce
+   *    sens (celui-ci compris, les annulés écartés) ne dépasse pas ce que
+   *    l'écriture y porte · une écriture d'achat peut porter plusieurs
+   *    articles d'un même compte, l'égalité n'est donc pas exigée.
+   * La valeur d'une sortie est celle que la méthode CALCULE, jamais saisie.
+   */
+  private async motifRefusLien(
+    tenantId: string,
+    article: { id: string; compteId: string; methodeValorisation: string; compte: { numero: string } },
+    dto: EnregistrerMouvementStockDto,
+    ordre: number,
+  ): Promise<string | null> {
+    const entree = dto.sens === SensMouvementStock.ENTREE;
+    const lignes = await this.prisma.ligneEcriture.findMany({
+      where: { ecritureId: dto.ecritureId!, compteId: article.compteId, ecriture: { tenantId } },
+      select: { debit: true, credit: true },
+    });
+    const porte = Math.round(lignes.reduce((t, l) => t + Number(entree ? l.debit : l.credit), 0) * 100);
+    if (porte <= 0) {
+      return (
+        `L'écriture liée ne porte pas le compte ${article.compte.numero} de l'article au ${entree ? 'débit' : 'crédit'} · ` +
+        `une ${entree ? 'entrée' : 'sortie'} de stock s'y inscrit ainsi (fiches des comptes de stock, classe 3). ` +
+        "Liez le mouvement à l'écriture qui le porte, ou enregistrez-le sans écriture et passez-la d'abord."
+      );
+    }
+    // Les mouvements déjà liés à cette écriture, sur un article du même compte, dans le même sens.
+    const lies = await this.prisma.mouvementStock.findMany({
+      where: { tenantId, ecritureId: dto.ecritureId!, annuleLe: null, sens: dto.sens, article: { compteId: article.compteId } },
+      select: { articleId: true, ordre: true, cout: true },
+    });
+    let dejaLie = 0;
+    const articlesASortir = new Set<string>();
+    for (const m of lies) {
+      if (entree) dejaLie += Math.round(Number(m.cout ?? 0) * 100);
+      else articlesASortir.add(m.articleId);
+    }
+    let valeur = entree ? Math.round(Number(dto.cout) * 100) : 0;
+    if (!entree) {
+      articlesASortir.add(article.id);
+      for (const articleId of articlesASortir) {
+        const autre = articleId === article.id ? article : await this.prisma.articleStock.findFirst({ where: { id: articleId, tenantId }, select: { methodeValorisation: true } });
+        if (!autre) continue;
+        const mouvements = await this.prisma.mouvementStock.findMany({
+          where: { tenantId, articleId, annuleLe: null },
+          select: { ordre: true, date: true, sens: true, quantite: true, cout: true },
+        });
+        const bruts: MouvementAValoriser[] = mouvements.map((m) => ({
+          ordre: m.ordre,
+          date: m.date.toISOString().slice(0, 10),
+          sens: m.sens === SensMouvementStock.ENTREE ? 'ENTREE' : 'SORTIE',
+          quantite: Number(m.quantite),
+          cout: m.cout === null ? null : Number(m.cout),
+        }));
+        if (articleId === article.id) {
+          bruts.push({ ordre, date: dto.date.slice(0, 10), sens: 'SORTIE', quantite: dto.quantite, cout: null });
+        }
+        const v = valoriser(bruts, autre.methodeValorisation as MethodeValorisation);
+        const valeurDe = (o: number) => Math.round((v.mouvements.find((x) => x.ordre === o)?.valeur ?? 0) * 100);
+        for (const m of lies.filter((x) => x.articleId === articleId)) dejaLie += valeurDe(m.ordre);
+        if (articleId === article.id) valeur = valeurDe(ordre);
+      }
+    }
+    if (dejaLie + valeur > porte) {
+      const f = (c: number) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (
+        `L'écriture liée porte ${f(porte)} au ${entree ? 'débit' : 'crédit'} du compte ${article.compte.numero} · ` +
+        `les mouvements qui lui sont déjà liés en valent ${f(dejaLie)}, et celui-ci ${f(valeur)}. La fiche de stock et le ` +
+        'compte divergeraient · liez le mouvement à l\'écriture qui porte sa valeur, ou corrigez d\'abord l\'écriture.'
+      );
+    }
+    return null;
   }
 
   /**

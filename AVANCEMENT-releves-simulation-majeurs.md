@@ -35,6 +35,10 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   Au SYCEBNL, les recettes restent découpées par la maquette (colonne
   « Cotisations » au 701 seul) · le fondement de son poste dit déjà que les
   deux découpages ne se recoupent pas ; rien de plus n'est tranché.
+- MAG-LIEN · un mouvement lié exige que l'écriture porte le compte de l'article
+  au débit (entrée) ou au crédit (sortie), et que la valeur des mouvements
+  liés à elle sur ce compte et ce sens (sortie valorisée par la méthode) ne
+  dépasse pas ce qu'elle y porte.
 
 ## Reste
 
