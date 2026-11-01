@@ -152,7 +152,8 @@ describe('motifs des groupes nommés · le client en miroir du serveur', () => {
     expect(Object.keys(LIBELLE_MOTIF).sort()).toEqual(serveur);
     for (const motif of serveur) {
       const raison = raisonGroupesLusLigneALigne({ total: 1, groupes: [{ code: 'A', compte: '411', motif: motif as never }] });
-      expect(raison?.split(' · ').length, motif).toBeGreaterThan(1);
+      // La cause du motif, puis sa conséquence · une raison vide le tairait.
+      expect(raison?.split(' · ').length ?? 0).toBeGreaterThan(1);
     }
   });
 });

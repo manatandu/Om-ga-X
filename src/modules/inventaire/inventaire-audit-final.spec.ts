@@ -23,6 +23,7 @@ function monter(statut: StatutCampagneInventaire) {
   const prisma: Record<string, unknown> = {
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
     $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     campagneInventaire: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>

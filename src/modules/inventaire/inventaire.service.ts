@@ -500,6 +500,9 @@ export class InventaireService {
     campagneId: string,
     statutsAdmis: StatutCampagneInventaire[],
   ) {
+    // UN SEUL ORDRE DE VERROUS · le dossier, puis la ligne (comme `clore`),
+    // sans quoi une fiche et une clôture se croiseraient en interblocage.
+    await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR SHARE`;
     return this.campagneOuverte(tenantId, campagneId, statutsAdmis, tx);
   }

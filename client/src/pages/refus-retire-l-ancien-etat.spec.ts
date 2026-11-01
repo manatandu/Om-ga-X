@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 
 /**
  * UN REFUS DE RECHARGEMENT RETIRE L'ANCIEN ÉTAT (second tour du paquet 1,
@@ -15,7 +14,7 @@ const lire = (fichier: string) => readFileSync(join(__dirname, fichier), 'utf8')
 /** Le corps du gestionnaire d'échec qui suit la lecture de `route`. */
 function gestionnaireDEchec(source: string, route: string): string {
   const i = source.indexOf(route);
-  expect(i, `lecture ${route} introuvable`).toBeGreaterThan(-1);
+  expect(i).toBeGreaterThan(-1);
   const suite = source.slice(i);
   const fin = suite.indexOf('return () =>');
   return suite.slice(0, fin > -1 ? fin : undefined);
