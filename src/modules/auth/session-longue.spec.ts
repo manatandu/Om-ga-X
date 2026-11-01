@@ -31,8 +31,17 @@ import { base32, codeHotp, depuisBase32, pasDe } from './double-authentification
 // La connexion relit la ligne du compte sous verrou, dans une transaction
 // (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
 // elle-même et rend, à la relecture, ce que `findUnique` rend.
+// Ligne multi-dossiers · les appartenances de la personne (le compte seul, ici),
+// lues par la connexion et par /auth/me sur le même double que `findUnique`.
+const avecAppartenances = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P => {
+  const u = p.user as Record<string, unknown>;
+  u.findMany ??= async () => [await p.user.findUnique({})].filter(Boolean);
+  u.count ??= async () => 1;
+  u.updateMany ??= async () => ({ count: 0 });
+  return p;
+};
 const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
-  Object.assign(p, {
+  Object.assign(avecAppartenances(p), {
     $executeRaw: async () => 0,
     $queryRaw: async () => [await p.user.findUnique({})],
     $transaction: async (fn: (tx: unknown) => unknown) => fn(p),
@@ -137,7 +146,7 @@ describe('2 bis · la prolongation par la stratégie et la garde', () => {
     tenant: { referentiel: 'SYCEBNL', licence: null },
   };
   const strategie = (u: Record<string, unknown> = UTILISATEUR) =>
-    new JwtStrategy({ getOrThrow: () => 'secret-de-test' } as never, { user: { findUnique: async () => u } } as never, jwt);
+    new JwtStrategy({ getOrThrow: () => 'secret-de-test' } as never, { user: { findMany: async () => [u], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => u } } as never, jwt);
   const requete = (bearer = false): Record<string, unknown> => ({
     method: 'GET',
     cookies: bearer ? {} : { [COOKIE_SESSION]: 'jeton' },
@@ -234,7 +243,7 @@ describe('2 bis · la prolongation par la stratégie et la garde', () => {
 describe('3 · la console de l’éditeur, session longue admise, connexion complète exigée', () => {
   const service = (user: Record<string, unknown>) =>
     new AuthService(
-      sousVerrou({ user: { findUnique: async () => user, update: async () => ({}) } }) as never,
+      sousVerrou({ user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update: async () => ({}) } }) as never,
       jwt,
       ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
     );
@@ -278,7 +287,7 @@ describe('3 · la console de l’éditeur, session longue admise, connexion comp
 
   it('un jeton long porté par un opérateur passe la stratégie, et la session garde sa dernière authentification', async () => {
     const operateur = { ...compte(true), tenantId: 't1', email: 'a@b.cd', role: 'ADMIN_CABINET', sessionsInvalidesAvant: null, tenant: { referentiel: 'SYCEBNL', licence: null } };
-    const s = new JwtStrategy({ getOrThrow: () => 'x' } as never, { user: { findUnique: async () => operateur } } as never, jwt);
+    const s = new JwtStrategy({ getOrThrow: () => 'x' } as never, { user: { findMany: async () => [operateur], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => operateur } } as never, jwt);
     const req: Record<string, unknown> = { method: 'GET', cookies: { [COOKIE_SESSION]: 'j' }, headers: {} };
     const maintenant = Math.floor(Date.now() / 1000);
     await expect(
@@ -325,7 +334,7 @@ describe('3 · la console de l’éditeur, session longue admise, connexion comp
     };
     const s = service(compte(true));
     const actes = [
-      () => s.changerAdresse('u1', 'le-bon', 'neuve@b.cd', session),
+      () => s.changerAdresse('u1', 'le-bon', 'neuve@b.cd', session, true),
       () => s.deconnecterAutresAppareils('u1', 'le-bon', session),
     ];
     for (const acte of actes) {
@@ -424,7 +433,7 @@ describe('4 · déconnecter mes autres appareils', () => {
     // La session qui présentait l'acte est nommée fermée · le jeton neuf
     // porte un jeton CSRF neuf, et l'ancien, authentifié dans la même seconde
     // que la révocation, ne lui survit plus (ligne saisie-suites, point 3).
-    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT, sessionsFermees: [{ e: empreinteSession('ancien'), f: S0 + DUREE_MAXIMALE_SESSION_LONGUE_S }] });
+    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT, sessionsDuCompteInvalidesAvant: MAINTENANT, sessionsFermees: [{ e: empreinteSession('ancien'), f: S0 + DUREE_MAXIMALE_SESSION_LONGUE_S }] });
     const neuf = lireJeton(r.accessToken);
     expect(neuf).toMatchObject({ longue: true, origine: S0 });
     // Le jeton neuf n'est pas tenu pour antérieur à sa propre révocation, à
@@ -560,7 +569,9 @@ describe('le contrôleur · un seul chemin pour le cookie, et la route nouvelle'
       .filter((m) => m !== 'constructor' && Reflect.getMetadata(PATH_METADATA, proto[m]) !== undefined)
       .filter((m) => !((Reflect.getMetadata(GUARDS_METADATA, proto[m]) ?? []) as unknown[]).includes(JwtAuthGuard))
       .sort();
-    expect(sansGarde).toEqual(['etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
+    // Ligne multi-dossiers · une adresse neuve accepte une invitation en
+    // choisissant son mot de passe, sans compte donc sans session.
+    expect(sansGarde).toEqual(['creerCompteParInvitation', 'etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
   });
 
   it('la route est ouverte à tous les rôles, et n’est PAS une sortie de mot de passe provisoire', () => {

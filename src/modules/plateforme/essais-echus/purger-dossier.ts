@@ -61,6 +61,11 @@ export const MODELES_EXCLUS_DE_LA_PURGE: Readonly<Record<string, string>> = {
  * construction. `purger-dossier.spec.ts` relit le schéma et tombe dès qu'une
  * relation de cette forme y entre sans être classée ici.
  */
+// `User.compteDeConnexionId` (ligne multi-dossiers) relie aussi deux dossiers,
+// d'une ligne `User` à une autre · hors de la forme que ce recensement lit (une
+// clé vers `Tenant`, ou d'une table hors dossier). Un dossier qui porte une
+// appartenance rattachée, ou dont un compte en porte ailleurs, n'est jamais
+// concerné · écarté en SQL et relu dans la transaction (`essais-echus.service.ts`).
 export const RELATIONS_ENTRE_DOSSIERS: Readonly<Record<string, string>> = {
   'Tenant.dossierMereId':
     'cellule vers sa mère · un dossier mère ou cellule n’est jamais concerné (`toucheUnGroupe`, écarté en SQL et relu dans la transaction)',

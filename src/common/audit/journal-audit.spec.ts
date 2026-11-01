@@ -417,6 +417,21 @@ describe('l’interception, telle qu’elle est branchée', () => {
     expect(maillons).toHaveLength(0);
   });
 
+  it('une mise à jour qui n’écrit que les sessions fermées ne pose aucun maillon (second tour multi-dossiers, mineur 8)', async () => {
+    const { client, maillons } = baseFactice();
+    let fait = false;
+    await intercepterEcriture(client, {
+      model: 'User',
+      operation: 'update',
+      args: { where: { id: 'u-9' }, data: { sessionsFermees: [] } },
+      query: async () => {
+        fait = true;
+        return { id: 'u-9', tenantId: 'd-1' };
+      },
+    });
+    expect([fait, maillons.length]).toEqual([true, 0]);
+  });
+
   it('ne recopie jamais le mot de passe, même en passant par l’interception', async () => {
     // La garde de bout en bout · masquer() est testé plus haut, ici on
     // vérifie qu'il est bien appelé sur le chemin réel.

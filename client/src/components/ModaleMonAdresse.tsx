@@ -17,17 +17,31 @@ export function ModaleMonAdresse({ adresseActuelle, onFermer }: { adresseActuell
   const [erreur, setErreur] = useState<string | null>(null);
   const [fait, setFait] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // La nouvelle adresse attend le code reçu à cette adresse (second tour, MAJEUR 2).
+  const [enAttente, setEnAttente] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
     setErreur(null);
     setEnvoi(true);
     try {
-      const r = await api.post<{ adresse: string; csrfToken: string }>('/auth/changer-adresse', {
+      if (enAttente) {
+        const r = await api.post<{ adresse: string; csrfToken: string }>('/auth/confirmer-adresse', { jeton: code.trim() });
+        setCsrf(r.csrfToken);
+        await rafraichir();
+        setFait(`Votre adresse de connexion est désormais ${r.adresse}.`);
+        return;
+      }
+      const r = await api.post<{ adresse: string; csrfToken?: string; confirmationEnvoyee?: boolean }>('/auth/changer-adresse', {
         motDePasseActuel: motDePasse,
         nouvelleAdresse: nouvelle,
       });
-      setCsrf(r.csrfToken);
+      if (r.confirmationEnvoyee) {
+        setEnAttente(r.adresse);
+        return;
+      }
+      if (r.csrfToken) setCsrf(r.csrfToken);
       await rafraichir();
       setFait(`Votre adresse de connexion est désormais ${r.adresse}.`);
     } catch (err) {
@@ -55,6 +69,19 @@ export function ModaleMonAdresse({ adresseActuelle, onFermer }: { adresseActuell
             {erreur && <div className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreur}</div>}
             {fait ? (
               <div className="text-positive bg-positive-soft border border-positive/30 px-3 py-2">{fait}</div>
+            ) : enAttente ? (
+              <>
+                <div>Code envoyé à {enAttente}.</div>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-text-dim">Code reçu</span>
+                  <input required minLength={20} autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} className="border border-border px-2 py-[3px]" />
+                </label>
+                <div className="flex justify-end">
+                  <button type="submit" disabled={!utilisateur || envoi} className="bg-sel text-white font-semibold px-4 py-1.5 disabled:opacity-40">
+                    {envoi ? '…' : 'Confirmer'}
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="text-text-dim">Adresse actuelle : {adresseActuelle}</div>

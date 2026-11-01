@@ -111,6 +111,15 @@ export interface ChargeJeton {
    * 2026-10-09), la console redemande la connexion · jamais l'émission en lieu.
    */
   connexionComplete?: number;
+  /**
+   * La personne tient PLUSIEURS dossiers (ligne multi-dossiers) · posé à la
+   * connexion qui le constate et à chaque changement de dossier, recopié par
+   * la prolongation et les réémissions. Une requête qui modifie doit alors
+   * dire le dossier que son écran affiche (`ENTETE_DOSSIER`, `JwtAuthGuard`) ·
+   * un onglet resté sur un autre dossier n'écrit jamais dans celui de la
+   * session.
+   */
+  plusieursDossiers?: boolean;
 }
 
 /** La session d'une requête, lue dans son jeton par `JwtStrategy`. */
@@ -124,6 +133,8 @@ export interface SessionEnCours {
   authentification?: number | null;
   /** Voir `ChargeJeton.connexionComplete` · nulle quand le jeton ne la porte pas. */
   connexionComplete?: number | null;
+  /** Voir `ChargeJeton.plusieursDossiers`. */
+  plusieursDossiers?: boolean;
 }
 
 export function sessionDuJeton(charge: ChargeJeton, instantS: number): SessionEnCours {
@@ -137,6 +148,7 @@ export function sessionDuJeton(charge: ChargeJeton, instantS: number): SessionEn
     csrf: charge.csrf ?? null,
     authentification: charge.authentification ?? charge.iat ?? null,
     connexionComplete: charge.connexionComplete ?? null,
+    plusieursDossiers: charge.plusieursDossiers === true,
   };
 }
 
@@ -187,6 +199,8 @@ export interface DemandeSession {
    * jeton n'en porte pas, et la console redemandera la connexion.
    */
   connexionComplete?: 'maintenant' | number | null;
+  /** Voir `ChargeJeton.plusieursDossiers` · à recopier, ou à poser. */
+  plusieursDossiers?: boolean;
 }
 
 export interface SessionEmise {
@@ -230,6 +244,7 @@ export function emettreSession(
     origine,
     authentification,
     ...(connexionComplete !== undefined ? { connexionComplete } : {}),
+    ...(demande.plusieursDossiers ? { plusieursDossiers: true } : {}),
     iat: instantS,
   };
   if (demande.longue) {
@@ -273,7 +288,8 @@ export function demandeDeReemission(session: SessionEnCours | null): DemandeSess
   // La connexion complète se RECOPIE · la réémission suit un acte qui n'a
   // présenté que le mot de passe, sauf quand l'appelant dit le contraire.
   const connexionComplete = session.connexionComplete ?? null;
+  const plusieursDossiers = session.plusieursDossiers === true;
   return session.longue
-    ? { longue: true, origine: session.origine, connexionComplete }
-    : { longue: false, origine: session.origine, expCourte: session.exp, connexionComplete };
+    ? { longue: true, origine: session.origine, connexionComplete, plusieursDossiers }
+    : { longue: false, origine: session.origine, expCourte: session.exp, connexionComplete, plusieursDossiers };
 }

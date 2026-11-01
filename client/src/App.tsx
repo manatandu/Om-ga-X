@@ -1,3 +1,6 @@
+import { InvitationPage } from './pages/InvitationPage';
+import { ChoixDossierPage } from './pages/ChoixDossierPage';
+import { dossierChoisiDansLaSession } from './lib/dossiers-personne';
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
 import { pageVue } from './lib/telemetrie';
@@ -30,7 +33,7 @@ function PagePublique({ children }: { children: JSX.Element }) {
 }
 
 function ZoneProtegee({ children }: { children: JSX.Element }) {
-  const { chargement, connecte, utilisateur } = useAuth();
+  const { chargement, connecte, utilisateur, invitationsEnAttente } = useAuth();
   if (chargement) {
     return <div className="min-h-screen flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>;
   }
@@ -39,6 +42,9 @@ function ZoneProtegee({ children }: { children: JSX.Element }) {
   // ou l'admin du dossier) : l'écran de changement s'impose À LA PLACE de
   // l'espace de travail, il n'y a rien d'autre à voir avant.
   if (utilisateur?.doitChangerMotDePasse) return <ChangerMotDePassePage />;
+  // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · la liste de SES
+  // dossiers avant l'écran des logiciels, une fois par session de l'onglet.
+  if ((utilisateur?.plusieursDossiers || (invitationsEnAttente ?? 0) > 0) && !dossierChoisiDansLaSession()) return <ChoixDossierPage />;
   return children;
 }
 
@@ -49,6 +55,8 @@ function Routage() {
       <Route path="/inscription" element={<RegisterPage />} />
       {/* L'essai en libre-service · la page se lit fermée tant que le serveur ne la dit pas ouverte. */}
       <Route path="/essai" element={<EssaiPage />} />
+      {/* Ligne multi-dossiers · le lien d'une invitation reçue par courriel, connecté ou non. */}
+      <Route path="/invitation" element={<InvitationPage />} />
       {/*
         HORS de la zone protégée, et c'est tout l'objet de cette route : une
         politique de confidentialité derrière un mot de passe n'est pas une

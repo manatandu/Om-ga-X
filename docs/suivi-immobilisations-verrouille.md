@@ -215,6 +215,18 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   créances d'adhérents (non tranché) ; reprise d'un verrou de garnissage
   tombé après trente minutes, convention d'OmegaX.
 
+- **MULTI-DOSSIERS · LIMITES ÉCRITES (ligne intégrée le 2026-11-01).** (1)
+  L'administrateur d'un dossier apprend, par un seul booléen, qu'un
+  collaborateur a d'autres dossiers (jamais lesquels ni combien). (2) En ligne
+  SANS messagerie, l'ajout d'une adresse connue est refusé en 503, ce qui
+  révèle qu'elle existe · fermé dès que la messagerie est posée. (3) Le
+  parcours navigateur complet (invitation acceptée, changement de dossier, 409
+  d'un autre onglet) ne tourne pas en CI, faute de messagerie · rejoué par
+  `scripts/rejouer-multi-dossiers.cjs` et en local avec une boîte SMTP de
+  poche. (4) Sur site sans messagerie, la réinitialisation par
+  l'administrateur de l'installation affiche le mot de passe provisoire, qu'il
+  remet en main propre. (5) Messagerie interne, notifications et présence
+  restent par dossier.
 - **RELEVÉS MINEURS TRAITÉS (gel levé le 2026-11-01, ligne
   `releves-mineurs`).** Des entrées « SIMULATION DU LOGICIEL COMPLET »
   (points MINEUR, reste d'une facture réglée en partie, doutes), « Passe V1
@@ -276,6 +288,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   Le chantier touche l'authentification · session et choix du dossier,
   cloisonnement, journal d'audit, rôle et journaux autorisés PAR dossier,
   révocation. Il ne s'ouvre ni pendant le gel ni pendant le pilote.
+  OUVERT le 2026-11-01 (gel levé par Manasse, « Enchaîne le point 3 et 4 »),
+  construit sur `travail/multi-dossiers` · conception et limites écrites dans
+  `AVANCEMENT-multi-dossiers.md`, règle au § 8 de CLAUDE.md.
 
 - **PAQUET 1, LIGNE A (2026-10-09), second et dernier tour de relecture, non
   corrigés (règle des deux tours, CLAUDE.md § 11).** Les deux BLOQUANTS du

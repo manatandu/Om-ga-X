@@ -170,7 +170,9 @@ plus serrés que portent, route par route, les décorateurs `@Throttle` de
 `src/modules/auth/auth.controller.ts` (la connexion, l'inscription, et les
 gestes qui revérifient un mot de passe ou un code de double authentification)
 et de `src/modules/sur-site/sur-site.controller.ts` (dépôt du fichier de
-licence d'une installation sur site) et de
+licence d'une installation sur site, réinitialisation d'un compte du poste) et de
+`src/modules/utilisateurs/utilisateur.controller.ts` (ajout d'un utilisateur,
+qui envoie une invitation par courriel) et de
 `src/modules/demande-information/demande-information.controller.ts`
 (formulaire de demande de la page publique). Avec `--max-instances 4`, le pire cas
 est quatre fois le chiffre écrit, et seulement quand Google a réellement

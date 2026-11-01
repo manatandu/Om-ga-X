@@ -233,6 +233,18 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
         'AuthController.deconnecterPartout',
         // audit final F270
         'AuthController.deconnecterAutresAppareils',
+        // Ligne multi-dossiers · la liste de SES dossiers et le changement de dossier.
+        'AuthController.mesDossiers',
+        'AuthController.changerDossier',
+        // Et les invitations reçues à son adresse.
+        'AuthController.mesInvitations',
+        'AuthController.accepterInvitation',
+        'AuthController.refuserInvitation',
+        // Sur site, l'invitation sans courriel (second tour, MAJEUR 3), et la
+        // confirmation de sa nouvelle adresse (MAJEUR 2).
+        'AuthController.accepterInvitationSurPlace',
+        'AuthController.refuserInvitationSurPlace',
+        'AuthController.confirmerAdresse',
         // Le sélecteur d'exercice, sans aucun chiffre comptable.
         'ExerciceController.lister',
         // audit final F247 · la cotation est bornée au cours de l'USD du jour.

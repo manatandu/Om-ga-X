@@ -192,6 +192,8 @@ describe('Capital, courriel et site · la route', () => {
     const auth = new Auth(
       {
         user: {
+          // Ligne multi-dossiers · /auth/me compte les dossiers de la personne.
+          count: async () => 1,
           findUnique: async () => ({
             id: 'u1',
             email: 'x@y.cd',

@@ -8,8 +8,13 @@ export class CreerUtilisateurDto {
   @IsEmail()
   email!: string;
 
+  // FACULTATIF depuis la ligne multi-dossiers · en ligne avec une messagerie,
+  // toute création est une invitation et l'administrateur ne saisit aucun
+  // mot de passe (`invitations.ts`). La création directe l'exige
+  // (`UtilisateurService.creer`).
+  @IsOptional()
   @MinLength(10, { message: 'Le mot de passe doit contenir au moins 10 caractères' })
-  motDePasse!: string;
+  motDePasse?: string;
 
   @IsEnum(RoleUtilisateur)
   role!: RoleUtilisateur;

@@ -50,6 +50,8 @@ export const ORIGINE_CONDITIONS_LICENCE = 'CONDITIONS_LICENCE';
 export const ORIGINE_RAPPEL_SUPPRESSION_ESSAI = 'RAPPEL_SUPPRESSION_ESSAI';
 /** L'avis de règlement d'un ordre de virement, envoyé au tiers payé (ligne gl-saisie, fonction 35 · reglements/envoi-avis-reglement.service.ts). */
 export const ORIGINE_AVIS_REGLEMENT = 'AVIS_REGLEMENT';
+/** L'invitation d'une personne à un dossier, le jeton jamais gardé dans la file (ligne multi-dossiers · utilisateurs/invitations.ts). */
+export const ORIGINE_INVITATION_DOSSIER = 'INVITATION_DOSSIER';
 
 export interface MessageAMettreEnFile {
   destinataire: string;

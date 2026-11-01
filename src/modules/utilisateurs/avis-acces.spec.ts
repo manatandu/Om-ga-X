@@ -1,3 +1,4 @@
+import { InvitationsService } from './invitations.service';
 import { BadRequestException } from '@nestjs/common';
 import { RoleUtilisateur, StatutMessage } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -124,6 +125,9 @@ describe('l’avis entre dans la file, borné au dossier', () => {
   });
 });
 
+/** Sans messagerie (ou sur site) · la création directe, que ces cas éprouvent (ligne multi-dossiers). */
+const CREATION_DIRECTE = { mode: () => 'DIRECTE' } as unknown as InvitationsService;
+
 describe('l’avis n’est jamais une condition de l’accès', () => {
   /** Une file qui refuse tout · l'adresse du compte lui déplaît. */
   const fileQuiRefuse = () =>
@@ -140,7 +144,7 @@ describe('l’avis n’est jamais une condition de l’accès', () => {
         role: RoleUtilisateur.COMPTABLE,
       })),
     } as unknown as UtilisateurService;
-    const controleur = new UtilisateurController(utilisateurs, avis);
+    const controleur = new UtilisateurController(utilisateurs, avis, CREATION_DIRECTE);
 
     const reponse = await controleur.creer(
       { userId: ADMIN, tenantId: DOSSIER } as AuthenticatedUser,
@@ -152,8 +156,9 @@ describe('l’avis n’est jamais une condition de l’accès', () => {
     // inutilisable, c'est-à-dire pire qu'avant.
     expect(reponse).toMatchObject({ id: 'u-9', email: 'comptable@intranet' });
     // Et le silence n'est pas repris : la réponse dit qu'il n'a pas été averti.
-    expect(reponse.avis).toMatchObject({ avise: false, statut: null });
-    expect(reponse.avis.motif).toContain("n'a pas pu être averti");
+    const { avis: avisRendu } = reponse as { avis: { avise: boolean; statut: null; motif: string } };
+    expect(avisRendu).toMatchObject({ avise: false, statut: null });
+    expect(avisRendu.motif).toContain("n'a pas pu être averti");
   });
 
   it('la réinitialisation aboutit même quand l’avis ne part pas', async () => {
@@ -161,7 +166,7 @@ describe('l’avis n’est jamais une condition de l’accès', () => {
     const utilisateurs = {
       reinitialiserMotDePasse: jest.fn(async () => ({ reinitialise: true, email: 'comptable@intranet' })),
     } as unknown as UtilisateurService;
-    const controleur = new UtilisateurController(utilisateurs, avis);
+    const controleur = new UtilisateurController(utilisateurs, avis, CREATION_DIRECTE);
 
     const reponse = await controleur.reinitialiserMotDePasse(
       { userId: ADMIN, tenantId: DOSSIER } as AuthenticatedUser,

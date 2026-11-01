@@ -40,7 +40,9 @@ describe('ce que la réponse demande à l’écran', () => {
 
   it('le serveur n’écrit plus d’avis de session courte · la prémisse relue sur sa source', () => {
     const service = readFileSync(join(__dirname, '..', '..', '..', 'src', 'modules', 'auth', 'auth.service.ts'), 'utf8');
-    expect(service).toContain("return emettreSession(this.jwt, user.id, { longue, connexionComplete: 'maintenant' });");
+    // Ligne multi-dossiers · la session s'ouvre sur l'appartenance d'entrée, et
+    // la réponse dit seulement s'il y a plusieurs dossiers.
+    expect(service).toContain("return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };");
   });
 });
 

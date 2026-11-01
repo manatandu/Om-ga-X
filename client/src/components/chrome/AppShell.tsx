@@ -1,3 +1,4 @@
+import { ModaleChangerDossier } from '../ModaleChangerDossier';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
@@ -72,7 +73,7 @@ import {
  * raccourcis s'affichait sous la barre d'outils qui la répétait.
  */
 export function AppShell() {
-  const { utilisateur, estAdmin, peutValider, seDeconnecter } = useAuth();
+  const { utilisateur, estAdmin, peutValider, seDeconnecter, invitationsEnAttente } = useAuth();
   // DIVISION SYCEBNL / SYSCOHADA · voir docs/plan-de-construction.md §8.
   // Absent tant que le dossier n'est pas chargé : rien de propre à un
   // référentiel ne s'affiche avant qu'on le connaisse.
@@ -83,6 +84,8 @@ export function AppShell() {
   const { fenetres, cleActive, ouvrir, fermerTout, reorganiser, actualiser } = useFenetres();
   const [aProposOuvert, setAProposOuvert] = useState(false);
   const [monCompteOuvert, setMonCompteOuvert] = useState(false);
+  // Ligne multi-dossiers · Fichier > Changer de dossier, pour qui en tient plusieurs.
+  const [changerDossierOuvert, setChangerDossierOuvert] = useState(false);
   // ALLER À UNE FONCTION PAR SON NOM (ligne gl-saisie, fonction 97 · Sage i7,
   // F7) · la liste est celle du menu affiché, voir commandes-du-menu.ts.
   const [allerOuvert, setAllerOuvert] = useState(false);
@@ -180,6 +183,9 @@ export function AppShell() {
         // fichier courant · ici, refermer le dossier c'est se déconnecter, et
         // la porte d'entrée présente ensuite les dossiers récents (l'équivalent
         // de Fichier > Favoris). Voir client/src/pages/AuthPage.tsx.
+        // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · ses autres
+        // dossiers s'ouvrent sans se reconnecter, parmi les SIENS seulement.
+        ...(utilisateur?.plusieursDossiers || (invitationsEnAttente ?? 0) > 0 ? [{ label: 'Changer de dossier…', onClick: () => setChangerDossierOuvert(true) }] : []),
         {
           label: 'Ouvrir un autre dossier…',
           onClick: () => {
@@ -765,6 +771,7 @@ export function AppShell() {
               { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
               { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
               { label: 'Préférences…', chemin: '/preferences', onClick: () => navigate('/preferences') },
+              ...(utilisateur?.plusieursDossiers || (invitationsEnAttente ?? 0) > 0 ? [{ label: 'Changer de dossier…', onClick: () => setChangerDossierOuvert(true) }] : []),
               { label: 'Fermer le dossier (déconnexion)', onClick: seDeconnecter },
             ],
           },
@@ -972,6 +979,7 @@ export function AppShell() {
       </div>
       {aProposOuvert && <AProposModale onFermer={() => setAProposOuvert(false)} />}
       {monCompteOuvert && <ModaleMonCompte onFermer={() => setMonCompteOuvert(false)} />}
+      {changerDossierOuvert && <ModaleChangerDossier onFermer={() => setChangerDossierOuvert(false)} />}
       {allerOuvert && <AllerAFonction commandes={commandesDuMenu(menus)} onFermer={() => setAllerOuvert(false)} />}
     </div>
     </LogicielActifProvider>

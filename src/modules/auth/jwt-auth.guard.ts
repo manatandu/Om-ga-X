@@ -1,4 +1,4 @@
-import { ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RoleUtilisateur } from '@prisma/client';
 import { AuthGuard } from '@nestjs/passport';
@@ -12,7 +12,8 @@ import { ROLES_CANTONNES, routeOuverteAuRoleCantonne } from '../../common/guards
 import { fonctionDeRoute, motifRefusFonction } from '../../common/fonctions/fonctions-metier';
 import { motifRefusLogiciel, porteeDeRoute } from '../../common/logiciels/logiciels-des-routes';
 import { sessionDeLaRequete } from './session-longue';
-import { poserCookieSession } from './session.constants';
+import { ENTETE_DOSSIER, poserCookieSession } from './session.constants';
+import { extraireJetonDuCookie } from './jwt.strategy';
 
 /**
  * LA SESSION PERDUE SE DIT, EN FRANÇAIS, ET SE RECONNAÎT (audit final F164).
@@ -27,6 +28,37 @@ export const SIGNAL_SESSION_PERDUE = 'perdue';
 
 export function refusDeSession(message: string = MOTIF_SESSION_ABSENTE): UnauthorizedException {
   return new UnauthorizedException({ statusCode: 401, error: 'Unauthorized', message, session: SIGNAL_SESSION_PERDUE });
+}
+
+export const MOTIF_DOSSIER_CHANGE = 'Ce dossier a été changé dans un autre onglet · rechargez la page.';
+const METHODES_QUI_MODIFIENT = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * UN ONGLET RESTÉ SUR UN AUTRE DOSSIER N'ÉCRIT PAS DANS CELUI DE LA SESSION
+ * (ligne multi-dossiers, B1). Une requête qui modifie, portée par le cookie,
+ * doit dire le dossier que son écran affiche, et il doit être celui de la
+ * session · sinon 409 nommé, que l'interface lit pour proposer le
+ * rechargement.
+ *
+ * L'EN-TÊTE N'EST EXIGÉ QUE DE LA SESSION D'UNE PERSONNE QUI A PLUSIEURS
+ * DOSSIERS (claim `plusieursDossiers`) · le risque n'existe que là. Une
+ * personne d'un seul dossier n'a pas d'autre dossier où écrire, et un jeton
+ * porté par l'en-tête Authorization n'a pas de cookie partagé entre onglets ;
+ * l'exiger d'eux aurait cassé les scripts et les clients qui ne le posent pas.
+ * La claim est posée à toute connexion qui constate plusieurs dossiers et à
+ * tout changement de dossier · le cookie ne change de dossier QUE par ce
+ * changement, donc une session sans la claim n'a jamais quitté son dossier.
+ */
+export function motifDossierChange(
+  requete: { method?: string; headers?: Record<string, unknown> } | undefined,
+  sessionDuDossier: string,
+  plusieursDossiers: boolean,
+  porteParCookie: boolean,
+): string | null {
+  if (!requete || !porteParCookie || !METHODES_QUI_MODIFIENT.has(String(requete.method ?? '').toUpperCase())) return null;
+  const annonce = requete.headers?.[ENTETE_DOSSIER];
+  if (typeof annonce === 'string' && annonce.length > 0) return annonce === sessionDuDossier ? null : MOTIF_DOSSIER_CHANGE;
+  return plusieursDossiers ? MOTIF_DOSSIER_CHANGE : null;
 }
 
 /**
@@ -110,6 +142,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         porteeDeRoute(contexte.getClass().name, contexte.getHandler().name),
       );
       if (motifLogiciel) throw new ForbiddenException(motifLogiciel);
+    }
+
+    // 3 ter · L'écran qui modifie dit son dossier (ligne multi-dossiers, B1).
+    if (utilisateur) {
+      const requete = contexte.switchToHttp().getRequest();
+      const porteParCookie = !!requete && !requete.headers?.authorization && !!extraireJetonDuCookie(requete);
+      const motifDossier = motifDossierChange(requete, utilisateur.tenantId, sessionDeLaRequete(requete)?.plusieursDossiers === true, porteParCookie);
+      if (motifDossier) throw new ConflictException({ statusCode: 409, error: 'Conflict', message: motifDossier, dossierChange: true });
     }
 
     // 4 · « Rester connecté » · chaque usage prolonge la session longue (audit

@@ -188,6 +188,7 @@ export const LIBELLES_ORIGINE: Record<string, string> = {
   // L'avis de règlement d'un ordre de virement, envoyé au tiers payé (ligne
   // gl-saisie, fonction 35) · le texte de l'avis imprimé, mot pour mot.
   AVIS_REGLEMENT: 'Avis de règlement',
+  INVITATION_DOSSIER: 'Invitation à un dossier',
 };
 
 export function libelleOrigine(origine: string): string {

@@ -10,7 +10,8 @@ import { RegisterDto } from '../auth/dto/register.dto';
 import { AdministrateurInstallationGuard } from './administrateur-installation.guard';
 import { LicenceSurSiteService } from './licence-sur-site.service';
 import { SauvegardeSurSiteService } from './sauvegarde-sur-site.service';
-import { CopieExterneDto, DeposerLicenceDto } from './sur-site.dto';
+import { CopieExterneDto, DeposerLicenceDto, ReinitialiserCompteSurSiteDto } from './sur-site.dto';
+import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /**
  * L'INSTALLATION SUR SITE · deux routes publiques et deux réservées.
@@ -90,6 +91,22 @@ export class SurSiteController {
    * qui le crée reste dans son dossier, et le jeton du nouvel administrateur
    * ne lui est jamais rendu.
    */
+  /**
+   * RÉINITIALISER UN COMPTE DU POSTE (ligne multi-dossiers, second tour,
+   * BLOQUANT 1) · sur site, aucun opérateur de la plateforme · l'administrateur
+   * de l'installation, qui tient le poste et sa base, en tient lieu ·
+   * mot de passe tiré au sort, second facteur levé, sessions fermées. Avec une
+   * messagerie, le mot de passe part au seul titulaire ; sans elle, il est
+   * rendu ICI, à lui seul, qui le remet en main propre (`AuthService`).
+   */
+  @Throttle({ default: { ttl: 3_600_000, limit: 30 } })
+  @UseGuards(JwtAuthGuard, RolesGuard, AdministrateurInstallationGuard)
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post('comptes/reinitialiser')
+  reinitialiserCompte(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReinitialiserCompteSurSiteDto) {
+    return this.auth.reinitialiserCompteSurSite(dto.email, user.userId);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard, AdministrateurInstallationGuard)
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post('dossiers')

@@ -182,6 +182,10 @@ export class EssaisEchusService {
         AND NOT EXISTS (SELECT 1 FROM "tenants" g WHERE g."dossierMereId" = t."id" OR g."dossierCombinaisonId" = t."id")
         AND NOT EXISTS (SELECT 1 FROM "tiers" x WHERE x."celluleGroupeId" = t."id")
         AND NOT EXISTS (SELECT 1 FROM "abonnements_cabinets" a WHERE a."cabinetId" = t."id")
+        -- Une personne rattachée à un autre dossier, dans un sens ou dans
+        -- l'autre (ligne multi-dossiers) · en cas de doute, non concerné.
+        AND NOT EXISTS (SELECT 1 FROM "users" u WHERE u."tenantId" = t."id" AND u."compteDeConnexionId" IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM "users" r JOIN "users" c ON c."id" = r."compteDeConnexionId" WHERE c."tenantId" = t."id")
         ${curseur}
       ORDER BY l."dateExpiration" ASC, l."tenantId" ASC
       LIMIT ${PAGE_CANDIDATS}`;
@@ -702,6 +706,20 @@ export class EssaisEchusService {
             (await tx.abonnementCabinet.count({ where: { cabinetId: tenantId } }));
           if (visesParAilleurs > 0) {
             throw new ConflictException('Ce dossier est visé par un groupe ou un abonnement · il n’est pas supprimable.');
+          }
+          // UNE PERSONNE RATTACHÉE À UN AUTRE DOSSIER, dans un sens ou dans
+          // l'autre (ligne multi-dossiers) · son compte de connexion ou son
+          // appartenance ne part pas avec ce dossier. Une appartenance ne naît
+          // que de l'acceptation, par la personne, d'une invitation reçue à son
+          // adresse (`utilisateurs/invitations.ts`) · un tiers ne peut donc pas
+          // rendre un essai insupprimable en y rattachant son administrateur
+          // (relecture de sécurité, M1) ; seul le choix de la personne le garde.
+          const rattaches = await tx.$queryRaw<{ n: bigint }[]>`
+            SELECT count(*)::bigint AS n FROM "users" u
+            WHERE (u."tenantId" = ${tenantId} AND u."compteDeConnexionId" IS NOT NULL)
+               OR u."compteDeConnexionId" IN (SELECT c."id" FROM "users" c WHERE c."tenantId" = ${tenantId})`;
+          if (Number(rattaches[0]?.n ?? 0) > 0) {
+            throw new ConflictException('Une personne de ce dossier est rattachée à un autre dossier · il n’est pas supprimable.');
           }
 
           const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { createdAt: true } });

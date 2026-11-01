@@ -1,5 +1,5 @@
 import { faitAssujettissementTva } from '../tenant/faits-declares';
-import { BadRequestException, ConflictException, Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { LicenceSurSiteService } from '../sur-site/licence-sur-site.service';
 import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
 import { articleTrenteSeptApplicable } from '../accord-cadre/conditions-ong-etrangere';
@@ -20,7 +20,7 @@ import { RegisterDto } from './dto/register.dto';
 import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
 import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, estUnDossierDEssai, renvoiPossible } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
-import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
+import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence, User } from '@prisma/client';
 import { ajouterMaillon, prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { horsCloisonnement } from '../../common/cloisonnement/contexte-cloisonnement';
 import { normaliserCourriel } from '../../common/courriel';
@@ -41,6 +41,38 @@ import {
 } from './session-longue';
 import { ajouterSessionFermee, empreinteSession, finDeVie } from './sessions-fermees';
 import { logicielsDeLaSession, logicielsRetiresDeLaSession } from '../utilisateurs/logiciels';
+import {
+  aPlusieursDossiers,
+  appartenanceDansLeDossier,
+  appartenanceDeConnexion,
+  accepterInvitation,
+  accepterInvitationSurPlace,
+  refuserInvitationSurPlace,
+  empreinteDuJeton,
+  acteurDuCompte,
+  appartenancesDeLaPersonne,
+  connexionTenueParLaPersonne,
+  creerCompteParInvitation,
+  invitationsRecues,
+  refuserInvitation,
+  compteDeConnexionDe,
+  dossiersDeLaPersonne,
+  idDuCompteDeConnexion,
+  recopierLAdresse,
+  trouverCompteDeConnexion,
+} from './compte-de-connexion';
+import { sessionRevoquee } from './jwt.strategy';
+import {
+  avisConfirmationAdresse,
+  echeanceConfirmationAdresse,
+  jetonConfirmationAdresse,
+  MOTIF_CONFIRMATION_INVALIDE,
+  ORIGINE_CONFIRMATION_ADRESSE,
+} from './confirmation-adresse';
+import { estSurSite } from '../../common/mode-installation';
+import { avisReinitialisationParCourriel, ORIGINE_REINITIALISATION_PAR_COURRIEL, poserLeProvisoire, sousVerrouDuCompte } from './reinitialisation-du-compte';
+import { LicenceService } from '../licence/licence.service';
+import { dansContexteAudit as dansContexteActeur } from '../../common/audit/contexte-audit';
 
 export const SALT_ROUNDS = 12;
 
@@ -61,6 +93,16 @@ export const EMPREINTE_FACTICE = '$2b$12$zNSRXkByzfZhOQSR4/60ze6WWpSytqcVD.yZf5f
 export const MOTIF_LICENCE_EDITEUR_A_LA_CREATION =
   "La licence de l'éditeur ne s'attribue pas à la création d'un dossier · elle se pose une seule fois, par le geste " +
   "« Désigner comme dossier de l'éditeur… » de la console.";
+
+/**
+ * LA RÉVOCATION DE LA PERSONNE (ligne multi-dossiers) · ses actes sur sa
+ * connexion ferment ses sessions dans TOUS ses dossiers
+ * (`sessionsDuCompteInvalidesAvant`, lu par `JwtStrategy` sur chaque
+ * appartenance) et dans celui du compte.
+ */
+function revocationDeLaPersonne(instant: Date) {
+  return { sessionsInvalidesAvant: instant, sessionsDuCompteInvalidesAvant: instant };
+}
 
 @Injectable()
 export class AuthService {
@@ -130,7 +172,7 @@ export class AuthService {
     // (dont la session porte SON dossier) verrait la garde traiter le compte
     // cherché comme inexistant, et le doublon passerait.
     const emailExistant = await horsCloisonnement('inscription · unicité du courriel sur toute la plateforme', () =>
-      this.prisma.user.findUnique({ where: { email: dto.email } }),
+      this.prisma.user.findUnique({ where: { courrielDeConnexion: dto.email } }),
     );
     if (emailExistant) {
       throw new ConflictException('Un compte existe déjà avec cet email');
@@ -308,7 +350,7 @@ export class AuthService {
     };
 
     const existant = await horsCloisonnement("inscription d'essai · unicité du courriel sur toute la plateforme", () =>
-      this.prisma.user.findUnique({ where: { email } }),
+      this.prisma.user.findUnique({ where: { courrielDeConnexion: email } }),
     );
     if (existant) {
       // Adresse déjà prise · rien n'est créé. Seul le dossier d'un titulaire qui
@@ -316,7 +358,15 @@ export class AuthService {
       const licenceExistante = await horsCloisonnement("inscription d'essai · la licence du dossier du courriel donné", () =>
         this.prisma.licence.findUnique({ where: { tenantId: existant.tenantId } }),
       );
-      if (existant.role === RoleUtilisateur.ADMIN_CABINET && estUnDossierDEssai(licenceExistante) && renvoiPossible(existant, maintenant)) {
+      // Le renvoi change le mot de passe du COMPTE DE CONNEXION · refusé, sous
+      // la même réponse, quand ce compte ouvre aussi d'autres dossiers
+      // (relecture de sécurité, M2) · il fermerait ses sessions partout.
+      if (
+        existant.role === RoleUtilisateur.ADMIN_CABINET &&
+        estUnDossierDEssai(licenceExistante) &&
+        renvoiPossible(existant, maintenant) &&
+        !(await connexionTenueParLaPersonne(this.prisma, existant))
+      ) {
         const mot = motDePasseTireAuSort();
         const avis = avisInscriptionEssai(mot, maintenant, false);
         await horsCloisonnement("inscription d'essai · mot de passe renvoyé au seul titulaire", async () => {
@@ -414,9 +464,10 @@ export class AuthService {
   async login(dto: LoginDto, adresseIp: string | null = null) {
     // SORTIE DE CLOISONNEMENT · à la connexion, on ne sait pas encore de quel
     // dossier relève celui qui se présente. C'est cette requête qui l'apprend.
-    const user = await horsCloisonnement('connexion · le dossier n’est pas encore connu', () =>
-      this.prisma.user.findUnique({ where: { email: normaliserCourriel(dto.email) } }),
-    );
+    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · l'adresse
+    // désigne le COMPTE DE CONNEXION, qui porte mot de passe, second facteur
+    // et verrou ; la session s'ouvre ensuite sur une de ses appartenances.
+    const user = await trouverCompteDeConnexion(this.prisma, normaliserCourriel(dto.email));
 
     // UNE CONNEXION REFUSÉE NE DIT PAS SI LE COMPTE EXISTE, ni par son message
     // ni par sa durée (audit final F238). Trois cas se ressemblent désormais
@@ -501,7 +552,11 @@ export class AuthService {
       throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
     }
 
-    if (!user.estActif) {
+    // LE COMPTE EST DÉSACTIVÉ QUAND AUCUN DE SES DOSSIERS NE L'ADMET PLUS ·
+    // l'administrateur d'un dossier ne retire la personne que du sien.
+    const { lignes: appartenances, total: actives } = await appartenancesDeLaPersonne(this.prisma, user.id);
+    const entree = appartenanceDeConnexion(user.id, appartenances);
+    if (!entree) {
       throw new UnauthorizedException('Ce compte a été désactivé');
     }
 
@@ -544,9 +599,12 @@ export class AuthService {
     // console redemandée ») · c'est la console qui exige une authentification
     // de moins de huit heures (`OperateurPlateformeGuard`).
     const longue = dto.resterConnecte === true;
-    await this.journaliserConnexion(user, adresseIp, longue);
-    // Mot de passe, et code s'il est actif · une connexion complète.
-    return emettreSession(this.jwt, user.id, { longue, connexionComplete: 'maintenant' });
+    // La connexion se journalise dans le dossier où la session s'ouvre.
+    await this.journaliserConnexion({ id: entree.id, email: user.email, tenantId: entree.tenantId }, adresseIp, longue);
+    // Mot de passe, et code s'il est actif · une connexion complète. Plusieurs
+    // dossiers · l'écran montre la liste avant l'écran des logiciels.
+    const plusieursDossiers = actives > 1;
+    return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };
   }
 
   /**
@@ -598,9 +656,38 @@ export class AuthService {
   // qu'ils n'ont pas d'application d'authentification.
 
   private async compteDoubleAuth(userId: string) {
-    const u = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!u) throw new UnauthorizedException('Utilisateur introuvable');
-    return u;
+    return (await this.compteDeLaSession(userId)).compte;
+  }
+
+  /**
+   * LA LIGNE DE LA SESSION ET LE COMPTE DE CONNEXION DE SA PERSONNE (ligne
+   * multi-dossiers, `compte-de-connexion.ts`). Mot de passe, adresse, second
+   * facteur et sessions de la personne se jugent et s'écrivent sur le COMPTE ;
+   * la session à fermer et à réémettre est celle de la LIGNE. Pour un
+   * utilisateur d'un seul dossier, les deux sont la même ligne, lue une fois.
+   */
+  private async compteDeLaSession(userId: string): Promise<{ ligne: User; compte: User }> {
+    const ligne = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!ligne) throw new UnauthorizedException('Utilisateur introuvable');
+    const compte = await compteDeConnexionDe(this.prisma, ligne);
+    if (!compte) throw new UnauthorizedException('Utilisateur introuvable');
+    return { ligne, compte };
+  }
+
+  /**
+   * Une écriture sur le compte de connexion · dans le dossier de la session
+   * quand il y vit (le chemin de toujours), sinon par la sortie déclarée, le
+   * compte vivant dans le dossier d'origine de la personne.
+   */
+  private surLeCompte<T>(ligne: { tenantId: string }, compte: { id: string; email: string; tenantId: string }, geste: () => Promise<T>): Promise<T> {
+    // Depuis un autre dossier, l'acte s'inscrit dans la chaîne du dossier du
+    // compte sous la personne elle-même (relecture, m1) · jamais sous l'id
+    // d'une ligne d'un autre dossier.
+    return ligne.tenantId === compte.tenantId
+      ? geste()
+      : horsCloisonnement('compte de connexion · acte de son titulaire, authentifié, depuis un autre de ses dossiers', () =>
+          dansContexteActeur(acteurDuCompte(compte), async () => geste()),
+        );
   }
 
   async etatDoubleAuth(userId: string) {
@@ -618,7 +705,8 @@ export class AuthService {
     const u = await this.compteDoubleAuth(userId);
     if (u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification est déjà active · désactivez-la d’abord.');
     const secret = genererSecret();
-    await this.prisma.user.update({ where: { id: userId }, data: { secretDoubleAuth: secret } });
+    const { ligne } = await this.compteDeLaSession(userId);
+    await this.surLeCompte(ligne, u, () => this.prisma.user.update({ where: { id: u.id }, data: { secretDoubleAuth: secret } }));
     return { secret, uri: uriOtpauth(secret, u.email) };
   }
 
@@ -644,7 +732,7 @@ export class AuthService {
     maintenant = new Date(),
     session: SessionEnCours | null = null,
   ) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification est déjà active.');
     if (!u.secretDoubleAuth) throw new BadRequestException('Affichez d’abord la clé à enregistrer dans l’application.');
     if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
@@ -654,29 +742,31 @@ export class AuthService {
     }
     const { codes, empreintes } = genererCodesSecours();
     await this.revoquerEtFermerLaSession(
+      ligne,
       u,
       session,
-      { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
+      { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, ...revocationDeLaPersonne(maintenant) },
       maintenant.getTime(),
     );
-    await this.aviserDoubleAuth(u, 'ACTIVEE', maintenant);
-    return { codesSecours: codes, ...this.reemettre(u, session, undefined, true) };
+    await this.aviserDoubleAuth(ligne, 'ACTIVEE', maintenant);
+    return { codesSecours: codes, ...this.reemettre(ligne, session, undefined, true) };
   }
 
   /** Mot de passe ET second facteur · un poste laissé ouvert ne suffit pas à la retirer. */
   async desactiverDoubleAuth(userId: string, motDePasse: string, code: string, maintenant = new Date(), session: SessionEnCours | null = null) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
     if (!(await bcrypt.compare(motDePasse, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     if (!secondFacteurAccepte(u, code, maintenant.getTime())) throw new UnauthorizedException('Code de vérification invalide');
     await this.revoquerEtFermerLaSession(
+      ligne,
       u,
       session,
-      { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
+      { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], ...revocationDeLaPersonne(maintenant) },
       maintenant.getTime(),
     );
-    await this.aviserDoubleAuth(u, 'RETIREE', maintenant);
-    return { desactivee: true, ...this.reemettre(u, session, undefined, true) };
+    await this.aviserDoubleAuth(ligne, 'RETIREE', maintenant);
+    return { desactivee: true, ...this.reemettre(ligne, session, undefined, true) };
   }
 
   /**
@@ -686,14 +776,14 @@ export class AuthService {
    * prouve pas qui la tient.
    */
   async regenererCodesSecours(userId: string, motDePasseActuel: string, code: string, maintenant = new Date()) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
     if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     const r = secondFacteurAccepte(u, code, maintenant.getTime());
     if (!r) throw new UnauthorizedException('Code de vérification invalide');
     const { codes, empreintes } = genererCodesSecours();
-    await this.prisma.user.update({ where: { id: userId }, data: { ...r, codesSecoursDoubleAuth: empreintes } });
-    await this.aviserDoubleAuth(u, 'CODES_SECOURS_REGENERES', maintenant);
+    await this.surLeCompte(ligne, u, () => this.prisma.user.update({ where: { id: u.id }, data: { ...r, codesSecoursDoubleAuth: empreintes } }));
+    await this.aviserDoubleAuth(ligne, 'CODES_SECOURS_REGENERES', maintenant);
     return { codesSecours: codes };
   }
 
@@ -729,16 +819,14 @@ export class AuthService {
    * mot de passe.
    */
   async changerMotDePasse(userId: string, motDePasseActuel: string, nouveauMotDePasse: string, session: SessionEnCours | null = null) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('Utilisateur introuvable');
-    }
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     const actuelValide = await bcrypt.compare(motDePasseActuel, user.motDePasse);
     if (!actuelValide) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
     const maintenant = new Date();
     await this.revoquerEtFermerLaSession(
+      ligne,
       user,
       session,
       {
@@ -749,7 +837,7 @@ export class AuthService {
         // jusqu'à huit heures, trente jours pour une session « Rester
         // connecté » (audit final F270), et le changement ne servait à rien
         // pour la seule période où il aurait servi.
-        sessionsInvalidesAvant: maintenant,
+        ...revocationDeLaPersonne(maintenant),
         // Un mot de passe changé délie aussi le verrou · le titulaire a
         // prouvé qui il est en donnant l'ancien.
         ...DECOMPTE_REMIS_A_ZERO,
@@ -759,7 +847,7 @@ export class AuthService {
     // La session COURANTE est révoquée elle aussi · c'est voulu. Le client
     // redemande un jeton juste après (voir AuthController), et rien ne
     // distingue, côté serveur, la session du titulaire de celle du voleur.
-    return { change: true, ...this.reemettre(user, session) };
+    return { change: true, ...this.reemettre(ligne, session) };
   }
 
   /**
@@ -774,24 +862,79 @@ export class AuthService {
    *    de mot de passe. Le rôle, le dossier et le drapeau d'opérateur sont
    *    sur le COMPTE, pas sur l'adresse : ils suivent.
    */
-  async changerAdresse(userId: string, motDePasseActuel: string, nouvelleAdresse: string, session: SessionEnCours | null = null) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+  async changerAdresse(
+    userId: string,
+    motDePasseActuel: string,
+    nouvelleAdresse: string,
+    session: SessionEnCours | null = null,
+    surSite = estSurSite(),
+  ): Promise<{ confirmationEnvoyee: true; adresse: string } | ({ adresse: string } & SessionEmise)> {
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
     const adresse = normaliserCourriel(nouvelleAdresse);
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
+    // LA NOUVELLE ADRESSE SE CONFIRME (second tour, MAJEUR 2,
+    // `confirmation-adresse.ts`) · avec une messagerie, rien ne change avant
+    // le code reçu à cette adresse ; sans elle, en ligne, refus ; sur site,
+    // posée comme avant.
+    if (this.courrier?.etatDuTransport().configure) {
+      const jeton = jetonConfirmationAdresse();
+      const maintenant = new Date();
+      const avis = avisConfirmationAdresse(jeton);
+      // Le courriel d'abord · un envoi refusé ne laisse aucune demande en attente.
+      await horsCloisonnement('compte · code de confirmation remis à la seule nouvelle adresse', () =>
+        this.courrier!.envoyerUnSecret(
+          user.tenantId,
+          { destinataire: adresse, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_CONFIRMATION_ADRESSE, origineId: user.id, createdBy: user.id },
+          avis.corpsGarde,
+        ),
+      );
+      await horsCloisonnement('compte · une demande de changement d’adresse à la fois', () =>
+        transactionJournalisee(this.prisma, async (tx) => {
+          await tx.confirmationAdresse.updateMany({ where: { tenantId: user.tenantId, userId: user.id, utiliseLe: null, annuleLe: null }, data: { annuleLe: maintenant } });
+          await tx.confirmationAdresse.create({
+            data: { tenantId: user.tenantId, userId: user.id, nouvelleAdresse: adresse, empreinteJeton: empreinteDuJeton(jeton), expireLe: echeanceConfirmationAdresse(maintenant) },
+          });
+        }),
+      );
+      return { confirmationEnvoyee: true, adresse };
+    }
+    if (!surSite) throw new ServiceUnavailableException('La messagerie est requise pour ce geste · configurez-la, puis recommencez.');
+    return this.poserLAdresse(ligne, user, adresse, session);
+  }
+
+  /**
+   * CONFIRMER LA NOUVELLE ADRESSE · le code reçu à cette adresse ET la session
+   * du compte qui l'a demandée. Le code est consommé une fois l'adresse posée.
+   */
+  async confirmerAdresse(userId: string, jeton: string, session: SessionEnCours | null = null) {
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
+    const demande = await horsCloisonnement('compte · la demande de changement d’adresse que désigne un code', () =>
+      this.prisma.confirmationAdresse.findUnique({ where: { empreinteJeton: empreinteDuJeton(jeton) } }),
+    );
+    if (!demande || demande.userId !== user.id || demande.utiliseLe || demande.annuleLe || demande.expireLe <= new Date()) {
+      throw new NotFoundException(MOTIF_CONFIRMATION_INVALIDE);
+    }
+    const r = await this.poserLAdresse(ligne, user, demande.nouvelleAdresse, session);
+    await horsCloisonnement('compte · le code de confirmation consommé', () =>
+      this.prisma.confirmationAdresse.updateMany({ where: { id: demande.id, tenantId: demande.tenantId, utiliseLe: null }, data: { utiliseLe: new Date() } }),
+    );
+    return r;
+  }
+
+  private async poserLAdresse(ligne: User, user: User, adresse: string, session: SessionEnCours | null) {
     try {
       const maintenant = new Date();
-      await this.revoquerEtFermerLaSession(user, session, { email: adresse, sessionsInvalidesAvant: maintenant }, maintenant.getTime());
+      await this.revoquerEtFermerLaSession(ligne, user, session, { email: adresse, ...revocationDeLaPersonne(maintenant) }, maintenant.getTime(), adresse);
     } catch (e) {
       if ((e as { code?: string })?.code === 'P2002') {
         throw new ConflictException('Cette adresse est déjà utilisée par un autre compte.');
       }
       throw e;
     }
-    return { adresse, ...this.reemettre(user, session) };
+    return { adresse, ...this.reemettre(ligne, session) };
   }
 
   /**
@@ -816,13 +959,12 @@ export class AuthService {
     session: SessionEnCours | null,
     maintenant = new Date(),
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
-    await this.revoquerEtFermerLaSession(user, session, { sessionsInvalidesAvant: maintenant }, maintenant.getTime());
-    return { autresAppareilsDeconnectes: true, ...this.reemettre(user, session, maintenant.getTime()) };
+    await this.revoquerEtFermerLaSession(ligne, user, session, revocationDeLaPersonne(maintenant), maintenant.getTime());
+    return { autresAppareilsDeconnectes: true, ...this.reemettre(ligne, session, maintenant.getTime()) };
   }
 
   /**
@@ -903,23 +1045,37 @@ export class AuthService {
    * de sessions à tenir, aucune purge à programmer.
    */
   async deconnecterPartout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { sessionsInvalidesAvant: new Date() },
-    });
+    // Toutes les sessions de la PERSONNE, dans tous ses dossiers · la
+    // révocation du compte de connexion est lue par `JwtStrategy` sur chaque
+    // appartenance.
+    const { ligne, compte } = await this.compteDeLaSession(userId);
+    await this.surLeCompte(ligne, compte, () =>
+      this.prisma.user.update({
+        where: { id: compte.id },
+        data: revocationDeLaPersonne(new Date()),
+      }),
+    );
     return { sessionsFermees: true };
   }
 
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: { include: { _count: { select: { cellules: true } }, licence: { select: { type: true } } } } },
+      include: {
+        tenant: { include: { _count: { select: { cellules: true } }, licence: { select: { type: true } } } },
+        compteDeConnexion: { select: { doitChangerMotDePasse: true } },
+      },
     });
     if (!user) {
       throw new UnauthorizedException('Utilisateur introuvable');
     }
+    // UNE PERSONNE, PLUSIEURS DOSSIERS · l'écran montre la liste de SES
+    // dossiers avant l'écran des logiciels, et « Changer de dossier » au menu
+    // Fichier, quand elle en a plus d'un.
+    const plusieursDossiers = await aPlusieursDossiers(this.prisma, idDuCompteDeConnexion(user));
     return {
       id: user.id,
+      plusieursDossiers,
       email: user.email,
       role: user.role,
       // Ouvre l'entrée de menu « Cabinets clients » côté client · le serveur
@@ -928,7 +1084,8 @@ export class AuthService {
       estOperateurPlateforme: user.estOperateurPlateforme,
       // Le client force l'écran de changement de mot de passe avant
       // l'espace de travail tant que ce drapeau est vrai.
-      doitChangerMotDePasse: user.doitChangerMotDePasse,
+      // Il vit sur le compte de connexion de la personne (ligne multi-dossiers).
+      doitChangerMotDePasse: (user.compteDeConnexion ?? user).doitChangerMotDePasse,
       // Les tuiles que l'administrateur ouvre à cet utilisateur · `null` =
       // toutes. Relu à chaque appel · l'attribution prend effet à la
       // prochaine lecture, sans fermer de session (`utilisateurs/logiciels.ts`).
@@ -1040,16 +1197,23 @@ export class AuthService {
    */
   private async revoquerEtFermerLaSession(
     user: { id: string; tenantId: string },
+    compte: { id: string; email: string; tenantId: string },
     session: SessionEnCours | null,
     data: Prisma.UserUpdateInput,
     maintenantMs: number,
+    adresse?: string,
   ): Promise<void> {
-    await transactionJournalisee(this.prisma, async (tx) => {
+    const acteurAvantLeCompte = acteurCourant();
+    // `user` est la ligne de la SESSION (la session remplacée se ferme sur
+    // elle), `compte` le compte de connexion de sa personne (l'acte s'y
+    // écrit) · la même ligne pour un utilisateur d'un seul dossier.
+    await this.surLeCompte(user, compte, () => transactionJournalisee(this.prisma, async (tx) => {
       // BORNÉ (relecture de la ligne saisie-suites, M2) · la transaction a le
       // délai ordinaire de cinq secondes ; une clôture longue faisait attendre
       // au-delà, P2028 rendu en 500, une connexion du pool retenue jusqu'à sa
       // fin. Passé trois secondes, le 409 nommé `DOSSIER_OCCUPE`, rien écrit.
-      await prendreLeVerrouDuDossierBorne(tx, user.tenantId);
+      // Les deux dossiers dans un ordre fixe, celui de toute la chaîne.
+      for (const d of [...new Set([user.tenantId, compte.tenantId])].sort()) await prendreLeVerrouDuDossierBorne(tx, d);
       const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
         SELECT "sessionsFermees" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
       let fermeture: Prisma.UserUpdateInput = {};
@@ -1062,8 +1226,139 @@ export class AuthService {
         const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, remplacee, maintenantS);
         fermeture = debordement ? { sessionsFermees: liste, sessionsInvalidesAvant: new Date(maintenantMs) } : { sessionsFermees: liste };
       }
-      await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
-    });
+      if (compte.id === user.id) {
+        await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
+      } else {
+        await tx.user.update({ where: { id: compte.id }, data });
+        if (Object.keys(fermeture).length > 0) {
+          await dansContexteActeur(acteurAvantLeCompte ?? { acteurEmail: compte.email, tenantId: user.tenantId }, async () =>
+            tx.user.update({ where: { id: user.id }, data: fermeture }),
+          );
+        }
+      }
+      // L'adresse changée se lit dans chaque dossier de la personne.
+      if (adresse !== undefined) await recopierLAdresse(tx, compte.id, adresse);
+    }));
+  }
+
+  /**
+   * « L'ACCUEIL DU CABINET SUR SES DOSSIERS » (ligne multi-dossiers) · les
+   * dossiers de la personne de la session, et d'elle seule · jamais ceux
+   * d'une autre, jamais un dossier où son appartenance est retirée.
+   */
+  async mesDossiers(userId: string) {
+    const { ligne } = await this.compteDeLaSession(userId);
+    return dossiersDeLaPersonne(this.prisma, idDuCompteDeConnexion(ligne), ligne.tenantId, new LicenceService(this.prisma, this.surSite));
+  }
+
+  /**
+   * CHANGER DE DOSSIER · un geste explicite (route dédiée, cookie, CSRF),
+   * jamais un paramètre qui changerait le dossier en passant. Le dossier visé
+   * doit être une appartenance ACTIVE de la même personne, sinon 404 sans
+   * rien dire de plus. La session en cours se FERME sur sa ligne et une neuve
+   * s'ouvre sur l'appartenance visée, sous un jeton CSRF neuf · chaque session
+   * appartient à une seule ligne, et « Se déconnecter » ferme la bonne. Elle
+   * RECOPIE régime, origine, échéance courte, dernière authentification et
+   * connexion complète · changer de dossier n'est pas s'authentifier, et une
+   * révocation posée dans le dossier visé après l'authentification de la
+   * session la frappe (403 nommé, reconnexion demandée).
+   */
+  async changerDeDossier(userId: string, dossierId: string, session: SessionEnCours | null, maintenantMs = Date.now()) {
+    const { ligne } = await this.compteDeLaSession(userId);
+    const compteId = idDuCompteDeConnexion(ligne);
+    const visee = await appartenanceDansLeDossier(this.prisma, compteId, dossierId);
+    if (!visee) throw new NotFoundException('Dossier introuvable parmi les vôtres.');
+    if (sessionRevoquee(session?.authentification ?? session?.iat ?? undefined, visee.sessionsInvalidesAvant)) {
+      throw new ForbiddenException(
+        "Vos sessions dans ce dossier ont été fermées par son administrateur ou par un changement de vos accès · reconnectez-vous pour y entrer.",
+      );
+    }
+    // Le dossier de la session · rien à changer, aucune session émise.
+    if (visee.id === ligne.id) return { dossierId: visee.tenantId, session: null };
+    await this.revoquerEtFermerLaSession(ligne, ligne, session, {}, maintenantMs);
+    const demande = demandeDeReemission(session);
+    const emise = emettreSession(
+      this.jwt,
+      visee.id,
+      { ...demande, authentification: session?.authentification ?? session?.iat ?? null, plusieursDossiers: true },
+      maintenantMs,
+    );
+    return { dossierId: visee.tenantId, session: emise };
+  }
+
+  /** Les invitations reçues par la personne de la session (nom du dossier, rôle, échéance). */
+  async mesInvitations(userId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    return invitationsRecues(this.prisma, compte.email);
+  }
+
+  /** Accepter une invitation · le jeton reçu ET la session de la personne (`compte-de-connexion.ts`). */
+  async accepterUneInvitation(userId: string, jeton: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    const tire = await bcrypt.hash(randomUUID() + randomUUID(), SALT_ROUNDS);
+    return accepterInvitation(this.prisma, compte, jeton, tire, { id: true });
+  }
+
+  async refuserUneInvitation(userId: string, jeton: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    await refuserInvitation(this.prisma, compte, jeton);
+    return { refusee: true };
+  }
+
+  /**
+   * SUR SITE, L'ADMINISTRATEUR DE L'INSTALLATION RÉINITIALISE UN COMPTE DU
+   * POSTE (second tour, BLOQUANT 1 · `AdministrateurInstallationGuard`). Il
+   * tient lieu de l'opérateur, absent sur site · il tient déjà la base et ses
+   * sauvegardes. Mot de passe tiré au sort, changement exigé, sessions
+   * fermées, second facteur levé. AVEC une messagerie, il part au seul
+   * titulaire ; SANS elle, il est rendu à l'administrateur de l'installation,
+   * qui le remet en main propre (décision de la ligne · c'est lui qui tient le
+   * poste, et sans ce geste un administrateur unique qui a perdu son
+   * téléphone enfermerait son dossier). Au journal d'audit du dossier du
+   * compte, sous l'administrateur de l'installation (un seul organisme sur le
+   * poste, rien à taire).
+   */
+  async reinitialiserCompteSurSite(adresse: string, parQui: string) {
+    const email = normaliserCourriel(adresse);
+    const compte = await trouverCompteDeConnexion(this.prisma, email, 'sur site · le compte que réinitialise l’administrateur de l’installation');
+    if (!compte) throw new NotFoundException('Aucun compte avec cette adresse sur ce poste.');
+    const mot = motDePasseTireAuSort();
+    const parCourriel = this.courrier?.etatDuTransport().configure === true;
+    if (parCourriel) {
+      const avis = avisReinitialisationParCourriel(mot, true);
+      await horsCloisonnement('sur site · mot de passe remis au seul titulaire', () =>
+        this.courrier!.envoyerUnSecret(
+          compte.tenantId,
+          { destinataire: compte.email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_REINITIALISATION_PAR_COURRIEL, origineId: compte.id, createdBy: parQui },
+          avis.corpsGarde,
+        ),
+      );
+    }
+    const hache = await bcrypt.hash(mot, SALT_ROUNDS);
+    const acteur = acteurCourant();
+    await sousVerrouDuCompte(this.prisma, compte, 'sur site · réinitialisation d’un compte du poste', (tx) =>
+      poserLeProvisoire(tx, compte, hache, true, new Date(), acteur ?? undefined),
+    );
+    return parCourriel ? { reinitialise: true, parCourriel: true, email } : { reinitialise: true, parCourriel: false, email, motDePasseProvisoire: mot };
+  }
+
+  /** Sur site, sans courriel (M3) · la session de la personne seule. */
+  async accepterUneInvitationSurPlace(userId: string, invitationId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    const tire = await bcrypt.hash(randomUUID() + randomUUID(), SALT_ROUNDS);
+    return accepterInvitationSurPlace(this.prisma, compte, invitationId, tire, { id: true });
+  }
+
+  async refuserUneInvitationSurPlace(userId: string, invitationId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    await refuserInvitationSurPlace(this.prisma, compte, invitationId);
+    return { refusee: true };
+  }
+
+  /** Une adresse neuve accepte en choisissant son mot de passe · aucune session n'est rendue, elle se connecte ensuite. */
+  async creerMonCompteParInvitation(jeton: string, motDePasse: string) {
+    const r = await creerCompteParInvitation(this.prisma, jeton, await bcrypt.hash(motDePasse, SALT_ROUNDS));
+    return { cree: true, email: r.email };
   }
 
   private reemettre(user: { id: string }, session: SessionEnCours | null, instantMs?: number, complete = false): SessionEmise {

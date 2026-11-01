@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Req, Res, UnsupportedMediaTypeException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Param, Post, Req, Res, UnsupportedMediaTypeException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -11,6 +11,8 @@ import { ChangerMotDePasseDto } from './dto/changer-mot-de-passe.dto';
 import { ChangerAdresseDto } from './dto/changer-adresse.dto';
 import { ActiverDoubleAuthDto, DesactiverDoubleAuthDto, RegenererCodesSecoursDto } from './dto/double-authentification.dto';
 import { DeconnecterAutresAppareilsDto } from './dto/deconnecter-autres-appareils.dto';
+import { ChangerDossierDto } from './dto/changer-dossier.dto';
+import { CreerCompteParInvitationDto, JetonInvitationDto } from './dto/invitation.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { extraireJetonDuCookie } from './jwt.strategy';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -247,10 +249,22 @@ export class AuthController {
     @Body() dto: ChangerAdresseDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.poserSession(
-      res,
-      await this.authService.changerAdresse(user.userId, dto.motDePasseActuel, dto.nouvelleAdresse, sessionDeLaRequete(res.req)),
-    );
+    const r = await this.authService.changerAdresse(user.userId, dto.motDePasseActuel, dto.nouvelleAdresse, sessionDeLaRequete(res.req));
+    // Avec une messagerie, rien n'a changé · le code part à la nouvelle adresse.
+    return 'confirmationEnvoyee' in r ? r : this.poserSession(res, r);
+  }
+
+  /** Le code reçu à la nouvelle adresse, depuis la session qui l'a demandée (`confirmation-adresse.ts`). */
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('confirmer-adresse')
+  async confirmerAdresse(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: JetonInvitationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.poserSession(res, await this.authService.confirmerAdresse(user.userId, dto.jeton, sessionDeLaRequete(res.req)));
   }
 
   /**
@@ -343,5 +357,99 @@ export class AuthController {
       res,
       await this.authService.deconnecterAutresAppareils(user.userId, dto.motDePasseActuel, sessionDeLaRequete(res.req)),
     );
+  }
+
+  /**
+   * « L'ACCUEIL DU CABINET SUR SES DOSSIERS » (ligne multi-dossiers) · les
+   * dossiers de la personne de la session, et d'elle seule. Ouverte à tous les
+   * rôles, comme les réglages de son propre compte.
+   */
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Get('mes-dossiers')
+  mesDossiers(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.mesDossiers(user.userId);
+  }
+
+  /**
+   * CHANGER DE DOSSIER · route dédiée, cookie et CSRF (`JwtStrategy`), jamais
+   * un paramètre de requête. La session en cours se ferme, une neuve se pose
+   * sur l'appartenance visée (AuthService.changerDeDossier). Le dossier de la
+   * session rend `change: false` sans rien émettre.
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('changer-dossier')
+  async changerDossier(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangerDossierDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const r = await this.authService.changerDeDossier(user.userId, dto.dossierId, sessionDeLaRequete(res.req));
+    if (!r.session) return { dossierId: r.dossierId, change: false };
+    return { dossierId: r.dossierId, change: true, ...this.poserSession(res, r.session) };
+  }
+
+  /**
+   * LES INVITATIONS REÇUES PAR LA PERSONNE (ligne multi-dossiers,
+   * `utilisateurs/invitations.ts`) · celles adressées à SON adresse de
+   * connexion. Accepter ou refuser exige le jeton reçu à cette adresse ET la
+   * session · ni l'un ni l'autre seul ne suffit.
+   */
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Get('invitations')
+  mesInvitations(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.mesInvitations(user.userId);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/accepter')
+  accepterInvitation(@CurrentUser() user: AuthenticatedUser, @Body() dto: JetonInvitationDto) {
+    return this.authService.accepterUneInvitation(user.userId, dto.jeton);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/refuser')
+  refuserInvitation(@CurrentUser() user: AuthenticatedUser, @Body() dto: JetonInvitationDto) {
+    return this.authService.refuserUneInvitation(user.userId, dto.jeton);
+  }
+
+  /**
+   * SUR SITE, L'INVITATION SANS COURRIEL (second tour, MAJEUR 3) · la session
+   * de la personne seule, sur une invitation `acceptableSansCode`.
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/:id/accepter-sur-place')
+  accepterInvitationSurPlace(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.authService.accepterUneInvitationSurPlace(user.userId, id);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/:id/refuser-sur-place')
+  refuserInvitationSurPlace(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.authService.refuserUneInvitationSurPlace(user.userId, id);
+  }
+
+  /**
+   * UNE ADRESSE NEUVE ACCEPTE EN CHOISISSANT SON MOT DE PASSE · sans session
+   * (la personne n'a pas encore de compte), le jeton seul, reçu à son adresse.
+   * Aucune session n'est rendue · elle se connecte ensuite. JSON seul, comme la
+   * connexion (piste 9 de l'audit du 2026-10-25).
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('invitations/creer-compte')
+  creerCompteParInvitation(@Body() dto: CreerCompteParInvitationDto, @Req() req?: Request) {
+    if (typeof req?.is === 'function' && !req.is('application/json')) throw new UnsupportedMediaTypeException(MOTIF_CONNEXION_EN_JSON);
+    return this.authService.creerMonCompteParInvitation(dto.jeton, dto.motDePasse);
   }
 }

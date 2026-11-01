@@ -227,6 +227,10 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne dossier-l9, fonction 95 · l'envoi d'un message interne, son auteur
   // et sa date · jamais son objet ni son corps (`COLONNES_EXCLUES_PAR_MODELE`).
   'MessageInterne',
+  // Ligne multi-dossiers · l'invitation d'une personne au dossier, envoyée,
+  // acceptée, refusée ou annulée · qui l'a faite et quand se relit ; le jeton
+  // n'y est que son empreinte, et elle est exclue (`COLONNES_EXCLUES_PAR_MODELE`).
+  'InvitationDossier',
   // Même ligne · une sélection enregistrée est une structure de travail du
   // dossier, que tous rappellent, comme une séquence de saisie.
   'SelectionEdition',
@@ -507,6 +511,8 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  ConfirmationAdresse:
+    "Demande de changement d'adresse de connexion en attente de son code (ligne multi-dossiers, second tour, MAJEUR 2) · elle ne change rien tant qu'elle n'est pas confirmée ; l'adresse posée s'écrit au journal par la mise à jour du compte, qui y figure.",
   PreferenceUtilisateur:
     "Préférences d'affichage d'un utilisateur (ligne dossier-l9, fonctions 96 et 100) · la langue, la taille du texte et les notifications qu'il coupe, réglées par lui seul pour lui seul, sans effet sur le dossier ni sur les autres.",
   NotificationUtilisateur:
@@ -635,7 +641,21 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // des sessions fermées par « Se déconnecter » (sessions-fermees.ts) · chaque
   // déconnexion réécrirait la liste entière dans le journal, et l'empreinte
   // d'une session n'apprend rien au lecteur que la date ne dise déjà.
-  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth', 'sessionsFermees'],
+  // LE LIEN VERS LE COMPTE DE CONNEXION (ligne multi-dossiers) · la ligne
+  // d'une appartenance rattachée pointe une ligne d'un AUTRE dossier, et
+  // l'adresse de connexion n'est posée que sur un compte de connexion · l'un
+  // ou l'autre, lu au journal du dossier, y dirait que la personne existe
+  // ailleurs. L'événement d'une personne rattachée se lit comme une création.
+  User: [
+    'motDePasse',
+    'estOperateurPlateforme',
+    'secretDoubleAuth',
+    'dernierPasDoubleAuth',
+    'codesSecoursDoubleAuth',
+    'sessionsFermees',
+    'compteDeConnexionId',
+    'courrielDeConnexion',
+  ],
 
   // LE FICHIER LUI-MÊME · jusqu'à 5 Mo recopiés dans chaque événement, et un
   // scan de pièce d'identité lisible par tout le dossier dans un journal
@@ -668,6 +688,10 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // confidentielle (Code du numérique, art. 193, 2°), elle ne se lit que par
   // ses correspondants ; le journal, lu par d'autres, n'en garde que l'envoi.
   MessageInterne: ['objet', 'corps'],
+  // L'empreinte du jeton d'une invitation (ligne multi-dossiers) · elle seule
+  // ne rouvre rien, mais un journal lu par tout le dossier n'a pas à la porter.
+  InvitationDossier: ['empreinteJeton'],
+  ConfirmationAdresse: ['empreinteJeton'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.
@@ -763,6 +787,25 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
 };
 
 /** Les colonnes exclues du JOURNAL, en minuscules, comparables telles quelles. */
+/**
+ * LES COLONNES DONT L'ÉCRITURE SEULE NE FAIT PAS UN ÉVÉNEMENT (ligne
+ * multi-dossiers, second tour, mineur 8) · une mise à jour qui n'écrit
+ * qu'elles ne pose aucun maillon. `sessionsFermees` · « Se déconnecter » et le
+ * changement de dossier n'écrivent qu'elle, que le journal ne recopie déjà
+ * pas · le maillon n'avait rien à dire. Une colonne MASQUÉE (le mot de passe)
+ * n'est pas de celles-là · son changement est un événement, même masqué.
+ */
+export const COLONNES_SANS_EVENEMENT: Readonly<Record<string, readonly string[]>> = {
+  User: ['sessionsFermees'],
+};
+
+export function seulementDesColonnesSansEvenement(modele: string, data: unknown): boolean {
+  const liste = COLONNES_SANS_EVENEMENT[modele];
+  if (!liste || !data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const cles = Object.keys(data as Record<string, unknown>);
+  return cles.length > 0 && cles.every((c) => liste.includes(c));
+}
+
 export function colonnesExclues(modele: string): ReadonlySet<string> {
   return new Set((COLONNES_EXCLUES_PAR_MODELE[modele] ?? []).map((c) => c.toLowerCase()));
 }
@@ -792,7 +835,21 @@ export function colonnesExclues(modele: string): ReadonlySet<string> {
 export const COLONNES_JAMAIS_RESTITUEES: Readonly<Record<string, readonly string[]>> = {
   // Le second facteur est, comme le mot de passe, un moyen d'entrer, pas une
   // donnée du dossier.
-  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth'],
+  // Le lien vers le compte de connexion d'une personne rattachée (ligne
+  // multi-dossiers) désigne une ligne d'un AUTRE dossier · il n'appartient
+  // pas à celui-ci, pas plus que l'adresse de connexion.
+  User: [
+    'motDePasse',
+    'estOperateurPlateforme',
+    'secretDoubleAuth',
+    'dernierPasDoubleAuth',
+    'codesSecoursDoubleAuth',
+    'compteDeConnexionId',
+    'courrielDeConnexion',
+  ],
+  // L'empreinte du jeton d'une invitation · un moyen d'entrer, pas une donnée.
+  InvitationDossier: ['empreinteJeton'],
+  ConfirmationAdresse: ['empreinteJeton'],
 };
 
 /** Les colonnes qu'une ARCHIVE DE RESTITUTION ne porte pas. */

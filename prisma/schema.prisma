@@ -862,6 +862,8 @@ model Tenant {
   exercices                 Exercice[]
   ecritures                 Ecriture[]
   users                     User[]
+  invitationsDossier        InvitationDossier[]
+  confirmationsAdresse      ConfirmationAdresse[]
   journaux                  Journal[]
   clotures                  Cloture[]
   tiers                     Tiers[]
@@ -1287,7 +1289,25 @@ model User {
   notifications          NotificationUtilisateur[] @relation("NotificationsDeLUtilisateur")
   tenantId               String
   tenant                 Tenant          @relation(fields: [tenantId], references: [id])
-  email                  String          @unique
+  // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers, 2026-11-01) ·
+  // l'adresse est unique PAR DOSSIER (`@@unique([tenantId, email])`), et
+  // l'adresse de CONNEXION, unique sur toute la plateforme, est
+  // `courrielDeConnexion`, que la base pose seule (déclencheur
+  // `omegax_courriel_de_connexion`) · égale à `email` sur un compte de
+  // connexion, nulle sur une appartenance rattachée.
+  email                  String
+  /// Adresse de connexion · posée par la base, jamais écrite par le code.
+  courrielDeConnexion    String?         @unique
+  /// LE COMPTE DE CONNEXION de cette ligne quand elle est une appartenance
+  /// RATTACHÉE à un autre dossier (`auth/compte-de-connexion.ts`) · mot de
+  /// passe, second facteur, verrou et mot de passe provisoire se lisent sur
+  /// lui. Nul · la ligne est son propre compte de connexion, ce qu'est tout
+  /// utilisateur d'avant la ligne. Rôle, journaux, logiciels, actif et
+  /// révocation de CE dossier restent sur la ligne. Hors du journal d'audit et
+  /// de la restitution · il dirait au dossier que la personne existe ailleurs.
+  compteDeConnexionId    String?
+  compteDeConnexion      User?           @relation("ComptesRattaches", fields: [compteDeConnexionId], references: [id], onDelete: Restrict)
+  comptesRattaches       User[]          @relation("ComptesRattaches")
   motDePasse             String
   role                   RoleUtilisateur @default(COMPTABLE)
   // Désactivé plutôt que supprimé : un utilisateur peut être créateur
@@ -1322,6 +1342,15 @@ model User {
   /// aucune session à purger, et la comparaison se fait sur l'`iat` que le JWT
   /// porte déjà.
   sessionsInvalidesAvant DateTime?
+
+  /// RÉVOCATION DE LA PERSONNE, DANS TOUS SES DOSSIERS (ligne multi-dossiers) ·
+  /// posée sur le COMPTE DE CONNEXION par les seuls actes de la personne ou de
+  /// l'opérateur sur sa connexion (mot de passe, adresse, second facteur,
+  /// « fermer toutes mes sessions »). `sessionsInvalidesAvant` reste la
+  /// révocation de CE dossier · le rôle, les journaux ou la déconnexion posés
+  /// par l'administrateur du dossier d'origine n'éjectent pas la personne de
+  /// ses autres dossiers.
+  sessionsDuCompteInvalidesAvant DateTime?
 
   /// SESSIONS FERMÉES PAR « SE DÉCONNECTER » (relevé de sécurité du
   /// 2026-10-23, auth/sessions-fermees.ts) · empreinte du jeton CSRF de chaque
@@ -1393,6 +1422,8 @@ model User {
   // commence pas par `tenantId`, et chaque lecture balayait la table entière,
   // tous cabinets confondus.
   @@index([tenantId])
+  @@unique([tenantId, email])
+  @@index([compteDeConnexionId])
   @@map("users")
 }
 
@@ -14206,4 +14237,61 @@ model RepartitionMission {
   @@unique([missionId, sectionId])
   @@index([tenantId, missionId])
   @@map("repartitions_mission")
+}
+
+// ---------------------------------------------------------------------------
+// UNE PERSONNE, PLUSIEURS DOSSIERS · l'invitation (ligne multi-dossiers)
+// ---------------------------------------------------------------------------
+
+enum StatutInvitationDossier {
+  EN_ATTENTE
+  ACCEPTEE
+  REFUSEE
+  ANNULEE
+}
+
+/// L'INVITATION D'UNE PERSONNE À UN DOSSIER (`utilisateurs/invitations.ts`) ·
+/// l'administrateur du dossier nomme une adresse et un rôle ; RIEN n'est créé
+/// avant que la personne accepte, avec le jeton reçu à cette seule adresse.
+/// L'acceptation crée l'appartenance (ou le compte, pour une adresse neuve),
+/// au journal d'audit du dossier. Le jeton n'est gardé qu'en empreinte.
+model InvitationDossier {
+  id             String                  @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id])
+  email          String
+  role           RoleUtilisateur
+  empreinteJeton String                  @unique
+  expireLe       DateTime
+  statut         StatutInvitationDossier @default(EN_ATTENTE)
+  creePar        String
+  decideLe       DateTime?
+  createdAt      DateTime                @default(now())
+  /// Sur site, sans courriel · la personne l'accepte depuis sa session, sans code (relecture, M3).
+  acceptableSansCode Boolean             @default(false)
+
+  @@index([tenantId, statut])
+  @@index([email])
+  @@map("invitations_dossier")
+}
+
+/// LA NOUVELLE ADRESSE DE CONNEXION ATTEND SA CONFIRMATION (ligne
+/// multi-dossiers, relecture de sécurité, M2) · un jeton envoyé à cette
+/// adresse, gardé en empreinte, à usage unique. `userId` est le compte de
+/// connexion, `tenantId` son dossier.
+model ConfirmationAdresse {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  userId          String
+  nouvelleAdresse String
+  empreinteJeton  String    @unique
+  expireLe        DateTime
+  utiliseLe       DateTime?
+  annuleLe        DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("confirmations_adresse")
 }

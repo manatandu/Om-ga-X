@@ -16,7 +16,7 @@ function me(tenant: Record<string, unknown>) {
     tenant: { id: 't1', nom: 'X', _count: { cellules: 0 }, ...tenant },
   };
   const s = new AuthService(
-    { user: { findUnique: async () => user } } as never,
+    { user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user } } as never,
     { sign: () => 'jeton' } as never,
     ...([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as [never, never, never, never, never, never, never, never]),
   );

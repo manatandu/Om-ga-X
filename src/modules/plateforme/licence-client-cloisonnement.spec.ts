@@ -82,11 +82,13 @@ describe('console · réinitialisation de l’administrateur d’un cabinet clie
       findUnique: async () => admin,
       update: jest.fn(async () => ({ ...admin })),
       updateMany: async () => ({ count: 1 }),
+      // Ligne multi-dossiers · le compte n'ouvre aucun autre dossier.
+      count: async () => 0,
     },
   };
   const garde = (op: keyof typeof brut.user) => (args: unknown) =>
     garderCloisonnement(brut as never, { model: 'User', operation: op, args, query: () => (brut.user[op] as (a: unknown) => Promise<unknown>)(args) });
-  const prisma = { user: { findFirst: garde('findFirst'), update: garde('update') } };
+  const prisma = { user: { findFirst: garde('findFirst'), update: garde('update'), count: garde('count') } };
   const envoyerUnSecret = jest.fn().mockResolvedValue({ id: 'm1', statut: 'ENVOYE', erreur: null });
   const courrier = (configure: boolean) => ({ etatDuTransport: () => ({ configure }), envoyerUnSecret });
   const service = (configure = true) =>

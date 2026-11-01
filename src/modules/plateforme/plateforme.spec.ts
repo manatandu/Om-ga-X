@@ -108,7 +108,7 @@ describe('PlateformeService · bootstrap des opérateurs', () => {
     // PISTE 2 de l'audit du 2026-10-25 · dans le seul dossier de l'éditeur,
     // jamais un compte qui s'est approprié une adresse listée ailleurs.
     expect(appels[0]).toEqual({
-      where: { email: 'cabinet@exemple.cd', estOperateurPlateforme: false, tenant: { licence: { type: 'PROPRIETAIRE' } } },
+      where: { email: 'cabinet@exemple.cd', compteDeConnexionId: null, estOperateurPlateforme: false, tenant: { licence: { type: 'PROPRIETAIRE' } } },
       data: { estOperateurPlateforme: true },
     });
     expect((appels[1] as { where: { email: string } }).where.email).toBe('associe@exemple.cd');
@@ -264,7 +264,7 @@ describe('PlateformeService · création d’un cabinet client', () => {
     expect(majLicence).toHaveLength(1);
     expect((majLicence[0] as { where: { tenantId: string } }).where.tenantId).toBe('t-nouveau');
     // Mot de passe transité par l'opérateur · changement forcé à la première connexion.
-    expect(majUser[0]).toEqual({ where: { email: 'admin@lumiere.cd' }, data: { doitChangerMotDePasse: true } });
+    expect(majUser[0]).toEqual({ where: { courrielDeConnexion: 'admin@lumiere.cd' }, data: { doitChangerMotDePasse: true } });
   });
 
   it('deux créations ne partagent jamais le même mot de passe', async () => {

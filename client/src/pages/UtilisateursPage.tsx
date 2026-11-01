@@ -17,6 +17,26 @@ const LIBELLE_ROLE: Record<RoleUtilisateur, string> = {
   GESTIONNAIRE_PAIE: 'Gestionnaire de paie',
 };
 
+interface InvitationDuDossier {
+  id: string;
+  email: string;
+  role: RoleUtilisateur;
+  statut: 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE' | 'ANNULEE';
+  expireLe: string;
+}
+interface ListeInvitations {
+  mode: 'INVITATION' | 'DIRECTE';
+  invitations: InvitationDuDossier[];
+  total: number;
+  tronque: boolean;
+}
+const LIBELLES_STATUT_INVITATION: Record<InvitationDuDossier['statut'], string> = {
+  EN_ATTENTE: 'Invitation envoyée',
+  ACCEPTEE: 'Acceptée',
+  REFUSEE: 'Refusée',
+  ANNULEE: 'Annulée',
+};
+
 export function UtilisateursPage() {
   const { estAdmin, utilisateur } = useAuth();
   const [liste, setListe] = useState<Utilisateur[] | null>(null);
@@ -50,13 +70,34 @@ export function UtilisateursPage() {
    */
   const [avisRemis, setAvisRemis] = useState<string | null>(null);
   const [deconnecte, setDeconnecte] = useState<string | null>(null);
+  /**
+   * LES INVITATIONS DU DOSSIER ET LE MODE DE CRÉATION (ligne multi-dossiers) ·
+   * en ligne avec une messagerie, ajouter quelqu'un l'INVITE · aucun mot de
+   * passe saisi, rien de créé avant qu'il accepte, et l'écran dit la même
+   * chose, que l'adresse ait déjà un compte ou non. `null` tant que ce n'est
+   * pas lu · la création directe ne se présume pas.
+   */
+  const [invitations, setInvitations] = useState<ListeInvitations | null>(null);
+  const [invitee, setInvitee] = useState<string | null>(null);
+  const [envoyeParCourriel, setEnvoyeParCourriel] = useState<string | null>(null);
 
   const charger = async () => {
     try {
-      setListe(await api.get<Utilisateur[]>('/utilisateurs'));
+      const [l, i] = await Promise.all([api.get<Utilisateur[]>('/utilisateurs'), api.get<ListeInvitations>('/utilisateurs/invitations')]);
+      setListe(l);
+      setInvitations(i);
       setErreurChargement(null);
     } catch (err) {
       setErreurChargement(err instanceof ApiError ? err.message : 'Impossible de charger les utilisateurs');
+    }
+  };
+
+  const annulerInvitation = async (id: string) => {
+    try {
+      await api.post(`/utilisateurs/invitations/${id}/annuler`, {});
+      await charger();
+    } catch (err) {
+      setErreurChargement(err instanceof ApiError ? err.message : 'Annulation impossible');
     }
   };
 
@@ -107,6 +148,23 @@ export function UtilisateursPage() {
     }
   };
 
+  /**
+   * RÉINITIALISER PAR COURRIEL (second tour, BLOQUANT 1) · pour une personne
+   * qui a d'autres dossiers · le mot de passe tiré au sort part à sa seule
+   * adresse, l'écran n'en voit rien.
+   */
+  const reinitialiserParCourriel = async (u: Utilisateur) => {
+    if (!window.confirm(`Envoyer un mot de passe provisoire à ${u.email} ? Ses sessions seront fermées.`)) return;
+    try {
+      await api.post(`/utilisateurs/${u.id}/reinitialiser-par-courriel`, {});
+      setDeconnecte(null);
+      setReinitFait(null);
+      setEnvoyeParCourriel(u.email);
+    } catch (err) {
+      setErreurChargement(err instanceof ApiError ? err.message : 'Réinitialisation impossible');
+    }
+  };
+
   const onReinitialiser = async (e: FormEvent) => {
     e.preventDefault();
     if (!reinitCible) return;
@@ -132,8 +190,13 @@ export function UtilisateursPage() {
     setErreurForm(null);
     setEnvoi(true);
     try {
-      const cree = await api.post<{ avis?: AvisAcces }>('/utilisateurs', { email, motDePasse, role });
+      const parInvitation = invitations?.mode === 'INVITATION';
+      const cree = await api.post<{ avis?: AvisAcces; invitation?: { email: string } }>(
+        '/utilisateurs',
+        parInvitation ? { email, role } : { email, motDePasse, role },
+      );
       setAvisRemis(phraseAvisAcces(cree.avis) || null);
+      setInvitee(cree.invitation ? cree.invitation.email : null);
       setEmail('');
       setMotDePasse('');
       setRole('COMPTABLE');
@@ -188,6 +251,28 @@ export function UtilisateursPage() {
             Sessions de <strong>{deconnecte}</strong> fermées.
           </span>
           <button onClick={() => setDeconnecte(null)} aria-label="Fermer l'avis de déconnexion" className="font-bold hover:underline shrink-0">
+            Fermer
+          </button>
+        </div>
+      )}
+
+      {envoyeParCourriel && (
+        <div role="status" className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
+          <span>
+            Mot de passe provisoire envoyé à <strong>{envoyeParCourriel}</strong>.
+          </span>
+          <button onClick={() => setEnvoyeParCourriel(null)} className="font-bold hover:underline shrink-0">
+            Fermer
+          </button>
+        </div>
+      )}
+
+      {invitee && (
+        <div role="status" className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
+          <span>
+            Invitation envoyée à <strong>{invitee}</strong>.
+          </span>
+          <button onClick={() => setInvitee(null)} className="font-bold hover:underline shrink-0">
             Fermer
           </button>
         </div>
@@ -265,7 +350,15 @@ export function UtilisateursPage() {
                   Provisoire
                 </span>
               )}
-              {u.verrouilleJusqua && new Date(u.verrouilleJusqua) > new Date() && (
+              {u.connexionTenueParLaPersonne && (
+                <span
+                  className="font-mono text-[10.5px] font-bold px-1.5 py-0.5 text-text-dim bg-surface-alt"
+                  title="Ce compte donne accès à d'autres dossiers · mot de passe, verrou et second facteur sont tenus par le compte de connexion de la personne. Vous pouvez la désactiver ou la déconnecter dans ce dossier."
+                >
+                  Connexion tenue par la personne
+                </span>
+              )}
+              {!u.connexionTenueParLaPersonne && u.verrouilleJusqua && new Date(u.verrouilleJusqua) > new Date() && (
                 <button
                   onClick={() => deverrouiller(u)}
                   className="font-mono text-[10.5px] font-bold px-1.5 py-0.5 text-danger bg-danger-soft"
@@ -274,6 +367,7 @@ export function UtilisateursPage() {
                   VERROUILLÉ · lever
                 </button>
               )}
+              {!u.connexionTenueParLaPersonne && (
               <button
                 onClick={() => {
                   setReinitCible(u);
@@ -285,6 +379,16 @@ export function UtilisateursPage() {
               >
                 Réinitialiser
               </button>
+              )}
+              {u.connexionTenueParLaPersonne && (
+                <button
+                  onClick={() => void reinitialiserParCourriel(u)}
+                  className="text-[11.5px] text-sel"
+                  title="Un mot de passe provisoire tiré au sort part à la seule adresse de la personne · vous n'en voyez rien. Son second facteur reste actif."
+                >
+                  Réinitialiser par courriel
+                </button>
+              )}
               {/* Ni soi-même (Mon compte le fait sans perdre l'appareil en
                   cours), ni un compte désactivé, qui n'a plus de session. */}
               {u.id !== utilisateur?.id && u.estActif && (
@@ -323,6 +427,33 @@ export function UtilisateursPage() {
           </div>
         ))}
       </div>
+
+      {invitations && invitations.invitations.length > 0 && (
+        <div className="border border-border bg-surface shadow-posee max-w-[940px] mt-3 overflow-x-auto" aria-label="Invitations">
+          <div className="px-3.5 py-1.5 bg-chrome border-b border-border text-[11px] font-bold text-text-dim">Invitations</div>
+          {invitations.invitations.map((i) => (
+            <div key={i.id} className="grid grid-cols-[1fr_150px_150px_120px] min-w-[620px] gap-2 px-3.5 py-1.5 border-b border-border text-[11.5px] items-center">
+              <span>{i.email}</span>
+              <span>{i.role}</span>
+              <span>
+                {i.statut === 'EN_ATTENTE' && new Date(i.expireLe) <= new Date() ? 'Échue' : LIBELLES_STATUT_INVITATION[i.statut]}
+              </span>
+              {i.statut === 'EN_ATTENTE' && new Date(i.expireLe) > new Date() ? (
+                <button onClick={() => void annulerInvitation(i.id)} className="text-sel text-left">
+                  Annuler
+                </button>
+              ) : (
+                <span />
+              )}
+            </div>
+          ))}
+          {invitations.tronque && (
+            <div className="px-3.5 py-1.5 text-[11.5px] text-warning">
+              {invitations.invitations.length} invitations montrées sur {invitations.total}.
+            </div>
+          )}
+        </div>
+      )}
 
       {fonctionsCible && (
         <ModaleFonctions
@@ -433,8 +564,12 @@ export function UtilisateursPage() {
                 <div className="grid grid-cols-[130px_1fr] items-center gap-x-3 gap-y-2.5">
                   <label className="text-[11.5px] text-right">E-mail :</label>
                   <input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[12px]" />
-                  <label className="text-[11.5px] text-right">Mot de passe :</label>
-                  <input type="password" required minLength={10} placeholder="10 caractères min." value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[12px]" />
+                  {invitations?.mode !== 'INVITATION' && (
+                    <>
+                      <label className="text-[11.5px] text-right">Mot de passe :</label>
+                      <input type="password" required minLength={10} placeholder="10 caractères min." value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[12px]" />
+                    </>
+                  )}
                   <label className="text-[11.5px] text-right">Rôle :</label>
                   <select value={role} onChange={(e) => setRole(e.target.value as RoleUtilisateur)} className="border border-border-dark px-2.5 py-1.5 text-[11.5px]">
                     <option value="ADMIN_CABINET">Administrateur</option>
@@ -444,13 +579,23 @@ export function UtilisateursPage() {
                 <option value="GESTIONNAIRE_PAIE">Gestionnaire de paie</option>
                   </select>
                 </div>
+                <div className="text-[11.5px] text-text-dim mt-3 flex items-center gap-1.5">
+                  {invitations?.mode === 'INVITATION'
+                    ? 'La personne reçoit un courriel et accepte l’invitation.'
+                    : 'Si la personne a déjà un compte OmegaX, la messagerie est requise.'}
+                  <Aide
+                    titre="Ajouter un utilisateur"
+                    texte="Avec une messagerie, ajouter quelqu'un l'invite · il reçoit un courriel, accepte avec le code reçu (connecté s'il a déjà un compte, en choisissant son mot de passe sinon), et n'apparaît dans la liste qu'une fois l'invitation acceptée. Sans messagerie, l'utilisateur est créé avec le mot de passe provisoire saisi ici ; une adresse qui a déjà un compte ne peut alors pas être ajoutée en ligne."
+                    source="Règle d'OmegaX · une personne choisit les dossiers où elle entre (ligne multi-dossiers)."
+                  />
+                </div>
                 {erreurForm && <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5 mt-3">{erreurForm}</div>}
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setNouveauOuvert(false)} className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]">
                     Annuler
                   </button>
                   <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
-                    {envoi ? 'Création…' : "Créer l'utilisateur"}
+                    {envoi ? 'Envoi…' : invitations?.mode === 'INVITATION' ? 'Inviter' : "Créer l'utilisateur"}
                   </button>
                 </div>
               </div>

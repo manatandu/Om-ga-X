@@ -20,7 +20,7 @@ import {
 const MINUTE = 60_000;
 const HEURE = 3_600_000;
 
-function monter(options: { transport?: boolean; utilisateur?: Record<string, unknown> | null; envoiEchoue?: boolean; licence?: Record<string, unknown> | null; conflit?: boolean } = {}) {
+function monter(options: { transport?: boolean; utilisateur?: Record<string, unknown> | null; envoiEchoue?: boolean; licence?: Record<string, unknown> | null; conflit?: boolean; appartenancesAilleurs?: number } = {}) {
   const envois: { tenantId: string; message: { destinataire: string; corps: string }; corpsGarde: string }[] = [];
   const mises: Record<string, unknown>[] = [];
   const courrier = {
@@ -40,6 +40,8 @@ function monter(options: { transport?: boolean; utilisateur?: Record<string, unk
           : options.licence,
     },
     user: {
+      // Ligne multi-dossiers · des appartenances ailleurs ?
+      count: async () => options.appartenancesAilleurs ?? 0,
       findUnique: async () => options.utilisateur ?? null,
       update: async (arg: { data: Record<string, unknown> }) => {
         mises.push(arg.data);
@@ -171,6 +173,22 @@ describe('AuthService.inscrireEnEssai', () => {
     expect(mises[0].doitChangerMotDePasse).toBe(true);
     expect(mises[0].sessionsInvalidesAvant).toBeInstanceOf(Date);
     expect(String(mises[0].motDePasse)).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('M2 · un compte qui ouvre d autres dossiers ne reçoit pas de renvoi · son mot de passe et ses sessions ailleurs ne bougent pas', async () => {
+    const { service, envois, mises } = monter({
+      utilisateur: {
+        id: 'u1', tenantId: 't1', role: RoleUtilisateur.ADMIN_CABINET, doitChangerMotDePasse: true,
+        createdAt: new Date(Date.now() - HEURE), sessionsInvalidesAvant: null, compteDeConnexionId: null,
+      },
+      appartenancesAilleurs: 1,
+    });
+    const utilisateur = { id: 'u1', tenantId: 't1', role: RoleUtilisateur.ADMIN_CABINET, doitChangerMotDePasse: true, createdAt: new Date(Date.now() - HEURE), sessionsInvalidesAvant: null };
+    const r = await service.inscrireEnEssai(demande);
+    expect(envois).toHaveLength(0);
+    expect(mises).toHaveLength(0);
+    // La même réponse que le renvoi qui part · rien ne dit pourquoi il n'est pas parti.
+    expect(r).toEqual(await monter({ utilisateur }).service.inscrireEnEssai(demande));
   });
 
   it('un renvoi trop rapproché, ou vers un compte qui n est pas un administrateur, ne part pas', async () => {

@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { CourrierService } from '../courrier/courrier.service';
 import { LIBELLES_FONCTION } from '../../common/fonctions/fonctions-metier';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -7,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { UtilisateurService } from './utilisateur.service';
 import { AvisAccesService } from './avis-acces.service';
+import { InvitationsService } from './invitations.service';
 import { CreerUtilisateurDto, DefinirFonctionsDto, DefinirJournauxDto, DefinirLogicielsDto, ModifierUtilisateurDto, ReinitialiserMotDePasseDto } from './dto/utilisateur.dto';
 import { RoleUtilisateur } from '@prisma/client';
 
@@ -27,7 +30,20 @@ export class UtilisateurController {
      * en plus ce que le titulaire a appris, ou n'a pas appris.
      */
     private readonly avis: AvisAccesService,
+    private readonly invitations: InvitationsService,
+    @Optional() private readonly courrier?: CourrierService,
   ) {}
+
+  /** Les invitations du dossier et le mode de création (invitation, ou création directe). */
+  @Get('invitations')
+  listerInvitations(@CurrentUser() user: AuthenticatedUser) {
+    return this.invitations.lister(user.tenantId);
+  }
+
+  @Post('invitations/:id/annuler')
+  annulerInvitation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invitations.annuler(user.tenantId, id);
+  }
 
   @Get()
   async lister(@CurrentUser() user: AuthenticatedUser) {
@@ -40,9 +56,24 @@ export class UtilisateurController {
    * lui-même. Rien n'est retiré de l'écran : sans transport opérationnel,
    * retirer ce chemin-là rendrait la création de comptes impossible.
    */
+  // UNE CRÉATION, C'EST UN COURRIEL AU NOM DU DOSSIER (second tour, mineur 7) ·
+  // soixante par heure et par adresse, au-delà de ce qu'un cabinet monte en
+  // une séance, en deçà d'un relais d'envoi ; le plafond des invitations en
+  // attente (`InvitationsService`) borne le reste.
+  @Throttle({ default: { ttl: 3_600_000, limit: 60 } })
   @Post()
   async creer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerUtilisateurDto) {
-    const cree = await this.utilisateurService.creer(user.tenantId, dto);
+    // EN LIGNE AVEC UNE MESSAGERIE, TOUTE CRÉATION EST UNE INVITATION (ligne
+    // multi-dossiers, `invitations.ts`) · rien n'est créé avant que la
+    // personne accepte, et la réponse est la même, que l'adresse ait déjà un
+    // compte ou non.
+    if (this.invitations.mode() === 'INVITATION') {
+      return { invitation: await this.invitations.inviter(user.tenantId, user.userId, dto.email, dto.role) };
+    }
+    const cree = await this.utilisateurService.creer(user.tenantId, dto, undefined, (email) =>
+      this.invitations.inviterSurPlace(user.tenantId, user.userId, email, dto.role),
+    );
+    if ('invitation' in cree) return cree;
     return {
       ...cree,
       avis: await this.avis.annoncerCompteCree(user.tenantId, {
@@ -127,6 +158,16 @@ export class UtilisateurController {
   @Post(':id/deconnecter')
   async deconnecter(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.utilisateurService.deconnecter(user.tenantId, id, user.userId);
+  }
+
+  /**
+   * « Réinitialiser par courriel » (second tour, BLOQUANT 1) · le mot de passe
+   * part au seul titulaire, l'administrateur n'en voit rien ; ouvert aussi sur
+   * une personne qui a d'autres dossiers (`UtilisateurService`).
+   */
+  @Post(':id/reinitialiser-par-courriel')
+  async reinitialiserParCourriel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.utilisateurService.reinitialiserParCourriel(user.tenantId, id, user.userId, this.courrier);
   }
 
   /** Le comptable qui a mal tapé cinq fois et se souvient très bien du sien. */

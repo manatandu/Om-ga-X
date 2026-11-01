@@ -80,6 +80,12 @@ export interface Utilisateur {
   verrouilleJusqua: string | null;
   /** Double authentification active depuis, ou null. */
   doubleAuthActiveDepuis?: string | null;
+  /**
+   * Ligne multi-dossiers · la personne a d'autres dossiers ; sa connexion
+   * (mot de passe, verrou, second facteur) se tient par elle seule, le
+   * dossier ne la réinitialise ni ne la déverrouille.
+   */
+  connexionTenueParLaPersonne?: boolean;
   createdAt: string;
   /** Profil de fonctions (point 15) · faux = tout ce que le rôle permet. */
   restreindreFonctions?: boolean;
