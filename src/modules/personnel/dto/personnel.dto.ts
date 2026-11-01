@@ -759,13 +759,38 @@ export class IndemniteStipuleeDto {
   source!: string;
 }
 
+/**
+ * A8 (B2) · À L'ÉMISSION, L'ANCIENNETÉ ET LES MOIS NON COUVERTS SE DÉCLARENT.
+ * Le calcul seul (P4) garde ses règles ; un document remis au travailleur
+ * (art. 103) ne se fige pas sur un zéro que personne n'a dit · le préavis
+ * (art. 64) et le congé (art. 141) en dépendent. Refus nommé, jamais un zéro
+ * par défaut.
+ */
+export const MOTIF_ANCIENNETE_EXIGEE =
+  "Déclarez l'ancienneté du travailleur en années entières, zéro compris · le préavis en dépend (article 64).";
+export const MOTIF_MOIS_NON_COUVERTS_EXIGES =
+  "Déclarez les mois de service non couverts par un congé, zéro compris · l'indemnité compensatoire en dépend (article 144).";
+
+/**
+ * LE CALCUL SEUL NOMME AUSSI CE QUI LUI MANQUE (second tour d'A8, mineur 2) ·
+ * une ancienneté vide recevait le message brut du validateur (« must be an
+ * integer number »). Son motif est propre au calcul · celui de l'émission
+ * parle d'un document remis.
+ */
+export const MOTIF_ANCIENNETE_AU_CALCUL =
+  "Indiquez l'ancienneté du travailleur en années entières, zéro compris · le préavis se calcule sur elle (article 64).";
+export const MOTIF_MOIS_NON_COUVERTS_AU_CALCUL =
+  "Indiquez les mois de service non couverts par un congé, zéro compris · l'indemnité compensatoire se calcule sur eux (article 144).";
+
 export class DecompteFinalDto {
+  @IsDefined({ message: MOTIF_ANCIENNETE_AU_CALCUL })
   @IsInt()
   @Min(0)
   @Max(99)
   anneesAnciennete!: number;
 
   /** Mois entiers de service NON couverts par un congé pris ou payé (art. 141 et 144). */
+  @IsDefined({ message: MOTIF_MOIS_NON_COUVERTS_AU_CALCUL })
   @IsInt()
   @Min(0)
   @Max(1200)
@@ -972,18 +997,6 @@ export class DecompteFinalDto {
   @Min(0)
   joursAllocationsFamiliales?: number;
 }
-
-/**
- * A8 (B2) · À L'ÉMISSION, L'ANCIENNETÉ ET LES MOIS NON COUVERTS SE DÉCLARENT.
- * Le calcul seul (P4) garde ses règles ; un document remis au travailleur
- * (art. 103) ne se fige pas sur un zéro que personne n'a dit · le préavis
- * (art. 64) et le congé (art. 141) en dépendent. Refus nommé, jamais un zéro
- * par défaut.
- */
-export const MOTIF_ANCIENNETE_EXIGEE =
-  "Déclarez l'ancienneté du travailleur en années entières, zéro compris · le préavis en dépend (article 64).";
-export const MOTIF_MOIS_NON_COUVERTS_EXIGES =
-  "Déclarez les mois de service non couverts par un congé, zéro compris · l'indemnité compensatoire en dépend (article 144).";
 
 export class DecompteFinalEmisDto extends DecompteFinalDto {
   @IsDefined({ message: MOTIF_ANCIENNETE_EXIGEE })
