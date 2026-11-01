@@ -28,10 +28,17 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
 - G2 · canevas de trésorerie · chaque ligne va à l'exercice OUVERT de la
   cellule qui contient sa date (N+1 ouvert avant la clôture de N), le
   canevas nomme tous les exercices ouverts.
+- D2 · NOTE 4 des deux SMT · le règlement d'un fournisseur se ventile sur la
+  nature de sa facture par la lecture du compte de résultat
+  (`partsDuReglement`) ; au SYSCOHADA la colonne « Ventes » lit les comptes de
+  SR1 (`COMPTES_RECETTES_SUR_VENTES_SMT_SYSCOHADA`, une liste pour les deux).
+  Au SYCEBNL, les recettes restent découpées par la maquette (colonne
+  « Cotisations » au 701 seul) · le fondement de son poste dit déjà que les
+  deux découpages ne se recoupent pas ; rien de plus n'est tranché.
 
 ## Reste
 
-D2, MAG-LIEN, H D1, 585 du groupe et AU2.
+ MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
 

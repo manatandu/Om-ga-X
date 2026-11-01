@@ -317,3 +317,27 @@ export function depensesRattachees(
   }
   return r;
 }
+
+/**
+ * LA NOTE 4 VENTILE LE RÈGLEMENT COMME LE COMPTE DE RÉSULTAT LE RATTACHE
+ * (relevé D2 de la simulation du 2026-10-08). Le journal de trésorerie rangeait
+ * le règlement d'un fournisseur par le seul numéro du 40 · la colonne
+ * « Achats » restait vide sur le chemin facture puis règlement, quand le
+ * compte de résultat du même dossier portait la dépense sur achats. Rend la
+ * part de la ligne par compte · celles de sa facture (`natures.parLigne`),
+ * et le reste éventuel sur le compte de la ligne, qu'il ne se perde pas.
+ * Une ligne sans rattachement reste entière sur son compte.
+ */
+export function partsDuReglement(
+  ligne: { id: string; numero: string; montant: number },
+  natures: NaturesDesReglements | null,
+): Array<{ numero: string; montant: number }> {
+  const parts = natures?.parLigne.get(ligne.id);
+  if (!parts || parts.length === 0) return [{ numero: ligne.numero, montant: ligne.montant }];
+  const rattache = parts.reduce((t, p) => t + Math.round(p.montant * 100), 0);
+  const reste = Math.round(ligne.montant * 100) - rattache;
+  return [
+    ...parts.map((p) => ({ numero: p.numero, montant: p.montant })),
+    ...(reste !== 0 ? [{ numero: ligne.numero, montant: reste / 100 }] : []),
+  ];
+}

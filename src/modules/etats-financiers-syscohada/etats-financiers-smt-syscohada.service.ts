@@ -27,6 +27,7 @@ import {
   depensesRattachees,
   estDetteFournisseurRattachee,
   naturesDesReglementsFournisseurs,
+  partsDuReglement,
 } from '../etats-financiers/reglements-de-tresorerie';
 import { dettesFournisseursNeesDImmobilisations } from '../etats-financiers/dettes-rattachees';
 import { trouvePosteCompteResultat } from './correspondance-compte-resultat-syscohada';
@@ -1082,6 +1083,22 @@ export class EtatsFinanciersSmtSyscohadaService {
       .filter((l) => this.estTresorerie(l.numero))
       .sort((a, b) => a.numero.localeCompare(b.numero));
 
+    // RELEVÉ D2 DE LA SIMULATION DU 2026-10-08 · le règlement d'un fournisseur
+    // (40) se ventile sur la nature de la facture qu'il solde, par la même
+    // lecture que le compte de résultat (`naturesDesReglementsFournisseurs`).
+    const reglements: ReglementARattacher[] = [];
+    for (const e of ecritures) {
+      const flux = e.lignes.filter((l) => this.estTresorerie(l.compte.numero)).reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
+      if (flux > -0.005) continue;
+      for (const l of e.lignes) {
+        const montant = Number(l.debit) - Number(l.credit);
+        if (!this.estTresorerie(l.compte.numero) && montant > 0.005 && estDetteFournisseurRattachee(l.compte.numero)) {
+          reglements.push({ ligneId: l.id, numero: l.compte.numero, montant });
+        }
+      }
+    }
+    const natures = reglements.length > 0 ? await naturesDesReglementsFournisseurs(this.prisma, tenantId, reglements) : null;
+
     const journaux = comptesTresorerie.map((compte) => {
       // « Report à nouveau » : l'ouverture du compte, telle que la maquette
       // l'imprime en première ligne du journal.
@@ -1113,8 +1130,12 @@ export class EtatsFinanciersSmtSyscohadaService {
           for (const l of contreparties) {
             const montant =
               sens === 'RECETTE' ? Number(l.credit) - Number(l.debit) : Number(l.debit) - Number(l.credit);
-            const col = colonnes.find((k) => correspond(l.compte.numero, k.comptes, k.exclusions));
-            if (col) ventilation[col.cle] += montant;
+            const parts =
+              sens === 'DEPENSE' ? partsDuReglement({ id: l.id, numero: l.compte.numero, montant }, natures) : [{ numero: l.compte.numero, montant }];
+            for (const p of parts) {
+              const col = colonnes.find((k) => correspond(p.numero, k.comptes, k.exclusions));
+              if (col) ventilation[col.cle] += p.montant;
+            }
           }
         }
 
