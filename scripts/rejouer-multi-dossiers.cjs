@@ -173,6 +173,8 @@ async function phaseNouveau() {
     verifier(change.change === true && change.dossierId === etat.dossierB && K.csrf !== csrfAvant, 'changer de dossier · un jeton CSRF neuf');
     const meB = await K.get('/auth/me');
     verifier(meB.tenant.id === etat.dossierB && meB.tenant.referentiel === 'SYSCOHADA' && meB.role === 'COMPTABLE', 'dans B · son dossier, son référentiel, son rôle');
+    const vuParB = (await B.get('/utilisateurs')).find((u) => u.email === etat.collab);
+    verifier(vuParB && vuParB.doitChangerMotDePasse === false, "entré avec son propre mot de passe, B ne le voit plus « à changer »");
     const fermee = await copie.appeler('GET', '/auth/me', undefined, [401]);
     verifier(fermee.statut === 401, "la session d'avant le changement est fermée (une copie du cookie ne rouvre rien)");
     const etranger = await K.appeler('POST', '/auth/changer-dossier', { dossierId: 'dossier-inexistant' }, [404]);

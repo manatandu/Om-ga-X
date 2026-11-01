@@ -48,6 +48,7 @@ import {
   appartenancesDeLaPersonne,
   compteDeConnexionDe,
   dossiersDeLaPersonne,
+  effacerLeProvisoireALEntree,
   idDuCompteDeConnexion,
   recopierLAdresse,
   trouverCompteDeConnexion,
@@ -563,6 +564,7 @@ export class AuthService {
     const longue = dto.resterConnecte === true;
     // La connexion se journalise dans le dossier où la session s'ouvre.
     await this.journaliserConnexion({ id: entree.id, email: user.email, tenantId: entree.tenantId }, adresseIp, longue);
+    await effacerLeProvisoireALEntree(this.prisma, entree, user);
     // Mot de passe, et code s'il est actif · une connexion complète. Plusieurs
     // dossiers · l'écran montre la liste avant l'écran des logiciels.
     const plusieursDossiers = appartenances.filter((a) => a.estActif).length > 1;
@@ -1160,7 +1162,7 @@ export class AuthService {
    * session la frappe (403 nommé, reconnexion demandée).
    */
   async changerDeDossier(userId: string, dossierId: string, session: SessionEnCours | null, maintenantMs = Date.now()) {
-    const { ligne } = await this.compteDeLaSession(userId);
+    const { ligne, compte } = await this.compteDeLaSession(userId);
     const compteId = idDuCompteDeConnexion(ligne);
     const visee = await appartenanceDansLeDossier(this.prisma, compteId, dossierId);
     if (!visee) throw new NotFoundException('Dossier introuvable parmi les vôtres.');
@@ -1179,6 +1181,7 @@ export class AuthService {
       { ...demande, authentification: session?.authentification ?? session?.iat ?? null },
       maintenantMs,
     );
+    await effacerLeProvisoireALEntree(this.prisma, visee, compte);
     return { dossierId: visee.tenantId, session: emise };
   }
 

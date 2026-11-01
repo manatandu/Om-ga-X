@@ -5678,6 +5678,27 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   la console, qui ne réinitialise que les administrateurs, ne le rattrapait
   pas. Décompte et écriture se font sous un verrou par dossier, dans la
   transaction.
+- **UNE PERSONNE, PLUSIEURS DOSSIERS** (ligne multi-dossiers, gel levé par
+  Manasse le 2026-11-01, `auth/compte-de-connexion.ts`). Chaque
+  APPARTENANCE est une ligne `User` DE SON DOSSIER · rôle, profil, journaux,
+  logiciels, actif et révocation restent par dossier, et tout lecteur des
+  utilisateurs d'un dossier les voit sans changer. Mot de passe, second
+  facteur, verrou et mot de passe provisoire vivent sur le COMPTE DE
+  CONNEXION (`compteDeConnexionId` nul), que `JwtStrategy` relit pour une
+  appartenance rattachée ; l'adresse de connexion (`courrielDeConnexion`,
+  unique) est posée par un DÉCLENCHEUR de la base, jamais par le code, et
+  l'adresse n'est plus unique que par dossier. Le dossier de la requête est
+  celui de la ligne du jeton, et rien d'autre (`dossier-de-la-session.spec.ts`
+  · aucun dossier en paramètre, en requête ou en en-tête hors de la console) ;
+  changer de dossier est un GESTE (`POST /auth/changer-dossier`, CSRF), qui
+  ferme la session en cours et en ouvre une sous un jeton CSRF neuf, parmi les
+  seules appartenances ACTIVES de la personne (404 sinon). Rattacher une
+  adresse connue ailleurs rend la MÊME réponse qu'une création · ni la
+  réponse, ni le journal d'audit (`compteDeConnexionId` et
+  `courrielDeConnexion` exclus), ni la restitution ne disent qu'elle existe
+  ailleurs ; le mot de passe saisi par l'administrateur n'y ouvre jamais rien.
+  Un dossier d'essai dont une personne est rattachée ailleurs n'est jamais
+  supprimé. Rejeu · `scripts/rejouer-multi-dossiers.cjs`.
 - **Verrouillage par compte** temporaire (`src/modules/auth/verrouillage.ts`),
   vérifié APRÈS bcrypt depuis le 2026-09-28 (audit final F238) · un verrou
   qui répondait sans hachage se reconnaissait à sa rapidité. Une adresse
