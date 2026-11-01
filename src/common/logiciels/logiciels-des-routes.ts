@@ -62,6 +62,7 @@ const A = 'ADMINISTRATION' as const;
 export const CONTROLEURS_COMMUNS: Record<string, string> = {
   AuthController: "Connexion, mot de passe, double authentification et sessions · l'utilisateur lui-même, quel que soit son logiciel.",
   SanteController: "Contrôle de santé du service, sans session.",
+  DemandeInformationController: "Formulaire de demande de la page publique, sans session · aucune donnée de dossier lue ni rendue.",
   PlateformeController: "Console de l'opérateur de la plateforme, gardée par sa propre garde, hors de tout logiciel du dossier.",
   SurSiteController: "Licence et sauvegardes du poste d'une installation sur site · le chrome lit son état, l'installation n'est pas un logiciel.",
   ConditionsLicenceController: "Conditions de licence · lues par le chrome, acceptées par l'administrateur, qui n'est jamais restreint.",

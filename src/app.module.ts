@@ -73,6 +73,7 @@ import { EtatsPersonnalisesModule } from './modules/etats-personnalises/etats-pe
 import { SimulationsModule } from './modules/simulations/simulations.module';
 import { CourrierModule } from './modules/courrier/courrier.module';
 import { SurSiteModule } from './modules/sur-site/sur-site.module';
+import { DemandeInformationModule } from './modules/demande-information/demande-information.module';
 
 @Module({
   imports: [
@@ -164,6 +165,7 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     SimulationsModule,
     CourrierModule,
     SurSiteModule,
+    DemandeInformationModule,
   ],
   controllers: [SanteController],
   providers: [

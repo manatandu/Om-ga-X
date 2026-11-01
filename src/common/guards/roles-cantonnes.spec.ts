@@ -310,13 +310,16 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
 });
 
 describe('toute route authentifiée traverse JwtAuthGuard', () => {
-  it('chaque contrôleur la pose, hors la santé qui n’authentifie personne', () => {
+  it('chaque contrôleur la pose, hors la santé et la demande de la page publique, qui n’authentifient personne', () => {
     const { globSync } = require('node:fs') as { globSync?: (p: string, o: object) => string[] };
     const racine = join(__dirname, '../..');
     const fichiers: string[] = globSync
       ? globSync('**/*.controller.ts', { cwd: racine })
       : (require('child_process').execSync('find . -name "*.controller.ts"', { cwd: racine }).toString().trim().split('\n') as string[]);
-    const sans = fichiers.filter((f) => !f.endsWith('sante.controller.ts') && !readFileSync(join(racine, f), 'utf8').includes('JwtAuthGuard'));
+    // La demande d'information de la page publique (ligne commercial-site) ·
+    // une porte sans session, qui ne lit ni ne rend aucune donnée de dossier.
+    const publics = ['sante.controller.ts', 'demande-information.controller.ts'];
+    const sans = fichiers.filter((f) => !publics.some((p) => f.endsWith(p)) && !readFileSync(join(racine, f), 'utf8').includes('JwtAuthGuard'));
     expect(fichiers.length).toBeGreaterThan(40);
     expect(sans).toEqual([]);
   });

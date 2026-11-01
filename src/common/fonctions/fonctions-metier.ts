@@ -209,6 +209,7 @@ export const FONCTION_PAR_METHODE_DU_GESTIONNAIRE_PAIE: Record<string, FonctionM
 /** Contrôleurs qui écrivent sans relever d'un profil, avec leur motif. */
 export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
   AuthController: "Connexion et mot de passe · l'utilisateur lui-même, quel que soit son profil.",
+  DemandeInformationController: "Formulaire de demande de la page publique (ligne commercial-site) · porte sans session, hors de tout dossier et de tout profil.",
   PlateformeController: "Console de l'opérateur, hors de tout dossier.",
   UtilisateurController: "Gestion des accès · réservée à l'administrateur, que le profil ne restreint jamais.",
   SurSiteController: "Licence et sauvegardes du poste d'une installation sur site · l'installation, pas un dossier.",
