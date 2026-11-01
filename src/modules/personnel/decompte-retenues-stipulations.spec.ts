@@ -47,6 +47,12 @@ describe("A18 · retenues d'avance et de prêt proposées au décompte (Code du 
     expect(propositionRetenuesDecompte([grosse], 0.004).retenues[0].montantProposeFc).toBe(0);
   });
 
+  it('seconde relecture, 6 · le net exact servi en texte prime sur le flottant', () => {
+    const grosse: AvanceARetenir = { ...AVANCE, soldeFc: 600_000 };
+    // Le flottant dirait 503 900,10 ; le décimal exact 503 900,095 borne à ,09.
+    expect(propositionRetenuesDecompte([grosse], 503_900.1, '503900.095').retenues[0].montantProposeFc).toBe(503_900.09);
+  });
+
   it('un net nul ou négatif ne laisse rien à retenir, jamais un net négatif', () => {
     const p = propositionRetenuesDecompte([AVANCE], -10);
     expect(p.retenues[0].montantProposeFc).toBe(0);

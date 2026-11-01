@@ -506,3 +506,38 @@ describe('passation · le centime loin de zéro, sur la valeur exacte', () => {
     expect(enCentimes(13_303.745)).toBe(1_330_375);
   });
 });
+
+/**
+ * SECONDE RELECTURE DES RELEVÉS, 2 · une écriture d'origine validée avant la
+ * ligne C range le demi-centime par `Math.round` (ONEM 285 340,725 à ,72) ·
+ * elle se reconstitue sous l'une ou l'autre règle, et la reprise en négatif
+ * n'est pas refusée.
+ */
+describe('reconstitution · l’écriture d’avant la règle des centimes figés', () => {
+  const avecOnem = (numero: number, over: Partial<BulletinAComptabiliser> = {}) => {
+    const b = bulletin(numero, over);
+    const cot = (b.calcul as { cotisations: { lignes: { cle: string; montantFc: number }[] } }).cotisations;
+    cot.lignes = cot.lignes.map((l) => (l.cle === 'onem' ? { ...l, montantFc: 285_340.725 } : l));
+    return b;
+  };
+  it('les centimes passés par Math.round (,72 deux fois) se reconnaissent · la reprise se propose', () => {
+    const lignes = propositionPaieDuMois('2026-03', 'SYSCOHADA', [avecOnem(1), avecOnem(2)]).lignes;
+    // La règle d'avant · 2 × 285 340,72, deux centimes de moins au 6413 et au 4428.
+    const commune = {
+      ecritureId: 'e-commune',
+      numeroPiece: '9',
+      lignes: lignes.map((l) => {
+        const montant = ['64130000', '44280000'].includes(l.compte) ? Math.round((l.montantFc - 0.02) * 100) / 100 : l.montantFc;
+        return { compte: l.compte, intitule: l.intitule, debit: l.sens === 'DEBIT' ? montant : 0, credit: l.sens === 'CREDIT' ? montant : 0 };
+      }),
+    };
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
+    const p = propositionPaieDuMois('2026-03', 'SYSCOHADA', [
+      avecOnem(1, { statut: 'ANNULE', ecritureId: 'e-commune', origine: commune }),
+      avecOnem(2, { ecritureId: 'e-commune' }),
+    ]);
+    expect(p.refus).toEqual([]);
+    // La règle du jour est rétablie après la reconstitution.
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
+  });
+});

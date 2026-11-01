@@ -906,13 +906,16 @@ export class DecompteFinalDto {
   @Min(0)
   remunerationMensuelleFc?: number;
 
+  // Une MOYENNE de douze mois est une grandeur intermédiaire, jamais au
+  // centime · elle ne porte pas le refus des montants (seconde relecture des
+  // relevés, 3).
   @IsOptional()
-  @IsNumber(...AU_CENTIME)
+  @IsNumber()
   @Min(0)
   moyenneMensuelleArticle66Fc?: number;
 
   @IsOptional()
-  @IsNumber(...AU_CENTIME)
+  @IsNumber()
   @Min(0)
   moyenneMensuelleArticle142Fc?: number;
 
@@ -1259,7 +1262,7 @@ export class LigneModeleBulletinDto {
   rubriqueId?: string | null;
 
   @IsOptional()
-  @IsNumber(...AU_CENTIME)
+  @IsNumber()
   montant?: number | null;
 }
 

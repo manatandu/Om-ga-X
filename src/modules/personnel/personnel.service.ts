@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { motifPlanNonPropose } from './visa-plan-etalement';
-import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
+import { depuisNombre, plus, somme, versChaine, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
   DecompteFinalDto,
@@ -1573,6 +1573,10 @@ export class PersonnelService {
       reserveIndemniteLogement: reserveIndemniteLogementKinshasa(elements, tenant.ville, dto.moisDePaie),
       cotisations: lesCotisations,
       net,
+      // LE NET EXACT, EN DÉCIMAL ÉCRIT (seconde relecture des relevés, 6) ·
+      // la proposition des retenues du décompte se borne sur lui, jamais sur
+      // le flottant de `net.netAPayerFc` relu par son écriture la plus courte.
+      netExact: netExact === null ? null : versChaine(netExact),
       baremeApplicable: borne.applicable,
       motifBaremeInapplicable: borne.motif,
       regimeSalarial: {
@@ -2193,7 +2197,8 @@ export class PersonnelService {
     const p = await this.preparerDecompteFinal(tenantId, salarieId, sansRetenues, maintenant, false);
     const { avances, tronque } = await this.avancesARetenir(tenantId, salarieId);
     const net = p.etat === 'CHIFFRE' ? p.simulation.net.netAPayerFc : null;
-    const proposition = propositionRetenuesDecompte(avances, net);
+    const netExact = p.etat === 'CHIFFRE' ? p.simulation.netExact : null;
+    const proposition = propositionRetenuesDecompte(avances, net, netExact);
     return {
       ...proposition,
       fondement: FONDEMENT_RETENUES_DECOMPTE,
