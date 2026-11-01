@@ -92,7 +92,8 @@ export type RoleComptePaie =
   | 'IRPP_RETENU'
   | 'REMUNERATIONS_DUES'
   | 'TRANSFERTS_DE_CHARGES'
-  | 'MISSIONS';
+  | 'MISSIONS'
+  | 'AVANCES_AU_PERSONNEL';
 
 export type CompteDuRole = {
   readonly SYSCOHADA: string;
@@ -262,6 +263,21 @@ export const NOMENCLATURE_PAIE: Readonly<Record<RoleComptePaie, CompteDuRole>> =
     SYSCOHADA: '63840000',
     SYCEBNL: '63840000',
     intitule: 'Missions',
+    divergent: false,
+  },
+  // LIGNE PAIE-DECLARATIONS · L'AVANCE DE MISSION versée au salarié avant le
+  // départ, régularisée au retour. Fiche du compte 42 des deux plans (AUDCIF
+  // Titre VII ; SYCEBNL Partie 2 ch. 3) · « débité du montant des avances et
+  // acomptes faits au personnel […] par le crédit des comptes de trésorerie »,
+  // subdivision 4211 « Personnel, avances » aux deux · même numéro, même
+  // intitulé aux deux semis. Le 4213 « Frais avancés et fournitures au
+  // personnel » n'est pas retenu · il vise ce que l'ENTITÉ avance ou fournit
+  // POUR le personnel, quand l'avance de mission est une somme remise au
+  // travailleur (question laissée au suivi, AVANCEMENT).
+  AVANCES_AU_PERSONNEL: {
+    SYSCOHADA: '42110000',
+    SYCEBNL: '42110000',
+    intitule: 'Personnel, avances',
     divergent: false,
   },
 } as const;

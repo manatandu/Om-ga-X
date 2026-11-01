@@ -425,6 +425,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'creePar',
       'createdAt',
       'retenues',
+      // Ligne paie-declarations · la régularisation de mission dont l'avance est le trop-versé · une relation, aucun montant.
+      'regularisationMission',
     ],
     // LIGNE MICROFINA-M3, IDÉE 3 · L'ORDRE DE MISSION · qui, où, quand, et son
     // sort (fin, annulation, bulletin qui le porte) ; aucun montant ici.
@@ -449,6 +451,9 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'creePar',
       'createdAt',
       'frais',
+      // Ligne paie-declarations · l'avance et la répartition par projet, des relations.
+      'avances',
+      'repartitions',
     ],
     // Le frais · élément, qualification et pièce restent ; le montant, qui
     // entre au net du salarié, est masqué comme la rémunération.

@@ -3400,8 +3400,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                           Mission n° {m.numero} · {m.destination} du {dateCourte(m.dateDepart)} au {dateCourte(m.dateRetour)}
                         </label>
                       </td>
-                      <td className="py-1 pr-2 text-right">forfait {fc(m.totaux.forfaitFc)} FC</td>
-                      <td className="py-1 text-right">remboursement {fc(m.totaux.justifieFc)} FC</td>
+                      <td className="py-1 pr-2 text-right">forfait {fc((m.aPorterAuBulletin ?? m.totaux).forfaitFc)} FC</td>
+                      <td className="py-1 text-right">remboursement {fc((m.aPorterAuBulletin ?? m.totaux).justifieFc)} FC</td>
                     </tr>
                   ))}
                 </tbody>

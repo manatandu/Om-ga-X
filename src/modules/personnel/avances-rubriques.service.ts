@@ -364,8 +364,19 @@ export class AvancesRubriquesService {
 
   /** Une avance saisie par erreur se retire tant qu'aucun bulletin n'y a retenu · après, elle est l'histoire des bulletins. */
   async supprimerAvance(tenantId: string, id: string) {
-    const a = await this.prisma.avanceSalaire.findFirst({ where: { id, tenantId }, include: { _count: { select: { retenues: true } } } });
+    const a = await this.prisma.avanceSalaire.findFirst({
+      where: { id, tenantId },
+      include: { _count: { select: { retenues: true } }, regularisationMission: { select: { avance: { select: { mission: { select: { numero: true } } } } } } },
+    });
     if (!a) throw new NotFoundException('Avance introuvable dans ce dossier.');
+    // Ligne paie-declarations · le trop-versé d'une mission retenu sur la paie
+    // naît de sa régularisation, qui le retient · il part avec elle, jamais
+    // seul (le 4211 garderait le trop-versé sans rien pour le retenir).
+    if (a.regularisationMission) {
+      throw new ConflictException(
+        `Cette avance est le trop-versé de la mission n° ${a.regularisationMission.avance.mission.numero} · elle se retire en annulant la régularisation de la mission.`,
+      );
+    }
     if (a._count.retenues > 0) {
       throw new ConflictException(
         `Cette avance porte ${a._count.retenues} retenue(s) de bulletin · elle ne se supprime plus. Annulez les bulletins si les retenues sont fausses.`,

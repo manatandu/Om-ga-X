@@ -19,7 +19,7 @@ function txAvecFrais(frais: { element: string; qualification: string; montantFc:
     missionSalarie: {
       findFirst: jest.fn(async () => {
         ordre.push('lecture');
-        return { id: 'm1', numero: 4, annuleLe: null, bulletin: null, frais: frais.map((f) => ({ ...f, montantFc: { toString: () => String(f.montantFc), valueOf: () => f.montantFc } })) };
+        return { id: 'm1', numero: 4, annuleLe: null, bulletin: null, avances: [], frais: frais.map((f) => ({ ...f, montantFc: { toString: () => String(f.montantFc), valueOf: () => f.montantFc } })) };
       }),
       update: jest.fn(async () => ({})),
     },
@@ -58,7 +58,7 @@ describe('Mission · la course entre un frais et l’émission (M1)', () => {
       missionSalarie: {
         findFirst: jest.fn(async () => {
           ordre.push('lecture');
-          return { id: 'm1', numero: 4, annuleLe: null, dateDepart: new Date(), bulletin: { statut: StatutBulletinPaie.EMIS, numero: 12 }, _count: { frais: 1 } };
+          return { id: 'm1', numero: 4, annuleLe: null, dateDepart: new Date(), bulletin: { statut: StatutBulletinPaie.EMIS, numero: 12 }, _count: { frais: 1 }, avances: [] };
         }),
       },
       fraisMission: { create: jest.fn() },

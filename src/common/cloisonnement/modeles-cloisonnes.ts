@@ -224,6 +224,10 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne microfina-m3, idée 3 · ordres et frais de mission.
   'MissionSalarie',
   'FraisMission',
+  // Ligne paie-declarations · avance de mission, régularisation, répartition par projet.
+  'AvanceMission',
+  'RegularisationMission',
+  'RepartitionMission',
   // Ligne microfina-m3, lot 2 · demandes de congé et formations.
   'DemandeCongeSalarie',
   'FormationPersonnel',

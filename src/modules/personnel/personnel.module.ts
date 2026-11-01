@@ -41,6 +41,7 @@ import { ImportPersonnelService } from './import-personnel.service';
 import { RappelsSalaireService } from './rappels-salaire.service';
 import { ComptesSalariesService } from './comptes-salaries.service';
 import { DeclarationCnssService } from './declaration-cnss.service';
+import { AvancesMissionService } from './avances-mission.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -91,6 +92,7 @@ import { DeclarationCnssService } from './declaration-cnss.service';
     RappelsSalaireService,
     ComptesSalariesService,
     DeclarationCnssService,
+    AvancesMissionService,
   ],
   exports: [PersonnelService],
 })

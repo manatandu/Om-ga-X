@@ -47,7 +47,7 @@ describe('Chaque numéro de la nomenclature est RÉELLEMENT ouvert dans son semi
     }
   });
 
-  it("gèle le décompte · UN SEUL rôle diverge sur les vingt et un", () => {
+  it("gèle le décompte · UN SEUL rôle diverge sur les vingt-deux", () => {
     // Dix-sept jusqu'au 2026-09-27 · le transfert de charges des avantages en
     // nature (781) est le dix-huitième (audit final F22), même numéro aux deux.
     // A8 · les indemnités de fin de contrat (6614) sont le dix-neuvième,
@@ -56,7 +56,9 @@ describe('Chaque numéro de la nomenclature est RÉELLEMENT ouvert dans son semi
     // 6413 et 4428, mêmes numéros aux deux plans. LIGNE MICROFINA-M3 · le
     // 6384 « Missions » est le vingt et unième, même numéro aux deux.
     const divergents = roles.filter((x) => NOMENCLATURE_PAIE[x].divergent);
-    expect(roles).toHaveLength(21);
+    // LIGNE PAIE-DECLARATIONS · le 4211 « Personnel, avances » de l'avance de
+    // mission est le vingt-deuxième, même numéro aux deux.
+    expect(roles).toHaveLength(22);
     expect(divergents).toEqual(['CNSS_PENSIONS']);
   });
 
