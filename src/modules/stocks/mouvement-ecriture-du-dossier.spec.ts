@@ -16,7 +16,26 @@ function monter(
 ) {
   const create = jest.fn().mockResolvedValue({ id: 'm1' });
   const findFirstEcriture = jest.fn().mockResolvedValue(ecritureDuDossier ? { id: 'e1', statut, numeroPiece: 4 } : null);
-  const prisma = {
+  const verrous: string[] = [];
+  const prisma: Record<string, unknown> = {
+    // Relevé MAG-LIEN, point 5 · le lien se juge sous le verrou de l'écriture.
+    $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
+    $queryRaw: jest.fn(async (morceaux: TemplateStringsArray) => {
+      verrous.push(morceaux.join('?'));
+      return [];
+    }),
+    tenant: { findUnique: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
+    // Le plan du dossier · le 31100000 semé, ouvert dessous en 31100001, et le
+    // 31200000, autre compte du plan.
+    compte: {
+      findMany: jest.fn(async ({ where }: { where: { numero: { startsWith: string } } }) =>
+        [
+          { id: 'c31', numero: '31110000' },
+          { id: 'c31-1', numero: '31110001' },
+          { id: 'c312', numero: '31120000' },
+        ].filter((c) => c.numero.startsWith(where.numero.startsWith)),
+      ),
+    },
     articleStock: {
       findFirst: jest
         .fn()
@@ -25,7 +44,9 @@ function monter(
     ecriture: { findFirst: findFirstEcriture },
     // Relevé MAG-LIEN · les lignes de l'écriture liée sur le compte de l'article.
     ligneEcriture: {
-      findMany: jest.fn(async ({ where }: { where: { compteId: string } }) => (where.compteId === 'c31' ? lignesSurLeCompte : [])),
+      findMany: jest.fn(async ({ where }: { where: { compteId: { in: string[] } } }) =>
+        where.compteId.in.includes('c31') ? lignesSurLeCompte : [],
+      ),
     },
     // Magasin vide · aucune sortie à servir, l'entrée passe (audit final F133).
     mouvementStock: {
@@ -35,7 +56,7 @@ function monter(
     },
   };
   const service = new MagasinService(prisma as unknown as PrismaService, {} as never);
-  return { service, create, findFirstEcriture };
+  return { service, create, findFirstEcriture, prisma, verrous };
 }
 
 const DTO = { date: '2026-03-01', sens: 'ENTREE', quantite: 5, cout: 100, piece: 'BL-1', ecritureId: 'e1' };
@@ -93,5 +114,34 @@ describe('relevé MAG-LIEN · l’écriture liée porte le mouvement, sur le com
     const juste = monter(true, 'BROUILLARD', [{ debit: 0, credit: 500 }], [], stock);
     await juste.service.enregistrerMouvement('t1', 'u', 'a1', sortie as never);
     expect(juste.create).toHaveBeenCalled();
+  });
+
+  it('relecture point 1 · une écriture portée au sous-compte ouvert sous le compte semé de l’article admet le lien', async () => {
+    const m = monter(true);
+    const lignes = (m.prisma.ligneEcriture as { findMany: jest.Mock }).findMany;
+    lignes.mockImplementation(async ({ where }: { where: { compteId: { in: string[] } } }) =>
+      where.compteId.in.includes('c31-1') ? [{ debit: 100, credit: 0 }] : [],
+    );
+    await m.service.enregistrerMouvement('t1', 'u', 'a1', DTO as never);
+    expect(m.create).toHaveBeenCalled();
+    // Le 31120000, autre compte du plan, n'est pas un sous-compte de l'article.
+    expect(lignes.mock.calls[0][0].where.compteId.in).not.toContain('c312');
+  });
+
+  it('relecture point 5 · le lien se juge sous le verrou de l’écriture, avant la création', async () => {
+    const m = monter(true);
+    await m.service.enregistrerMouvement('t1', 'u', 'a1', DTO as never);
+    expect(m.verrous).toHaveLength(1);
+    expect(m.verrous[0]).toMatch(/FROM "ecritures" .*FOR UPDATE/);
+  });
+
+  it('relecture point 5 · une sortie que la méthode ne valorise pas est refusée nommément, jamais comptée nulle', async () => {
+    // Aucune entrée · la sortie ne se valorise pas.
+    const sortie = { date: '2026-03-01', sens: 'SORTIE', quantite: 5, piece: 'BS-1', ecritureId: 'e1' };
+    const m = monter(true, 'BROUILLARD', [{ debit: 0, credit: 400 }]);
+    // Le contrôle du magasin vide passe (fiche déjà fausse) · on juge le lien seul.
+    (m.service as unknown as { nouvellesSortiesImpossibles: () => Promise<null> }).nouvellesSortiesImpossibles = async () => null;
+    await expect(m.service.enregistrerMouvement('t1', 'u', 'a1', sortie as never)).rejects.toThrow(/ne se calcule pas/);
+    expect(m.create).not.toHaveBeenCalled();
   });
 });

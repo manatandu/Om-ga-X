@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
+import { racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 import {
   ClasseCompte,
   MethodeInventaireStocks,
+  Prisma,
   SensMouvementStock,
   StatutEcriture,
   StatutExercice,
@@ -345,24 +347,30 @@ export class MagasinService {
         refus.ordre === ordre ? refus.explication : `Ce mouvement rendrait impossible ${refus.designation} · ${refus.explication}`,
       );
     }
-    if (dto.ecritureId) {
-      const motif = await this.motifRefusLien(tenantId, article, dto, ordre);
+    const donnees = {
+      tenantId,
+      articleId,
+      date: new Date(dto.date),
+      ordre,
+      sens: dto.sens,
+      quantite: dto.quantite,
+      cout: dto.sens === SensMouvementStock.ENTREE ? dto.cout : null,
+      piece: dto.piece.trim(),
+      libelle: dto.libelle?.trim() || null,
+      ecritureId: dto.ecritureId ?? null,
+      createdBy: userId,
+    };
+    if (!dto.ecritureId) return this.prisma.mouvementStock.create({ data: donnees });
+    // LE LIEN SE JUGE SOUS LE VERROU DE L'ÉCRITURE (relecture du 2026-11-01,
+    // point 5) · deux liens simultanés lisaient chacun « ce qui reste » et
+    // dépassaient ensemble ce qu'elle porte. Le second attend le premier,
+    // puis relit les mouvements déjà liés.
+    const ecritureId = dto.ecritureId;
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} AND "statut" <> 'SITUATION' FOR UPDATE`;
+      const motif = await this.motifRefusLien(tx, tenantId, article, dto, ordre);
       if (motif) throw new BadRequestException(motif);
-    }
-    return this.prisma.mouvementStock.create({
-      data: {
-        tenantId,
-        articleId,
-        date: new Date(dto.date),
-        ordre,
-        sens: dto.sens,
-        quantite: dto.quantite,
-        cout: dto.sens === SensMouvementStock.ENTREE ? dto.cout : null,
-        piece: dto.piece.trim(),
-        libelle: dto.libelle?.trim() || null,
-        ecritureId: dto.ecritureId ?? null,
-        createdBy: userId,
-      },
+      return tx.mouvementStock.create({ data: donnees });
     });
   }
 
@@ -382,29 +390,58 @@ export class MagasinService {
    *    l'écriture y porte · une écriture d'achat peut porter plusieurs
    *    articles d'un même compte, l'égalité n'est donc pas exigée.
    * La valeur d'une sortie est celle que la méthode CALCULE, jamais saisie.
+   *
+   * LE COMPTE DE L'ARTICLE, OU SES SOUS-COMPTES (relecture du 2026-11-01,
+   * point 1) · un article rattaché au 31100000 semé, dans un dossier qui a
+   * ouvert le 31100001 dessous, ne pouvait plus être lié à rien · la saisie
+   * refuse le semé subdivisé (`comptes/subdivisions-du-plan.ts`), et
+   * l'écriture d'achat porte le sous-compte. Même règle de racine que la
+   * saisie · les comptes du dossier qui commencent par la racine officielle
+   * du compte de l'article, hors des racines semées plus profondes, qui sont
+   * d'autres comptes du plan.
    */
+  private async comptesDeLArticle(
+    db: Prisma.TransactionClient,
+    tenantId: string,
+    numeroArticle: string,
+  ): Promise<string[]> {
+    const dossier = await db.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } });
+    const racine = dossier ? racineDuCompteSeme(dossier.referentiel, numeroArticle) : null;
+    const prefixe = racine ?? numeroArticle;
+    const plusProfondes = dossier ? racinesSousLeCompteSeme(dossier.referentiel, numeroArticle) : [];
+    const comptes = await db.compte.findMany({
+      where: { tenantId, numero: { startsWith: prefixe } },
+      select: { id: true, numero: true },
+    });
+    return comptes.filter((c) => c.numero === numeroArticle || !plusProfondes.some((r) => c.numero.startsWith(r))).map((c) => c.id);
+  }
+
   private async motifRefusLien(
+    db: Prisma.TransactionClient,
     tenantId: string,
     article: { id: string; compteId: string; methodeValorisation: string; compte: { numero: string } },
     dto: EnregistrerMouvementStockDto,
     ordre: number,
   ): Promise<string | null> {
     const entree = dto.sens === SensMouvementStock.ENTREE;
-    const lignes = await this.prisma.ligneEcriture.findMany({
-      where: { ecritureId: dto.ecritureId!, compteId: article.compteId, ecriture: { tenantId, ...HORS_SITUATION } },
+    const comptes = await this.comptesDeLArticle(db, tenantId, article.compte.numero);
+    if (!comptes.includes(article.compteId)) comptes.push(article.compteId);
+    const lignes = await db.ligneEcriture.findMany({
+      where: { ecritureId: dto.ecritureId!, compteId: { in: comptes }, ecriture: { tenantId, ...HORS_SITUATION } },
       select: { debit: true, credit: true },
     });
     const porte = Math.round(lignes.reduce((t, l) => t + Number(entree ? l.debit : l.credit), 0) * 100);
     if (porte <= 0) {
       return (
-        `L'écriture liée ne porte pas le compte ${article.compte.numero} de l'article au ${entree ? 'débit' : 'crédit'} · ` +
+        `L'écriture liée ne porte pas le compte ${article.compte.numero} de l'article, ni un de ses sous-comptes, au ${entree ? 'débit' : 'crédit'} · ` +
         `une ${entree ? 'entrée' : 'sortie'} de stock s'y inscrit ainsi (fiches des comptes de stock, classe 3). ` +
         "Liez le mouvement à l'écriture qui le porte, ou enregistrez-le sans écriture et passez-la d'abord."
       );
     }
-    // Les mouvements déjà liés à cette écriture, sur un article du même compte, dans le même sens.
-    const lies = await this.prisma.mouvementStock.findMany({
-      where: { tenantId, ecritureId: dto.ecritureId!, annuleLe: null, sens: dto.sens, article: { compteId: article.compteId } },
+    // Les mouvements déjà liés à cette écriture, sur un article du même compte
+    // ou d'un de ses sous-comptes, dans le même sens.
+    const lies = await db.mouvementStock.findMany({
+      where: { tenantId, ecritureId: dto.ecritureId!, annuleLe: null, sens: dto.sens, article: { compteId: { in: comptes } } },
       select: { articleId: true, ordre: true, cout: true },
     });
     let dejaLie = 0;
@@ -417,9 +454,12 @@ export class MagasinService {
     if (!entree) {
       articlesASortir.add(article.id);
       for (const articleId of articlesASortir) {
-        const autre = articleId === article.id ? article : await this.prisma.articleStock.findFirst({ where: { id: articleId, tenantId }, select: { methodeValorisation: true } });
+        const autre =
+          articleId === article.id
+            ? article
+            : await db.articleStock.findFirst({ where: { id: articleId, tenantId }, select: { methodeValorisation: true } });
         if (!autre) continue;
-        const mouvements = await this.prisma.mouvementStock.findMany({
+        const mouvements = await db.mouvementStock.findMany({
           where: { tenantId, articleId, annuleLe: null },
           select: { ordre: true, date: true, sens: true, quantite: true, cout: true },
         });
@@ -434,9 +474,25 @@ export class MagasinService {
           bruts.push({ ordre, date: dto.date.slice(0, 10), sens: 'SORTIE', quantite: dto.quantite, cout: null });
         }
         const v = valoriser(bruts, autre.methodeValorisation as MethodeValorisation);
-        const valeurDe = (o: number) => Math.round((v.mouvements.find((x) => x.ordre === o)?.valeur ?? 0) * 100);
-        for (const m of lies.filter((x) => x.articleId === articleId)) dejaLie += valeurDe(m.ordre);
-        if (articleId === article.id) valeur = valeurDe(ordre);
+        // UNE SORTIE QUE LA MÉTHODE NE VALORISE PAS N'EST PAS UNE SORTIE À ZÉRO
+        // (relecture du 2026-11-01, point 5) · comptée nulle, elle laissait
+        // passer un lien au-delà de ce que l'écriture porte.
+        const valeurDe = (o: number): number | null => {
+          const trouve = v.mouvements.find((x) => x.ordre === o);
+          return trouve ? Math.round(trouve.valeur * 100) : null;
+        };
+        for (const ordreLie of [...lies.filter((x) => x.articleId === articleId).map((x) => x.ordre), ...(articleId === article.id ? [ordre] : [])]) {
+          const c = valeurDe(ordreLie);
+          if (c === null) {
+            const raison = v.refus.find((r) => r.ordre === ordreLie)?.explication ?? v.refus[0]?.explication;
+            return (
+              `La valeur d'une sortie liée à cette écriture ne se calcule pas${raison ? ` (${raison})` : ''} · ` +
+              "le lien ne peut pas être jugé contre ce que l'écriture porte. Corrigez d'abord la fiche de l'article."
+            );
+          }
+          if (ordreLie === ordre && articleId === article.id) valeur = c;
+          else dejaLie += c;
+        }
       }
     }
     if (dejaLie + valeur > porte) {
