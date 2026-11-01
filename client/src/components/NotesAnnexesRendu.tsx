@@ -9,7 +9,7 @@ import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-note
 import { sousTitreDuTableau } from '../lib/titre-note';
 import { ligneVideeApres, lignesAvecAjouts, rangSuivant, sansDemande, type RangsDemandes } from '../lib/lignes-repetables';
 import { texteEcartSaisie, type EcartSaisieNote } from '../lib/ecarts-saisie-notes';
-import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phrasePartNonVentilee } from '../lib/part-non-ventilee';
+import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phrasePartNonVentilee, phraseEcartCloture, phraseNatureNonVentilee } from '../lib/part-non-ventilee';
 
 /**
  * RENDU DES NOTES ANNEXES · pièces d'affichage communes aux deux écrans de
@@ -152,6 +152,9 @@ function LigneTableauNote({
   const cellules = ligne.saisie;
   const ecarts = (ligne as LigneNoteCalculee & { ecartsSaisie?: EcartSaisieNote[] }).ecartsSaisie ?? [];
   const partNonVentilee = phrasePartNonVentilee(ligne);
+  // Second tour, ligne A, voisin A10 · servis par le serveur, jamais lus ici.
+  const ecartCloture = phraseEcartCloture(ligne);
+  const natureNonVentilee = phraseNatureNonVentilee(ligne);
   return (
     <>
     <div
@@ -268,6 +271,26 @@ function LigneTableauNote({
       <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
         {partNonVentilee}
         <Aide titre={TITRE_PART_NON_VENTILEE} texte={aidePartNonVentilee(ligne)} source="Notes annexes · ventilation par échéance" />
+      </div>
+    )}
+    {ecartCloture && (
+      <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
+        {ecartCloture}
+        <Aide
+          titre="Écart de clôture"
+          texte="La clôture de la note se recalcule (ouverture, plus augmentations, moins diminutions) et se confronte au solde de la balance. Un écart est une anomalie du dossier · un report à-nouveau manquant, une écriture passée hors des comptes de la rubrique. Il est dit, jamais corrigé."
+          source="Notes annexes · contrôle de la clôture"
+        />
+      </div>
+    )}
+    {natureNonVentilee && (
+      <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
+        {natureNonVentilee}
+        <Aide
+          titre="Nature non ventilée"
+          texte="Des mouvements de provision dont la contrepartie ne relève d'aucune des natures du tableau (virement de provision à provision, écriture atypique). Ils sont présentés à part, jamais rangés d'office dans une nature."
+          source="Notes annexes · ventilation par nature"
+        />
       </div>
     )}
     </>

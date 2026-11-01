@@ -50,3 +50,28 @@ export function aidePartNonVentilee(ligne: Pick<LigneNoteCalculee, 'echeanceNonV
     'lignes de tiers, et tenir ces comptes en report à-nouveau au détail.'
   );
 }
+
+/**
+ * L'ÉCART DE CLÔTURE ET LA NATURE NON VENTILÉE, DITS À L'ÉCRAN DES NOTES
+ * (second tour du paquet 1, ligne A, voisin A10). Le serveur les servait
+ * (`ecartCloture`, `natureNonVentilee`), l'export disait le premier en
+ * commentaire de cellule, et l'écran ne lisait aucun des deux · une note dont
+ * la clôture recalculée (D = A + B − C) ne rend pas le solde, ou dont des
+ * mouvements de provision ne relèvent d'aucune nature, s'y lisait complète.
+ * Même garde que la part non ventilée · rien sous le demi-centime.
+ */
+export function phraseEcartCloture(ligne: Pick<LigneNoteCalculee, 'ecartCloture'>): string | null {
+  const m = ligne.ecartCloture;
+  if (typeof m !== 'number' || !Number.isFinite(m) || Math.abs(m) < 0.005) return null;
+  return `Écart de clôture : ${montant(m)} · la clôture recalculée ne rend pas le solde de la balance.`;
+}
+
+export function phraseNatureNonVentilee(ligne: Pick<LigneNoteCalculee, 'natureNonVentilee'>): string | null {
+  const n = ligne.natureNonVentilee;
+  if (!n) return null;
+  const a = Number.isFinite(n.augmentation) ? n.augmentation : 0;
+  const d = Number.isFinite(n.diminution) ? n.diminution : 0;
+  if (Math.abs(a) < 0.005 && Math.abs(d) < 0.005) return null;
+  return `Mouvements de nature non ventilée · augmentations ${montant(a)}, diminutions ${montant(d)} · rangés dans aucune nature.`;
+}
+

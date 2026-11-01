@@ -825,9 +825,13 @@ function EtatsSystemeNormalPage() {
                   className={`mt-0.5 shrink-0 ${ceProjet.controle.boucleAZero ? 'text-positive' : 'text-warning'}`}
                 />
                 <span className="font-mono text-[11.5px] font-medium">
+                  {/* Le solde se DIT, il n'est pas jugé (paquet 1, A9 ; second
+                      tour, ligne A, voisin) · Partie 4 ch. 3 l'imprime
+                      « (+excédent, -déficit) », et le zéro n'est pas une
+                      égalité du texte · même phrase que le classeur. */}
                   {ceProjet.controle.boucleAZero
-                    ? `XC = ${montant(ceProjet.solde)} (≈ 0) · régime normal pour ce jeu`
-                    : `XC = ${montant(ceProjet.solde)} (≠ 0) · pas nécessairement une erreur, vérifier le compte 13 et les comptes non rattachés ci-dessous`}
+                    ? `Solde des opérations de l'exercice : XC = ${montant(ceProjet.solde)}`
+                    : `Solde des opérations de l'exercice : XC = ${montant(ceProjet.solde)} · non nul, à expliquer en Notes (produit ou charge hors de la neutralisation par le 702)`}
                 </span>
               </div>
 

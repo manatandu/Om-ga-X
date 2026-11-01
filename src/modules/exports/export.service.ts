@@ -5698,7 +5698,9 @@ export class ExportService {
         'A_VERIFIER',
         'XC',
         "Compte d'exploitation",
-        `XC = ${ce.solde.toFixed(2)} · le compte d'exploitation ne boucle pas à zéro.`,
+        // Le solde se dit, il n'est pas une égalité du texte (paquet 1, A9 ;
+        // second tour, ligne A, voisin) · même phrase que la feuille.
+        `XC = ${ce.solde.toFixed(2)} · solde non nul des opérations de l'exercice, à expliquer en Notes (produit ou charge hors de la neutralisation par le 702).`,
         'Vérifier la consommation des fonds (Partie 3, ch. 3) et les comptes non rattachés.',
       ]);
     }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { montant } from '../lib/montants';
-import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phrasePartNonVentilee } from '../lib/part-non-ventilee';
+import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phraseEcartCloture, phraseNatureNonVentilee, phrasePartNonVentilee } from '../lib/part-non-ventilee';
 
 /**
  * PAQUET 1, A10 (reproduit sur vraie base le 2026-10-09) · la note 7 d'un
@@ -47,5 +47,34 @@ describe('A10 · la part non ventilée par échéance', () => {
     expect(corps).toMatch(
       /\{partNonVentilee && \([\s\S]*\{partNonVentilee\}[\s\S]*<Aide titre=\{TITRE_PART_NON_VENTILEE\} texte=\{aidePartNonVentilee\(ligne\)\}/,
     );
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE A, VOISIN A10 · l'écart de clôture et la
+ * nature non ventilée, servis par le serveur, ne se lisaient pas à l'écran.
+ */
+describe('écart de clôture et nature non ventilée, dits sous la ligne', () => {
+  it('l’écart de clôture se dit, jamais sous le demi-centime', () => {
+    expect(phraseEcartCloture({ ecartCloture: 250_000 })).toBe(
+      `Écart de clôture : ${montant(250_000)} · la clôture recalculée ne rend pas le solde de la balance.`,
+    );
+    expect(phraseEcartCloture({ ecartCloture: 0.004 })).toBeNull();
+    expect(phraseEcartCloture({})).toBeNull();
+  });
+
+  it('la nature non ventilée se dit avec ses deux sens', () => {
+    expect(phraseNatureNonVentilee({ natureNonVentilee: { augmentation: 10_000, diminution: 0 } })).toContain(
+      `augmentations ${montant(10_000)}, diminutions ${montant(0)}`,
+    );
+    expect(phraseNatureNonVentilee({ natureNonVentilee: { augmentation: 0, diminution: 0 } })).toBeNull();
+    expect(phraseNatureNonVentilee({})).toBeNull();
+  });
+
+  it('le rendu les affiche sous la ligne', () => {
+    const source = readFileSync(join(__dirname, 'NotesAnnexesRendu.tsx'), 'utf8');
+    expect(source).toMatch(/const ecartCloture = phraseEcartCloture\(ligne\)/);
+    expect(source).toMatch(/\{ecartCloture && \([\s\S]*\{ecartCloture\}/);
+    expect(source).toMatch(/\{natureNonVentilee && \([\s\S]*\{natureNonVentilee\}/);
   });
 });
