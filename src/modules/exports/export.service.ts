@@ -4003,6 +4003,17 @@ export class ExportService {
     // un montant constaté que personne n'a constaté. Un état figé avant la
     // règle n'a pas `postesVides` · il se rend tel qu'il a été transcrit.
     const vides = new Set<string>(Array.isArray(etat?.postesVides) ? etat.postesVides : []);
+    // La colonne N-1 se vide de même pour les postes que le comparatif n'a
+    // pas lus (`postesNonCalculablesN1`) · un état figé avant que le service
+    // ne les serve vides y portait 0 (seconde relecture des relevés, 7).
+    const videsN1 = new Set<string>(
+      (Array.isArray(etat?.postesNonCalculablesN1) ? etat.postesNonCalculablesN1 : [])
+        .map((p: any) => p?.ref)
+        .filter((r: unknown): r is string => typeof r === 'string'),
+    );
+    // Les totaux chiffrés écrits à côté d'un poste laissé vide · ils ne
+    // comptent pas ce poste, et le livre le dit.
+    const totauxAuxComposantsVides: string[] = [];
     let sectionCourante = '';
     for (const [cle, valeur] of Object.entries(etat ?? {})) {
       if (!Array.isArray(valeur) || valeur.length === 0 || !valeur.some(estPoste)) continue;
@@ -4020,9 +4031,10 @@ export class ExportService {
           ref: l.ref,
           libelle: l.libelle,
           montant: l.ref && vides.has(l.ref) ? null : l.montant,
-          montantN1: l.montantN1,
+          montantN1: l.ref && videsN1.has(l.ref) ? null : l.montantN1,
         });
         if (l.estTotal) rang.font = ENTETE_FONT;
+        if (l.estTotal && l.ref && vides.size > 0 && !vides.has(l.ref) && typeof l.montant === 'number') totauxAuxComposantsVides.push(l.ref);
       }
     }
     // Le motif des postes laissés vides, une ligne par motif, sous le tableau.
@@ -4034,6 +4046,12 @@ export class ExportService {
     }
     for (const [raison, refs] of motifs) {
       const r = feuille.addRow({ libelle: `Laissés vides (${refs.join(', ')}) · ${raison}` });
+      r.font = { italic: true };
+    }
+    if (totauxAuxComposantsVides.length > 0) {
+      const r = feuille.addRow({
+        libelle: `Totaux chiffrés sans les postes laissés vides (${totauxAuxComposantsVides.join(', ')}) · ils ne les comptent pas.`,
+      });
       r.font = { italic: true };
     }
 
@@ -4062,10 +4080,19 @@ export class ExportService {
       }
       if (controle && typeof controle === 'object') {
         for (const [cle, v] of Object.entries(controle)) {
-          const rang = feuille.addRow({
-            libelle: typeof v === 'boolean' ? `${enMots(cle)} : ${v ? 'oui' : 'NON'}` : enMots(cle),
-            montant: typeof v === 'number' ? v : undefined,
-          });
+          // UN CONTRÔLE NON EFFECTUÉ SE DIT (relevés du paquet 1, ligne A,
+          // voisin A7) · la trésorerie d'ouverture ou la variation laissées
+          // vides (`null`) se lisaient comme une ligne sans montant, et le
+          // motif (`motifNonControlable`, un texte) n'était pas écrit du tout.
+          const lu =
+            typeof v === 'boolean'
+              ? `${enMots(cle)} : ${v ? 'oui' : 'NON'}`
+              : typeof v === 'string'
+                ? `${enMots(cle)} : ${v}`
+                : v === null
+                  ? `${enMots(cle)} : non calculé`
+                  : enMots(cle);
+          const rang = feuille.addRow({ libelle: lu, montant: typeof v === 'number' ? v : undefined });
           rang.getCell('montant').numFmt = FORMAT_MONTANT;
           if (typeof v === 'boolean' && !v) rang.font = { bold: true, color: { argb: 'FFB3261E' } };
         }

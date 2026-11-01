@@ -71,3 +71,27 @@ describe('livre d’inventaire · les postes vides du tableau des flux restent v
     expect(ligneDe(ws, 'FA')!.getCell(4).value).toBe(0);
   });
 });
+
+describe('livre d’inventaire · le contrôle non effectué et la colonne N-1 (A7, seconde relecture 7)', () => {
+  it('le motif et la trésorerie non calculée se disent, la N-1 d’un poste non lu reste vide, les totaux sont signalés', async () => {
+    const ws = await feuilleFlux({
+      lignes: [
+        { ref: 'FA', libelle: 'Capacité d’autofinancement', montant: 0, montantN1: 0 },
+        { ref: 'FB', libelle: 'Variation des stocks', montant: 120_000, montantN1: 50_000 },
+        { ref: 'ZB', libelle: 'Flux de trésorerie provenant des activités opérationnelles', montant: 120_000, estTotal: true },
+      ],
+      postesVides: ['FA'],
+      postesNonCalculables: [{ ref: 'FA', raison: 'ouverture passée en OD au premier jour' }],
+      postesNonCalculablesN1: [{ ref: 'FA', raison: 'exercice précédent sans écriture' }],
+      controle: { tresorerieOuverture: null, variation: 120_000, coherent: null, motifNonControlable: 'Ouverture laissée vide' },
+    });
+    expect(ligneDe(ws, 'FA')!.getCell(5).value).toBeNull();
+    expect(ligneDe(ws, 'FB')!.getCell(5).value).toBe(50_000);
+    const textes: string[] = [];
+    ws.eachRow((r) => textes.push(String(r.getCell(3).value ?? '')));
+    const tout = textes.join('\n');
+    expect(tout).toMatch(/Tr[ée]sorerie ouverture : non calculé/i);
+    expect(tout).toMatch(/Motif non controlable : Ouverture laissée vide/i);
+    expect(tout).toContain('Totaux chiffrés sans les postes laissés vides (ZB)');
+  });
+});
