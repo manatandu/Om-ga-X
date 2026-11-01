@@ -138,18 +138,32 @@ export class ConventionFinancementService {
    */
   async mentionsEngagementsConditionnels(tenantId: string): Promise<string[]> {
     const conventions = await this.prisma.conventionFinancement.findMany({
+      // TOUT CE QUE LE TRAITEMENT RANGE EN MENTION (simulation du
+      // 2026-10-08, relevé mineur) · le conditionnel, ET le ferme sans écrit
+      // signé, que la fenêtre annonçait « mention en notes » sans qu'aucune
+      // mention ne soit rendue · il sortait des états sans un mot.
       where: {
         tenantId,
-        caractere: CaractereEngagement.CONDITIONNEL,
         statut: { not: StatutConvention.RESILIEE },
+        OR: [{ caractere: CaractereEngagement.CONDITIONNEL }, { ecritSigne: false }],
       },
       orderBy: [{ dateDebut: 'asc' }],
       include: { bailleur: { select: { code: true, nom: true } }, tranches: { select: { montantEncaisse: true } } },
     });
     return conventions.map((c) => {
       const reste = ConventionFinancementService.resteARecevoir(c);
+      const tete = `${c.bailleur.nom} (${c.bailleur.code}) · convention ${c.reference}, ${c.objet}. `;
+      if (c.caractere !== CaractereEngagement.CONDITIONNEL) {
+        return (
+          tete +
+          `Engagement ferme de ${Number(c.montantAccorde).toLocaleString('fr-FR')}, ` +
+          `dont ${reste.toLocaleString('fr-FR')} restant à recevoir, SANS ÉCRIT SIGNÉ par les représentants ` +
+          "habilités des tiers financeurs. Il n'est pas comptabilisé en créance tant que cet écrit manque " +
+          '(SYCEBNL, cadre conceptuel § 5.4.2.4).'
+        );
+      }
       return (
-        `${c.bailleur.nom} (${c.bailleur.code}) · convention ${c.reference}, ${c.objet}. ` +
+        tete +
         `Engagement CONDITIONNEL de ${Number(c.montantAccorde).toLocaleString('fr-FR')}, ` +
         `dont ${reste.toLocaleString('fr-FR')} restant à recevoir. Conditions : ${c.conditions ?? '·'}. ` +
         "Cet engagement n'est pas comptabilisé en créance : il ne le sera que lorsque les conditions seront remplies " +

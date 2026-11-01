@@ -243,6 +243,26 @@ describe('la balance du second jeu', () => {
     expect(r.lignes.find((l) => l.numero === '60100000')?.debit).toBe(2000);
   });
 
+  it('les totaux sont la SOMME DES LIGNES servies, au centime (simulation du 2026-10-08)', async () => {
+    // Trois comptes à 1 000 FC au cours de 3 · 333,333… chacun, servi 333,33.
+    // Arrondi sur la valeur brute, le total valait 1 000,00, quand les trois
+    // lignes imprimées en font 999,99.
+    const r = await service({
+      cours: [{ date: j('2026-01-01'), cours: 3 }],
+      lignes: [
+        ligne('60100000', 1_000, 0),
+        ligne('60200000', 1_000, 0),
+        ligne('60400000', 1_000, 0),
+        ligne('40100000', 0, 3_000),
+      ],
+    }).balance('t1', 'ex1');
+    const sommeDebits = r.lignes.reduce((t, l) => t + Math.round(l.debit * 100), 0) / 100;
+    expect(sommeDebits).toBe(999.99);
+    expect(r.totaux.debit).toBe(999.99);
+    expect(r.totaux.credit).toBe(1000);
+    expect(r.totaux.ecartDeConversion).toBe(-0.01);
+  });
+
   it('MONTRE l’écart de conversion, jamais absorbé dans un compte', async () => {
     // Une écriture qui mêle une ligne prise à son montant d'origine (1 000 USD
     // exactement) et une ligne convertie à un cours qui ne retombe pas dessus.

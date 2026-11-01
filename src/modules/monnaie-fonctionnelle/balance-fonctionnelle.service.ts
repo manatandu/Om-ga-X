@@ -236,18 +236,31 @@ export class BalanceFonctionnelleService {
     const cours = devise.cours.map((c) => ({ date: c.date, cours: Number(c.cours) }));
 
     const jeu = await this.jeuFonctionnel(tenantId, exercice, fonctionnelle, cours, 0);
-    let debitTotal = 0;
-    let creditTotal = 0;
-    let ouvertureDebitTotal = 0;
-    let ouvertureCreditTotal = 0;
-    for (const v of jeu.parCompte.values()) {
-      debitTotal += v.ouvertureDebit + v.debit;
-      creditTotal += v.ouvertureCredit + v.credit;
-      ouvertureDebitTotal += v.ouvertureDebit;
-      ouvertureCreditTotal += v.ouvertureCredit;
-    }
-
     const arrondir = (v: number) => Math.round(v * 100) / 100;
+    const lignes = [...jeu.parCompte.entries()]
+      .map(([compteId, v]) => ({
+        compteId,
+        numero: v.numero,
+        intitule: v.intitule,
+        ouvertureDebit: arrondir(v.ouvertureDebit),
+        ouvertureCredit: arrondir(v.ouvertureCredit),
+        debit: arrondir(v.ouvertureDebit + v.debit),
+        credit: arrondir(v.ouvertureCredit + v.credit),
+        solde: arrondir(v.ouvertureDebit + v.debit - v.ouvertureCredit - v.credit),
+      }))
+      .sort((a, b) => a.numero.localeCompare(b.numero));
+    // LES TOTAUX SONT LA SOMME DES LIGNES SERVIES (simulation du 2026-10-08,
+    // relevé mineur) · arrondis sur les valeurs brutes, ils s'écartaient d'un
+    // centime de la somme des lignes que l'état imprime. Même règle que la
+    // passation de la paie (total de bloc = somme des lignes arrondies), en
+    // centimes entiers pour que l'addition elle-même ne dérive pas.
+    const enCentimes = (v: number) => Math.round(v * 100);
+    const somme = (cle: 'debit' | 'credit' | 'ouvertureDebit' | 'ouvertureCredit') =>
+      lignes.reduce((t, l) => t + enCentimes(l[cle]), 0);
+    const debitTotal = somme('debit');
+    const creditTotal = somme('credit');
+    const ouvertureDebitTotal = somme('ouvertureDebit');
+    const ouvertureCreditTotal = somme('ouvertureCredit');
     return {
       monnaie: fonctionnelle,
       monnaieTenue,
@@ -256,21 +269,10 @@ export class BalanceFonctionnelleService {
         dateFin: exercice.dateFin.toISOString().slice(0, 10),
       },
       mention: BalanceFonctionnelleService.MENTION_SANS_VALEUR_LEGALE,
-      lignes: [...jeu.parCompte.entries()]
-        .map(([compteId, v]) => ({
-          compteId,
-          numero: v.numero,
-          intitule: v.intitule,
-          ouvertureDebit: arrondir(v.ouvertureDebit),
-          ouvertureCredit: arrondir(v.ouvertureCredit),
-          debit: arrondir(v.ouvertureDebit + v.debit),
-          credit: arrondir(v.ouvertureCredit + v.credit),
-          solde: arrondir(v.ouvertureDebit + v.debit - v.ouvertureCredit - v.credit),
-        }))
-        .sort((a, b) => a.numero.localeCompare(b.numero)),
+      lignes,
       totaux: {
-        debit: arrondir(debitTotal),
-        credit: arrondir(creditTotal),
+        debit: debitTotal / 100,
+        credit: creditTotal / 100,
         /**
          * L'ÉCART DE CONVERSION · montré, jamais absorbé.
          *
@@ -279,9 +281,9 @@ export class BalanceFonctionnelleService {
          * même origine. Le loger dans un compte de bouclage ferait équilibrer
          * l'état et disparaître l'information.
          */
-        ecartDeConversion: arrondir(debitTotal - creditTotal),
+        ecartDeConversion: (debitTotal - creditTotal) / 100,
         /** La part de l'écart reprise à l'ouverture, née des exercices précédents. */
-        dontOuverture: arrondir(ouvertureDebitTotal - ouvertureCreditTotal),
+        dontOuverture: (ouvertureDebitTotal - ouvertureCreditTotal) / 100,
       },
       origine: {
         lignes: jeu.lignes,

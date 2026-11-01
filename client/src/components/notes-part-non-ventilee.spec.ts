@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { montant } from '../lib/montants';
-import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phrasePartNonVentilee } from '../lib/part-non-ventilee';
+import {
+  TITRE_PART_NON_VENTILEE,
+  aidePartNonVentilee,
+  phraseNatureNonVentilee,
+  phrasePartNonVentilee,
+} from '../lib/part-non-ventilee';
 
 /**
  * PAQUET 1, A10 (reproduit sur vraie base le 2026-10-09) · la note 7 d'un
@@ -47,5 +52,23 @@ describe('A10 · la part non ventilée par échéance', () => {
     expect(corps).toMatch(
       /\{partNonVentilee && \([\s\S]*\{partNonVentilee\}[\s\S]*<Aide titre=\{TITRE_PART_NON_VENTILEE\} texte=\{aidePartNonVentilee\(ligne\)\}/,
     );
+  });
+});
+
+describe('le jumeau par nature · mouvements de provision hors des trois natures', () => {
+  it('se dit avec ses montants, et se tait quand il est nul', () => {
+    expect(phraseNatureNonVentilee({ natureNonVentilee: { augmentation: 250_000, diminution: 0 } })).toBe(
+      `Mouvements non ventilés par nature : augmentations ${montant(250_000)} · rangés dans aucune colonne de nature.`,
+    );
+    expect(phraseNatureNonVentilee({})).toBeNull();
+    expect(phraseNatureNonVentilee({ natureNonVentilee: { augmentation: 0, diminution: 0.001 } })).toBeNull();
+  });
+
+  it('la ligne du tableau le rend', () => {
+    const debut = rendu.indexOf('function LigneTableauNote(');
+    const fin = rendu.indexOf('export function BlocTableauNote(');
+    const corps = rendu.slice(debut, fin);
+    expect(corps).toMatch(/const natureNonVentilee = phraseNatureNonVentilee\(ligne\);/);
+    expect(corps).toMatch(/\{natureNonVentilee && \([\s\S]*\{natureNonVentilee\}/);
   });
 });

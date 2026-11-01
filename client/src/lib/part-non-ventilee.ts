@@ -50,3 +50,28 @@ export function aidePartNonVentilee(ligne: Pick<LigneNoteCalculee, 'echeanceNonV
     'lignes de tiers, et tenir ces comptes en report à-nouveau au détail.'
   );
 }
+
+/**
+ * LE JUMEAU PAR NATURE (relevé de la simulation du 2026-10-08, notes par
+ * échéance) · les mouvements de provision dont la contrepartie ne relève
+ * d'aucune des trois natures (exploitation, financier, H.A.O.) sont servis à
+ * part (`natureNonVentilee`, `correspondance-notes-syscohada-3.ts`), jamais
+ * rangés d'office · l'écran ne le disait pas plus que l'échéance.
+ */
+export const TITRE_NATURE_NON_VENTILEE = 'Mouvements non ventilés par nature';
+
+export function phraseNatureNonVentilee(ligne: Pick<LigneNoteCalculee, 'natureNonVentilee'>): string | null {
+  const v = ligne.natureNonVentilee;
+  if (!v) return null;
+  const parts: string[] = [];
+  if (Number.isFinite(v.augmentation) && Math.abs(v.augmentation) >= 0.005) parts.push(`augmentations ${montant(v.augmentation)}`);
+  if (Number.isFinite(v.diminution) && Math.abs(v.diminution) >= 0.005) parts.push(`diminutions ${montant(v.diminution)}`);
+  if (parts.length === 0) return null;
+  return `${TITRE_NATURE_NON_VENTILEE} : ${parts.join(', ')} · rangés dans aucune colonne de nature.`;
+}
+
+export const AIDE_NATURE_NON_VENTILEE =
+  'La nature d’un mouvement de provision se lit sur la CONTREPARTIE de l’écriture (dotation ou reprise ' +
+  'd’exploitation, financière ou H.A.O.). Un virement de provision à provision, ou une écriture dont la ' +
+  'contrepartie n’est d’aucune des trois, n’est rangé dans aucune colonne : le mettre d’office en exploitation ' +
+  'donnerait une ventilation complète et fausse.';

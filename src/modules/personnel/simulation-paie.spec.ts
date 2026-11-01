@@ -680,6 +680,25 @@ describe("La quotité saisissable est appelée sur la RÉMUNÉRATION, pas sur le
     expect(res.quotite.baseFc!).toBeLessThan(res.net.totalVerseFc);
   });
 
+  it('lit la classe du CONTRAT du mois quand la saisie ne la dit pas (simulation du 2026-10-08)', async () => {
+    const { svc, findFirst } = service({
+      nom: 'X',
+      nomConjoint: null,
+      _count: { enfants: 0 },
+      contrats: [
+        { id: 'c-1', type: 'CDI', dateEntreeEnVigueur: new Date('2026-01-05T00:00:00Z'), dateFin: null, classeProfessionnelle: 1 },
+      ],
+    });
+    const res = await svc.simulerPaie(
+      't-1',
+      'sal-9',
+      dto({ natureEmployeurInpp: 'PRIVE', effectif: 10 } as Partial<SimulationPaieDto>),
+    );
+    expect(findFirst.mock.calls[0][0].select.contrats.select).toMatchObject({ classeProfessionnelle: true });
+    expect(res.quotite.abstentions.map((a) => a.motif)).not.toContain('CLASSE_PROFESSIONNELLE_ABSENTE');
+    expect(res.quotite.quotiteOrdinaireFc).not.toBeNull();
+  });
+
   it("s'abstient sans classe, et la simulation tient quand même", async () => {
     const { svc } = service();
     const res = await svc.simulerPaie(
