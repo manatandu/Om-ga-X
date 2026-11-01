@@ -68,6 +68,12 @@ export interface ComposantOrigine {
   montant: number | null;
   /** Une rubrique de note · son rang dans la note servie, absent quand elle n'y est pas présentée. */
   ligne?: number;
+  /**
+   * Le composant ne s'ouvre pas, et pourquoi · un poste retiré de l'état
+   * servi (RQP, TQP nuls), une rubrique de note non chiffrée ou ambiguë.
+   * Ouvert, il rendrait un 404 ou rouvrirait le total.
+   */
+  nonOuvrable?: string;
 }
 
 export type NatureOrigine = 'COMPTES' | 'FORMULE' | 'HORS_BALANCE';

@@ -260,6 +260,18 @@ describe("EtatsFinanciersSyscohadaService.origine · d'où vient ce chiffre", ()
     expect(fa.groupes[0].motif).toMatch(/EBE/);
   });
 
+  it('RQP et TQP nuls, retirés de l’état servi · comptés dans XE, jamais offerts comme un poste à ouvrir', async () => {
+    const sansQuotesParts = (f: number) => lignesDe(f).filter((l) => !l.numero.startsWith('652') && !l.numero.startsWith('752'));
+    const s2 = service({ e0: sansQuotesParts(0.8), e1: sansQuotesParts(1), e2: sansQuotesParts(1.37) });
+    const cr = await s2.compteDeResultat('t', 'e2');
+    expect(cr.lignes.some((l) => l.ref === 'RQP')).toBe(false);
+    const xe = await s2.origine('t', 'e2', 'compte-de-resultat', 'XE', 'N');
+    const rqp = xe.composants.find((c) => c.ref === 'RQP')!;
+    expect([rqp.montant, Boolean(rqp.nonOuvrable)]).toEqual([0, true]);
+    expect(xe.composants.find((c) => c.ref === 'XD')!.nonOuvrable).toBeUndefined();
+    expect(xe.ecart).toBe(0);
+  });
+
   it("PREMIER EXERCICE · la colonne N-1 est vide et le dit, jamais des comptes à zéro", async () => {
     const seul = service({ e2: lignesDe(1) });
     // Le dossier ne connaît que e2 ici · la doublure liste toujours les trois, d'où un N-1 sans lignes.

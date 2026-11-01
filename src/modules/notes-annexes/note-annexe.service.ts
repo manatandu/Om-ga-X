@@ -10,7 +10,7 @@ import {
   RANG_FORMAT_ANTERIEUR,
   SaisieFormatAnterieur,
 } from './effectifs-seize-colonnes';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
 import { JeuNotesAnnexes, NatureMouvementDepreciation, Prisma, Referentiel, StatutEcriture, StatutProvision } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -24,7 +24,9 @@ import {
   indicateursNote33,
 } from './indicateurs-note-33';
 import { LigneBalancePourEtat, chargerLignes, correspond, trouverExerciceN1 } from '../etats-financiers/etats-financiers.communs';
+import { apparierRubriques, motifRubriqueAmbigue } from './rubrique-de-ligne';
 import {
+  ComposantOrigine,
   MOTIF_POSTE_INTROUVABLE,
   OrigineDuMontant,
   contributions,
@@ -1654,9 +1656,12 @@ export class NoteAnnexeService {
     const ligne = note?.lignes[rangLigne];
     if (!note || !ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
     const spec = NOTES_PAR_JEU[jeu].find((x) => x.code === code && (x.sousTableau ?? '') === (sousTableau ?? ''))!;
-    // La rubrique de la table · par sa clé, sinon par son libellé.
-    const indexRubrique = spec.rubriques.findIndex((r) => (ligne.cle ? r.cle === ligne.cle : !r.cle && r.libelle === ligne.libelle));
-    const rubrique = indexRubrique >= 0 ? spec.rubriques[indexRubrique] : undefined;
+    // La rubrique de la table · par sa clé, sinon par son RANG parmi les
+    // rubriques du même libellé (`apparierRubriques`), jamais la première venue.
+    const { rubriqueDeLigne, ligneDeRubrique } = apparierRubriques(spec, note.lignes);
+    const appariee = rubriqueDeLigne.get(rangLigne);
+    if (appariee === 'ambigu') throw new ConflictException(motifRubriqueAmbigue(ligne.libelle, code));
+    const rubrique = appariee !== undefined ? spec.rubriques[appariee] : undefined;
     const enTete = {
       etat: 'note' as const,
       ref: code,
@@ -1677,12 +1682,25 @@ export class NoteAnnexeService {
     if (rubrique.totalDeRubriques) {
       // Le rang de chaque rubrique additionnée dans la note servie · une
       // rubrique non chiffrée en est retirée, et vaut alors zéro.
-      const composant = (i: number, signe: 1 | -1) => {
+      const composant = (i: number, signe: 1 | -1): ComposantOrigine => {
         const r = spec.rubriques[i];
-        const rang = note.lignes.findIndex((l) => (r.cle ? l.cle === r.cle : l.libelle === r.libelle && !l.cle));
-        const servie = rang >= 0 ? note.lignes[rang] : undefined;
-        const valeur = servie ? (colonne === 'N' ? servie.montantN : (servie.montantN1 ?? null)) : 0;
-        return { ref: code, libelle: r.libelle, signe, montant: valeur, ...(rang >= 0 ? { ligne: rang } : {}) };
+        const rang = ligneDeRubrique.get(i);
+        if (rang === 'ambigu') {
+          // Montant inconnu, jamais celui d'une autre rubrique · le total
+          // devient incalculable et le dit.
+          return { ref: code, libelle: r.libelle, signe, montant: null, nonOuvrable: motifRubriqueAmbigue(r.libelle, code) };
+        }
+        if (rang === undefined) {
+          return {
+            ref: code,
+            libelle: r.libelle,
+            signe,
+            montant: 0,
+            nonOuvrable: 'Rubrique non chiffrée, retirée de la note servie · elle compte zéro dans le total.',
+          };
+        }
+        const servie = note.lignes[rang];
+        return { ref: code, libelle: r.libelle, signe, montant: colonne === 'N' ? servie.montantN : (servie.montantN1 ?? null), ligne: rang };
       };
       return origineParFormule({ ...enTete, formule: null }, [
         ...rubrique.totalDeRubriques.map((i) => composant(i, 1)),

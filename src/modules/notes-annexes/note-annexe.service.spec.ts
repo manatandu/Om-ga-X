@@ -2770,6 +2770,12 @@ describe("NoteAnnexeService.origineLigne · d'où vient ce chiffre", () => {
     const o = await s.origineLigne('t', 'e1', jeu, note.code, note.sousTableau, rang, 'N');
     expect(o.nature).toBe('FORMULE');
     expect(o.composants.length).toBeGreaterThan(0);
+    // Chaque rubrique servie s'ouvre sur SA ligne, jamais sur celle du total (relecture du 2026-11-01, majeur 1).
+    expect(o.composants.some((c) => c.ligne !== undefined)).toBe(true);
+    expect(o.composants.filter((c) => c.ligne === rang)).toEqual([]);
+    for (const c of o.composants.filter((x) => x.ligne !== undefined)) {
+      expect(note.lignes[c.ligne!].libelle).toBe(c.libelle);
+    }
     await expect(s.origineLigne('t', 'e1', jeu, note.code, note.sousTableau, 999, 'N')).rejects.toThrow();
   });
 });

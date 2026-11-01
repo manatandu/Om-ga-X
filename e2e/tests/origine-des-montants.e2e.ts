@@ -167,6 +167,29 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     await page.locator(`[data-origine="bilan:${ref}:N1"]`).focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: /Origine du montant/ }).locator('[data-total-origine]')).toHaveText(/150\s?000,00/);
+    await page.keyboard.press('Escape');
+
+    // UN TOTAL DE NOTE DESCEND À SES RUBRIQUES, jamais ne se rouvre lui-même
+    // (relecture du 2026-11-01, majeur 1) · le total chiffré d'une note, puis
+    // une rubrique servie qu'il additionne.
+    type Ligne = { libelle: string; estTotal: boolean; montantN: number; saisie?: unknown };
+    const avecTotal = notes.notes.find((x) =>
+      (x as unknown as { lignes: Ligne[] }).lignes.some((l) => l.estTotal && Math.abs(l.montantN) > 0.005 && l.saisie === undefined),
+    ) as unknown as { code: string; sousTableau?: string; lignes: Ligne[] };
+    const rangTotal = avecTotal.lignes.findIndex((l) => l.estTotal && Math.abs(l.montantN) > 0.005 && l.saisie === undefined);
+    await page.goto('/#/notes-annexes');
+    await page.getByRole('button', { name: new RegExp(`^${avecTotal.code}\\s`) }).first().click();
+    await page.locator(`[data-origine="note:${avecTotal.code}:${rangTotal}:N"]`).first().dblclick();
+    const fenetreNote = page.getByRole('dialog', { name: /Origine du montant/ });
+    const rubriques = fenetreNote.locator('[data-composant-origine]');
+    await expect(rubriques.first()).toBeVisible();
+    const ouvrable = fenetreNote.locator('tr[role="button"][data-composant-origine]').first();
+    const rangRubrique = Number(await ouvrable.getAttribute('data-composant-origine'));
+    expect(rangRubrique).not.toBe(rangTotal);
+    await ouvrable.dblclick();
+    await expect(fenetreNote).toHaveAccessibleName(new RegExp(`ligne ${rangTotal + 1} › ${avecTotal.code} ligne ${rangRubrique + 1}`));
+    await expect(fenetreNote.locator('[data-composant-origine]')).toHaveCount(0);
+    await expect(fenetreNote).toContainText(avecTotal.lignes[rangRubrique].libelle);
 
     expect(pannes).toEqual([]);
   });

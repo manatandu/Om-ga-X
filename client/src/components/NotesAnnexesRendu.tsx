@@ -147,8 +147,8 @@ function LigneTableauNote({
   note: NoteCalculee;
   ligne: LigneNoteCalculee;
   saisie?: SaisieNotes;
-  /** D'où vient ce chiffre · ouvre les colonnes « Exercice N » et « Exercice N-1 » de la ligne. */
-  origine?: (colonne: 'N' | 'N1') => void;
+  /** D'où vient ce chiffre · ouvre les colonnes « Exercice N » et « Exercice N-1 » de la ligne, son rang dans la note servie. */
+  origine?: { ouvrir: (colonne: 'N' | 'N1') => void; rang: number };
 }) {
   // Rubrique renseignée hors comptabilité : ses cellules ne se calculent pas,
   // elles s'écrivent. `ligne.saisie` porte une case par colonne, `null` là où
@@ -249,7 +249,7 @@ function LigneTableauNote({
         const colonneOrigine = c.type === 'EXERCICE_N' ? 'N' : c.type === 'EXERCICE_N1' ? 'N1' : null;
         const zoom =
           origine && colonneOrigine && v !== undefined
-            ? celluleOrigine(() => origine(colonneOrigine), `note:${note.code}:${colonneOrigine}`)
+            ? celluleOrigine(() => origine.ouvrir(colonneOrigine), `note:${note.code}:${origine.rang}:${colonneOrigine}`)
             : {};
         return (
           <span key={ci} {...zoom} className="font-mono text-right text-text-dim">
@@ -437,7 +437,7 @@ export function BlocTableauNote({
                 saisie={saisiePour(l)}
                 origine={
                   ouvrirOrigine && note.lignes.includes(l)
-                    ? (colonne) => ouvrirOrigine(note, note.lignes.indexOf(l), colonne)
+                    ? { ouvrir: (colonne) => ouvrirOrigine(note, note.lignes.indexOf(l), colonne), rang: note.lignes.indexOf(l) }
                     : undefined
                 }
               />

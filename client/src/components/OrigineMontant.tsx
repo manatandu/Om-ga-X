@@ -3,7 +3,10 @@ import { api, ApiError } from '../lib/api';
 import { ecouterEchap } from '../lib/echap';
 import { montant } from '../lib/montants';
 import {
+  adresseGrandLivre,
   adresseOrigine,
+  celluleDuComposant,
+  soldeLuParLesEtats,
   horsDesEtats,
   LIBELLE_COLONNE,
   type CelluleOrigine,
@@ -78,7 +81,14 @@ export function FenetreOrigineMontant({
     [precedent],
   );
 
-  const fil = pile.map((n) => (n.type === 'poste' ? n.cellule.ref || 'Ligne sans code' : n.compte.numero));
+  // Une ligne de note se nomme par son rang · le code de la note est le même pour le total et ses rubriques.
+  const fil = pile.map((n) =>
+    n.type === 'grand-livre'
+      ? n.compte.numero
+      : n.cellule.etat === 'note'
+        ? `${n.cellule.ref} ligne ${(n.cellule.ligne ?? 0) + 1}`
+        : n.cellule.ref || 'Ligne sans code',
+  );
 
   return (
     <PortailModale>
@@ -129,6 +139,8 @@ export function FenetreOrigineMontant({
                 key={`${niveau.compte.compteId}-${niveau.exerciceId}`}
                 compte={niveau.compte}
                 exerciceId={niveau.exerciceId}
+                // Une situation intermédiaire ne lit son exercice que jusqu'à sa date.
+                au={source.type === 'etats' && niveau.exerciceId === exerciceId ? source.arreteAu : undefined}
                 ouvrirPiece={setFicheId}
               />
             )}
@@ -247,19 +259,23 @@ function NiveauPoste({
             </tr>
           </thead>
           <tbody>
-            {origine.composants.map((c) => (
+            {origine.composants.map((c, i) => {
+              const cible = celluleDuComposant(cellule, c);
+              return (
               <tr
-                key={c.ref || c.libelle}
-                ref={refPremier()}
-                {...ouvrable(() => ouvrirPoste({ ...cellule, ref: c.ref }))}
-                title="Double-cliquer pour voir d'où vient ce poste"
+                key={c.ligne ?? `${c.ref}-${i}`}
+                ref={cible ? refPremier() : undefined}
+                {...(cible ? ouvrable(() => ouvrirPoste(cible)) : {})}
+                title={cible ? "Double-cliquer pour voir d'où vient ce poste" : c.nonOuvrable}
+                data-composant-origine={c.ligne ?? c.ref}
               >
-                <td className="font-mono">{c.ref}</td>
+                <td className="font-mono">{cellule.etat === 'note' ? '' : c.ref}</td>
                 <td>{c.libelle}</td>
                 <td className="text-center">{c.signe === 1 ? '+' : '−'}</td>
                 <td className="text-right font-mono">{montant(c.montant)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -352,10 +368,12 @@ interface GrandLivreLu {
 function NiveauGrandLivre({
   compte,
   exerciceId,
+  au,
   ouvrirPiece,
 }: {
   compte: ContributionCompte;
   exerciceId: string;
+  au?: string;
   ouvrirPiece: (ecritureId: string) => void;
 }) {
   const [lu, setLu] = useState<GrandLivreLu | null>(null);
@@ -365,13 +383,13 @@ function NiveauGrandLivre({
   useEffect(() => {
     let actif = true;
     api
-      .get<GrandLivreLu>(`/ecritures/grand-livre/${compte.compteId}?exerciceId=${exerciceId}`)
+      .get<GrandLivreLu>(adresseGrandLivre(compte.compteId!, exerciceId, au))
       .then((r) => actif && setLu(r))
       .catch((e) => actif && setErreur(e instanceof ApiError ? e.message : 'Lecture du grand livre impossible · serveur injoignable.'));
     return () => {
       actif = false;
     };
-  }, [compte.compteId, exerciceId]);
+  }, [compte.compteId, exerciceId, au]);
   useEffect(() => premier.current?.focus({ preventScroll: true }), [lu]);
 
   if (erreur) return <div className="text-danger">{erreur}</div>;
@@ -437,9 +455,19 @@ function NiveauGrandLivre({
                 );
               })}
               <tr className="font-semibold bg-(--a-50)">
-                <td colSpan={6}>Solde de l'exercice{horsEtats > 0 ? ` · dont ${horsEtats} ligne${horsEtats > 1 ? 's' : ''} hors des états` : ''}</td>
+                <td colSpan={6}>{au ? `Solde au ${au.split('-').reverse().join('/')}` : "Solde de l'exercice"}</td>
                 <td className="text-right font-mono">{montant(lu.soldeFinal)}</td>
               </tr>
+              {horsEtats > 0 && (
+                <tr className="font-semibold">
+                  <td colSpan={6}>
+                    Solde des lignes lues par les états · {horsEtats} ligne{horsEtats > 1 ? 's' : ''} hors des états
+                  </td>
+                  <td className="text-right font-mono" data-solde-lu-par-les-etats>
+                    {montant(soldeLuParLesEtats(lu.lignes))}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

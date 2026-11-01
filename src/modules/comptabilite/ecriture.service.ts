@@ -3917,6 +3917,7 @@ export class EcritureService {
         numeroPiece: number | null;
         statut: StatutEcriture;
         estSoldeDesComptesDeGestion: boolean;
+        estANouveauProvisoire: boolean;
         journal: { code: string };
       };
     },
@@ -3944,6 +3945,8 @@ export class EcritureService {
       ecritureId: l.ecritureId,
       statut: l.ecriture.statut,
       soldeDesComptesDeGestion: l.ecriture.estSoldeDesComptesDeGestion,
+      // L'à-nouveau provisoire n'est jamais validé · les états ne le lisent pas.
+      aNouveauProvisoire: l.ecriture.estANouveauProvisoire,
     };
   }
 

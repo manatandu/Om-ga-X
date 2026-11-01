@@ -1982,7 +1982,13 @@ export class EtatsFinanciersSyscohadaService {
           ref: r,
           libelle: trouveSoldeIntermediaire(r)?.libelle ?? trouvePosteCompteResultat(r)?.libelle ?? r,
           signe: 1 as const,
-          montant: res.montantsParRef[r] ?? 0,
+          // Un composant que la résolution ne porte pas est inconnu, jamais zéro.
+          montant: res.montantsParRef[r] ?? null,
+          // RQP et TQP nuls sortent de l'état servi (ch. 33 § 7.2) · ils
+          // comptent dans la formule, mais n'ont pas de ligne à ouvrir.
+          ...(d.etat.lignes.some((l) => l.ref === r)
+            ? {}
+            : { nonOuvrable: "Poste nul sur toutes les colonnes, retiré de l'état servi · il compte pour zéro dans la formule." }),
         })),
       );
     }

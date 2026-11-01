@@ -48,6 +48,17 @@ descendre, Échap ou « Précédent » pour remonter.
   égales au calcul à la main. Il a trouvé un défaut, corrigé et gelé · le
   code de note « 16B bis » (espace du texte) était refusé en 400.
 
+- Relecture indépendante du 2026-11-01 (aucun BLOQUANT), corrigée · (1) un
+  composant d'un total de note ouvre SA ligne (`celluleDuComposant`, rang servi
+  par le serveur), jamais le total ; (2) un composant de solde SYSCOHADA absent
+  vaut `null`, et RQP ou TQP retirés de l'état sont dits non ouvrables ; (3) la
+  rubrique d'une ligne de note se retrouve par son rang parmi les rubriques du
+  même libellé (`rubrique-de-ligne.ts`, « Intérêts courus » des notes 18A et
+  11), un appariement ambigu est refusé nommément (409) ; (4) le grand livre
+  ouvert par la fenêtre se borne à la date d'une situation intermédiaire et dit
+  le solde des seules lignes que les états lisent (brouillard, à-nouveau
+  provisoire et solde de gestion écartés).
+
 ## Reste
 
 - Intégration sur `main` (bloc § 3, tests navigateur, retrait de cette fiche).

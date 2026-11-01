@@ -587,6 +587,8 @@ export interface LigneGrandLivre {
   statut?: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
   /** L'écriture qui solde les comptes de gestion à la clôture · les états la lisent avant elle. */
   soldeDesComptesDeGestion?: boolean;
+  /** L'à-nouveau provisoire, jamais validé · les états ne le lisent pas. */
+  aNouveauProvisoire?: boolean;
 }
 
 /**
