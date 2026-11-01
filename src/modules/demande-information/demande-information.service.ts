@@ -11,6 +11,9 @@ import { ORIGINE_DEMANDE_INFORMATION, composerDemande, destinatairesDesDemandes 
 export const MOTIF_SANS_MESSAGERIE =
   "L'envoi des demandes n'est pas disponible pour le moment · aucune messagerie n'est configurée. Rien n'a été enregistré.";
 
+export const MOTIF_NON_ENREGISTREE =
+  "La demande n'a pas pu être enregistrée pour le moment. Rien n'a été gardé · réessayez plus tard.";
+
 /** Ce que la page dit après l'envoi · aucun délai promis, aucune adresse rendue. */
 export const REPONSE_DEMANDE_RECUE =
   "Votre demande est enregistrée pour l'équipe d'OmegaX, qui vous répondra à l'adresse électronique indiquée.";
@@ -50,16 +53,29 @@ export class DemandeInformationService {
 
     const { sujet, corps } = composerDemande(dto, recueLe);
     const statuts: StatutMessage[] = [];
+    let refuses = 0;
     for (const destinataire of destinataires) {
       // Chaque message est écrit PUIS tenté (`mettreEnFile`) · un envoi qui
       // échoue reste en file et sera repris, il n'est pas perdu.
-      const r = await horsCloisonnement("page publique · la demande d'information mise en file pour les opérateurs", () =>
-        this.courrier.mettreEnFile(editeur.tenantId, { destinataire, sujet, corps, origine: ORIGINE_DEMANDE_INFORMATION }),
-      );
-      statuts.push(r.statut);
+      try {
+        const r = await horsCloisonnement("page publique · la demande d'information mise en file pour les opérateurs", () =>
+          this.courrier.mettreEnFile(editeur.tenantId, { destinataire, sujet, corps, origine: ORIGINE_DEMANDE_INFORMATION }),
+        );
+        statuts.push(r.statut);
+      } catch (erreur) {
+        // UN REFUS DE LA FILE NE REMONTE JAMAIS TEL QUEL AU VISITEUR · il cite
+        // l'adresse refusée, celle d'un opérateur (une faute dans
+        // OPERATEURS_PLATEFORME). Le journal du serveur dit le refus, sans
+        // l'adresse ; la page reçoit le 503 commun.
+        refuses += 1;
+        this.logger.error(
+          `Demande d’information · un destinataire refusé par la file (${erreur instanceof Error ? erreur.constructor.name : 'erreur'}) · vérifier OPERATEURS_PLATEFORME.`,
+        );
+      }
     }
+    if (statuts.length === 0) throw new ServiceUnavailableException(MOTIF_NON_ENREGISTREE);
     // Le journal du serveur dit des statuts, jamais une adresse ni un nom.
-    this.logger.log(`Demande d’information mise en file · ${statuts.join(', ')}`);
+    this.logger.log(`Demande d’information mise en file · ${statuts.join(', ')}${refuses ? ` · ${refuses} destinataire(s) refusé(s)` : ''}`);
     return { recue: true, message: REPONSE_DEMANDE_RECUE };
   }
 }

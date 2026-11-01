@@ -7,7 +7,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { CourrierService } from '../courrier/courrier.service';
 import { DemandeInformationController } from './demande-information.controller';
 import { DemandeInformationDto } from './demande-information.dto';
-import { DemandeInformationService, MOTIF_SANS_MESSAGERIE, REPONSE_DEMANDE_RECUE } from './demande-information.service';
+import { DemandeInformationService, MOTIF_NON_ENREGISTREE, MOTIF_SANS_MESSAGERIE, REPONSE_DEMANDE_RECUE } from './demande-information.service';
 import { ORIGINE_DEMANDE_INFORMATION, composerDemande, destinatairesDesDemandes, surUneLigne } from './demande-information';
 
 const DEMANDE = {
@@ -62,6 +62,21 @@ describe('le service', () => {
     expect(JSON.stringify(r)).not.toContain('omegax.cd');
     expect(mettreEnFile).toHaveBeenCalledTimes(2);
     expect(mettreEnFile).toHaveBeenCalledWith('editeur', expect.objectContaining({ destinataire: 'a@omegax.cd', origine: ORIGINE_DEMANDE_INFORMATION }));
+  });
+
+  it('un destinataire que la file refuse ne remonte jamais son adresse au visiteur', async () => {
+    const { s, mettreEnFile } = monter({ operateurs: 'faute@omegax' });
+    mettreEnFile.mockRejectedValueOnce(new Error('Adresse de destinataire inutilisable · « faute@omegax »') as never);
+    const e = await s.transmettre(DEMANDE as DemandeInformationDto).catch((x: Error) => x);
+    expect(e).toBeInstanceOf(ServiceUnavailableException);
+    expect((e as Error).message).toBe(MOTIF_NON_ENREGISTREE);
+    expect((e as Error).message).not.toContain('omegax');
+  });
+
+  it('un destinataire refusé sur deux n’empêche pas la demande d’arriver à l’autre', async () => {
+    const { s, mettreEnFile } = monter({ operateurs: 'a@omegax.cd,b@omegax.cd' });
+    mettreEnFile.mockRejectedValueOnce(new Error('refus') as never);
+    await expect(s.transmettre(DEMANDE as DemandeInformationDto)).resolves.toEqual({ recue: true, message: REPONSE_DEMANDE_RECUE });
   });
 
   it('la réponse ne promet aucun délai', () => {

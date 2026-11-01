@@ -64,8 +64,9 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
 
     const refus: string[] = [];
     let cheminCourant = '';
+    let releve = true;
     autre.on('response', async (r) => {
-      if (!r.url().startsWith(API) || r.status() !== 403) return;
+      if (!releve || !r.url().startsWith(API) || r.status() !== 403) return;
       const corps = await r.text().catch(() => '');
       if (REFUS_LOGICIEL.test(corps)) refus.push(`${cheminCourant} · ${r.request().method()} ${r.url().slice(API.length)}`);
     });
@@ -94,6 +95,8 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     }
 
     // Contre-épreuve · restreint à la paie, la balance lui est refusée, nommée.
+    // Ce refus-là est attendu · le relevé des écrans s'arrête ici.
+    releve = false;
     await appelApi(page, 'PUT', `/utilisateurs/${cree.id}/logiciels`, { restreindre: true, logiciels: ['PAIE'] });
     await autre.waitForTimeout(1_100);
     await appelApi(autre, 'POST', '/auth/login', { email, motDePasse });

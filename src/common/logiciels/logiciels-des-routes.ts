@@ -77,15 +77,17 @@ export const CONTROLEURS_COMMUNS: Record<string, string> = {
 /** Le logiciel de chaque contrôleur rangé. */
 export const LOGICIEL_PAR_CONTROLEUR: Record<string, PorteeLogiciel> = {
   // ---- Comptabilité ------------------------------------------------------
-  // Structures lues par tous les écrans · comptes, journaux, taxes, devises,
-  // natures, exercices et paramètres du dossier alimentent les listes de
-  // choix de chaque logiciel (règlement, paie, facturation, biens).
-  CompteController: { logiciels: [C], lecture: TOUS },
+  // Structures lues par tous les écrans · natures, taxes et paramètres du
+  // dossier alimentent les listes de choix de chaque logiciel. Pour les
+  // comptes, journaux, devises et exercices, seule la LISTE est lue par tous
+  // (méthodes ci-dessous) · l'analyse d'un journal ou l'aperçu de l'ouverture
+  // suivante portent des soldes, ils restent à la comptabilité.
+  CompteController: { logiciels: [C] },
   NaturesCompteController: { logiciels: [C, A], lecture: TOUS },
-  JournalController: { logiciels: [C], lecture: TOUS },
+  JournalController: { logiciels: [C] },
   TauxTvaController: { logiciels: [C], lecture: TOUS },
-  DevisesController: { logiciels: [C], lecture: TOUS },
-  ExerciceController: { logiciels: [C], lecture: TOUS },
+  DevisesController: { logiciels: [C] },
+  ExerciceController: { logiciels: [C] },
   TenantController: { logiciels: [C, A], lecture: TOUS },
   // Les livres · lus par les balances et l'échéancier des tiers, et par la révision.
   EcritureController: { logiciels: [C], lecture: [T, R] },
@@ -128,12 +130,13 @@ export const LOGICIEL_PAR_CONTROLEUR: Record<string, PorteeLogiciel> = {
 
   // ---- Tiers et trésorerie -----------------------------------------------
   // Le plan des tiers, ses modes et modèles de règlement · lus par la saisie,
-  // la facturation, les biens (fournisseur) et les écrans de révision.
-  TiersController: { logiciels: [T], lecture: TOUS },
+  // la facturation, les biens (fournisseur) et les écrans de révision. Du
+  // tiers, la liste et la fiche seules (méthodes ci-dessous).
+  TiersController: { logiciels: [T] },
   ModesReglementController: { logiciels: [T], lecture: TOUS },
   ModeleReglementController: { logiciels: [T], lecture: TOUS },
-  // Banques et RIB · lus par la saisie (libellés) et la paie (paiement des salaires).
-  BanquesController: { logiciels: [T], lecture: TOUS },
+  // Banques · la liste lue par la paie (paiement des salaires), les libellés par la saisie.
+  BanquesController: { logiciels: [T] },
   RibsTiersController: { logiciels: [T] },
   DocumentsTiersController: { logiciels: [T] },
   LieuxLivraisonController: { logiciels: [T], lecture: [G] },
@@ -238,6 +241,19 @@ export const LOGICIEL_PAR_CONTROLEUR: Record<string, PorteeLogiciel> = {
  * tout logiciel, lectures et écritures.
  */
 export const LOGICIEL_PAR_METHODE: Record<string, PorteeLogiciel | 'COMMUN'> = {
+  // Les listes de structure, lues par tous les écrans (listes de choix,
+  // chrome, cours du jour de la paie en dollars).
+  'CompteController.lister': { logiciels: [C], lecture: TOUS },
+  'JournalController.lister': { logiciels: [C], lecture: TOUS },
+  'DevisesController.lister': { logiciels: [C], lecture: TOUS },
+  'ExerciceController.lister': { logiciels: [C], lecture: TOUS },
+  'ExerciceController.planningCloture': { logiciels: [C], lecture: TOUS },
+  'TiersController.lister': { logiciels: [T], lecture: TOUS },
+  'TiersController.obtenir': { logiciels: [T], lecture: TOUS },
+  // La saisie lit la devise des comptes de tiers et l'échéancier d'une ligne.
+  'TiersController.devisesDesComptes': { logiciels: [T], lecture: [C] },
+  'TiersController.echeancierDeLigne': { logiciels: [T], lecture: [C] },
+  'BanquesController.lister': { logiciels: [T], lecture: TOUS },
   // Le chrome lit l'analyse du dossier (barre d'état) depuis toute tuile.
   'ControlesController.analyser': 'COMMUN',
   // Viser une facture est un geste de la facturation.

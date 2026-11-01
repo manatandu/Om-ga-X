@@ -261,8 +261,8 @@ connexion (« Le tout en cascade ») · tuiles tirées du menu réel
 poste, attribution par utilisateur par l'administrateur
 (`User.restreindreLogiciels`, `logicielsAutorises`, `PUT
 /utilisateurs/:id/logiciels`), effacée quand le rôle ne la suit pas ;
-MASQUER N'EST PAS REFUSER · le refus par le serveur, module par module, reste
-au suivi ; et le même jour les DOUZE IDÉES DE MICROFINA++, toutes cochées par
+MASQUER N'EST PAS REFUSER · le refus par le serveur, module par module, est
+venu avec la ligne commercial-site (2026-11-01, ci-dessous) ; et le même jour les DOUZE IDÉES DE MICROFINA++, toutes cochées par
 Manasse (« pouvons-nous attaquer les fonctionnalités de microfina ? », puis
 les douze cases), en quatre lignes · `docs/comparaison-microfina/plan-reproduction-microfina.md`.
 Le même jour, la PAGE PUBLIQUE au dessin du site du cabinet (« le même design
@@ -317,6 +317,18 @@ posé écrasé ; la quantité du bien sur la fiche de comptage, l'écart dit en
 unités, jamais un excédent créé (AUDCIF art. 43) ; l'annulation d'une sortie
 d'immobilisation, partielle comprise (art. 20, al. 2 et 3 ; art. 22, 2° et
 4°) ; et les cas refusés de la sortie partielle, chacun tranché par son texte.
+Puis, le 2026-11-01, la ligne COMMERCIAL-SITE (« Fais tout le point 1 ») ·
+le REFUS PAR LE SERVEUR des logiciels non attribués
+(`common/logiciels/logiciels-des-routes.ts`, table fermée contrôleur par
+contrôleur, appliquée par `JwtAuthGuard` après le profil de fonctions, 403
+nommé, lectures comprises sauf ce qu'un logiciel attribué lit d'un autre,
+écrit dans la table et rejoué sur les écrans de chaque tuile par son spec ;
+l'attribution ferme les sessions ; les impressions différées quittent le menu
+commun), et le FORMULAIRE DE DEMANDE de la page publique (`POST
+/demandes/information`, sans session, en JSON, cinq par heure, consentement
+exigé, Code du numérique art. 192 et 196 ; mis en file dans le dossier de
+l'éditeur vers `OPERATEURS_PLATEFORME`, jamais rendu au client ; sans
+messagerie, 503 nommé et rien d'écrit). Le paiement en ligne reste exclu.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
