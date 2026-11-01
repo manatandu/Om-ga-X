@@ -23,9 +23,13 @@ const equilibree = (l: { debit: number; credit: number }[]) =>
   Math.round(l.reduce((t, x) => t + Math.round(x.debit * 100) - Math.round(x.credit * 100), 0));
 
 describe("l'avance de mission", () => {
-  it('le 4211 « Personnel, avances » aux deux plans, lu dans la table de passation', () => {
+  it('décision par la loi · l’avance au 4213 (frais avancés), le trop-versé retenu au 4211, aux deux plans', () => {
+    expect(compteDuRole('FRAIS_AVANCES_AU_PERSONNEL', 'SYSCOHADA')).toBe('42130000');
+    expect(compteDuRole('FRAIS_AVANCES_AU_PERSONNEL', 'SYCEBNL')).toBe('42130000');
     expect(compteDuRole('AVANCES_AU_PERSONNEL', 'SYSCOHADA')).toBe('42110000');
     expect(compteDuRole('AVANCES_AU_PERSONNEL', 'SYCEBNL')).toBe('42110000');
+    const semis = ['compte-seed.ts', 'compte-seed-syscohada.ts'].map((f) => readFileSync(join(__dirname, '../comptes', f), 'utf8'));
+    for (const s of semis) expect(s).toContain("'42130000'");
     expect(compteDuRole('MISSIONS', 'SYCEBNL')).toBe('63840000');
   });
 
@@ -50,30 +54,40 @@ describe('la régularisation au retour', () => {
     expect(issueDeLaRegularisation(200_000, 300_000, 'RETENU')).toEqual({ issue: 'TROP_VERSE_RETENU', ecartFc: 100_000 });
   });
 
-  it('chaque écriture est équilibrée au centime, montants calculés à la main', () => {
-    // Soldée · D 6384 300 000 / C 4211 300 000.
-    expect(lignesDeLaRegularisation(300_000, 300_000, 'SOLDEE')).toEqual([
+  it('chaque écriture est équilibrée au centime et SOLDE le 4213 dans les quatre issues, montants calculés à la main', () => {
+    // Soldée · D 6384 300 000 / C 4213 300 000.
+    const soldee = lignesDeLaRegularisation(300_000, 300_000, 'SOLDEE');
+    expect(soldee).toEqual([
       { role: 'MISSIONS', debit: 300_000, credit: 0 },
-      { role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
+      { role: 'FRAIS_AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
     ]);
-    // Complément · D 6384 350 000,50 / C 4211 300 000 / C trésorerie 50 000,50.
+    // Complément · D 6384 350 000,50 / C trésorerie 50 000,50 / C 4213 300 000.
     const complement = lignesDeLaRegularisation(350_000.5, 300_000, 'COMPLEMENT_PAYE');
     expect(complement).toEqual([
       { role: 'MISSIONS', debit: 350_000.5, credit: 0 },
-      { role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
       { role: 'TRESORERIE', debit: 0, credit: 50_000.5 },
+      { role: 'FRAIS_AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
     ]);
-    // Rendu · D 6384 200 000 / D trésorerie 100 000 / C 4211 300 000.
+    // Rendu · D 6384 200 000 / D trésorerie 100 000 / C 4213 300 000.
     const rendu = lignesDeLaRegularisation(200_000, 300_000, 'TROP_VERSE_RENDU');
     expect(rendu).toContainEqual({ role: 'TRESORERIE', debit: 100_000, credit: 0 });
-    // Retenu · le 4211 garde 100 000, que les retenues de bulletin soldent.
-    expect(lignesDeLaRegularisation(200_000, 300_000, 'TROP_VERSE_RETENU')).toEqual([
+    // Retenu · le trop-versé RECLASSÉ au 4211 (avance sur rémunération), le 4213 soldé.
+    const retenu = lignesDeLaRegularisation(200_000, 300_000, 'TROP_VERSE_RETENU');
+    expect(retenu).toEqual([
       { role: 'MISSIONS', debit: 200_000, credit: 0 },
-      { role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: 200_000 },
+      { role: 'AVANCES_AU_PERSONNEL', debit: 100_000, credit: 0 },
+      { role: 'FRAIS_AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
     ]);
-    // Aucun frais justifié, tout retenu · rien au journal.
-    expect(lignesDeLaRegularisation(0, 300_000, 'TROP_VERSE_RETENU')).toEqual([]);
-    for (const l of [complement, rendu]) expect(equilibree(l)).toBe(0);
+    // Aucun frais justifié, tout retenu · le reclassement entier, D 4211 / C 4213.
+    const toutRetenu = lignesDeLaRegularisation(0, 300_000, 'TROP_VERSE_RETENU');
+    expect(toutRetenu).toEqual([
+      { role: 'AVANCES_AU_PERSONNEL', debit: 300_000, credit: 0 },
+      { role: 'FRAIS_AVANCES_AU_PERSONNEL', debit: 0, credit: 300_000 },
+    ]);
+    for (const l of [soldee, complement, rendu, retenu, toutRetenu]) {
+      expect(equilibree(l)).toBe(0);
+      expect(l.filter((x) => x.role === 'FRAIS_AVANCES_AU_PERSONNEL').reduce((t, x) => t + x.credit - x.debit, 0)).toBe(300_000);
+    }
   });
 
   it('suit la fin de mission constatée, jamais avant l’avance, pièce exigée', () => {

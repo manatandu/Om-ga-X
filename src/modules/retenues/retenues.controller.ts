@@ -1,4 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { RoleUtilisateur } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -6,6 +7,7 @@ import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-
 import { RetenuesService } from './retenues.service';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
+import { echeancierDeLaPaie, registreDeLaPaie } from './vue-de-la-paie';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('retenues')
@@ -29,7 +31,9 @@ export class RetenuesController {
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('dateReference') dateReference?: string,
   ) {
-    return this.retenues.registre(user.tenantId, { exerciceId, dateReference });
+    const r = await this.retenues.registre(user.tenantId, { exerciceId, dateReference });
+    // Le gestionnaire de paie ne lit que les natures de la paie, filtrées ICI (`vue-de-la-paie.ts`).
+    return user.role === RoleUtilisateur.GESTIONNAIRE_PAIE ? registreDeLaPaie(r) : r;
   }
 
   /** Échéancier fiscal et social · les prochaines dates de reversement. */
@@ -40,6 +44,7 @@ export class RetenuesController {
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('dateReference') dateReference?: string,
   ) {
-    return this.retenues.echeancierFiscal(user.tenantId, { exerciceId, dateReference });
+    const e = await this.retenues.echeancierFiscal(user.tenantId, { exerciceId, dateReference });
+    return user.role === RoleUtilisateur.GESTIONNAIRE_PAIE ? echeancierDeLaPaie(e) : e;
   }
 }

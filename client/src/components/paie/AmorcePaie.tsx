@@ -24,13 +24,19 @@ export function AmorcePaie({
     setEnvoi(true);
     setErreur(null);
     try {
+      // Les modules RELUS au serveur juste avant · la liste de l'écran peut
+      // dater, et la route remplace la liste entière · sans relecture, un
+      // module qu'un autre administrateur vient d'activer serait retiré.
+      const moi = await api.get<{ tenant?: { modulesActives?: ModuleOptionnel[] | null } }>('/auth/me');
+      const actuels = moi.tenant?.modulesActives;
+      if (!Array.isArray(actuels)) throw new Error('Les modules du dossier ne se lisent pas · rien n’est changé.');
       const p = await api.patch<{ modulesActives: ModuleOptionnel[] }>('/dossier/modules', {
-        modulesActives: modulesAvecLaPaie(modulesActives ?? []),
+        modulesActives: modulesAvecLaPaie(actuels),
       });
       onActive?.(p.modulesActives);
       await rafraichir();
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Activation impossible');
+      setErreur(e instanceof ApiError || e instanceof Error ? e.message : 'Activation impossible');
     } finally {
       setEnvoi(false);
     }

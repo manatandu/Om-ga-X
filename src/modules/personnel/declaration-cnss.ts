@@ -37,6 +37,24 @@
  * `null` et il est nommé · un total amputé d'un bulletin serait une
  * déclaration minorée sous un chiffre plausible.
  *
+ * LE POINT 5 N'EST PAS LA RÉMUNÉRATION (lecture tranchée le 2026-11-01) ·
+ * l'art. 23 écrit « montant total brut des SOMMES PAYÉES aux travailleurs »
+ * (5°), puis « sommes payées […] QUI SONT PRISES EN CONSIDÉRATION pour le
+ * calcul des cotisations » (6°). La rémunération, au sens du Code du
+ * travail, art. 7, point 8, et de l'arrêté, art. 17, point 1, est l'assiette
+ * du 6° · elle exclut soins de santé, logement, allocations familiales
+ * légales, transport, frais de voyage et avantages accordés pour faciliter
+ * les fonctions. Si le 5° la visait aussi, les deux points se
+ * confondraient · le 5° porte donc TOUT ce qui est payé, ces exclusions
+ * comprises, remboursements de dépenses effectives de mission compris (le
+ * total versé figé du bulletin, `totalVerseFc`). Écrit dans la bulle.
+ *
+ * UNE COTISATION EN ABSTENTION NE SE TOTALISE PAS · un bulletin dont le
+ * calcul figé s'est abstenu sur la CNSS (barème absent, plancher non fixé,
+ * régime transitoire) rend NULS la base (6°), le total des cotisations (7°)
+ * et la branche concernée, et le bulletin est nommé · un total chiffré sans
+ * lui serait une déclaration minorée.
+ *
  * CE QUE LE REGISTRE NE TIENT PAS EST NOMMÉ, JAMAIS DEVINÉ · le numéro
  * d'affiliation de l'employeur (point 2), l'adresse (point 3), le numéro
  * d'immatriculation d'un travailleur (art. 25, mention 3 de la feuille de
@@ -210,6 +228,7 @@ export function declarationCnss(params: {
 
   const lignes: LigneBulletinDeclare[] = [];
   let illisible = false;
+  let abstention = false;
   let enfantsInconnus = false;
   for (const b of [...bulletins].sort((x, y) => x.numero - y.numero)) {
     const nom = `Bulletin n° ${b.numero} (${b.nomComplet})`;
@@ -229,6 +248,12 @@ export function declarationCnss(params: {
     }
     if (cnss !== null && cnss.length === 0) {
       manques.push(`${nom} · aucune cotisation de la CNSS n'y est figée · sa base n'entre pas au total, vérifiez le bulletin.`);
+    }
+    const abstentions = objet(objet(b.calcul)?.cotisations)?.abstentions;
+    const abstentionsCnss = Array.isArray(abstentions) ? abstentions.filter((x): x is string => typeof x === 'string' && x.startsWith('CNSS')) : [];
+    if (abstentionsCnss.length > 0) {
+      abstention = true;
+      manques.push(`${nom} · le calcul figé s'abstient sur la CNSS (${abstentionsCnss.join(' ; ')}) · la base et les cotisations du mois ne sont pas chiffrées.`);
     }
     const enfants = nombre(objet(b.entree)?.enfantsBeneficiairesAllocations);
     if (enfants === null) enfantsInconnus = true;
@@ -250,8 +275,8 @@ export function declarationCnss(params: {
     });
   }
 
-  const somme = (f: (l: LigneBulletinDeclare) => number | null): number | null => {
-    if (illisible) return null;
+  const somme = (f: (l: LigneBulletinDeclare) => number | null, sensibleALAbstention = true): number | null => {
+    if (illisible || (sensibleALAbstention && abstention)) return null;
     let t = 0;
     for (const l of lignes) {
       const v = f(l);
@@ -260,10 +285,11 @@ export function declarationCnss(params: {
     }
     return t / 100;
   };
-  const brut = somme((l) => l.totalVerseFc);
+  // Le total versé ne dépend pas de la CNSS · une abstention ne l'efface pas.
+  const brut = somme((l) => l.totalVerseFc, false);
   const base = somme((l) => l.baseCnssFc);
   const branches = BRANCHES_CNSS.map((x) => ({ ...x, montantFc: somme((l) => l.parBranche[x.cle]) }));
-  const totalCotisations = illisible ? null : branches.reduce((t, x) => t + c(x.montantFc ?? 0), 0) / 100;
+  const totalCotisations = illisible || abstention ? null : branches.reduce((t, x) => t + c(x.montantFc ?? 0), 0) / 100;
   const enfants = enfantsInconnus ? null : lignes.reduce((t, l) => t + (l.enfantsBeneficiaires ?? 0), 0);
   if (enfantsInconnus && lignes.length > 0) {
     const sans = lignes.filter((l) => l.enfantsBeneficiaires === null).map((l) => `n° ${l.numero}`);
@@ -273,6 +299,7 @@ export function declarationCnss(params: {
     );
   }
 
+  const NON_CHIFFRE = illisible ? 'Non chiffré · un bulletin du mois ne se lit pas.' : 'Non chiffré · un bulletin du mois s’abstient sur la CNSS (voir les manques).';
   const adresse = [employeur.adresse?.trim(), employeur.ville?.trim()].filter(Boolean).join(', ') || null;
   const enonciations: Enonciation[] = [
     { rang: 1, libelle: ARTICLE_23[0], valeur: employeur.nom, manque: null },
@@ -285,8 +312,8 @@ export function declarationCnss(params: {
     { rang: 3, libelle: ARTICLE_23[2], valeur: adresse, manque: adresse ? null : "Adresse du dossier non renseignée · Paramètres du dossier." },
     { rang: 4, libelle: ARTICLE_23[3], valeur: mois, manque: null },
     { rang: 5, libelle: ARTICLE_23[4], valeur: brut, manque: brut === null ? 'Non chiffré · un bulletin du mois ne se lit pas.' : null },
-    { rang: 6, libelle: ARTICLE_23[5], valeur: base, manque: base === null ? 'Non chiffré · un bulletin du mois ne se lit pas.' : null },
-    { rang: 7, libelle: ARTICLE_23[6], valeur: totalCotisations, manque: totalCotisations === null ? 'Non chiffré · un bulletin du mois ne se lit pas.' : null },
+    { rang: 6, libelle: ARTICLE_23[5], valeur: base, manque: base === null ? NON_CHIFFRE : null },
+    { rang: 7, libelle: ARTICLE_23[6], valeur: totalCotisations, manque: totalCotisations === null ? NON_CHIFFRE : null },
     {
       rang: 8,
       libelle: ARTICLE_23[7],

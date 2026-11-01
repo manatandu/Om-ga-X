@@ -52,7 +52,16 @@ export function AvanceMissionPaie({
   envoi,
   envoyer,
 }: {
-  mission: { id: string; numero: number; salarieId: string; annuleLe: string | null; bulletin: unknown; avance?: AvanceDeMission; repartitions?: RepartitionDeMission[] };
+  mission: {
+    id: string;
+    numero: number;
+    salarieId: string;
+    annuleLe: string | null;
+    bulletin: unknown;
+    avance?: AvanceDeMission;
+    repartitions?: RepartitionDeMission[];
+    repartitionsTronquees?: boolean;
+  };
   envoi: boolean;
   envoyer: (fn: () => Promise<unknown>) => Promise<boolean>;
 }) {
@@ -117,7 +126,14 @@ export function AvanceMissionPaie({
 
   const annuler = (url: string, quoi: string) => {
     const motif = window.prompt(`Motif de l’annulation ${quoi}`);
-    if (motif && motif.trim().length >= 3) void envoyer(() => api.post(url, { motif: motif.trim() }));
+    if (motif === null) return;
+    // Un motif trop court se dit, jamais un clic sans effet.
+    if (motif.trim().length < 3) {
+      setErreurLecture('Le motif de l’annulation compte au moins trois caractères · rien n’est annulé.');
+      return;
+    }
+    setErreurLecture('');
+    void envoyer(() => api.post(url, { motif: motif.trim() }));
   };
 
   const ouvrirRepartition = () => {
@@ -153,7 +169,7 @@ export function AvanceMissionPaie({
           Avance
           <Aide
             titre="Avance de mission"
-            texte="L'avance versée avant le départ passe au brouillard D 4211 Personnel, avances / C trésorerie du journal choisi ; une caisse ne verse que ce qu'elle contient. Au retour, la régularisation impute les frais justifiés au 6384 Missions contre l'avance · le complément se paie au salarié, le trop-versé est rendu ou retenu sur sa paie comme une avance du registre. Une mission avancée ne porte plus ses frais justifiés au bulletin ; le forfait imposable y reste. Les frais se figent à la régularisation ; l'annuler les rend modifiables."
+            texte="L'avance versée avant le départ passe au brouillard D 4213 Frais avancés au personnel / C trésorerie du journal choisi ; une caisse ne verse que ce qu'elle contient. Au retour, la régularisation impute les frais justifiés au 6384 Missions et solde le 4213 · le complément se paie au salarié, le trop-versé est rendu, ou reclassé au 4211 et retenu sur sa paie comme une avance du registre. La répartition par projet ventile le 6384 de la régularisation. Une mission avancée ne porte plus ses frais justifiés au bulletin ; le forfait imposable y reste. Les frais se figent à la régularisation ; l'annuler les rend modifiables."
             source="Fiche du compte 42 (AUDCIF, SYCEBNL) · fiche du compte 66 · Code du travail, art. 112, c) · AUDCIF art. 20, al. 2"
           />
         </span>
@@ -246,6 +262,13 @@ export function AvanceMissionPaie({
         </div>
       )}
 
+      {/*
+        La répartition ne sert qu'à la régularisation de l'avance (elle ventile
+        son 6384) · le serveur la refuse sans avance, et l'écran ne l'offre
+        qu'alors. Sans avance, les frais portés au bulletin suivent la
+        répartition du salarié.
+      */}
+      {active && (
       <div className="flex flex-wrap gap-x-3 items-center">
         <span className="font-semibold">Projets</span>
         {(mission.repartitions ?? []).length === 0 ? (
@@ -253,13 +276,15 @@ export function AvanceMissionPaie({
         ) : (
           <span>{(mission.repartitions ?? []).map((r) => `${r.planCode} ${r.sectionCode} ${r.pourcentage} %`).join(' · ')}</span>
         )}
-        {peutEcrire && ouverte && !active?.regularisation && !repartition && (
+        {mission.repartitionsTronquees && <span className="text-warning">liste tronquée</span>}
+        {peutEcrire && ouverte && !active.regularisation && !repartition && (
           <button type="button" className="hover:underline" disabled={envoi} onClick={ouvrirRepartition}>
             Répartir entre projets
           </button>
         )}
       </div>
-      {repartition && (
+      )}
+      {active && !active.regularisation && repartition && (
         <div className="flex flex-wrap gap-1.5 items-center">
           <select aria-label="Plan analytique" value={repartition.planId} onChange={(e) => setRepartition({ planId: e.target.value, lignes: [{ sectionId: '', pourcentage: '' }] })} className={champ}>
             <option value="">{plans === null ? 'Lecture des plans…' : plans.length === 0 ? 'Aucun plan ne ventile la classe 6' : 'Plan…'}</option>

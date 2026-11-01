@@ -8,9 +8,9 @@
  * justifiés 350 000,50 répartis 60 / 40 entre deux projets, forfait 30 000 ·
  * le bulletin de décembre ne porte que le forfait ; régularisation avec un
  * complément de 50 000,50. Mission 2 · avance de 200 000, frais justifiés
- * 150 000, NON régularisée à la clôture · le 4211 reporte 200 000 en 2027 ;
+ * 150 000, NON régularisée à la clôture · le 4213 reporte 200 000 en 2027 ;
  * régularisée en janvier 2027, trop-versé de 50 000 RETENU sur la paie de
- * janvier, le 4211 soldé. La déclaration CNSS de décembre relue contre les
+ * janvier · reclassé au 4211 par la régularisation, puis soldé par la retenue, le 4213 soldé. La déclaration CNSS de décembre relue contre les
  * bulletins figés ; le gestionnaire de paie lit le registre des retenues, qui
  * compte les pièces de paie au brouillard. Annulations · au brouillard
  * retirée, validée en négatif ; une régularisation dont le trop-versé est
@@ -95,9 +95,8 @@ async function main() {
     const m1 = await A.post(`/personnel/salaries/${s.id}/missions`, { objet: 'Suivi des forages', destination: 'Kikwit', dateDepart: '2026-12-02', dateRetour: '2026-12-10' });
     const m2 = await A.post(`/personnel/salaries/${s.id}/missions`, { objet: 'Formation', destination: 'Matadi', dateDepart: '2026-12-14', dateRetour: '2026-12-18' });
 
-    let r = await A.statut('PUT', `/personnel/missions/${m1.id}/repartitions/${axe.id}`, { lignes: [{ sectionId: p1.id, pourcentage: 60 }, { sectionId: p2.id, pourcentage: 39 }] });
-    verifier(r.statut === 400 && /99\.00 %/.test(JSON.stringify(r.corps)), `une répartition à 99 % est refusée (${r.statut})`);
-    await A.put(`/personnel/missions/${m1.id}/repartitions/${axe.id}`, { lignes: [{ sectionId: p1.id, pourcentage: 60 }, { sectionId: p2.id, pourcentage: 40 }] });
+    let r = await A.statut('PUT', `/personnel/missions/${m1.id}/repartitions/${axe.id}`, { lignes: [{ sectionId: p1.id, pourcentage: 60 }, { sectionId: p2.id, pourcentage: 40 }] });
+    verifier(r.statut === 400 && /pas d'avance/.test(JSON.stringify(r.corps)), `sans avance, la répartition par projet est refusée, nommée (${r.statut})`);
 
     console.log('2. Avances');
     r = await A.statut('POST', `/personnel/missions/${m1.id}/avance`, { exerciceId: ex26.id, journalId: ca.id, date: '2026-12-01', montantFc: 300000, pieceJustificative: 'Bon de caisse 1' });
@@ -106,7 +105,12 @@ async function main() {
     r = await A.statut('POST', `/personnel/missions/${m1.id}/avance`, { exerciceId: ex26.id, journalId: bq.id, date: '2026-12-01', montantFc: 1000, pieceJustificative: 'Virement bis' });
     verifier(r.statut === 400 && /une seule avance/.test(JSON.stringify(r.corps)), `une seconde avance est refusée (${r.statut})`);
     const av2 = await A.post(`/personnel/missions/${m2.id}/avance`, { exerciceId: ex26.id, journalId: bq.id, date: '2026-12-12', montantFc: 200000, pieceJustificative: 'Virement 2' });
-    verifier((await solde('42110000', ex26.id)) === 50_000_000, '4211 débité de 500 000 après les deux avances');
+    verifier((await solde('42130000', ex26.id)) === 50_000_000, '4213 (frais avancés) débité de 500 000 après les deux avances');
+    r = await A.statut('PUT', `/personnel/missions/${m1.id}/repartitions/${axe.id}`, { lignes: [{ sectionId: p1.id, pourcentage: 60 }, { sectionId: p2.id, pourcentage: 39 }] });
+    verifier(r.statut === 400 && /99\.00 %/.test(JSON.stringify(r.corps)), `une répartition à 99 % est refusée (${r.statut})`);
+    await A.put(`/personnel/missions/${m1.id}/repartitions/${axe.id}`, { lignes: [{ sectionId: p1.id, pourcentage: 60 }, { sectionId: p2.id, pourcentage: 40 }] });
+    r = await A.statut('POST', `/personnel/missions/${m2.id}/avance`, { exerciceId: ex27.id, journalId: bq.id, date: '2026-12-12', montantFc: 1000, pieceJustificative: 'x' });
+    verifier(r.statut === 400, `une date hors de l'exercice choisi est refusée, nommée (${r.statut})`);
 
     console.log('3. Frais et bulletin de décembre');
     await A.post(`/personnel/missions/${m1.id}/frais`, { element: 'HEBERGEMENT', qualification: 'JUSTIFIE', montantFc: 350000.5, piece: 'Hôtel 12' });
@@ -164,19 +168,21 @@ async function main() {
     console.log('6. Clôture de 2026, mission 2 non régularisée');
     // 6384 · 350 000,50 de la régularisation + 30 000 de forfait passés par la paie.
     verifier((await solde('63840000', ex26.id)) === 38_000_050, `6384 de 2026 · 380 000,50 (${(await solde('63840000', ex26.id)) / 100})`);
-    verifier((await solde('42110000', ex26.id)) === 20_000_000, `4211 de 2026 · 200 000 de la mission 2 (${(await solde('42110000', ex26.id)) / 100})`);
+    verifier((await solde('42130000', ex26.id)) === 20_000_000, `4213 de 2026 · 200 000 de la mission 2 (${(await solde('42130000', ex26.id)) / 100})`);
+    verifier((await solde('42110000', ex26.id)) === 0, '4211 de 2026 intact');
     for (let k = 0; k < 3; k++) await A.post('/ecritures/valider-jusqua', { exerciceId: ex26.id, dateLimite: '2026-12-31' });
     r = await A.statut('POST', `/exercices/${ex26.id}/cloturer`, {});
     if (r.statut >= 400) console.log('   refus de clôture ·', JSON.stringify(r.corps).slice(0, 900));
     verifier((await prisma.exercice.findUnique({ where: { id: ex26.id } })).statut === 'CLOTURE', 'exercice 2026 clôturé');
-    verifier((await solde('42110000', ex27.id)) === 20_000_000, `à-nouveau 2027 · 4211 de 200 000 (${(await solde('42110000', ex27.id)) / 100})`);
+    verifier((await solde('42130000', ex27.id)) === 20_000_000, `à-nouveau 2027 · 4213 de 200 000 (${(await solde('42130000', ex27.id)) / 100})`);
     r = await A.statut('POST', `/personnel/missions/avances/${av1.id}/annulation`, { motif: 'Essai après clôture' });
     verifier(r.statut === 409 || r.statut === 400, `l'avance régularisée d'un exercice clos ne s'annule pas (${r.statut})`);
 
     console.log('7. Janvier 2027 · trop-versé de 50 000 retenu sur la paie');
     const reg2 = await A.post(`/personnel/missions/avances/${av2.id}/regularisation`, { exerciceId: ex27.id, journalId: od.id, date: '2027-01-05', pieceJustificative: 'Décompte 2', tropVerse: 'RETENU' });
     verifier(reg2.issue === 'TROP_VERSE_RETENU' && reg2.avanceSalaireId, `trop-versé retenu · une avance du registre (${JSON.stringify(reg2)})`);
-    verifier((await solde('42110000', ex27.id)) === 5_000_000, `4211 · 50 000 restent dus (${(await solde('42110000', ex27.id)) / 100})`);
+    verifier((await solde('42130000', ex27.id)) === 0, `4213 soldé par la régularisation (${(await solde('42130000', ex27.id)) / 100})`);
+    verifier((await solde('42110000', ex27.id)) === 5_000_000, `4211 · 50 000 reclassés, restent dus (${(await solde('42110000', ex27.id)) / 100})`);
     const bJan = await A.post(`/personnel/salaries/${s.id}/bulletins`, {
       moisDePaie: '2027-01',
       elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 900000 }],
@@ -201,6 +207,9 @@ async function main() {
     await G.post('/auth/login', { email: emailG, motDePasse: MDP });
     const reg = await G.get(`/retenues/registre?exerciceId=${ex27.id}&dateReference=2027-02-20`);
     verifier(reg.piecesDePaieAuBrouillard === 1, `la paie de janvier au brouillard se compte (${reg.piecesDePaieAuBrouillard})`);
+    verifier(reg.vueDeLaPaie === true && reg.natures.every((n) => ['irppSalaires', 'cnss', 'inppOnem', 'autresOrganismesSociaux'].includes(n.cle)), `vue de la paie · ${reg.natures.map((n) => n.cle).join(', ')}`);
+    const regA = await A.get(`/retenues/registre?exerciceId=${ex27.id}&dateReference=2027-02-20`);
+    verifier(regA.natures.some((n) => n.cle === 'tva') && !regA.vueDeLaPaie, 'l’administrateur lit le registre entier');
     const ech = await G.get(`/retenues/echeancier?exerciceId=${ex27.id}&dateReference=2027-02-20`);
     verifier(Array.isArray(ech.echeances), 'le gestionnaire lit l’échéancier');
     r = await G.statut('GET', `/ecritures?exerciceId=${ex27.id}`);
@@ -226,7 +235,9 @@ async function main() {
     await A.post(`/personnel/missions/avances/${av4.id}/annulation`, { motif: 'Montant faux' });
     const a4 = await prisma.avanceMission.findUnique({ where: { id: av4.id }, select: { ecritureNegatifId: true, annuleLe: true } });
     verifier(a4.annuleLe && a4.ecritureNegatifId, 'validée, la pièce est inscrite en négatif');
-    verifier((await solde('42110000', ex27.id)) === 0, '4211 de 2027 revenu à zéro après le négatif');
+    verifier((await solde('42130000', ex27.id)) === 0, '4213 de 2027 revenu à zéro après le négatif');
+    r = await A.statut('POST', `/personnel/missions/${m1.id}/annulation`, { motif: 'Essai' });
+    verifier(r.statut === 409 && /annulez la régularisation, puis l'avance, puis la mission/.test(JSON.stringify(r.corps)), `mission régularisée · l'ordre des gestes est nommé (${r.statut})`);
 
     console.log('10. Cloisonnement');
     const autre = new Client();

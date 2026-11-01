@@ -1677,11 +1677,13 @@ bénéficiaires, jamais un nom de constante.
 **P3 · LA PASSATION COMPTABLE** (`docs/paie-p3-passation-comptable.md`). AUCUN
 NUMÉRO DE COMPTE DE PAIE HORS DE `passation-paie.ts`, ET AUCUN SANS SON RÉFÉRENTIEL.
 
-**VINGT-DEUX RÔLES, UN SEUL DIVERGE** (dont le 78100000 des avantages en nature, voir
+**VINGT-TROIS RÔLES, UN SEUL DIVERGE** (dont le 78100000 des avantages en nature, voir
 P9, le 66140000 des indemnités de fin de contrat depuis A8, le 63840000
 « Missions » de la ligne microfina-m3, porté par l'élément du bulletin qui vient
-d'une mission, la même nature sans mission restant sans imputation, et le
-42110000 « Personnel, avances » de l'avance de mission, ligne paie-declarations ; décision T1 du
+d'une mission, la même nature sans mission restant sans imputation, le
+42130000 « Frais avancés et fournitures au personnel » de l'avance de mission
+et le 42110000 « Personnel, avances » de son trop-versé retenu, ligne
+paie-declarations ; décision T1 du
 2026-10-07 · les rôles INPP et ONEM du 4334 et du 4335 font place au 64150000, au
 64130000 et au 44280000) · la retraite OBLIGATOIRE est au **43130000** en SYSCOHADA (sous
 431), au **43210000** en SYCEBNL (sous 432). Le reste coïncide · 6611, 6612, 6613,
@@ -2058,16 +2060,19 @@ un bulletin illisible rend les totaux `null` ; travailleurs occupés lus au
 registre, enfants bénéficiaires sur l'entrée figée, jamais zéro présumé ;
 échéance le 15 du mois suivant (art. 21, 31), aucun report ; mois sans
 bulletin dit (art. 26). REGISTRE DES RETENUES ET ÉCHÉANCIER ouverts EN LECTURE
-au gestionnaire de paie, route par route ; les pièces de paie au brouillard
+au gestionnaire de paie, route par route, réduits aux natures de la paie au
+serveur (`vue-de-la-paie.ts`) ; les pièces de paie au brouillard
 (liaison au bulletin) COMPTÉES et dites, jamais chiffrées. AVANCE DE MISSION
-(`avance-mission.ts`) · D 4211 / C trésorerie (fiche du compte 42), caisse
-provisionnée ; régularisation après la fin constatée · D 6384 des frais
-justifiés / C 4211, l'écart en complément, rendu, ou RETENU comme une avance du
-registre (art. 112, c) ; une mission avancée ne porte plus ses frais justifiés
+(`avance-mission.ts`) · DES FRAIS AVANCÉS, pas une avance sur la rémunération ·
+D 4213 / C trésorerie (fiche du compte 42), caisse provisionnée ;
+régularisation après la fin constatée · D 6384 des frais justifiés / C 4213 de
+l'avance entière, l'écart en complément, rendu, ou RETENU · reclassé D 4211
+et repris par une avance du registre (art. 112, c) · le 4213 se solde ; une mission avancée ne porte plus ses frais justifiés
 au bulletin (le forfait imposable y reste) ; frais figés par la régularisation ;
 pièces retenues, annulation motivée en négatif. RÉPARTITION PAR PROJET · même
 règle que celle de la paie, au plus fort reste, appliquée au 6384 de la
-régularisation seulement (limite écrite à la fiche de la ligne).
+régularisation, REFUSÉE sans avance active (les frais du bulletin suivent la
+répartition du salarié).
 
 **Consolidation SYSCOHADA, tranche 1 · périmètre (2026-09-24).** AUDCIF art. 74 à
 98, D4C ch. XII ; SYSCOHADA SEUL (l'art. 3 du SYCEBNL écarte les art. 73 à 113).

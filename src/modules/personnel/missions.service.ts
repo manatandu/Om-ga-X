@@ -14,6 +14,7 @@ import {
   type QualificationFraisMission,
 } from './missions-salarie';
 import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
+import { PLAFOND_REPARTITIONS_MISSION } from './avance-mission';
 
 /** Liste de travail bornée (§ 8 bis) · elle dit quand elle ne couvre pas tout. */
 export const PLAFOND_MISSIONS = 500;
@@ -232,7 +233,9 @@ export class MissionsService {
       // ce que le bulletin porte encore (le forfait seul quand la mission est avancée).
       avance: avanceDeLaMission(m.avances),
       aPorterAuBulletin: totauxAuBulletin(lireFrais(m.frais), m.avances.some((a) => a.annuleLe === null)),
-      repartitions: m.repartitions.map((r) => ({
+      // Au-delà du plafond, la liste se dit tronquée (la pose ne le permet pas).
+      repartitionsTronquees: m.repartitions.length > PLAFOND_REPARTITIONS_MISSION,
+      repartitions: m.repartitions.slice(0, PLAFOND_REPARTITIONS_MISSION).map((r) => ({
         planId: r.planId,
         planCode: r.plan.code,
         sectionId: r.sectionId,
@@ -248,7 +251,7 @@ export class MissionsService {
     bulletin: { select: { statut: true, numero: true, moisDePaie: true } },
     // Toutes les avances, annulées comprises (une mission en a au plus quelques-unes) · l'écran dit l'historique.
     avances: { orderBy: { createdAt: 'desc' as const }, take: 20, include: { regularisations: { orderBy: { createdAt: 'desc' as const }, take: 20 } } },
-    repartitions: { orderBy: [{ planId: 'asc' as const }, { sectionId: 'asc' as const }], take: 200, include: { plan: { select: { code: true } }, section: { select: { code: true } } } },
+    repartitions: { orderBy: [{ planId: 'asc' as const }, { sectionId: 'asc' as const }], take: PLAFOND_REPARTITIONS_MISSION + 1, include: { plan: { select: { code: true } }, section: { select: { code: true } } } },
   };
 
   /** Les plus récentes d'abord, l'identifiant départageant un même jour. */
@@ -357,7 +360,9 @@ export class MissionsService {
     // qu'elle impute · un frais ajouté ou retiré après elle ne serait ni au
     // 6384 ni au bulletin. Annuler la régularisation rend la mission modifiable.
     if (m.avances.some((a) => a.regularisations.length > 0)) {
-      throw new ConflictException(`L'avance de la mission n° ${m.numero} est régularisée · annulez la régularisation pour changer ses frais.`);
+      throw new ConflictException(
+        `L'avance de la mission n° ${m.numero} est régularisée · ses frais sont figés. Annulez la régularisation pour les changer ; pour annuler la mission, annulez la régularisation, puis l'avance, puis la mission.`,
+      );
     }
     if (porteurActif(m)) {
       throw new ConflictException(
@@ -428,10 +433,10 @@ export class MissionsService {
     await transactionJournalisee(this.prisma, async (tx) => {
       await verrouillerMission(tx, tenantId, id);
       const m = await this.modifiable(tx, tenantId, id);
-      // Ligne paie-declarations · une avance versée reste au 4211 · la mission
+      // Ligne paie-declarations · une avance versée reste au 4213 · la mission
       // annulée la laisserait sans régularisation possible.
       if (m.avances.length > 0) {
-        throw new ConflictException(`La mission n° ${m.numero} porte une avance non annulée · annulez l'avance, ou régularisez-la, avant d'annuler la mission.`);
+        throw new ConflictException(`La mission n° ${m.numero} porte une avance non annulée · annulez l'avance avant d'annuler la mission.`);
       }
       await tx.missionSalarie.update({ where: { id: m.id }, data: { annuleLe: new Date(), motifAnnulation: dto.motif.trim() } });
     });

@@ -20,6 +20,7 @@ import {
   motifRefusRegularisation,
   motifRefusRepartitionMission,
   partsParSection,
+  PLAFOND_REPARTITIONS_MISSION,
   type LigneRegularisation,
 } from './avance-mission';
 import { AnnulationAvanceMissionDto, AvanceMissionDto, RegularisationMissionDto, RepartitionMissionDto } from './dto/avance-mission.dto';
@@ -47,7 +48,7 @@ export class AvancesMissionService {
   ) {}
 
   /** Le compte d'un rôle de la table de passation, ouvert en imputation dans le dossier. */
-  private async compteDuRoleOuvert(tenantId: string, role: 'MISSIONS' | 'AVANCES_AU_PERSONNEL') {
+  private async compteDuRoleOuvert(tenantId: string, role: 'MISSIONS' | 'AVANCES_AU_PERSONNEL' | 'FRAIS_AVANCES_AU_PERSONNEL') {
     const t = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
     if (!t) throw new NotFoundException('Dossier introuvable.');
     const numero = compteDuRole(role, t.referentiel);
@@ -104,7 +105,7 @@ export class AvancesMissionService {
         frais: { select: { element: true, qualification: true, montantFc: true } },
         bulletin: { select: { statut: true, numero: true } },
         avances: { where: { annuleLe: null }, include: { regularisations: { where: { annuleLe: null } } }, take: 1 },
-        repartitions: { include: { section: { select: { code: true, type: true, estActive: true } }, plan: { select: { code: true, estActif: true } } }, take: 200 },
+        repartitions: { include: { section: { select: { code: true, type: true, estActive: true } }, plan: { select: { code: true, estActif: true } } }, take: PLAFOND_REPARTITIONS_MISSION + 1 },
       },
     });
     if (!m) throw new NotFoundException('Mission introuvable dans ce dossier.');
@@ -129,7 +130,8 @@ export class AvancesMissionService {
       avanceExistante: m.avances.length > 0,
     });
     if (refus) throw new BadRequestException(refus);
-    const [journal, compte4211] = await Promise.all([this.journal(tenantId, dto.journalId, true), this.compteDuRoleOuvert(tenantId, 'AVANCES_AU_PERSONNEL')]);
+    await this.exerciceOuvertContenant(tenantId, dto.exerciceId, dto.date.slice(0, 10));
+    const [journal, compte4213] = await Promise.all([this.journal(tenantId, dto.journalId, true), this.compteDuRoleOuvert(tenantId, 'FRAIS_AVANCES_AU_PERSONNEL')]);
     const nom = [m.salarie.nom, m.salarie.postNom, m.salarie.prenoms].filter(Boolean).join(' ');
     const libelle = `Avance sur mission n° ${m.numero} · ${nom}`.slice(0, 190);
     const montant = Math.round(dto.montantFc * 100) / 100;
@@ -147,7 +149,7 @@ export class AvancesMissionService {
         libelle,
         reference: dto.pieceJustificative.trim().slice(0, 190),
         lignes: [
-          { compteId: compte4211.id, libelle, debit: montant, credit: 0 },
+          { compteId: compte4213.id, libelle, debit: montant, credit: 0 },
           { compteId: journal.compteTresorerie!.id, libelle, debit: 0, credit: montant },
         ],
       },
@@ -273,15 +275,18 @@ export class AvancesMissionService {
     }
     const lignes = lignesDeLaRegularisation(justifie, avance, issue.issue);
     const tresorerie = issueTouchantLaTresorerie(issue.issue);
-    const [journal, c6384, c4211, ventilations] = await Promise.all([
+    await this.exerciceOuvertContenant(tenantId, dto.exerciceId, dto.date.slice(0, 10));
+    const [journal, c6384, c4211, c4213, ventilations] = await Promise.all([
       this.journal(tenantId, dto.journalId, tresorerie),
       this.compteDuRoleOuvert(tenantId, 'MISSIONS'),
       this.compteDuRoleOuvert(tenantId, 'AVANCES_AU_PERSONNEL'),
+      this.compteDuRoleOuvert(tenantId, 'FRAIS_AVANCES_AU_PERSONNEL'),
       this.ventilationsDuMontant(m, justifie),
     ]);
     const nom = [m.salarie.nom, m.salarie.postNom, m.salarie.prenoms].filter(Boolean).join(' ');
     const libelle = `Régularisation de l'avance sur mission n° ${m.numero} · ${nom}`.slice(0, 190);
-    const compteDe = (l: LigneRegularisation) => (l.role === 'MISSIONS' ? c6384.id : l.role === 'AVANCES_AU_PERSONNEL' ? c4211.id : journal.compteTresorerie!.id);
+    const compteDe = (l: LigneRegularisation) =>
+      l.role === 'MISSIONS' ? c6384.id : l.role === 'AVANCES_AU_PERSONNEL' ? c4211.id : l.role === 'FRAIS_AVANCES_AU_PERSONNEL' ? c4213.id : journal.compteTresorerie!.id;
     const lignesEcriture = lignes.map((l) => ({
       compteId: compteDe(l),
       libelle,
@@ -296,7 +301,7 @@ export class AvancesMissionService {
       ]);
     }
 
-    const creerFiche = async (tx: Prisma.TransactionClient, ecriture: { id: string } | null) => {
+    const creerFiche = async (tx: Prisma.TransactionClient, ecriture: { id: string }) => {
       await this.verrouillerMission(tx, tenantId, m.id);
       // Relue sous le verrou · un frais changé, une seconde régularisation ou une avance annulée entre-temps refuse.
       const relue = await tx.avanceMission.findFirst({
@@ -307,8 +312,8 @@ export class AvancesMissionService {
       if (!relue || relue.annuleLe || relue._count.regularisations > 0 || justifieRelu === null || Math.round(justifieRelu * 100) !== Math.round(justifie * 100)) {
         throw new ConflictException(`La mission n° ${m.numero} a changé pendant la régularisation (frais, avance ou régularisation) · rien n'est passé, relisez-la.`);
       }
-      const piece = ecriture ? await tx.ecriture.findFirst({ where: avecStatut({ id: ecriture.id, tenantId }), select: { numeroPiece: true } }) : null;
-      // Le trop-versé retenu sur la paie · une avance du registre (art. 112, c), au 4211.
+      const piece = await tx.ecriture.findFirst({ where: avecStatut({ id: ecriture.id, tenantId }), select: { numeroPiece: true } });
+      // Le trop-versé retenu sur la paie · une avance du registre (art. 112, c), au 4211, où la pièce l'a reclassé.
       const avanceSalaire =
         issue.issue === 'TROP_VERSE_RETENU'
           ? await tx.avanceSalaire.create({
@@ -337,8 +342,8 @@ export class AvancesMissionService {
           ecartFc: new Prisma.Decimal(issue.ecartFc),
           issue: issue.issue,
           pieceJustificative: dto.pieceJustificative.trim(),
-          ecritureId: ecriture?.id ?? null,
-          piecePassee: ecriture ? `${journal.code} n° ${piece?.numeroPiece ?? '·'}`.slice(0, 60) : null,
+          ecritureId: ecriture.id,
+          piecePassee: `${journal.code} n° ${piece?.numeroPiece ?? '·'}`.slice(0, 60),
           avanceSalaireId: avanceSalaire?.id ?? null,
           creePar: email,
         },
@@ -346,18 +351,18 @@ export class AvancesMissionService {
       });
     };
 
-    const fiche =
-      lignesEcriture.length === 0
-        ? await transactionJournalisee(this.prisma, (tx) => creerFiche(tx, null))
-        : (
-            await this.ecritures.creerAvec(
-              tenantId,
-              userId,
-              { exerciceId: dto.exerciceId, journalId: journal.id, date: dto.date, libelle, reference: dto.pieceJustificative.trim().slice(0, 190), lignes: lignesEcriture },
-              (tx, ecriture) => creerFiche(tx, ecriture),
-              { jugerLaCaisse: true },
-            )
-          ).suite;
+    // Le 4213 est crédité de l'avance entière dans les quatre issues · la
+    // pièce existe toujours, et elle passe les contrôles d'entrée de la saisie
+    // (exercice du dossier, ouvert, date dans ses bornes).
+    const fiche = (
+      await this.ecritures.creerAvec(
+        tenantId,
+        userId,
+        { exerciceId: dto.exerciceId, journalId: journal.id, date: dto.date, libelle, reference: dto.pieceJustificative.trim().slice(0, 190), lignes: lignesEcriture },
+        (tx, ecriture) => creerFiche(tx, ecriture),
+        { jugerLaCaisse: true },
+      )
+    ).suite;
     return { ...fiche, libelleIssue: LIBELLE_ISSUE[fiche.issue], justifieFc: justifie, avanceFc: avance, ecartFc: issue.ecartFc, ventilee: ventilations.length > 0 };
   }
 
@@ -447,8 +452,22 @@ export class AvancesMissionService {
       });
       if (!m) throw new NotFoundException('Mission introuvable dans ce dossier.');
       if (m.annuleLe) throw new ConflictException(`La mission n° ${m.numero} est annulée.`);
+      // RELECTURE MAJEUR 1 · la répartition ne sert qu'à la RÉGULARISATION de
+      // l'avance (elle ventile son 6384) · sans avance, les frais passent par
+      // le bulletin, dont la passation suit la répartition du SALARIÉ
+      // (`ventilation-analytique-paie.ts`) · enregistrée, elle ne serait
+      // jamais appliquée, et l'écran la montrerait comme si elle l'était.
+      if (m.avances.length === 0) {
+        throw new BadRequestException(
+          `La mission n° ${m.numero} n'a pas d'avance · la répartition par projet ne sert qu'à la régularisation de l'avance. Les frais portés par le bulletin suivent la répartition analytique du salarié (onglet Registre).`,
+        );
+      }
       if (m.avances.some((a) => a._count.regularisations > 0)) {
         throw new ConflictException(`L'avance de la mission n° ${m.numero} est régularisée · sa pièce porte déjà la ventilation. Annulez la régularisation pour la changer.`);
+      }
+      const autres = await tx.repartitionMission.count({ where: { tenantId, missionId: m.id, planId: { not: planId } } });
+      if (autres + dto.lignes.length > PLAFOND_REPARTITIONS_MISSION) {
+        throw new BadRequestException(`Une mission porte au plus ${PLAFOND_REPARTITIONS_MISSION} lignes de répartition, tous plans confondus (convention d'OmegaX).`);
       }
       await tx.repartitionMission.deleteMany({ where: { tenantId, missionId: m.id, planId } });
       if (dto.lignes.length > 0) {
@@ -461,12 +480,20 @@ export class AvancesMissionService {
   }
 
   async lireRepartitions(tenantId: string, missionId: string) {
-    const lignes = await this.prisma.repartitionMission.findMany({
-      where: { tenantId, missionId },
-      orderBy: [{ planId: 'asc' }, { sectionId: 'asc' }],
-      take: 200,
-      include: { plan: { select: { code: true } }, section: { select: { code: true, intitule: true } } },
-    });
+    const [lignes, total] = await Promise.all([
+      this.prisma.repartitionMission.findMany({
+        where: { tenantId, missionId },
+        orderBy: [{ planId: 'asc' }, { sectionId: 'asc' }],
+        take: PLAFOND_REPARTITIONS_MISSION,
+        include: { plan: { select: { code: true } }, section: { select: { code: true, intitule: true } } },
+      }),
+      this.prisma.repartitionMission.count({ where: { tenantId, missionId } }),
+    ]);
+    // RELECTURE MINEUR 7 · une liste tronquée se refuse, nommée · une
+    // répartition lue en partie ferait 100 % sur moins que ce qu'elle porte.
+    if (total > lignes.length) {
+      throw new ConflictException(`La mission porte ${total} lignes de répartition, au-delà de ${PLAFOND_REPARTITIONS_MISSION} · retirez la répartition d'un plan et reposez-la.`);
+    }
     return lignes.map((l) => ({ planId: l.planId, planCode: l.plan.code, sectionId: l.sectionId, sectionCode: l.section.code, intitule: l.section.intitule, pourcentage: nombre(l.pourcentage) }));
   }
 
@@ -477,6 +504,9 @@ export class AvancesMissionService {
    */
   private async ventilationsDuMontant(m: Awaited<ReturnType<AvancesMissionService['mission']>>, montantFc: number) {
     if (!(montantFc > 0) || m.repartitions.length === 0) return [];
+    if (m.repartitions.length > PLAFOND_REPARTITIONS_MISSION) {
+      throw new ConflictException(`La répartition de la mission n° ${m.numero} dépasse ${PLAFOND_REPARTITIONS_MISSION} lignes · elle ne se lit pas en entier, rien n'est ventilé. Retirez la répartition d'un plan et reposez-la.`);
+    }
     const parPlan = new Map<string, typeof m.repartitions>();
     for (const r of m.repartitions) parPlan.set(r.planId, [...(parPlan.get(r.planId) ?? []), r]);
     const rendues: { sectionId: string; montantFc: number }[] = [];
@@ -494,6 +524,23 @@ export class AvancesMissionService {
 
   // ── OUTILS ────────────────────────────────────────────────────────────
 
+  /**
+   * L'EXERCICE DU GESTE · du dossier, OUVERT, et ses bornes contiennent la
+   * date (postulat de spécialisation des exercices) · refus nommé AVANT toute
+   * pièce, et une fiche ne se rattache jamais à un exercice clos ou étranger.
+   */
+  private async exerciceOuvertContenant(tenantId: string, exerciceId: string, date: string) {
+    const ex = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { statut: true, dateDebut: true, dateFin: true } });
+    if (!ex) throw new NotFoundException('Exercice introuvable dans ce dossier.');
+    if (ex.statut === StatutExercice.CLOTURE) throw new BadRequestException("L'exercice choisi est clôturé · le geste se passe dans un exercice ouvert.");
+    const d = jourUtc(date);
+    if (d < ex.dateDebut || d > ex.dateFin) {
+      throw new BadRequestException(
+        `La date ${date} n'est pas dans l'exercice choisi (${ex.dateDebut.toISOString().slice(0, 10)} au ${ex.dateFin.toISOString().slice(0, 10)}) · choisissez l'exercice de la date.`,
+      );
+    }
+  }
+
   private async verrouillerMission(tx: Prisma.TransactionClient, tenantId: string, missionId: string) {
     await prendreLeVerrouDuDossierBorne(tx, tenantId);
     await tx.$queryRaw`SELECT id FROM "missions_salarie" WHERE id = ${missionId} AND "tenantId" = ${tenantId} FOR UPDATE`;
@@ -506,7 +553,8 @@ export class AvancesMissionService {
       where: avecStatut({ id: ecritureId, tenantId }),
       select: { numeroPiece: true, lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
     });
-    if (!e) return;
+    // Une fiche qui nomme une pièce disparue ne se juge pas en silence · le geste s'arrête, nommé.
+    if (!e) throw new ConflictException(`La pièce de la fiche est introuvable dans ce dossier · rien n'est fait (${geste}). Relisez la mission.`);
     const tenue = motifLignesTenues(e.lignes, `la pièce n° ${e.numeroPiece ?? '·'}`, geste);
     if (tenue) throw new BadRequestException(tenue);
   }

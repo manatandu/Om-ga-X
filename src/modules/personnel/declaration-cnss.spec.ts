@@ -95,6 +95,21 @@ describe('déclaration CNSS préparée (arrêté n° 146/2018, art. 21 à 28)', 
     expect(d.manques.join(' ')).toContain('Bulletin n° 3');
   });
 
+  it('une cotisation CNSS en abstention rend NULS la base et les cotisations, jamais un total minoré', () => {
+    const enAbstention: BulletinDeclare = {
+      ...bulletin(4, 0, 300_000, 0),
+      calcul: { cotisations: { lignes: [], abstentions: ['CNSS · aucun barème lu pour le mois 2018-01.'] } },
+    };
+    const d = declarationCnss({ mois: '2026-03', employeur: EMPLOYEUR, bulletins: [bulletin(1, 1_000_000, 1_200_000, 2), enAbstention], travailleursAuDernierJour: 2 });
+    const e = (rang: number) => d.enonciations.find((x) => x.rang === rang)!;
+    expect(e(5).valeur).toBe(1_500_000);
+    expect(e(6).valeur).toBeNull();
+    expect(e(7).valeur).toBeNull();
+    expect(e(7).manque).toContain('s’abstient sur la CNSS');
+    expect(d.branches.every((b) => b.montantFc === null)).toBe(true);
+    expect(d.manques.join(' ')).toContain('Bulletin n° 4');
+  });
+
   it('ce que le registre ne tient pas est NOMMÉ · affiliation, adresse, immatriculation, enfants', () => {
     const d = declarationCnss({
       mois: '2026-03',

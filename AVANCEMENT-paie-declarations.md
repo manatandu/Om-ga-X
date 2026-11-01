@@ -26,23 +26,34 @@ sauvegarde `travail/paie-declarations`, partie de `origin/main`.
 3. **Avance de mission, régularisation, répartition par projet**
    (`personnel/avance-mission.ts`, `avances-mission.service.ts`, migration
    `20270246001100_avances_mission`, `AvanceMissionPaie.tsx`). Avance ·
-   D 4211 / C trésorerie au brouillard (fiche du compte 42 des deux plans),
+   D 4213 / C trésorerie au brouillard (fiche du compte 42 des deux plans),
    caisse provisionnée jugée. Régularisation au retour (fin constatée) ·
-   D 6384 des frais justifiés / C 4211 de l'avance, écart · complément
-   (C trésorerie), trop-versé rendu (D trésorerie) ou retenu sur la paie
-   (une avance du registre, Code du travail, art. 112, c). Une mission avancée
+   D 6384 des frais justifiés / C 4213 de l'avance entière, écart ·
+   complément (C trésorerie), trop-versé rendu (D trésorerie) ou retenu sur
+   la paie · reclassé D 4211 puis repris par une avance du registre (Code du
+   travail, art. 112, c). Le 4213 se solde dans les quatre issues. Une mission avancée
    ne porte plus ses frais justifiés au bulletin, le forfait imposable y reste.
    Pièces retenues (`detenteurs-ecriture.ts`), annulation motivée (brouillard
    retiré, validée en négatif, AUDCIF art. 20, al. 2). Répartition des frais
    par plan, 100 %, sections Détail actives, part au centime par le plus fort
-   reste, appliquée au 6384 de la régularisation.
+   reste, appliquée au 6384 de la régularisation · refusée sans avance active.
+
+4. **Relecture du 2026-11-01** · 4213 (décision par la loi, ci-dessous) ;
+   répartition refusée sans avance (MAJEUR 1) ; registre des retenues réduit
+   aux natures de la paie pour le gestionnaire, filtré au serveur
+   (`retenues/vue-de-la-paie.ts`, MAJEUR 2) ; exercice du geste jugé (du
+   dossier, ouvert, date dans ses bornes) ; ordre des gestes nommé à
+   l'annulation d'une mission régularisée ; abstention CNSS d'un bulletin ·
+   totaux des points 6 et 7 nuls, nommés ; point 5 tranché (toutes les sommes
+   payées) ; répartitions bornées et dites ; modules relus avant d'activer la
+   paie ; motif trop court dit ; pièce introuvable refusée, nommée.
 
 ## Scénario sur vraie base
 
 `DATABASE_URL=<base jetable locale> node scripts/rejouer-paie-declarations.cjs`
-après `npm run build` et `prisma migrate deploy` · 42 contrôles verts à travers
-la clôture de 2026 (4211 reporté 200 000 en 2027 puis soldé par la retenue de
-janvier, 6384 de 2026 = 380 000,50, ventilation 210 000,30 / 140 000,20,
+après `npm run build` et `prisma migrate deploy` · 49 contrôles verts à travers
+la clôture de 2026 (4213 reporté 200 000 en 2027 puis soldé par la
+régularisation, 50 000 reclassés au 4211 et soldés par la retenue de janvier, 6384 de 2026 = 380 000,50, ventilation 210 000,30 / 140 000,20,
 cotisations CNSS de décembre 162 000 = 18 % de 900 000).
 
 ## Limites écrites (non faites, et pourquoi)
@@ -65,19 +76,25 @@ cotisations CNSS de décembre 162 000 = 18 % de 900 000).
   bénéficiaires, P5). Le point 10 (date et mode de paiement) est un fait du
   versement · laissé au cabinet.
 
-- Le compte de l'avance est le 4211 « Personnel, avances » (fiche du compte
-  42 · « débité du montant des avances et acomptes faits au personnel […] par
-  le crédit des comptes de trésorerie »), pas le 4213 « Frais avancés et
-  fournitures au personnel », qui vise ce que l'entité avance ou fournit pour
-  le personnel.
+- DÉCISION PAR LA LOI (2026-11-01, relecture) · le compte de l'avance est le
+  4213 « Frais avancés et fournitures au personnel », aux deux référentiels.
+  Fiche du compte 42 (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · le 421 se
+  subdivise en 4211 « Personnel, avances », 4212 « Personnel, acomptes »,
+  4213 « Frais avancés et fournitures au personnel ». L'avance de mission
+  n'est pas une avance sur la rémunération (art. 112, c) du Code du travail,
+  4211 et 4212) · ce sont des frais avancés pour une dépense de l'entité.
+  Semé aux deux plans (`compte-seed.ts`, `compte-seed-syscohada.ts`). Au
+  trop-versé retenu, la créance change de nature · reclassée D 4211 / C 4213,
+  reprise par l'avance du registre au 4211.
+- Point 5 de la déclaration · « sommes payées », pas la rémunération (point 6,
+  art. 17, point 1 ; Code du travail, art. 7, point 8) · toutes les sommes
+  payées, remboursements de frais compris (le total versé figé).
 - Le trop-versé retenu est une avance de l'art. 112, c) · aucun plafond (le
   texte ne renvoie à l'art. 114 que pour son litera d), la retenue jamais
   au-delà du solde (mécanique existante).
 
 ## Questions ouvertes (le corpus ne tranche pas)
 
-- 4211 ou 4213 pour l'avance de mission · le 4211 est retenu par la lettre
-  du fonctionnement du compte 42 ; le 4213 n'a pas de fonctionnement écrit.
 - Conventions d'OmegaX · une seule avance non annulée par mission ; l'avance
   versée au plus tard au retour prévu ; régularisation après la fin constatée.
 

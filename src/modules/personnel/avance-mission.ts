@@ -4,28 +4,34 @@
  * 2026-11-01). Règles pures, sans Prisma.
  *
  * L'AVANCE · une somme remise au travailleur AVANT le départ, pour couvrir
- * les dépenses de la mission. Fiche du compte 42 des deux plans (AUDCIF
- * Titre VII ; SYCEBNL Partie 2 ch. 3) · « débité du montant des avances et
- * acomptes faits au personnel […] par le crédit des comptes de trésorerie » ·
- * D 4211 « Personnel, avances » / C trésorerie (`passation-paie.ts`, rôle
- * AVANCES_AU_PERSONNEL). Pièce exigée (reçu signé, bon de sortie de caisse ·
+ * les dépenses de la mission. DÉCISION PAR LA LOI (2026-11-01) · fiche du
+ * compte 42 des deux plans (AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) · le
+ * 421 se subdivise en 4211 « Personnel, avances », 4212 « Personnel,
+ * acomptes », 4213 « Frais avancés et fournitures au personnel ». Ce ne sont
+ * pas des avances sur la rémunération (art. 112, c) du Code du travail, au
+ * 4211 et au 4212) mais des FRAIS AVANCÉS pour une dépense de l'entité ·
+ * D 4213 / C trésorerie (`passation-paie.ts`, rôle FRAIS_AVANCES_AU_PERSONNEL,
+ * semé aux deux plans). Pièce exigée (reçu signé, bon de sortie de caisse ·
  * AUDCIF art. 17, 3°).
  *
  * LA RÉGULARISATION AU RETOUR · les frais JUSTIFIÉS de la mission (sur pièce,
  * `missions-salarie.ts` · remboursement d'une dépense effective, hors des deux
  * assiettes) se portent en charge au 6384 « Missions » (fiche du compte 66 ·
- * « en principe être enregistrés en 62 ou 63 ») contre l'avance au 4211.
+ * « en principe être enregistrés en 62 ou 63 ») contre l'avance au 4213.
  * L'écart se règle selon son sens :
- *  · frais = avance · SOLDÉE, D 6384 / C 4211 ;
- *  · frais > avance · COMPLÉMENT PAYÉ au salarié, D 6384 / C 4211 de l'avance /
+ *  · frais = avance · SOLDÉE, D 6384 / C 4213 ;
+ *  · frais > avance · COMPLÉMENT PAYÉ au salarié, D 6384 / C 4213 de l'avance /
  *    C trésorerie du complément ;
- *  · frais < avance · le TROP-VERSÉ est RENDU (D 6384 / D trésorerie / C 4211),
+ *  · frais < avance · le TROP-VERSÉ est RENDU (D 6384 / D trésorerie / C 4213),
  *    ou RETENU SUR LA PAIE · « les retenues ci-après sont autorisées : […]
- *    c) retenues à titre d'avances » (Code du travail, art. 112). Le 4211 garde
- *    alors le trop-versé (D 6384 / C 4211 des seuls frais) et le registre en
- *    tient une AVANCE de ce montant, retenue bulletin après bulletin par la
- *    mécanique existante (`avances-salaire.ts` · jamais au-delà du solde,
- *    aucun plafond que l'art. 112 ne pose, le jugement au cabinet).
+ *    c) retenues à titre d'avances » (Code du travail, art. 112). La créance
+ *    CHANGE DE NATURE · elle devient une avance sur rémunération à retenir, et
+ *    la régularisation la RECLASSE (D 6384 des frais, D 4211 du trop-versé /
+ *    C 4213 de l'avance entière) ; le registre en tient une AVANCE de ce
+ *    montant au 4211, retenue bulletin après bulletin par la mécanique
+ *    existante (`avances-salaire.ts` · jamais au-delà du solde, aucun plafond
+ *    que l'art. 112 ne pose, le jugement au cabinet).
+ * Le 4213 se SOLDE ainsi dans les quatre issues.
  *
  * CE QUI PART AU BULLETIN, ET CE QUI N'Y PART PLUS · une mission AVANCÉE ne
  * porte plus ses frais justifiés au bulletin (la régularisation les impute) ·
@@ -147,15 +153,16 @@ export function motifRefusRegularisation(params: {
 
 /** Une ligne de l'écriture proposée · par rôle, jamais par numéro (les numéros vivent dans `passation-paie.ts`). */
 export type LigneRegularisation = {
-  readonly role: 'MISSIONS' | 'AVANCES_AU_PERSONNEL' | 'TRESORERIE';
+  readonly role: 'MISSIONS' | 'FRAIS_AVANCES_AU_PERSONNEL' | 'AVANCES_AU_PERSONNEL' | 'TRESORERIE';
   readonly debit: number;
   readonly credit: number;
 };
 
 /**
  * LES LIGNES DE LA RÉGULARISATION · en centimes entiers, équilibrées par
- * construction. Vide quand rien ne se passe au journal (trop-versé entier
- * retenu, aucun frais justifié).
+ * construction. Le 4213 est crédité de l'AVANCE ENTIÈRE dans les quatre issues
+ * · il se solde toujours. Au trop-versé retenu, le 4211 reçoit l'écart
+ * reclassé, que les retenues de bulletin soldent.
  */
 export function lignesDeLaRegularisation(justifieFc: number, avanceFc: number, issue: IssueRegularisation): LigneRegularisation[] {
   const j = c(justifieFc);
@@ -164,27 +171,31 @@ export function lignesDeLaRegularisation(justifieFc: number, avanceFc: number, i
   if (j > 0) l.push({ role: 'MISSIONS', debit: j / 100, credit: 0 });
   switch (issue) {
     case 'SOLDEE':
-      if (a > 0) l.push({ role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: a / 100 });
       break;
     case 'COMPLEMENT_PAYE':
-      if (a > 0) l.push({ role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: a / 100 });
       l.push({ role: 'TRESORERIE', debit: 0, credit: (j - a) / 100 });
       break;
     case 'TROP_VERSE_RENDU':
       l.push({ role: 'TRESORERIE', debit: (a - j) / 100, credit: 0 });
-      l.push({ role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: a / 100 });
       break;
     case 'TROP_VERSE_RETENU':
-      // Le 4211 garde le trop-versé, que les retenues de bulletin soldent.
-      if (j > 0) l.push({ role: 'AVANCES_AU_PERSONNEL', debit: 0, credit: j / 100 });
+      l.push({ role: 'AVANCES_AU_PERSONNEL', debit: (a - j) / 100, credit: 0 });
       break;
   }
+  if (a > 0) l.push({ role: 'FRAIS_AVANCES_AU_PERSONNEL', debit: 0, credit: a / 100 });
   return l;
 }
 
 // ── LA RÉPARTITION PAR PROJET ────────────────────────────────────────────
 
 export type LigneRepartitionMission = { readonly sectionId: string; readonly pourcentage: number };
+
+/**
+ * Au plus autant de lignes de répartition par mission, tous plans confondus ·
+ * borne de saisie, convention d'OmegaX. La pose la tient ; une lecture qui en
+ * trouverait davantage se refuse, nommée, plutôt que de ventiler sur une part.
+ */
+export const PLAFOND_REPARTITIONS_MISSION = 200;
 
 /** Même règle que la répartition de la paie · une répartition vide RETIRE celle du plan. */
 export function motifRefusRepartitionMission(params: {

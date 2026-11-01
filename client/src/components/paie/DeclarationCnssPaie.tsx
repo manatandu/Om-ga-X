@@ -79,6 +79,11 @@ export function OngletDeclarationCnss() {
           }
           source="Arrêté n° 146/2018, art. 21 à 28 · décret n° 18/041, art. 2 à 4"
         />
+        <Aide
+          titre="Point 5 · sommes payées"
+          texte="Le point 5 porte toutes les sommes payées aux travailleurs, et non la seule rémunération · le point 6 est la rémunération prise en considération pour les cotisations, qui exclut soins de santé, logement, allocations familiales légales, transport, frais de voyage et avantages accordés pour faciliter les fonctions. Le point 5 comprend donc ces sommes, remboursements de frais de mission compris (le total versé de chaque bulletin)."
+          source="Arrêté n° 146/2018, art. 17, point 1, et 23 · Code du travail, art. 7, point 8"
+        />
       </div>
       <Erreur m={erreur} />
       <Erreur m={avisExport ?? ''} />

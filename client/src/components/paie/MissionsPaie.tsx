@@ -50,6 +50,7 @@ export type MissionLue = {
   avance?: AvanceDeMission;
   aPorterAuBulletin?: { justifieFc: number; forfaitFc: number };
   repartitions?: RepartitionDeMission[];
+  repartitionsTronquees?: boolean;
 };
 
 const ELEMENT: Record<FraisMissionLu['element'], string> = {
