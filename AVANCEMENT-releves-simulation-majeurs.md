@@ -43,6 +43,12 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   migration `20270247000000_verrou_garnissage_demonstration`, diff vérifié),
   pris au marquage ou à la reprise, rendu en `finally` ; un second « Ouvrir »
   reçoit un 409 qui dit depuis quand ; tombé, repris après trente minutes.
+- Rejeu sur vraie base · `scripts/rejouer-releves-simulation-majeurs.cjs`
+  (PostgreSQL 16 jetable, serveur compilé, à travers la clôture de 2025) ·
+  K1 (2026 ne nomme que les 50 000 passés à la main) et F D3 (FG de 2026 à
+  zéro après une reprise de 100 000), TOUT CONCORDE.
+- 585 du groupe (relevé après le second tour de G1) · déjà corrigé · voir le
+  rapport.
 
 ## Reste
 
