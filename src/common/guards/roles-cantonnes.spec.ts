@@ -236,6 +236,10 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
         // Ligne multi-dossiers · la liste de SES dossiers et le changement de dossier.
         'AuthController.mesDossiers',
         'AuthController.changerDossier',
+        // Et les invitations reçues à son adresse.
+        'AuthController.mesInvitations',
+        'AuthController.accepterInvitation',
+        'AuthController.refuserInvitation',
         // Le sélecteur d'exercice, sans aucun chiffre comptable.
         'ExerciceController.lister',
         // audit final F247 · la cotation est bornée au cours de l'USD du jour.

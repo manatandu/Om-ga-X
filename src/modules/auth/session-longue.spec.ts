@@ -433,7 +433,7 @@ describe('4 · déconnecter mes autres appareils', () => {
     // La session qui présentait l'acte est nommée fermée · le jeton neuf
     // porte un jeton CSRF neuf, et l'ancien, authentifié dans la même seconde
     // que la révocation, ne lui survit plus (ligne saisie-suites, point 3).
-    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT, sessionsFermees: [{ e: empreinteSession('ancien'), f: S0 + DUREE_MAXIMALE_SESSION_LONGUE_S }] });
+    expect(capture.data).toEqual({ sessionsInvalidesAvant: MAINTENANT, sessionsDuCompteInvalidesAvant: MAINTENANT, sessionsFermees: [{ e: empreinteSession('ancien'), f: S0 + DUREE_MAXIMALE_SESSION_LONGUE_S }] });
     const neuf = lireJeton(r.accessToken);
     expect(neuf).toMatchObject({ longue: true, origine: S0 });
     // Le jeton neuf n'est pas tenu pour antérieur à sa propre révocation, à
@@ -569,7 +569,9 @@ describe('le contrôleur · un seul chemin pour le cookie, et la route nouvelle'
       .filter((m) => m !== 'constructor' && Reflect.getMetadata(PATH_METADATA, proto[m]) !== undefined)
       .filter((m) => !((Reflect.getMetadata(GUARDS_METADATA, proto[m]) ?? []) as unknown[]).includes(JwtAuthGuard))
       .sort();
-    expect(sansGarde).toEqual(['etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
+    // Ligne multi-dossiers · une adresse neuve accepte une invitation en
+    // choisissant son mot de passe, sans compte donc sans session.
+    expect(sansGarde).toEqual(['creerCompteParInvitation', 'etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
   });
 
   it('la route est ouverte à tous les rôles, et n’est PAS une sortie de mot de passe provisoire', () => {

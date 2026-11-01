@@ -8,6 +8,7 @@ import { surSessionPerdue } from './session-perdue';
 import { deconnecterServeur, fermerLaSession } from './deconnexion';
 import { oublierLEcranVu } from './logiciels';
 import { oublierLeDossierChoisi } from './dossiers-personne';
+import { CLE_DOSSIER_OUVERT, oublierDossierDeLEcran, poserDossierDeLEcran, rechargerSurLeDossierOuvert } from './dossier-de-l-ecran';
 
 interface MeResponse {
   id: string;
@@ -117,6 +118,12 @@ interface AuthContextValue {
    * déconnexion voulue ou une connexion réussie.
    */
   motifDeconnexion: string | null;
+  /**
+   * Invitations reçues en attente (ligne multi-dossiers) · `null` tant
+   * qu'elles ne sont pas lues ; un échec de lecture les laisse à `null`, la
+   * liste des dossiers les relit et dit l'échec.
+   */
+  invitationsEnAttente: number | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -125,6 +132,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [utilisateur, setUtilisateur] = useState<MeResponse | null>(null);
   const [chargement, setChargement] = useState(true);
   const [motifDeconnexion, setMotifDeconnexion] = useState<string | null>(null);
+  const [invitationsEnAttente, setInvitationsEnAttente] = useState<number | null>(null);
+  // Une fois l'utilisateur lu, ses invitations reçues · elles font montrer la
+  // liste des dossiers après la connexion à qui n'en tient qu'un.
+  useEffect(() => {
+    if (!utilisateur) {
+      setInvitationsEnAttente(null);
+      return;
+    }
+    let vivant = true;
+    api.get<unknown[]>('/auth/invitations').then(
+      (l) => vivant && setInvitationsEnAttente(Array.isArray(l) ? l.length : null),
+      () => vivant && setInvitationsEnAttente(null),
+    );
+    return () => {
+      vivant = false;
+    };
+  }, [utilisateur?.id]);
   // Lu par l'écouteur de session perdue, abonné une fois · l'état React vu
   // depuis sa fermeture serait celui du premier rendu.
   const ouverte = useRef(false);
@@ -151,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         oublierPrechargement();
         oublierLEcranVu();
         oublierLeDossierChoisi();
+        oublierDossierDeLEcran();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(motif);
@@ -176,8 +201,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const chargerUtilisateur = async (exigeante = false) => {
     try {
       const { csrfToken, ...me } = await api.get<MeEtCsrf>('/auth/me');
-      // Le jeton CSRF de CE cookie (audit final F270) · il suit la session au
-      // lieu de lui survivre ou de mourir avant elle (lib/api.ts).
+      // Un autre dossier que celui que l'onglet affiche · rechargé, jamais
+      // habillé du nom du nouveau (ligne multi-dossiers, B1).
+      if (poserDossierDeLEcran(me.tenant.id) === 'CHANGE') {
+        rechargerSurLeDossierOuvert();
+        return;
+      }
       synchroniserCsrf(csrfToken);
       setUtilisateur(me);
       // Le dossier vient d'être ouvert · il rejoint la liste des dossiers
@@ -238,6 +267,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.get<MeEtCsrf>('/auth/me').then(
         ({ csrfToken, ...me }) => {
           if (!ouverte.current) return;
+          if (poserDossierDeLEcran(me.tenant.id) === 'CHANGE') {
+            rechargerSurLeDossierOuvert();
+            return;
+          }
           synchroniserCsrf(csrfToken);
           setUtilisateur(me);
         },
@@ -248,10 +281,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', surRetour);
   }, []);
 
+  /**
+   * UN AUTRE ONGLET A CHANGÉ DE DOSSIER OU DE SESSION (ligne multi-dossiers,
+   * B1) · le dossier ouvert ou le jeton CSRF du stockage partagé a changé.
+   * L'onglet relit `/auth/me` · un autre dossier le recharge ; une session
+   * perdue suit son chemin (`surSessionPerdue`).
+   */
+  useEffect(() => {
+    const surStockage = (e: StorageEvent) => {
+      if (!ouverte.current || (e.key !== CLE_DOSSIER_OUVERT && e.key !== 'omegax:csrf')) return;
+      api.get<MeEtCsrf>('/auth/me').then(
+        ({ csrfToken, ...me }) => {
+          if (poserDossierDeLEcran(me.tenant.id) === 'CHANGE') rechargerSurLeDossierOuvert();
+          else synchroniserCsrf(csrfToken);
+        },
+        () => undefined,
+      );
+    };
+    window.addEventListener('storage', surStockage);
+    return () => window.removeEventListener('storage', surStockage);
+  }, []);
+
   const seConnecter = async (csrfToken: string) => {
     setMotifDeconnexion(null);
     // Une connexion neuve repose la question du dossier (ligne multi-dossiers).
     oublierLeDossierChoisi();
+    oublierDossierDeLEcran();
     setCsrf(csrfToken);
     // Ne PAS repasser `chargement` à true ici : ZoneProtegee (App.tsx) affiche
     // un plein écran « Chargement… » à la place de ses enfants tant que
@@ -285,6 +340,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         oublierLEcranVu();
         // Et la liste des dossiers d'une personne qui en tient plusieurs.
         oublierLeDossierChoisi();
+        oublierDossierDeLEcran();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(null);
@@ -305,6 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         rafraichir,
         seDeconnecter,
         motifDeconnexion,
+        invitationsEnAttente,
       }}
     >
       {children}

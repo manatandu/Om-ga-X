@@ -344,6 +344,9 @@ l'éditeur vers `OPERATEURS_PLATEFORME`, jamais rendu au client ; sans
 messagerie, 503 nommé et rien d'écrit ; champ piège, plafond global de
 soixante par heure lu en base ; les demandes non parties comptées et reprises
 dans la console de l'éditeur). Le paiement en ligne reste exclu.
+Puis, le 2026-11-01, la ligne MULTI-DOSSIERS (« Enchaîne le point 3 et 4 ») ·
+une personne, une adresse, un mot de passe, plusieurs dossiers, chacun avec
+son rôle, son profil, ses journaux et ses logiciels (§ 8).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -5686,19 +5689,50 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   facteur, verrou et mot de passe provisoire vivent sur le COMPTE DE
   CONNEXION (`compteDeConnexionId` nul), que `JwtStrategy` relit pour une
   appartenance rattachée ; l'adresse de connexion (`courrielDeConnexion`,
-  unique) est posée par un DÉCLENCHEUR de la base, jamais par le code, et
-  l'adresse n'est plus unique que par dossier. Le dossier de la requête est
-  celui de la ligne du jeton, et rien d'autre (`dossier-de-la-session.spec.ts`
-  · aucun dossier en paramètre, en requête ou en en-tête hors de la console) ;
-  changer de dossier est un GESTE (`POST /auth/changer-dossier`, CSRF), qui
-  ferme la session en cours et en ouvre une sous un jeton CSRF neuf, parmi les
-  seules appartenances ACTIVES de la personne (404 sinon). Rattacher une
-  adresse connue ailleurs rend la MÊME réponse qu'une création · ni la
-  réponse, ni le journal d'audit (`compteDeConnexionId` et
-  `courrielDeConnexion` exclus), ni la restitution ne disent qu'elle existe
-  ailleurs ; le mot de passe saisi par l'administrateur n'y ouvre jamais rien.
-  Un dossier d'essai dont une personne est rattachée ailleurs n'est jamais
-  supprimé. Rejeu · `scripts/rejouer-multi-dossiers.cjs`.
+  unique) est posée par un DÉCLENCHEUR de la base, jamais par le code, qui
+  refuse aussi de changer le lien d'une ligne existante ; l'adresse n'est plus
+  unique que par dossier. Le dossier de la requête est celui de la ligne du
+  jeton, et rien d'autre (`dossier-de-la-session.spec.ts` · aucun dossier lu en
+  paramètre, en requête ou en en-tête hors de la console) ; changer de dossier
+  est un GESTE (`POST /auth/changer-dossier`, CSRF), qui ferme la session en
+  cours et en ouvre une sous un jeton CSRF neuf, parmi les seules
+  appartenances ACTIVES de la personne (404 sinon). Quatre règles, issues de
+  la relecture de sécurité, à ne pas défaire. (1) UNE ADRESSE CONNUE N'ENTRE
+  QUE PAR INVITATION ACCEPTÉE · avec une messagerie, ajouter quelqu'un
+  l'invite (`InvitationDossier`, jeton à usage unique de quatorze jours,
+  gardé en empreinte, envoyé par `envoyerUnSecret`, jamais dans la file) ;
+  rien n'est créé avant qu'il accepte avec le code ET sa session, ou, adresse
+  neuve, crée son compte avec SON mot de passe ; la réponse et le courriel
+  sont les mêmes pour une adresse connue ou neuve. Sans messagerie, la
+  création reste directe · sur site (un seul organisme) une adresse connue
+  est rattachée avec son propre mot de passe, en ligne elle est refusée en 503
+  « messagerie requise » (limite écrite · ce refus dit à l'administrateur
+  qu'elle existe ; une adresse neuve est créée). Aucun mot de passe n'est
+  posé ni haché pour une adresse existante. (2) AUCUN ADMINISTRATEUR N'AGIT SUR
+  LA CONNEXION D'UNE PERSONNE QUI A D'AUTRES DOSSIERS · réinitialiser,
+  déverrouiller et lever le second facteur d'un compte que d'autres dossiers
+  pointent, ou d'une ligne rattachée, sont refusés en 403 nommé, sans dire
+  lesquels (`connexionTenueParLaPersonne`) ; la liste du dossier le dit au
+  lieu de servir le verrou de la ligne. L'opérateur réinitialise par un mot de
+  passe tiré au sort envoyé au titulaire, sans lever le second facteur d'un
+  compte à appartenances. (3) DEUX RÉVOCATIONS · `sessionsInvalidesAvant`, par
+  dossier (l'administrateur ne ferme que les sessions de SON dossier) ;
+  `sessionsDuCompteInvalidesAvant`, la personne (mot de passe, adresse,
+  second facteur, « toutes mes sessions »), relue par `JwtStrategy` sur le
+  compte. (4) L'ONGLET DIT SON DOSSIER · toute modification portée par le
+  cookie envoie `X-Dossier` (`lib/dossier-de-l-ecran.ts`), et `JwtAuthGuard`
+  refuse en 409 marqué `dossierChange` un dossier différent de la session, ou
+  son absence quand la session porte `plusieursDossiers` (posé par la
+  connexion qui le constate et par le changement de dossier, recopié par la
+  prolongation) ; l'écran recharge l'onglet sur le dossier ouvert. L'en-tête
+  ne CHOISIT jamais le dossier, il le confirme. Ni la réponse, ni le journal
+  d'audit (`compteDeConnexionId`, `courrielDeConnexion`, `empreinteJeton`
+  exclus), ni la restitution ne disent qu'une personne existe ailleurs ;
+  l'adresse changée se recopie par mises à jour unitaires, chacune au journal
+  de SON dossier. Un dossier d'essai dont une personne est rattachée ailleurs
+  n'est jamais supprimé. Rejeu · `scripts/rejouer-multi-dossiers.cjs` (boîte
+  SMTP de poche) ; parcours navigateur complet hors CI, qui n'a pas de
+  messagerie (`multi-dossiers.e2e.ts`).
 - **Verrouillage par compte** temporaire (`src/modules/auth/verrouillage.ts`),
   vérifié APRÈS bcrypt depuis le 2026-09-28 (audit final F238) · un verrou
   qui répondait sans hachage se reconnaissait à sa rapidité. Une adresse

@@ -12,6 +12,7 @@ import { ChangerAdresseDto } from './dto/changer-adresse.dto';
 import { ActiverDoubleAuthDto, DesactiverDoubleAuthDto, RegenererCodesSecoursDto } from './dto/double-authentification.dto';
 import { DeconnecterAutresAppareilsDto } from './dto/deconnecter-autres-appareils.dto';
 import { ChangerDossierDto } from './dto/changer-dossier.dto';
+import { CreerCompteParInvitationDto, JetonInvitationDto } from './dto/invitation.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { extraireJetonDuCookie } from './jwt.strategy';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -376,5 +377,47 @@ export class AuthController {
     const r = await this.authService.changerDeDossier(user.userId, dto.dossierId, sessionDeLaRequete(res.req));
     if (!r.session) return { dossierId: r.dossierId, change: false };
     return { dossierId: r.dossierId, change: true, ...this.poserSession(res, r.session) };
+  }
+
+  /**
+   * LES INVITATIONS REÇUES PAR LA PERSONNE (ligne multi-dossiers,
+   * `utilisateurs/invitations.ts`) · celles adressées à SON adresse de
+   * connexion. Accepter ou refuser exige le jeton reçu à cette adresse ET la
+   * session · ni l'un ni l'autre seul ne suffit.
+   */
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Get('invitations')
+  mesInvitations(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.mesInvitations(user.userId);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/accepter')
+  accepterInvitation(@CurrentUser() user: AuthenticatedUser, @Body() dto: JetonInvitationDto) {
+    return this.authService.accepterUneInvitation(user.userId, dto.jeton);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/refuser')
+  refuserInvitation(@CurrentUser() user: AuthenticatedUser, @Body() dto: JetonInvitationDto) {
+    return this.authService.refuserUneInvitation(user.userId, dto.jeton);
+  }
+
+  /**
+   * UNE ADRESSE NEUVE ACCEPTE EN CHOISISSANT SON MOT DE PASSE · sans session
+   * (la personne n'a pas encore de compte), le jeton seul, reçu à son adresse.
+   * Aucune session n'est rendue · elle se connecte ensuite. JSON seul, comme la
+   * connexion (piste 9 de l'audit du 2026-10-25).
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('invitations/creer-compte')
+  creerCompteParInvitation(@Body() dto: CreerCompteParInvitationDto, @Req() req?: Request) {
+    if (typeof req?.is === 'function' && !req.is('application/json')) throw new UnsupportedMediaTypeException(MOTIF_CONNEXION_EN_JSON);
+    return this.authService.creerMonCompteParInvitation(dto.jeton, dto.motDePasse);
   }
 }

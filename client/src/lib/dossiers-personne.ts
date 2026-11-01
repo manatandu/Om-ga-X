@@ -17,6 +17,51 @@ export interface DossierDeLaPersonne {
   role: RoleUtilisateur;
   exercice: { dateDebut: string; dateFin: string } | null;
   courant: boolean;
+  /** La licence du dossier · lecture seule (abonnement échu) ou fermée (suspendue, sans licence). */
+  acces?: 'NORMAL' | 'LECTURE_SEULE' | 'FERME';
+  motifAcces?: string | null;
+}
+
+/** La réponse de `GET /auth/mes-dossiers` · bornée, et elle le dit (§ 8 bis). */
+export interface ListeDesDossiersDeLaPersonne {
+  dossiers: DossierDeLaPersonne[];
+  total: number;
+  tronque: boolean;
+  introuvables: number;
+}
+
+/** Une invitation reçue (`GET /auth/invitations`) · le jeton n'y est jamais, il est dans le courriel. */
+export interface InvitationRecue {
+  id: string;
+  dossier: string;
+  role: RoleUtilisateur;
+  expireLe: string;
+}
+
+export const LIBELLES_ACCES: Record<NonNullable<DossierDeLaPersonne['acces']>, string> = {
+  NORMAL: 'Ouvert',
+  LECTURE_SEULE: 'Lecture seule',
+  FERME: 'Fermé',
+};
+
+const CLE_JETON = 'omegax.invitation.jeton';
+
+/** Le jeton d'une invitation ouverte par son lien avant la connexion · repris par la liste des dossiers. */
+export function garderJetonInvitation(jeton: string | null): void {
+  try {
+    if (jeton) sessionStorage.setItem(CLE_JETON, jeton);
+    else sessionStorage.removeItem(CLE_JETON);
+  } catch {
+    /* stockage fermé · la personne recopiera le code du courriel */
+  }
+}
+
+export function jetonInvitationGarde(): string {
+  try {
+    return sessionStorage.getItem(CLE_JETON) ?? '';
+  } catch {
+    return '';
+  }
 }
 
 export const LIBELLES_ROLES_DOSSIER: Record<RoleUtilisateur, string> = {
@@ -31,6 +76,10 @@ export const LIBELLES_ROLES_DOSSIER: Record<RoleUtilisateur, string> = {
 function jour(iso: string): string {
   const [a, m, j] = iso.slice(0, 10).split('-');
   return `${j}/${m}/${a}`;
+}
+
+export function dateDuJour(iso: string): string {
+  return jour(iso);
 }
 
 /** L'exercice ouvert le plus récent, dit · jamais « aucun » sur une valeur absente de la réponse. */

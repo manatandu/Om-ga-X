@@ -45,15 +45,22 @@ import {
   aPlusieursDossiers,
   appartenanceDansLeDossier,
   appartenanceDeConnexion,
+  accepterInvitation,
+  acteurDuCompte,
   appartenancesDeLaPersonne,
+  connexionTenueParLaPersonne,
+  creerCompteParInvitation,
+  invitationsRecues,
+  refuserInvitation,
   compteDeConnexionDe,
   dossiersDeLaPersonne,
-  effacerLeProvisoireALEntree,
   idDuCompteDeConnexion,
   recopierLAdresse,
   trouverCompteDeConnexion,
 } from './compte-de-connexion';
 import { sessionRevoquee } from './jwt.strategy';
+import { LicenceService } from '../licence/licence.service';
+import { dansContexteAudit as dansContexteActeur } from '../../common/audit/contexte-audit';
 
 export const SALT_ROUNDS = 12;
 
@@ -74,6 +81,16 @@ export const EMPREINTE_FACTICE = '$2b$12$zNSRXkByzfZhOQSR4/60ze6WWpSytqcVD.yZf5f
 export const MOTIF_LICENCE_EDITEUR_A_LA_CREATION =
   "La licence de l'éditeur ne s'attribue pas à la création d'un dossier · elle se pose une seule fois, par le geste " +
   "« Désigner comme dossier de l'éditeur… » de la console.";
+
+/**
+ * LA RÉVOCATION DE LA PERSONNE (ligne multi-dossiers) · ses actes sur sa
+ * connexion ferment ses sessions dans TOUS ses dossiers
+ * (`sessionsDuCompteInvalidesAvant`, lu par `JwtStrategy` sur chaque
+ * appartenance) et dans celui du compte.
+ */
+function revocationDeLaPersonne(instant: Date) {
+  return { sessionsInvalidesAvant: instant, sessionsDuCompteInvalidesAvant: instant };
+}
 
 @Injectable()
 export class AuthService {
@@ -329,7 +346,15 @@ export class AuthService {
       const licenceExistante = await horsCloisonnement("inscription d'essai · la licence du dossier du courriel donné", () =>
         this.prisma.licence.findUnique({ where: { tenantId: existant.tenantId } }),
       );
-      if (existant.role === RoleUtilisateur.ADMIN_CABINET && estUnDossierDEssai(licenceExistante) && renvoiPossible(existant, maintenant)) {
+      // Le renvoi change le mot de passe du COMPTE DE CONNEXION · refusé, sous
+      // la même réponse, quand ce compte ouvre aussi d'autres dossiers
+      // (relecture de sécurité, M2) · il fermerait ses sessions partout.
+      if (
+        existant.role === RoleUtilisateur.ADMIN_CABINET &&
+        estUnDossierDEssai(licenceExistante) &&
+        renvoiPossible(existant, maintenant) &&
+        !(await connexionTenueParLaPersonne(this.prisma, existant))
+      ) {
         const mot = motDePasseTireAuSort();
         const avis = avisInscriptionEssai(mot, maintenant, false);
         await horsCloisonnement("inscription d'essai · mot de passe renvoyé au seul titulaire", async () => {
@@ -517,7 +542,7 @@ export class AuthService {
 
     // LE COMPTE EST DÉSACTIVÉ QUAND AUCUN DE SES DOSSIERS NE L'ADMET PLUS ·
     // l'administrateur d'un dossier ne retire la personne que du sien.
-    const appartenances = await appartenancesDeLaPersonne(this.prisma, user.id);
+    const { lignes: appartenances, total: actives } = await appartenancesDeLaPersonne(this.prisma, user.id);
     const entree = appartenanceDeConnexion(user.id, appartenances);
     if (!entree) {
       throw new UnauthorizedException('Ce compte a été désactivé');
@@ -564,11 +589,10 @@ export class AuthService {
     const longue = dto.resterConnecte === true;
     // La connexion se journalise dans le dossier où la session s'ouvre.
     await this.journaliserConnexion({ id: entree.id, email: user.email, tenantId: entree.tenantId }, adresseIp, longue);
-    await effacerLeProvisoireALEntree(this.prisma, entree, user);
     // Mot de passe, et code s'il est actif · une connexion complète. Plusieurs
     // dossiers · l'écran montre la liste avant l'écran des logiciels.
-    const plusieursDossiers = appartenances.filter((a) => a.estActif).length > 1;
-    return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant' }), plusieursDossiers };
+    const plusieursDossiers = actives > 1;
+    return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };
   }
 
   /**
@@ -643,10 +667,15 @@ export class AuthService {
    * quand il y vit (le chemin de toujours), sinon par la sortie déclarée, le
    * compte vivant dans le dossier d'origine de la personne.
    */
-  private surLeCompte<T>(ligne: { tenantId: string }, compte: { tenantId: string }, geste: () => Promise<T>): Promise<T> {
+  private surLeCompte<T>(ligne: { tenantId: string }, compte: { id: string; email: string; tenantId: string }, geste: () => Promise<T>): Promise<T> {
+    // Depuis un autre dossier, l'acte s'inscrit dans la chaîne du dossier du
+    // compte sous la personne elle-même (relecture, m1) · jamais sous l'id
+    // d'une ligne d'un autre dossier.
     return ligne.tenantId === compte.tenantId
       ? geste()
-      : horsCloisonnement('compte de connexion · acte de son titulaire, authentifié, depuis un autre de ses dossiers', geste);
+      : horsCloisonnement('compte de connexion · acte de son titulaire, authentifié, depuis un autre de ses dossiers', () =>
+          dansContexteActeur(acteurDuCompte(compte), async () => geste()),
+        );
   }
 
   async etatDoubleAuth(userId: string) {
@@ -704,7 +733,7 @@ export class AuthService {
       ligne,
       u,
       session,
-      { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
+      { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, ...revocationDeLaPersonne(maintenant) },
       maintenant.getTime(),
     );
     await this.aviserDoubleAuth(ligne, 'ACTIVEE', maintenant);
@@ -721,7 +750,7 @@ export class AuthService {
       ligne,
       u,
       session,
-      { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
+      { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], ...revocationDeLaPersonne(maintenant) },
       maintenant.getTime(),
     );
     await this.aviserDoubleAuth(ligne, 'RETIREE', maintenant);
@@ -796,7 +825,7 @@ export class AuthService {
         // jusqu'à huit heures, trente jours pour une session « Rester
         // connecté » (audit final F270), et le changement ne servait à rien
         // pour la seule période où il aurait servi.
-        sessionsInvalidesAvant: maintenant,
+        ...revocationDeLaPersonne(maintenant),
         // Un mot de passe changé délie aussi le verrou · le titulaire a
         // prouvé qui il est en donnant l'ancien.
         ...DECOMPTE_REMIS_A_ZERO,
@@ -830,7 +859,7 @@ export class AuthService {
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
     try {
       const maintenant = new Date();
-      await this.revoquerEtFermerLaSession(ligne, user, session, { email: adresse, sessionsInvalidesAvant: maintenant }, maintenant.getTime(), adresse);
+      await this.revoquerEtFermerLaSession(ligne, user, session, { email: adresse, ...revocationDeLaPersonne(maintenant) }, maintenant.getTime(), adresse);
     } catch (e) {
       if ((e as { code?: string })?.code === 'P2002') {
         throw new ConflictException('Cette adresse est déjà utilisée par un autre compte.');
@@ -866,7 +895,7 @@ export class AuthService {
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
-    await this.revoquerEtFermerLaSession(ligne, user, session, { sessionsInvalidesAvant: maintenant }, maintenant.getTime());
+    await this.revoquerEtFermerLaSession(ligne, user, session, revocationDeLaPersonne(maintenant), maintenant.getTime());
     return { autresAppareilsDeconnectes: true, ...this.reemettre(ligne, session, maintenant.getTime()) };
   }
 
@@ -955,7 +984,7 @@ export class AuthService {
     await this.surLeCompte(ligne, compte, () =>
       this.prisma.user.update({
         where: { id: compte.id },
-        data: { sessionsInvalidesAvant: new Date() },
+        data: revocationDeLaPersonne(new Date()),
       }),
     );
     return { sessionsFermees: true };
@@ -1100,12 +1129,13 @@ export class AuthService {
    */
   private async revoquerEtFermerLaSession(
     user: { id: string; tenantId: string },
-    compte: { id: string; tenantId: string },
+    compte: { id: string; email: string; tenantId: string },
     session: SessionEnCours | null,
     data: Prisma.UserUpdateInput,
     maintenantMs: number,
     adresse?: string,
   ): Promise<void> {
+    const acteurAvantLeCompte = acteurCourant();
     // `user` est la ligne de la SESSION (la session remplacée se ferme sur
     // elle), `compte` le compte de connexion de sa personne (l'acte s'y
     // écrit) · la même ligne pour un utilisateur d'un seul dossier.
@@ -1132,7 +1162,11 @@ export class AuthService {
         await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
       } else {
         await tx.user.update({ where: { id: compte.id }, data });
-        if (Object.keys(fermeture).length > 0) await tx.user.update({ where: { id: user.id }, data: fermeture });
+        if (Object.keys(fermeture).length > 0) {
+          await dansContexteActeur(acteurAvantLeCompte ?? { acteurEmail: compte.email, tenantId: user.tenantId }, async () =>
+            tx.user.update({ where: { id: user.id }, data: fermeture }),
+          );
+        }
       }
       // L'adresse changée se lit dans chaque dossier de la personne.
       if (adresse !== undefined) await recopierLAdresse(tx, compte.id, adresse);
@@ -1146,7 +1180,7 @@ export class AuthService {
    */
   async mesDossiers(userId: string) {
     const { ligne } = await this.compteDeLaSession(userId);
-    return dossiersDeLaPersonne(this.prisma, idDuCompteDeConnexion(ligne), ligne.tenantId);
+    return dossiersDeLaPersonne(this.prisma, idDuCompteDeConnexion(ligne), ligne.tenantId, new LicenceService(this.prisma, this.surSite));
   }
 
   /**
@@ -1162,7 +1196,7 @@ export class AuthService {
    * session la frappe (403 nommé, reconnexion demandée).
    */
   async changerDeDossier(userId: string, dossierId: string, session: SessionEnCours | null, maintenantMs = Date.now()) {
-    const { ligne, compte } = await this.compteDeLaSession(userId);
+    const { ligne } = await this.compteDeLaSession(userId);
     const compteId = idDuCompteDeConnexion(ligne);
     const visee = await appartenanceDansLeDossier(this.prisma, compteId, dossierId);
     if (!visee) throw new NotFoundException('Dossier introuvable parmi les vôtres.');
@@ -1178,11 +1212,35 @@ export class AuthService {
     const emise = emettreSession(
       this.jwt,
       visee.id,
-      { ...demande, authentification: session?.authentification ?? session?.iat ?? null },
+      { ...demande, authentification: session?.authentification ?? session?.iat ?? null, plusieursDossiers: true },
       maintenantMs,
     );
-    await effacerLeProvisoireALEntree(this.prisma, visee, compte);
     return { dossierId: visee.tenantId, session: emise };
+  }
+
+  /** Les invitations reçues par la personne de la session (nom du dossier, rôle, échéance). */
+  async mesInvitations(userId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    return invitationsRecues(this.prisma, compte.email);
+  }
+
+  /** Accepter une invitation · le jeton reçu ET la session de la personne (`compte-de-connexion.ts`). */
+  async accepterUneInvitation(userId: string, jeton: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    const tire = await bcrypt.hash(randomUUID() + randomUUID(), SALT_ROUNDS);
+    return accepterInvitation(this.prisma, compte, jeton, tire, { id: true });
+  }
+
+  async refuserUneInvitation(userId: string, jeton: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    await refuserInvitation(this.prisma, compte, jeton);
+    return { refusee: true };
+  }
+
+  /** Une adresse neuve accepte en choisissant son mot de passe · aucune session n'est rendue, elle se connecte ensuite. */
+  async creerMonCompteParInvitation(jeton: string, motDePasse: string) {
+    const r = await creerCompteParInvitation(this.prisma, jeton, await bcrypt.hash(motDePasse, SALT_ROUNDS));
+    return { cree: true, email: r.email };
   }
 
   private reemettre(user: { id: string }, session: SessionEnCours | null, instantMs?: number, complete = false): SessionEmise {

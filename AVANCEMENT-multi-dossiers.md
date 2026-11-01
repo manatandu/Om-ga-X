@@ -31,7 +31,7 @@ Branche de sauvegarde `travail/multi-dossiers`, partie d'`origin/main`
   est une ligne `User` de ce dossier qui pointe ce compte
   (`compteDeConnexionId`).
 
-### 1.2 Modèle de données (migration `20270247000000_comptes_rattaches`)
+### 1.2 Modèle de données (migration `20270248000000_comptes_rattaches`)
 
 - `User.compteDeConnexionId String?` · relation vers `User`
   (`ComptesRattaches`, `onDelete: Restrict`), index. Nul pour toute ligne
@@ -85,19 +85,31 @@ Branche de sauvegarde `travail/multi-dossiers`, partie d'`origin/main`
   sessions aussitôt (`estActif`, `sessionsInvalidesAvant`), dans ce dossier
   seulement.
 
-### 1.4 Qui rattache
+### 1.4 Qui rattache (refait après la relecture de sécurité)
 
-`POST /utilisateurs` (administrateur du dossier, inchangé) ·
-- adresse inconnue · le compte se crée comme aujourd'hui ;
-- adresse déjà compte de connexion AILLEURS · une appartenance est créée dans
-  CE dossier (même rôle, mot de passe provisoire haché sur la ligne et jamais
-  lu, `doitChangerMotDePasse` posé comme une création), et la RÉPONSE EST LA
-  MÊME qu'une création (mêmes champs, même statut, une empreinte bcrypt de
-  même coût) · le dossier n'apprend pas que l'adresse existe ailleurs, ni où ;
-- adresse déjà utilisateur de CE dossier · 409, comme aujourd'hui (le dossier
-  voit déjà ses utilisateurs).
-Jusqu'ici une adresse prise ailleurs rendait 409 « Un compte existe déjà avec
-cet email » · c'était la divulgation que la ligne supprime.
+Le premier jet rattachait une adresse connue AILLEURS à réponse identique, en
+posant sur la ligne le mot de passe saisi par l'administrateur. La relecture
+de sécurité (C1, E1, E2) l'a fait tomber · l'administrateur du dossier
+d'origine pouvait réinitialiser le compte de connexion et entrer dans B, et
+un tiers « squattait » une adresse. Décision appliquée ·
+
+- **Mode INVITATION** dès qu'une messagerie est configurée (en ligne) ·
+  `POST /utilisateurs` n'écrit aucune ligne, il crée une `InvitationDossier`
+  (jeton tiré au sort, empreinte SHA-256 seule en base, quatorze jours) et
+  envoie le jeton par `envoyerUnSecret` (la file ne garde que le texte sans
+  lui). Même réponse et même courriel pour une adresse connue ou neuve. La
+  personne accepte avec le code ET sa session dont le compte porte l'adresse
+  (`POST /auth/invitations/accepter`), ou refuse ; une adresse neuve crée son
+  compte avec SON mot de passe (`POST /auth/invitations/creer-compte`,
+  publique, limitée). Une nouvelle invitation à la même adresse annule la
+  précédente ; l'administrateur peut l'annuler.
+- **Mode DIRECT** sans messagerie · sur site (un seul organisme, aucun tiers à
+  protéger) une adresse connue est rattachée avec son propre mot de passe,
+  celui saisi n'étant pas haché ; en ligne elle est refusée en 503 « la
+  messagerie est requise pour ce geste ». Limite écrite · ce refus dit à
+  l'administrateur que l'adresse existe (l'oracle ne se ferme qu'avec la
+  messagerie) ; une adresse neuve est créée comme avant.
+- Adresse déjà utilisatrice de CE dossier · 409, comme avant.
 
 ### 1.5 Ce que devient chaque garde et service
 
@@ -131,15 +143,13 @@ cet email » · c'était la divulgation que la ligne supprime.
   administrateur) ; un collaborateur peut être rattaché aux dossiers du poste.
 - Essai, inscription · créent un compte de connexion ; adresse déjà compte de
   connexion · même réponse que jusqu'ici.
-- Réinitialisation par l'administrateur d'un dossier · sur une appartenance
-  rattachée, la ligne est réinitialisée et ses sessions dans CE dossier
-  fermées, le mot de passe du compte de connexion ne change pas (un
-  administrateur ne prend jamais la main sur l'accès d'une personne aux
-  dossiers d'un autre client). Limite écrite.
+- Réinitialisation par l'administrateur d'un dossier · refusée en 403 sur une
+  appartenance rattachée et sur un compte que d'autres dossiers pointent
+  (§ 2 bis) ; une personne d'un seul dossier se réinitialise comme avant.
 
 ## 2. Fait
 
-- Schéma et migration `20270247000000_comptes_rattaches` (§ 1.2), déclencheur
+- Schéma et migration `20270248000000_comptes_rattaches` (§ 1.2), déclencheur
   `omegax_courriel_de_connexion`. `prisma migrate diff` contre une base
   d'ombre · aucune différence (le déclencheur n'est pas lu par Prisma).
 - `auth/compte-de-connexion.ts` · seule sortie de cloisonnement de la ligne,
@@ -150,14 +160,15 @@ cet email » · c'était la divulgation que la ligne supprime.
   appareils, toutes mes sessions, `/auth/me`, `mesDossiers`,
   `changerDeDossier` ; routes `GET /auth/mes-dossiers`,
   `POST /auth/changer-dossier`.
-- `UtilisateurService.creer` · rattachement à réponse identique.
+- `UtilisateurService.creer` et `InvitationsService` · invitation, ou
+  création directe sans messagerie (§ 1.4).
 - Console · réinitialisation de l'administrateur sur le compte de connexion,
   promotion des opérateurs sur un compte de connexion seulement. Essais
   échus · un dossier qui touche un rattachement n'est jamais concerné.
 - Journal d'audit et restitution · `compteDeConnexionId`,
   `courrielDeConnexion` exclus.
-- Le mot de passe provisoire d'une appartenance rattachée tombe à sa première
-  entrée (sinon la liste du dossier la disait « à changer » pour toujours).
+- Une appartenance rattachée ne porte jamais de mot de passe provisoire
+  (`creerAppartenance`) · celui du compte de connexion seul compte.
 - Écran · `ChoixDossierPage` (après le mot de passe provisoire, avant les
   logiciels), Fichier > Changer de dossier (`ModaleChangerDossier`), liste
   partagée `ListeDesDossiers`, `lib/dossiers-personne.ts`,
@@ -172,23 +183,52 @@ cet email » · c'était la divulgation que la ligne supprime.
   banque reportée à 2 500 000 en N+1, retrait qui coupe l'accès, mot de passe
   changé depuis B valable partout).
 
+### 2 bis. Relectures (sécurité, puis échecs silencieux)
+
+- C1, E2 · `connexionTenueParLaPersonne` · réinitialiser et déverrouiller un
+  compte que d'autres dossiers pointent, ou une ligne rattachée, sont refusés
+  en **403** nommé, sans dire lesquels (le second message parlait de 409 ;
+  403 est retenu, c'est un geste interdit et non un état concurrent).
+  L'opérateur tire au sort et n'efface jamais le second facteur d'un compte à
+  appartenances. La liste du dossier sert `connexionTenueParLaPersonne`, le
+  second facteur lu sur le compte, aucun verrou de ligne.
+- E1, M1 · § 1.4. Aucune ligne rattachée ne porte `doitChangerMotDePasse`.
+- M2 · renvoi d'inscription d'essai refusé sous la même réponse quand la
+  connexion est tenue par la personne. M1 (essais) · commentaire.
+- F1 · le déclencheur refuse tout changement de `compteDeConnexionId` à la
+  mise à jour · plus de course entre le contrôle « des appartenances le
+  pointent » et un rattachement concurrent. F3 · second facteur lu sur le
+  compte.
+- B1 · en-tête `X-Dossier` (`lib/dossier-de-l-ecran.ts`) ; 409
+  `dossierChange` par `JwtAuthGuard`. **En-tête absent** · admis si la
+  session ne porte pas `plusieursDossiers` (une personne d'un seul dossier, un
+  client d'avant la ligne, un jeton par en-tête `Authorization`) ; refusé
+  sinon. Justification · sans plusieurs dossiers, aucun autre onglet ne peut
+  avoir changé le dossier de la session. Écouteur `storage` qui recharge
+  l'onglet.
+- B2 · § 2 bis, C1.
+- M2 (adresse) · `recopierLAdresse` en mises à jour unitaires, chacune au
+  journal de SON dossier. m1 · acteur résolu dans le dossier de la ligne.
+- m2 · **décision** · l'administrateur d'un dossier ne ferme que les sessions
+  de SON dossier (`sessionsInvalidesAvant` de la ligne) ; la personne ferme
+  tout (`sessionsDuCompteInvalidesAvant`). Un administrateur n'a pas la main
+  sur l'accès d'une personne aux dossiers d'un autre client.
+- m3 · liste bornée à 200, `total`, `tronque`, dossiers introuvables comptés.
+  m4 · licence échue (lecture seule) ou suspendue dite par ligne. m5 · course
+  de création relue sur P2002. m6 · « Se déconnecter » sur le 403 du
+  changement de dossier.
+- Migration renommée `20270248000000_comptes_rattaches` (collision avec
+  `20270247000000_verrou_garnissage_demonstration` de `main`).
+
 ## 3. Limites écrites, reste
 
-- Réinitialiser (administrateur du dossier) ou déverrouiller la ligne d'une
-  appartenance rattachée ne touche pas le compte de connexion · ses sessions
-  dans CE dossier se ferment, la personne garde son mot de passe. Voulu (un
-  client ne prend jamais la main sur l'accès d'une personne aux dossiers d'un
-  autre), mais l'administrateur ne le voit pas dit à l'écran. L'état « verrou »
-  et « double authentification » de la liste du dossier est celui de la ligne.
-- Le mot de passe saisi par l'administrateur pour une adresse rattachée ne
-  sert à rien · la personne qui l'essaierait apprendrait que son compte
-  existait déjà. La réponse du serveur, elle, est identique.
-- Le réinitialisateur du compte de connexion (administrateur du dossier
-  d'origine, opérateur) tient de fait l'accès de la personne à TOUS ses
-  dossiers jusqu'au changement du mot de passe provisoire · c'est le régime
-  de tout mot de passe provisoire, dit ici.
-- Aucun courriel n'avertit la personne qu'un dossier lui a été ouvert · elle
-  le voit à sa prochaine connexion (la demande ne l'exigeait pas).
+- En ligne SANS messagerie, l'ajout d'une adresse connue est refusé en 503 ·
+  ce refus révèle qu'elle existe. Fermé dès que la messagerie est posée.
+- Le parcours navigateur complet (invitation acceptée, changement de
+  dossier par le menu, 409 d'un autre onglet) ne tourne pas en CI, qui n'a
+  pas de messagerie · rejoué en local avec une boîte SMTP de poche
+  (`OMEGAX_SMTP_POCHE_PORT`), et par `scripts/rejouer-multi-dossiers.cjs`. La
+  CI rejoue le refus sans messagerie.
 - La messagerie interne, les notifications et la présence restent par
   dossier (une ligne par appartenance) · voulu.
 - Un compte de connexion dont l'appartenance d'origine est désactivée garde
@@ -201,6 +241,8 @@ cet email » · c'était la divulgation que la ligne supprime.
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 # vraie base · PHASE=ancien (dist d'origin/main, base sans la migration), puis
-# migration, puis PHASE=nouveau · voir l'en-tête du script
+# migration, puis PHASE=nouveau (boîte SMTP de poche intégrée) · en-tête du script
 node scripts/rejouer-multi-dossiers.cjs
+# navigateur · serveur démarré avec SMTP_HOST=127.0.0.1 SMTP_PORT=<p>, puis
+OMEGAX_SMTP_POCHE_PORT=<p> npx playwright test tests/multi-dossiers.e2e.ts
 ```

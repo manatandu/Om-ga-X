@@ -227,6 +227,10 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne dossier-l9, fonction 95 · l'envoi d'un message interne, son auteur
   // et sa date · jamais son objet ni son corps (`COLONNES_EXCLUES_PAR_MODELE`).
   'MessageInterne',
+  // Ligne multi-dossiers · l'invitation d'une personne au dossier, envoyée,
+  // acceptée, refusée ou annulée · qui l'a faite et quand se relit ; le jeton
+  // n'y est que son empreinte, et elle est exclue (`COLONNES_EXCLUES_PAR_MODELE`).
+  'InvitationDossier',
   // Même ligne · une sélection enregistrée est une structure de travail du
   // dossier, que tous rappellent, comme une séquence de saisie.
   'SelectionEdition',
@@ -682,6 +686,9 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // confidentielle (Code du numérique, art. 193, 2°), elle ne se lit que par
   // ses correspondants ; le journal, lu par d'autres, n'en garde que l'envoi.
   MessageInterne: ['objet', 'corps'],
+  // L'empreinte du jeton d'une invitation (ligne multi-dossiers) · elle seule
+  // ne rouvre rien, mais un journal lu par tout le dossier n'a pas à la porter.
+  InvitationDossier: ['empreinteJeton'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.
@@ -818,6 +825,8 @@ export const COLONNES_JAMAIS_RESTITUEES: Readonly<Record<string, readonly string
     'compteDeConnexionId',
     'courrielDeConnexion',
   ],
+  // L'empreinte du jeton d'une invitation · un moyen d'entrer, pas une donnée.
+  InvitationDossier: ['empreinteJeton'],
 };
 
 /** Les colonnes qu'une ARCHIVE DE RESTITUTION ne porte pas. */

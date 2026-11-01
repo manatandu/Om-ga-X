@@ -1,4 +1,4 @@
-import { compteDeConnexionDe } from '../auth/compte-de-connexion';
+import { compteDeConnexionDe, connexionTenueParLaPersonne } from '../auth/compte-de-connexion';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { CourrierService } from '../courrier/courrier.service';
 import { ORIGINE_CREATION_CABINET, ORIGINE_REINITIALISATION_ADMIN, avisCreationCabinet, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
@@ -633,6 +633,10 @@ export class PlateformeService implements OnModuleInit {
     const cible = await compteDeConnexionDe(this.prisma, admin);
     if (!cible) throw new NotFoundException("Le compte de connexion de cet administrateur est introuvable.");
     const refusOperateur = motifRefusReinitialisationOperateur(cible);
+    // Le second facteur d'un compte qui ouvre d'autres dossiers ne tombe JAMAIS
+    // (relecture de sécurité, décision 2) · le mot de passe tiré au sort part
+    // au seul titulaire, et ses codes de secours restent sa sortie.
+    const gardeLeSecondFacteur = await connexionTenueParLaPersonne(this.prisma, admin);
     if (refusOperateur) throw new ForbiddenException(refusOperateur);
     // LA CONSOLE NE CONNAÎT JAMAIS LE MOT DE PASSE (décision de Manasse du
     // 2026-10-09 · « [l'éditeur] ne doit pas voir les informations du client, c'est
@@ -676,7 +680,8 @@ export class PlateformeService implements OnModuleInit {
           doitChangerMotDePasse: true,
           sessionsInvalidesAvant: new Date(),
           ...DECOMPTE_REMIS_A_ZERO,
-          ...secondFacteurLeveParReinitialisation(cible),
+          ...(gardeLeSecondFacteur ? {} : secondFacteurLeveParReinitialisation(cible)),
+          sessionsDuCompteInvalidesAvant: new Date(),
         },
       }),
     );

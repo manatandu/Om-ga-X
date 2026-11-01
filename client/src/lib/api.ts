@@ -1,3 +1,4 @@
+import { enteteDuDossier, estRefusDossierChange, rechargerSurLeDossierOuvert } from './dossier-de-l-ecran';
 import { entetesRequete } from './entetes-requete';
 import { nomDeDisposition } from './disposition';
 import { adresseApi } from './adresse-api';
@@ -78,6 +79,9 @@ async function refus(res: Response): Promise<ApiError> {
     body = await res.json();
     const motif = motifDeSessionPerdue(res.status, body);
     if (motif) signalerSessionPerdue(motif);
+    // Un dossier changé dans un autre onglet · l'onglet se recharge sur le
+    // dossier ouvert (`dossier-de-l-ecran.ts`), rien n'a été écrit.
+    if (estRefusDossierChange(res.status, body)) rechargerSurLeDossierOuvert();
   } catch {
     // corps non-JSON (erreur réseau, 502, 504 du relais…) · le message se
     // rabat sur la phrase d'état, VIDE en HTTP/2, puis sur le code
@@ -101,7 +105,7 @@ async function request<T>(path: string, options: RequestInit = {}, appel: Option
       // le cookie est de PREMIÈRE partie. `include` reste nécessaire au
       // développement local, où l'interface et l'API ont deux ports.
       credentials: 'include',
-      headers: entetesRequete(options.method, getCsrf(), options.headers),
+      headers: entetesRequete(options.method, getCsrf(), { ...enteteDuDossier(options.method), ...(options.headers as Record<string, string> | undefined) }),
     });
 
     if (!res.ok) {
@@ -184,7 +188,7 @@ async function envoyerFichier<T>(path: string, corps: FormData): Promise<T> {
     const res = await fetch(`${API_URL}${path}`, {
       method: 'POST',
       credentials: 'include',
-      headers: csrf ? { 'X-CSRF-Token': csrf } : {},
+      headers: { ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...enteteDuDossier('POST') },
       body: corps,
     });
     if (!res.ok) throw await refus(res);

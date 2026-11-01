@@ -709,7 +709,11 @@ export class EssaisEchusService {
           }
           // UNE PERSONNE RATTACHÉE À UN AUTRE DOSSIER, dans un sens ou dans
           // l'autre (ligne multi-dossiers) · son compte de connexion ou son
-          // appartenance ne part pas avec ce dossier.
+          // appartenance ne part pas avec ce dossier. Une appartenance ne naît
+          // que de l'acceptation, par la personne, d'une invitation reçue à son
+          // adresse (`utilisateurs/invitations.ts`) · un tiers ne peut donc pas
+          // rendre un essai insupprimable en y rattachant son administrateur
+          // (relecture de sécurité, M1) ; seul le choix de la personne le garde.
           const rattaches = await tx.$queryRaw<{ n: bigint }[]>`
             SELECT count(*)::bigint AS n FROM "users" u
             WHERE (u."tenantId" = ${tenantId} AND u."compteDeConnexionId" IS NOT NULL)

@@ -173,6 +173,8 @@ describe('3 · le verrouillage par compte', () => {
     new AuthService(
       sousVerrou({
         user: {
+          // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
+          count: async () => 0,
           findUnique: async () => user,
           update: async ({ data }: { data: Record<string, unknown> }) => {
             capture.data = data;
@@ -330,6 +332,8 @@ describe('4 · la réinitialisation par l’administrateur du dossier', () => {
   const prismaFactice = (capture: { data?: Record<string, unknown> }) =>
     ({
       user: {
+        // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
+        count: async () => 0,
         findFirst: async () => ({ id: 'u2', email: 'comptable@cabinet.cd', tenantId: 'd-1' }),
         update: async ({ data }: { data: Record<string, unknown> }) => {
           capture.data = data;
@@ -369,6 +373,8 @@ describe('4 · la réinitialisation par l’administrateur du dossier', () => {
   const operateur = (doubleAuthActiveDepuis: Date | null, capture: { data?: Record<string, unknown> }) =>
     ({
       user: {
+        // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
+        count: async () => 0,
         findFirst: async () => ({ id: 'op', email: 'op@editeur.cd', tenantId: 'd-1', estOperateurPlateforme: true, doubleAuthActiveDepuis }),
         update: async ({ data }: { data: Record<string, unknown> }) => {
           capture.data = data;
@@ -427,6 +433,8 @@ describe('5 · la chaîne de recours va jusqu’au bout', () => {
     new (require('../plateforme/plateforme.service').PlateformeService)(
       {
         user: {
+          // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
+          count: async () => 0,
           findFirst: async () => admin,
           update: async ({ data }: { data: Record<string, unknown> }) => {
             capture.data = data;

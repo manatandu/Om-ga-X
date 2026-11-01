@@ -130,7 +130,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
       include: {
         tenant: { select: { referentiel: true, licence: true } },
-        compteDeConnexion: { select: { sessionsInvalidesAvant: true, doitChangerMotDePasse: true, doubleAuthActiveDepuis: true } },
+        compteDeConnexion: { select: { sessionsDuCompteInvalidesAvant: true, doitChangerMotDePasse: true, doubleAuthActiveDepuis: true } },
       },
     });
     if (!user || !user.estActif) {
@@ -145,9 +145,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // la dernière AUTHENTIFICATION du jeton, que la prolongation recopie, et
     // non sur son émission (audit final F270, relecture adverse) · un jeton
     // prolongé dans la seconde d'une révocation lui échappait sinon.
+    // Deux révocations · celle de CE dossier (`sessionsInvalidesAvant`, posée
+    // par son administrateur ou par un changement d'accès dans le dossier), et
+    // celle de la PERSONNE, posée sur son compte de connexion par ses actes sur
+    // sa connexion (`sessionsDuCompteInvalidesAvant`). La révocation du seul
+    // dossier d'origine n'éjecte pas la personne de ses autres dossiers.
     if (
       sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant) ||
-      sessionRevoquee(payload.authentification ?? payload.iat, compte.sessionsInvalidesAvant)
+      sessionRevoquee(payload.authentification ?? payload.iat, compte.sessionsDuCompteInvalidesAvant)
     ) {
       // Le motif nomme les causes possibles · depuis le 2026-10-21,
       // l'administrateur du dossier peut aussi fermer ces sessions, et le
@@ -192,6 +197,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           csrf: session.csrf,
           authentification: session.authentification,
           connexionComplete: session.connexionComplete ?? null,
+          plusieursDossiers: session.plusieursDossiers,
         },
         maintenant,
       );

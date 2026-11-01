@@ -282,7 +282,11 @@ describe('balayage du code · toute collection porte sa borne', () => {
     // et l'adresse recopiée sur ses seules appartenances.
     'src/modules/auth/compte-de-connexion.ts:User.findMany',
     'src/modules/auth/compte-de-connexion.ts:User.count',
-    'src/modules/auth/compte-de-connexion.ts:User.updateMany',
+    'src/modules/auth/compte-de-connexion.ts:User.groupBy',
+    // Les invitations adressées à la personne de la session, par SON adresse,
+    // et la décision d'une invitation désignée par un jeton reçu à cette adresse.
+    'src/modules/auth/compte-de-connexion.ts:InvitationDossier.findMany',
+    'src/modules/auth/compte-de-connexion.ts:InvitationDossier.updateMany',
   ]);
 
   function fichiers(dossier: string): string[] {

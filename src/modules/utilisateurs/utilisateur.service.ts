@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { normaliserCourriel } from '../../common/courriel';
 import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
@@ -8,7 +8,18 @@ import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
 import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { LOGICIELS, ROLES_SANS_LOGICIELS } from './logiciels';
-import { creerAppartenance, trouverCompteDeConnexion } from '../auth/compte-de-connexion';
+import {
+  comptesOuvrantDAutresDossiers,
+  connexionTenueParLaPersonne,
+  creerAppartenance,
+  MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE,
+  secondFacteurDesComptes,
+  trouverCompteDeConnexion,
+} from '../auth/compte-de-connexion';
+import { estSurSite } from '../../common/mode-installation';
+import { randomBytes } from 'crypto';
+
+export const MOTIF_MESSAGERIE_REQUISE = 'La messagerie est requise pour ce geste · configurez-la, puis recommencez.';
 
 const SALT_ROUNDS = 12;
 
@@ -61,38 +72,61 @@ export function retireUnAdministrateur(
 export class UtilisateurService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * LA LISTE DU DOSSIER · une personne dont la connexion se tient ailleurs
+   * (ligne rattachée, ou compte que d'autres dossiers pointent) porte
+   * `connexionTenueParLaPersonne` · ni réinitialisation ni déverrouillage ne
+   * lui sont offerts (relecture de sécurité, C1, E2). Pour une ligne
+   * rattachée, le verrou et le second facteur de la LIGNE ne sont pas les
+   * siens · le second facteur est lu sur son compte de connexion (F3), le
+   * verrou n'est pas servi (`null`, « tenu par le compte de connexion »).
+   */
   async lister(tenantId: string) {
-    return this.prisma.user.findMany({ where: { tenantId }, select: SELECTION, orderBy: { createdAt: 'asc' } });
+    const lignes = await this.prisma.user.findMany({
+      where: { tenantId },
+      select: { ...SELECTION, compteDeConnexionId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const rattachees = lignes.filter((l) => l.compteDeConnexionId).map((l) => l.compteDeConnexionId as string);
+    const [secondFacteur, ouvrantAilleurs] = await Promise.all([
+      secondFacteurDesComptes(this.prisma, rattachees),
+      comptesOuvrantDAutresDossiers(this.prisma, lignes.filter((l) => !l.compteDeConnexionId).map((l) => l.id)),
+    ]);
+    return lignes.map(({ compteDeConnexionId, ...l }) =>
+      compteDeConnexionId
+        ? { ...l, verrouilleJusqua: null, doubleAuthActiveDepuis: secondFacteur.get(compteDeConnexionId) ?? null, connexionTenueParLaPersonne: true }
+        : { ...l, connexionTenueParLaPersonne: ouvrantAilleurs.has(l.id) },
+    );
   }
 
-  async creer(tenantId: string, dto: CreerUtilisateurDto) {
+  /** Refus nommé d'un geste d'administrateur sur la connexion d'une personne qui a d'autres dossiers (C1, E2). */
+  private async refuserSiConnexionTenueParLaPersonne(user: { id: string; compteDeConnexionId: string | null }) {
+    if (await connexionTenueParLaPersonne(this.prisma, user)) throw new ForbiddenException(MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE);
+  }
+
+  /**
+   * LA CRÉATION DIRECTE (`invitations.ts`, `modeDeCreation`) · sur site, et en
+   * ligne sans messagerie. En ligne AVEC messagerie, toute création passe par
+   * l'invitation (`InvitationsService.inviter`) et cette méthode n'est pas
+   * appelée. Une adresse déjà compte de connexion ailleurs · sur site, la
+   * personne est rattachée directement (un seul organisme sur le poste) avec
+   * SON mot de passe ; en ligne, refus « messagerie requise », qui ne dit pas
+   * que l'adresse existe. Le mot de passe saisi par l'administrateur n'est
+   * haché que pour un compte qui naît.
+   */
+  async creer(tenantId: string, dto: CreerUtilisateurDto, surSite = estSurSite()) {
     dto = { ...dto, email: normaliserCourriel(dto.email) };
-    // Le hachage d'abord, sur tous les chemins · une adresse connue ailleurs ne
-    // doit pas se reconnaître à la durée de la réponse.
-    const motDePasseHache = await bcrypt.hash(dto.motDePasse, SALT_ROUNDS);
-    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers,
-    // `auth/compte-de-connexion.ts`) · une adresse qui est déjà le compte de
-    // connexion d'une personne AILLEURS rattache cette personne à CE dossier,
-    // avec le rôle choisi ici. La réponse est la MÊME qu'une création (mêmes
-    // champs, même statut) · le dossier n'apprend ni que l'adresse existe
-    // ailleurs ni où. Le mot de passe saisi est haché sur la ligne et jamais
-    // lu · la personne garde le sien, et l'administrateur d'un dossier ne
-    // prend jamais la main sur ses accès aux dossiers d'un autre client.
-    // Jusqu'ici, une adresse prise ailleurs rendait 409 · c'était dire qu'elle
-    // existait.
-    const compte = await trouverCompteDeConnexion(
-      this.prisma,
-      dto.email,
-      'utilisateurs · une adresse déjà compte de connexion, rattachée à ce dossier',
-    );
+    const rattacher = async (compte: { id: string; tenantId: string }) => {
+      if (!surSite) throw new ServiceUnavailableException(MOTIF_MESSAGERIE_REQUISE);
+      const tire = await bcrypt.hash(randomBytes(24).toString('hex'), SALT_ROUNDS);
+      return creerAppartenance(this.prisma, { tenantId, email: dto.email, motDePasse: tire, role: dto.role, compteDeConnexionId: compte.id }, SELECTION);
+    };
+    const raison = 'utilisateurs · une adresse déjà compte de connexion ailleurs';
+    const compte = await trouverCompteDeConnexion(this.prisma, dto.email, raison);
     try {
-      if (compte && compte.tenantId !== tenantId) {
-        return await creerAppartenance(
-          this.prisma,
-          { tenantId, email: dto.email, motDePasse: motDePasseHache, role: dto.role, compteDeConnexionId: compte.id },
-          SELECTION,
-        );
-      }
+      if (compte && compte.tenantId !== tenantId) return await rattacher(compte);
+      if (!dto.motDePasse) throw new BadRequestException('Le mot de passe provisoire est requis.');
+      const motDePasseHache = await bcrypt.hash(dto.motDePasse, SALT_ROUNDS);
       return await this.prisma.user.create({
         // doitChangerMotDePasse : le mot de passe a été choisi par l'ADMIN du
         // dossier, pas par le titulaire · celui-ci le remplace à sa première
@@ -106,7 +140,13 @@ export class UtilisateurService {
       // dossier (`@@unique([tenantId, email])`) · seul un utilisateur de CE
       // dossier rend ce refus, que l'administrateur voit déjà dans sa liste
       // (audit final F158 pour le rattrapage de la contrainte en 409).
-      if ((e as { code?: string })?.code === 'P2002') throw new ConflictException(MOTIF_ADRESSE_PRISE);
+      if ((e as { code?: string })?.code === 'P2002') {
+        // LA COURSE (relecture, m5) · le compte est né ailleurs entre la
+        // lecture et la création · la contrainte se relit, et le bon motif suit.
+        const apres = await trouverCompteDeConnexion(this.prisma, dto.email, raison);
+        if (apres && apres.tenantId !== tenantId) return rattacher(apres);
+        throw new ConflictException(MOTIF_ADRESSE_PRISE);
+      }
       throw e;
     }
   }
@@ -302,6 +342,7 @@ export class UtilisateurService {
     }
     const refusOperateur = motifRefusReinitialisationOperateur(user);
     if (refusOperateur) throw new ForbiddenException(refusOperateur);
+    await this.refuserSiConnexionTenueParLaPersonne(user);
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -370,6 +411,7 @@ export class UtilisateurService {
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable pour ce tenant');
     }
+    await this.refuserSiConnexionTenueParLaPersonne(user);
     return this.prisma.user.update({
       where: { id: userId },
       data: DECOMPTE_REMIS_A_ZERO,

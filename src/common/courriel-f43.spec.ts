@@ -103,6 +103,7 @@ describe('F43 · les services normalisent aussi', () => {
         update: async (a: { data: { email: string } }) => (ecrites.push(a), a),
         // L'adresse se recopie sur les appartenances de la personne (ligne multi-dossiers).
         updateMany: async () => ({ count: 0 }),
+        findMany: async () => [],
       },
     };
     client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);

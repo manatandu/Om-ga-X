@@ -33,6 +33,15 @@ export const ANCIEN_COOKIE_SESSION = 'omegax_session';
 /** En-tête porteur du jeton CSRF apparié au cookie de session. */
 export const ENTETE_CSRF = 'x-csrf-token';
 
+/**
+ * LE DOSSIER QUE L'ÉCRAN AFFICHE (ligne multi-dossiers, relecture « échecs
+ * silencieux », B1) · le cookie est partagé par tous les onglets ; après un
+ * changement de dossier dans l'un, un autre resté sur l'ancien écrirait dans
+ * le nouveau. L'interface envoie cet en-tête sur toute requête qui modifie, et
+ * `JwtAuthGuard` refuse en 409 un dossier différent de celui de la session.
+ */
+export const ENTETE_DOSSIER = 'x-dossier';
+
 // SANS `maxAge` NI `expires` (audit final F270) · un cookie DE SESSION, que le
 // navigateur jette à sa fermeture. Il portait huit heures jusque-là, et une
 // session laissée sur un poste partagé s'y rouvrait au lancement suivant. La

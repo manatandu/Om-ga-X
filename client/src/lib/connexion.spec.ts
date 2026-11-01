@@ -42,7 +42,7 @@ describe('ce que la réponse demande à l’écran', () => {
     const service = readFileSync(join(__dirname, '..', '..', '..', 'src', 'modules', 'auth', 'auth.service.ts'), 'utf8');
     // Ligne multi-dossiers · la session s'ouvre sur l'appartenance d'entrée, et
     // la réponse dit seulement s'il y a plusieurs dossiers.
-    expect(service).toContain("return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant' }), plusieursDossiers };");
+    expect(service).toContain("return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };");
   });
 });
 

@@ -16,7 +16,7 @@ function service(user: Record<string, unknown>, echec?: { code: string }) {
   });
   // L'acte passe dans une transaction · verrou du dossier, ligne du compte
   // relue sous verrou, puis la mise à jour (`revoquerEtFermerLaSession`).
-  const client: Record<string, unknown> = { $executeRaw: async () => 1, $queryRaw: async () => [{ sessionsFermees: [] }], user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update } };
+  const client: Record<string, unknown> = { $executeRaw: async () => 1, $queryRaw: async () => [{ sessionsFermees: [] }], user: { findMany: async (a: { where?: { compteDeConnexionId?: string } }) => (a?.where?.compteDeConnexionId ? [] : [user]), count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update } };
   client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
   const s = new AuthService(
     client as never,
@@ -48,7 +48,7 @@ describe('changer son adresse de connexion', () => {
     expect(appel.data.sessionsInvalidesAvant).toBeInstanceOf(Date);
     expect(r).toMatchObject({ adresse: 'admin@nouveau.cd', accessToken: 'jeton' });
     // Le drapeau d'opérateur et le rôle sont sur le compte · rien ne les touche.
-    expect(Object.keys(appel.data).sort()).toEqual(['email', 'sessionsInvalidesAvant']);
+    expect(Object.keys(appel.data).sort()).toEqual(['email', 'sessionsDuCompteInvalidesAvant', 'sessionsInvalidesAvant']);
   });
 
   it('une adresse déjà prise est refusée sans dire à qui elle appartient', async () => {

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { InvitationsService } from './invitations.service';
 import { UtilisateurService } from './utilisateur.service';
 import { UtilisateurController } from './utilisateur.controller';
 import { AvisAccesService } from './avis-acces.service';
@@ -14,7 +15,7 @@ import { CourrierModule } from '../courrier/courrier.module';
 @Module({
   imports: [LicenceModule, JwtAuthModule, CourrierModule],
   controllers: [UtilisateurController],
-  providers: [UtilisateurService, AvisAccesService],
+  providers: [UtilisateurService, AvisAccesService, InvitationsService],
   exports: [UtilisateurService],
 })
 export class UtilisateursModule {}

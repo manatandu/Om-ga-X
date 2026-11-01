@@ -24,7 +24,9 @@ describe('les dossiers de la personne', () => {
     const app = src('App.tsx');
     const zone = app.slice(app.indexOf('function ZoneProtegee'), app.indexOf('function Routage'));
     const mdp = zone.indexOf('<ChangerMotDePassePage />');
-    const choix = zone.indexOf('if (utilisateur?.plusieursDossiers && !dossierChoisiDansLaSession()) return <ChoixDossierPage />;');
+    const choix = zone.indexOf(
+      'if ((utilisateur?.plusieursDossiers || (invitationsEnAttente ?? 0) > 0) && !dossierChoisiDansLaSession()) return <ChoixDossierPage />;',
+    );
     expect(mdp).toBeGreaterThan(0);
     expect(choix).toBeGreaterThan(mdp);
     expect(zone.indexOf('return children;')).toBeGreaterThan(choix);
@@ -45,8 +47,10 @@ describe('les dossiers de la personne', () => {
     expect(corps).toContain('window.location.reload();');
   });
 
-  it('Fichier > Changer de dossier n’est offert qu’à qui en tient plusieurs, profil de paie compris', () => {
+  it('Fichier > Changer de dossier n’est offert qu’à qui en tient plusieurs ou a une invitation, profil de paie compris', () => {
     const shell = src('components', 'chrome', 'AppShell.tsx');
-    expect(shell.match(/\.\.\.\(utilisateur\?\.plusieursDossiers \? \[\{ label: 'Changer de dossier…', onClick: \(\) => setChangerDossierOuvert\(true\) \}\] : \[\]\)/g)?.length).toBe(2);
+    const offre =
+      "...(utilisateur?.plusieursDossiers || (invitationsEnAttente ?? 0) > 0 ? [{ label: 'Changer de dossier…', onClick: () => setChangerDossierOuvert(true) }] : [])";
+    expect(shell.split(offre).length - 1).toBe(2);
   });
 });

@@ -5,15 +5,20 @@
  * COMPILÉ contre une base PostgreSQL JETABLE, en DEUX temps.
  *
  *  · PHASE=ancien · le serveur d'AVANT la ligne (dist de `origin/main`, base
- *    migrée sans `20270247000000_comptes_rattaches`) peuple la base · deux
+ *    migrée sans `20270248000000_comptes_rattaches`) peuple la base · deux
  *    dossiers de référentiels différents, un collaborateur, une écriture. Les
  *    identifiants sont écrits dans ETAT (fichier JSON).
  *
  *  · PHASE=nouveau · la migration de la ligne est appliquée, le serveur de la
- *    ligne démarre · les comptes existants se connectent comme avant, rien
- *    n'est perdu ; puis une personne est rattachée au second dossier, change
- *    de dossier, n'y voit jamais les données de l'autre, y saisit, traverse une
- *    clôture, et le retrait de son appartenance lui coupe l'accès aussitôt.
+ *    ligne démarre, une messagerie de poche branchée (mode INVITATION) · les
+ *    comptes existants se connectent comme avant, rien n'est perdu ; puis le
+ *    second dossier INVITE une personne du premier (même réponse qu'une
+ *    adresse neuve, rien de créé avant l'acceptation), qui accepte avec le
+ *    code reçu ET sa session, change de dossier, n'y voit jamais les données
+ *    de l'autre, y saisit, traverse une clôture ; l'onglet resté sur l'autre
+ *    dossier est refusé en 409, l'administrateur d'origine ne réinitialise
+ *    rien et ne ferme que ses propres sessions, et le retrait de
+ *    l'appartenance coupe l'accès aussitôt.
  *
  *   PHASE=ancien RACINE=<dist d'avant> DATABASE_URL=... ETAT=... node scripts/rejouer-multi-dossiers.cjs
  *   PHASE=nouveau DATABASE_URL=... ETAT=... node scripts/rejouer-multi-dossiers.cjs
@@ -21,6 +26,7 @@
 const { join } = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const RACINE = process.env.RACINE || join(__dirname, '..');
 const URL_BASE = process.env.DATABASE_URL || '';
 const PHASE = process.env.PHASE || 'nouveau';
@@ -35,16 +41,78 @@ const MDP = 'MotDePasse-rejeu-2026!';
 const echecs = [];
 const verifier = (c, m) => { if (!c) { echecs.push(m); console.log(`  ECHEC · ${m}`); } else console.log(`  ok · ${m}`); };
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+const PORT_SMTP = Number(process.env.PORT_SMTP_REJEU || 2527);
+
+// Une boîte SMTP de poche · reçoit les invitations sans rien envoyer dehors
+// (même montage que `rejouer-suppression-essais.cjs`).
+const courriels = [];
+function decoderCorps(brut) {
+  const coupe = brut.indexOf('\r\n\r\n');
+  const entetes = coupe < 0 ? brut : brut.slice(0, coupe);
+  let corps = coupe < 0 ? '' : brut.slice(coupe + 4);
+  if (/Content-Transfer-Encoding:\s*quoted-printable/i.test(entetes)) {
+    const sansSouples = corps.replace(/=\r?\n/g, '');
+    const octets = [];
+    for (let i = 0; i < sansSouples.length; i += 1) {
+      if (sansSouples[i] === '=' && /^[0-9A-F]{2}$/i.test(sansSouples.slice(i + 1, i + 3))) { octets.push(parseInt(sansSouples.slice(i + 1, i + 3), 16)); i += 2; }
+      else octets.push(...Buffer.from(sansSouples[i], 'utf8'));
+    }
+    corps = Buffer.from(octets).toString('utf8');
+  } else if (/Content-Transfer-Encoding:\s*base64/i.test(entetes)) corps = Buffer.from(corps.replace(/\s+/g, ''), 'base64').toString('utf8');
+  return `${entetes}\r\n\r\n${corps}`;
+}
+function demarrerSmtp() {
+  const serveur = net.createServer((socket) => {
+    let enDonnees = false; let tampon = ''; let courant = { a: [], corps: '' };
+    const ecrire = (x) => socket.write(x + '\r\n');
+    ecrire('220 rejeu ESMTP');
+    socket.on('data', (morceau) => {
+      tampon += morceau.toString('utf8');
+      for (;;) {
+        if (enDonnees) {
+          const fin = tampon.indexOf('\r\n.\r\n');
+          if (fin < 0) return;
+          courant.corps = decoderCorps(tampon.slice(0, fin)); tampon = tampon.slice(fin + 5);
+          courriels.push(courant); courant = { a: [], corps: '' }; enDonnees = false; ecrire('250 ok'); continue;
+        }
+        const i = tampon.indexOf('\r\n');
+        if (i < 0) return;
+        const ligne = tampon.slice(0, i); tampon = tampon.slice(i + 2);
+        const cmd = ligne.toUpperCase();
+        if (cmd.startsWith('EHLO') || cmd.startsWith('HELO')) socket.write('250-rejeu\r\n250-AUTH PLAIN LOGIN\r\n250 8BITMIME\r\n');
+        else if (cmd.startsWith('AUTH PLAIN')) ecrire('235 ok');
+        else if (cmd.startsWith('AUTH LOGIN')) { ecrire('334 VXNlcm5hbWU6'); socket.once('data', () => { ecrire('334 UGFzc3dvcmQ6'); socket.once('data', () => ecrire('235 ok')); }); }
+        else if (cmd.startsWith('RCPT TO')) { courant.a.push(ligne.slice(8).replace(/[<>]/g, '').trim().toLowerCase()); ecrire('250 ok'); }
+        else if (cmd === 'DATA') { enDonnees = true; ecrire('354 go'); }
+        else if (cmd === 'QUIT') { ecrire('221 bye'); socket.end(); }
+        else ecrire('250 ok');
+      }
+    });
+    socket.on('error', () => {});
+  });
+  return new Promise((resolve) => serveur.listen(PORT_SMTP, '127.0.0.1', () => resolve(serveur)));
+}
+/** Le code de l'invitation reçue par `adresse` · le dernier arrivé. */
+async function codeRecu(adresse) {
+  for (let i = 0; i < 40; i++) {
+    const c = [...courriels].reverse().find((m) => m.a.includes(adresse.toLowerCase()) && /Ou saisissez ce code : /.test(m.corps));
+    if (c) return /Ou saisissez ce code : (\S+)/.exec(c.corps)[1];
+    await attendre(250);
+  }
+  throw new Error(`aucune invitation arrivée pour ${adresse}`);
+}
 
 let n = 1;
 class Client {
-  constructor() { this.cookies = new Map(); this.csrf = null; }
+  constructor() { this.cookies = new Map(); this.csrf = null; this.dossier = null; }
   async appeler(m, chemin, corps, attendu = [200, 201]) {
     const k = (Date.now() + n++ * 7919) % 16777216;
     const h = { 'X-Forwarded-For': `10.${(k >> 16) & 255}.${(k >> 8) & 255}.${k & 255}` };
     if (corps !== undefined) h['Content-Type'] = 'application/json';
     if (this.cookies.size) h.Cookie = [...this.cookies].map(([a, b]) => `${a}=${b}`).join('; ');
     if (this.csrf && m !== 'GET') h['X-CSRF-Token'] = this.csrf;
+    // Le dossier de l'onglet, sur ce qui modifie (ligne multi-dossiers, B1).
+    if (this.dossier && m !== 'GET') h['X-Dossier'] = this.dossier;
     const r = await fetch(API + chemin, { method: m, headers: h, body: corps === undefined ? undefined : JSON.stringify(corps) });
     for (const c of r.headers.getSetCookie?.() ?? []) { const [p] = c.split(';'); const i = p.indexOf('='); const v = p.slice(i + 1); if (!v || /1970/.test(c)) this.cookies.delete(p.slice(0, i)); else this.cookies.set(p.slice(0, i), v); }
     const t = await r.text(); let j; try { j = t ? JSON.parse(t) : undefined; } catch { j = t; }
@@ -128,33 +196,77 @@ async function phaseNouveau() {
     const ecr = await prisma.ecriture.findUnique({ where: { id: etat.ecritureA } });
     verifier(ecr && ecr.tenantId === etat.dossierA, "l'écriture de l'ancien serveur est là, dans A");
 
-    console.log("== Rattacher · l'administrateur de B rattache le collaborateur de A, réponse identique à une création");
-    const rattache = await B.post('/utilisateurs', { email: etat.collab.toUpperCase(), motDePasse: 'Choisi-par-B-2026!', role: 'COMPTABLE' });
-    const neuf = await B.post('/utilisateurs', { email: `md-neuf-${etat.stamp}@exemple.invalid`, motDePasse: 'Choisi-par-B-2026!', role: 'LECTURE_SEULE' });
-    verifier(JSON.stringify(Object.keys(rattache).sort()) === JSON.stringify(Object.keys(neuf).sort()) && rattache.doitChangerMotDePasse === neuf.doitChangerMotDePasse,
-      'même réponse que la création d’une adresse inconnue');
-    verifier(!JSON.stringify(rattache).includes(etat.dossierA) && !('compteDeConnexionId' in rattache), 'la réponse ne nomme ni le dossier A ni le compte');
-    const deux = await B.appeler('POST', '/utilisateurs', { email: etat.collab, motDePasse: 'Choisi-par-B-2026!', role: 'COMPTABLE' }, [409]);
-    verifier(deux.statut === 409, 'la même personne ne se rattache pas deux fois au même dossier (409)');
-    const ligneB = await prisma.user.findFirst({ where: { tenantId: etat.dossierB, email: etat.collab } });
-    const compte = lignes.find((l) => l.email === etat.collab);
-    verifier(ligneB.compteDeConnexionId === compte.id && ligneB.courrielDeConnexion === null, 'la ligne de B pointe le compte de connexion, sans adresse de connexion (déclencheur)');
+    console.log("== Inviter · l'administrateur de B invite le collaborateur de A, même réponse qu'une adresse neuve");
+    const adresseNeuve = `md-neuf-${etat.stamp}@exemple.invalid`;
+    const invite = await B.post('/utilisateurs', { email: etat.collab.toUpperCase(), role: 'COMPTABLE' });
+    const neuf = await B.post('/utilisateurs', { email: adresseNeuve, role: 'LECTURE_SEULE' });
+    const formeDe = (x) => JSON.stringify(Object.keys(x.invitation ?? {}).sort());
+    verifier(invite.invitation && neuf.invitation && formeDe(invite) === formeDe(neuf), 'même réponse que pour une adresse inconnue · une invitation');
+    verifier(!JSON.stringify(invite).includes(etat.dossierA) && !JSON.stringify(invite).includes('compteDeConnexion'), 'la réponse ne nomme ni le dossier A ni le compte');
+    verifier((await prisma.user.count({ where: { tenantId: etat.dossierB, email: { in: [etat.collab, adresseNeuve] } } })) === 0, "rien n'est créé dans B avant l'acceptation");
+    const sansMdp = await prisma.user.findMany({ where: { tenantId: etat.dossierB }, select: { email: true } });
+    verifier(!sansMdp.some((u) => u.email === etat.collab), "aucun mot de passe posé pour l'adresse connue");
+    const deja = await B.appeler('POST', '/utilisateurs', { email: etat.adminB, role: 'COMPTABLE' }, [409]);
+    verifier(deja.statut === 409, "une adresse déjà utilisatrice du dossier se refuse (409)");
+    const code = await codeRecu(etat.collab);
+    const codeNeuf = await codeRecu(adresseNeuve);
+    const file = await prisma.message.findMany({ where: { tenantId: etat.dossierB }, select: { corps: true } });
+    verifier(file.length >= 2 && file.every((m) => !m.corps.includes(code) && !m.corps.includes(codeNeuf)), "le code de l'invitation n'est jamais dans la file du dossier");
     const journalB = await B.get('/journal-audit?entite=User');
-    const texteJournal = JSON.stringify(journalB);
-    verifier(!texteJournal.includes(compte.id) && !texteJournal.includes(etat.dossierA), "le journal d'audit de B ne dit pas que la personne existe ailleurs");
+    const compte = lignes.find((l) => l.email === etat.collab);
+    verifier(!JSON.stringify(journalB).includes(compte.id) && !JSON.stringify(journalB).includes(etat.dossierA), "le journal d'audit de B ne dit pas que la personne existe ailleurs");
+
+    console.log("== Accepter · le code reçu ET la session de la personne");
+    const { c: K0, r: r0 } = await connecter(etat.collab);
+    verifier(r0.plusieursDossiers === false, 'avant acceptation · un seul dossier');
+    K0.dossier = (await K0.get('/auth/me')).tenant.id;
+    const recues = await K0.get('/auth/invitations');
+    verifier(Array.isArray(recues) && recues.length === 1 && !JSON.stringify(recues).includes(code), 'une invitation reçue, servie sans son code');
+    const autre = (await connecter(etat.adminA)).c;
+    const vole = await autre.appeler('POST', '/auth/invitations/accepter', { jeton: code }, [404]);
+    verifier(vole.statut === 404, "un autre compte avec le même code n'entre pas (404)");
+    const faux = await K0.appeler('POST', '/auth/invitations/accepter', { jeton: 'x'.repeat(43) }, [404]);
+    verifier(faux.statut === 404, 'sans le code reçu, aucun chemin (404)');
+    await K0.post('/auth/invitations/accepter', { jeton: code });
+    const encore = await K0.appeler('POST', '/auth/invitations/accepter', { jeton: code }, [404, 409]);
+    verifier(encore.statut >= 400, `le code ne resert pas (${encore.statut})`);
+    const ligneB = await prisma.user.findFirst({ where: { tenantId: etat.dossierB, email: etat.collab } });
+    verifier(ligneB && ligneB.compteDeConnexionId === compte.id && ligneB.courrielDeConnexion === null && ligneB.doitChangerMotDePasse === false,
+      'la ligne de B pointe le compte de connexion, sans adresse de connexion ni mot de passe à changer');
+    const creeVole = await new Client().appeler('POST', '/auth/invitations/creer-compte', { jeton: code, motDePasse: 'Autre-mdp-2026-xyz!' }, [404, 409]);
+    verifier(creeVole.statut >= 400, `un code utilisé ne crée aucun compte (${creeVole.statut})`);
+    await new Client().post('/auth/invitations/creer-compte', { jeton: codeNeuf, motDePasse: 'Neuf-mdp-2026-xyz!' });
+    const { r: rNeuf } = await connecter(adresseNeuve, 'Neuf-mdp-2026-xyz!');
+    verifier(typeof rNeuf.csrfToken === 'string', "l'adresse neuve a créé son compte avec SON mot de passe");
+    let lien = null;
+    try { await prisma.$executeRawUnsafe(`UPDATE "users" SET "compteDeConnexionId" = NULL WHERE "id" = '${ligneB.id}'`); } catch (e) { lien = e; }
+    verifier(lien !== null, 'la base refuse de changer le lien d’une appartenance (F1)');
+    const ligneNeuf = await prisma.user.findFirst({ where: { tenantId: etat.dossierB, email: adresseNeuve } });
     let chaine = null;
-    try { await prisma.$executeRawUnsafe(`UPDATE "users" SET "compteDeConnexionId" = '${ligneB.id}' WHERE "id" = '${neuf.id}'`); } catch (e) { chaine = e; }
-    verifier(chaine && /jamais à une autre appartenance/.test(String(chaine.message)), 'la base refuse une chaîne de rattachements');
+    try { await prisma.$executeRawUnsafe(`UPDATE "users" SET "compteDeConnexionId" = '${ligneB.id}' WHERE "id" = '${ligneNeuf.id}'`); } catch (e) { chaine = e; }
+    verifier(chaine !== null, 'la base refuse un rattachement posé après coup (chaîne comprise)');
+
+    console.log("== L'administrateur d'origine · aucun geste sur la connexion de la personne");
+    const ligneA = compte;
+    const reinit = await A.appeler('POST', `/utilisateurs/${ligneA.id}/reinitialiser-mot-de-passe`, { motDePasseProvisoire: 'Squat-2026-abcdef!' }, [403]);
+    verifier(reinit.statut === 403, "l'administrateur de A ne réinitialise plus un compte qui ouvre B (403)");
+    const deverr = await A.appeler('POST', `/utilisateurs/${ligneA.id}/deverrouiller`, {}, [403]);
+    verifier(deverr.statut === 403, "ni ne le déverrouille (403)");
+    const reinitB = await B.appeler('POST', `/utilisateurs/${ligneB.id}/reinitialiser-mot-de-passe`, { motDePasseProvisoire: 'Squat-2026-abcdef!' }, [403]);
+    verifier(reinitB.statut === 403, "l'administrateur de B ne réinitialise pas une ligne rattachée (403)");
+    const vueB = (await B.get('/utilisateurs')).find((u) => u.email === etat.collab);
+    verifier(vueB && vueB.connexionTenueParLaPersonne === true && vueB.verrouilleJusqua == null, 'la liste de B dit la connexion tenue par la personne');
 
     console.log('== Connexion · deux dossiers, le choix, le changement');
     const { c: K, r } = await connecter(etat.collab);
     verifier(r.plusieursDossiers === true, 'la connexion dit plusieurs dossiers');
     const meA = await K.get('/auth/me');
+    K.dossier = meA.tenant.id;
     verifier(meA.tenant.id === etat.dossierA && meA.plusieursDossiers === true, 'la session s’ouvre sur le dossier d’origine');
-    const liste = await K.get('/auth/mes-dossiers');
-    verifier(liste.length === 2 && liste.map((d) => d.referentiel).sort().join() === 'SYCEBNL,SYSCOHADA', 'mes dossiers · A et B, référentiels différents');
-    verifier(liste.find((d) => d.dossierId === etat.dossierA).courant === true && liste.every((d) => d.exercice), 'le dossier courant et l’exercice ouvert de chacun');
-    const listeB = await B.get('/auth/mes-dossiers');
+    const { dossiers: liste, total, tronque } = await K.get('/auth/mes-dossiers');
+    verifier(liste.length === 2 && total === 2 && tronque === false && liste.map((d) => d.referentiel).sort().join() === 'SYCEBNL,SYSCOHADA', 'mes dossiers · A et B, référentiels différents, liste entière');
+    verifier(liste.find((d) => d.dossierId === etat.dossierA).courant === true && liste.every((d) => d.exercice && d.acces === 'NORMAL'), 'le dossier courant, l’exercice ouvert et l’accès de chacun');
+    const listeB = (await B.get('/auth/mes-dossiers')).dossiers;
     verifier(listeB.length === 1 && listeB[0].dossierId === etat.dossierB, "l'administrateur de B ne voit que B");
     // Un paramètre de requête ne change pas le dossier.
     const exercicesA = await prisma.exercice.findMany({ where: { tenantId: etat.dossierA }, select: { id: true } });
@@ -170,6 +282,15 @@ async function phaseNouveau() {
     const copie = new Client();
     copie.cookies = new Map(K.cookies);
     const change = await K.post('/auth/changer-dossier', { dossierId: etat.dossierB });
+    // L'onglet qui a changé suit son dossier ; un autre, resté sur A, est refusé.
+    K.dossier = change.dossierId;
+    const ongletA = new Client();
+    ongletA.cookies = new Map(K.cookies); ongletA.csrf = K.csrf; ongletA.dossier = etat.dossierA;
+    const r409 = await ongletA.appeler('POST', '/exercices', { dateDebut: '2040-01-01', dateFin: '2040-12-31' }, [409]);
+    verifier(r409.statut === 409 && r409.corps.dossierChange === true, "l'onglet resté sur A n'écrit pas dans B (409 nommé)");
+    ongletA.dossier = null;
+    const r409b = await ongletA.appeler('POST', '/exercices', { dateDebut: '2040-01-01', dateFin: '2040-12-31' }, [409]);
+    verifier(r409b.statut === 409, "sans en-tête de dossier, une personne à plusieurs dossiers est refusée (409)");
     verifier(change.change === true && change.dossierId === etat.dossierB && K.csrf !== csrfAvant, 'changer de dossier · un jeton CSRF neuf');
     const meB = await K.get('/auth/me');
     verifier(meB.tenant.id === etat.dossierB && meB.tenant.referentiel === 'SYSCOHADA' && meB.role === 'COMPTABLE', 'dans B · son dossier, son référentiel, son rôle');
@@ -179,6 +300,11 @@ async function phaseNouveau() {
     verifier(fermee.statut === 401, "la session d'avant le changement est fermée (une copie du cookie ne rouvre rien)");
     const etranger = await K.appeler('POST', '/auth/changer-dossier', { dossierId: 'dossier-inexistant' }, [404]);
     verifier(etranger.statut === 404, "un dossier qui n'est pas le sien est introuvable (404)");
+
+    await attendre(1100); // la révocation tronque à la seconde
+    await A.post(`/utilisateurs/${compte.id}/deconnecter`, {});
+    verifier((await K.appeler('GET', '/auth/me', undefined, [200])).corps.tenant.id === etat.dossierB,
+      "l'administrateur de A ferme les sessions de A seulement · la session dans B reste ouverte (m2)");
 
     console.log("== Dans B · il ne voit jamais les données de A");
     const exB = await K.get('/exercices');
@@ -210,9 +336,14 @@ async function phaseNouveau() {
     verifier(ecrituresA === 1, "rien n'est entré dans A (une seule écriture, celle d'avant)");
 
     console.log('== Retour dans A, puis retrait de l’appartenance de B');
-    await K.post('/auth/changer-dossier', { dossierId: etat.dossierA });
-    verifier((await K.get('/auth/me')).tenant.id === etat.dossierA, 'de retour dans A');
-    await K.post('/auth/changer-dossier', { dossierId: etat.dossierB });
+    // Les sessions de A ont été fermées par son administrateur · y revenir exige une reconnexion.
+    const refuseA = await K.appeler('POST', '/auth/changer-dossier', { dossierId: etat.dossierA }, [403]);
+    verifier(refuseA.statut === 403, 'revenir dans A, dont les sessions ont été fermées, demande une reconnexion (403)');
+    const Kr = (await connecter(etat.collab)).c;
+    Kr.dossier = (await Kr.get('/auth/me')).tenant.id;
+    verifier(Kr.dossier === etat.dossierA, 'reconnecté · de retour dans A');
+    Kr.dossier = (await Kr.post('/auth/changer-dossier', { dossierId: etat.dossierB })).dossierId;
+    K.cookies = Kr.cookies; K.csrf = Kr.csrf; K.dossier = Kr.dossier;
     await B.patch(`/utilisateurs/${ligneB.id}`, { estActif: false });
     const coupe = await K.appeler('GET', '/auth/me', undefined, [401]);
     verifier(coupe.statut === 401, "l'appartenance retirée coupe la session de B aussitôt (401)");
@@ -225,22 +356,23 @@ async function phaseNouveau() {
     console.log('== Le compte de la personne · son mot de passe, changé depuis B, vaut partout');
     await B.patch(`/utilisateurs/${ligneB.id}`, { estActif: true });
     const K3 = (await connecter(etat.collab)).c;
-    await K3.post('/auth/changer-dossier', { dossierId: etat.dossierB });
+    K3.dossier = (await K3.get('/auth/me')).tenant.id;
+    K3.dossier = (await K3.post('/auth/changer-dossier', { dossierId: etat.dossierB })).dossierId;
     await K3.post('/auth/changer-mot-de-passe', { motDePasseActuel: MDP, nouveauMotDePasse: 'Nouveau-mdp-2026-xyz!' });
     verifier((await K3.get('/auth/me')).tenant.id === etat.dossierB, 'la session réémise reste dans B');
     const vieux = await new Client().appeler('POST', '/auth/login', { email: etat.collab, motDePasse: MDP }, [401]);
     verifier(vieux.statut === 401, "l'ancien mot de passe n'ouvre plus rien");
     const { r: r4 } = await connecter(etat.collab, 'Nouveau-mdp-2026-xyz!');
     verifier(r4.plusieursDossiers === true, 'le nouveau ouvre ses deux dossiers');
-    const mdpChoisiParB = await new Client().appeler('POST', '/auth/login', { email: etat.collab, motDePasse: 'Choisi-par-B-2026!' }, [401]);
-    verifier(mdpChoisiParB.statut === 401, "le mot de passe saisi par l'administrateur de B n'a jamais ouvert le compte");
   } finally {
     await prisma.$disconnect();
   }
 }
 
 async function main() {
-  const env = { ...process.env, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
+  const smtp = PHASE === 'nouveau' ? await demarrerSmtp() : null;
+  const messagerie = smtp ? { SMTP_HOST: '127.0.0.1', SMTP_PORT: String(PORT_SMTP), SMTP_USER: 'rejeu', SMTP_PASS: 'rejeu', SMTP_SECURE: 'false', COURRIER_EXPEDITEUR: 'rejeu@exemple.invalid' } : {};
+  const env = { ...process.env, ...messagerie, DATABASE_URL: URL_BASE, JWT_SECRET: 'rejeu-jetable-0123456789abcdef0123456789abcdef', JWT_EXPIRES_IN: '8h', PORT: String(PORT), CORS_ORIGIN: 'http://localhost:4173', INSCRIPTION_PUBLIQUE: 'true', NODE_ENV: 'production' };
   const srv = spawn(process.execPath, [join(RACINE, 'dist', 'main.js')], { env, cwd: RACINE, stdio: ['ignore', 'pipe', 'pipe'] });
   let journal = ''; srv.stdout.on('data', (d) => (journal += d)); srv.stderr.on('data', (d) => (journal += d));
   try {
@@ -252,6 +384,7 @@ async function main() {
     console.error(e);
   } finally {
     srv.kill();
+    smtp?.close();
     if (echecs.length) {
       console.log(`\n${echecs.length} échec(s).`);
       console.log(journal.split('\n').filter((l) => /ERROR|Error/.test(l)).slice(-20).join('\n'));

@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { UtilisateurService } from './utilisateur.service';
 import { AvisAccesService } from './avis-acces.service';
+import { InvitationsService } from './invitations.service';
 import { CreerUtilisateurDto, DefinirFonctionsDto, DefinirJournauxDto, DefinirLogicielsDto, ModifierUtilisateurDto, ReinitialiserMotDePasseDto } from './dto/utilisateur.dto';
 import { RoleUtilisateur } from '@prisma/client';
 
@@ -27,7 +28,19 @@ export class UtilisateurController {
      * en plus ce que le titulaire a appris, ou n'a pas appris.
      */
     private readonly avis: AvisAccesService,
+    private readonly invitations: InvitationsService,
   ) {}
+
+  /** Les invitations du dossier et le mode de création (invitation, ou création directe). */
+  @Get('invitations')
+  listerInvitations(@CurrentUser() user: AuthenticatedUser) {
+    return this.invitations.lister(user.tenantId);
+  }
+
+  @Post('invitations/:id/annuler')
+  annulerInvitation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invitations.annuler(user.tenantId, id);
+  }
 
   @Get()
   async lister(@CurrentUser() user: AuthenticatedUser) {
@@ -42,6 +55,13 @@ export class UtilisateurController {
    */
   @Post()
   async creer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerUtilisateurDto) {
+    // EN LIGNE AVEC UNE MESSAGERIE, TOUTE CRÉATION EST UNE INVITATION (ligne
+    // multi-dossiers, `invitations.ts`) · rien n'est créé avant que la
+    // personne accepte, et la réponse est la même, que l'adresse ait déjà un
+    // compte ou non.
+    if (this.invitations.mode() === 'INVITATION') {
+      return { invitation: await this.invitations.inviter(user.tenantId, user.userId, dto.email, dto.role) };
+    }
     const cree = await this.utilisateurService.creer(user.tenantId, dto);
     return {
       ...cree,

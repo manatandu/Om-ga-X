@@ -175,6 +175,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne dossier-l9, fonction 95 · les sessions vues et la messagerie interne.
   'PresenceSession',
   'MessageInterne',
+  // Ligne multi-dossiers · l'invitation d'une personne au dossier.
+  'InvitationDossier',
   'DestinataireMessage',
   // Ligne dossier-l9, fonctions 96 et 100 · préférences et notifications.
   'PreferenceUtilisateur',

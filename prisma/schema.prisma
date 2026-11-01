@@ -862,6 +862,7 @@ model Tenant {
   exercices                 Exercice[]
   ecritures                 Ecriture[]
   users                     User[]
+  invitationsDossier        InvitationDossier[]
   journaux                  Journal[]
   clotures                  Cloture[]
   tiers                     Tiers[]
@@ -1340,6 +1341,15 @@ model User {
   /// aucune session à purger, et la comparaison se fait sur l'`iat` que le JWT
   /// porte déjà.
   sessionsInvalidesAvant DateTime?
+
+  /// RÉVOCATION DE LA PERSONNE, DANS TOUS SES DOSSIERS (ligne multi-dossiers) ·
+  /// posée sur le COMPTE DE CONNEXION par les seuls actes de la personne ou de
+  /// l'opérateur sur sa connexion (mot de passe, adresse, second facteur,
+  /// « fermer toutes mes sessions »). `sessionsInvalidesAvant` reste la
+  /// révocation de CE dossier · le rôle, les journaux ou la déconnexion posés
+  /// par l'administrateur du dossier d'origine n'éjectent pas la personne de
+  /// ses autres dossiers.
+  sessionsDuCompteInvalidesAvant DateTime?
 
   /// SESSIONS FERMÉES PAR « SE DÉCONNECTER » (relevé de sécurité du
   /// 2026-10-23, auth/sessions-fermees.ts) · empreinte du jeton CSRF de chaque
@@ -14226,4 +14236,38 @@ model RepartitionMission {
   @@unique([missionId, sectionId])
   @@index([tenantId, missionId])
   @@map("repartitions_mission")
+}
+
+// ---------------------------------------------------------------------------
+// UNE PERSONNE, PLUSIEURS DOSSIERS · l'invitation (ligne multi-dossiers)
+// ---------------------------------------------------------------------------
+
+enum StatutInvitationDossier {
+  EN_ATTENTE
+  ACCEPTEE
+  REFUSEE
+  ANNULEE
+}
+
+/// L'INVITATION D'UNE PERSONNE À UN DOSSIER (`utilisateurs/invitations.ts`) ·
+/// l'administrateur du dossier nomme une adresse et un rôle ; RIEN n'est créé
+/// avant que la personne accepte, avec le jeton reçu à cette seule adresse.
+/// L'acceptation crée l'appartenance (ou le compte, pour une adresse neuve),
+/// au journal d'audit du dossier. Le jeton n'est gardé qu'en empreinte.
+model InvitationDossier {
+  id             String                  @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id])
+  email          String
+  role           RoleUtilisateur
+  empreinteJeton String                  @unique
+  expireLe       DateTime
+  statut         StatutInvitationDossier @default(EN_ATTENTE)
+  creePar        String
+  decideLe       DateTime?
+  createdAt      DateTime                @default(now())
+
+  @@index([tenantId, statut])
+  @@index([email])
+  @@map("invitations_dossier")
 }
