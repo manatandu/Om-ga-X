@@ -18,6 +18,10 @@
  *    C 798 de 100 000 lue en base ; validée, le tableau des flux de 2026 rend FG à zéro (la reprise
  *    en fausse acquisition avant la correction) et ne lève plus la réserve du
  *    798.
+ *  · MAG-LIEN · un article tenu sur le 31110000 semé, l'achat porté au
+ *    31110001 ouvert dessous · le lien passe (sous le verrou de l'écriture,
+ *    requête brute éprouvée sur la base), un second lien au-delà des 300 000
+ *    que l'écriture porte est refusé.
  */
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
@@ -153,6 +157,23 @@ async function main() {
     verifier(fg && egal(fg.montant, 0), `FG de 2026 à zéro, la reprise neutralisée par sa liaison (lu ${fg?.montant})`);
     const reserve798 = (tft.postesNonCalculables ?? []).filter((p) => p.ref === 'FG' && /798/.test(p.raison));
     verifier(reserve798.length === 0, `la réserve du 798 n'est plus levée pour la reprise du module`);
+
+    console.log('N+1 = 2026 · MAG-LIEN, article sur le 31110000 semé, achat porté au sous-compte 31110001');
+    await A.patch(`/comptes/${compte('31110000').id}`, { estRetenu: true });
+    const sousCompte = await A.post('/comptes', { numero: '31110001', intitule: 'Marchandises A1 · dépôt central' });
+    const article = await A.post('/magasin/articles', { compteId: compte('31110000').id, code: 'CIM', designation: 'Ciment', uniteMesure: 'sac', methodeValorisation: 'CMPACE' });
+    const achat = await A.post('/ecritures', {
+      exerciceId: e2026.id, journalId: od.id, date: '2026-03-01', libelle: 'Achat de ciment',
+      lignes: [
+        { compteId: sousCompte.id, debit: 300_000, credit: 0 },
+        { compteId: compte('48120000').id, debit: 0, credit: 300_000 },
+      ],
+    });
+    const lien = await A.statut('POST', `/magasin/articles/${article.id}/mouvements`, { date: '2026-03-01', sens: 'ENTREE', quantite: 10, cout: 300_000, piece: 'BL-1', ecritureId: achat.id });
+    if (lien.statut >= 400) console.log('   refus du lien ·', JSON.stringify(lien.corps).slice(0, 600));
+    verifier(lien.statut < 400, `le lien à l'écriture portée au sous-compte passe, sous le verrou de l'écriture (statut ${lien.statut})`);
+    const deTrop = await A.statut('POST', `/magasin/articles/${article.id}/mouvements`, { date: '2026-03-02', sens: 'ENTREE', quantite: 1, cout: 30_000, piece: 'BL-2', ecritureId: achat.id });
+    verifier(deTrop.statut === 400 && /en valent 300/.test(JSON.stringify(deTrop.corps)), `un second lien au-delà de ce que l'écriture porte est refusé (statut ${deTrop.statut})`);
   } finally {
     srv.kill('SIGTERM');
     await prisma.$disconnect();

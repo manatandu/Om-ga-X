@@ -62,6 +62,15 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   RECTIFIER ne l'inscrit plus en négatif (commentaire de
   `ouverture-passee.ts`, client à 2 900 000 et 479 à -100 000 cités ;
   `cloture-annuelle.spec.ts`, filtre `reevaluationExtourne: { is: null }`).
+- Relecture indépendante (2026-11-01), aucun BLOQUANT, six points corrigés ·
+  (1) MAG-LIEN admet les sous-comptes du compte de l'article (racine de
+  `subdivisions-du-plan.ts`) ; (2) K1, sous un à-nouveau provisoire, seuls les
+  actes antérieurs VALIDÉS du module se retranchent (29 et 106) ; (3) J1, une
+  gestion soldée par la clôture garde le 13 au résultat et l'avertissement ;
+  (4) H D1, le `try` qui rend le verrou s'ouvre avant le marquage ; (5)
+  MAG-LIEN jugé sous `SELECT … FOR UPDATE` de l'écriture, sortie non valorisée
+  refusée nommément ; (6) commentaires des contrôles remis en place. Rejeu sur
+  vraie base étendu au lien de magasin (sous-compte, verrou, dépassement).
 
 ## Reste
 
