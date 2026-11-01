@@ -37,7 +37,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
-import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
+import { PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { prendreLeVerrouDuDossierBorne, transactionDeSaisie } from '../../common/transaction-de-saisie';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -5107,7 +5107,7 @@ export class EcritureService {
   async ouverturePasseeAuPremierJour(tenantId: string, exerciceId: string): Promise<{ nombre: number; pieces: string[] } | null> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return null;
-    return ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
+    return ouverturePasseeNonNulle(this.prisma, tenantId, exercice, { validees: true });
   }
 
   /**
@@ -5121,7 +5121,7 @@ export class EcritureService {
   async positionDOuvertureAuPremierJour(tenantId: string, exerciceId: string): Promise<PositionDOuverturePassee> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return { etat: 'AUCUNE' };
-    return positionDOuverturePassee(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
+    return positionDOuverturePassee(this.prisma, tenantId, exercice, { validees: true });
   }
 
   /**
