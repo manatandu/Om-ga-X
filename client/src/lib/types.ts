@@ -3365,6 +3365,8 @@ export interface PlanningCloture {
     annulationProposee?: boolean;
     rattachementPropose?: boolean;
     exerciceDeLiquidation: boolean;
+    /** Faux · société dissoute sans liquidation (AUSCGIE art. 201 al. 4), aucun exercice de liquidation proposé. */
+    liquidationOuverte?: boolean;
     dateClotureLiquidation: string | null;
     actesDeLaPeriodeARetirer?: string[];
   } | null;

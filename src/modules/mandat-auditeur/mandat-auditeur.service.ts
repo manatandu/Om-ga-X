@@ -92,7 +92,14 @@ export class MandatAuditeurService {
     },
   ) {
     const t = await this.dossier(tenantId);
-    const rang = dto.rang ?? 1;
+    // LE RANG SE LIT AUSSI SUR LE REGISTRE (simulation du 2026-10-08, relevé
+    // mineur) · un troisième mandat consécutif du MÊME auditeur passait dès
+    // que le cabinet ne disait pas le rang (1 par défaut). Le mandat de ce
+    // dossier, du même auditeur (même inscription au tableau), qui s'achève
+    // à l'exercice qui précède, fait de celui-ci son renouvellement · rang
+    // au moins le sien plus un. Contiguïté stricte seulement · c'est un
+    // plancher, il ne refuse jamais un mandat qu'un écart sépare du précédent.
+    const rang = Math.max(dto.rang ?? 1, await this.rangDuRegistre(tenantId, dto));
 
     // REFUS 1 · L'INSCRIPTION AU TABLEAU DE L'ORDRE.
     //
@@ -180,6 +187,23 @@ export class MandatAuditeurService {
         natureSuccession: origine ? dto.natureSuccession! : null,
       },
     });
+  }
+
+  /** Rang que le registre impose · 1 sans mandat précédent contigu. */
+  private async rangDuRegistre(
+    tenantId: string,
+    dto: { inscriptionOrdre: string; premierExercice: number; mandatOrigineId?: string },
+  ): Promise<number> {
+    // Un remplacement ou un suppléant continue un mandat, il ne le renouvelle pas.
+    if (dto.mandatOrigineId) return 1;
+    const inscription = dto.inscriptionOrdre.trim();
+    if (!inscription) return 1;
+    const precedents = await this.prisma.mandatAuditeur.findMany({
+      where: { tenantId, inscriptionOrdre: inscription, mandatOrigineId: null },
+      select: { premierExercice: true, nombreExercices: true, rang: true },
+    });
+    const contigu = precedents.filter((m) => m.premierExercice + m.nombreExercices === dto.premierExercice);
+    return contigu.length === 0 ? 1 : Math.max(...contigu.map((m) => m.rang)) + 1;
   }
 
   /**

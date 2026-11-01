@@ -66,7 +66,18 @@ function service(ecritures: Faux[]) {
   const numeros = [...new Set(lignesDe(ecritures).map((l) => l.compte.numero))];
   const prisma = {
     exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE) },
-    ecriture: { findMany: jest.fn().mockResolvedValue(ecritures) },
+    // La doublure honore le filtre de la requête (§ 10 bis, « la doublure
+    // doit honorer la requête ») · une écriture que la clôture engendre ne
+    // revient que si la requête ne l'écarte pas.
+    ecriture: {
+      findMany: jest.fn(async ({ where }: { where: { estGenereeParCloture?: boolean; estANouveauProvisoire?: boolean } }) =>
+        ecritures.filter(
+          (e) =>
+            !(e.estGenereeParCloture === true && where.estGenereeParCloture === false) &&
+            !(e.estANouveauProvisoire === true && where.estANouveauProvisoire === false),
+        ),
+      ),
+    },
     user: { findMany: jest.fn().mockResolvedValue([COMPTABLE, ADMIN]) },
     compte: { findMany: jest.fn().mockResolvedValue(numeros.map((n) => ({ id: n, numero: n }))) },
     ligneEcriture: {
@@ -175,6 +186,27 @@ describe('la sélection ISA 240 · § 33 a)', () => {
       cloture,
     ]).selection('t1', 'ex');
     expect(r.selection.find((s) => s.id === 'u1')?.comptesRares).toEqual(['65800000']);
+  });
+
+  // Simulation du 2026-10-08, relevé mineur · l'écriture qui solde les
+  // comptes de gestion, datée du dernier jour, sortait retenue (FIN_DE_PERIODE,
+  // MONTANT_ROND). Personne ne la saisit · elle n'est ni un ajustement de fin
+  // de période ni l'acte d'un auteur (ISA 240 § 33 a), et le règlement
+  // intérieur dit que le test ne compte pas les écritures de clôture.
+  it('ne sélectionne ni l’écriture de clôture, ni le report, ni l’à-nouveau provisoire', async () => {
+    const cloture = {
+      ...ORDINAIRE, id: 'cl', estGenereeParCloture: true, date: new Date('2026-12-31'),
+      lignes: [ligne('65800000', 0, 6_000_000), ligne('13100000', 6_000_000)],
+    };
+    const provisoire = {
+      ...ORDINAIRE, id: 'pv', estANouveauProvisoire: true, libelle: 'AN',
+      lignes: [ligne('52100000', 5_000_000), ligne('10100000', 0, 5_000_000)],
+    };
+    const r = await service([...Array.from({ length: 5 }, (_, i) => ({ ...ORDINAIRE, id: `r${i}` })), cloture, provisoire])
+      .selection('t1', 'ex');
+    expect(r.selection.map((s) => s.id)).not.toContain('cl');
+    expect(r.selection.map((s) => s.id)).not.toContain('pv');
+    expect(r.totalEcritures).toBe(5);
   });
 
   it('compte les écritures retenues par critère · une sélection se justifie', async () => {

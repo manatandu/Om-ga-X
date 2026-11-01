@@ -45,6 +45,17 @@ function service(etat: Etat = {}) {
         systemeComptableSyscohada: etat.systemeComptableSyscohada ?? null,
       }),
     },
+    exercice: {
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; id: { in: string[] } } }) =>
+        [
+          { id: 'ex1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'CLOTURE' },
+          { id: 'ex2', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'), statut: 'OUVERT' },
+          { id: 'n', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'CLOTURE' },
+          { id: 'n1', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'), statut: 'OUVERT' },
+          { id: 'ex0', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31'), statut: 'CLOTURE' },
+        ].filter((e) => where.tenantId === 't1' && where.id.in.includes(e.id)),
+      ),
+    },
     compte: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
         (etat.comptes ?? []).find((c) => c.id === where.id && c.tenantId === where.tenantId) ?? null,
@@ -504,6 +515,14 @@ describe('Registre des provisions · le report à l’ouverture', () => {
     await svc.reporterALOuverture('t1', 'ex1', 'ex2', 'a@b.cd');
     expect(creees[0].remboursementAttendu).toBeNull();
     expect(creees[0].remboursementCertain).toBe(false);
+  });
+
+  it('REFUSE le report vers un exercice antérieur ou clos (simulation du 2026-10-08)', async () => {
+    const { svc, creees } = service({ lignes: [ligne({ dotationsExercice: 900000 })] });
+    await expect(svc.reporterALOuverture('t1', 'ex2', 'ex0', 'a@b.cd')).rejects.toThrow(/qui SUIT/);
+    await expect(svc.reporterALOuverture('t1', 'ex0', 'ex1', 'a@b.cd')).rejects.toThrow(/clôturé/);
+    await expect(svc.reporterALOuverture('t1', 'ex1', 'autre', 'a@b.cd')).rejects.toThrow(/introuvable/);
+    expect(creees).toHaveLength(0);
   });
 
   it('ne reporte pas deux fois · un report rejoué ne duplique aucune ligne', async () => {

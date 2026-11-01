@@ -565,9 +565,34 @@ export class ExerciceService {
       // § 10 bis) vaut alors entière, exercices ouverts compris.
       const tenant = await client.tenant.findUnique({
         where: { id: tenantId },
-        select: { referentiel: true, formeJuridiqueSyscohada: true, dateDissolution: true },
+        select: {
+          referentiel: true,
+          formeJuridiqueSyscohada: true,
+          dateDissolution: true,
+          regimeLiquidation: true,
+          associeUniquePersonneMorale: true,
+        },
       });
       const dissolution = tenant?.dateDissolution ?? null;
+      // SANS LIQUIDATION, AUCUN EXERCICE DE LIQUIDATION (relevé de la seconde
+      // relecture du quatrième lot, point a) · la société dissoute par son
+      // associé unique personne morale transmet son patrimoine « sans qu'il y
+      // ait lieu à liquidation » (AUSCGIE art. 201 al. 4) · l'exercice arrêté
+      // à la dissolution est le dernier (`estFinSansLiquidation`).
+      if (
+        dissolution &&
+        sansLiquidation({
+          forme: tenant?.formeJuridiqueSyscohada ?? null,
+          regimeLiquidation: tenant?.regimeLiquidation ?? null,
+          associeUniquePersonneMorale: tenant?.associeUniquePersonneMorale,
+        })
+      ) {
+        throw new BadRequestException(
+          `La société est dissoute le ${jourFr(dissolution)} par son associé unique personne morale, « sans qu'il y ait ` +
+            'lieu à liquidation » (AUSCGIE art. 201 al. 4) · aucun exercice de liquidation ne s’ouvre, l’exercice ' +
+            'arrêté à la dissolution est le dernier.',
+        );
+      }
       if (dissolution) {
         const lendemain = lendemainDe(dissolution);
         if (dateDebut.getTime() !== lendemain.getTime()) {
@@ -645,7 +670,13 @@ export class ExerciceService {
     // passe à l'associé · aucun exercice ne suit non plus.
     const dossierDissous = await client.tenant.findUnique({
       where: { id: tenantId },
-      select: { referentiel: true, formeJuridiqueSyscohada: true, dateDissolution: true },
+      select: {
+        referentiel: true,
+        formeJuridiqueSyscohada: true,
+        dateDissolution: true,
+        regimeLiquidation: true,
+        associeUniquePersonneMorale: true,
+      },
     });
     if (
       dossierDissous?.referentiel === Referentiel.SYSCOHADA &&
@@ -656,7 +687,14 @@ export class ExerciceService {
       throw new BadRequestException(
         `La société est dissoute le ${jourFr(dossierDissous.dateDissolution)} · la liquidation forme un seul exercice, du ` +
           `${jourFr(lendemainDe(dossierDissous.dateDissolution))} à sa clôture (AUDCIF art. 7 al. 4), et aucun exercice ` +
-          'civil ne s’ouvre après. Créez l’exercice de liquidation (case « Exercice de liquidation »), ou reportez sa fin.',
+          (sansLiquidation({
+            forme: dossierDissous.formeJuridiqueSyscohada,
+            regimeLiquidation: dossierDissous.regimeLiquidation,
+            associeUniquePersonneMorale: dossierDissous.associeUniquePersonneMorale,
+          })
+            ? 'civil ne s’ouvre après. Dissoute sans liquidation (AUSCGIE art. 201 al. 4), elle n’en ouvre aucun · ' +
+              'l’exercice arrêté à la dissolution est le dernier.'
+            : 'civil ne s’ouvre après. Créez l’exercice de liquidation (case « Exercice de liquidation »), ou reportez sa fin.'),
       );
     }
 
@@ -992,6 +1030,11 @@ export class ExerciceService {
       annulationProposee: boolean;
       rattachementPropose: boolean;
       exerciceDeLiquidation: boolean;
+      /**
+       * Faux quand la société est dissoute SANS liquidation (AUSCGIE art. 201
+       * al. 4) · l'écran ne propose alors aucun exercice de liquidation.
+       */
+      liquidationOuverte: boolean;
       dateClotureLiquidation: Date | null;
       /** Actes de la période que l'arrêt retirera avec l'accord du cabinet (bloquant 1). */
       actesDeLaPeriodeARetirer: string[];
@@ -1025,6 +1068,7 @@ export class ExerciceService {
             (e) => e.id !== exercice.id && (e.dateFin.getTime() >= lendemain.getTime() || e.statut === StatutExercice.OUVERT),
           ),
         exerciceDeLiquidation: estExerciceDeLiquidation(exercice, d),
+        liquidationOuverte: avecLiquidation,
         dateClotureLiquidation: tenant.dateClotureLiquidation,
         actesDeLaPeriodeARetirer,
       };

@@ -167,7 +167,14 @@ function service(
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 't', referentiel, formeJuridiqueSyscohada }) },
     exercice: { count: jest.fn().mockResolvedValue(nbExercices) },
     mandatAuditeur: {
-      findMany: jest.fn().mockResolvedValue([]),
+      // Honore le filtre · le registre du dossier, par inscription.
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { tenantId: string; inscriptionOrdre?: string } }) =>
+          Promise.resolve(
+            cree.filter((m) => where.inscriptionOrdre === undefined || m.inscriptionOrdre === where.inscriptionOrdre),
+          ),
+        ),
       // Honore le filtre · un mandat d'un autre dossier n'existe pas.
       findFirst: jest
         .fn()
@@ -219,6 +226,20 @@ describe('Enregistrement du mandat · ce que les textes refusent', () => {
     const { svc } = service(Referentiel.SYCEBNL, null);
     await expect(svc.enregistrer('t', { ...mandatValide, rang: 3 })).rejects.toThrow(/renouvelables UNE FOIS/i);
     await expect(svc.enregistrer('t', { ...mandatValide, rang: 2 })).resolves.toBeDefined();
+  });
+
+  it('REFUSE un troisième mandat consécutif du même auditeur, rang non dit (simulation du 2026-10-08)', async () => {
+    // Le rang par défaut valait 1 · trois mandats contigus du même cabinet
+    // passaient l'un après l'autre. Le registre fait le rang.
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    await svc.enregistrer('t', mandatValide);
+    await svc.enregistrer('t', { ...mandatValide, premierExercice: 2029 });
+    expect(cree[1].rang).toBe(2);
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2032 })).rejects.toThrow(/renouvelables UNE FOIS/i);
+    // Un autre auditeur, ou un mandat séparé par un écart, repart au rang 1.
+    await expect(
+      svc.enregistrer('t', { ...mandatValide, premierExercice: 2032, inscriptionOrdre: 'ONEC/EC/2020/007' }),
+    ).resolves.toBeDefined();
   });
 
   it('N’INVENTE PAS cette limite pour une SARL', async () => {

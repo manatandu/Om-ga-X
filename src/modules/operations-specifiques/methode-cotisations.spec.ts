@@ -77,6 +77,20 @@ describe('paramètre du dossier · méthode de comptabilisation des cotisations'
     });
     await expect(service.modifierMethodeCotisations('t1', MethodeCotisations.APPEL)).rejects.toThrow(/bailleur/);
   });
+
+  // Simulation du 2026-10-08, relevé mineur · un dossier du Système minimal
+  // recevait le motif des projets de développement. Le SMT tient une
+  // comptabilité de TRÉSORERIE (SYCEBNL Partie 4 ch. 4, poste KA « Revenus
+  // encaissés »), la méthode de l'appel n'y a pas d'objet.
+  it('REFUSE le Système minimal avec SON motif, jamais celui des projets', async () => {
+    const { service } = tenantService({
+      ...DOSSIER_ASSOCIATION,
+      jeuEtatsFinanciersSycebnl: JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE,
+    });
+    const refus = service.modifierMethodeCotisations('t1', MethodeCotisations.APPEL);
+    await expect(refus).rejects.toThrow(/encaissés/);
+    await expect(service.modifierMethodeCotisations('t1', MethodeCotisations.APPEL)).rejects.not.toThrow(/projet/);
+  });
 });
 
 // ---------------------------------------------------------------------------
