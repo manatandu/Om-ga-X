@@ -38,6 +38,8 @@ interface EtatEcritureImpot {
     compteCharge: string;
     ecriture: { id: string; numeroPiece: number | null; statut: 'BROUILLARD' | 'VALIDEE'; date: string } | null;
     impotRecalcule: number | null;
+    /** Le refus du calcul quand il ne chiffre plus l'impôt · le constat reste annulable. */
+    motifRecalcul?: string | null;
     ecartAvecCalcul: number | null;
     /** Exercice de liquidation · trop-payé de la première cotisation constaté (D 441 / C 8994). */
     tropPayeLiquidation?: number;
@@ -251,7 +253,10 @@ export function EcritureImpotResultat({ exerciceId, version, apresChangement }: 
               <p className="text-warning mt-1">{messageEcart(etat.constat.impotRecalcule, etat.constat.ecartAvecCalcul)}</p>
             )}
           {etat.constat.ecartAvecCalcul === null && (
-            <p className="text-warning mt-1">L’impôt n’est plus chiffré par le calcul · le montant passé ne se compare à rien.</p>
+            <p className="text-warning mt-1">
+              L’impôt n’est plus chiffré par le calcul · le montant passé ne se compare à rien.
+              {etat.constat.motifRecalcul ? ` ${etat.constat.motifRecalcul}` : ''}
+            </p>
           )}
           {peutValider &&
             (annulation ? (

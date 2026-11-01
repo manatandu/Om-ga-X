@@ -1559,6 +1559,13 @@ export class ExerciceService {
               'une période n’est couverte que par un seul exercice.',
           );
         }
+        // LE STATUT D'ABORD (relevé de la seconde relecture du quatrième lot,
+        // point d) · une liquidation clôturée refuse l'annulation quoi qu'il
+        // en soit · lire avant elle les actes de la période nommait des actes
+        // à retirer pour un geste qui ne passerait jamais.
+        if (liquidation?.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException('L’exercice de liquidation est clôturé · l’arrêt ne s’annule plus.');
+        }
         // LES DEUX PÉRIODES CHANGENT (bloquant 1) · l'exercice arrêté retrouve
         // son année, l'exercice de liquidation la perd ou disparaît · leurs
         // actes calculés sur la période ne suivent pas, ils sont nommés.
@@ -1571,9 +1578,6 @@ export class ExerciceService {
         if (!liquidation) {
           const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: finOrigine } });
           return { exercice: arrete, exerciceDeLiquidation: null, ecrituresRattachees: 0, actesRattaches: 0, cloturesRattachees: 0, actesRetires };
-        }
-        if (liquidation.statut === StatutExercice.CLOTURE) {
-          throw new BadRequestException('L’exercice de liquidation est clôturé · l’arrêt ne s’annule plus.');
         }
         const auDela = liquidation.dateFin.getTime() > finOrigine.getTime();
         const finCivileSuivante = new Date(Date.UTC(finOrigine.getUTCFullYear() + 1, 11, 31));

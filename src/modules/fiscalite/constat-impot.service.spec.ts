@@ -181,6 +181,34 @@ describe('ConstatImpotService.etat', () => {
   });
 });
 
+describe('ConstatImpotService.etat · un calcul qui refuse ne cache pas le constat (relevé du second tour d’A11, point 2)', () => {
+  const enPlace = {
+    id: 'c',
+    montantImpot: new Prisma.Decimal(180),
+    minimumApplique: false,
+    montantImpute: new Prisma.Decimal(0),
+    attestationRegime: null,
+    ecriture: { id: 'e1', numeroPiece: 7, statut: StatutEcriture.VALIDEE, date: new Date() },
+    createdAt: new Date(),
+  };
+
+  it('refus nommé du calcul · constat rendu, impôt recalculé null avec son motif', async () => {
+    const { service, fiscalite } = monter({ enPlace });
+    fiscalite.resultatFiscal.mockRejectedValue(new BadRequestException('La forme ne relève plus de l’impôt sur les sociétés.'));
+    const etat = await service.etat('t', 'ex');
+    expect(etat.constat?.id).toBe('c');
+    expect(etat.constat?.impotRecalcule).toBeNull();
+    expect(etat.constat?.ecartAvecCalcul).toBeNull();
+    expect((etat.constat as { motifRecalcul?: string }).motifRecalcul).toMatch(/ne relève plus/);
+  });
+
+  it('une panne, elle, remonte', async () => {
+    const { service, fiscalite } = monter({ enPlace });
+    fiscalite.resultatFiscal.mockRejectedValue(new Error('connexion perdue'));
+    await expect(service.etat('t', 'ex')).rejects.toThrow('connexion perdue');
+  });
+});
+
 describe('ConstatImpotService.annuler', () => {
   it('passe la barrière SYSCOHADA comme lire et passer · refusée avant toute lecture du constat', async () => {
     const { service, fiscalite, prisma } = monter({});
