@@ -142,9 +142,13 @@ export function lireColonneDeNote(brut: unknown): 'N' | 'N1' {
   throw new BadRequestException(MOTIF_COLONNE_DE_NOTE);
 }
 
-/** Le code d'une note (« 5A », « 29B ») et son sous-tableau éventuel · lettres, chiffres et tirets. */
+/**
+ * Le code d'une note (« 5A », « 29B », « 16B bis ») · lettres, chiffres,
+ * espaces et tirets. L'espace de « 16B bis » est celui du texte (AUDCIF
+ * Titre IX ch. 6) · le refuser fermait la note au zoom, vu sur vraie base.
+ */
 export function lireCodeDeNote(brut: unknown): string {
-  if (typeof brut === 'string' && /^[A-Za-z0-9-]{1,12}$/.test(brut)) return brut;
+  if (typeof brut === 'string' && /^[A-Za-z0-9][A-Za-z0-9 -]{0,11}$/.test(brut)) return brut;
   throw new BadRequestException(MOTIF_REF_ILLISIBLE);
 }
 

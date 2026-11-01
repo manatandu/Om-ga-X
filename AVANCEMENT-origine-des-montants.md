@@ -37,11 +37,20 @@ descendre, Échap ou « Précédent » pour remonter.
   TOUT poste de chaque état et toute ligne servie de chaque note, toutes
   colonnes, sur un jeu d'essai à plusieurs exercices · somme des contributions
   égale au montant au centime.
+- e2e `e2e/tests/origine-des-montants.e2e.ts` · les deux référentiels, recette
+  en N, clôture de N, recette en N+1 · trésorerie N et N-1 calculées à la main,
+  toute cellule chiffrée des trois états et des notes balayée par la route,
+  puis double-clic montant, compte, ligne jusqu'à la fiche d'imputation, et
+  Entrée au clavier.
+- Rejeu sur vraie base (2026-11-01, script hors dépôt) · sept écritures en N,
+  clôture, quatre en N+1 · SYSCOHADA 308 cellules d'états et 482 de notes,
+  SYCEBNL 278 et 276, aucun écart ; banque N 2 590 000,25 et N-1 2 490 000
+  égales au calcul à la main. Il a trouvé un défaut, corrigé et gelé · le
+  code de note « 16B bis » (espace du texte) était refusé en 400.
 
 ## Reste
 
-- e2e (double-clic d'un montant du bilan jusqu'à la pièce).
-- Scénario sur vraie base à travers une clôture (N et N-1).
+- Intégration sur `main` (bloc § 3, tests navigateur, retrait de cette fiche).
 
 ## Non servi, et pourquoi
 

@@ -5,6 +5,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import {
   ecartAuCentime,
+  lireCodeDeNote,
   lireColonneOrigine,
   lireEtatZoomable,
   lireRefPoste,
@@ -231,6 +232,10 @@ describe('origine-des-montants · aides', () => {
     expect(lireRefPoste('RQP')).toBe('RQP');
     expect(lireRefPoste('')).toBe('');
     expect(() => lireRefPoste("AD'; --")).toThrow(BadRequestException);
+    // Le code d'une note garde l'espace du texte (« 16B bis »), refusé jusqu'au rejeu sur vraie base.
+    expect(lireCodeDeNote('16B bis')).toBe('16B bis');
+    expect(lireCodeDeNote('5A')).toBe('5A');
+    expect(() => lireCodeDeNote(' 5A')).toThrow(BadRequestException);
   });
 
   it("l'écart se dit au centime, un reste de flottant n'en est pas un", () => {
