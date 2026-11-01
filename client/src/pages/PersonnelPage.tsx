@@ -31,6 +31,10 @@ import { TITRE_BLOC_PAIE } from './PaieDuMois';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { lignesDepuisModele, lignesVersModele, type ModeleBulletin } from '../lib/modeles-bulletin';
 import { ONGLETS_PERSONNEL, ongletPersonnelDe, type OngletPersonnel } from '../lib/onglets-personnel';
+import { OngletParametresPaie } from '../components/paie/ParametresPaie';
+import { OngletPaieEnLot } from '../components/paie/PaieEnLot';
+import { OngletSoldesConges } from '../components/paie/SoldesConges';
+import { prerempliParametres, type CorpsPropose, type ParametresPaie } from '../lib/paie-en-lot';
 import { montant } from '../lib/montants';
 import { montantPourChamp } from '../lib/creances-douteuses';
 import { motifReductionInppIllisible } from '../lib/reduction-inpp';
@@ -797,6 +801,68 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [regimeSalarial, setRegimeSalarial] = useState('');
   // Ligne sage-l5, fonction 85 · le questionnaire de paie, ouvert depuis la simulation.
   const [questionnaireOuvert, setQuestionnaireOuvert] = useState(false);
+  // LIGNE PAIE-LOT · le salaire du contrat ne s'est pas repris, et pourquoi.
+  const [salaireNonRepris, setSalaireNonRepris] = useState<string | null>(null);
+
+  // LIGNE PAIE-LOT · LES PARAMÈTRES DE PAIE DU DOSSIER préremplissent les
+  // champs VIDES de la simulation · un champ tapé n'est jamais écrasé, un
+  // paramètre non déclaré laisse le champ vide (le serveur s'abstient ou le dit).
+  useEffect(() => {
+    if (onglet !== 'simulation') return;
+    let actuel = true;
+    api.get<ParametresPaie>('/personnel/parametres-paie').then(
+      (p) => {
+        if (!actuel) return;
+        const r = prerempliParametres({ natureInpp, effectifInpp, regimeSalarial, joursPayes }, p);
+        if (r.natureInpp !== natureInpp) setNatureInpp(r.natureInpp as '' | 'PUBLIC' | 'PRIVE');
+        if (r.effectifInpp !== effectifInpp) setEffectifInpp(r.effectifInpp);
+        if (r.regimeSalarial !== regimeSalarial) setRegimeSalarial(r.regimeSalarial);
+        if (r.joursPayes !== joursPayes) setJoursPayes(r.joursPayes);
+      },
+      (e: ApiError) => actuel && setErreur(e.message),
+    );
+    return () => {
+      actuel = false;
+    };
+    // Lu à l'ouverture de l'onglet seulement · relu à chaque frappe, il
+    // remplirait un champ que le cabinet vient de vider.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onglet]);
+
+  // LIGNE PAIE-LOT · LE SALAIRE DU CONTRAT, PREMIER ÉLÉMENT, DANS SA MONNAIE
+  // (salaire des jours dus quand le mois porte des absences ou des congés).
+  // Posé seulement sur une saisie VIERGE · une ligne tapée n'est jamais
+  // remplacée ; ensuite il se modifie comme toute ligne.
+  useEffect(() => {
+    setSalaireNonRepris(null);
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) return;
+    let actuel = true;
+    api.get<{ corps: CorpsPropose; manques: string[]; salaireRepris: boolean }>(`/personnel/salaries/${selection}/proposition-bulletin/${moisDePaie}`).then(
+      (r) => {
+        if (!actuel) return;
+        if (!r.salaireRepris) {
+          setSalaireNonRepris(r.manques[0] ?? null);
+          return;
+        }
+        const vierge = (ls: LignePaie[]) => ls.length === 1 && ls[0].montantFc === '' && ls[0].libelle === '' && !ls[0].rubriqueId;
+        setLignes((ls) => {
+          if (!vierge(ls)) return ls;
+          setDeviseStipulation(r.corps.deviseStipulation === 'USD' ? 'USD' : 'CDF');
+          return r.corps.elements.map((e) => ({
+            ...LIGNE_VIERGE,
+            nature: e.nature,
+            libelle: e.libelle,
+            montantFc: montantPourChamp(e.montantUsd ?? e.montantFc ?? null),
+          }));
+        });
+        if (r.corps.classeProfessionnelle !== undefined) setClassePro((c) => c || String(r.corps.classeProfessionnelle));
+      },
+      (e: ApiError) => actuel && setErreur(e.message),
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
 
   const charger = useCallback(() => {
     const parametres = [tous ? 'tous=true' : '', aCompleter ? 'aCompleter=true' : ''].filter(Boolean).join('&');
@@ -1609,7 +1675,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   ? 'Effectif'
                   : o === 'simulation'
                     ? 'Simulation'
-                    : o === 'bulletins'
+                    : o === 'parametres'
+                      ? 'Paramètres de paie'
+                      : o === 'lot'
+                      ? 'Paie en lot'
+                      : o === 'soldes'
+                      ? 'Soldes de congés'
+                      : o === 'bulletins'
                       ? 'Bulletins'
                       : o === 'conges'
                       ? 'Congés'
@@ -3441,6 +3513,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {salaireNonRepris && selection && <div className="text-text-dim mt-1.5">{salaireNonRepris}</div>}
           <div className="flex gap-2 mt-2">
             <button
               type="button"
@@ -4007,6 +4080,9 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         <OngletBulletins moisInitial={moisDePaie} peutEcrire={peutEcrire} />
       )}
 
+      {onglet === 'parametres' && <OngletParametresPaie peutEcrire={peutEcrire} />}
+      {onglet === 'lot' && <OngletPaieEnLot peutEcrire={peutEcrire} />}
+      {onglet === 'soldes' && <OngletSoldesConges />}
       {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'temps' && <OngletFeuillesTempsPaie salaries={salaries} peutEcrire={peutEcrire} />}

@@ -7,6 +7,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PersonnelService } from './personnel.service';
 import { ComptabilisationPaieService } from './comptabilisation-paie.service';
+import { PaieEnLotService } from './paie-en-lot.service';
+import { ParametresPaieDto } from './dto/paie-en-lot.dto';
 import {
   AnnulationBulletinDto,
   ComptabilisationPaieDto,
@@ -43,7 +45,49 @@ export class PersonnelController {
   constructor(
     private readonly personnel: PersonnelService,
     private readonly paieDuMois: ComptabilisationPaieService,
+    private readonly paieEnLot: PaieEnLotService,
   ) {}
+
+  // ──────────────────────────────────────────────────────────────────────
+  // LIGNE PAIE-LOT · paramètres de paie déclarés une fois, paie du mois
+  // proposée en lot, soldes de congés. Le gestionnaire de paie y a accès par
+  // la classe, comme au reste du personnel. Aucune route n'émet · l'émission
+  // reste `salaries/:salarieId/bulletins`, appelée bulletin par bulletin.
+  // ──────────────────────────────────────────────────────────────────────
+
+  @Get('parametres-paie')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async lireParametresPaie(@CurrentUser() user: AuthenticatedUser) {
+    return this.paieEnLot.lireParametres(user.tenantId);
+  }
+
+  @Put('parametres-paie')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  async declarerParametresPaie(@CurrentUser() user: AuthenticatedUser, @Body() dto: ParametresPaieDto) {
+    return this.paieEnLot.modifierParametres(user.tenantId, dto);
+  }
+
+  @Get('paie-en-lot/:mois')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async proposerPaieEnLot(@CurrentUser() user: AuthenticatedUser, @Param('mois') mois: string) {
+    return this.paieEnLot.proposerLeMois(user.tenantId, mois);
+  }
+
+  @Get('salaries/:salarieId/proposition-bulletin/:mois')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async propositionBulletin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('salarieId') salarieId: string,
+    @Param('mois') mois: string,
+  ) {
+    return this.paieEnLot.propositionDuSalarie(user.tenantId, salarieId, mois);
+  }
+
+  @Get('soldes-conges')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async soldesConges(@CurrentUser() user: AuthenticatedUser, @Query('ala') aLa?: string) {
+    return this.paieEnLot.soldesConges(user.tenantId, aLa || undefined);
+  }
 
   @Get('salaries')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)

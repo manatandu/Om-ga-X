@@ -12,7 +12,11 @@ export const ONGLETS_PERSONNEL = [
   'confrontation',
   'effectif',
   'simulation',
+  // Ligne paie-lot · paramètres de paie, paie du mois en lot, soldes de congés.
+  'parametres',
+  'lot',
   'bulletins',
+  'soldes',
   'conges',
   'absences',
   // Ligne sage-l5, fonction 78, reste · les feuilles de temps et les compteurs libres.
