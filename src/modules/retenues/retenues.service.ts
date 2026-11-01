@@ -779,9 +779,28 @@ export class RetenuesService {
       ).values(),
     ].sort((a, b) => a.numero.localeCompare(b.numero));
 
+    // LA PAIE AU BROUILLARD N'EST PAS LUE (ligne paie-declarations, point 2).
+    // Le registre ne lit que le livre-journal (AUDCIF art. 22, 2°, statut
+    // VALIDÉE plus haut) · une passation de paie encore au brouillard n'y
+    // porte ni la quote-part ouvrière, ni l'impôt retenu, ni l'INPP ou l'ONEM,
+    // et le registre annonçait « rien à verser » sur un mois dont la paie
+    // était pourtant passée. Les pièces sont COMPTÉES (une passation du mois
+    // ou sa reprise en négatif, reconnues par leur LIAISON au bulletin, jamais
+    // par le libellé) et l'écran le dit, sans rien en chiffrer · un montant
+    // au brouillard peut encore changer.
+    const piecesDePaieAuBrouillard = await this.prisma.ecriture.count({
+      where: {
+        tenantId,
+        exerciceId: params.exerciceId,
+        statut: StatutEcriture.BROUILLARD,
+        OR: [{ bulletinsPaie: { some: {} } }, { bulletinsPaieRepris: { some: {} } }],
+      },
+    });
+
     return {
       dateReference: reference,
       derniereVerificationEcheances: DERNIERE_VERIFICATION,
+      piecesDePaieAuBrouillard,
       natures,
       totalRetenu: Math.round(natures.reduce((s, n) => s + n.retenu, 0) * 100) / 100,
       totalReverse: Math.round(natures.reduce((s, n) => s + n.reverse, 0) * 100) / 100,
@@ -1103,6 +1122,7 @@ export class RetenuesService {
       derniereVerificationEcheances: registre.derniereVerificationEcheances,
       echeances,
       totalDu: registre.totalDu,
+      piecesDePaieAuBrouillard: registre.piecesDePaieAuBrouillard,
       avertissements: [
         ...registre.avertissements,
         ...(pvSansCommissaire ? [AVERTISSEMENT_PV_SANS_COMMISSAIRE] : []),

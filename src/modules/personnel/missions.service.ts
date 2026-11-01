@@ -14,6 +14,7 @@ import {
   type QualificationFraisMission,
 } from './missions-salarie';
 import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
+import { PLAFOND_REPARTITIONS_MISSION } from './avance-mission';
 
 /** Liste de travail bornée (§ 8 bis) · elle dit quand elle ne couvre pas tout. */
 export const PLAFOND_MISSIONS = 500;
@@ -44,6 +45,51 @@ const lireFrais = (frais: readonly { element: string; qualification: string; mon
   }));
 
 /**
+ * CE QUE LE BULLETIN PORTE D'UNE MISSION (ligne paie-declarations, point 3) ·
+ * une mission qui a une AVANCE non annulée ne porte plus ses frais justifiés
+ * au bulletin · la régularisation au retour les impute au 6384 contre
+ * l'avance (`avance-mission.ts`), et les porter aussi au bulletin les ferait
+ * rembourser deux fois. Le forfait, imposable (loi n° 23/053, art. 68, 1°),
+ * reste au bulletin.
+ */
+export function totauxAuBulletin(frais: ReturnType<typeof lireFrais>, avancee: boolean) {
+  const t = totauxMission(frais);
+  return avancee ? { ...t, justifieFc: 0 } : t;
+}
+
+type AvanceLue = Prisma.AvanceMissionGetPayload<{ include: { regularisations: true } }>;
+
+/** L'avance non annulée et sa régularisation non annulée · l'historique annulé reste compté. */
+export function avanceDeLaMission(avances: readonly AvanceLue[]) {
+  const a = avances.find((x) => x.annuleLe === null) ?? null;
+  const annulees = avances.filter((x) => x.annuleLe !== null).length;
+  if (!a) return { active: null, annulees };
+  const r = a.regularisations.find((x) => x.annuleLe === null) ?? null;
+  return {
+    annulees,
+    active: {
+      id: a.id,
+      date: iso(a.date),
+      montantFc: Number(a.montantFc),
+      pieceJustificative: a.pieceJustificative,
+      piecePassee: a.piecePassee,
+      regularisation: r
+        ? {
+            id: r.id,
+            date: iso(r.date),
+            issue: r.issue,
+            justifieFc: Number(r.justifieFc),
+            avanceFc: Number(r.avanceFc),
+            ecartFc: Number(r.ecartFc),
+            piecePassee: r.piecePassee,
+            avanceSalaireId: r.avanceSalaireId,
+          }
+        : null,
+    },
+  };
+}
+
+/**
  * LES MISSIONS QU'UN BULLETIN PORTE, relues dans le dossier · chacune du
  * salarié payé, non annulée, jamais portée par un autre bulletin émis, d'un
  * départ qui ne suit pas le mois. Ce qui part au bulletin · le forfait (imposable)
@@ -64,6 +110,7 @@ export async function missionsAPorter(
     include: {
       frais: { select: { element: true, qualification: true, montantFc: true } },
       bulletin: { select: { statut: true, numero: true } },
+      avances: { where: { annuleLe: null }, select: { id: true }, take: 1 },
     },
   });
   const portees: MissionPortee[] = [];
@@ -75,7 +122,7 @@ export async function missionsAPorter(
     if (porteurActif(m)) {
       throw new BadRequestException(`La mission n° ${m.numero} est déjà portée par le bulletin n° ${m.bulletin!.numero} · annulez-le d'abord s'il est faux.`);
     }
-    const t = totauxMission(lireFrais(m.frais));
+    const t = totauxAuBulletin(lireFrais(m.frais), m.avances.length > 0);
     const refus = motifRefusForfaitAuMois(
       { numero: m.numero, dateDepart: m.dateDepart, annuleLe: m.annuleLe, aPorterFc: t.forfaitFc + t.justifieFc },
       moisDePaie,
@@ -112,11 +159,15 @@ export async function lierMissionsAuBulletin(
         annuleLe: true,
         bulletin: { select: { statut: true, numero: true } },
         frais: { select: { element: true, qualification: true, montantFc: true } },
+        avances: { where: { annuleLe: null }, select: { id: true }, take: 1 },
       },
     });
     if (!m || m.annuleLe) throw new ConflictException(`Mission n° ${p.numero} annulée pendant l'émission · rien n'est émis.`);
     if (porteurActif(m)) throw new ConflictException(`Mission n° ${p.numero} portée entre-temps par le bulletin n° ${m.bulletin!.numero} · rien n'est émis.`);
-    const t = totauxMission(lireFrais(m.frais));
+    // Une avance versée entre la simulation et l'émission retire les frais
+    // justifiés du bulletin (la régularisation les impute) · la même règle
+    // qu'au calcul, et l'écart refuse l'émission comme un frais changé.
+    const t = totauxAuBulletin(lireFrais(m.frais), m.avances.length > 0);
     if (Math.round(t.forfaitFc * 100) !== Math.round(p.forfaitFc * 100) || Math.round(t.justifieFc * 100) !== Math.round(p.justifieFc * 100)) {
       throw new ConflictException(
         `Les frais de la mission n° ${p.numero} ont changé pendant l'émission (forfait ${t.forfaitFc}, remboursement ${t.justifieFc}, ` +
@@ -142,6 +193,8 @@ export class MissionsService {
       salarie: { select: { nom: true; postNom: true; prenoms: true; matricule: true } };
       frais: true;
       bulletin: { select: { statut: true; numero: true; moisDePaie: true } };
+      avances: { include: { regularisations: true } };
+      repartitions: { include: { plan: { select: { code: true } }; section: { select: { code: true } } } };
     };
   }>) {
     const frais = m.frais.map((f) => ({
@@ -176,6 +229,19 @@ export class MissionsService {
       bulletinAnnule: m.bulletin && m.bulletin.statut !== StatutBulletinPaie.EMIS ? { numero: m.bulletin.numero, moisDePaie: m.bulletin.moisDePaie } : null,
       frais,
       totaux: totauxMission(lireFrais(m.frais)),
+      // Ligne paie-declarations · l'avance non annulée et sa régularisation, et
+      // ce que le bulletin porte encore (le forfait seul quand la mission est avancée).
+      avance: avanceDeLaMission(m.avances),
+      aPorterAuBulletin: totauxAuBulletin(lireFrais(m.frais), m.avances.some((a) => a.annuleLe === null)),
+      // Au-delà du plafond, la liste se dit tronquée (la pose ne le permet pas).
+      repartitionsTronquees: m.repartitions.length > PLAFOND_REPARTITIONS_MISSION,
+      repartitions: m.repartitions.slice(0, PLAFOND_REPARTITIONS_MISSION).map((r) => ({
+        planId: r.planId,
+        planCode: r.plan.code,
+        sectionId: r.sectionId,
+        sectionCode: r.section.code,
+        pourcentage: Number(r.pourcentage),
+      })),
     };
   }
 
@@ -183,6 +249,9 @@ export class MissionsService {
     salarie: { select: { nom: true, postNom: true, prenoms: true, matricule: true } },
     frais: { orderBy: { createdAt: 'asc' as const }, take: PLAFOND_FRAIS_PAR_MISSION },
     bulletin: { select: { statut: true, numero: true, moisDePaie: true } },
+    // Toutes les avances, annulées comprises (une mission en a au plus quelques-unes) · l'écran dit l'historique.
+    avances: { orderBy: { createdAt: 'desc' as const }, take: 20, include: { regularisations: { orderBy: { createdAt: 'desc' as const }, take: 20 } } },
+    repartitions: { orderBy: [{ planId: 'asc' as const }, { sectionId: 'asc' as const }], take: PLAFOND_REPARTITIONS_MISSION + 1, include: { plan: { select: { code: true } }, section: { select: { code: true } } } },
   };
 
   /** Les plus récentes d'abord, l'identifiant départageant un même jour. */
@@ -216,7 +285,7 @@ export class MissionsService {
     return missions
       .filter((m) => !porteurActif(m))
       .map((m) => this.presenter(m))
-      .filter((m) => m.totaux.forfaitFc + m.totaux.justifieFc > 0);
+      .filter((m) => m.aPorterAuBulletin.forfaitFc + m.aPorterAuBulletin.justifieFc > 0);
   }
 
   /** Le numéro se prend sous un verrou par dossier · deux ordres simultanés n'ont jamais le même. */
@@ -275,10 +344,26 @@ export class MissionsService {
   private async modifiable(db: Db, tenantId: string, id: string) {
     const m = await db.missionSalarie.findFirst({
       where: { id, tenantId },
-      select: { id: true, numero: true, annuleLe: true, dateDepart: true, bulletin: { select: { statut: true, numero: true } }, _count: { select: { frais: true } } },
+      select: {
+        id: true,
+        numero: true,
+        annuleLe: true,
+        dateDepart: true,
+        bulletin: { select: { statut: true, numero: true } },
+        _count: { select: { frais: true } },
+        avances: { where: { annuleLe: null }, select: { regularisations: { where: { annuleLe: null }, select: { id: true }, take: 1 } }, take: 1 },
+      },
     });
     if (!m) throw new NotFoundException('Mission introuvable dans ce dossier.');
     if (m.annuleLe) throw new ConflictException(`La mission n° ${m.numero} est annulée · elle ne change plus.`);
+    // Ligne paie-declarations · la régularisation a FIGÉ les frais justifiés
+    // qu'elle impute · un frais ajouté ou retiré après elle ne serait ni au
+    // 6384 ni au bulletin. Annuler la régularisation rend la mission modifiable.
+    if (m.avances.some((a) => a.regularisations.length > 0)) {
+      throw new ConflictException(
+        `L'avance de la mission n° ${m.numero} est régularisée · ses frais sont figés. Annulez la régularisation pour les changer ; pour annuler la mission, annulez la régularisation, puis l'avance, puis la mission.`,
+      );
+    }
     if (porteurActif(m)) {
       throw new ConflictException(
         `La mission n° ${m.numero} est portée par le bulletin émis n° ${m.bulletin!.numero} · annulez-le d'abord, la mission redeviendra modifiable.`,
@@ -348,6 +433,11 @@ export class MissionsService {
     await transactionJournalisee(this.prisma, async (tx) => {
       await verrouillerMission(tx, tenantId, id);
       const m = await this.modifiable(tx, tenantId, id);
+      // Ligne paie-declarations · une avance versée reste au 4213 · la mission
+      // annulée la laisserait sans régularisation possible.
+      if (m.avances.length > 0) {
+        throw new ConflictException(`La mission n° ${m.numero} porte une avance non annulée · annulez l'avance avant d'annuler la mission.`);
+      }
       await tx.missionSalarie.update({ where: { id: m.id }, data: { annuleLe: new Date(), motifAnnulation: dto.motif.trim() } });
     });
     return this.lire(tenantId, id);

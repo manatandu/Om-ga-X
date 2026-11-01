@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { libellePiecesDePaieAuBrouillard, piecesDePaieAuBrouillard } from '../lib/retenues-brouillard';
 import { api } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
@@ -110,6 +111,17 @@ export function RetenuesPage() {
 
       {erreur && (
         <div className="border border-danger/30 bg-danger-soft px-3.5 py-2 mb-2.5 text-[11.5px] max-w-[1000px]">{erreur}</div>
+      )}
+      {/*
+        LA PAIE AU BROUILLARD N'EST PAS LUE · le registre ne lit que le
+        livre-journal. Sans cette ligne, un mois dont la paie est passée mais
+        non validée se lisait « rien à reverser ». Le nombre vient du serveur,
+        aucun montant n'est chiffré (une pièce au brouillard peut changer).
+      */}
+      {piecesDePaieAuBrouillard(registre, echeancier) > 0 && (
+        <div role="status" className="border border-warning/30 bg-warning-soft text-warning px-3.5 py-2 mb-2.5 text-[11.5px] max-w-[1000px]">
+          {libellePiecesDePaieAuBrouillard(piecesDePaieAuBrouillard(registre, echeancier))}
+        </div>
       )}
 
       <div className="ecran-seul flex bg-chrome border border-border border-b-0 max-w-[1100px]">

@@ -59,6 +59,7 @@ function service(lignes: Ligne[], exercice = { id: 'e2026', dateDebut: new Date(
         ),
     },
     ecriture: {
+      count: jest.fn().mockResolvedValue(0),
       // Le dernier report à-nouveau VALIDÉ, daté au plus tard de l'ouverture.
       findFirst: jest.fn().mockImplementation(({ where }: { where: { statut: string; date: { lte: Date } } }) => {
         const reports = lignes

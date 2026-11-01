@@ -55,6 +55,7 @@ function service(lignes: ReturnType<typeof ligne>[], referentiel = 'SYCEBNL') {
     // Le référentiel du dossier commande l'avertissement de régime d'impôt,
     // les réserves de chaque nature et la liste des obligations déclaratives.
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel }) },
+    ecriture: { count: jest.fn().mockResolvedValue(0) },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
     // Sans exercice connu, aucun solde d'ouverture (audit final F26) · il est
     // éprouvé par `retenues-ouverture-f26.spec.ts`, dont la doublure honore
@@ -1560,5 +1561,25 @@ describe('Passe F13 · échéancier et loi de finances n° 25/060', () => {
 
   it('l’art. 96 bis rend la personne redevable de la retenue ET des pénalités', () => {
     expect(AVERTISSEMENT_REDEVABLE).toContain('ET DES PÉNALITÉS Y AFFÉRENTES');
+  });
+});
+
+describe('la paie au brouillard se compte, elle ne se lit pas (ligne paie-declarations)', () => {
+  it("compte les pièces de paie au brouillard de l'exercice, reconnues par leur liaison au bulletin", async () => {
+    const s = service([]);
+    const prisma = (s as unknown as { prisma: { ecriture: { count: jest.Mock } } }).prisma;
+    prisma.ecriture.count.mockResolvedValue(2);
+    const r = await s.registre('t1', { exerciceId: 'e1', dateReference: '2026-03-20' });
+    expect(r.piecesDePaieAuBrouillard).toBe(2);
+    expect(prisma.ecriture.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        exerciceId: 'e1',
+        statut: 'BROUILLARD',
+        OR: [{ bulletinsPaie: { some: {} } }, { bulletinsPaieRepris: { some: {} } }],
+      },
+    });
+    const e = await s.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2026-03-20' });
+    expect(e.piecesDePaieAuBrouillard).toBe(2);
   });
 });

@@ -41,6 +41,8 @@ import { ImportPersonnelService } from './import-personnel.service';
 import { RappelsSalaireService } from './rappels-salaire.service';
 import { ComptesSalariesService } from './comptes-salaries.service';
 import { PaieEnLotService } from './paie-en-lot.service';
+import { DeclarationCnssService } from './declaration-cnss.service';
+import { AvancesMissionService } from './avances-mission.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -92,6 +94,8 @@ import { PaieEnLotService } from './paie-en-lot.service';
     ImportPersonnelService,
     RappelsSalaireService,
     ComptesSalariesService,
+    DeclarationCnssService,
+    AvancesMissionService,
   ],
   exports: [PersonnelService],
 })

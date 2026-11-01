@@ -2147,6 +2147,18 @@ export class EcritureService {
         'le paiement des salaires (fenêtre Personnel)',
         db.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
       ],
+      // L'avance de mission et sa régularisation (ligne paie-declarations) ·
+      // retirée seule, la pièce laisserait l'avance se dire versée sans le
+      // D 4211, ou régularisée sans le 6384 ; leurs négatifs de même. Elles
+      // s'annulent depuis l'onglet Missions de la fenêtre Personnel.
+      [
+        "une avance de mission (fenêtre Personnel, onglet Missions · la pièce ou son négatif)",
+        db.avanceMission.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
+      [
+        "la régularisation d'une avance de mission (fenêtre Personnel, onglet Missions · la pièce ou son négatif)",
+        db.regularisationMission.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
       ["une dotation aux amortissements", db.dotationAmortissement.count({ where: parLEcriture })],
       ["une dépréciation d'immobilisation", db.depreciationImmobilisation.count({ where: parLEcriture })],
       [

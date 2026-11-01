@@ -14,6 +14,7 @@ import { FichierPersonnelDto } from './dto/import-personnel.dto';
 import { RappelsSalaireService } from './rappels-salaire.service';
 import { AnnulationRappelDto, RappelSalaireDto } from './dto/rappel-salaire.dto';
 import { ComptesSalariesService } from './comptes-salaries.service';
+import { DeclarationCnssService } from './declaration-cnss.service';
 
 /**
  * LIGNE PAIE-SUITE · fiche individuelle et cumuls (89), import du personnel
@@ -30,7 +31,34 @@ export class PersonnelSuiteController {
     private readonly imports: ImportPersonnelService,
     private readonly rappels: RappelsSalaireService,
     private readonly comptes: ComptesSalariesService,
+    private readonly declarationCnss: DeclarationCnssService,
   ) {}
+
+  // ---- Ligne paie-declarations · la déclaration CNSS préparée -----------
+
+  /**
+   * La déclaration des cotisations sociales d'un mois, préparée depuis les
+   * bulletins émis (`declaration-cnss.ts`) · une LECTURE, ouverte comme le
+   * registre (gestionnaire de paie compris, aide-comptable non).
+   */
+  @Get('declaration-cnss/:mois')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  declarationCnssDuMois(@CurrentUser() user: AuthenticatedUser, @Param('mois') mois: string) {
+    return this.declarationCnss.preparer(user.tenantId, mois);
+  }
+
+  /** La même en Excel · le classeur se construit EN ENTIER avant le premier octet, un refus rend son motif. */
+  @Get('declaration-cnss/:mois/excel')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)
+  async declarationCnssExcel(@CurrentUser() user: AuthenticatedUser, @Param('mois') mois: string, @Res() res: Response) {
+    const c = await this.declarationCnss.excel(user.tenantId, mois);
+    res.set({
+      'Content-Type': TYPE_XLSX,
+      'Content-Disposition': `attachment; filename="${c.nomFichier}"`,
+      'Access-Control-Expose-Headers': 'Content-Disposition',
+    });
+    res.send(c.buffer);
+  }
 
   @Get('salaries/:salarieId/fiche-individuelle')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE, RoleUtilisateur.LECTURE_SEULE)

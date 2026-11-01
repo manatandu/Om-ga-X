@@ -188,6 +188,13 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // salaire repartirait dans le paiement suivant ; son négatif de même.
   'PaiementSalaires.ecritureId',
   'PaiementSalaires.ecritureNegatifId',
+  // Ligne paie-declarations · l'avance de mission (D 4211 / C trésorerie) et sa
+  // régularisation (6384, 4211, trésorerie) · retirée seule, la fiche se dirait
+  // versée ou régularisée sans la pièce ; leurs négatifs de même.
+  'AvanceMission.ecritureId',
+  'AvanceMission.ecritureNegatifId',
+  'RegularisationMission.ecritureId',
+  'RegularisationMission.ecritureNegatifId',
   // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation (fonction
   // n° 67) · l'écriture validée annulée et son négatif · retirés ou corrigés
   // seuls, le négatif annulerait une annuité que plus rien ne nomme, ou la

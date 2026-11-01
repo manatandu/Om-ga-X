@@ -357,6 +357,13 @@ export const MODELES_AUDITES = new Set<string>([
   // retiré changent ce que le bulletin porte · la trace dit qui et quand.
   'MissionSalarie',
   'FraisMission',
+  // Ligne paie-declarations · l'avance de mission et sa régularisation passent
+  // une pièce au journal, leur annulation l'inscrit en négatif · la
+  // répartition par projet dit sur quelles sections la charge portera · la
+  // trace dit qui et quand.
+  'AvanceMission',
+  'RegularisationMission',
+  'RepartitionMission',
   // Ligne microfina-m3, lot 2 · une demande accordée fait naître un congé, une
   // formation réalisée nomme ses présents · la trace dit qui et quand.
   'DemandeCongeSalarie',
@@ -695,6 +702,11 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Ligne microfina-m3 · le montant d'un frais de mission entre au net du
   // salarié (le forfait est même imposable) · masqué comme la rémunération.
   FraisMission: ['montantFc'],
+  // Ligne paie-declarations · l'avance et les montants de la régularisation
+  // entrent au compte du salarié · masqués comme la rémunération ; la pièce,
+  // les dates, l'issue et l'annulation restent.
+  AvanceMission: ['montantFc'],
+  RegularisationMission: ['justifieFc', 'avanceFc', 'ecartFc'],
   // Ligne paie-suite, fonction 87 · la nouvelle base et les arriérés sont la
   // RÉMUNÉRATION, masquée comme celle du contrat ; mois, motif, pièce et
   // bulletin porteur restent, c'est ce que la trace doit dire.

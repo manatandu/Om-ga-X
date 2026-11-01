@@ -61,6 +61,8 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
     // Ligne sage-l5, fonction 88 · la répartition analytique de la paie retient sa section et son plan.
     ligneRepartitionAnalytiquePaie: { count: compteur(usages.repartitionsPaie, 'sectionId') },
     repartitionAnalytiquePaie: { count: compteur(undefined, 'planId') },
+    // Ligne paie-declarations · la répartition des frais d'une mission retient sa section et son plan.
+    repartitionMission: { count: compteur(undefined, 'sectionId') },
     // Ligne analytique, fonction n° 48 · la grille d'un compte retient sa section et son plan.
     ligneGrilleAnalytique: { count: compteur(usages.grilles, 'sectionId') },
     grilleAnalytique: { count: compteur(undefined, 'planId') },

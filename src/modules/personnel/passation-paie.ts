@@ -92,7 +92,9 @@ export type RoleComptePaie =
   | 'IRPP_RETENU'
   | 'REMUNERATIONS_DUES'
   | 'TRANSFERTS_DE_CHARGES'
-  | 'MISSIONS';
+  | 'MISSIONS'
+  | 'AVANCES_AU_PERSONNEL'
+  | 'FRAIS_AVANCES_AU_PERSONNEL';
 
 export type CompteDuRole = {
   readonly SYSCOHADA: string;
@@ -262,6 +264,34 @@ export const NOMENCLATURE_PAIE: Readonly<Record<RoleComptePaie, CompteDuRole>> =
     SYSCOHADA: '63840000',
     SYCEBNL: '63840000',
     intitule: 'Missions',
+    divergent: false,
+  },
+  // LIGNE PAIE-DECLARATIONS · LE 4211 « Personnel, avances » (fiche du compte
+  // 42 des deux plans, AUDCIF Titre VII ; SYCEBNL Partie 2 ch. 3) reçoit le
+  // TROP-VERSÉ d'une mission RETENU SUR LA PAIE · reclassé du 4213 par la
+  // régularisation, il devient une avance sur rémunération que l'art. 112, c)
+  // du Code du travail laisse retenir, et que l'avance du registre reprend
+  // bulletin après bulletin (`avances-salaire.ts`, même compte).
+  AVANCES_AU_PERSONNEL: {
+    SYSCOHADA: '42110000',
+    SYCEBNL: '42110000',
+    intitule: 'Personnel, avances',
+    divergent: false,
+  },
+  // LIGNE PAIE-DECLARATIONS · L'AVANCE DE MISSION (décision par la loi du
+  // 2026-11-01, relecture de la ligne). Fiche du compte 42 des deux plans · le
+  // 421 « Personnel, avances et acomptes » se subdivise en 4211 « Personnel,
+  // avances », 4212 « Personnel, acomptes » et 4213 « Frais avancés et
+  // fournitures au personnel ». L'avance de mission n'est pas une avance SUR LA
+  // RÉMUNÉRATION (celles que l'art. 112, c) du Code du travail laisse retenir,
+  // au 4211 et au 4212) · ce sont des FRAIS AVANCÉS au personnel pour une
+  // dépense de l'entité · 4213 aux deux référentiels, semé aux deux plans
+  // (42130000 « Frais avancés et fournitures au personnel » au SYSCOHADA,
+  // « Personnel · frais avancés et fournitures au personnel » au SYCEBNL).
+  FRAIS_AVANCES_AU_PERSONNEL: {
+    SYSCOHADA: '42130000',
+    SYCEBNL: '42130000',
+    intitule: 'Frais avancés et fournitures au personnel',
     divergent: false,
   },
 } as const;

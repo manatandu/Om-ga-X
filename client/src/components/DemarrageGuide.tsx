@@ -6,6 +6,7 @@ import { MODULES, type ModuleOptionnel } from '../lib/profil-dossier';
 import { etapesDemarrage, type EtatDemarrage } from '../lib/demarrage-guide';
 import { PortailModale } from './PortailModale';
 import { Aide } from './chrome/Aide';
+import { AmorcePaie } from './paie/AmorcePaie';
 
 /**
  * ASSISTANT DE DÉMARRAGE · voir `lib/demarrage-guide.ts`. Chaque étape ouvre
@@ -80,6 +81,11 @@ export function DemarrageGuide({ etat, onFermer, onPasser }: { etat: EtatDemarra
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold">{e.titre}</div>
+                    {e.cle === 'modules' && (
+                      <div className="mt-1">
+                        <AmorcePaie modulesActives={modules} onActive={setModules} />
+                      </div>
+                    )}
                     {e.cle === 'modules' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 mt-1">
                         {MODULES.map((m) => (

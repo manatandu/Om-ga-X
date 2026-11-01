@@ -162,8 +162,10 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // leurs destinataires (fonction 95), les préférences et les notifications
     // des utilisateurs (fonctions 96 et 100), tous bornés par leur tenantId ;
     // 241 avec les articles commerciaux, les tarifs par client, les modes
-    // d'arrondi et les collaborateurs (ligne commercial-l8), idem.
-    expect(modeles).toHaveLength(241);
+    // d'arrondi et les collaborateurs (ligne commercial-l8), idem ; 244 avec
+    // les avances de mission, leurs régularisations et la répartition des
+    // frais par projet (ligne paie-declarations), bornées par leur tenantId.
+    expect(modeles).toHaveLength(244);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

@@ -35,6 +35,7 @@ function ligne(numero: string, date: string, montant: { debit?: number; credit?:
 function service(lignes: ReturnType<typeof ligne>[]) {
   const prisma = {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYCEBNL' }) },
+    ecriture: { count: jest.fn().mockResolvedValue(0) },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
     // Sans exercice connu, aucun solde d'ouverture (audit final F26) · il est
     // éprouvé par `retenues-ouverture-f26.spec.ts`, dont la doublure honore

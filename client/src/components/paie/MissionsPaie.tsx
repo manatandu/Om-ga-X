@@ -4,6 +4,7 @@ import { Aide } from '../chrome/Aide';
 import { libelleListeBornee } from '../../lib/liste-bornee-personnel';
 import { montant as fc } from '../../lib/montants';
 import { lireNombre } from '../../lib/conditions-bancaires-saisie';
+import { AvanceMissionPaie, type AvanceDeMission, type RepartitionDeMission } from './AvanceMissionPaie';
 
 /**
  * LIGNE MICROFINA-M3, IDÉE 3 · L'ONGLET MISSIONS DE LA FENÊTRE PERSONNEL.
@@ -45,6 +46,11 @@ export type MissionLue = {
   bulletinAnnule?: { numero: number; moisDePaie: string } | null;
   frais: FraisMissionLu[];
   totaux: { justifieFc: number; forfaitFc: number; regleParEntiteFc: number; totalFc: number };
+  /** Ligne paie-declarations · l'avance et sa régularisation, ce que le bulletin porte encore, les projets. */
+  avance?: AvanceDeMission;
+  aPorterAuBulletin?: { justifieFc: number; forfaitFc: number };
+  repartitions?: RepartitionDeMission[];
+  repartitionsTronquees?: boolean;
 };
 
 const ELEMENT: Record<FraisMissionLu['element'], string> = {
@@ -211,6 +217,7 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
                 </tr>
               </tbody>
             </table>
+            <AvanceMissionPaie mission={m} envoi={envoi} envoyer={envoyer} />
             {peutEcrire && ouverte && (
               <div className="flex flex-wrap gap-1.5 mt-1 items-center">
                 <select aria-label={`Élément de frais de la mission ${m.numero}`} value={f.element} onChange={(e) => setFrais({ ...frais, [m.id]: { ...f, element: e.target.value } })} className={champ}>

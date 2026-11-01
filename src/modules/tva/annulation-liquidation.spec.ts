@@ -95,6 +95,8 @@ function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: 
     valeurRecue: zero(),
     remiseEnBanque: zero(),
     paiementSalaires: zero(),
+    avanceMission: zero(),
+    regularisationMission: zero(),
     declarationDeviseANouveau: zero(),
     constatImpotResultat: zero(),
     consignation: zero(),

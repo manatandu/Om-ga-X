@@ -36,6 +36,7 @@ function ligne(numero: string, date: string, montant: { debit?: number; credit?:
 function service(lignes: ReturnType<typeof ligne>[]) {
   const prisma = {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
+    ecriture: { count: jest.fn().mockResolvedValue(0) },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
     exercice: { findFirst: jest.fn().mockResolvedValue(null) },
     mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },

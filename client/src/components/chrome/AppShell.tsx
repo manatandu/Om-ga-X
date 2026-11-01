@@ -760,6 +760,7 @@ export function AppShell() {
             items: [
               { label: 'Registre du personnel', chemin: '/personnel', onClick: () => navigate('/personnel') },
               { label: 'Devises et réévaluation', chemin: '/devises', onClick: () => navigate('/devises') },
+              { label: 'Retenues et échéancier fiscal', chemin: '/retenues', onClick: () => navigate('/retenues') },
               { label: 'Mon compte…', separateurAvant: true, onClick: () => setMonCompteOuvert(true) },
               { label: 'Messages', chemin: '/messages', onClick: () => navigate('/messages') },
               { label: 'Notifications', chemin: '/notifications', onClick: () => navigate('/notifications') },
