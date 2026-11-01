@@ -46,6 +46,7 @@ import { ecartEnUnites, motifRefusQuantiteDuBien } from './ecart-en-unites';
 import { libelleLieuBien } from './lieu-sur-fiche';
 import { type CampagneEdition, editionFichesVierges, editionPvCaisse, editionPvInventaire } from './editions-inventaire';
 import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
+import { jourUtc } from '../../common/echeance';
 
 /**
  * INVENTAIRE PHYSIQUE · l'obligation qu'OmegaX ne portait pas.
@@ -1465,6 +1466,7 @@ export class InventaireService {
       db.procesVerbalComptageCaisse.findMany({
         where: { tenantId, campagneId },
         select: {
+          compteId: true,
           ecart: true,
           dateComptage: true,
           especesComptees: true,
@@ -1478,7 +1480,7 @@ export class InventaireService {
       }),
       db.campagneInventaire.findFirst({
         where: { id: campagneId, tenantId },
-        select: { exercice: { select: { dateFin: true } } },
+        select: { exercice: { select: { id: true, dateDebut: true, dateFin: true } } },
       }),
     ]);
     if (fiches > 0) {
@@ -1500,9 +1502,26 @@ export class InventaireService {
       // paquet 1, mineur 4) · « portez le comptage » fabriquait, pour une
       // caisse comptée après la clôture, l'écart des mouvements intercalés.
       const dateCloture = campagne?.exercice?.dateFin ?? null;
+      // COMPTÉE AVANT LA CLÔTURE, EN FRANCS (second tour, ligne B, mineur 3)
+      // · le solde du livre-journal à la clôture, lu ici, reconstitue vers
+      // l'avant les espèces existant à la clôture. Illisible, rien n'est
+      // chiffré et la phrase dit encore que les mouvements entrent dans
+      // l'écart.
+      const soldesALaCloture = new Map<string, number>();
+      const exercice = campagne?.exercice ?? null;
+      if (exercice) {
+        for (const pv of avecEcart) {
+          if (pv.modeComparaison !== ModeComparaisonCaisse.FRANCS) continue;
+          if (jourUtc(pv.dateComptage).getTime() >= jourUtc(exercice.dateFin).getTime()) continue;
+          const lu = await lireSoldeCaisseAuComptage(db as Prisma.TransactionClient, tenantId, pv.compteId, exercice, exercice.dateFin);
+          if (lu.lisible && lu.unite.mode === ModeComparaisonCaisse.FRANCS) soldesALaCloture.set(pv.compteId, lu.soldeComptable);
+        }
+      }
       const valeurs = avecEcart.map((pv) =>
         valeurAPorterSurLaFiche(
           {
+            ecart: Number(pv.ecart),
+            soldeLivreALaCloture: soldesALaCloture.get(pv.compteId) ?? null,
             numero: pv.compte.numero,
             dateComptage: pv.dateComptage,
             especesComptees: Number(pv.especesComptees),

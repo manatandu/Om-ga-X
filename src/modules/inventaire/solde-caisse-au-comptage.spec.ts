@@ -940,6 +940,28 @@ describe('la valeur que la fiche d’une caisse à l’écart doit porter', () =
     expect(t).toMatch(/ne sont pas reconstitués et entrent dans l'écart du rapprochement/);
   });
 
+  it('comptée avant la clôture, solde de clôture lu · les espèces existant à la clôture, reconstituées vers l’avant (second tour, ligne B, mineur 3)', () => {
+    // 995 000 comptés le 20 décembre contre un solde de 1 000 000 (5 000
+    // manquants), 300 000 payés le 28 · solde de clôture 700 000 · la fiche
+    // porte 695 000, jamais 995 000.
+    const t = valeurAPorterSurLaFiche(
+      {
+        ...base,
+        dateComptage: new Date('2026-12-20T00:00:00Z'),
+        especesComptees: 995_000,
+        soldeALaCloture: null,
+        encaissementsPosterieurs: null,
+        decaissementsPosterieurs: null,
+        ecart: -5_000,
+        soldeLivreALaCloture: 700_000,
+      },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('lesespècesexistantàlaclôture,695000,00');
+    expect(t).toMatch(/jamais les espèces comptées/);
+    expect(sp(t)).not.toContain('995000');
+  });
+
   it('un PV dans une devise · montants dans la devise, la fiche se valorise en francs, aucun cours choisi', () => {
     const t = valeurAPorterSurLaFiche({ ...base, especesComptees: 1_190, soldeALaCloture: 1_300, decaissementsPosterieurs: 100, unite: 'USD' }, CLOTURE);
     expect(sp(t)).toContain('1290,00USD');
