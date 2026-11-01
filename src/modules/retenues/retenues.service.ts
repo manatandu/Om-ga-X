@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { FormeJuridiqueSyscohada, Referentiel, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -76,6 +76,8 @@ function estReportANouveau(e: { estGenereeParCloture: boolean; estSoldeDesCompte
  */
 @Injectable()
 export class RetenuesService {
+  private readonly journal = new Logger(RetenuesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -410,10 +412,24 @@ export class RetenuesService {
       il ne sert que si sa somme EST le solde d'ouverture, au centime ·
       sinon le bloc reste daté au plus tard, et c'est dit.
     */
-    const ouvertureInpp =
-      exercice && !params.sansVentilationDOuverture
-        ? await this.ouvertureVentileeInpp(tenantId, exercice.dateDebut, params.dateReference)
-        : null;
+    // LA LECTURE DE N-1 EST UNE VENTILATION FACULTATIVE (relevé de la ligne
+    // INPP trimestriel) · une exception levée en relisant le registre de
+    // l'exercice précédent faisait tomber TOUT le registre de l'exercice. Elle
+    // retombe sur le repli déjà écrit (bloc daté au trimestre), consignée au
+    // journal du serveur et DITE dans la mention, jamais avalée.
+    let ouvertureInpp: Awaited<ReturnType<RetenuesService['ouvertureVentileeInpp']>> = null;
+    let lectureN1EnEchec = false;
+    if (exercice && !params.sansVentilationDOuverture) {
+      try {
+        ouvertureInpp = await this.ouvertureVentileeInpp(tenantId, exercice.dateDebut, params.dateReference);
+      } catch (e) {
+        lectureN1EnEchec = true;
+        this.journal.error(
+          `Registre des retenues · lecture de l'exercice précédent impossible (dossier ${tenantId}), ouverture de l'INPP et de l'ONEM laissée en bloc`,
+          e instanceof Error ? e.stack : String(e),
+        );
+      }
+    }
     // L'échéance du dernier mois AVANT l'exercice · la plus tardive que le
     // solde d'ouverture puisse porter. Le solde peut contenir des mois plus
     // anciens, déjà en retard avant elle : l'état ne signale donc jamais trop
@@ -557,7 +573,7 @@ export class RetenuesService {
           : null;
       const mentionOuvertureNonVentilee =
         nature.porteLInppTrimestriel && soldeOuverture > 0.005 && !ventilationOuverture
-          ? `SOLDE D'OUVERTURE DE L'INPP ET DE L'ONEM NON VENTILÉ · ${soldeOuverture.toFixed(2)} FC repris de l'exercice précédent ne se reconstituent pas mois par mois sur son registre${ouvertureInpp ? ` (${(Math.round(ouvertureInpp.reduce((s, r) => s + r.retenu, 0) * 100) / 100).toFixed(2)} FC y restent dus)` : ''} · ils sont datés à l'échéance trimestrielle de l'INPP, la plus tardive, et un ONEM resté impayé n'y est pas dit en retard.`
+          ? `SOLDE D'OUVERTURE DE L'INPP ET DE L'ONEM NON VENTILÉ · ${soldeOuverture.toFixed(2)} FC repris de l'exercice précédent ne se reconstituent pas mois par mois sur son registre${lectureN1EnEchec ? " (ce registre n'a pas pu être lu)" : ''}${ouvertureInpp ? ` (${(Math.round(ouvertureInpp.reduce((s, r) => s + r.retenu, 0) * 100) / 100).toFixed(2)} FC y restent dus)` : ''} · ils sont datés à l'échéance trimestrielle de l'INPP, la plus tardive, et un ONEM resté impayé n'y est pas dit en retard.`
           : null;
       const aImputerDans: AImputer[] = [
         ...(ventilationOuverture ?? []).map((r) => ({ ...r, anterieur: true, reverseEcritures: 0 })),

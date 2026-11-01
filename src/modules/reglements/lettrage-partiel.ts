@@ -205,7 +205,10 @@ export function motifRefusMontantDuGroupe(numero: string, montant: number, du: n
   const f = (x: number) => x.toFixed(2);
   return (
     `${numero} · le montant réglé (${f(montant)}) dépasse le reste dû (${f(du)})${enDevise ? ' dans la devise des factures' : ''} · la facture choisie appartient ` +
-    `au lettrage partiel ${code.toLowerCase()}, qui en a déjà réglé ${f(regle)} (acomptes, règlements ou avoirs réunis avec elle ; à l'ouverture de ` +
+    // EN DEVISE, le déjà-réglé reste en FRANCS (coût historique) · le dire,
+    // sans quoi deux unités se lisaient dans une phrase (relevé de la ligne
+    // lettrage-cloture).
+    `au lettrage partiel ${code.toLowerCase()}, qui en a déjà réglé ${f(regle)}${enDevise ? ' en francs, au coût historique' : ''} (acomptes, règlements ou avoirs réunis avec elle ; à l'ouverture de ` +
     "l'exercice, reconduit par la clôture, AUDCIF art. 34). L'excédent est une avance ou un trop-perçu, à comptabiliser à part."
   );
 }
