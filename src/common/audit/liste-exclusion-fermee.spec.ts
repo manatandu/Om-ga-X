@@ -85,6 +85,10 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // Fonctions 96 et 100 · ses préférences et ses notifications, des relations de même.
     'preferences',
     'notifications',
+    // Ligne multi-dossiers · les deux côtés de la relation vers le compte de
+    // connexion, des relations · leur colonne (`compteDeConnexionId`) est EXCLUE.
+    'compteDeConnexion',
+    'comptesRattaches',
   ];
 
   it('classe chaque colonne de User, sans exception ni oubli', () => {

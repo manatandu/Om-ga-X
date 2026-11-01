@@ -548,7 +548,7 @@ export class GroupeService {
     // contexte. Le rattachement au siège a été vérifié juste au-dessus.
     await horsCloisonnement('siège · cellule ouverte à l’instant', () =>
       this.prisma.user.update({
-        where: { email: normaliserCourriel(dto.emailAdmin) },
+        where: { courrielDeConnexion: normaliserCourriel(dto.emailAdmin) },
         data: { doitChangerMotDePasse: true },
       }),
     );

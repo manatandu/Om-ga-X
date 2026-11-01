@@ -1,3 +1,4 @@
+import { compteDeConnexionDe } from '../auth/compte-de-connexion';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { CourrierService } from '../courrier/courrier.service';
 import { ORIGINE_CREATION_CABINET, ORIGINE_REINITIALISATION_ADMIN, avisCreationCabinet, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
@@ -92,7 +93,9 @@ export class PlateformeService implements OnModuleInit {
       // l'ensemble de la plateforme.
       const { count } = await horsCloisonnement('démarrage · promotion des opérateurs de la plateforme', () =>
         this.prisma.user.updateMany({
-          where: { email, estOperateurPlateforme: false, tenant: { licence: { type: TypeLicence.PROPRIETAIRE } } },
+          // Le COMPTE DE CONNEXION seul (ligne multi-dossiers) · une appartenance
+          // rattachée au dossier de l'éditeur n'est jamais promue.
+          where: { email, compteDeConnexionId: null, estOperateurPlateforme: false, tenant: { licence: { type: TypeLicence.PROPRIETAIRE } } },
           data: { estOperateurPlateforme: true },
         }),
       );
@@ -553,7 +556,7 @@ export class PlateformeService implements OnModuleInit {
     // D'ÊTRE CRÉÉ, pas celui de l'opérateur dont la session porte le contexte.
     await horsCloisonnement('console · dossier créé par l’opérateur', () =>
       this.prisma.user.update({
-        where: { email: normaliserCourriel(dto.emailAdmin) },
+        where: { courrielDeConnexion: normaliserCourriel(dto.emailAdmin) },
         data: { doitChangerMotDePasse: true },
       }),
     );
@@ -622,7 +625,14 @@ export class PlateformeService implements OnModuleInit {
         "Aucun administrateur avec cette adresse dans ce dossier · l'opérateur ne réinitialise que les administrateurs.",
       );
     }
-    const refusOperateur = motifRefusReinitialisationOperateur(admin);
+    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · le mot de
+    // passe vit sur le COMPTE DE CONNEXION de la personne. Réinitialiser la
+    // ligne d'une appartenance rattachée ne lui rendrait aucun accès · c'est
+    // le compte qui se réinitialise, et le courriel part à la même adresse,
+    // celle de son titulaire.
+    const cible = await compteDeConnexionDe(this.prisma, admin);
+    if (!cible) throw new NotFoundException("Le compte de connexion de cet administrateur est introuvable.");
+    const refusOperateur = motifRefusReinitialisationOperateur(cible);
     if (refusOperateur) throw new ForbiddenException(refusOperateur);
     // LA CONSOLE NE CONNAÎT JAMAIS LE MOT DE PASSE (décision de Manasse du
     // 2026-10-09 · « [l'éditeur] ne doit pas voir les informations du client, c'est
@@ -660,13 +670,13 @@ export class PlateformeService implements OnModuleInit {
     // et une nouvelle réinitialisation en envoie un autre.
     await horsCloisonnement('console · réinitialisation de l’administrateur d’un cabinet client', () =>
       this.prisma.user.update({
-        where: { id: admin.id },
+        where: { id: cible.id },
         data: {
           motDePasse: bcrypt.hashSync(motDePasseProvisoire, 12),
           doitChangerMotDePasse: true,
           sessionsInvalidesAvant: new Date(),
           ...DECOMPTE_REMIS_A_ZERO,
-          ...secondFacteurLeveParReinitialisation(admin),
+          ...secondFacteurLeveParReinitialisation(cible),
         },
       }),
     );

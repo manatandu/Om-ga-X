@@ -84,7 +84,8 @@ describe('F43 · les services normalisent aussi', () => {
       {} as never,
     );
     await expect(s.login({ email: BRUTE, motDePasse: 'x' } as never)).rejects.toThrow(/Identifiants invalides/);
-    expect(recherches).toEqual([{ where: { email: NETTE } }]);
+    // L'adresse désigne le COMPTE DE CONNEXION (ligne multi-dossiers).
+    expect(recherches).toEqual([{ where: { courrielDeConnexion: NETTE } }]);
   });
 
   const auth = (prisma: unknown) =>
@@ -100,6 +101,8 @@ describe('F43 · les services normalisent aussi', () => {
       user: {
         findUnique: async () => ({ id: 'u1', tenantId: 't1', email: 'ancienne@exemple.cd', motDePasse: hache }),
         update: async (a: { data: { email: string } }) => (ecrites.push(a), a),
+        // L'adresse se recopie sur les appartenances de la personne (ligne multi-dossiers).
+        updateMany: async () => ({ count: 0 }),
       },
     };
     client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
@@ -115,7 +118,7 @@ describe('F43 · les services normalisent aussi', () => {
       user: { findUnique: async (a: unknown) => (vus.push(a), { id: 'deja' }) },
     });
     await expect(s.register({ nomEntite: 'X', referentiel: 'SYCEBNL', email: BRUTE, motDePasse: 'motdepasse12' } as never)).rejects.toThrow(/existe déjà/);
-    expect(vus).toEqual([{ where: { email: NETTE } }]);
+    expect(vus).toEqual([{ where: { courrielDeConnexion: NETTE } }]);
   });
 
   it('un utilisateur créé par l’administrateur du dossier naît avec l’adresse normalisée', async () => {
@@ -132,7 +135,7 @@ describe('F43 · les services normalisent aussi', () => {
       motDePasse: 'motdepasse12',
       role: 'COMPTABLE',
     } as never);
-    expect(recherches).toEqual([{ where: { email: NETTE } }]);
+    expect(recherches).toEqual([{ where: { courrielDeConnexion: NETTE } }]);
     expect(crees[0].data.email).toBe(NETTE);
   });
 });

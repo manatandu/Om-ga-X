@@ -1,5 +1,5 @@
 import { faitAssujettissementTva } from '../tenant/faits-declares';
-import { BadRequestException, ConflictException, Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { LicenceSurSiteService } from '../sur-site/licence-sur-site.service';
 import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
 import { articleTrenteSeptApplicable } from '../accord-cadre/conditions-ong-etrangere';
@@ -20,7 +20,7 @@ import { RegisterDto } from './dto/register.dto';
 import { InscriptionEssaiDto } from './dto/inscription-essai.dto';
 import { avisInscriptionEssai, finDeLEssai, JOURS_ESSAI, motDePasseTireAuSort, ORIGINE_INSCRIPTION_ESSAI, estUnDossierDEssai, renvoiPossible } from './inscription-essai';
 import { LoginDto } from './dto/login.dto';
-import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
+import { ActionAudit, Prisma, Referentiel, RoleUtilisateur, SystemeComptableSyscohada, TypeLicence, User } from '@prisma/client';
 import { ajouterMaillon, prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import { horsCloisonnement } from '../../common/cloisonnement/contexte-cloisonnement';
 import { normaliserCourriel } from '../../common/courriel';
@@ -41,6 +41,18 @@ import {
 } from './session-longue';
 import { ajouterSessionFermee, empreinteSession, finDeVie } from './sessions-fermees';
 import { logicielsDeLaSession, logicielsRetiresDeLaSession } from '../utilisateurs/logiciels';
+import {
+  aPlusieursDossiers,
+  appartenanceDansLeDossier,
+  appartenanceDeConnexion,
+  appartenancesDeLaPersonne,
+  compteDeConnexionDe,
+  dossiersDeLaPersonne,
+  idDuCompteDeConnexion,
+  recopierLAdresse,
+  trouverCompteDeConnexion,
+} from './compte-de-connexion';
+import { sessionRevoquee } from './jwt.strategy';
 
 export const SALT_ROUNDS = 12;
 
@@ -130,7 +142,7 @@ export class AuthService {
     // (dont la session porte SON dossier) verrait la garde traiter le compte
     // cherché comme inexistant, et le doublon passerait.
     const emailExistant = await horsCloisonnement('inscription · unicité du courriel sur toute la plateforme', () =>
-      this.prisma.user.findUnique({ where: { email: dto.email } }),
+      this.prisma.user.findUnique({ where: { courrielDeConnexion: dto.email } }),
     );
     if (emailExistant) {
       throw new ConflictException('Un compte existe déjà avec cet email');
@@ -308,7 +320,7 @@ export class AuthService {
     };
 
     const existant = await horsCloisonnement("inscription d'essai · unicité du courriel sur toute la plateforme", () =>
-      this.prisma.user.findUnique({ where: { email } }),
+      this.prisma.user.findUnique({ where: { courrielDeConnexion: email } }),
     );
     if (existant) {
       // Adresse déjà prise · rien n'est créé. Seul le dossier d'un titulaire qui
@@ -414,9 +426,10 @@ export class AuthService {
   async login(dto: LoginDto, adresseIp: string | null = null) {
     // SORTIE DE CLOISONNEMENT · à la connexion, on ne sait pas encore de quel
     // dossier relève celui qui se présente. C'est cette requête qui l'apprend.
-    const user = await horsCloisonnement('connexion · le dossier n’est pas encore connu', () =>
-      this.prisma.user.findUnique({ where: { email: normaliserCourriel(dto.email) } }),
-    );
+    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · l'adresse
+    // désigne le COMPTE DE CONNEXION, qui porte mot de passe, second facteur
+    // et verrou ; la session s'ouvre ensuite sur une de ses appartenances.
+    const user = await trouverCompteDeConnexion(this.prisma, normaliserCourriel(dto.email));
 
     // UNE CONNEXION REFUSÉE NE DIT PAS SI LE COMPTE EXISTE, ni par son message
     // ni par sa durée (audit final F238). Trois cas se ressemblent désormais
@@ -501,7 +514,11 @@ export class AuthService {
       throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
     }
 
-    if (!user.estActif) {
+    // LE COMPTE EST DÉSACTIVÉ QUAND AUCUN DE SES DOSSIERS NE L'ADMET PLUS ·
+    // l'administrateur d'un dossier ne retire la personne que du sien.
+    const appartenances = await appartenancesDeLaPersonne(this.prisma, user.id);
+    const entree = appartenanceDeConnexion(user.id, appartenances);
+    if (!entree) {
       throw new UnauthorizedException('Ce compte a été désactivé');
     }
 
@@ -544,9 +561,12 @@ export class AuthService {
     // console redemandée ») · c'est la console qui exige une authentification
     // de moins de huit heures (`OperateurPlateformeGuard`).
     const longue = dto.resterConnecte === true;
-    await this.journaliserConnexion(user, adresseIp, longue);
-    // Mot de passe, et code s'il est actif · une connexion complète.
-    return emettreSession(this.jwt, user.id, { longue, connexionComplete: 'maintenant' });
+    // La connexion se journalise dans le dossier où la session s'ouvre.
+    await this.journaliserConnexion({ id: entree.id, email: user.email, tenantId: entree.tenantId }, adresseIp, longue);
+    // Mot de passe, et code s'il est actif · une connexion complète. Plusieurs
+    // dossiers · l'écran montre la liste avant l'écran des logiciels.
+    const plusieursDossiers = appartenances.filter((a) => a.estActif).length > 1;
+    return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant' }), plusieursDossiers };
   }
 
   /**
@@ -598,9 +618,33 @@ export class AuthService {
   // qu'ils n'ont pas d'application d'authentification.
 
   private async compteDoubleAuth(userId: string) {
-    const u = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!u) throw new UnauthorizedException('Utilisateur introuvable');
-    return u;
+    return (await this.compteDeLaSession(userId)).compte;
+  }
+
+  /**
+   * LA LIGNE DE LA SESSION ET LE COMPTE DE CONNEXION DE SA PERSONNE (ligne
+   * multi-dossiers, `compte-de-connexion.ts`). Mot de passe, adresse, second
+   * facteur et sessions de la personne se jugent et s'écrivent sur le COMPTE ;
+   * la session à fermer et à réémettre est celle de la LIGNE. Pour un
+   * utilisateur d'un seul dossier, les deux sont la même ligne, lue une fois.
+   */
+  private async compteDeLaSession(userId: string): Promise<{ ligne: User; compte: User }> {
+    const ligne = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!ligne) throw new UnauthorizedException('Utilisateur introuvable');
+    const compte = await compteDeConnexionDe(this.prisma, ligne);
+    if (!compte) throw new UnauthorizedException('Utilisateur introuvable');
+    return { ligne, compte };
+  }
+
+  /**
+   * Une écriture sur le compte de connexion · dans le dossier de la session
+   * quand il y vit (le chemin de toujours), sinon par la sortie déclarée, le
+   * compte vivant dans le dossier d'origine de la personne.
+   */
+  private surLeCompte<T>(ligne: { tenantId: string }, compte: { tenantId: string }, geste: () => Promise<T>): Promise<T> {
+    return ligne.tenantId === compte.tenantId
+      ? geste()
+      : horsCloisonnement('compte de connexion · acte de son titulaire, authentifié, depuis un autre de ses dossiers', geste);
   }
 
   async etatDoubleAuth(userId: string) {
@@ -618,7 +662,8 @@ export class AuthService {
     const u = await this.compteDoubleAuth(userId);
     if (u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification est déjà active · désactivez-la d’abord.');
     const secret = genererSecret();
-    await this.prisma.user.update({ where: { id: userId }, data: { secretDoubleAuth: secret } });
+    const { ligne } = await this.compteDeLaSession(userId);
+    await this.surLeCompte(ligne, u, () => this.prisma.user.update({ where: { id: u.id }, data: { secretDoubleAuth: secret } }));
     return { secret, uri: uriOtpauth(secret, u.email) };
   }
 
@@ -644,7 +689,7 @@ export class AuthService {
     maintenant = new Date(),
     session: SessionEnCours | null = null,
   ) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification est déjà active.');
     if (!u.secretDoubleAuth) throw new BadRequestException('Affichez d’abord la clé à enregistrer dans l’application.');
     if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
@@ -654,29 +699,31 @@ export class AuthService {
     }
     const { codes, empreintes } = genererCodesSecours();
     await this.revoquerEtFermerLaSession(
+      ligne,
       u,
       session,
       { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
       maintenant.getTime(),
     );
-    await this.aviserDoubleAuth(u, 'ACTIVEE', maintenant);
-    return { codesSecours: codes, ...this.reemettre(u, session, undefined, true) };
+    await this.aviserDoubleAuth(ligne, 'ACTIVEE', maintenant);
+    return { codesSecours: codes, ...this.reemettre(ligne, session, undefined, true) };
   }
 
   /** Mot de passe ET second facteur · un poste laissé ouvert ne suffit pas à la retirer. */
   async desactiverDoubleAuth(userId: string, motDePasse: string, code: string, maintenant = new Date(), session: SessionEnCours | null = null) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
     if (!(await bcrypt.compare(motDePasse, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     if (!secondFacteurAccepte(u, code, maintenant.getTime())) throw new UnauthorizedException('Code de vérification invalide');
     await this.revoquerEtFermerLaSession(
+      ligne,
       u,
       session,
       { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
       maintenant.getTime(),
     );
-    await this.aviserDoubleAuth(u, 'RETIREE', maintenant);
-    return { desactivee: true, ...this.reemettre(u, session, undefined, true) };
+    await this.aviserDoubleAuth(ligne, 'RETIREE', maintenant);
+    return { desactivee: true, ...this.reemettre(ligne, session, undefined, true) };
   }
 
   /**
@@ -686,14 +733,14 @@ export class AuthService {
    * prouve pas qui la tient.
    */
   async regenererCodesSecours(userId: string, motDePasseActuel: string, code: string, maintenant = new Date()) {
-    const u = await this.compteDoubleAuth(userId);
+    const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
     if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     const r = secondFacteurAccepte(u, code, maintenant.getTime());
     if (!r) throw new UnauthorizedException('Code de vérification invalide');
     const { codes, empreintes } = genererCodesSecours();
-    await this.prisma.user.update({ where: { id: userId }, data: { ...r, codesSecoursDoubleAuth: empreintes } });
-    await this.aviserDoubleAuth(u, 'CODES_SECOURS_REGENERES', maintenant);
+    await this.surLeCompte(ligne, u, () => this.prisma.user.update({ where: { id: u.id }, data: { ...r, codesSecoursDoubleAuth: empreintes } }));
+    await this.aviserDoubleAuth(ligne, 'CODES_SECOURS_REGENERES', maintenant);
     return { codesSecours: codes };
   }
 
@@ -729,16 +776,14 @@ export class AuthService {
    * mot de passe.
    */
   async changerMotDePasse(userId: string, motDePasseActuel: string, nouveauMotDePasse: string, session: SessionEnCours | null = null) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('Utilisateur introuvable');
-    }
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     const actuelValide = await bcrypt.compare(motDePasseActuel, user.motDePasse);
     if (!actuelValide) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
     const maintenant = new Date();
     await this.revoquerEtFermerLaSession(
+      ligne,
       user,
       session,
       {
@@ -759,7 +804,7 @@ export class AuthService {
     // La session COURANTE est révoquée elle aussi · c'est voulu. Le client
     // redemande un jeton juste après (voir AuthController), et rien ne
     // distingue, côté serveur, la session du titulaire de celle du voleur.
-    return { change: true, ...this.reemettre(user, session) };
+    return { change: true, ...this.reemettre(ligne, session) };
   }
 
   /**
@@ -775,8 +820,7 @@ export class AuthService {
    *    sur le COMPTE, pas sur l'adresse : ils suivent.
    */
   async changerAdresse(userId: string, motDePasseActuel: string, nouvelleAdresse: string, session: SessionEnCours | null = null) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
@@ -784,14 +828,14 @@ export class AuthService {
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
     try {
       const maintenant = new Date();
-      await this.revoquerEtFermerLaSession(user, session, { email: adresse, sessionsInvalidesAvant: maintenant }, maintenant.getTime());
+      await this.revoquerEtFermerLaSession(ligne, user, session, { email: adresse, sessionsInvalidesAvant: maintenant }, maintenant.getTime(), adresse);
     } catch (e) {
       if ((e as { code?: string })?.code === 'P2002') {
         throw new ConflictException('Cette adresse est déjà utilisée par un autre compte.');
       }
       throw e;
     }
-    return { adresse, ...this.reemettre(user, session) };
+    return { adresse, ...this.reemettre(ligne, session) };
   }
 
   /**
@@ -816,13 +860,12 @@ export class AuthService {
     session: SessionEnCours | null,
     maintenant = new Date(),
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
-    await this.revoquerEtFermerLaSession(user, session, { sessionsInvalidesAvant: maintenant }, maintenant.getTime());
-    return { autresAppareilsDeconnectes: true, ...this.reemettre(user, session, maintenant.getTime()) };
+    await this.revoquerEtFermerLaSession(ligne, user, session, { sessionsInvalidesAvant: maintenant }, maintenant.getTime());
+    return { autresAppareilsDeconnectes: true, ...this.reemettre(ligne, session, maintenant.getTime()) };
   }
 
   /**
@@ -903,23 +946,37 @@ export class AuthService {
    * de sessions à tenir, aucune purge à programmer.
    */
   async deconnecterPartout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { sessionsInvalidesAvant: new Date() },
-    });
+    // Toutes les sessions de la PERSONNE, dans tous ses dossiers · la
+    // révocation du compte de connexion est lue par `JwtStrategy` sur chaque
+    // appartenance.
+    const { ligne, compte } = await this.compteDeLaSession(userId);
+    await this.surLeCompte(ligne, compte, () =>
+      this.prisma.user.update({
+        where: { id: compte.id },
+        data: { sessionsInvalidesAvant: new Date() },
+      }),
+    );
     return { sessionsFermees: true };
   }
 
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: { include: { _count: { select: { cellules: true } }, licence: { select: { type: true } } } } },
+      include: {
+        tenant: { include: { _count: { select: { cellules: true } }, licence: { select: { type: true } } } },
+        compteDeConnexion: { select: { doitChangerMotDePasse: true } },
+      },
     });
     if (!user) {
       throw new UnauthorizedException('Utilisateur introuvable');
     }
+    // UNE PERSONNE, PLUSIEURS DOSSIERS · l'écran montre la liste de SES
+    // dossiers avant l'écran des logiciels, et « Changer de dossier » au menu
+    // Fichier, quand elle en a plus d'un.
+    const plusieursDossiers = await aPlusieursDossiers(this.prisma, idDuCompteDeConnexion(user));
     return {
       id: user.id,
+      plusieursDossiers,
       email: user.email,
       role: user.role,
       // Ouvre l'entrée de menu « Cabinets clients » côté client · le serveur
@@ -928,7 +985,8 @@ export class AuthService {
       estOperateurPlateforme: user.estOperateurPlateforme,
       // Le client force l'écran de changement de mot de passe avant
       // l'espace de travail tant que ce drapeau est vrai.
-      doitChangerMotDePasse: user.doitChangerMotDePasse,
+      // Il vit sur le compte de connexion de la personne (ligne multi-dossiers).
+      doitChangerMotDePasse: (user.compteDeConnexion ?? user).doitChangerMotDePasse,
       // Les tuiles que l'administrateur ouvre à cet utilisateur · `null` =
       // toutes. Relu à chaque appel · l'attribution prend effet à la
       // prochaine lecture, sans fermer de session (`utilisateurs/logiciels.ts`).
@@ -1040,16 +1098,22 @@ export class AuthService {
    */
   private async revoquerEtFermerLaSession(
     user: { id: string; tenantId: string },
+    compte: { id: string; tenantId: string },
     session: SessionEnCours | null,
     data: Prisma.UserUpdateInput,
     maintenantMs: number,
+    adresse?: string,
   ): Promise<void> {
-    await transactionJournalisee(this.prisma, async (tx) => {
+    // `user` est la ligne de la SESSION (la session remplacée se ferme sur
+    // elle), `compte` le compte de connexion de sa personne (l'acte s'y
+    // écrit) · la même ligne pour un utilisateur d'un seul dossier.
+    await this.surLeCompte(user, compte, () => transactionJournalisee(this.prisma, async (tx) => {
       // BORNÉ (relecture de la ligne saisie-suites, M2) · la transaction a le
       // délai ordinaire de cinq secondes ; une clôture longue faisait attendre
       // au-delà, P2028 rendu en 500, une connexion du pool retenue jusqu'à sa
       // fin. Passé trois secondes, le 409 nommé `DOSSIER_OCCUPE`, rien écrit.
-      await prendreLeVerrouDuDossierBorne(tx, user.tenantId);
+      // Les deux dossiers dans un ordre fixe, celui de toute la chaîne.
+      for (const d of [...new Set([user.tenantId, compte.tenantId])].sort()) await prendreLeVerrouDuDossierBorne(tx, d);
       const lignes = await tx.$queryRaw<{ sessionsFermees: unknown }[]>`
         SELECT "sessionsFermees" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
       let fermeture: Prisma.UserUpdateInput = {};
@@ -1062,8 +1126,60 @@ export class AuthService {
         const { liste, debordement } = ajouterSessionFermee(lignes[0].sessionsFermees, remplacee, maintenantS);
         fermeture = debordement ? { sessionsFermees: liste, sessionsInvalidesAvant: new Date(maintenantMs) } : { sessionsFermees: liste };
       }
-      await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
-    });
+      if (compte.id === user.id) {
+        await tx.user.update({ where: { id: user.id }, data: { ...data, ...fermeture } });
+      } else {
+        await tx.user.update({ where: { id: compte.id }, data });
+        if (Object.keys(fermeture).length > 0) await tx.user.update({ where: { id: user.id }, data: fermeture });
+      }
+      // L'adresse changée se lit dans chaque dossier de la personne.
+      if (adresse !== undefined) await recopierLAdresse(tx, compte.id, adresse);
+    }));
+  }
+
+  /**
+   * « L'ACCUEIL DU CABINET SUR SES DOSSIERS » (ligne multi-dossiers) · les
+   * dossiers de la personne de la session, et d'elle seule · jamais ceux
+   * d'une autre, jamais un dossier où son appartenance est retirée.
+   */
+  async mesDossiers(userId: string) {
+    const { ligne } = await this.compteDeLaSession(userId);
+    return dossiersDeLaPersonne(this.prisma, idDuCompteDeConnexion(ligne), ligne.tenantId);
+  }
+
+  /**
+   * CHANGER DE DOSSIER · un geste explicite (route dédiée, cookie, CSRF),
+   * jamais un paramètre qui changerait le dossier en passant. Le dossier visé
+   * doit être une appartenance ACTIVE de la même personne, sinon 404 sans
+   * rien dire de plus. La session en cours se FERME sur sa ligne et une neuve
+   * s'ouvre sur l'appartenance visée, sous un jeton CSRF neuf · chaque session
+   * appartient à une seule ligne, et « Se déconnecter » ferme la bonne. Elle
+   * RECOPIE régime, origine, échéance courte, dernière authentification et
+   * connexion complète · changer de dossier n'est pas s'authentifier, et une
+   * révocation posée dans le dossier visé après l'authentification de la
+   * session la frappe (403 nommé, reconnexion demandée).
+   */
+  async changerDeDossier(userId: string, dossierId: string, session: SessionEnCours | null, maintenantMs = Date.now()) {
+    const { ligne } = await this.compteDeLaSession(userId);
+    const compteId = idDuCompteDeConnexion(ligne);
+    const visee = await appartenanceDansLeDossier(this.prisma, compteId, dossierId);
+    if (!visee) throw new NotFoundException('Dossier introuvable parmi les vôtres.');
+    if (sessionRevoquee(session?.authentification ?? session?.iat ?? undefined, visee.sessionsInvalidesAvant)) {
+      throw new ForbiddenException(
+        "Vos sessions dans ce dossier ont été fermées par son administrateur ou par un changement de vos accès · reconnectez-vous pour y entrer.",
+      );
+    }
+    // Le dossier de la session · rien à changer, aucune session émise.
+    if (visee.id === ligne.id) return { dossierId: visee.tenantId, session: null };
+    await this.revoquerEtFermerLaSession(ligne, ligne, session, {}, maintenantMs);
+    const demande = demandeDeReemission(session);
+    const emise = emettreSession(
+      this.jwt,
+      visee.id,
+      { ...demande, authentification: session?.authentification ?? session?.iat ?? null },
+      maintenantMs,
+    );
+    return { dossierId: visee.tenantId, session: emise };
   }
 
   private reemettre(user: { id: string }, session: SessionEnCours | null, instantMs?: number, complete = false): SessionEmise {

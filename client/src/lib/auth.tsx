@@ -7,6 +7,7 @@ import { peutEcrirePourRole, peutValiderPourRole } from './roles-cantonnes';
 import { surSessionPerdue } from './session-perdue';
 import { deconnecterServeur, fermerLaSession } from './deconnexion';
 import { oublierLEcranVu } from './logiciels';
+import { oublierLeDossierChoisi } from './dossiers-personne';
 
 interface MeResponse {
   id: string;
@@ -29,6 +30,12 @@ interface MeResponse {
   logicielsAutorises?: string[] | null;
   /** Clés attribuées d'une tuile retirée depuis · nommées, jamais comptées comme valides. */
   logicielsRetires?: string[];
+  /**
+   * La personne tient plusieurs dossiers sous cette adresse (ligne
+   * multi-dossiers) · la liste de SES dossiers précède l'écran des logiciels,
+   * et Fichier > Changer de dossier la rappelle. Absent d'un ancien serveur = non.
+   */
+  plusieursDossiers?: boolean;
   tenant: {
     id: string;
     nom: string;
@@ -143,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void deconnecterServeur(() => api.post('/auth/logout'));
         oublierPrechargement();
         oublierLEcranVu();
+        oublierLeDossierChoisi();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(motif);
@@ -242,6 +250,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const seConnecter = async (csrfToken: string) => {
     setMotifDeconnexion(null);
+    // Une connexion neuve repose la question du dossier (ligne multi-dossiers).
+    oublierLeDossierChoisi();
     setCsrf(csrfToken);
     // Ne PAS repasser `chargement` à true ici : ZoneProtegee (App.tsx) affiche
     // un plein écran « Chargement… » à la place de ses enfants tant que
@@ -273,6 +283,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ouverte.current = false;
         // La connexion suivante, dans cet onglet, remontre l'écran des logiciels.
         oublierLEcranVu();
+        // Et la liste des dossiers d'une personne qui en tient plusieurs.
+        oublierLeDossierChoisi();
         setCsrf(null);
         setUtilisateur(null);
         setMotifDeconnexion(null);

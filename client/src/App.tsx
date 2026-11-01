@@ -1,3 +1,5 @@
+import { ChoixDossierPage } from './pages/ChoixDossierPage';
+import { dossierChoisiDansLaSession } from './lib/dossiers-personne';
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
 import { pageVue } from './lib/telemetrie';
@@ -39,6 +41,9 @@ function ZoneProtegee({ children }: { children: JSX.Element }) {
   // ou l'admin du dossier) : l'écran de changement s'impose À LA PLACE de
   // l'espace de travail, il n'y a rien d'autre à voir avant.
   if (utilisateur?.doitChangerMotDePasse) return <ChangerMotDePassePage />;
+  // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · la liste de SES
+  // dossiers avant l'écran des logiciels, une fois par session de l'onglet.
+  if (utilisateur?.plusieursDossiers && !dossierChoisiDansLaSession()) return <ChoixDossierPage />;
   return children;
 }
 

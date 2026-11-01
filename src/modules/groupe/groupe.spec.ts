@@ -261,7 +261,7 @@ describe('GroupeService · création de cellules par le siège', () => {
     expect(resultat.motDePasseTemporaire.length).toBeGreaterThanOrEqual(16);
     expect(resultat).not.toHaveProperty('accessToken');
     // Mot de passe transité par le siège · changement forcé à la première connexion.
-    expect(traces.majUser[0]).toEqual({ where: { email: 'tresorier@eglise.cd' }, data: { doitChangerMotDePasse: true } });
+    expect(traces.majUser[0]).toEqual({ where: { courrielDeConnexion: 'tresorier@eglise.cd' }, data: { doitChangerMotDePasse: true } });
   });
 
   it('plafond nul = création désactivée · plafond atteint = refus · une cellule ne crée pas de cellules', async () => {

@@ -1287,7 +1287,25 @@ model User {
   notifications          NotificationUtilisateur[] @relation("NotificationsDeLUtilisateur")
   tenantId               String
   tenant                 Tenant          @relation(fields: [tenantId], references: [id])
-  email                  String          @unique
+  // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers, 2026-11-01) ·
+  // l'adresse est unique PAR DOSSIER (`@@unique([tenantId, email])`), et
+  // l'adresse de CONNEXION, unique sur toute la plateforme, est
+  // `courrielDeConnexion`, que la base pose seule (déclencheur
+  // `omegax_courriel_de_connexion`) · égale à `email` sur un compte de
+  // connexion, nulle sur une appartenance rattachée.
+  email                  String
+  /// Adresse de connexion · posée par la base, jamais écrite par le code.
+  courrielDeConnexion    String?         @unique
+  /// LE COMPTE DE CONNEXION de cette ligne quand elle est une appartenance
+  /// RATTACHÉE à un autre dossier (`auth/compte-de-connexion.ts`) · mot de
+  /// passe, second facteur, verrou et mot de passe provisoire se lisent sur
+  /// lui. Nul · la ligne est son propre compte de connexion, ce qu'est tout
+  /// utilisateur d'avant la ligne. Rôle, journaux, logiciels, actif et
+  /// révocation de CE dossier restent sur la ligne. Hors du journal d'audit et
+  /// de la restitution · il dirait au dossier que la personne existe ailleurs.
+  compteDeConnexionId    String?
+  compteDeConnexion      User?           @relation("ComptesRattaches", fields: [compteDeConnexionId], references: [id], onDelete: Restrict)
+  comptesRattaches       User[]          @relation("ComptesRattaches")
   motDePasse             String
   role                   RoleUtilisateur @default(COMPTABLE)
   // Désactivé plutôt que supprimé : un utilisateur peut être créateur
@@ -1393,6 +1411,8 @@ model User {
   // commence pas par `tenantId`, et chaque lecture balayait la table entière,
   // tous cabinets confondus.
   @@index([tenantId])
+  @@unique([tenantId, email])
+  @@index([compteDeConnexionId])
   @@map("users")
 }
 

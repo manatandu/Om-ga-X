@@ -45,6 +45,8 @@ interface Scenario {
   envoi?: { statut: StatutMessage; erreur?: string | null };
   dossierExiste?: boolean;
   reservationDejaPrise?: boolean;
+  /** Personnes rattachées à un autre dossier, dans un sens ou dans l'autre (ligne multi-dossiers). */
+  rattaches?: number;
 }
 
 function monter(s: Scenario = {}) {
@@ -79,6 +81,7 @@ function monter(s: Scenario = {}) {
       .mockImplementation(async (...args: unknown[]) => {
         const texte = String((args[0] as string[]).join('?'));
         if (texte.includes('FOR UPDATE')) return s.dossierExiste === false ? [] : [{ id: T }];
+        if (texte.includes('AS n FROM "users"')) return [{ n: BigInt(s.rattaches ?? 0) }];
         if (texte.includes('count(*)')) return [{ n: BigInt(1) }];
         return [{ tenantId: T }];
       }),
@@ -457,6 +460,21 @@ describe('supprimer', () => {
     lecteur.abonnementCabinet.count.mockResolvedValueOnce(1);
     await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toThrow(/visé par un groupe ou un abonnement/);
     expect(appels.filter((a) => a.startsWith('DELETE'))).toEqual([]);
+  });
+
+  it('REFUSE un dossier dont une personne est rattachée à un autre dossier (ligne multi-dossiers), relu DANS la transaction', async () => {
+    const { service, appels } = monter({ ...pret, rattaches: 1 });
+    await expect(service.supprimer(T, OPERATEUR, T, MAINTENANT)).rejects.toThrow(/rattachée à un autre dossier/);
+    expect(appels.filter((a) => a.startsWith('DELETE'))).toEqual([]);
+  });
+
+  it('la liste des candidats écarte en SQL les dossiers d’une personne rattachée ailleurs, dans les deux sens', async () => {
+    const { service, lecteur } = monter(pret);
+    await service.lister(MAINTENANT).catch(() => undefined);
+    const textes = lecteur.$queryRaw.mock.calls.map((c: unknown[]) => (c[0] as string[]).join('?'));
+    const candidats = textes.find((t: string) => t.includes('"licences" l'));
+    expect(candidats).toContain('u."compteDeConnexionId" IS NOT NULL');
+    expect(candidats).toContain('JOIN "users" c ON c."id" = r."compteDeConnexionId" WHERE c."tenantId" = t."id"');
   });
 
   it('la LICENCE est verrouillée (FOR UPDATE, paramétrée) après le dossier et AVANT la lecture du calendrier', async () => {

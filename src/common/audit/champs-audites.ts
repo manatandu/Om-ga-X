@@ -635,7 +635,21 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // des sessions fermées par « Se déconnecter » (sessions-fermees.ts) · chaque
   // déconnexion réécrirait la liste entière dans le journal, et l'empreinte
   // d'une session n'apprend rien au lecteur que la date ne dise déjà.
-  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth', 'sessionsFermees'],
+  // LE LIEN VERS LE COMPTE DE CONNEXION (ligne multi-dossiers) · la ligne
+  // d'une appartenance rattachée pointe une ligne d'un AUTRE dossier, et
+  // l'adresse de connexion n'est posée que sur un compte de connexion · l'un
+  // ou l'autre, lu au journal du dossier, y dirait que la personne existe
+  // ailleurs. L'événement d'une personne rattachée se lit comme une création.
+  User: [
+    'motDePasse',
+    'estOperateurPlateforme',
+    'secretDoubleAuth',
+    'dernierPasDoubleAuth',
+    'codesSecoursDoubleAuth',
+    'sessionsFermees',
+    'compteDeConnexionId',
+    'courrielDeConnexion',
+  ],
 
   // LE FICHIER LUI-MÊME · jusqu'à 5 Mo recopiés dans chaque événement, et un
   // scan de pièce d'identité lisible par tout le dossier dans un journal
@@ -792,7 +806,18 @@ export function colonnesExclues(modele: string): ReadonlySet<string> {
 export const COLONNES_JAMAIS_RESTITUEES: Readonly<Record<string, readonly string[]>> = {
   // Le second facteur est, comme le mot de passe, un moyen d'entrer, pas une
   // donnée du dossier.
-  User: ['motDePasse', 'estOperateurPlateforme', 'secretDoubleAuth', 'dernierPasDoubleAuth', 'codesSecoursDoubleAuth'],
+  // Le lien vers le compte de connexion d'une personne rattachée (ligne
+  // multi-dossiers) désigne une ligne d'un AUTRE dossier · il n'appartient
+  // pas à celui-ci, pas plus que l'adresse de connexion.
+  User: [
+    'motDePasse',
+    'estOperateurPlateforme',
+    'secretDoubleAuth',
+    'dernierPasDoubleAuth',
+    'codesSecoursDoubleAuth',
+    'compteDeConnexionId',
+    'courrielDeConnexion',
+  ],
 };
 
 /** Les colonnes qu'une ARCHIVE DE RESTITUTION ne porte pas. */

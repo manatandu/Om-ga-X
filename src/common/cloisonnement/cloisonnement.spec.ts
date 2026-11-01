@@ -277,6 +277,12 @@ describe('balayage du code · toute collection porte sa borne', () => {
     // La cascade de l'échéance d'une mère sur ses cellules (audit final F46),
     // dans `horsCloisonnement`, bornée par `dossierMereId`.
     'src/modules/plateforme/plateforme.service.ts:Licence.updateMany',
+    // Ligne multi-dossiers · les appartenances d'UNE personne, désignée par
+    // l'id de son compte de connexion (`OR` sur l'id et `compteDeConnexionId`),
+    // et l'adresse recopiée sur ses seules appartenances.
+    'src/modules/auth/compte-de-connexion.ts:User.findMany',
+    'src/modules/auth/compte-de-connexion.ts:User.count',
+    'src/modules/auth/compte-de-connexion.ts:User.updateMany',
   ]);
 
   function fichiers(dossier: string): string[] {
@@ -332,6 +338,12 @@ describe('balayage du code · toute collection porte sa borne', () => {
       // relecture ; c'est lui qui juge l'écriture elle-même, après.
       'src/common/perimetre/extension-perimetre-journaux.ts',
       'src/modules/auth/auth.service.ts',
+      // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers) · son compte
+      // de connexion vit dans son dossier d'origine, ses appartenances dans
+      // les autres · chaque fonction est bornée à UNE personne, désignée par la
+      // ligne de la session ou l'adresse de la connexion, jamais par un
+      // dossier reçu d'un appelant.
+      'src/modules/auth/compte-de-connexion.ts',
       // La demande d'information de la page publique (ligne commercial-site) ·
       // une porte sans session, qui trouve le dossier de l'éditeur et y met le
       // message en file pour les opérateurs, rien d'autre.

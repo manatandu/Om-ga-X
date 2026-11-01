@@ -8,6 +8,7 @@ import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
 import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { LOGICIELS, ROLES_SANS_LOGICIELS } from './logiciels';
+import { creerAppartenance, trouverCompteDeConnexion } from '../auth/compte-de-connexion';
 
 const SALT_ROUNDS = 12;
 
@@ -33,7 +34,7 @@ const SELECTION = {
 } as const;
 
 /** Ne dit pas à qui l'adresse appartient · même phrase à la lecture et à la base. */
-export const MOTIF_ADRESSE_PRISE = 'Un compte existe déjà avec cet email';
+export const MOTIF_ADRESSE_PRISE = 'Cette adresse est déjà celle d’un utilisateur de ce dossier';
 
 /**
  * Se déconnecter soi-même par cette route couperait la session qui fait le
@@ -66,12 +67,32 @@ export class UtilisateurService {
 
   async creer(tenantId: string, dto: CreerUtilisateurDto) {
     dto = { ...dto, email: normaliserCourriel(dto.email) };
-    const existant = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existant) {
-      throw new ConflictException(MOTIF_ADRESSE_PRISE);
-    }
+    // Le hachage d'abord, sur tous les chemins · une adresse connue ailleurs ne
+    // doit pas se reconnaître à la durée de la réponse.
     const motDePasseHache = await bcrypt.hash(dto.motDePasse, SALT_ROUNDS);
+    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers,
+    // `auth/compte-de-connexion.ts`) · une adresse qui est déjà le compte de
+    // connexion d'une personne AILLEURS rattache cette personne à CE dossier,
+    // avec le rôle choisi ici. La réponse est la MÊME qu'une création (mêmes
+    // champs, même statut) · le dossier n'apprend ni que l'adresse existe
+    // ailleurs ni où. Le mot de passe saisi est haché sur la ligne et jamais
+    // lu · la personne garde le sien, et l'administrateur d'un dossier ne
+    // prend jamais la main sur ses accès aux dossiers d'un autre client.
+    // Jusqu'ici, une adresse prise ailleurs rendait 409 · c'était dire qu'elle
+    // existait.
+    const compte = await trouverCompteDeConnexion(
+      this.prisma,
+      dto.email,
+      'utilisateurs · une adresse déjà compte de connexion, rattachée à ce dossier',
+    );
     try {
+      if (compte && compte.tenantId !== tenantId) {
+        return await creerAppartenance(
+          this.prisma,
+          { tenantId, email: dto.email, motDePasse: motDePasseHache, role: dto.role, compteDeConnexionId: compte.id },
+          SELECTION,
+        );
+      }
       return await this.prisma.user.create({
         // doitChangerMotDePasse : le mot de passe a été choisi par l'ADMIN du
         // dossier, pas par le titulaire · celui-ci le remplace à sa première
@@ -81,11 +102,10 @@ export class UtilisateurService {
         select: SELECTION,
       });
     } catch (e) {
-      // L'ADRESSE D'UN AUTRE DOSSIER N'EST PAS VUE PAR LA LECTURE CI-DESSUS
-      // (audit final F158) · la garde de cloisonnement rend « inexistant » le
-      // compte d'un voisin, et la contrainte d'unicité de la base remontait
-      // en 500. Même rattrapage que `AuthService.changerAdresse`, et même
-      // message · il ne dit pas à qui l'adresse appartient.
+      // Depuis la ligne multi-dossiers, l'adresse n'est unique que dans le
+      // dossier (`@@unique([tenantId, email])`) · seul un utilisateur de CE
+      // dossier rend ce refus, que l'administrateur voit déjà dans sa liste
+      // (audit final F158 pour le rattrapage de la contrainte en 409).
       if ((e as { code?: string })?.code === 'P2002') throw new ConflictException(MOTIF_ADRESSE_PRISE);
       throw e;
     }
