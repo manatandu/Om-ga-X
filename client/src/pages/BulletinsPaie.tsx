@@ -196,7 +196,7 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
             // Un saut de page entre deux bulletins, aucun après le dernier.
             style={i < impression.length - 1 ? { breakAfter: 'page' } : undefined}
           >
-            <CorpsBulletin b={b} />
+            <CorpsBulletin ouvert={b} />
           </div>
         ))}
       </div>
@@ -316,7 +316,7 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
       {ouvert && (
         <div className="border border-border bg-surface px-5 py-4">
           {/* LE BULLETIN · c'est la partie qui s'imprime. */}
-          <CorpsBulletin b={ouvert} />
+          <CorpsBulletin ouvert={ouvert} />
 
           <div className="ecran-seul flex flex-wrap items-center gap-3 border-t border-border pt-3">
             <button type="button" onClick={() => window.print()} className="px-3 py-1.5 border border-border">
@@ -371,43 +371,43 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
  * le bulletin ouvert et pour l'impression des bulletins du mois (ligne
  * paie-lot), sans aucun calcul · tout est figé par le serveur.
  */
-function CorpsBulletin({ b }: { b: Bulletin }) {
+function CorpsBulletin({ ouvert }: { ouvert: Bulletin }) {
   return (
     <>
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="text-[13px] font-semibold">
-              {natureDuBulletin(b.nature)} n° {b.numero} · {b.moisDePaie}
+              {natureDuBulletin(ouvert.nature)} n° {ouvert.numero} · {ouvert.moisDePaie}
             </h2>
-            <span className="text-text-dim">Émis le {jour(b.emisLe)}</span>
+            <span className="text-text-dim">Émis le {jour(ouvert.emisLe)}</span>
           </div>
 
-          {b.statut === 'ANNULE' && (
+          {ouvert.statut === 'ANNULE' && (
             <div className="border border-danger/30 bg-danger-soft px-3 py-2 mb-3">
-              <strong>Annulé</strong> le {jour(b.annuleLe)} · {b.motifAnnulation}
-              {b.versements && <div className="mt-1">{b.versements.avertissement}</div>}
+              <strong>Annulé</strong> le {jour(ouvert.annuleLe)} · {ouvert.motifAnnulation}
+              {ouvert.versements && <div className="mt-1">{ouvert.versements.avertissement}</div>}
             </div>
           )}
 
           <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 mb-3">
             <div>
               <span className="text-text-dim">Travailleur · </span>
-              <strong>{b.nomComplet}</strong>
+              <strong>{ouvert.nomComplet}</strong>
             </div>
             <div>
               <span className="text-text-dim">N° d’ordre · </span>
-              {b.matricule ?? 'non attribué'}
+              {ouvert.matricule ?? 'non attribué'}
             </div>
             <div>
               <span className="text-text-dim">Emploi · </span>
-              {b.emploi ?? 'non renseigné'}
-              {b.categorieProfessionnelle ? ` · ${b.categorieProfessionnelle}` : ''}
+              {ouvert.emploi ?? 'non renseigné'}
+              {ouvert.categorieProfessionnelle ? ` · ${ouvert.categorieProfessionnelle}` : ''}
             </div>
             <div>
               <span className="text-text-dim">N° d’affiliation CNSS · </span>
-              {b.numeroAffiliationCnss ?? 'non renseigné'}
+              {ouvert.numeroAffiliationCnss ?? 'non renseigné'}
             </div>
             {MENTIONS_IMPRIMEES.map((m) => {
-              const portee = b.enonciations?.portees.find((p) => p.rang === m.rang);
+              const portee = ouvert.enonciations?.portees.find((p) => p.rang === m.rang);
               return portee ? (
                 <div key={m.rang} title={`Arrêté du 8 août 2008, art. 1er, mention ${m.rang}`}>
                   <span className="text-text-dim">{m.libelle} · </span>
@@ -417,15 +417,15 @@ function CorpsBulletin({ b }: { b: Bulletin }) {
             })}
           </div>
 
-          {b.calcul.conversion && (
+          {ouvert.calcul.conversion && (
             <div className="text-text-dim mb-1">
-              Rémunération stipulée en USD · {fc(b.calcul.conversion.cours)} FC pour 1 USD, cours du{' '}
-              {jour(b.calcul.conversion.dateCours)}
+              Rémunération stipulée en USD · {fc(ouvert.calcul.conversion.cours)} FC pour 1 USD, cours du{' '}
+              {jour(ouvert.calcul.conversion.dateCours)}
             </div>
           )}
           <table className="w-full mb-3">
             <tbody>
-              {elementsDuBulletin(b.entree, b.calcul).map((e, i) => (
+              {elementsDuBulletin(ouvert.entree, ouvert.calcul).map((e, i) => (
                 <tr key={i} className="border-t border-border/60">
                   <td className="py-1">
                     {e.libelle}
@@ -437,9 +437,9 @@ function CorpsBulletin({ b }: { b: Bulletin }) {
               ))}
               <tr className="border-t border-border font-semibold">
                 <td className="py-1">Total versé</td>
-                <td className="py-1 text-right">{fc(b.totalVerseFc)}</td>
+                <td className="py-1 text-right">{fc(ouvert.totalVerseFc)}</td>
               </tr>
-              {b.calcul.cotisations.lignes
+              {ouvert.calcul.cotisations.lignes
                 .filter((c) => c.charge === 'TRAVAILLEUR')
                 .map((c) => (
                   <tr key={c.cle} className="border-t border-border/60">
@@ -451,9 +451,9 @@ function CorpsBulletin({ b }: { b: Bulletin }) {
                 ))}
               <tr className="border-t border-border/60">
                 <td className="py-1" title="Loi n° 23/053, art. 119">Retenue IRPP</td>
-                <td className="py-1 text-right">− {fc(b.irppFc)}</td>
+                <td className="py-1 text-right">− {fc(ouvert.irppFc)}</td>
               </tr>
-              {retenuesDuBulletin(b.calcul).map((r, i) => (
+              {retenuesDuBulletin(ouvert.calcul).map((r, i) => (
                 <tr key={`avance-${i}`} className="border-t border-border/60">
                   <td className="py-1" title={r.littera ? `Code du travail, art. 112, ${r.littera}` : undefined}>
                     Retenue {r.libelle}
@@ -463,43 +463,43 @@ function CorpsBulletin({ b }: { b: Bulletin }) {
               ))}
               <tr className="border-t-2 border-border font-semibold text-[12px]">
                 <td className="py-1.5">Net à payer</td>
-                <td className="py-1.5 text-right">{fc(b.netAPayerFc)}</td>
+                <td className="py-1.5 text-right">{fc(ouvert.netAPayerFc)}</td>
               </tr>
             </tbody>
           </table>
 
-          {ecartDuDecompte(b) !== 0 && (
+          {ecartDuDecompte(ouvert) !== 0 && (
             <div className="text-danger mb-3">
-              Le décompte ne se solde pas sur le net · écart de {fc(ecartDuDecompte(b))} FC.
+              Le décompte ne se solde pas sur le net · écart de {fc(ecartDuDecompte(ouvert))} FC.
             </div>
           )}
 
-          {b.calcul.retenue?.mensuel && (
+          {ouvert.calcul.retenue?.mensuel && (
             <div className="mb-3">
               <div className="font-semibold">Calcul de la retenue IRPP (barème mensuel)</div>
               <BaremeMensuelIrpp
-                mensuel={b.calcul.retenue.mensuel}
-                revenuAnnualiseFc={b.calcul.retenue.revenuAnnualiseFc}
+                mensuel={ouvert.calcul.retenue.mensuel}
+                revenuAnnualiseFc={ouvert.calcul.retenue.revenuAnnualiseFc}
               />
             </div>
           )}
 
           <div className="text-text-dim mb-3">
-            Assiette des cotisations sociales {fc(b.assietteSocialeFc)} FC · cotisations
-            patronales {fc(b.cotisationsEmployeurFc)} FC, à la charge de l’employeur, hors du
-            net. Remis au travailleur le {jour(b.remisLe)}.
+            Assiette des cotisations sociales {fc(ouvert.assietteSocialeFc)} FC · cotisations
+            patronales {fc(ouvert.cotisationsEmployeurFc)} FC, à la charge de l’employeur, hors du
+            net. Remis au travailleur le {jour(ouvert.remisLe)}.
           </div>
 
-          {b.enonciations && b.enonciations.nonPortees.length > 0 && (
+          {ouvert.enonciations && ouvert.enonciations.nonPortees.length > 0 && (
             <div
               className="text-[11px] text-text-dim mb-1"
               title="Arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, art. 1er · arrêté n° 142/2018, art. 12"
             >
-              Énonciations non portées : n° {b.enonciations.nonPortees.join(', ')}.
+              Énonciations non portées : n° {ouvert.enonciations.nonPortees.join(', ')}.
             </div>
           )}
           <ul className="text-[11px] text-text-dim list-disc pl-4 mb-3">
-            {b.reserves.map((r, i) => (
+            {ouvert.reserves.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
           </ul>
