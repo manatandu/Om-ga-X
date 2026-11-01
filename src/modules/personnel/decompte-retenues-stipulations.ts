@@ -56,8 +56,29 @@
  *    qu'elle ne peut réduire (art. 37) · OmegaX n'en déduit rien.
  */
 
+import { centimesLoinDeZero, depuisNombre, moins } from '../../common/decimal-exact';
+import { netNegatifAuCentime } from './cotisations-paie';
+
 const c = (n: number) => Math.round(n * 100);
 const deCentimes = (n: number) => n / 100;
+
+/**
+ * LE PLUS GRAND MONTANT RETENABLE, EN CENTIMES, JUGÉ COMME L'ÉMISSION LE JUGE
+ * (second tour du paquet 1, ligne C, M1). L'émission refuse une retenue qui
+ * laisse un net négatif AU CENTIME, arrondi loin de zéro
+ * (`netNegatifAuCentime`) ; la proposition arrondissait le net au centime le
+ * plus proche, en flottant · un net exact de 503 900,095 proposait
+ * 503 900,10, que l'émission refusait (reste -0,005, un centime négatif loin
+ * de zéro). Le net est relu en décimal exact, et la retenue proposée est la
+ * plus grande qui laisse un net non négatif au centime.
+ */
+function disponibleEnCentimes(netDisponibleFc: number): number {
+  const net = depuisNombre(netDisponibleFc);
+  let r = Number(centimesLoinDeZero(net));
+  if (r <= 0) return 0;
+  if (netNegatifAuCentime(moins(net, depuisNombre(r / 100)))) r -= 1;
+  return Math.max(0, r);
+}
 
 export type AvanceARetenir = {
   readonly avanceId: string;
@@ -129,7 +150,7 @@ export function propositionRetenuesDecompte(
   if (netDisponibleFc === null && candidates.length > 0) reserves.push(RESERVE_NET_NON_CHIFFRE);
 
   // Le disponible en centimes · un net négatif ou nul ne laisse rien à retenir.
-  let disponible = netDisponibleFc === null ? Number.POSITIVE_INFINITY : Math.max(0, c(netDisponibleFc));
+  let disponible = netDisponibleFc === null ? Number.POSITIVE_INFINITY : disponibleEnCentimes(netDisponibleFc);
   let reste = 0;
   const retenues: RetenueProposee[] = candidates.map((a) => {
     const solde = c(a.soldeFc);
