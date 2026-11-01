@@ -1606,17 +1606,26 @@ export class GroupeService {
     return cellule;
   }
 
-  /** L'exercice ouvert d'une cellule · celui que visent canevas et dépôts. */
-  private async exerciceOuvert(celluleId: string) {
-    const exercice = await this.prisma.exercice.findFirst({
+  /**
+   * LES EXERCICES OUVERTS D'UNE CELLULE · ceux que visent canevas et dépôts
+   * (relevé G2 de la simulation du 2026-10-08). Le canevas ne visait que le
+   * plus récent · ouvrir N+1 avant d'avoir clôturé N est la règle (l'arrêté
+   * suit la clôture dans les quatre mois, AUDCIF art. 23), et le canevas de
+   * décembre N déposé en janvier était refusé ligne à ligne (« date hors de
+   * l'exercice ouvert »), sans autre issue que de le saisir à la main. Chaque
+   * ligne va à l'exercice ouvert qui contient sa date (postulat de
+   * spécialisation des exercices · SYCEBNL cadre conceptuel § 3.3.1.2.3).
+   */
+  private async exercicesOuverts(celluleId: string) {
+    const exercices = await this.prisma.exercice.findMany({
       where: { tenantId: celluleId, statut: StatutExercice.OUVERT },
-      orderBy: { dateDebut: 'desc' },
+      orderBy: { dateDebut: 'asc' },
       select: { id: true, dateDebut: true, dateFin: true },
     });
-    if (!exercice) {
+    if (exercices.length === 0) {
       throw new BadRequestException('Cette cellule n’a aucun exercice ouvert');
     }
-    return exercice;
+    return exercices;
   }
 
   /**
@@ -1767,7 +1776,7 @@ export class GroupeService {
 
   private async canevasDuGroupe(tenantId: string, celluleId: string): Promise<ClasseurExporte> {
     const cellule = await this.celluleDuGroupe(tenantId, celluleId);
-    const exercice = await this.exerciceOuvert(celluleId);
+    const exercices = await this.exercicesOuverts(celluleId);
 
     const wb = new Workbook();
     const ws = wb.addWorksheet('Journal de trésorerie');
@@ -1775,8 +1784,10 @@ export class GroupeService {
     ws.getCell('A1').font = { size: 8, color: { argb: 'FFBBBBBB' } };
     ws.getCell('A2').value = 'Cellule :';
     ws.getCell('B2').value = cellule.nom;
-    ws.getCell('A3').value = 'Exercice :';
-    ws.getCell('B3').value = `du ${exercice.dateDebut.toISOString().slice(0, 10)} au ${exercice.dateFin.toISOString().slice(0, 10)}`;
+    ws.getCell('A3').value = exercices.length > 1 ? 'Exercices ouverts :' : 'Exercice :';
+    ws.getCell('B3').value = exercices
+      .map((e) => `du ${e.dateDebut.toISOString().slice(0, 10)} au ${e.dateFin.toISOString().slice(0, 10)}`)
+      .join(' ; ');
     ws.getRow(2).font = { bold: true };
     ws.getRow(3).font = { bold: true };
 
@@ -1843,7 +1854,7 @@ export class GroupeService {
       .replace(/^-+|-+$/g, '')
       .toLowerCase();
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
-    return { buffer, nomFichier: `canevas-${slug || 'cellule'}-${libelleExercice(exercice)}.xlsx` };
+    return { buffer, nomFichier: `canevas-${slug || 'cellule'}-${libelleExercice(exercices[exercices.length - 1])}.xlsx` };
   }
 
   /**
@@ -1862,7 +1873,8 @@ export class GroupeService {
 
   private async importerCanevasDuGroupe(tenantId: string, celluleId: string, createdBy: string, dto: ImporterCanevasDto) {
     await this.celluleDuGroupe(tenantId, celluleId);
-    const exercice = await this.exerciceOuvert(celluleId);
+    const exercices = await this.exercicesOuverts(celluleId);
+    const exerciceDeLaDate = (date: Date) => exercices.find((e) => date >= e.dateDebut && date <= e.dateFin) ?? null;
 
     const contenu = Buffer.from(dto.contenuBase64, 'base64');
     // Déplié sous plafond avant ExcelJS (piste 8 de l'audit du 2026-10-25).
@@ -1894,6 +1906,7 @@ export class GroupeService {
     const anomalies: Array<{ ligne: number; message: string }> = [];
     const lignesValides: Array<{
       date: Date;
+      exerciceId: string;
       libelle: string;
       compteRubrique: string;
       compteTresorerie: string;
@@ -1924,8 +1937,9 @@ export class GroupeService {
         anomalies.push({ ligne: l, message: 'Date illisible' });
         continue;
       }
-      if (date < exercice.dateDebut || date > exercice.dateFin) {
-        anomalies.push({ ligne: l, message: `Date hors de l'exercice ouvert de la cellule` });
+      const exerciceDeLigne = exerciceDeLaDate(date);
+      if (!exerciceDeLigne) {
+        anomalies.push({ ligne: l, message: `Date hors de tout exercice ouvert de la cellule` });
         continue;
       }
       const rubrique = rubriqueParLibelle.get(rubriqueLibelle);
@@ -1956,6 +1970,7 @@ export class GroupeService {
       }
       lignesValides.push({
         date,
+        exerciceId: exerciceDeLigne.id,
         libelle: libelle || rubrique.libelle,
         compteRubrique: rubrique.compte,
         compteTresorerie: tresorerie.compte,
@@ -2021,7 +2036,7 @@ export class GroupeService {
     });
     for (const p of piecesCanevas) {
       await this.ecritureService.controlesDEntree(celluleId, {
-        exerciceId: exercice.id,
+        exerciceId: p.l.exerciceId,
         journalId: journalParCode.get(p.l.journal)!.id,
         date: p.l.date,
         lignes: p.lignes,
@@ -2042,11 +2057,11 @@ export class GroupeService {
         // journaux, sans quoi le livre-journal de la cellule mélange des
         // pièces numérotées et des pièces sans numéro.
         const jal = journalParCode.get(l.journal)!;
-        const numeroPiece = await prochainNumeroPiece(tx, celluleId, jal, exercice.id, l.date);
+        const numeroPiece = await prochainNumeroPiece(tx, celluleId, jal, l.exerciceId, l.date);
         await tx.ecriture.create({
           data: {
             tenantId: celluleId,
-            exerciceId: exercice.id,
+            exerciceId: l.exerciceId,
             journalId: jal.id,
             numeroPiece,
             date: l.date,

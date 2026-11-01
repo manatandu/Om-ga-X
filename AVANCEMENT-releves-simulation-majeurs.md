@@ -25,10 +25,13 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   se reconnaît par sa liaison (`mouvementsDeRevisionPlan`), relue en sens
   inverse en FF et FG, et ne déclenche plus la réserve du 798. Le TFT
   SYCEBNL ne lit pas le débit du 28 (« sans flux »), rien à y faire.
+- G2 · canevas de trésorerie · chaque ligne va à l'exercice OUVERT de la
+  cellule qui contient sa date (N+1 ouvert avant la clôture de N), le
+  canevas nomme tous les exercices ouverts.
 
 ## Reste
 
-G2, D2, MAG-LIEN, H D1, 585 du groupe et AU2.
+D2, MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
 

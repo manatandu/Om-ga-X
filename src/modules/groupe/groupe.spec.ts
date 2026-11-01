@@ -309,7 +309,7 @@ describe('GroupeService · création de cellules par le siège', () => {
 describe('GroupeService · canevas de trésorerie', () => {
   const EX = { id: 'ex-c', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 
-  const prismaCanevas = (creees: unknown[]) =>
+  const prismaCanevas = (creees: unknown[], exercicesOuverts: Array<typeof EX> = [EX]) =>
     ({
       tenant: {
         findFirst: async () => ({ id: 'c1', nom: 'Cellule A' }),
@@ -317,7 +317,7 @@ describe('GroupeService · canevas de trésorerie', () => {
         findMany: async () => [{ id: 'c1' }],
         findUnique: async () => ({ dossierCombinaisonId: null }),
       },
-      exercice: { findFirst: async () => EX },
+      exercice: { findFirst: async () => EX, findMany: async () => exercicesOuverts },
       ecriture: { findFirst: async () => null },
       compte: {
         findMany: async ({ where }: { where: { numero: { in: string[] } } }) =>
@@ -444,6 +444,20 @@ describe('GroupeService · canevas de trésorerie', () => {
     // équilibrée sur deux lignes.
     const [dossier, piece] = ecriture.controlesDEntree.mock.calls[0];
     expect([dossier, piece.exerciceId, piece.lignes.length]).toEqual(['c1', 'ex-c', 2]);
+  });
+
+  it('relevé G2 · N+1 ouvert avant la clôture de N, le canevas de décembre N et de janvier N+1 s’importe, chaque ligne dans son exercice', async () => {
+    const EX27 = { id: 'ex-c-27', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') };
+    const creees: Array<{ data: { exerciceId: string; date: Date } }> = [];
+    const s = new GroupeService(prismaCanevas(creees, [EX, EX27]), ecritureCanevas() as never, undefined as never, undefined as never);
+    const canevas = await s.canevas('mere', 'c1');
+    const rempli = await remplir(canevas.buffer, [
+      ['2026-12-20', 'Quête de décembre', 'Dîmes, quêtes et assimilées', 500, '', 'Caisse'],
+      ['2027-01-05', 'Quête de janvier', 'Dîmes, quêtes et assimilées', 300, '', 'Caisse'],
+    ]);
+    const rapport = await s.importerCanevas('mere', 'c1', 'u', { nomFichier: 'c.xlsx', contenuBase64: rempli.toString('base64') });
+    expect(rapport.importe).toBe(true);
+    expect(creees.map((e) => e.data.exerciceId)).toEqual(['ex-c', 'ex-c-27']);
   });
 
   it('un fichier qui n’est pas le canevas officiel est refusé net', async () => {
