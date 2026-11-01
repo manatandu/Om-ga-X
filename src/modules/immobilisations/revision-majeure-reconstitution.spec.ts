@@ -82,6 +82,21 @@ describe('l’estimation du ch. 5 § 1', () => {
     expect(r.motif).toContain('modulo');
   });
 
+  it('au bord exact · 24 mois pour 2 ans valent une valeur nette nulle, le mois suivant est refusé', async () => {
+    // « amorti sur la durée restant à courir jusqu'à la prochaine révision »
+    // (Titre VIII ch. 5 § 1) · l'intervalle achevé est entièrement amorti.
+    const auBord = ImmobilisationService.reconstitutionRevisionMajeure({
+      ...base,
+      dateReconstitution: new Date('2026-12-31T00:00:00.000Z'),
+    });
+    expect(auBord).toMatchObject({ possible: true, anneesEcoulees: 2, amortissementEstime: 10_000_000, valeurNetteEstimee: 0 });
+    const auDela = ImmobilisationService.reconstitutionRevisionMajeure({
+      ...base,
+      dateReconstitution: new Date('2027-01-31T00:00:00.000Z'),
+    });
+    expect(auDela.possible).toBe(false);
+  });
+
   it('repart de la dernière révision RÉELLEMENT réalisée quand elle est donnée', () => {
     // Six ans après l'acquisition, mais révisée il y a six mois · un quart de
     // l'intervalle de deux ans est couru.

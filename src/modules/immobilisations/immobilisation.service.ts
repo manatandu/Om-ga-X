@@ -3140,6 +3140,12 @@ export class ImmobilisationService {
     const moisEntames = estDernierJourDuMois(entree.dateReconstitution) ? 0 : 1;
     const moisEcoules = Math.max(0, moisEntre(depart, entree.dateReconstitution) - moisEntames);
     const anneesEcoulees = moisEcoules / 12;
+    // AU BORD EXACT, L'ESTIMATION TIENT (relecture du 2026-11-01) · le
+    // composant est « amorti sur la durée restant à courir jusqu'à la
+    // prochaine révision » (AUDCIF Titre VIII ch. 5 § 1) · l'intervalle
+    // achevé l'amortit en entier, valeur nette nulle, sans fiction. C'est
+    // AU-DELÀ, mois entamé suivant, qu'une révision a normalement eu lieu et
+    // que la date réelle est réclamée · d'où `>` et non `>=`.
     if (moisEcoules > intervalleRevisionsAns * 12) {
       return {
         possible: false,
