@@ -193,6 +193,34 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **RELEVÉS MINEURS TRAITÉS (gel levé le 2026-11-01, ligne
+  `releves-mineurs`).** Des entrées « SIMULATION DU LOGICIEL COMPLET »
+  (points MINEUR, reste d'une facture réglée en partie, doutes), « Passe V1
+  n° 2 », « PASSE-1-ETATS » et « TVA-DECISIONS » ci-dessous, chaque point a
+  été vérifié sur le code · corrigé avec son test (motif des cotisations au
+  SMT, ISA 240 sans écritures de clôture, rang du mandat lu au registre et
+  écran qui n'envoie plus que le rang saisi, report des provisions vers un
+  antérieur clos refusé, société dissoute sans liquidation, mention d'une
+  convention ferme non signée sauf soldée, second jeu en monnaie
+  fonctionnelle avec son arrondi des lignes à part, quotité lue sur la classe
+  du contrat, nature non ventilée des provisions dite, refus en devise d'un
+  lettrage partiel, registre des retenues dont seul le refus nommé retombe
+  sur le bloc, annulation de l'arrêt à la dissolution, constat d'impôt
+  visible quand le recalcul refuse, référence de la pièce de paie, décompte
+  final, révision majeure reconstituée en mois, CSRF exigé même avec un
+  en-tête Authorization, date de mise en service du fonds commercial du prix
+  global, DTO des créances douteuses) ou trouvé déjà corrigé par une ligne
+  postérieure. RESTENT, les points ci-dessous qu'elle a gardés · limites
+  écrites (588 au groupe, inventaire sur la balance provisoire, composant
+  renouvelé doté deux fois dans son mois, réserves au cours d'entrée, manuel
+  futur) ; A13 (1) à (3), AU3 m2 à m4, ergonomie d'A8 et A9 ; fonctions non
+  codées (facturier en devises, concours cession et saisie, désactualisation
+  et option non levée séparées au TFT par liaison, IAS 28 § 32 a, code
+  d'article en double en 500) ; questions que le corpus ne tranche pas
+  (quote-part ouvrière et art. 20, forfait de l'art. 121, cession au SMT,
+  résultat de la période d'activité au 13, acompte d'IS avant la première
+  cotisation, déduction du 8994).
+
 - **PAIE EN LOT (gel levé le 2026-11-01), questions que le corpus ne
   tranche pas.** (1) Un jour payé aux deux tiers (livre de paie, mention 17)
   compte-t-il au SMIG des jours payés du plancher CNSS (décret n° 18/041,
