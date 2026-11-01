@@ -203,6 +203,15 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   plus commode. (3) L'effectif de la tranche INPP est déclaré par le
   cabinet · les arrêtés ne fixent ni la date ni la méthode du décompte.
 
+- **DÉCLARATION CNSS ET AVANCE DE MISSION (gel levé le 2026-11-01),
+  non tranché par le corpus.** Les gabarits de la déclaration mensuelle
+  unique et du Mod. DC ne sont pas au corpus · l'état reste une préparation ;
+  deux voies de déclaration (guichet unique, Caisse) coexistent sans que
+  l'arrêté n° 146/2018 et l'arrêté interministériel du 12 mai 2015 les
+  articulent. Conventions d'OmegaX à confirmer · une seule avance active par
+  mission, versée au plus tard au retour prévu, régularisée après la fin
+  constatée.
+
 - **RATTACHEMENT D'UN COLLABORATEUR À PLUSIEURS DOSSIERS (décision de
   Manasse du 2026-10-30, D9), après le pilote.** Un cabinet qui tient
   plusieurs dossiers ouvre aujourd'hui un compte par personne et par dossier.
