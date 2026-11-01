@@ -22,6 +22,7 @@ function monter(statut: StatutCampagneInventaire) {
   // Les doublures HONORENT leur filtre · dossier, identifiant et statut.
   const prisma: Record<string, unknown> = {
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     campagneInventaire: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
@@ -142,5 +143,45 @@ describe('F136 · la sous-commission d’une fiche est celle de sa campagne', ()
       m.svc.creerFiche('t1', 'camp1', { compteId: 'c57', designation: 'Caisse', sousCommissionId: 'sc1' } as never),
     ).resolves.toMatchObject({ sousCommissionId: 'sc1' });
     await expect(m.svc.saisirComptage('t1', 'f1', { sousCommissionId: 'sc1' } as never)).resolves.toBeDefined();
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE B, MINEUR 1 · une fiche ou un PV de caisse
+ * entrait dans une campagne que la clôture venait de fermer · le statut était
+ * lu hors transaction. La doublure joue la clôture concurrente · elle ferme
+ * la campagne quand le verrou partagé est demandé, comme la base le rendrait
+ * une fois la clôture finie.
+ */
+describe('second tour, mineur 1 · fiche et PV relisent le statut sous verrou partagé', () => {
+  const fermeAuVerrou = (m: ReturnType<typeof monter>, prisma: Record<string, unknown>) => {
+    (prisma.$queryRaw as jest.Mock).mockImplementation(async (sql: TemplateStringsArray) => {
+      if (sql.join('?').includes('FOR SHARE')) m.campagne.statut = StatutCampagneInventaire.CLOTUREE;
+      return [];
+    });
+  };
+
+  it('une fiche n’entre pas dans la campagne close entre la lecture et la création', async () => {
+    const m = monter(StatutCampagneInventaire.RECENSEMENT);
+    const prisma = (m.svc as unknown as { prisma: Record<string, unknown> }).prisma;
+    fermeAuVerrou(m, prisma);
+    await expect(m.svc.creerFiche('t1', 'camp1', { compteId: 'c57', designation: 'Caisse' } as never)).rejects.toThrow(/CLOTUREE/);
+    expect((prisma.ficheInventaire as { create: jest.Mock }).create).not.toHaveBeenCalled();
+  });
+
+  it('un PV de caisse non plus', async () => {
+    const m = monter(StatutCampagneInventaire.RECENSEMENT);
+    const prisma = (m.svc as unknown as { prisma: Record<string, unknown> }).prisma;
+    fermeAuVerrou(m, prisma);
+    await expect(
+      m.svc.etablirPvCaisse('t1', 'camp1', 'u1', {
+        compteId: 'c57',
+        sousCommissionId: 'sc1',
+        dateComptage: '2025-12-31',
+        especesComptees: 100,
+        modeComparaison: 'FRANCS',
+      } as never),
+    ).rejects.toThrow(/CLOTUREE/);
+    expect((prisma.procesVerbalComptageCaisse as { create: jest.Mock }).create).not.toHaveBeenCalled();
   });
 });

@@ -464,17 +464,43 @@ export class InventaireService {
       );
     }
     if (dto.sousCommissionId) await this.sousCommissionDeLaCampagne(tenantId, campagneId, dto.sousCommissionId);
-    return this.prisma.ficheInventaire.create({
-      data: {
-        tenantId,
-        campagneId,
-        compteId: dto.compteId,
-        sousCommissionId: dto.sousCommissionId ?? null,
-        designation: dto.designation.trim(),
-        emplacement: dto.emplacement?.trim() || null,
-        uniteMesure: dto.uniteMesure?.trim() || null,
-      },
+    // LE STATUT SE RELIT SOUS VERROU, DANS LA TRANSACTION DE LA CRÉATION
+    // (second tour du paquet 1, ligne B, mineur 1) · lu plus haut hors
+    // transaction, il laissait une fiche entrer dans une campagne que la
+    // clôture (`SELECT … FOR UPDATE` de la campagne) venait de fermer. Le
+    // `FOR SHARE` attend la clôture en cours, puis le statut est relu.
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await this.campagneSousVerrouPartage(tx, tenantId, campagneId, [
+        StatutCampagneInventaire.PREPARATION,
+        StatutCampagneInventaire.RECENSEMENT,
+      ]);
+      return tx.ficheInventaire.create({
+        data: {
+          tenantId,
+          campagneId,
+          compteId: dto.compteId,
+          sousCommissionId: dto.sousCommissionId ?? null,
+          designation: dto.designation.trim(),
+          emplacement: dto.emplacement?.trim() || null,
+          uniteMesure: dto.uniteMesure?.trim() || null,
+        },
+      });
     });
+  }
+
+  /**
+   * La campagne relue sous un verrou PARTAGÉ (mineur 1 du second tour, ligne
+   * B) · la clôture la prend `FOR UPDATE`, si bien qu'une fiche ou un PV qui
+   * s'ajoute attend qu'elle finisse, puis lit le statut qu'elle a posé.
+   */
+  private async campagneSousVerrouPartage(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    campagneId: string,
+    statutsAdmis: StatutCampagneInventaire[],
+  ) {
+    await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR SHARE`;
+    return this.campagneOuverte(tenantId, campagneId, statutsAdmis, tx);
   }
 
   /**
@@ -1124,6 +1150,14 @@ export class InventaireService {
 
     try {
       return await transactionJournalisee(this.prisma, async (tx) => {
+        // Le statut relu sous verrou partagé (mineur 1 du second tour, ligne
+        // B) · un PV ne s'ajoute pas à une campagne que la clôture vient de
+        // fermer entre la lecture du haut et cette transaction.
+        await this.campagneSousVerrouPartage(tx, tenantId, campagneId, [
+          StatutCampagneInventaire.PREPARATION,
+          StatutCampagneInventaire.RECENSEMENT,
+          StatutCampagneInventaire.ARBITRAGE,
+        ]);
         const lecture = await lireSoldeCaisseAuComptage(tx, tenantId, compte.id, exercice, dateComptage);
         if (!lecture.lisible) throw new BadRequestException(lecture.motif);
         const etabliLe = new Date();
@@ -1291,21 +1325,34 @@ export class InventaireService {
     });
     if (!campagne) throw new NotFoundException('Campagne introuvable.');
 
-    const lignes = await db.ligneEcriture.findMany({
+    // LA SOMME SE DEMANDE À LA BASE (second tour du paquet 1, ligne B,
+    // mineur 2 ; CLAUDE.md § 8 bis) · rapatrier toutes les lignes des caisses
+    // pour les additionner tenait, dans la transaction de clôture, autant de
+    // lignes en mémoire que l'exercice en porte.
+    const sommes = await db.ligneEcriture.groupBy({
+      by: ['compteId'],
       where: {
         compte: { tenantId, numero: { startsWith: '57' } },
         // Une simulation ne met aucune espèce en caisse · elle ne fait pas
         // réclamer de procès-verbal (ligne sage-l1, fonction 12, relecture M5).
         ecriture: { tenantId, exerciceId: campagne.exerciceId, ...HORS_SITUATION },
       },
-      select: { debit: true, credit: true, compte: { select: { id: true, numero: true, intitule: true } } },
+      _sum: { debit: true, credit: true },
     });
-    const soldes = new Map<string, { numero: string; intitule: string; solde: number }>();
-    for (const l of lignes) {
-      const acc = soldes.get(l.compte.id) ?? { numero: l.compte.numero, intitule: l.compte.intitule, solde: 0 };
-      acc.solde += Number(l.debit) - Number(l.credit);
-      soldes.set(l.compte.id, acc);
-    }
+    // Le solde au centime, en entiers · jamais un écart flottant.
+    const centimes = (v: Prisma.Decimal | number | null | undefined) => Math.round(Number(v ?? 0) * 100);
+    const nonNuls = new Map(
+      sommes
+        .map((g) => [g.compteId, centimes(g._sum.debit) - centimes(g._sum.credit)] as const)
+        .filter(([, c]) => c !== 0),
+    );
+    const comptes = nonNuls.size
+      ? await db.compte.findMany({
+          where: { tenantId, id: { in: [...nonNuls.keys()] } },
+          select: { id: true, numero: true, intitule: true },
+        })
+      : [];
+    const soldes = new Map(comptes.map((c) => [c.id, { numero: c.numero, intitule: c.intitule, solde: nonNuls.get(c.id)! / 100 }]));
     const pv = await db.procesVerbalComptageCaisse.findMany({
       where: { tenantId, campagneId },
       select: { compteId: true },
@@ -1313,8 +1360,8 @@ export class InventaireService {
     const comptees = new Set(pv.map((p) => p.compteId));
 
     return [...soldes.entries()]
-      .filter(([id, v]) => Math.abs(v.solde) > 0.005 && !comptees.has(id))
-      .map(([compteId, v]) => ({ compteId, numero: v.numero, intitule: v.intitule, solde: Number(v.solde.toFixed(2)) }))
+      .filter(([id]) => !comptees.has(id))
+      .map(([compteId, v]) => ({ compteId, numero: v.numero, intitule: v.intitule, solde: v.solde }))
       .sort((a, b) => a.numero.localeCompare(b.numero));
   }
 

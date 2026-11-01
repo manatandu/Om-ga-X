@@ -89,6 +89,8 @@ function service(etat: Etat = {}) {
     // table absente plutôt que la couverture complète.
     ligneEcriture: {
       findMany: jest.fn().mockResolvedValue(etat.lignesCaisse ?? []),
+      // La somme par caisse se demande à la base (second tour, ligne B, mineur 2).
+      groupBy: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(etat.lignesAuBrouillard ?? 0),
     },
     procesVerbalComptageCaisse: {

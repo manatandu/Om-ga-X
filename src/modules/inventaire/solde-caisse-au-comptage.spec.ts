@@ -372,6 +372,7 @@ function monter(lignes: Ligne[], exercices = [EX25, EX26]) {
   const prisma: Record<string, unknown> = {
     ...base,
     // La transaction rejoue le même client · lecture et création y passent (b).
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     campagneInventaire: {
       findFirst: jest.fn(async () => ({ id: 'camp1', tenantId: 't1', exerciceId: 'ex25', statut: StatutCampagneInventaire.RECENSEMENT })),
