@@ -11,6 +11,10 @@ import { NoteAnnexeService } from './note-annexe.service';
 import { RattacherDto } from './dto/rattachement.dto';
 import { RetirerFormatAnterieurDto, SaisirNoteDto } from './dto/saisie-note.dto';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { BadRequestException } from '@nestjs/common';
+import { JeuNotesAnnexes } from '@prisma/client';
+import { ComptesDuZoomService } from '../etats-financiers/comptes-du-zoom.service';
+import { lireCodeDeNote, lireColonneDeNote, lireLigneDeNote, lireSousTableau } from '../etats-financiers/origine-des-montants';
 
 // PAS de @ReferentielsAutorises au niveau de la CLASSE · il était ici tant
 // que toutes les routes étaient SYCEBNL. Depuis que les 36 notes SYSCOHADA
@@ -26,7 +30,45 @@ import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
 @Controller('notes-annexes')
 export class NoteAnnexeController {
-  constructor(private readonly noteAnnexeService: NoteAnnexeService) {}
+  constructor(
+    private readonly noteAnnexeService: NoteAnnexeService,
+    private readonly comptesDuZoom: ComptesDuZoomService,
+  ) {}
+
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 sur une ligne de note des
+   * deux jeux SYCEBNL chiffrés (associations, projets) · colonnes N et N-1,
+   * lues sur la même résolution que la note (`NoteAnnexeService.origineLigne`).
+   */
+  @ReferentielsAutorises(Referentiel.SYCEBNL)
+  @Get('origine')
+  async origine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('jeu') jeu?: string,
+    @Query('ref') ref?: string,
+    @Query('sousTableau') sousTableau?: string,
+    @Query('ligne') ligne?: string,
+    @Query('colonne') colonne?: string,
+  ) {
+    const lu =
+      jeu === 'PROJETS'
+        ? JeuNotesAnnexes.PROJETS_DEVELOPPEMENT
+        : jeu === 'ASSOCIATIONS' || jeu === undefined
+          ? JeuNotesAnnexes.ASSOCIATIONS_ORDRES_PROFESSIONNELS
+          : null;
+    if (!lu) throw new BadRequestException('Jeu de notes inconnu · attendu ASSOCIATIONS ou PROJETS.');
+    const origine = await this.noteAnnexeService.origineLigne(
+      user.tenantId,
+      exerciceId,
+      lu,
+      lireCodeDeNote(ref),
+      lireSousTableau(sousTableau),
+      lireLigneDeNote(ligne),
+      lireColonneDeNote(colonne),
+    );
+    return this.comptesDuZoom.attacher(user.tenantId, origine);
+  }
 
   /**
    * Notes annexes du jeu « associations et ordres professionnels » + fiche

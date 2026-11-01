@@ -73,7 +73,7 @@ describe('EtatsFinanciersSyscohadaController · cloisonnement SYSCOHADA', () => 
     const chemin = (nom: string) => Reflect.getMetadata(PATH_METADATA, prototype[nom]);
     const verbe = (nom: string) => Reflect.getMetadata(METHOD_METADATA, prototype[nom]);
 
-    // Les neuf routes attendues : le Système normal (AUDCIF art. 26 · bilan,
+    // Les onze routes attendues : le Système normal (AUDCIF art. 26 · bilan,
     // compte de résultat, tableau des flux de trésorerie, notes annexes) et
     // le Système minimal de trésorerie (art. 13 et Titre X · bilan, compte
     // de résultat, journal de trésorerie, notes, et le contrôle des seuils).
@@ -87,6 +87,10 @@ describe('EtatsFinanciersSyscohadaController · cloisonnement SYSCOHADA', () => 
       'smt/journal-tresorerie',
       'smt/notes',
       'smt/eligibilite',
+      // Ligne origine-des-montants · d'où vient un montant du Système normal,
+      // état ou note, en lecture et sous la même garde de classe.
+      'origine',
+      'notes/origine',
     ];
 
     it.each(attendues)('expose GET %s', (route) => {
@@ -121,7 +125,7 @@ describe('notes du SMT SYSCOHADA · câblage des états des garanties (passes O1
       ficheNotes: jest.fn().mockReturnValue({}),
       etatsDesGaranties: jest.fn().mockResolvedValue(garanties),
     };
-    const controleur = new EtatsFinanciersSyscohadaController({} as never, smt as never, {} as never);
+    const controleur = new EtatsFinanciersSyscohadaController({} as never, smt as never, {} as never, {} as never);
     const r = await controleur.notesSmt({ tenantId: 't1' } as never, 'e1');
     expect(r.etatsDesGaranties).toBe(garanties);
     expect(smt.etatsDesGaranties).toHaveBeenCalledWith('t1');

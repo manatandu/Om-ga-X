@@ -25,6 +25,8 @@ import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire, MentionResultatEnInstance } from '../components/ResultatAnterieurNonVire';
 import { montantDuPosteDeFlux } from '../lib/postes-de-flux-vides';
+import { FenetreOrigineMontant, celluleOrigine } from '../components/OrigineMontant';
+import type { CelluleOrigine, ColonneOrigine, EtatZoomable } from '../lib/origine-montant';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal.
@@ -106,6 +108,16 @@ function EtatsSyscohadaSystemeNormal() {
    * autre onglet au retour.
    */
   const [posteDeplie, setPosteDeplie] = useState<string | null>(null);
+
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100. Double-clic ou Entrée sur un
+   * montant ouvre son origine (poste, comptes, grand livre, pièce), servie
+   * par `GET /etats-financiers-syscohada/origine` · le clic simple garde le
+   * dépliage des comptes de la ligne.
+   */
+  const [zoom, setZoom] = useState<CelluleOrigine | null>(null);
+  const cellule = (etat: EtatZoomable, ref: string, colonne: ColonneOrigine) =>
+    celluleOrigine(() => setZoom({ etat, ref, colonne }), `${etat}:${ref}:${colonne}`);
   const basculerPoste = (cle: string) => setPosteDeplie((p) => (p === cle ? null : cle));
 
   /**
@@ -257,12 +269,18 @@ function EtatsSyscohadaSystemeNormal() {
             {l.renvoi && <span className="text-[10.5px] text-text-dim italic"> · {l.renvoi}</span>}
           </span>
           <span className="font-mono text-[11px] text-text-dim text-center">{l.note ?? ''}</span>
-          <span className="font-mono text-right">{montant(l.brut)}</span>
-          <span className="font-mono text-right text-text-dim">
+          <span {...cellule('bilan', l.ref, 'BRUT')} className="font-mono text-right">
+            {montant(l.brut)}
+          </span>
+          <span {...cellule('bilan', l.ref, 'AMORTISSEMENT')} className="font-mono text-right text-text-dim">
             {l.amortissement ? `(${montant(l.amortissement)})` : montant(l.amortissement)}
           </span>
-          <span className="font-mono text-right">{montant(l.montant)}</span>
-          <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+          <span {...cellule('bilan', l.ref, 'N')} className="font-mono text-right">
+            {montant(l.montant)}
+          </span>
+          <span {...cellule('bilan', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+            {montant(l.montantN1)}
+          </span>
         </div>
         {deplie && detailComptes(l.comptes)}
       </div>
@@ -291,8 +309,12 @@ function EtatsSyscohadaSystemeNormal() {
             {l.renvoi && <span className="text-[10.5px] text-text-dim italic"> · {l.renvoi}</span>}
           </span>
           <span className="font-mono text-[11px] text-text-dim text-center">{l.note ?? ''}</span>
-          <span className="font-mono text-right">{montant(l.montant)}</span>
-          <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+          <span {...cellule('bilan', l.ref, 'N')} className="font-mono text-right">
+            {montant(l.montant)}
+          </span>
+          <span {...cellule('bilan', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+            {montant(l.montantN1)}
+          </span>
         </div>
         {deplie && detailComptes(l.comptes)}
       </div>
@@ -329,8 +351,15 @@ function EtatsSyscohadaSystemeNormal() {
             )}
           </span>
           <span className="font-mono text-[11px] text-text-dim text-center font-normal">{l.notes.join(', ')}</span>
-          <span className={`font-mono text-right ${l.montant < 0 ? 'text-danger' : ''}`}>{montant(l.montant)}</span>
-          <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+          <span
+            {...cellule('compte-de-resultat', l.ref, 'N')}
+            className={`font-mono text-right ${l.montant < 0 ? 'text-danger' : ''}`}
+          >
+            {montant(l.montant)}
+          </span>
+          <span {...cellule('compte-de-resultat', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+            {montant(l.montantN1)}
+          </span>
         </div>
         {deplie && detailComptes(l.comptes)}
       </div>
@@ -356,8 +385,12 @@ function EtatsSyscohadaSystemeNormal() {
           {/* Un poste que le serveur laisse vide (paquet 1, A7) s'écrit « · »,
               jamais « 0,00 » (second tour, ligne A, mineur 3 · l'écran du
               SYCEBNL le faisait déjà, `montantDuPosteDeFlux`). */}
-          <span className="font-mono text-right">{montant(montantDuPosteDeFlux(l.ref, l.montant, tft?.postesVides))}</span>
-          <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
+          <span {...cellule('tableau-flux-tresorerie', l.ref, 'N')} className="font-mono text-right">
+            {montant(montantDuPosteDeFlux(l.ref, l.montant, tft?.postesVides))}
+          </span>
+          <span {...cellule('tableau-flux-tresorerie', l.ref, 'N1')} className="font-mono text-right text-text-dim font-normal">
+            {montant(l.montantN1)}
+          </span>
           {/* Colonne CLÉ · les repères A à H du modèle. Sans eux, les formules
               imprimées (« somme FA à FE », « G + A ») ne désignent rien. */}
           <span className="font-mono text-[11px] text-center">{l.repere ?? ''}</span>
@@ -867,6 +900,15 @@ function EtatsSyscohadaSystemeNormal() {
 
       {/* Encadré de signature · CPCC § 7.4 règle 7-b, imprimé uniquement. */}
       <BlocCertification />
+
+      {zoom && exerciceCourant && (
+        <FenetreOrigineMontant
+          source={{ type: 'etats', base: '/etats-financiers-syscohada', arreteAu: arreteAu || undefined }}
+          exerciceId={exerciceCourant.id}
+          cellule={zoom}
+          onFermer={() => setZoom(null)}
+        />
+      )}
     </div>
   );
 }

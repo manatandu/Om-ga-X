@@ -15,7 +15,7 @@ const classeur = { buffer: Buffer.from(''), nomFichier: 'x.xlsx' };
 describe('Repère H · câblage des portes (audit final F13)', () => {
   it('l’écran passe « non renseigné » au service, et un montant tel quel', async () => {
     const budget = { reconciliationTresorerie: jest.fn().mockResolvedValue({}) };
-    const ctl = new EtatsFinanciersController({} as never, {} as never, {} as never, budget as never);
+    const ctl = new EtatsFinanciersController({} as never, {} as never, {} as never, budget as never, {} as never);
     await ctl.reconciliationTresorerie(user, 'ex', undefined);
     await ctl.reconciliationTresorerie(user, 'ex', '0');
     expect(budget.reconciliationTresorerie.mock.calls.map((c) => c[2])).toEqual([null, 0]);

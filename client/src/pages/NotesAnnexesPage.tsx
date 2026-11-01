@@ -29,6 +29,9 @@ import {
 } from '../components/NotesAnnexesRendu';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { RETENUS } from '../lib/comptes-proposes';
+import { FenetreOrigineMontant } from '../components/OrigineMontant';
+import type { CelluleOrigine } from '../lib/origine-montant';
+import type { NoteCalculee } from '../lib/types';
 
 /**
  * Notes annexes SYCEBNL · les deux jeux (45 notes « associations et ordres
@@ -76,6 +79,15 @@ function NotesAnnexesSycebnlPage() {
   // Compte sélectionné dans le formulaire de rattachement, par clé de rubrique.
   const [compteChoisi, setCompteChoisi] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState<string | null>(null); // "codeNote::cle::compteId" en cours d'envoi
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100. Double-clic ou Entrée sur un
+   * montant « Exercice N » ou « Exercice N-1 » d'une note ouvre son origine
+   * (rubrique, comptes, grand livre, pièce), lue sur le serveur.
+   */
+  const [zoom, setZoom] = useState<CelluleOrigine | null>(null);
+  const ouvrirOrigine = (n: NoteCalculee, ligne: number, colonne: 'N' | 'N1') =>
+    setZoom({ etat: 'note', ref: n.code, sousTableau: n.sousTableau, ligne, colonne });
+
 
   // Jeu de notes visé par un rattachement · distinct du jeu d'états du
   // dossier (voir `JeuNotesAnnexes`). Le serveur refuse un jeu étranger au
@@ -397,7 +409,13 @@ function NotesAnnexesSycebnlPage() {
               <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Sélectionnez une note.</div>
             )}
             {tableaux.map((n) => (
-              <BlocTableauNote key={n.sousTableau ?? n.code} note={n} rattachement={rattachement} saisie={saisie} />
+              <BlocTableauNote
+                key={n.sousTableau ?? n.code}
+                note={n}
+                rattachement={rattachement}
+                saisie={saisie}
+                ouvrirOrigine={ouvrirOrigine}
+              />
             ))}
             {/* Décision D1 · coûts d'emprunt incorporés montrés à côté des
                 rubriques libres C et D de la note « Informations
@@ -418,6 +436,15 @@ function NotesAnnexesSycebnlPage() {
 
       {/* Encadré de signature · CPCC § 7.4 règle 7-b, imprimé uniquement. */}
       <BlocCertification />
+
+      {zoom && exerciceCourant && (
+        <FenetreOrigineMontant
+          source={{ type: 'notes', base: '/notes-annexes/origine', jeu: jeuProjet ? 'PROJETS' : 'ASSOCIATIONS' }}
+          exerciceId={exerciceCourant.id}
+          cellule={zoom}
+          onFermer={() => setZoom(null)}
+        />
+      )}
     </div>
   );
 }

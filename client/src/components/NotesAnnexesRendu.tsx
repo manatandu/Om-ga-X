@@ -18,6 +18,7 @@ import {
   phraseNatureNonVentilee,
   phrasePartNonVentilee,
 } from '../lib/part-non-ventilee';
+import { celluleOrigine } from './OrigineMontant';
 
 /**
  * RENDU DES NOTES ANNEXES · pièces d'affichage communes aux deux écrans de
@@ -149,10 +150,13 @@ function LigneTableauNote({
   note,
   ligne,
   saisie,
+  origine,
 }: {
   note: NoteCalculee;
   ligne: LigneNoteCalculee;
   saisie?: SaisieNotes;
+  /** D'où vient ce chiffre · ouvre les colonnes « Exercice N » et « Exercice N-1 » de la ligne, son rang dans la note servie. */
+  origine?: { ouvrir: (colonne: 'N' | 'N1') => void; rang: number };
 }) {
   // Rubrique renseignée hors comptabilité : ses cellules ne se calculent pas,
   // elles s'écrivent. `ligne.saisie` porte une case par colonne, `null` là où
@@ -251,8 +255,15 @@ function LigneTableauNote({
           );
         }
         const v = valeurColonne(ligne, c.type);
+        // Le zoom de Sage 100 · double-clic ou Entrée sur un montant de
+        // l'exercice ou de l'exercice précédent ouvre son origine.
+        const colonneOrigine = c.type === 'EXERCICE_N' ? 'N' : c.type === 'EXERCICE_N1' ? 'N1' : null;
+        const zoom =
+          origine && colonneOrigine && v !== undefined
+            ? celluleOrigine(() => origine.ouvrir(colonneOrigine), `note:${note.code}:${origine.rang}:${colonneOrigine}`)
+            : {};
         return (
-          <span key={ci} className="font-mono text-right text-text-dim">
+          <span key={ci} {...zoom} className="font-mono text-right text-text-dim">
             {c.type === 'LIBRE'
               ? // La colonne « Note » imprime le renvoi de la ligne (passe R6).
                 c.porteLeRenvoi
@@ -313,7 +324,10 @@ export function BlocTableauNote({
   saisie,
   mentionNonApplicable = MENTION_NEANT_PAR_DEFAUT,
   afficherHorsBalance = false,
+  ouvrirOrigine,
 }: {
+  /** D'où vient ce chiffre · la ligne (son rang dans la note servie) et la colonne. Absent, les montants restent inertes. */
+  ouvrirOrigine?: (note: NoteCalculee, ligne: number, colonne: 'N' | 'N1') => void;
   note: NoteCalculee;
   rattachement: RattachementNotes;
   /** Absent = lecture seule sur les rubriques renseignées hors comptabilité. */
@@ -443,7 +457,17 @@ export function BlocTableauNote({
                 </div>
               ) : null
             ) : (
-              <LigneTableauNote key={`${l.cle ?? l.libelle}-${l.rang ?? 0}-${i}`} note={note} ligne={l} saisie={saisiePour(l)} />
+              <LigneTableauNote
+                key={`${l.cle ?? l.libelle}-${l.rang ?? 0}-${i}`}
+                note={note}
+                ligne={l}
+                saisie={saisiePour(l)}
+                origine={
+                  ouvrirOrigine && note.lignes.includes(l)
+                    ? { ouvrir: (colonne) => ouvrirOrigine(note, note.lignes.indexOf(l), colonne), rang: note.lignes.indexOf(l) }
+                    : undefined
+                }
+              />
             ),
           )}
         </div>

@@ -8,11 +8,12 @@ import { ExerciceModule } from '../exercice/exercice.module';
 import { EtatsFinanciersModule } from '../etats-financiers/etats-financiers.module';
 import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
+import { ComptesDuZoomService } from '../etats-financiers/comptes-du-zoom.service';
 
 @Module({
   imports: [ComptabiliteModule, ExerciceModule, LicenceModule, JwtAuthModule, EtatsFinanciersModule],
   controllers: [NoteAnnexeController],
-  providers: [NoteAnnexeService],
+  providers: [NoteAnnexeService, ComptesDuZoomService],
   exports: [NoteAnnexeService],
 })
 export class NotesAnnexesModule {}

@@ -299,6 +299,10 @@ describe('comptes retenus à l’écran · chaque lecture de comptes, quelle que
       'construite par `adresseContrepartiesAdmises` (lib/regle-par.ts), qui pose `retenus=true` · vérifié sur la fonction elle-même',
     'components/OrdresVirement.tsx :: cheminListeOrdres(filtre)':
       'la liste des ordres de virement, construite par `cheminListeOrdres` selon le filtre d’état · aucun compte n’y est servi',
+    'components/OrigineMontant.tsx :: adresse':
+      'l’origine d’un montant d’état ou de note, construite par `adresseOrigine` (lib/origine-montant.ts) · des comptes lus par le calcul de l’état, jamais une liste de choix',
+    'components/OrigineMontant.tsx :: adresseGrandLivre(compte.compteId!, exerciceId, au)':
+      'le grand livre d’un compte déjà choisi par l’origine d’un montant, construit par `adresseGrandLivre` (lib/origine-montant.ts) · un livre, jamais une liste de choix',
     'components/PiecesJointes.tsx :: adresses.liste(objetId)':
       'les pièces jointes d’un objet (écriture, section, bien, salarié), construites par `ADRESSES_PIECES` (lib/pieces-jointes.ts) · aucune liste de comptes',
     'pages/InventairePage.tsx :: chemin':

@@ -10,7 +10,7 @@ import {
   RANG_FORMAT_ANTERIEUR,
   SaisieFormatAnterieur,
 } from './effectifs-seize-colonnes';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
 import { JeuNotesAnnexes, NatureMouvementDepreciation, Prisma, Referentiel, StatutEcriture, StatutProvision } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -24,6 +24,18 @@ import {
   indicateursNote33,
 } from './indicateurs-note-33';
 import { LigneBalancePourEtat, chargerLignes, correspond, trouverExerciceN1 } from '../etats-financiers/etats-financiers.communs';
+import { apparierRubriques, motifRubriqueAmbigue } from './rubrique-de-ligne';
+import {
+  ComposantOrigine,
+  MOTIF_POSTE_INTROUVABLE,
+  OrigineDuMontant,
+  contributions,
+  groupe,
+  origineHorsBalance,
+  origineParComptes,
+  origineParFormule,
+  regleDesPrefixes,
+} from '../etats-financiers/origine-des-montants';
 import {
   CompteDeRubrique,
   ConfrontationSaisies,
@@ -1519,6 +1531,15 @@ export class NoteAnnexeService {
    * nombre de notes attendu par le texte officiel (`NOTES_ATTENDUES_PAR_JEU`).
    */
   private async notesDuJeu(tenantId: string, exerciceId: string, jeu: JeuNotesAnnexes) {
+    return (await this.notesDuJeuDetaille(tenantId, exerciceId, jeu)).resultat;
+  }
+
+  /**
+   * Les notes ET ce qui les a calculées (lignes N-1, rattachements) · la
+   * remontée d'un montant vers ses comptes (`origineLigne`) relit la colonne
+   * N-1 par la même `calculerRubrique`, jamais par une seconde lecture.
+   */
+  private async notesDuJeuDetaille(tenantId: string, exerciceId: string, jeu: JeuNotesAnnexes) {
     const specs = NOTES_PAR_JEU[jeu];
 
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
@@ -1584,7 +1605,7 @@ export class NoteAnnexeService {
     await this.injecterPassifsEventuels(notes, tenantId, exerciceId, jeu);
     await this.injecterTransfertDepreciation(notes, specs, tenantId, exerciceId, jeu);
 
-    return {
+    const resultat = {
       notes,
       exerciceN1Disponible: exerciceN1Id !== null,
       rattachementsSansRubrique,
@@ -1615,6 +1636,104 @@ export class NoteAnnexeService {
         attendues: NOTES_ATTENDUES_PAR_JEU[jeu],
       },
     };
+    return { resultat, lignesN1, rattachements, exerciceN1Id };
+  }
+
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 sur une ligne de note
+   * (`origine-des-montants.ts`). Colonnes « Exercice N » et « Exercice N-1 »
+   * seulement · les comptes de la rubrique, dans le sens où elle les lit ;
+   * pour un total, les rubriques qu'il additionne ; pour une rubrique en
+   * saisie ou une ligne qu'un calcul propre injecte, sa source. La ligne se
+   * désigne par son RANG dans la note servie, les lignes non chiffrées en
+   * étant retirées.
+   */
+  async origineLigne(
+    tenantId: string,
+    exerciceId: string,
+    jeu: JeuNotesAnnexes,
+    code: string,
+    sousTableau: string | undefined,
+    rangLigne: number,
+    colonne: 'N' | 'N1',
+  ): Promise<OrigineDuMontant> {
+    const d = await this.notesDuJeuDetaille(tenantId, exerciceId, jeu);
+    const note = d.resultat.notes.find((n) => n.code === code && (n.sousTableau ?? '') === (sousTableau ?? ''));
+    const ligne = note?.lignes[rangLigne];
+    if (!note || !ligne) throw new NotFoundException(MOTIF_POSTE_INTROUVABLE);
+    const spec = NOTES_PAR_JEU[jeu].find((x) => x.code === code && (x.sousTableau ?? '') === (sousTableau ?? ''))!;
+    // La rubrique de la table · par sa clé, sinon par son RANG parmi les
+    // rubriques du même libellé (`apparierRubriques`), jamais la première venue.
+    const { rubriqueDeLigne, ligneDeRubrique } = apparierRubriques(spec, note.lignes);
+    const appariee = rubriqueDeLigne.get(rangLigne);
+    if (appariee === 'ambigu') throw new ConflictException(motifRubriqueAmbigue(ligne.libelle, code));
+    const rubrique = appariee !== undefined ? spec.rubriques[appariee] : undefined;
+    const enTete = {
+      etat: 'note' as const,
+      ref: code,
+      libelle: ligne.libelle,
+      colonne,
+      montant: colonne === 'N' ? ligne.montantN : (ligne.montantN1 ?? null),
+      exerciceDesComptesId: colonne === 'N1' ? d.exerciceN1Id : exerciceId,
+    };
+    if (colonne === 'N1' && !d.exerciceN1Id) {
+      return origineHorsBalance(enTete, "Aucun exercice antérieur dans le dossier : la colonne N-1 reste vide, ce n'est pas un zéro.");
+    }
+    if (ligne.saisie !== undefined || spec.horsBalance) {
+      return origineHorsBalance(enTete, 'Rubrique renseignée par le dossier ou servie par un calcul propre à la note, hors de la balance.');
+    }
+    if (!rubrique) {
+      return origineHorsBalance(enTete, 'Ligne servie par un calcul propre à la note, hors de la correspondance de ses rubriques.');
+    }
+    if (rubrique.totalDeRubriques) {
+      // Le rang de chaque rubrique additionnée dans la note servie · une
+      // rubrique non chiffrée en est retirée, et vaut alors zéro.
+      const composant = (i: number, signe: 1 | -1): ComposantOrigine => {
+        const r = spec.rubriques[i];
+        const rang = ligneDeRubrique.get(i);
+        if (rang === 'ambigu') {
+          // Montant inconnu, jamais celui d'une autre rubrique · le total
+          // devient incalculable et le dit.
+          return { ref: code, libelle: r.libelle, signe, montant: null, nonOuvrable: motifRubriqueAmbigue(r.libelle, code) };
+        }
+        if (rang === undefined) {
+          return {
+            ref: code,
+            libelle: r.libelle,
+            signe,
+            montant: 0,
+            nonOuvrable: 'Rubrique non chiffrée, retirée de la note servie · elle compte zéro dans le total.',
+          };
+        }
+        const servie = note.lignes[rang];
+        return { ref: code, libelle: r.libelle, signe, montant: colonne === 'N' ? servie.montantN : (servie.montantN1 ?? null), ligne: rang };
+      };
+      return origineParFormule({ ...enTete, formule: null }, [
+        ...rubrique.totalDeRubriques.map((i) => composant(i, 1)),
+        ...(rubrique.moinsRubriques ?? []).map((i) => composant(i, -1)),
+      ]);
+    }
+    // Les comptes de la rubrique, tels que `calculerRubrique` les lit · en
+    // N par la ligne servie, en N-1 par la même fonction sur les lignes N-1.
+    const rattaches = d.rattachements.get(`${spec.code}::${rubrique.cle}`) ?? [];
+    if ((rubrique.comptes ?? []).length === 0 && rattaches.length === 0 && Math.abs(enTete.montant ?? 0) > 0.005) {
+      // Une rubrique sans compte que la note chiffre quand même · un
+      // indicateur ou un tableau qu'un calcul propre injecte (note 33, note 34).
+      return origineHorsBalance(enTete, 'Montant servi par un calcul propre à la note (indicateur ou tableau injecté), hors de la correspondance de ses rubriques.');
+    }
+    const comptes = colonne === 'N' ? ligne.comptes : this.calculerRubrique(rubrique, d.lignesN1, rattaches).comptes;
+    const signe: 1 | -1 = rubrique.presenterEnNegatif ? -1 : 1;
+    const lecture =
+      rubrique.sens === 'CREDITEUR' || rubrique.natureCreditrice ? 'Solde crédit − débit' : 'Solde débit − crédit';
+    return origineParComptes(
+      {
+        ...enTete,
+        regle:
+          regleDesPrefixes([...(rubrique.comptes ?? []), ...rattaches], rubrique.exclusions, rubrique.sens) +
+          (rattaches.length > 0 ? ` · dont ${rattaches.join(', ')} rattachés par le dossier` : ''),
+      },
+      [groupe('Comptes de la rubrique', `${lecture}${signe === -1 ? ', présenté en déduction' : ''}`, contributions(comptes, signe))],
+    );
   }
 
   /**

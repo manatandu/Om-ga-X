@@ -21,6 +21,9 @@ import {
 } from '../components/NotesAnnexesRendu';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { RETENUS } from '../lib/comptes-proposes';
+import { FenetreOrigineMontant } from '../components/OrigineMontant';
+import type { CelluleOrigine } from '../lib/origine-montant';
+import type { NoteCalculee } from '../lib/types';
 
 /**
  * NOTES ANNEXES DU SYSCOHADA RÉVISÉ · Système normal, les 36 notes de la
@@ -90,6 +93,15 @@ function NotesSyscohadaSystemeNormal() {
   // Compte sélectionné dans le formulaire de rattachement, par clé de rubrique.
   const [compteChoisi, setCompteChoisi] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState<string | null>(null); // "codeNote::cle::compteId" en cours d'envoi
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100. Double-clic ou Entrée sur un
+   * montant « Exercice N » ou « Exercice N-1 » d'une note ouvre son origine
+   * (rubrique, comptes, grand livre, pièce), lue sur le serveur.
+   */
+  const [zoom, setZoom] = useState<CelluleOrigine | null>(null);
+  const ouvrirOrigine = (n: NoteCalculee, ligne: number, colonne: 'N' | 'N1') =>
+    setZoom({ etat: 'note', ref: n.code, sousTableau: n.sousTableau, ligne, colonne });
+
 
   // RÉPONSE PÉRIMÉE JETÉE · deux relectures se croisent (une saisie, puis
   // une autre), et la plus ancienne arrivée la dernière remettait à l'écran
@@ -375,6 +387,7 @@ function NotesSyscohadaSystemeNormal() {
                 saisie={saisie}
                 mentionNonApplicable={MENTION_NEANT_SYSCOHADA}
                 afficherHorsBalance
+                ouvrirOrigine={ouvrirOrigine}
               />
             ))}
             {/* Décision D1 · coûts d'emprunt incorporés montrés à côté des
@@ -393,6 +406,15 @@ function NotesSyscohadaSystemeNormal() {
 
       {/* Encadré de signature · CPCC § 7.4 règle 7-b, imprimé uniquement. */}
       <BlocCertification />
+
+      {zoom && exerciceCourant && (
+        <FenetreOrigineMontant
+          source={{ type: 'notes', base: '/etats-financiers-syscohada/notes/origine' }}
+          exerciceId={exerciceCourant.id}
+          cellule={zoom}
+          onFermer={() => setZoom(null)}
+        />
+      )}
     </div>
   );
 }

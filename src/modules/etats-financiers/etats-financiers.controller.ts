@@ -12,6 +12,8 @@ import { EtatsFinanciersSmtService } from './etats-financiers-smt.service';
 import { EtatsFinanciersProjetBudgetService } from './etats-financiers-projet-budget.service';
 import { lirePaiementsEnInstance } from './paiements-en-instance';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { ComptesDuZoomService } from './comptes-du-zoom.service';
+import { lireColonneOrigine, lireEtatZoomable, lireRefPoste } from './origine-des-montants';
 
 // RolesGuard présent pour que tout `@Roles` ajouté plus tard soit réellement
 // appliqué (sans lui, il serait silencieusement ignoré).
@@ -33,7 +35,33 @@ export class EtatsFinanciersController {
     private readonly etatsFinanciersProjetService: EtatsFinanciersProjetService,
     private readonly etatsFinanciersSmtService: EtatsFinanciersSmtService,
     private readonly etatsFinanciersProjetBudgetService: EtatsFinanciersProjetBudgetService,
+    private readonly comptesDuZoom: ComptesDuZoomService,
   ) {}
+
+  /**
+   * D'OÙ VIENT CE CHIFFRE · le zoom de Sage 100 (double-clic sur un montant
+   * d'état, puis le grand livre du compte, puis la pièce), pour le jeu
+   * « associations et ordres professionnels » · bilan, compte de résultat et
+   * tableau des flux, lus sur la MÊME résolution que l'état
+   * (`EtatsFinanciersService.origine`). Lecture seule.
+   */
+  @Get('origine')
+  async origine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('etat') etat?: string,
+    @Query('ref') ref?: string,
+    @Query('colonne') colonne?: string,
+  ) {
+    const origine = await this.etatsFinanciersService.origine(
+      user.tenantId,
+      exerciceId,
+      lireEtatZoomable(etat),
+      lireRefPoste(ref),
+      lireColonneOrigine(colonne),
+    );
+    return this.comptesDuZoom.attacher(user.tenantId, origine);
+  }
 
   /** Jeu « associations et ordres professionnels » (Partie 4, ch. 2). */
   @Get('bilan')

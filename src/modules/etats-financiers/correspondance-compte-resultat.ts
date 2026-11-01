@@ -172,3 +172,31 @@ export function posteDuCompte(numeroCompte: string): PosteCompteResultat | null 
 
   return meilleur;
 }
+
+/**
+ * LES CINQ LIGNES CALCULÉES DU MODÈLE (XA à XE), telles que
+ * `EtatsFinanciersService.compteDeResultat` les applique · servies à la
+ * remontée d'un montant (`origine-des-montants.ts`) pour dire de quels postes
+ * un total est fait. Le spec de l'origine confronte chacune, sur un jeu
+ * d'essai, au total que l'état sert · une formule qui divergerait du calcul
+ * se dirait par un écart, jamais en silence. XA inclut RH (anomalie n° 4).
+ */
+export const SOLDES_COMPTE_RESULTAT: { ref: string; libelle: string; formule: string; plus: string[]; moins: string[] }[] = [
+  {
+    ref: 'XA',
+    libelle: 'REVENUS DES ACTIVITÉS ORDINAIRES',
+    formule: `Somme ${POSTES_PRODUITS[0].ref} à ${POSTES_PRODUITS[POSTES_PRODUITS.length - 1].ref}`,
+    plus: POSTES_PRODUITS.map((p) => p.ref),
+    moins: [],
+  },
+  {
+    ref: 'XB',
+    libelle: 'CHARGES DES ACTIVITÉS ORDINAIRES',
+    formule: `Somme ${POSTES_CHARGES[0].ref} à ${POSTES_CHARGES[POSTES_CHARGES.length - 1].ref}`,
+    plus: POSTES_CHARGES.map((p) => p.ref),
+    moins: [],
+  },
+  { ref: 'XC', libelle: 'RÉSULTAT DES ACTIVITÉS ORDINAIRES', formule: 'XA − XB', plus: ['XA'], moins: ['XB'] },
+  { ref: 'XD', libelle: 'RÉSULTAT H.A.O.', formule: 'TM − TN', plus: ['TM'], moins: ['TN'] },
+  { ref: 'XE', libelle: "RÉSULTAT NET DE L'EXERCICE", formule: 'XC + XD', plus: ['XC', 'XD'], moins: [] },
+];
