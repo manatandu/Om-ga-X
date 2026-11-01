@@ -344,6 +344,12 @@ l'éditeur vers `OPERATEURS_PLATEFORME`, jamais rendu au client ; sans
 messagerie, 503 nommé et rien d'écrit ; champ piège, plafond global de
 soixante par heure lu en base ; les demandes non parties comptées et reprises
 dans la console de l'éditeur). Le paiement en ligne reste exclu.
+Puis, le même jour, les RELEVÉS EN ATTENTE du suivi et la reprise de
+l'interface (« Enchaîne le point 3 et 4 ») · relevés mineurs, majeurs de la
+simulation et lignes A, B et C du paquet 1 ; « D'OÙ VIENT CE CHIFFRE » sur les
+états et les notes des deux référentiels (double-clic sur un montant · ses
+composants, ses comptes et leur grand livre, en lecture, aux mêmes gardes que
+l'état) ; le rattachement d'une personne à plusieurs dossiers.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
