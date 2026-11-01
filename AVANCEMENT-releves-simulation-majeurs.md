@@ -17,10 +17,14 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
 - J2 · TFT consolidé · la CAFG retranche le poste des 478 et 479 retraités
   (`ECARTS_CONVERSION_INDIVIDUELS_RESULTAT`), et un contrôle par le bilan en
   échec devient un motif du jeu non publiable.
+- F D2 K1 · `DEPRECIATION_IMMO_HORS_MODULE` et `REEVALUATION_IMMO_HORS_MODULE`
+  retranchent aussi, sur les comptes dont l'à-nouveau est passé, ce que le
+  module a posté dans les exercices antérieurs (dépréciations de la table ;
+  écritures de réévaluation, de transfert de l'écart et leurs annulations).
 
 ## Reste
 
-G2, D2, F D2 K1, F D3, MAG-LIEN, H D1, 585 du groupe et AU2.
+G2, D2, F D3, MAG-LIEN, H D1, 585 du groupe et AU2.
 
 ## Commandes de vérification
 

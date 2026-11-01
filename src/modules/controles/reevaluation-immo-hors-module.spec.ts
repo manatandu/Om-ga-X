@@ -157,3 +157,38 @@ describe('écart de réévaluation hors module', () => {
     expect(syscohada!.consequence).not.toContain('SYCEBNL');
   });
 });
+
+/*
+  RELEVÉ F D2 K1 DE LA SIMULATION DU 2026-10-08 · l'à-nouveau de N+1 reprend
+  l'écart que la réévaluation du module a posé en N. Seule l'écriture de
+  l'exercice était écartée, et le contrôle criait en N+1 (CLAUDE.md § 10 bis).
+*/
+describe('l’à-nouveau d’un écart posé par le module ne compte pas (relevé K1)', () => {
+  const ouverture = (credit: number) => ({
+    debit: 0,
+    credit,
+    compte: { numero: '10610000', intitule: 'Écarts de réévaluation légale' },
+    ecriture: { estANouveauProvisoire: false, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
+  });
+  const avecAnterieur = async (credit: number, anterieur: number) => {
+    const svc = service([], 4);
+    const prisma = (svc as unknown as { prisma: { ligneEcriture: { findMany: jest.Mock } } }).prisma;
+    // La doublure HONORE la requête · l'écriture antérieure du module ne
+    // revient qu'à la requête qui la demande par sa liaison.
+    prisma.ligneEcriture.findMany.mockImplementation(async (args: { where?: { ecriture?: { OR?: object[] } } }) =>
+      args.where?.ecriture?.OR?.some((o) => 'reevaluationBilan' in o)
+        ? [{ debit: 0, credit: anterieur, compte: { numero: '10610000' } }]
+        : [ouverture(credit)],
+    );
+    const r = await svc.analyser('t', 'ex');
+    return r.anomalies.find((a) => a.code === 'REEVALUATION_IMMO_HORS_MODULE');
+  };
+
+  it('se tait quand l’ouverture ne porte que l’écart de la réévaluation du module', async () => {
+    expect(await avecAnterieur(12_000_000, 12_000_000)).toBeUndefined();
+  });
+
+  it('signale la part de l’ouverture passée à la main', async () => {
+    expect((await avecAnterieur(15_000_000, 12_000_000))!.occurrences[0].montant).toBe(3_000_000);
+  });
+});

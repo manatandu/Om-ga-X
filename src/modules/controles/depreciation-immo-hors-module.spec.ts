@@ -170,3 +170,35 @@ describe('ce que le module a lui-même posté ne compte pas', () => {
     expect(a).toBeUndefined();
   });
 });
+
+/*
+  RELEVÉ F D2 K1 DE LA SIMULATION DU 2026-10-08 · l'à-nouveau de N+1 reprend
+  la dépréciation que le module a passée en N. Seuls les actes de l'exercice
+  étaient retranchés, et le contrôle criait en N+1 sur ce que le module avait
+  lui-même posé (CLAUDE.md § 10 bis).
+*/
+describe('l’à-nouveau d’une dépréciation du module ne compte pas (relevé K1)', () => {
+  const aNouveau = (numero: string, credit: number) => ({
+    ...ligne(numero, 'Dépréciations des bâtiments', credit),
+    ecriture: { estANouveauProvisoire: false, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
+  });
+  const avecAnterieurs = (lignes: ReturnType<typeof ligne>[], anterieurs: number) => {
+    const svc = service(lignes, 3);
+    const prisma = (svc as unknown as { prisma: { depreciationImmobilisation: { findMany: jest.Mock } } }).prisma;
+    // La doublure HONORE la requête · les actes antérieurs ne reviennent que
+    // si le filtre les demande (sinon le test passerait sans la correction).
+    prisma.depreciationImmobilisation.findMany.mockImplementation(async (args: { where: { OR?: unknown[] } }) =>
+      (args.where.OR?.length ?? 0) > 1 ? [{ sens: 'DOTATION', montant: anterieurs, compteDepreciation: { numero: '29310000' } }] : [],
+    );
+    return svc.analyser('t', 'ex').then((r) => r.anomalies.find((a) => a.code === 'DEPRECIATION_IMMO_HORS_MODULE'));
+  };
+
+  it('se tait quand l’ouverture ne porte que la dépréciation posée par le module en N', async () => {
+    expect(await avecAnterieurs([aNouveau('29310000', 8_000_000)], 8_000_000)).toBeUndefined();
+  });
+
+  it('signale encore la part de l’ouverture passée à la main', async () => {
+    const a = await avecAnterieurs([aNouveau('29310000', 10_000_000)], 8_000_000);
+    expect(a!.occurrences[0].montant).toBe(2_000_000);
+  });
+});
