@@ -48,6 +48,7 @@ export const TRADUCTIONS_EN: Readonly<Record<string, string>> = {
   // Fichier.
   'Nouveau fichier comptable…': 'New accounting file…',
   'Ouvrir un autre dossier…': 'Open another file…',
+  'Changer de dossier…': 'Switch file…',
   "Autorisations d'accès": 'Access rights',
   "Journal d'audit": 'Audit trail',
   'Utilisateurs connectés': 'Connected users',

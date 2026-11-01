@@ -12,8 +12,17 @@ import { UtilisateurService } from '../utilisateurs/utilisateur.service';
 // La connexion relit la ligne du compte sous verrou, dans une transaction
 // (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
 // elle-même et rend, à la relecture, ce que `findUnique` rend.
+// Ligne multi-dossiers · les appartenances de la personne (le compte seul, ici),
+// lues par la connexion et par /auth/me sur le même double que `findUnique`.
+const avecAppartenances = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P => {
+  const u = p.user as Record<string, unknown>;
+  u.findMany ??= async () => [await p.user.findUnique({})].filter(Boolean);
+  u.count ??= async () => 1;
+  u.updateMany ??= async () => ({ count: 0 });
+  return p;
+};
 const sousVerrou = <P extends { user: { findUnique: (...a: any[]) => any } }>(p: P): P =>
-  Object.assign(p, {
+  Object.assign(avecAppartenances(p), {
     $executeRaw: async () => 0,
     $queryRaw: async () => [await p.user.findUnique({})],
     $transaction: async (fn: (tx: unknown) => unknown) => fn(p),

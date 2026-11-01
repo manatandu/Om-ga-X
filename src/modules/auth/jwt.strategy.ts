@@ -114,13 +114,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // UNE requête, jointures comprises : le référentiel et la licence du
     // tenant voyagent avec l'utilisateur, si bien que LicenceGuard et
     // ReferentielGuard n'ont plus rien à demander à la base.
+    //
+    // UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers,
+    // `compte-de-connexion.ts`) · le `sub` désigne la ligne du dossier
+    // COURANT, et c'est elle qui dit le dossier, le rôle, les journaux et les
+    // logiciels · le cloisonnement ne lit rien d'autre. Une appartenance
+    // RATTACHÉE apporte, par la même requête, son compte de connexion ·
+    // révocation du compte (mot de passe changé ou réinitialisé, second
+    // facteur, « fermer toutes mes sessions »), mot de passe provisoire et
+    // second facteur se lisent sur lui.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { tenant: { select: { referentiel: true, licence: true } } },
+      include: {
+        tenant: { select: { referentiel: true, licence: true } },
+        compteDeConnexion: { select: { sessionsInvalidesAvant: true, doitChangerMotDePasse: true, doubleAuthActiveDepuis: true } },
+      },
     });
     if (!user || !user.estActif) {
       throw new UnauthorizedException('Compte désactivé ou introuvable');
     }
+    const compte = user.compteDeConnexion ?? user;
     // RÉVOCATION DE SESSION · un jeton vit jusqu'à huit heures, et une session
     // « Rester connecté » jusqu'à trente jours (audit final F270). Sans ce
     // contrôle, changer un mot de passe volé, réinitialiser un compte ou
@@ -129,7 +142,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // la dernière AUTHENTIFICATION du jeton, que la prolongation recopie, et
     // non sur son émission (audit final F270, relecture adverse) · un jeton
     // prolongé dans la seconde d'une révocation lui échappait sinon.
-    if (sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant)) {
+    if (
+      sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant) ||
+      sessionRevoquee(payload.authentification ?? payload.iat, compte.sessionsInvalidesAvant)
+    ) {
       // Le motif nomme les causes possibles · depuis le 2026-10-21,
       // l'administrateur du dossier peut aussi fermer ces sessions, et le
       // titulaire ne savait pas pourquoi il était sorti.
@@ -197,11 +213,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: user.tenantId,
       email: user.email,
       role: user.role,
-      doitChangerMotDePasse: user.doitChangerMotDePasse,
+      doitChangerMotDePasse: compte.doitChangerMotDePasse,
       referentiel: user.tenant.referentiel,
       licence: user.tenant.licence,
       estOperateurPlateforme: user.estOperateurPlateforme,
-      doubleAuthentificationActive: user.doubleAuthActiveDepuis !== null,
+      doubleAuthentificationActive: compte.doubleAuthActiveDepuis !== null,
       restreindreFonctions: user.restreindreFonctions,
       fonctionsAutorisees: user.fonctionsAutorisees,
       restreindreJournaux: user.restreindreJournaux,

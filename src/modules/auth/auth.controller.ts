@@ -11,6 +11,7 @@ import { ChangerMotDePasseDto } from './dto/changer-mot-de-passe.dto';
 import { ChangerAdresseDto } from './dto/changer-adresse.dto';
 import { ActiverDoubleAuthDto, DesactiverDoubleAuthDto, RegenererCodesSecoursDto } from './dto/double-authentification.dto';
 import { DeconnecterAutresAppareilsDto } from './dto/deconnecter-autres-appareils.dto';
+import { ChangerDossierDto } from './dto/changer-dossier.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { extraireJetonDuCookie } from './jwt.strategy';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -343,5 +344,37 @@ export class AuthController {
       res,
       await this.authService.deconnecterAutresAppareils(user.userId, dto.motDePasseActuel, sessionDeLaRequete(res.req)),
     );
+  }
+
+  /**
+   * « L'ACCUEIL DU CABINET SUR SES DOSSIERS » (ligne multi-dossiers) · les
+   * dossiers de la personne de la session, et d'elle seule. Ouverte à tous les
+   * rôles, comme les réglages de son propre compte.
+   */
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Get('mes-dossiers')
+  mesDossiers(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.mesDossiers(user.userId);
+  }
+
+  /**
+   * CHANGER DE DOSSIER · route dédiée, cookie et CSRF (`JwtStrategy`), jamais
+   * un paramètre de requête. La session en cours se ferme, une neuve se pose
+   * sur l'appartenance visée (AuthService.changerDeDossier). Le dossier de la
+   * session rend `change: false` sans rien émettre.
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('changer-dossier')
+  async changerDossier(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangerDossierDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const r = await this.authService.changerDeDossier(user.userId, dto.dossierId, sessionDeLaRequete(res.req));
+    if (!r.session) return { dossierId: r.dossierId, change: false };
+    return { dossierId: r.dossierId, change: true, ...this.poserSession(res, r.session) };
   }
 }

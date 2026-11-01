@@ -40,7 +40,7 @@ function chaine(existants: Maillon[] = []) {
 async function service(user: Record<string, unknown>, clientNu: unknown) {
   return new AuthService(
     {
-      user: { findUnique: async () => user, update: async () => ({}) },
+      user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update: async () => ({}) },
       clientNu,
     } as never,
     { sign: () => 'jeton' } as never,
