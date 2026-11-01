@@ -33,16 +33,23 @@ sauvegarde `travail/releves-mineurs`, partie d'`origin/main`.
 - Origine des pertes · clé stable, « Retirer » nommé, rien à vide.
 - Décompte final · moitié du préavis à la française.
 
+- Reconstitution d'une révision majeure · comptée en mois, plus en 365,25 jours.
+- CSRF · exigé dès que le cookie porte le jeton, en-tête Authorization ou non.
+- Fonds commercial du prix global · sa date de mise en service se déclare.
+- DTO des créances douteuses · comptes, motif, pièces et listes refusés à null.
+- Décompte final · le calcul seul nomme l'ancienneté et les mois qui manquent.
+- Rejeu sur vraie base à travers la clôture de 2026 ·
+  `scripts/rejouer-releves-mineurs.cjs` (second jeu, quotité, registre).
+
 ## Reste
 
-- Bloc § 3 complet non rejoué (disque de la machine plein, 2026-11-01) ·
-  tsc des deux côtés vert, suites ciblées vertes.
-- Scénario sur vraie base non joué (même cause).
-- Triage complet · rapport de fin de ligne.
+- Limites écrites au rapport de fin de ligne (A13 1 à 3, AU3 m2 à m4,
+  A8 et A9 écran hors mineur 2 d'A8 et 7 d'A9).
 
 ## Vérification
 
 ```bash
 npx tsc --noEmit && npx jest
+DATABASE_URL=postgresql://postgres@127.0.0.1/<base jetable> node scripts/rejouer-releves-mineurs.cjs
 cd client && npx tsc --noEmit && npm test && npm run build
 ```
