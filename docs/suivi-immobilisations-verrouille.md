@@ -193,6 +193,16 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **MAJEURS DE LA SIMULATION TRAITÉS (gel levé le 2026-11-01, ligne
+  `releves-simulation-majeurs`).** G2, SMT D2, F D2 K1, F D3, MAG-LIEN,
+  H D1, PA1, J1 et J2 ci-dessous sont corrigés, chacun avec son test et le
+  rejeu sur vraie base à travers une clôture ; le MAJEUR de la lecture du
+  585 du groupe et le point AU2 « À VÉRIFIER » étaient déjà corrigés par le
+  paquet 1 (A8, m4, B2). RESTE · au SYCEBNL, la colonne « Cotisations » de
+  la NOTE 4 du SMT ne lit que le 701, la maquette ne recoupant pas les
+  créances d'adhérents (non tranché) ; reprise d'un verrou de garnissage
+  tombé après trente minutes, convention d'OmegaX.
+
 - **RELEVÉS MINEURS TRAITÉS (gel levé le 2026-11-01, ligne
   `releves-mineurs`).** Des entrées « SIMULATION DU LOGICIEL COMPLET »
   (points MINEUR, reste d'une facture réglée en partie, doutes), « Passe V1
