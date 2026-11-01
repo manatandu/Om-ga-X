@@ -3996,6 +3996,13 @@ export class ExportService {
     const estPoste = (v: any) =>
       v !== null && typeof v === 'object' && ('ref' in v || 'section' in v) && !Array.isArray(v);
 
+    // LES POSTES LAISSÉS VIDES RESTENT VIDES (second tour du paquet 1, ligne
+    // A, MAJEUR) · le tableau des flux sert ses postes illisibles à 0 et les
+    // nomme (`postesVides`, `postesNonCalculables`, paquet 1, A7) ; l'écran et
+    // la liasse les écrivent vides, le livre d'inventaire les figeait 0,00,
+    // un montant constaté que personne n'a constaté. Un état figé avant la
+    // règle n'a pas `postesVides` · il se rend tel qu'il a été transcrit.
+    const vides = new Set<string>(Array.isArray(etat?.postesVides) ? etat.postesVides : []);
     let sectionCourante = '';
     for (const [cle, valeur] of Object.entries(etat ?? {})) {
       if (!Array.isArray(valeur) || valeur.length === 0 || !valeur.some(estPoste)) continue;
@@ -4012,11 +4019,22 @@ export class ExportService {
         const rang = feuille.addRow({
           ref: l.ref,
           libelle: l.libelle,
-          montant: l.montant,
+          montant: l.ref && vides.has(l.ref) ? null : l.montant,
           montantN1: l.montantN1,
         });
         if (l.estTotal) rang.font = ENTETE_FONT;
       }
+    }
+    // Le motif des postes laissés vides, une ligne par motif, sous le tableau.
+    const motifs = new Map<string, string[]>();
+    for (const p of Array.isArray(etat?.postesNonCalculables) ? etat.postesNonCalculables : []) {
+      if (!p || typeof p.ref !== 'string' || !vides.has(p.ref)) continue;
+      const raison = String(p.raison ?? '');
+      motifs.set(raison, [...(motifs.get(raison) ?? []), p.ref]);
+    }
+    for (const [raison, refs] of motifs) {
+      const r = feuille.addRow({ libelle: `Laissés vides (${refs.join(', ')}) · ${raison}` });
+      r.font = { italic: true };
     }
 
     this.appliquerFormats(feuille, { montant: FORMAT_MONTANT, montantN1: FORMAT_MONTANT });

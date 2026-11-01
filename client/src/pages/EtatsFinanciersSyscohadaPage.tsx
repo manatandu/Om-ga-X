@@ -24,6 +24,7 @@ import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire, MentionResultatEnInstance } from '../components/ResultatAnterieurNonVire';
+import { montantDuPosteDeFlux } from '../lib/postes-de-flux-vides';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal.
@@ -352,7 +353,10 @@ function EtatsSyscohadaSystemeNormal() {
         >
           <span className="font-mono text-[11.5px] text-text-dim">{l.ref}</span>
           <span>{l.libelle}</span>
-          <span className="font-mono text-right">{montant(l.montant)}</span>
+          {/* Un poste que le serveur laisse vide (paquet 1, A7) s'écrit « · »,
+              jamais « 0,00 » (second tour, ligne A, mineur 3 · l'écran du
+              SYCEBNL le faisait déjà, `montantDuPosteDeFlux`). */}
+          <span className="font-mono text-right">{montant(montantDuPosteDeFlux(l.ref, l.montant, tft?.postesVides))}</span>
           <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
           {/* Colonne CLÉ · les repères A à H du modèle. Sans eux, les formules
               imprimées (« somme FA à FE », « G + A ») ne désignent rien. */}
