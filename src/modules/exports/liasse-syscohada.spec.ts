@@ -233,6 +233,7 @@ function fabriquerExport(
     mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeTransfertGroupe: jest.fn().mockResolvedValue(new Map()),
+    mouvementsDeRevisionPlan: jest.fn().mockResolvedValue(new Map()),
   } as unknown as EcritureService;
   const exerciceService = {
     lister: jest.fn().mockResolvedValue([...EXERCICES]),

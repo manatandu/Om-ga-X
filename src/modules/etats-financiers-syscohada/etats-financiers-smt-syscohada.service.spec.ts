@@ -930,6 +930,53 @@ describe('NOTE 4 · journal de trésorerie SMT', () => {
     expect(cote(banque).ventile).toBe(false);
   });
 
+  it('relevé D2 · un encaissement client va en Ventes, un règlement fournisseur sur la nature de sa facture, comme au compte de résultat', async () => {
+    // Facture d'achat 300 000 (D 601 / C 401) puis son règlement par la banque,
+    // lettrés ensemble ; facture de vente 500 000 encaissée par la banque.
+    const s = service(
+      {
+        e1: [
+          ligne('52110000', ClasseCompte.CLASSE_5, 500_000, 300_000),
+          ligne('60110000', ClasseCompte.CLASSE_6, 300_000, 0),
+          ligne('70110000', ClasseCompte.CLASSE_7, 0, 500_000),
+        ],
+      },
+      {
+        ecritures: [
+          ecriture('enc', '2026-04-10', 'Encaissement client', [
+            { numero: '52110000', debit: 500_000 },
+            { numero: '41110000', credit: 500_000 },
+          ]),
+          ecriture('reg', '2026-04-12', 'Règlement fournisseur', [
+            { numero: '40110000', debit: 300_000 },
+            { numero: '52110000', credit: 300_000 },
+          ]),
+        ],
+      },
+    );
+    // Le lettrage du règlement avec sa facture · la doublure honore les trois
+    // lectures du rattachement (par identifiant, par groupe, par écriture).
+    const facture = { id: 'fac-1', lettrageId: 'g1', compteId: 'id-40110000', debit: 0, credit: 300_000, libelle: null, dateEcheance: null, compte: { numero: '40110000' }, ecriture: { id: 'fac', date: new Date('2026-03-01'), libelle: 'Facture', estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false } };
+    const reglement = { ...facture, id: 'reg-0', debit: 300_000, credit: 0, ecriture: { ...facture.ecriture, id: 'reg' } };
+    const prisma = (s as unknown as { prisma: { ligneEcriture: { findMany: jest.Mock } } }).prisma;
+    prisma.ligneEcriture.findMany.mockImplementation(async ({ where }: { where: Record<string, any> }) => {
+      if (where.id?.in) return where.id.in.map((id: string) => ({ id, lettrageId: id === 'reg-0' ? 'g1' : null }));
+      if (where.lettrageId?.in) return [facture, reglement];
+      if (where.ecritureId?.in) {
+        return [
+          { ecritureId: 'fac', debit: 300_000, credit: 0, compte: { numero: '60110000', intitule: 'Achats de marchandises' } },
+          { ecritureId: 'fac', debit: 0, credit: 300_000, compte: { numero: '40110000', intitule: 'Fournisseurs' } },
+        ];
+      }
+      throw new Error('doublure : lecture non honorée');
+    });
+    const banque = (await s.journalTresorerie('t1', 'e1')).journaux.find((x) => x.numero === '52110000')!;
+    expect(banque.operations.find((o) => o.libelle === 'Encaissement client')!.ventilation.ventes).toBe(500_000);
+    const r = banque.operations.find((o) => o.libelle === 'Règlement fournisseur')!;
+    expect(r.ventilation.achatsMarchandises).toBe(300_000);
+    expect(r.ventilation.autres).toBe(0);
+  });
+
   it('ouvre chaque journal sur le report à-nouveau du compte', async () => {
     const s = service(
       { e1: [ligne('57110000', ClasseCompte.CLASSE_5, 300_000, 0, { debit: 300_000 })] },

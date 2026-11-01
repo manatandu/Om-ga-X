@@ -142,11 +142,26 @@ export function construireTableauFluxConsolide(e: EntreesFluxConsolides, flux: R
   // Les écarts d'évaluation rapportés au résultat par des STOCKS vendus sont de
   // la même famille · la baisse du stock consolidé serait lue comme un
   // encaissement par la variation du besoin de financement.
-  const elimination = -soldeCumul(e.cumulN, 'ELIMINATION_RESULTATS_INTERNES') - e.cumulN.ecartsEvaluationStocksResultat;
+  //
+  // Les PERTES ET GAINS DE CHANGE LATENTS des 478 et 479 retraités (tranche
+  // 4b, relevé J2 de la simulation du 2026-10-08) sont de la même famille ·
+  // la consolidation annule le 478 et le 479 et porte la variation de la
+  // position latente au résultat, sur un poste que FA ne lit pas, tandis que
+  // la créance ou la dette qui en porte la contrepartie reste convertie dans
+  // le besoin de financement. Sans cette ligne, une perte latente sur une
+  // créance s'y lisait comme un encaissement, et le contrôle par le bilan
+  // tombait du même montant. Le poste est au sens du débit (perte positive),
+  // comme l'élimination des résultats internes.
+  const latents = soldeCumul(e.cumulN, 'ECARTS_CONVERSION_INDIVIDUELS_RESULTAT');
+  const elimination =
+    -soldeCumul(e.cumulN, 'ELIMINATION_RESULTATS_INTERNES') - e.cumulN.ecartsEvaluationStocksResultat - latents;
   const cafg = L('CAFG', 'Capacité d’autofinancement globale (CAFG)', 'POSTE', f('FA') + elimination, {
     lecture:
       'Formule du ch. 5 § 1.2.1.1 (FA) sur les comptes consolidés' +
-      (Math.abs(elimination) > EPS ? ', diminuée des résultats internes éliminés (art. 86, 4°) et des écarts d’évaluation des stocks sortis, que la variation des stocks et des acquisitions lirait sinon comme un encaissement.' : '.'),
+      (Math.abs(elimination) > EPS
+        ? ', diminuée des résultats internes éliminés (art. 86, 4°) et des écarts d’évaluation des stocks sortis, que la variation des stocks et des acquisitions lirait sinon comme un encaissement' +
+          (Math.abs(latents) > EPS ? ', et des pertes ou gains de change latents des 478 et 479 retraités, que la variation des créances et des dettes lirait sinon comme un flux.' : '.')
+        : '.'),
   });
   const bf = L('VARIATION_BF', 'Variation du besoin de financement lié aux activités opérationnelles', 'POSTE', somme(['FB', 'FC', 'FD', 'FE'].map(f)), {
     lecture: 'Actif circulant HAO, stocks, créances et passif circulant (FB à FE).',

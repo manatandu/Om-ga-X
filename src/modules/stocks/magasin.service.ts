@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
+import { racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 import {
   ClasseCompte,
   MethodeInventaireStocks,
+  Prisma,
   SensMouvementStock,
   StatutEcriture,
   StatutExercice,
@@ -29,6 +31,7 @@ import {
   EnregistrerRegularisationInventaireDto,
 } from './dto/magasin.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisie';
 
 /**
  * LE MAGASIN · la fiche de stock, article par article, et la confrontation au
@@ -274,7 +277,7 @@ export class MagasinService {
   ) {
     const article = await this.prisma.articleStock.findFirst({
       where: { id: articleId, tenantId },
-      select: { id: true, actif: true, code: true },
+      select: { id: true, actif: true, code: true, compteId: true, methodeValorisation: true, compte: { select: { numero: true } } },
     });
     if (!article) throw new NotFoundException('Article introuvable dans ce dossier.');
     if (!article.actif) {
@@ -345,21 +348,167 @@ export class MagasinService {
         refus.ordre === ordre ? refus.explication : `Ce mouvement rendrait impossible ${refus.designation} · ${refus.explication}`,
       );
     }
-    return this.prisma.mouvementStock.create({
-      data: {
-        tenantId,
-        articleId,
-        date: new Date(dto.date),
-        ordre,
-        sens: dto.sens,
-        quantite: dto.quantite,
-        cout: dto.sens === SensMouvementStock.ENTREE ? dto.cout : null,
-        piece: dto.piece.trim(),
-        libelle: dto.libelle?.trim() || null,
-        ecritureId: dto.ecritureId ?? null,
-        createdBy: userId,
-      },
+    const donnees = {
+      tenantId,
+      articleId,
+      date: new Date(dto.date),
+      ordre,
+      sens: dto.sens,
+      quantite: dto.quantite,
+      cout: dto.sens === SensMouvementStock.ENTREE ? dto.cout : null,
+      piece: dto.piece.trim(),
+      libelle: dto.libelle?.trim() || null,
+      ecritureId: dto.ecritureId ?? null,
+      createdBy: userId,
+    };
+    if (!dto.ecritureId) return this.prisma.mouvementStock.create({ data: donnees });
+    // LE LIEN SE JUGE SOUS LE VERROU DE L'ÉCRITURE (relecture du 2026-11-01,
+    // point 5) · deux liens simultanés lisaient chacun « ce qui reste » et
+    // dépassaient ensemble ce qu'elle porte. Le second attend le premier,
+    // puis relit les mouvements déjà liés.
+    const ecritureId = dto.ecritureId;
+    return transactionJournalisee(this.prisma, async (tx) => {
+      // Le dossier, puis la ligne · l'ordre des verrous de tout le serveur
+      // (`common/ordre-des-verrous.spec.ts`), sans quoi la création auditée
+      // du mouvement attendait le dossier en tenant l'écriture.
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
+      await tx.$queryRaw`SELECT "id" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} AND "statut" <> 'SITUATION' FOR UPDATE`;
+      const motif = await this.motifRefusLien(tx, tenantId, article, dto, ordre);
+      if (motif) throw new BadRequestException(motif);
+      return tx.mouvementStock.create({ data: donnees });
     });
+  }
+
+  /**
+   * L'ÉCRITURE LIÉE PORTE LE MOUVEMENT (relevé MAG-LIEN de la simulation du
+   * 2026-10-08). Un mouvement se liait à n'importe quelle écriture du dossier,
+   * sans contrôle de compte ni de montant · liée à une écriture qui ne touche
+   * pas le compte de stock de l'article, ou pour plus qu'elle n'y porte, la
+   * fiche (inventaire comptable permanent) et le compte de classe 3 divergeaient
+   * sans un mot, et l'écart remontait au comptage sous la forme d'un faux boni
+   * ou d'un faux mali. Deux règles, fiches des comptes 31 à 38 des deux plans ·
+   * le stock est « débité […] des entrées » et « crédité […] des sorties » :
+   *  · l'écriture porte une ligne sur le compte de l'article, au DÉBIT pour une
+   *    entrée, au CRÉDIT pour une sortie ;
+   *  · la valeur des mouvements liés à cette écriture sur ce compte et dans ce
+   *    sens (celui-ci compris, les annulés écartés) ne dépasse pas ce que
+   *    l'écriture y porte · une écriture d'achat peut porter plusieurs
+   *    articles d'un même compte, l'égalité n'est donc pas exigée.
+   * La valeur d'une sortie est celle que la méthode CALCULE, jamais saisie.
+   *
+   * LE COMPTE DE L'ARTICLE, OU SES SOUS-COMPTES (relecture du 2026-11-01,
+   * point 1) · un article rattaché au 31100000 semé, dans un dossier qui a
+   * ouvert le 31100001 dessous, ne pouvait plus être lié à rien · la saisie
+   * refuse le semé subdivisé (`comptes/subdivisions-du-plan.ts`), et
+   * l'écriture d'achat porte le sous-compte. Même règle de racine que la
+   * saisie · les comptes du dossier qui commencent par la racine officielle
+   * du compte de l'article, hors des racines semées plus profondes, qui sont
+   * d'autres comptes du plan.
+   */
+  private async comptesDeLArticle(
+    db: Prisma.TransactionClient,
+    tenantId: string,
+    numeroArticle: string,
+  ): Promise<string[]> {
+    const dossier = await db.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } });
+    const racine = dossier ? racineDuCompteSeme(dossier.referentiel, numeroArticle) : null;
+    const prefixe = racine ?? numeroArticle;
+    const plusProfondes = dossier ? racinesSousLeCompteSeme(dossier.referentiel, numeroArticle) : [];
+    const comptes = await db.compte.findMany({
+      where: { tenantId, numero: { startsWith: prefixe } },
+      select: { id: true, numero: true },
+    });
+    return comptes.filter((c) => c.numero === numeroArticle || !plusProfondes.some((r) => c.numero.startsWith(r))).map((c) => c.id);
+  }
+
+  private async motifRefusLien(
+    db: Prisma.TransactionClient,
+    tenantId: string,
+    article: { id: string; compteId: string; methodeValorisation: string; compte: { numero: string } },
+    dto: EnregistrerMouvementStockDto,
+    ordre: number,
+  ): Promise<string | null> {
+    const entree = dto.sens === SensMouvementStock.ENTREE;
+    const comptes = await this.comptesDeLArticle(db, tenantId, article.compte.numero);
+    if (!comptes.includes(article.compteId)) comptes.push(article.compteId);
+    const lignes = await db.ligneEcriture.findMany({
+      where: { ecritureId: dto.ecritureId!, compteId: { in: comptes }, ecriture: { tenantId, ...HORS_SITUATION } },
+      select: { debit: true, credit: true },
+    });
+    const porte = Math.round(lignes.reduce((t, l) => t + Number(entree ? l.debit : l.credit), 0) * 100);
+    if (porte <= 0) {
+      return (
+        `L'écriture liée ne porte pas le compte ${article.compte.numero} de l'article, ni un de ses sous-comptes, au ${entree ? 'débit' : 'crédit'} · ` +
+        `une ${entree ? 'entrée' : 'sortie'} de stock s'y inscrit ainsi (fiches des comptes de stock, classe 3). ` +
+        "Liez le mouvement à l'écriture qui le porte, ou enregistrez-le sans écriture et passez-la d'abord."
+      );
+    }
+    // Les mouvements déjà liés à cette écriture, sur un article du même compte
+    // ou d'un de ses sous-comptes, dans le même sens.
+    const lies = await db.mouvementStock.findMany({
+      where: { tenantId, ecritureId: dto.ecritureId!, annuleLe: null, sens: dto.sens, article: { compteId: { in: comptes } } },
+      select: { articleId: true, ordre: true, cout: true },
+    });
+    let dejaLie = 0;
+    const articlesASortir = new Set<string>();
+    for (const m of lies) {
+      if (entree) dejaLie += Math.round(Number(m.cout ?? 0) * 100);
+      else articlesASortir.add(m.articleId);
+    }
+    let valeur = entree ? Math.round(Number(dto.cout) * 100) : 0;
+    if (!entree) {
+      articlesASortir.add(article.id);
+      for (const articleId of articlesASortir) {
+        const autre =
+          articleId === article.id
+            ? article
+            : await db.articleStock.findFirst({ where: { id: articleId, tenantId }, select: { methodeValorisation: true } });
+        if (!autre) continue;
+        const mouvements = await db.mouvementStock.findMany({
+          where: { tenantId, articleId, annuleLe: null },
+          select: { ordre: true, date: true, sens: true, quantite: true, cout: true },
+        });
+        const bruts: MouvementAValoriser[] = mouvements.map((m) => ({
+          ordre: m.ordre,
+          date: m.date.toISOString().slice(0, 10),
+          sens: m.sens === SensMouvementStock.ENTREE ? 'ENTREE' : 'SORTIE',
+          quantite: Number(m.quantite),
+          cout: m.cout === null ? null : Number(m.cout),
+        }));
+        if (articleId === article.id) {
+          bruts.push({ ordre, date: dto.date.slice(0, 10), sens: 'SORTIE', quantite: dto.quantite, cout: null });
+        }
+        const v = valoriser(bruts, autre.methodeValorisation as MethodeValorisation);
+        // UNE SORTIE QUE LA MÉTHODE NE VALORISE PAS N'EST PAS UNE SORTIE À ZÉRO
+        // (relecture du 2026-11-01, point 5) · comptée nulle, elle laissait
+        // passer un lien au-delà de ce que l'écriture porte.
+        const valeurDe = (o: number): number | null => {
+          const trouve = v.mouvements.find((x) => x.ordre === o);
+          return trouve ? Math.round(trouve.valeur * 100) : null;
+        };
+        for (const ordreLie of [...lies.filter((x) => x.articleId === articleId).map((x) => x.ordre), ...(articleId === article.id ? [ordre] : [])]) {
+          const c = valeurDe(ordreLie);
+          if (c === null) {
+            const raison = v.refus.find((r) => r.ordre === ordreLie)?.explication ?? v.refus[0]?.explication;
+            return (
+              `La valeur d'une sortie liée à cette écriture ne se calcule pas${raison ? ` (${raison})` : ''} · ` +
+              "le lien ne peut pas être jugé contre ce que l'écriture porte. Corrigez d'abord la fiche de l'article."
+            );
+          }
+          if (ordreLie === ordre && articleId === article.id) valeur = c;
+          else dejaLie += c;
+        }
+      }
+    }
+    if (dejaLie + valeur > porte) {
+      const f = (c: number) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (
+        `L'écriture liée porte ${f(porte)} au ${entree ? 'débit' : 'crédit'} du compte ${article.compte.numero} · ` +
+        `les mouvements qui lui sont déjà liés en valent ${f(dejaLie)}, et celui-ci ${f(valeur)}. La fiche de stock et le ` +
+        'compte divergeraient · liez le mouvement à l\'écriture qui porte sa valeur, ou corrigez d\'abord l\'écriture.'
+      );
+    }
+    return null;
   }
 
   /**

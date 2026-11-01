@@ -860,6 +860,16 @@ export const CONTREPARTIES_HORS_RESULTAT_SMT_SYSCOHADA = [
       "Classe 2 : le Titre X ch. 1 § 1 range « le montant des immobilisations acquises ou cédées au cours de l'exercice » parmi les quatre éléments de l'inventaire extra-comptable et impose le registre des immobilisations (NOTE 1) avec son tableau d'amortissement ; l'usure du bien entre au compte de résultat par la ligne F « DOTATIONS AMORTISSEMENTS », jamais son prix d'achat. Ces mouvements se lisent au poste de bilan SA1 et à la NOTE 1.",
   },
 ];
+/**
+ * Les comptes de la recette SUR VENTES · le 70 et les créances clients (voir
+ * SR1 ci-dessous). UNE liste pour le poste SR1 et pour la colonne « Ventes »
+ * de la NOTE 4 (relevé D2 de la simulation du 2026-10-08) · la colonne ne
+ * lisait que le 70, et l'encaissement d'une facture client tombait en
+ * « Autres » quand SR1 le comptait en vente, alors que le fondement de SR1 dit
+ * que c'est la même colonne.
+ */
+export const COMPTES_RECETTES_SUR_VENTES_SMT_SYSCOHADA = ['70', '411', '412', '413', '415', '416', '4181', '4191', '4192'];
+
 export const POSTES_RECETTES_SMT_SYSCOHADA: PosteFluxSmtSyscohada[] = [
   {
     ref: 'SR1',
@@ -874,7 +884,7 @@ export const POSTES_RECETTES_SMT_SYSCOHADA: PosteFluxSmtSyscohada[] = [
     // objet de son activité »). Le 414 (cessions d'immobilisations), le 4186
     // (intérêts courus), le 4194 (consignations) et le 4198 (avoirs à
     // accorder) ne naissent pas d'une vente · ils restent en SR2.
-    comptes: ['70', '411', '412', '413', '415', '416', '4181', '4191', '4192'],
+    comptes: COMPTES_RECETTES_SUR_VENTES_SMT_SYSCOHADA,
     fondement:
       "Compte 70 « Ventes » : 701 marchandises, 702 à 704 produits, 705 travaux facturés, 706 services vendus, 707 produits accessoires (plan de comptes SYSCOHADA) · exactement « ventes ou prestations de services ». C'est la colonne « Ventes » de la ventilation des recettes de la NOTE 4.",
   },
@@ -1320,7 +1330,7 @@ export interface ColonneVentilationSmtSyscohada {
 // même imprimée en deuxième position.
 export const VENTILATION_RECETTES_SMT_SYSCOHADA: ColonneVentilationSmtSyscohada[] = [
   // 70 Ventes (plan de comptes SYSCOHADA).
-  { cle: 'ventes', libelle: 'Ventes', comptes: ['70'] },
+  { cle: 'ventes', libelle: 'Ventes', comptes: COMPTES_RECETTES_SUR_VENTES_SMT_SYSCOHADA },
   {
     cle: 'autres',
     libelle: 'Autres',
@@ -1330,7 +1340,7 @@ export const VENTILATION_RECETTES_SMT_SYSCOHADA: ColonneVentilationSmtSyscohada[
     // de trésorerie, emprunt encaissé et virement interne compris
     // (anomalie n° 21).
     comptes: TOUTES_CLASSES_1_A_8,
-    exclusions: ['70', '82', '2', '103', '104'],
+    exclusions: [...COMPTES_RECETTES_SUR_VENTES_SMT_SYSCOHADA, '82', '2', '103', '104'],
   },
   // « Matériel et Mobilier » côté recettes : la cession d'une
   // immobilisation · 82 Produits des cessions d'immobilisations (Titre VII

@@ -910,6 +910,38 @@ describe('Note 4 · journal unique de trésorerie', () => {
     expect(journaux.find((j) => j.numero === '52100000')!.operations).toHaveLength(0);
   });
 
+  it('relevé D2 · le règlement d’un fournisseur se ventile sur la nature de sa facture, comme au compte de résultat', async () => {
+    const s = service(
+      { e1: [ligne('52100000', ClasseCompte.CLASSE_5, 0, 300), ligne('60110000', ClasseCompte.CLASSE_6, 300, 0)] },
+      {
+        ecritures: [
+          ecriture('reg', '2026-04-12', 'Règlement fournisseur', [
+            { numero: '40110000', debit: 300 },
+            { numero: '52100000', credit: 300 },
+          ]),
+        ],
+      },
+    );
+    const facture = { id: 'fac-1', lettrageId: 'g1', compteId: 'id-40110000', debit: 0, credit: 300, libelle: null, dateEcheance: null, compte: { numero: '40110000' }, ecriture: { id: 'fac', date: new Date('2026-03-01'), libelle: 'Facture', estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false } };
+    const reglement = { ...facture, id: 'reg-0', debit: 300, credit: 0, ecriture: { ...facture.ecriture, id: 'reg' } };
+    const prisma = (s as unknown as { prisma: { ligneEcriture: { findMany: jest.Mock } } }).prisma;
+    prisma.ligneEcriture.findMany.mockImplementation(async ({ where }: { where: Record<string, any> }) => {
+      if (where.id?.in) return where.id.in.map((id: string) => ({ id, lettrageId: id === 'reg-0' ? 'g1' : null }));
+      if (where.lettrageId?.in) return [facture, reglement];
+      if (where.ecritureId?.in) {
+        return [
+          { ecritureId: 'fac', debit: 300, credit: 0, compte: { numero: '60110000', intitule: 'Achats' } },
+          { ecritureId: 'fac', debit: 0, credit: 300, compte: { numero: '40110000', intitule: 'Fournisseurs' } },
+        ];
+      }
+      throw new Error('doublure : lecture non honorée');
+    });
+    const { journaux } = await s.journalTresorerie('t1', 'e1');
+    const r = journaux.find((j) => j.numero === '52100000')!.operations[0];
+    expect(r.ventilation.achatsActivite).toBe(300);
+    expect(r.ventilation.autres).toBe(0);
+  });
+
   it('ventile la recette dans la colonne officielle « Cotisations » (compte 701)', async () => {
     const s = service(
       { e1: [ligne('57100000', ClasseCompte.CLASSE_5, 1000, 0)] },

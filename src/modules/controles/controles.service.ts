@@ -20,6 +20,7 @@ import {
   SystemeComptableSyscohada,
   TypeCompteDetailTotal,
   TypeJournal,
+  NatureTraitementImmobilisation,
 } from '@prisma/client';
 import { JOURS_ALERTE_RENOUVELLEMENT } from '../exonerations/correspondance-exonerations';
 import { regleAuditeur, type RegleAuditeur } from './regles-auditeur';
@@ -554,6 +555,21 @@ function estFactureDUneCreanceReclassee(e: EcritureControlee): boolean {
       e.date.getTime() <= derniere.getTime()
     );
   });
+}
+
+/** Les traitements dont l'annulation peut porter sur le 106 · la réévaluation, et la sortie (transfert de l'écart). */
+const NATURES_ANNULEES_SUR_LE_106 = [NatureTraitementImmobilisation.REEVALUATION, NatureTraitementImmobilisation.SORTIE];
+
+/**
+ * L'écriture porte-t-elle l'À-NOUVEAU de l'exercice · provisoire, ou de
+ * clôture hors solde des comptes de gestion (mêmes drapeaux que
+ * `ECRITURE_D_A_NOUVEAU`, `lettrage/paires-a-cheval.ts`).
+ */
+function estLigneDANouveau(
+  e: { estANouveauProvisoire: boolean; estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean } | undefined,
+): boolean {
+  if (!e) return false;
+  return e.estANouveauProvisoire || (e.estGenereeParCloture && !e.estSoldeDesComptesDeGestion);
 }
 
 /** Plafond des occurrences montrées par contrôle · le nombre trouvé est dit à côté. */
@@ -2880,15 +2896,30 @@ export class ControlesService {
         compte: { tenantId, numero: { startsWith: '29' } },
         ecriture: { tenantId, ...HORS_SITUATION, exerciceId },
       },
-      select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
+      select: {
+        debit: true,
+        credit: true,
+        compte: { select: { numero: true, intitule: true } },
+        ecriture: { select: { estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
+      },
     });
     const soldes29 = new Map<string, { intitule: string; solde: number }>();
+    // Les comptes 29 que l'À-NOUVEAU de l'exercice porte (relevé F D2 K1 de la
+    // simulation du 2026-10-08) · voir plus bas.
+    const ouverts29 = new Set<string>();
+    // Ceux dont l'à-nouveau est PROVISOIRE · il ne lit que le livre-journal
+    // (relecture du 2026-11-01, point 2), et seul ce qui y est entré se
+    // retranche · une dotation restée au brouillard en N-1 masquait sinon une
+    // dépréciation passée à la main en N du même montant.
+    const provisoires29 = new Set<string>();
     for (const l of lignes29) {
       const acc = soldes29.get(l.compte.numero) ?? { intitule: l.compte.intitule, solde: 0 };
       // Une dépréciation est CRÉDITRICE · le solde retenu est donc crédit
       // moins débit, la reprise venant en diminution.
       acc.solde += Number(l.credit) - Number(l.debit);
       soldes29.set(l.compte.numero, acc);
+      if (estLigneDANouveau(l.ecriture)) ouverts29.add(l.compte.numero);
+      if (l.ecriture?.estANouveauProvisoire) provisoires29.add(l.compte.numero);
     }
     /*
       CE QUE LE MODULE A LUI-MÊME POSTÉ NE COMPTE PAS.
@@ -2902,8 +2933,39 @@ export class ControlesService {
       ce qui a été passé à la main, qui est le seul cas divergent.
     */
     if ([...soldes29.values()].some((v) => v.solde > 0.005)) {
+      // L'À-NOUVEAU REPORTE AUSSI CE QUE LE MODULE A POSTÉ AVANT (relevé F
+      // D2 K1 de la simulation du 2026-10-08). Ne retrancher que les actes de
+      // l'exercice faisait crier le contrôle en N+1 sur la dépréciation que le
+      // module avait lui-même passée en N, reprise par l'à-nouveau · le
+      // contrôle qui fabrique une anomalie (CLAUDE.md § 10 bis). Les actes des
+      // exercices ANTÉRIEURS se retranchent donc aussi, sur les seuls comptes
+      // dont l'à-nouveau est passé (sans à-nouveau, rien d'antérieur n'est lu).
+      // Un acte annulé a quitté la table (ligne sage-l4, n° 67), son négatif
+      // a ramené le compte · aucun des deux n'est compté.
       const duModule = await this.prisma.depreciationImmobilisation.findMany({
-        where: { exerciceId, immobilisation: { tenantId } },
+        where: {
+          immobilisation: { tenantId },
+          OR: [
+            { exerciceId },
+            ...(ouverts29.size > provisoires29.size
+              ? [
+                  {
+                    exercice: { tenantId, dateDebut: { lt: ex.dateDebut } },
+                    compteDepreciation: { numero: { in: [...ouverts29].filter((n) => !provisoires29.has(n)) } },
+                  },
+                ]
+              : []),
+            ...(provisoires29.size > 0
+              ? [
+                  {
+                    exercice: { tenantId, dateDebut: { lt: ex.dateDebut } },
+                    compteDepreciation: { numero: { in: [...provisoires29] } },
+                    ecriture: { statut: StatutEcriture.VALIDEE },
+                  },
+                ]
+              : []),
+          ],
+        },
         select: { sens: true, montant: true, compteDepreciation: { select: { numero: true } } },
       });
       for (const d of duModule) {
@@ -3112,14 +3174,60 @@ export class ControlesService {
         // masquerait un crédit posé à la main sur le même compte.
         ecriture: { tenantId, ...HORS_SITUATION, exerciceId, reevaluationBilan: null, immobilisationSortieEcartReevaluation: null },
       },
-      select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
+      select: {
+        debit: true,
+        credit: true,
+        compte: { select: { numero: true, intitule: true } },
+        ecriture: { select: { estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
+      },
     });
     const soldes106 = new Map<string, { intitule: string; solde: number }>();
+    const ouverts106 = new Set<string>();
+    // Ceux dont l'à-nouveau est PROVISOIRE · voir le contrôle du 29.
+    const provisoires106 = new Set<string>();
     for (const l of lignes106) {
       const acc = soldes106.get(l.compte.numero) ?? { intitule: l.compte.intitule, solde: 0 };
       // L'écart de réévaluation est CRÉDITEUR · c'est une contrepartie de passif.
       acc.solde += Number(l.credit) - Number(l.debit);
       soldes106.set(l.compte.numero, acc);
+      if (estLigneDANouveau(l.ecriture)) ouverts106.add(l.compte.numero);
+      if (l.ecriture?.estANouveauProvisoire) provisoires106.add(l.compte.numero);
+    }
+    // L'À-NOUVEAU REPORTE L'ÉCART QUE LE MODULE A POSÉ AVANT (relevé F D2 K1
+    // de la simulation du 2026-10-08) · sans ce retrait, l'écart de la
+    // réévaluation du module en N était dit « que le module ne connaît pas »
+    // en N+1. Ce que les écritures du module (réévaluation, transfert de
+    // l'écart d'un bien sorti, et l'annulation de l'une ou l'autre avec son
+    // négatif, ligne sage-l4, n° 67) ont porté sur ces comptes dans les
+    // exercices ANTÉRIEURS se retranche, sur les seuls comptes dont
+    // l'à-nouveau est passé. Les à-nouveaux antérieurs ne comptent pas · ils
+    // ne font que reporter ces mêmes écritures.
+    if (ouverts106.size > 0) {
+      const anterieuresDuModule = await this.prisma.ligneEcriture.findMany({
+        where: {
+          compte: { tenantId, numero: { in: [...ouverts106] } },
+          ecriture: {
+            tenantId,
+            ...HORS_SITUATION,
+            exercice: { tenantId, dateDebut: { lt: ex.dateDebut } },
+            estANouveauProvisoire: false,
+            NOT: { estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
+            OR: [
+              { reevaluationBilan: { isNot: null } },
+              { immobilisationSortieEcartReevaluation: { isNot: null } },
+              { annulationTraitementOrigine: { nature: { in: NATURES_ANNULEES_SUR_LE_106 } } },
+              { annulationTraitementNegatif: { nature: { in: NATURES_ANNULEES_SUR_LE_106 } } },
+            ],
+          },
+        },
+        select: { debit: true, credit: true, compte: { select: { numero: true } }, ecriture: { select: { statut: true } } },
+      });
+      for (const l of anterieuresDuModule) {
+        // L'à-nouveau provisoire ne lit que le livre-journal · seul ce qui y est entré se retranche.
+        if (provisoires106.has(l.compte.numero) && l.ecriture.statut !== StatutEcriture.VALIDEE) continue;
+        const acc = soldes106.get(l.compte.numero);
+        if (acc) acc.solde -= Number(l.credit) - Number(l.debit);
+      }
     }
     const ecartsReevaluation = [...soldes106.entries()]
       .filter(([, v]) => v.solde > 0.005)

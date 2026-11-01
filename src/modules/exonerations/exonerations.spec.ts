@@ -61,6 +61,25 @@ describe('Référentiel des demandes (note circulaire n° 003/2013)', () => {
     expect(MODELES_DEMANDE[2].pieces).toHaveLength(4);
   });
 
+  it('le prévisionnel porte les onze pièces de la section B.II, dans l’ordre du texte (relevé PA1)', () => {
+    // Note circulaire n° 003/2013, B.II, points 1 à 11 · ni lettre de
+    // transport ni projet d'utilisation (B.I.6 et B.I.7), et le numéro impôt
+    // et l'avis sectoriel (B.II.7 et B.II.8) présents.
+    expect(MODELES_DEMANDE.find((m) => m.type === 'PREVISIONNEL')!.pieces.map((p) => p.cle)).toEqual([
+      'requete',
+      'statuts',
+      'personnaliteJuridique',
+      'listeBiens',
+      'attestationDon',
+      'certificatEnregistrement',
+      'numeroImpot',
+      'avisMinistereSectoriel',
+      'rapportAnnuel',
+      'accordCadre',
+      'rapportCommissionAdHoc',
+    ]);
+  });
+
   it('seul l’arrêté prévisionnel (et son renouvellement) a une durée de validité', () => {
     expect(MODELES_DEMANDE.find((m) => m.type === 'PONCTUEL')!.validiteMois).toBeNull();
     expect(MODELES_DEMANDE.find((m) => m.type === 'PREVISIONNEL')!.validiteMois).toBe(24);

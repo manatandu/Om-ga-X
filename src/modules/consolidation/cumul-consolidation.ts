@@ -1,4 +1,8 @@
-import { estCompteDuResultatDeLExercice, estResultatEnInstanceDAffectation } from '../etats-financiers/resultat-de-l-exercice';
+import {
+  estCompteDuResultatDeLExercice,
+  estResultatEnInstanceDAffectation,
+  resultatDeLExerciceAuxClassesDeGestion,
+} from '../etats-financiers/resultat-de-l-exercice';
 import { moisEntre } from '../../common/mois-entre';
 import { postesLisantEnMouvement } from '../etats-financiers-syscohada/correspondance-tft-syscohada';
 /**
@@ -487,6 +491,50 @@ export function cumulerConsolidation(
 ): ResultatCumul {
   const avertissements: string[] = [];
   const obstaclesFlux: string[] = [];
+
+  // ─── Le résultat ANTÉRIEUR encore au 13 (relevé J1 de la simulation du
+  // 2026-10-08) ─────────────────────────────────────────────────────────────
+  // Entre la réouverture et l'assemblée, le résultat de l'exercice précédent
+  // non affecté reste au 13 (AUDCIF Titre VII, compte 13 · « le compte 13 est
+  // donc soldé lors de la comptabilisation de cette affectation »). Lu par
+  // `estResultat13`, il passait pour le résultat de l'exercice, partagé une
+  // seconde fois et ajouté au résultat consolidé. MÊME RÈGLE QUE LES ÉTATS
+  // INDIVIDUELS (`resultatDeLExerciceAuxClassesDeGestion`) · une gestion non
+  // soldée, ou un 13 sans mouvement propre de l'exercice, laisse au 13 le
+  // résultat d'exercices antérieurs ; il est alors lu comme le 130, des
+  // capitaux propres hors résultat (son compte est renommé sous 130, son
+  // intitulé gardé). Sans les mouvements (balance importée à quatre
+  // colonnes), seule la gestion non soldée tranche · une gestion soldée y
+  // garde le 13 pour le résultat de l'exercice, comme avant.
+  entites = entites.map((e) => {
+    if (!e.balance) return e;
+    const gestionNonSoldee = e.balance.some((l) => /^[678]/.test(l.numero) && Math.abs(l.solde) > 0.005);
+    const lignes13 = e.balance.filter((l) => estResultat13(l.numero));
+    if (!lignes13.some((l) => Math.abs(l.solde) > 0.005)) return e;
+    // UNE GESTION SOLDÉE PAR LA CLÔTURE (relecture du 2026-11-01, point 3) ·
+    // des comptes 6 à 8 mouvementés mais à solde nul disent une balance
+    // arrêtée APRÈS l'écriture qui solde la gestion · le 13 y porte le
+    // résultat de l'exercice, pas un antérieur. Sans colonne de report, son
+    // mouvement propre n'est pas lisible ; le renommer sous 130 retirait le
+    // résultat de l'exercice et taisait l'avertissement « arrêtée APRÈS
+    // clôture ».
+    const gestionSoldeeParLaCloture = e.balance.some(
+      (l) =>
+        /^[678]/.test(l.numero) &&
+        Math.abs(l.solde) <= 0.005 &&
+        (Math.abs(l.mouvementDebit ?? 0) > 0.005 || Math.abs(l.mouvementCredit ?? 0) > 0.005),
+    );
+    if (!gestionNonSoldee && gestionSoldeeParLaCloture) return e;
+    const mouvementsConnus = lignes13.every((l) => l.mouvementDebit != null && l.mouvementCredit != null);
+    const mouvementPropre13 = mouvementsConnus
+      ? lignes13.some((l) => Math.abs(l.mouvementDebit!) > 0.005 || Math.abs(l.mouvementCredit!) > 0.005)
+      : true;
+    if (!resultatDeLExerciceAuxClassesDeGestion(gestionNonSoldee, mouvementPropre13)) return e;
+    return {
+      ...e,
+      balance: e.balance.map((l) => (estResultat13(l.numero) ? { ...l, numero: `130${l.numero.slice(3)}` } : l)),
+    };
+  });
 
   // ─── 0. Conversion des entités étrangères (ch. XII-4 § 3) ─────────────────
   // Actifs et passifs hors capitaux propres au cours de CLÔTURE ; capitaux

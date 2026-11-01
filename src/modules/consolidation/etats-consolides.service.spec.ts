@@ -167,6 +167,16 @@ describe('EtatsConsolidesService · le jeu est un tout indissociable (D4C ch. XI
     expect(r.motifsNonPubliable.join(' ')).toContain('Notes annexes consolidées non produites');
   });
 
+  it('un tableau des flux dont le contrôle par le bilan échoue est un motif du jeu (relevé J2)', async () => {
+    const { svc, flux } = monter({ precedent: 'P', entitesN1: 1, pctN1: 80 });
+    // Un emprunt de 50 que le bilan ne porte pas · la trésorerie par les flux
+    // et celle du bilan divergent de 50.
+    flux.mockReturnValue(new Map([['FO', 50]]));
+    const r = await svc.etats(T, 'N');
+    expect(r.tableauDesFlux.controle).toMatchObject({ ok: false, ecart: 50 });
+    expect(r.motifsNonPubliable.join(' ')).toContain('Tableau consolidé des flux de trésorerie en écart avec le bilan');
+  });
+
   it('un pourcentage d’intérêt qui change depuis N-1 n’est pas joué (ch. XII-7) · motif du jeu', async () => {
     const { svc } = monter({ precedent: 'P', entitesN1: 1, pctN1: 60 });
     const motifs = (await svc.etats(T, 'N')).motifsNonPubliable.join(' ');

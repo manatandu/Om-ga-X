@@ -472,6 +472,8 @@ interface ContexteFlux {
    * lus par les termes `liaison: 'TRANSFERT_GROUPE'` · vides hors de ce cas.
    */
   transfertsGroupe: VirementsParCompte;
+  /** Relevé F D3 · les reprises de révision rétroactive du plan (`EcritureService.mouvementsDeRevisionPlan`), termes `liaison: 'REVISION_PLAN'`. */
+  revisionsPlan: VirementsParCompte;
 }
 
 /** Classes qui composent le bilan · la 6, la 7 et la 8 sont le résultat, la 9 est hors états. */
@@ -1241,10 +1243,11 @@ export class EtatsFinanciersSyscohadaService {
   /** Lecture d'un ensemble de comptes · les quatre natures de `LectureCompte`. */
   private lireComptes(terme: TermeComptes, ctx: ContexteFlux): CompteDuPoste[] {
     const retenues = ctx.lignesCourant.filter((l) => correspond(l.numero, terme.prefixes, terme.exclusions));
-    if (terme.liaison === 'TRANSFERT_GROUPE') {
+    if (terme.liaison === 'TRANSFERT_GROUPE' || terme.liaison === 'REVISION_PLAN') {
+      const lies = terme.liaison === 'TRANSFERT_GROUPE' ? ctx.transfertsGroupe : ctx.revisionsPlan;
       return retenues
         .map((l) => {
-          const m = ctx.transfertsGroupe.get(l.compteId);
+          const m = lies.get(l.compteId);
           const montant = terme.lecture === 'MOUVEMENT_DEBIT' ? (m?.debit ?? 0) : terme.lecture === 'MOUVEMENT_CREDIT' ? (m?.credit ?? 0) : 0;
           return { numero: l.numero, intitule: l.intitule, montant };
         })
@@ -1487,6 +1490,7 @@ export class EtatsFinanciersSyscohadaService {
     // ouverture, les postes qui lisent l'une ou l'autre restent vides.
     motifOuvertureIncertaine: string | null = null,
     transfertsGroupe: VirementsParCompte = AUCUN_VIREMENT,
+    revisionsPlan: VirementsParCompte = AUCUN_VIREMENT,
   ): {
     parRef: Map<string, { libelle: string; montant: number; comptes: CompteDuPoste[] }>;
     postesNonCalculables: PosteNonCalculable[];
@@ -1511,6 +1515,7 @@ export class EtatsFinanciersSyscohadaService {
       exerciceAnterieurDisponible,
       reevaluations,
       transfertsGroupe,
+      revisionsPlan,
     };
 
     const parRef = new Map<string, { libelle: string; montant: number; comptes: CompteDuPoste[] }>();
@@ -1556,9 +1561,12 @@ export class EtatsFinanciersSyscohadaService {
         const mouvementHorsModule = (comptes: string[], sens?: 'DEBIT' | 'CREDIT') =>
           lignesCourant.some((l) => {
             if (!correspond(l.numero, comptes)) return false;
+            // La reprise d'une révision du module (relevé F D3) ne déclenche pas
+            // la réserve du 798 · elle est neutralisée par sa liaison.
             const lie = ctx.reevaluations.get(l.compteId);
-            const debit = Math.abs(l.mouvementDebit - (lie?.debit ?? 0)) > EPSILON;
-            const credit = Math.abs(l.mouvementCredit - (lie?.credit ?? 0)) > EPSILON;
+            const revision = ctx.revisionsPlan.get(l.compteId);
+            const debit = Math.abs(l.mouvementDebit - (lie?.debit ?? 0) - (revision?.debit ?? 0)) > EPSILON;
+            const credit = Math.abs(l.mouvementCredit - (lie?.credit ?? 0) - (revision?.credit ?? 0)) > EPSILON;
             return sens === 'DEBIT' ? debit : sens === 'CREDIT' ? credit : debit || credit;
           });
         // Constat N2 des cas chiffrés de la clôture · un déclencheur déclaré
@@ -1602,7 +1610,7 @@ export class EtatsFinanciersSyscohadaService {
     // colonne N-1, elle, reste l'exercice précédent ENTIER, comme le tiret le
     // demande.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1, lignesN2, reevaluationsN, reevaluationsN1, transfertsN, transfertsN1] = await Promise.all([
+    const [lignesN, lignesN1, lignesN2, reevaluationsN, reevaluationsN1, transfertsN, transfertsN1, revisionsN, revisionsN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       this.chargerLignes(tenantId, exerciceN2Id),
@@ -1613,6 +1621,9 @@ export class EtatsFinanciersSyscohadaService {
       // Ligne sage-l4, n° 73 · les transferts de biens dans le groupe, bornés de même.
       this.ecritureService.mouvementsDeTransfertGroupe(tenantId, exerciceId, borneN),
       this.ecritureService.mouvementsDeTransfertGroupe(tenantId, exerciceN1Id),
+      // Relevé F D3 · les reprises de révision rétroactive du plan, de même.
+      this.ecritureService.mouvementsDeRevisionPlan(tenantId, exerciceId, borneN),
+      this.ecritureService.mouvementsDeRevisionPlan(tenantId, exerciceN1Id),
     ]);
 
     // POSITIONS N-1 · la clôture de l'exercice précédent quand il est tenu,
@@ -1665,6 +1676,7 @@ export class EtatsFinanciersSyscohadaService {
       reevaluationsN,
       ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN) : null,
       transfertsN,
+      revisionsN,
     );
     // Colonne N-1 seulement si l'exercice existe · jamais un faux zéro pour un
     // dossier à son premier exercice (même discipline que partout ailleurs).
@@ -1678,6 +1690,7 @@ export class EtatsFinanciersSyscohadaService {
           reevaluationsN1,
           ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA', precedentN1) : null,
           transfertsN1,
+          revisionsN1,
         )
       : null;
 

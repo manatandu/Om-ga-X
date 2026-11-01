@@ -813,3 +813,68 @@ describe('tranche 4c · conversion d’une entité étrangère au cours de clôt
     expect(() => jouer([USD], [MU, FU], [ev])).toThrow(/entité convertie/);
   });
 });
+
+describe('le résultat antérieur non affecté encore au 13 (relevé J1)', () => {
+  // Consolidante · produits 700, charges 200 (résultat de l'exercice 500) ;
+  // le résultat N-1 de 300 reste au 131 en à-nouveau, sans mouvement propre.
+  // Il est des réserves, jamais du résultat de l'exercice · 500, pas 800.
+  const ligneMv = (numero: string, solde: number, md: number, mc: number): LigneBalanceEntree => ({
+    numero,
+    intitule: numero,
+    solde,
+    mouvementDebit: md,
+    mouvementCredit: mc,
+  });
+  const Mj = ent(
+    'M',
+    'IG',
+    100,
+    [
+      ligneMv('52100000', 1800, 700, 200),
+      ligneMv('10100000', -1000, 0, 0),
+      ligneMv('13100000', -300, 0, 0),
+      ligneMv('70100000', -700, 0, 700),
+      ligneMv('60100000', 200, 200, 0),
+    ],
+    true,
+  );
+  const r = cumulerConsolidation(EX, [Mj], [], []);
+
+  it('le 131 sans mouvement propre, gestion non soldée, rejoint les réserves', () => {
+    expect(r.capitauxPropres).toMatchObject({ capital: 1000, reservesGroupe: 300, resultatGroupe: 500, resultatEnsemble: 500 });
+    expect(r.equilibre).toBe(0);
+  });
+
+  it('un 13 mouvementé dans l’exercice, gestion soldée, reste le résultat de l’exercice', () => {
+    const Mc = ent(
+      'M',
+      'IG',
+      100,
+      [ligneMv('52100000', 1500, 700, 200), ligneMv('10100000', -1000, 0, 0), ligneMv('13100000', -500, 200, 700)],
+      true,
+    );
+    expect(cumulerConsolidation(EX, [Mc], [], []).capitauxPropres).toMatchObject({ reservesGroupe: 0, resultatEnsemble: 500 });
+  });
+
+  it('relecture point 3 · gestion mouvementée et soldée par la clôture, 13 sans mouvement lisible · reste le résultat, et l’avertissement tient', () => {
+    // Balance arrêtée après clôture, sans colonne de report · le 13 n'a pas
+    // de mouvement propre lisible, mais la gestion mouvementée à solde nul
+    // dit que l'écriture de clôture l'a soldée.
+    const Mf = ent(
+      'M',
+      'IG',
+      100,
+      [
+        ligneMv('52100000', 1500, 700, 200),
+        ligneMv('10100000', -1000, 0, 0),
+        ligneMv('13100000', -500, 0, 0),
+        ligneMv('70100000', 0, 700, 700),
+        ligneMv('60100000', 0, 200, 200),
+      ],
+      true,
+    );
+    const rf = cumulerConsolidation(EX, [Mf], [], []);
+    expect(rf.capitauxPropres).toMatchObject({ reservesGroupe: 0, resultatEnsemble: 500 });
+    expect(rf.obstaclesFlux.join(' ')).toMatch(/arrêtée APRÈS clôture/);
+  });
+});
