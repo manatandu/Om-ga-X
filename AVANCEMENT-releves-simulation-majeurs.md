@@ -47,15 +47,38 @@ Gel levé par Manasse le 2026-11-01 (« Enchaîne le point 3 »).
   (PostgreSQL 16 jetable, serveur compilé, à travers la clôture de 2025) ·
   K1 (2026 ne nomme que les 50 000 passés à la main) et F D3 (FG de 2026 à
   zéro après une reprise de 100 000), TOUT CONCORDE.
-- 585 du groupe (relevé après le second tour de G1) · déjà corrigé · voir le
-  rapport.
+- 585 du groupe (relevé après le second tour de G1) · DÉJÀ CORRIGÉ par le
+  paquet 1 (B2, A8, m4) · `GroupeService.virements585DuGroupe` ne s'arrête
+  plus que sur une ouverture NON NULLE (`ouverturePasseeNonNulle`), et
+  `filtreOuverturePasseeAuPremierJour` écarte la contre-passation de
+  réévaluation reconnue par sa liaison (`HORS_CONTRE_PASSATION_DU_MODULE`,
+  `reevaluationExtourne`) et la contre-passation déclarée
+  (`lignesDeContrePassationDeclaree`). Tests · `virements-585-groupe.spec.ts`
+  (« A8 », « m4 », « B2 »). Le refus à tort ne se produit plus, le message
+  n'a donc plus à nommer l'exercice précédent ouvert.
+- AU2, « À VÉRIFIER » · DÉJÀ CORRIGÉ · la clôture lit l'ouverture de N+1 par
+  le même filtre (`ouvertureDejaPassee`, exercice.service.ts), qui écarte la
+  contre-passation de réévaluation du module et celle déclarée ligne à ligne ;
+  RECTIFIER ne l'inscrit plus en négatif (commentaire de
+  `ouverture-passee.ts`, client à 2 900 000 et 479 à -100 000 cités ;
+  `cloture-annuelle.spec.ts`, filtre `reevaluationExtourne: { is: null }`).
 
 ## Reste
 
- MAG-LIEN, H D1, 585 du groupe et AU2.
+Rien dans le périmètre.
+
+## Décisions et points ouverts
+
+- D2, recettes du SMT SYCEBNL · la colonne « Cotisations » (701) n'est pas
+  élargie aux créances d'adhérents (411) · le fondement du poste du compte de
+  résultat dit déjà que les deux découpages ne se recoupent pas, et la
+  maquette n'ouvre pas de colonne « Ventes ». Non tranché, rien codé.
+- H D1 · trente minutes avant de reprendre un garnissage tombé, convention
+  d'OmegaX.
+
 
 ## Commandes de vérification
 
 - `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url <base jetable> --exit-code`
-
+- `DATABASE_URL=<base jetable migrée> node scripts/rejouer-releves-simulation-majeurs.cjs`
 - `npx tsc --noEmit`, `npx jest`, `npm run build` (racine et `client/`).
