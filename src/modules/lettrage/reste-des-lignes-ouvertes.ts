@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { Prisma, StatutEcriture } from '@prisma/client';
-import { originesDesReports, type LigneReportee } from '../relances/date-origine-des-reports';
+import { estImportDOuverture, originesDesReports, type LigneReportee } from '../relances/date-origine-des-reports';
 import { ECRITURE_D_A_NOUVEAU } from './paires-a-cheval';
 import {
   LOT_GROUPES,
@@ -566,7 +566,13 @@ interface LigneDAnouveauLue {
   libelle: string | null;
   dateEcheance: Date | null;
   compte?: { numero: string } | null;
-  ecriture?: { date: Date; estANouveauProvisoire?: boolean; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean } | null;
+  ecriture?: {
+    date: Date;
+    reference?: string | null;
+    estANouveauProvisoire?: boolean;
+    estGenereeParCloture?: boolean;
+    estSoldeDesComptesDeGestion?: boolean;
+  } | null;
 }
 
 /**
@@ -610,7 +616,7 @@ async function originesDesANouveaux(
       libelle: true,
       dateEcheance: true,
       compte: { select: { numero: true } },
-      ecriture: { select: { date: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
+      ecriture: { select: { date: true, reference: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
     },
   })) as LigneDAnouveauLue[];
   const estANouveau = (l: LigneDAnouveauLue) =>
@@ -639,6 +645,7 @@ async function originesDesANouveaux(
           dateEcheance: l.dateEcheance,
           date: l.ecriture!.date,
           provisoire: l.ecriture!.estANouveauProvisoire === true,
+          importOuverture: estImportDOuverture(l.ecriture!),
         }),
       ),
     );

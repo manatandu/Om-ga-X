@@ -63,10 +63,30 @@ import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail'
  * (« toutes choses égales, elle se fait proportionnellement »). L'échéance
  * ne date pas la dette · elle dit si la dette est échue à la date du
  * paiement, ce que l'imputation lit à part (`restesParLImputationLegale`).
- * Une ligne d'à-nouveau d'un exercice qui A un précédent (un bilan importé
- * dans un dossier qui garde son exercice d'avant) se cherche toujours dans
- * ce précédent · introuvable, elle est rendue comme telle, et le groupe nommé.
+ * Une ligne d'à-nouveau d'un exercice qui A un précédent se cherche dans ce
+ * précédent · introuvable, elle est rendue comme telle, et le groupe nommé.
+ *
+ * LE BILAN D'OUVERTURE IMPORTÉ ARRÊTE LA CHAÎNE (second tour du paquet 1,
+ * ligne B, MAJEUR B7 incomplet). Un bilan d'ouverture importé dans un
+ * exercice qui A un précédent (N-1 gardé pour les comparatifs) se cherchait
+ * encore dans ce précédent · aucune pièce de N-1 ne porte sa clé (l'import
+ * n'a ni libellé de ligne ni échéance), il revenait introuvable, le groupe
+ * posé en N+1 retombait au prorata et la relance surévaluait le retard. La
+ * ligne importée EST l'origine, à la date de son écriture, comme au premier
+ * exercice tenu (M1) et pour la même raison · rien en amont ne la porte,
+ * l'import reprend une clôture tenue hors d'OmegaX. Elle se reconnaît à son
+ * écriture · `reference === 'IMPORT'` et `estGenereeParCloture` (le drapeau
+ * que `ImportService` pose sur le seul bilan d'ouverture, jamais sur une
+ * reprise de balance ni sur un import d'écritures), comme la déclaration de
+ * devise d'un à-nouveau la reconnaît (`declaration-devise-a-nouveau.service.ts`).
+ * Elle arrête aussi la remontée quand on la RENCONTRE comme candidate
+ * (report de N+1 d'une ligne importée en N).
  */
+
+/** L'écriture d'un bilan d'ouverture importé · elle arrête la chaîne des reports (B7). */
+export function estImportDOuverture(e: { reference?: string | null; estGenereeParCloture?: boolean | null }): boolean {
+  return e.reference === 'IMPORT' && e.estGenereeParCloture === true;
+}
 
 export const PROFONDEUR_MAX = 10;
 
@@ -91,6 +111,11 @@ export interface LigneReportee {
    * lignes VALIDÉES (mineur 2).
    */
   provisoire?: boolean;
+  /**
+   * Vraie pour une ligne d'un bilan d'ouverture IMPORTÉ (`estImportDOuverture`)
+   * · elle est sa propre origine, à la date de son écriture (B7).
+   */
+  importOuverture?: boolean;
 }
 
 /** Une ligne candidate de l'exercice précédent. */
@@ -175,7 +200,10 @@ export async function originesDesReports(
   const introuvables: string[] = [];
   // Chaque niveau · la ligne reportée de départ, et la ligne qu'on cherche à
   // rattacher à ce niveau (la même au premier, son origine reportée ensuite).
-  let enCours = reports.map((r) => ({ depart: r.id, ligne: r }));
+  // Une ligne de bilan d'ouverture importé est sa propre origine (B7) · elle
+  // ne se cherche dans aucun exercice précédent.
+  for (const r of reports) if (r.importOuverture === true) origines.set(r.id, { date: r.date, id: r.id });
+  let enCours = reports.filter((r) => r.importOuverture !== true).map((r) => ({ depart: r.id, ligne: r }));
   let borne = debutExercice;
   for (let niveau = 0; niveau < PROFONDEUR_MAX && enCours.length; niveau++) {
     const precedent = await client.exercice.findFirst({
@@ -211,7 +239,7 @@ export async function originesDesReports(
             credit: true,
             libelle: true,
             dateEcheance: true,
-            ecriture: { select: { date: true, libelle: true, statut: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+            ecriture: { select: { date: true, libelle: true, statut: true, reference: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
           },
         }),
       (l) =>
@@ -226,7 +254,10 @@ export async function originesDesReports(
           libelle: l.libelle ?? l.ecriture.libelle ?? null,
           dateEcheance: l.dateEcheance ?? null,
           date: l.ecriture.date,
-          estReport: l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true,
+          // Une ligne de bilan d'ouverture importé n'est pas un report · la
+          // chaîne s'y arrête, elle est l'origine à sa date (B7).
+          estReport:
+            !estImportDOuverture(l.ecriture) && (l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true),
           provisoire: l.ecriture.estANouveauProvisoire === true,
           validee: l.ecriture.statut === StatutEcriture.VALIDEE,
         }),

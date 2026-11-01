@@ -15,7 +15,7 @@ import {
   type GroupesLusLigneALigne,
 } from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
-import { originesDesReports } from './date-origine-des-reports';
+import { estImportDOuverture, originesDesReports } from './date-origine-des-reports';
 import {
   decisionDeLaLigne,
   motifRefusDecalage,
@@ -447,7 +447,7 @@ export class RelancesService {
           },
         },
         ecriture: {
-          select: { date: true, libelle: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true },
+          select: { date: true, libelle: true, reference: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true },
         },
       },
     });
@@ -527,6 +527,7 @@ export class RelancesService {
           dateEcheance: l.dateEcheance,
           date: l.ecriture.date,
           provisoire: l.ecriture.estANouveauProvisoire === true,
+          importOuverture: estImportDOuverture(l.ecriture),
         })),
       );
       datesOrigine = new Map([...origines].map(([id, o]) => [id, o.date]));

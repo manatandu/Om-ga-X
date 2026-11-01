@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
-import { originesDesReports } from '../relances/date-origine-des-reports';
+import { estImportDOuverture, originesDesReports } from '../relances/date-origine-des-reports';
 
 /**
  * LA TRANSACTION QUE RÈGLE UNE LIGNE (ligne sage-l2, fonctions 1 et 3) · ce
@@ -48,6 +48,7 @@ export interface LigneReglee {
     date: Date;
     numeroPiece: number | null;
     libelle: string;
+    reference?: string | null;
     estANouveauProvisoire?: boolean;
     estGenereeParCloture?: boolean;
     estSoldeDesComptesDeGestion?: boolean;
@@ -133,6 +134,7 @@ export async function transactionsDesLignes(
           dateEcheance: l.dateEcheance,
           date: l.ecriture.date,
           provisoire: l.ecriture.estANouveauProvisoire === true,
+          importOuverture: estImportDOuverture(l.ecriture),
         })),
       );
       const ids = [...new Set([...origines.values()].map((o) => o.id))];
