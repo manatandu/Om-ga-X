@@ -1,4 +1,4 @@
-import { Prisma, StatutEcriture } from '@prisma/client';
+import { Prisma, StatutEcriture, StatutExercice } from '@prisma/client';
 import { lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau';
 import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail';
@@ -157,6 +157,18 @@ export function apparierAuxOrigines(
   return resultat;
 }
 
+/** Le rattachement d'une ligne importée · même compte et mêmes montants au centime, une pièce et une seule de chaque côté. */
+function apparierParMontant(reports: LigneReportee[], candidates: LigneCandidate[]): Map<string, LigneCandidate> {
+  const cle = (l: { compteId: string; debit: number; credit: number }) => `${l.compteId}|${Math.round(l.debit * 100)}|${Math.round(l.credit * 100)}`;
+  const resultat = new Map<string, LigneCandidate>();
+  for (const r of reports) {
+    const memeCle = reports.filter((x) => cle(x) === cle(r));
+    const os = candidates.filter((o) => cle(o) === cle(r));
+    if (memeCle.length === 1 && os.length === 1) resultat.set(r.id, os[0]);
+  }
+  return resultat;
+}
+
 type Client = Pick<Prisma.TransactionClient, 'exercice' | 'ligneEcriture'>;
 
 /** La pièce d'origine d'une ligne reportée · sa date et l'identifiant de sa ligne. */
@@ -202,15 +214,36 @@ export async function originesDesReports(
   // rattacher à ce niveau (la même au premier, son origine reportée ensuite).
   // Une ligne de bilan d'ouverture importé est sa propre origine (B7) · elle
   // ne se cherche dans aucun exercice précédent.
-  for (const r of reports) if (r.importOuverture === true) origines.set(r.id, { date: r.date, id: r.id });
-  let enCours = reports.filter((r) => r.importOuverture !== true).map((r) => ({ depart: r.id, ligne: r }));
+  //
+  // SAUF DERRIÈRE UN EXERCICE PRÉCÉDENT TENU ET CLÔTURÉ DANS OmegaX (seconde
+  // relecture des relevés, 4) · ses pièces y sont, et la ligne importée en
+  // reprend peut-être une · la date de l'import, à son défaut, sous-estimait
+  // le retard sans le dire. L'origine réelle se cherche d'abord dans ce
+  // précédent ; introuvable, la ligne importée reste sa propre origine (B7),
+  // jamais une ligne « introuvable » qui ferait lire le groupe ligne à ligne.
+  const imports = new Set(reports.filter((r) => r.importOuverture === true).map((r) => r.id));
+  let enCours = reports.map((r) => ({ depart: r.id, ligne: r }));
   let borne = debutExercice;
   for (let niveau = 0; niveau < PROFONDEUR_MAX && enCours.length; niveau++) {
     const precedent = await client.exercice.findFirst({
       where: { tenantId, dateFin: { lt: borne } },
       orderBy: { dateFin: 'desc' },
-      select: { id: true, dateDebut: true },
+      select: { id: true, dateDebut: true, statut: true },
     });
+    if (niveau === 0 && imports.size > 0) {
+      const tenuEtClos =
+        precedent !== null &&
+        precedent.statut === StatutExercice.CLOTURE &&
+        (await client.ligneEcriture.findFirst({
+          where: { ecriture: { tenantId, exerciceId: precedent.id, statut: StatutEcriture.VALIDEE } },
+          select: { id: true },
+        })) !== null;
+      if (!tenuEtClos) {
+        for (const e of enCours) if (imports.has(e.depart)) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
+        enCours = enCours.filter((e) => !imports.has(e.depart));
+        if (enCours.length === 0) break;
+      }
+    }
     if (!precedent) {
       // Le premier exercice tenu · la ligne d'ouverture EST l'origine (M1).
       for (const e of enCours) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
@@ -270,15 +303,25 @@ export async function originesDesReports(
         candidates.filter((c) => c.validee),
       ),
       ...apparierAuxOrigines(
-        enCours.filter((e) => e.ligne.provisoire !== true).map((e) => e.ligne),
+        enCours.filter((e) => e.ligne.provisoire !== true && !(niveau === 0 && imports.has(e.depart))).map((e) => e.ligne),
         candidates,
+      ),
+      // La ligne importée n'a ni libellé de pièce ni échéance (une ligne par
+      // compte) · elle se rattache par son compte et son montant seuls, et
+      // seulement à une pièce unique de N-1 qui les porte (seconde relecture, 4).
+      ...apparierParMontant(
+        enCours.filter((e) => niveau === 0 && imports.has(e.depart)).map((e) => e.ligne),
+        candidates.filter((c) => c.validee),
       ),
     ]);
     const suivants: typeof enCours = [];
     for (const e of enCours) {
       const o = trouvees.get(e.ligne.id);
       if (!o) {
-        introuvables.push(e.depart);
+        // Une ligne importée sans pièce retrouvée en amont reste sa propre
+        // origine (B7) · seulement au premier niveau, où elle est elle-même.
+        if (niveau === 0 && imports.has(e.depart)) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
+        else introuvables.push(e.depart);
         continue;
       }
       if (o.estReport) suivants.push({ depart: e.depart, ligne: o });
