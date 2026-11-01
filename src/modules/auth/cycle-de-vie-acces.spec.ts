@@ -328,9 +328,21 @@ describe('3 · le verrouillage par compte', () => {
   });
 });
 
+/**
+ * Le geste passe sous le verrou du compte (second tour, mineur 4) · la
+ * doublure rejoue la transaction sur elle-même et laisse passer les verrous.
+ */
+const transactionnel = <T extends object>(p: T): T => {
+  const c: Record<string, unknown> = p as Record<string, unknown>;
+  c['$transaction'] = async (fn: (tx: unknown) => unknown) => fn(c);
+  c['$executeRaw'] = async () => 0;
+  c['$queryRaw'] = async () => [];
+  return p;
+};
+
 describe('4 · la réinitialisation par l’administrateur du dossier', () => {
   const prismaFactice = (capture: { data?: Record<string, unknown> }) =>
-    ({
+    transactionnel({
       user: {
         // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
         count: async () => 0,
@@ -371,7 +383,7 @@ describe('4 · la réinitialisation par l’administrateur du dossier', () => {
   // dossier de l'opérateur effaçait son second facteur et passait la garde de
   // la console avec un facteur qu'il venait d'enrôler.
   const operateur = (doubleAuthActiveDepuis: Date | null, capture: { data?: Record<string, unknown> }) =>
-    ({
+    transactionnel({
       user: {
         // Ligne multi-dossiers · des appartenances ailleurs ? Ici, aucune.
         count: async () => 0,

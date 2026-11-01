@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { CourrierService } from '../courrier/courrier.service';
 import { LIBELLES_FONCTION } from '../../common/fonctions/fonctions-metier';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -29,6 +31,7 @@ export class UtilisateurController {
      */
     private readonly avis: AvisAccesService,
     private readonly invitations: InvitationsService,
+    @Optional() private readonly courrier?: CourrierService,
   ) {}
 
   /** Les invitations du dossier et le mode de création (invitation, ou création directe). */
@@ -53,6 +56,11 @@ export class UtilisateurController {
    * lui-même. Rien n'est retiré de l'écran : sans transport opérationnel,
    * retirer ce chemin-là rendrait la création de comptes impossible.
    */
+  // UNE CRÉATION, C'EST UN COURRIEL AU NOM DU DOSSIER (second tour, mineur 7) ·
+  // soixante par heure et par adresse, au-delà de ce qu'un cabinet monte en
+  // une séance, en deçà d'un relais d'envoi ; le plafond des invitations en
+  // attente (`InvitationsService`) borne le reste.
+  @Throttle({ default: { ttl: 3_600_000, limit: 60 } })
   @Post()
   async creer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerUtilisateurDto) {
     // EN LIGNE AVEC UNE MESSAGERIE, TOUTE CRÉATION EST UNE INVITATION (ligne
@@ -62,7 +70,10 @@ export class UtilisateurController {
     if (this.invitations.mode() === 'INVITATION') {
       return { invitation: await this.invitations.inviter(user.tenantId, user.userId, dto.email, dto.role) };
     }
-    const cree = await this.utilisateurService.creer(user.tenantId, dto);
+    const cree = await this.utilisateurService.creer(user.tenantId, dto, undefined, (email) =>
+      this.invitations.inviterSurPlace(user.tenantId, user.userId, email, dto.role),
+    );
+    if ('invitation' in cree) return cree;
     return {
       ...cree,
       avis: await this.avis.annoncerCompteCree(user.tenantId, {
@@ -147,6 +158,16 @@ export class UtilisateurController {
   @Post(':id/deconnecter')
   async deconnecter(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.utilisateurService.deconnecter(user.tenantId, id, user.userId);
+  }
+
+  /**
+   * « Réinitialiser par courriel » (second tour, BLOQUANT 1) · le mot de passe
+   * part au seul titulaire, l'administrateur n'en voit rien ; ouvert aussi sur
+   * une personne qui a d'autres dossiers (`UtilisateurService`).
+   */
+  @Post(':id/reinitialiser-par-courriel')
+  async reinitialiserParCourriel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.utilisateurService.reinitialiserParCourriel(user.tenantId, id, user.userId, this.courrier);
   }
 
   /** Le comptable qui a mal tapé cinq fois et se souvient très bien du sien. */

@@ -1,7 +1,7 @@
 import { ActionAudit, Prisma, PrismaClient } from '@prisma/client';
 import { ConflictException, Logger } from '@nestjs/common';
 import { acteurCourant, ACTEUR_SYSTEME, transactionAuditee } from './contexte-audit';
-import { MODELES_AUDITES, colonnesExclues, masquer } from './champs-audites';
+import { MODELES_AUDITES, colonnesExclues, masquer, seulementDesColonnesSansEvenement } from './champs-audites';
 import { calculerEmpreinte, EMPREINTE_ORIGINE } from './empreinte-audit';
 import { PRE_IMAGE_ILLISIBLE } from './pre-image';
 import { transactionJournalisee } from './transaction-journalisee';
@@ -332,6 +332,13 @@ export async function intercepterEcriture(
   const action = ACTIONS[operation];
   if (!action || !MODELES_AUDITES.has(model)) return query(args);
 
+  // UNE MISE À JOUR QUI N'ÉCRIT QUE DES COLONNES SANS ÉVÉNEMENT N'A RIEN À
+  // DIRE (ligne multi-dossiers, second tour, mineur 8, `COLONNES_SANS_EVENEMENT`) ·
+  // « Se déconnecter » et le changement de dossier n'écrivent que
+  // `sessionsFermees` ; chacun posait un maillon dont l'avant et l'après
+  // étaient identiques, du bruit dans la chaîne du dossier quitté.
+  if (operation === 'update' && seulementDesColonnesSansEvenement(model, (args as { data?: unknown }).data)) return query(args);
+
   // LE MAILLON SUIT L'ACTE, OU L'ACTE NE SE FAIT PAS (ligne k6-defauts,
   // décision par la loi · AUDCIF art. 22, 5° et 6° · l'organisation
   // « garantisse toutes les possibilités de contrôle en permettant la
@@ -397,6 +404,7 @@ export async function intercepterEcriture(
   }
 
   const a = args as { where?: Record<string, unknown>; data?: unknown };
+
 
   // DANS UNE TRANSACTION, LE VERROU DU DOSSIER AVANT LA LIGNE (second tour de
   // relecture) · `ecrireMaillon` le prenait APRÈS l'acte, qui avait déjà
@@ -539,3 +547,4 @@ export function extensionAudit(base: PrismaClient, etendu?: () => ClientEtendu |
     },
   });
 }
+

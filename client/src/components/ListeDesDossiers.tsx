@@ -153,12 +153,14 @@ export function InvitationsRecues({ apresDecision }: { apresDecision: () => void
     void lire();
   }, []);
 
-  const decider = async (geste: 'accepter' | 'refuser') => {
+  const decider = async (geste: 'accepter' | 'refuser', surPlace?: string) => {
     setErreur(null);
     setFait(null);
     setEnvoi(true);
     try {
-      await api.post(`/auth/invitations/${geste}`, { jeton: code.trim() });
+      // Sur site, sans courriel · la session seule (second tour, MAJEUR 3).
+      if (surPlace) await api.post(`/auth/invitations/${surPlace}/${geste}-sur-place`, {});
+      else await api.post(`/auth/invitations/${geste}`, { jeton: code.trim() });
       garderJetonInvitation(null);
       setCode('');
       setFait(geste === 'accepter' ? 'Invitation acceptée · le dossier est dans votre liste.' : 'Invitation refusée.');
@@ -179,13 +181,25 @@ export function InvitationsRecues({ apresDecision }: { apresDecision: () => void
       {invitations && invitations.length > 0 && (
         <ul className="space-y-0.5">
           {invitations.map((i) => (
-            <li key={i.id}>
-              {i.dossier} · {LIBELLES_ROLES_DOSSIER[i.role] ?? i.role} · jusqu'au {dateDuJour(i.expireLe)}
+            <li key={i.id} className="flex items-center gap-2 flex-wrap">
+              <span>
+                {i.dossier} · {LIBELLES_ROLES_DOSSIER[i.role] ?? i.role} · jusqu'au {dateDuJour(i.expireLe)}
+              </span>
+              {i.sansCode && (
+                <>
+                  <button type="button" disabled={envoi} onClick={() => void decider('accepter', i.id)} className="bg-sel text-white px-2 py-0.5 font-semibold disabled:opacity-50">
+                    Accepter
+                  </button>
+                  <button type="button" disabled={envoi} onClick={() => void decider('refuser', i.id)} className="border border-border-dark px-2 py-0.5 disabled:opacity-50">
+                    Refuser
+                  </button>
+                </>
+              )}
             </li>
           ))}
         </ul>
       )}
-      {invitations && invitations.length > 0 && (
+      {invitations && invitations.some((i) => !i.sansCode) && (
         <div className="flex items-center gap-2 flex-wrap">
           <label htmlFor="code-invitation">Code reçu par courriel :</label>
           <input

@@ -46,6 +46,9 @@ import {
   appartenanceDansLeDossier,
   appartenanceDeConnexion,
   accepterInvitation,
+  accepterInvitationSurPlace,
+  refuserInvitationSurPlace,
+  empreinteDuJeton,
   acteurDuCompte,
   appartenancesDeLaPersonne,
   connexionTenueParLaPersonne,
@@ -59,6 +62,15 @@ import {
   trouverCompteDeConnexion,
 } from './compte-de-connexion';
 import { sessionRevoquee } from './jwt.strategy';
+import {
+  avisConfirmationAdresse,
+  echeanceConfirmationAdresse,
+  jetonConfirmationAdresse,
+  MOTIF_CONFIRMATION_INVALIDE,
+  ORIGINE_CONFIRMATION_ADRESSE,
+} from './confirmation-adresse';
+import { estSurSite } from '../../common/mode-installation';
+import { avisReinitialisationParCourriel, ORIGINE_REINITIALISATION_PAR_COURRIEL, poserLeProvisoire, sousVerrouDuCompte } from './reinitialisation-du-compte';
 import { LicenceService } from '../licence/licence.service';
 import { dansContexteAudit as dansContexteActeur } from '../../common/audit/contexte-audit';
 
@@ -850,13 +862,69 @@ export class AuthService {
    *    de mot de passe. Le rôle, le dossier et le drapeau d'opérateur sont
    *    sur le COMPTE, pas sur l'adresse : ils suivent.
    */
-  async changerAdresse(userId: string, motDePasseActuel: string, nouvelleAdresse: string, session: SessionEnCours | null = null) {
+  async changerAdresse(
+    userId: string,
+    motDePasseActuel: string,
+    nouvelleAdresse: string,
+    session: SessionEnCours | null = null,
+    surSite = estSurSite(),
+  ): Promise<{ confirmationEnvoyee: true; adresse: string } | ({ adresse: string } & SessionEmise)> {
     const { ligne, compte: user } = await this.compteDeLaSession(userId);
     if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
       throw new UnauthorizedException('Le mot de passe actuel est incorrect');
     }
     const adresse = normaliserCourriel(nouvelleAdresse);
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
+    // LA NOUVELLE ADRESSE SE CONFIRME (second tour, MAJEUR 2,
+    // `confirmation-adresse.ts`) · avec une messagerie, rien ne change avant
+    // le code reçu à cette adresse ; sans elle, en ligne, refus ; sur site,
+    // posée comme avant.
+    if (this.courrier?.etatDuTransport().configure) {
+      const jeton = jetonConfirmationAdresse();
+      const maintenant = new Date();
+      const avis = avisConfirmationAdresse(jeton);
+      // Le courriel d'abord · un envoi refusé ne laisse aucune demande en attente.
+      await horsCloisonnement('compte · code de confirmation remis à la seule nouvelle adresse', () =>
+        this.courrier!.envoyerUnSecret(
+          user.tenantId,
+          { destinataire: adresse, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_CONFIRMATION_ADRESSE, origineId: user.id, createdBy: user.id },
+          avis.corpsGarde,
+        ),
+      );
+      await horsCloisonnement('compte · une demande de changement d’adresse à la fois', () =>
+        transactionJournalisee(this.prisma, async (tx) => {
+          await tx.confirmationAdresse.updateMany({ where: { tenantId: user.tenantId, userId: user.id, utiliseLe: null, annuleLe: null }, data: { annuleLe: maintenant } });
+          await tx.confirmationAdresse.create({
+            data: { tenantId: user.tenantId, userId: user.id, nouvelleAdresse: adresse, empreinteJeton: empreinteDuJeton(jeton), expireLe: echeanceConfirmationAdresse(maintenant) },
+          });
+        }),
+      );
+      return { confirmationEnvoyee: true, adresse };
+    }
+    if (!surSite) throw new ServiceUnavailableException('La messagerie est requise pour ce geste · configurez-la, puis recommencez.');
+    return this.poserLAdresse(ligne, user, adresse, session);
+  }
+
+  /**
+   * CONFIRMER LA NOUVELLE ADRESSE · le code reçu à cette adresse ET la session
+   * du compte qui l'a demandée. Le code est consommé une fois l'adresse posée.
+   */
+  async confirmerAdresse(userId: string, jeton: string, session: SessionEnCours | null = null) {
+    const { ligne, compte: user } = await this.compteDeLaSession(userId);
+    const demande = await horsCloisonnement('compte · la demande de changement d’adresse que désigne un code', () =>
+      this.prisma.confirmationAdresse.findUnique({ where: { empreinteJeton: empreinteDuJeton(jeton) } }),
+    );
+    if (!demande || demande.userId !== user.id || demande.utiliseLe || demande.annuleLe || demande.expireLe <= new Date()) {
+      throw new NotFoundException(MOTIF_CONFIRMATION_INVALIDE);
+    }
+    const r = await this.poserLAdresse(ligne, user, demande.nouvelleAdresse, session);
+    await horsCloisonnement('compte · le code de confirmation consommé', () =>
+      this.prisma.confirmationAdresse.updateMany({ where: { id: demande.id, tenantId: demande.tenantId, utiliseLe: null }, data: { utiliseLe: new Date() } }),
+    );
+    return r;
+  }
+
+  private async poserLAdresse(ligne: User, user: User, adresse: string, session: SessionEnCours | null) {
     try {
       const maintenant = new Date();
       await this.revoquerEtFermerLaSession(ligne, user, session, { email: adresse, ...revocationDeLaPersonne(maintenant) }, maintenant.getTime(), adresse);
@@ -1234,6 +1302,56 @@ export class AuthService {
   async refuserUneInvitation(userId: string, jeton: string) {
     const { compte } = await this.compteDeLaSession(userId);
     await refuserInvitation(this.prisma, compte, jeton);
+    return { refusee: true };
+  }
+
+  /**
+   * SUR SITE, L'ADMINISTRATEUR DE L'INSTALLATION RÉINITIALISE UN COMPTE DU
+   * POSTE (second tour, BLOQUANT 1 · `AdministrateurInstallationGuard`). Il
+   * tient lieu de l'opérateur, absent sur site · il tient déjà la base et ses
+   * sauvegardes. Mot de passe tiré au sort, changement exigé, sessions
+   * fermées, second facteur levé. AVEC une messagerie, il part au seul
+   * titulaire ; SANS elle, il est rendu à l'administrateur de l'installation,
+   * qui le remet en main propre (décision de la ligne · c'est lui qui tient le
+   * poste, et sans ce geste un administrateur unique qui a perdu son
+   * téléphone enfermerait son dossier). Au journal d'audit du dossier du
+   * compte, sous l'administrateur de l'installation (un seul organisme sur le
+   * poste, rien à taire).
+   */
+  async reinitialiserCompteSurSite(adresse: string, parQui: string) {
+    const email = normaliserCourriel(adresse);
+    const compte = await trouverCompteDeConnexion(this.prisma, email, 'sur site · le compte que réinitialise l’administrateur de l’installation');
+    if (!compte) throw new NotFoundException('Aucun compte avec cette adresse sur ce poste.');
+    const mot = motDePasseTireAuSort();
+    const parCourriel = this.courrier?.etatDuTransport().configure === true;
+    if (parCourriel) {
+      const avis = avisReinitialisationParCourriel(mot, true);
+      await horsCloisonnement('sur site · mot de passe remis au seul titulaire', () =>
+        this.courrier!.envoyerUnSecret(
+          compte.tenantId,
+          { destinataire: compte.email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_REINITIALISATION_PAR_COURRIEL, origineId: compte.id, createdBy: parQui },
+          avis.corpsGarde,
+        ),
+      );
+    }
+    const hache = await bcrypt.hash(mot, SALT_ROUNDS);
+    const acteur = acteurCourant();
+    await sousVerrouDuCompte(this.prisma, compte, 'sur site · réinitialisation d’un compte du poste', (tx) =>
+      poserLeProvisoire(tx, compte, hache, true, new Date(), acteur ?? undefined),
+    );
+    return parCourriel ? { reinitialise: true, parCourriel: true, email } : { reinitialise: true, parCourriel: false, email, motDePasseProvisoire: mot };
+  }
+
+  /** Sur site, sans courriel (M3) · la session de la personne seule. */
+  async accepterUneInvitationSurPlace(userId: string, invitationId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    const tire = await bcrypt.hash(randomUUID() + randomUUID(), SALT_ROUNDS);
+    return accepterInvitationSurPlace(this.prisma, compte, invitationId, tire, { id: true });
+  }
+
+  async refuserUneInvitationSurPlace(userId: string, invitationId: string) {
+    const { compte } = await this.compteDeLaSession(userId);
+    await refuserInvitationSurPlace(this.prisma, compte, invitationId);
     return { refusee: true };
   }
 

@@ -511,6 +511,8 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  ConfirmationAdresse:
+    "Demande de changement d'adresse de connexion en attente de son code (ligne multi-dossiers, second tour, MAJEUR 2) · elle ne change rien tant qu'elle n'est pas confirmée ; l'adresse posée s'écrit au journal par la mise à jour du compte, qui y figure.",
   PreferenceUtilisateur:
     "Préférences d'affichage d'un utilisateur (ligne dossier-l9, fonctions 96 et 100) · la langue, la taille du texte et les notifications qu'il coupe, réglées par lui seul pour lui seul, sans effet sur le dossier ni sur les autres.",
   NotificationUtilisateur:
@@ -689,6 +691,7 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // L'empreinte du jeton d'une invitation (ligne multi-dossiers) · elle seule
   // ne rouvre rien, mais un journal lu par tout le dossier n'a pas à la porter.
   InvitationDossier: ['empreinteJeton'],
+  ConfirmationAdresse: ['empreinteJeton'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.
@@ -784,6 +787,25 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
 };
 
 /** Les colonnes exclues du JOURNAL, en minuscules, comparables telles quelles. */
+/**
+ * LES COLONNES DONT L'ÉCRITURE SEULE NE FAIT PAS UN ÉVÉNEMENT (ligne
+ * multi-dossiers, second tour, mineur 8) · une mise à jour qui n'écrit
+ * qu'elles ne pose aucun maillon. `sessionsFermees` · « Se déconnecter » et le
+ * changement de dossier n'écrivent qu'elle, que le journal ne recopie déjà
+ * pas · le maillon n'avait rien à dire. Une colonne MASQUÉE (le mot de passe)
+ * n'est pas de celles-là · son changement est un événement, même masqué.
+ */
+export const COLONNES_SANS_EVENEMENT: Readonly<Record<string, readonly string[]>> = {
+  User: ['sessionsFermees'],
+};
+
+export function seulementDesColonnesSansEvenement(modele: string, data: unknown): boolean {
+  const liste = COLONNES_SANS_EVENEMENT[modele];
+  if (!liste || !data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const cles = Object.keys(data as Record<string, unknown>);
+  return cles.length > 0 && cles.every((c) => liste.includes(c));
+}
+
 export function colonnesExclues(modele: string): ReadonlySet<string> {
   return new Set((COLONNES_EXCLUES_PAR_MODELE[modele] ?? []).map((c) => c.toLowerCase()));
 }
@@ -827,6 +849,7 @@ export const COLONNES_JAMAIS_RESTITUEES: Readonly<Record<string, readonly string
   ],
   // L'empreinte du jeton d'une invitation · un moyen d'entrer, pas une donnée.
   InvitationDossier: ['empreinteJeton'],
+  ConfirmationAdresse: ['empreinteJeton'],
 };
 
 /** Les colonnes qu'une ARCHIVE DE RESTITUTION ne porte pas. */

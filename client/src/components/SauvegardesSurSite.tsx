@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import type { EtatSurSite } from '../lib/sur-site';
@@ -226,6 +226,55 @@ export function SauvegardesSurSite() {
           </tbody>
         </table>
       )}
+      <ReinitialisationCompteSurSite />
     </section>
+  );
+}
+
+/**
+ * RÉINITIALISER UN COMPTE DU POSTE (ligne multi-dossiers, second tour,
+ * BLOQUANT 1) · l'administrateur de l'installation tient lieu de l'opérateur ·
+ * avec une messagerie le mot de passe part au seul titulaire, sans elle il est
+ * montré ici, à lui seul, qui le remet en main propre.
+ */
+function ReinitialisationCompteSurSite() {
+  const [email, setEmail] = useState('');
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [resultat, setResultat] = useState<{ email: string; parCourriel: boolean; motDePasseProvisoire?: string } | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const reinitialiser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!window.confirm(`Réinitialiser le compte ${email} ? Ses sessions et sa double authentification tomberont.`)) return;
+    setErreur(null);
+    setResultat(null);
+    setEnvoi(true);
+    try {
+      setResultat(await api.post('/sur-site/comptes/reinitialiser', { email }));
+      setEmail('');
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Réinitialisation impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <form onSubmit={reinitialiser} className="mt-3 space-y-1.5 text-[11.5px]" aria-label="Réinitialiser un compte du poste">
+      <div className="font-semibold">Réinitialiser un compte du poste</div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse du compte" className="border border-border-dark px-2 py-1 min-w-[220px]" />
+        <button type="submit" disabled={envoi} className="bg-sel text-white px-3 py-1 font-semibold disabled:opacity-50">
+          Réinitialiser
+        </button>
+      </div>
+      {erreur && <p role="alert" className="text-danger">{erreur}</p>}
+      {resultat &&
+        (resultat.parCourriel ? (
+          <p role="status">Mot de passe provisoire envoyé à {resultat.email}.</p>
+        ) : (
+          <p role="status">
+            Mot de passe provisoire de {resultat.email} · <strong className="select-all">{resultat.motDePasseProvisoire}</strong> · à remettre en main propre, il ne sera plus affiché.
+          </p>
+        ))}
+    </form>
   );
 }

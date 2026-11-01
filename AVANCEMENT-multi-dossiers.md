@@ -220,7 +220,60 @@ un tiers « squattait » une adresse. Décision appliquée ·
 - Migration renommée `20270248000000_comptes_rattaches` (collision avec
   `20270247000000_verrou_garnissage_demonstration` de `main`).
 
+### 2 ter. Second tour de relecture
+
+- **BLOQUANT 1 · le dépannage.** « Réinitialiser par courriel »
+  (`POST /utilisateurs/:id/reinitialiser-par-courriel`, administrateur de
+  n'importe quel dossier de la personne) · mot de passe tiré au sort, envoyé
+  par `envoyerUnSecret` à la seule adresse du compte, jamais rendu,
+  `doitChangerMotDePasse`, sessions de la personne fermées, second facteur
+  GARDÉ. Journal · dans le dossier de l'acteur, la ligne de la personne y
+  voit ses sessions fermées sous son nom ; dans le dossier du compte, la mise
+  à jour s'inscrit sous la personne elle-même (aucun nom d'un autre
+  dossier). L'opérateur lève désormais le second facteur aussi d'un compte à
+  appartenances (mot de passe au seul titulaire). **Sur site, décision ·**
+  l'administrateur de l'installation (`AdministrateurInstallationGuard`)
+  réinitialise un compte du poste (`POST /sur-site/comptes/reinitialiser`),
+  second facteur levé · avec une messagerie le provisoire part au titulaire,
+  SANS messagerie il lui est rendu à l'écran (il tient le poste et sa base ;
+  sans ce geste, un administrateur unique sans téléphone enfermait son
+  dossier).
+- **MAJEUR 2 · l'adresse confirmée.** `changer-adresse` n'écrit plus rien
+  avec une messagerie · un code part à la nouvelle adresse
+  (`ConfirmationAdresse`, empreinte, 24 h, une demande à la fois), posé par
+  `POST /auth/confirmer-adresse` depuis la session du compte. Sans
+  messagerie · 503 en ligne, direct sur site (le rattachement y passe
+  désormais par l'acceptation, MAJEUR 3).
+- **MAJEUR 3 · sur site, l'acceptation.** Une adresse connue est invitée
+  sans courriel (`acceptableSansCode`), affichée à la prochaine connexion,
+  acceptée ou refusée depuis la session (`POST /auth/invitations/:id/accepter-sur-place`,
+  `refuser-sur-place`) ; une invitation partie par courriel ne s'accepte
+  jamais sans son code.
+- **Mineur 4** · `verrouillerLeCompte` (dossier du compte, puis `FOR UPDATE`
+  de sa ligne) pris par l'acceptation et par les gestes d'administrateur ·
+  décompte et écriture dans la même transaction.
+- **Mineur 5** · une acceptation qui croise une ligne déjà là, ou la
+  contrainte (P2002), rend 409 nommé.
+- **Mineur 7** · `@Throttle` (60 par heure) sur `POST /utilisateurs`,
+  plafond de 100 invitations en attente par dossier.
+- **Mineur 8** · vérifié · le changement de dossier et « Se déconnecter »
+  posaient un maillon vide (seule `sessionsFermees` écrite). Une mise à jour
+  qui n'écrit que des colonnes de `COLONNES_SANS_EVENEMENT` ne pose plus de
+  maillon ; un mot de passe masqué reste un événement. Rejeu · 7 maillons
+  avant, 7 après.
+- **Trouvé en route** · l'onglet qui change lui-même de dossier se
+  rechargeait deux fois (sa propre relecture de `/auth/me` passait pour un
+  autre onglet) · `adopterDossierDeLEcran` avant le rechargement.
+
 ## 3. Limites écrites, reste
+
+- **Mineur 6** · l'administrateur d'un dossier apprend, par
+  `connexionTenueParLaPersonne`, qu'un de ses collaborateurs a d'autres
+  dossiers (jamais lesquels ni combien) · le prix de lui dire pourquoi il ne
+  peut pas choisir son mot de passe.
+- Sur site, l'invitation d'une adresse connue et la création directe d'une
+  adresse neuve rendent des réponses différentes · le poste sert un seul
+  organisme, rien à taire.
 
 - En ligne SANS messagerie, l'ajout d'une adresse connue est refusé en 503 ·
   ce refus révèle qu'elle existe. Fermé dès que la messagerie est posée.

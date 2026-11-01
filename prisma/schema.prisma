@@ -863,6 +863,7 @@ model Tenant {
   ecritures                 Ecriture[]
   users                     User[]
   invitationsDossier        InvitationDossier[]
+  confirmationsAdresse      ConfirmationAdresse[]
   journaux                  Journal[]
   clotures                  Cloture[]
   tiers                     Tiers[]
@@ -14266,8 +14267,31 @@ model InvitationDossier {
   creePar        String
   decideLe       DateTime?
   createdAt      DateTime                @default(now())
+  /// Sur site, sans courriel · la personne l'accepte depuis sa session, sans code (relecture, M3).
+  acceptableSansCode Boolean             @default(false)
 
   @@index([tenantId, statut])
   @@index([email])
   @@map("invitations_dossier")
+}
+
+/// LA NOUVELLE ADRESSE DE CONNEXION ATTEND SA CONFIRMATION (ligne
+/// multi-dossiers, relecture de sécurité, M2) · un jeton envoyé à cette
+/// adresse, gardé en empreinte, à usage unique. `userId` est le compte de
+/// connexion, `tenantId` son dossier.
+model ConfirmationAdresse {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  userId          String
+  nouvelleAdresse String
+  empreinteJeton  String    @unique
+  expireLe        DateTime
+  utiliseLe       DateTime?
+  annuleLe        DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("confirmations_adresse")
 }

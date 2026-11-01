@@ -177,6 +177,7 @@ export const MODELES_CLOISONNES = new Set<string>([
   'MessageInterne',
   // Ligne multi-dossiers · l'invitation d'une personne au dossier.
   'InvitationDossier',
+  'ConfirmationAdresse',
   'DestinataireMessage',
   // Ligne dossier-l9, fonctions 96 et 100 · préférences et notifications.
   'PreferenceUtilisateur',

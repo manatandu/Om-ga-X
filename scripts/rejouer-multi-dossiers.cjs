@@ -281,7 +281,10 @@ async function phaseNouveau() {
     // Une copie du cookie d'avant le changement · elle doit être fermée.
     const copie = new Client();
     copie.cookies = new Map(K.cookies);
+    const maillonsAvant = await prisma.evenementAudit.count({ where: { tenantId: etat.dossierA, entite: 'User', entiteId: compte.id } });
     const change = await K.post('/auth/changer-dossier', { dossierId: etat.dossierB });
+    const maillonsApres = await prisma.evenementAudit.count({ where: { tenantId: etat.dossierA, entite: 'User', entiteId: compte.id } });
+    verifier(maillonsApres === maillonsAvant, `changer de dossier ne pose aucun maillon vide dans le dossier quitté (${maillonsAvant} puis ${maillonsApres})`);
     // L'onglet qui a changé suit son dossier ; un autre, resté sur A, est refusé.
     K.dossier = change.dossierId;
     const ongletA = new Client();
@@ -364,6 +367,45 @@ async function phaseNouveau() {
     verifier(vieux.statut === 401, "l'ancien mot de passe n'ouvre plus rien");
     const { r: r4 } = await connecter(etat.collab, 'Nouveau-mdp-2026-xyz!');
     verifier(r4.plusieursDossiers === true, 'le nouveau ouvre ses deux dossiers');
+
+    console.log("== Dépannage · l'administrateur de B réinitialise par courriel, sans rien voir");
+    const avantReinit = courriels.length;
+    const reponse = await B.post(`/utilisateurs/${ligneB.id}/reinitialiser-par-courriel`, {});
+    verifier(!JSON.stringify(reponse).match(/motDePasse|Provisoire/i), "la réponse ne porte aucun mot de passe");
+    let provisoire = null;
+    for (let i = 0; i < 40 && !provisoire; i++) {
+      const m = courriels.slice(avantReinit).find((c) => c.a.includes(etat.collab.toLowerCase()) && /Mot de passe provisoire · /.test(c.corps));
+      if (m) provisoire = /Mot de passe provisoire · (\S+)/.exec(m.corps)[1];
+      else await attendre(250);
+    }
+    verifier(!!provisoire, 'le mot de passe tiré au sort part à la seule adresse de la personne');
+    const ancien = await new Client().appeler('POST', '/auth/login', { email: etat.collab, motDePasse: 'Nouveau-mdp-2026-xyz!' }, [401]);
+    verifier(ancien.statut === 401, "l'ancien mot de passe n'ouvre plus rien");
+    const { c: K5, r: r5 } = await connecter(etat.collab, provisoire);
+    verifier(r5.doitChangerMotDePasse === true || (await K5.get('/auth/me')).doitChangerMotDePasse === true, 'le provisoire ouvre, changement exigé');
+    K5.dossier = (await K5.get('/auth/me')).tenant.id;
+    await K5.post('/auth/changer-mot-de-passe', { motDePasseActuel: provisoire, nouveauMotDePasse: MDP });
+
+    console.log("== Nouvelle adresse · posée par le code reçu à cette adresse seulement");
+    const K6 = (await connecter(etat.collab)).c;
+    K6.dossier = (await K6.get('/auth/me')).tenant.id;
+    const neuve = `md-neuve-${etat.stamp}@exemple.invalid`;
+    const demande = await K6.post('/auth/changer-adresse', { motDePasseActuel: MDP, nouvelleAdresse: neuve });
+    verifier(demande.confirmationEnvoyee === true, 'la demande attend son code');
+    verifier((await prisma.user.findUnique({ where: { id: compte.id } })).email === etat.collab, "rien n'a changé avant le code");
+    const codeAdresse = await (async () => {
+      for (let i = 0; i < 40; i++) {
+        const m = [...courriels].reverse().find((c) => c.a.includes(neuve) && /Code de confirmation · /.test(c.corps));
+        if (m) return /Code de confirmation · (\S+)/.exec(m.corps)[1];
+        await attendre(250);
+      }
+      throw new Error('aucun code de confirmation');
+    })();
+    await K6.post('/auth/confirmer-adresse', { jeton: codeAdresse });
+    const { r: r6 } = await connecter(neuve);
+    verifier(typeof r6.csrfToken === 'string', 'la nouvelle adresse ouvre le compte');
+    const lignesNeuves = await prisma.user.findMany({ where: { OR: [{ id: compte.id }, { compteDeConnexionId: compte.id }] }, select: { email: true } });
+    verifier(lignesNeuves.every((l) => l.email === neuve), "l'adresse est recopiée sur ses appartenances");
   } finally {
     await prisma.$disconnect();
   }

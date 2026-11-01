@@ -76,3 +76,25 @@ CREATE INDEX "invitations_dossier_tenantId_statut_idx" ON "invitations_dossier"(
 CREATE INDEX "invitations_dossier_email_idx" ON "invitations_dossier"("email");
 ALTER TABLE "invitations_dossier" ADD CONSTRAINT "invitations_dossier_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Sur site, l'invitation sans courriel s'accepte depuis la session (M3).
+ALTER TABLE "invitations_dossier" ADD COLUMN "acceptableSansCode" BOOLEAN NOT NULL DEFAULT false;
+
+-- La nouvelle adresse de connexion attend sa confirmation (M2).
+CREATE TABLE "confirmations_adresse" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "nouvelleAdresse" TEXT NOT NULL,
+    "empreinteJeton" TEXT NOT NULL,
+    "expireLe" TIMESTAMP(3) NOT NULL,
+    "utiliseLe" TIMESTAMP(3),
+    "annuleLe" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "confirmations_adresse_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "confirmations_adresse_empreinteJeton_key" ON "confirmations_adresse"("empreinteJeton");
+CREATE INDEX "confirmations_adresse_tenantId_idx" ON "confirmations_adresse"("tenantId");
+CREATE INDEX "confirmations_adresse_userId_idx" ON "confirmations_adresse"("userId");
+ALTER TABLE "confirmations_adresse" ADD CONSTRAINT "confirmations_adresse_tenantId_fkey"
+  FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

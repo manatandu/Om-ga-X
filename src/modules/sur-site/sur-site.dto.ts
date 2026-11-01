@@ -1,4 +1,11 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+/** Le compte que l'administrateur de l'installation réinitialise (ligne multi-dossiers, second tour, BLOQUANT 1). */
+export class ReinitialiserCompteSurSiteDto {
+  @IsEmail({}, { message: 'Adresse invalide' })
+  @MaxLength(320)
+  email!: string;
+}
 
 export class CopieExterneDto {
   @IsOptional()

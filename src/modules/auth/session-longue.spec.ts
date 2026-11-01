@@ -334,7 +334,7 @@ describe('3 · la console de l’éditeur, session longue admise, connexion comp
     };
     const s = service(compte(true));
     const actes = [
-      () => s.changerAdresse('u1', 'le-bon', 'neuve@b.cd', session),
+      () => s.changerAdresse('u1', 'le-bon', 'neuve@b.cd', session, true),
       () => s.deconnecterAutresAppareils('u1', 'le-bon', session),
     ];
     for (const acte of actes) {

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  adopterDossierDeLEcran,
   dossierDeLEcran,
   enteteDuDossier,
   estRefusDossierChange,
@@ -25,6 +26,16 @@ describe('le dossier que l’onglet affiche', () => {
     expect(poserDossierDeLEcran('B')).toBe('CHANGE');
     // Un dossier changé ne remplace pas celui de l'onglet · c'est le serveur qui juge.
     expect(dossierDeLEcran()).toBe('A');
+  });
+
+  it('l’onglet qui change lui-même de dossier l’adopte avant de recharger · sa propre relecture ne recharge pas deux fois', () => {
+    poserDossierDeLEcran('A');
+    adopterDossierDeLEcran('B');
+    expect(poserDossierDeLEcran('B')).toBe('IDENTIQUE');
+    const entree = src('lib', 'entree-dossier.ts');
+    const corps = entree.slice(entree.indexOf('export async function entrerDansLeDossier'));
+    expect(corps.indexOf('adopterDossierDeLEcran(dossierId);')).toBeGreaterThan(0);
+    expect(corps.indexOf('adopterDossierDeLEcran(dossierId);')).toBeLessThan(corps.indexOf('setCsrf(r.csrfToken)'));
   });
 
   it('l’en-tête part sur ce qui modifie, jamais sur une lecture', () => {

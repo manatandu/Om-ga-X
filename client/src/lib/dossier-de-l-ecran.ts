@@ -37,6 +37,22 @@ export function poserDossierDeLEcran(id: string): IssueDuDossier {
   return dossierAffiche === id ? 'IDENTIQUE' : 'CHANGE';
 }
 
+/**
+ * L'ONGLET QUI CHANGE LUI-MÊME DE DOSSIER l'adopte avant de se recharger ·
+ * sans quoi une relecture de `/auth/me` entre la réponse et le rechargement
+ * prenait son propre geste pour celui d'un autre onglet, et rechargeait une
+ * seconde fois par-dessus l'écran neuf. Le stockage partagé l'annonce aux
+ * autres onglets, qui se rechargent.
+ */
+export function adopterDossierDeLEcran(id: string): void {
+  dossierAffiche = id;
+  try {
+    localStorage.setItem(CLE_DOSSIER_OUVERT, id);
+  } catch {
+    /* stockage fermé · les autres onglets l'apprendront par le 409 */
+  }
+}
+
 export function dossierDeLEcran(): string | null {
   return dossierAffiche;
 }

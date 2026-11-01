@@ -41,7 +41,7 @@ describe('changer son adresse de connexion', () => {
 
   it('change l’adresse, ferme les sessions et en repose une neuve', async () => {
     const { s, update } = service(utilisateur());
-    const r = await s.changerAdresse('u1', 'le-bon', '  admin@nouveau.cd ');
+    const r = await s.changerAdresse('u1', 'le-bon', '  admin@nouveau.cd ', null, true);
     const appel = (update.mock.calls[0] as unknown as [{ where: unknown; data: Record<string, unknown> }])[0];
     expect(appel.where).toEqual({ id: 'u1' });
     expect(appel.data.email).toBe('admin@nouveau.cd');
@@ -53,7 +53,7 @@ describe('changer son adresse de connexion', () => {
 
   it('une adresse déjà prise est refusée sans dire à qui elle appartient', async () => {
     const { s } = service(utilisateur(), { code: 'P2002' });
-    await expect(s.changerAdresse('u1', 'le-bon', 'autre@exemple.cd')).rejects.toThrow('Cette adresse est déjà utilisée par un autre compte.');
+    await expect(s.changerAdresse('u1', 'le-bon', 'autre@exemple.cd', null, true)).rejects.toThrow('Cette adresse est déjà utilisée par un autre compte.');
   });
 
   it('refuse l’adresse actuelle', async () => {

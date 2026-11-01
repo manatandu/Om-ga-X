@@ -9,17 +9,31 @@ import { CreerUtilisateurDto, ModifierUtilisateurDto } from './dto/utilisateur.d
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { LOGICIELS, ROLES_SANS_LOGICIELS } from './logiciels';
 import {
+  compteDeConnexionDe,
   comptesOuvrantDAutresDossiers,
-  connexionTenueParLaPersonne,
-  creerAppartenance,
   MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE,
   secondFacteurDesComptes,
   trouverCompteDeConnexion,
 } from '../auth/compte-de-connexion';
 import { estSurSite } from '../../common/mode-installation';
-import { randomBytes } from 'crypto';
+import {
+  aDesAppartenances,
+  avisReinitialisationParCourriel,
+  ORIGINE_REINITIALISATION_PAR_COURRIEL,
+  poserLeProvisoire,
+  sousVerrouDuCompte,
+} from '../auth/reinitialisation-du-compte';
+import { motDePasseTireAuSort } from '../plateforme/reinitialisation-admin';
+import type { CourrierService } from '../courrier/courrier.service';
 
 export const MOTIF_MESSAGERIE_REQUISE = 'La messagerie est requise pour ce geste · configurez-la, puis recommencez.';
+
+/** Sur site sans messagerie · l'administrateur de l'installation tient le poste et remet le provisoire lui-même. */
+export const MOTIF_MESSAGERIE_REQUISE_SUR_SITE =
+  "La messagerie est requise pour ce geste · configurez-la, ou demandez la réinitialisation à l'administrateur de l'installation.";
+
+/** Ce qu'il faut à `creer` pour inviter une adresse connue sur le poste (sur site, sans courriel). */
+export type InviterSurPlace = (email: string) => Promise<{ invitation: unknown }>;
 
 const SALT_ROUNDS = 12;
 
@@ -99,32 +113,84 @@ export class UtilisateurService {
     );
   }
 
-  /** Refus nommé d'un geste d'administrateur sur la connexion d'une personne qui a d'autres dossiers (C1, E2). */
-  private async refuserSiConnexionTenueParLaPersonne(user: { id: string; compteDeConnexionId: string | null }) {
-    if (await connexionTenueParLaPersonne(this.prisma, user)) throw new ForbiddenException(MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE);
+  /**
+   * UN GESTE D'ADMINISTRATEUR SUR LA CONNEXION, SOUS LE VERROU DU COMPTE (C1,
+   * E2 ; second tour, mineur 4) · une ligne rattachée est refusée d'emblée (son
+   * lien ne change jamais, le déclencheur le fige) ; sur un compte, le décompte
+   * des appartenances et l'écriture se font sous le même verrou que
+   * l'acceptation d'une invitation, qui ne glisse plus entre les deux.
+   */
+  private async surLaConnexionDuDossierSeul<T>(
+    user: { id: string; tenantId: string; compteDeConnexionId: string | null },
+    geste: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    if (user.compteDeConnexionId) throw new ForbiddenException(MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE);
+    return sousVerrouDuCompte(this.prisma, user, 'utilisateurs · un geste d’administrateur sur un compte, sous son verrou', async (tx) => {
+      if (await aDesAppartenances(tx, user.id)) throw new ForbiddenException(MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE);
+      return geste(tx);
+    });
+  }
+
+  /**
+   * « RÉINITIALISER PAR COURRIEL » (second tour, BLOQUANT 1,
+   * `auth/reinitialisation-du-compte.ts`) · ouvert à l'administrateur de
+   * N'IMPORTE LEQUEL des dossiers de la personne, et à une personne d'un seul
+   * dossier aussi. Le mot de passe est tiré au sort, part à la SEULE adresse
+   * du compte, n'est rendu à personne · l'administrateur ne tient rien de
+   * plus qu'avant (C1 reste fermé). Le second facteur ne tombe pas. Le
+   * courriel part d'abord · un envoi refusé ne laisse aucun compte fermé sur
+   * un mot de passe que personne n'a reçu. Le geste s'écrit au journal du
+   * dossier de l'acteur (la ligne de la personne y voit ses sessions
+   * fermées) ; dans le dossier du compte, sous la personne elle-même.
+   */
+  async reinitialiserParCourriel(tenantId: string, userId: string, parQui: string, courrier: CourrierService | undefined, surSite = estSurSite()) {
+    const ligne = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!ligne) throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+    const compte = await compteDeConnexionDe(this.prisma, ligne);
+    if (!compte) throw new NotFoundException('Utilisateur introuvable pour ce tenant');
+    const refusOperateur = motifRefusReinitialisationOperateur(compte);
+    if (refusOperateur) throw new ForbiddenException(refusOperateur);
+    if (!courrier || !courrier.etatDuTransport().configure) {
+      throw new ServiceUnavailableException(surSite ? MOTIF_MESSAGERIE_REQUISE_SUR_SITE : MOTIF_MESSAGERIE_REQUISE);
+    }
+    const mot = motDePasseTireAuSort();
+    const avis = avisReinitialisationParCourriel(mot, false);
+    await courrier.envoyerUnSecret(
+      tenantId,
+      { destinataire: compte.email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_REINITIALISATION_PAR_COURRIEL, origineId: ligne.id, createdBy: parQui },
+      avis.corpsGarde,
+    );
+    const hache = await bcrypt.hash(mot, SALT_ROUNDS);
+    const maintenant = new Date();
+    await sousVerrouDuCompte(this.prisma, compte, 'utilisateurs · mot de passe tiré au sort, remis au seul titulaire du compte', async (tx) => {
+      await poserLeProvisoire(tx, compte, hache, false, maintenant);
+      // Dans le dossier de l'acteur, la trace du geste · les sessions de la
+      // ligne s'y ferment, sous son nom à lui.
+      if (ligne.id !== compte.id) await tx.user.update({ where: { id: ligne.id }, data: { sessionsInvalidesAvant: maintenant } });
+    });
+    return { reinitialise: true, parCourriel: true, email: ligne.email };
   }
 
   /**
    * LA CRÉATION DIRECTE (`invitations.ts`, `modeDeCreation`) · sur site, et en
    * ligne sans messagerie. En ligne AVEC messagerie, toute création passe par
    * l'invitation (`InvitationsService.inviter`) et cette méthode n'est pas
-   * appelée. Une adresse déjà compte de connexion ailleurs · sur site, la
-   * personne est rattachée directement (un seul organisme sur le poste) avec
-   * SON mot de passe ; en ligne, refus « messagerie requise », qui ne dit pas
-   * que l'adresse existe. Le mot de passe saisi par l'administrateur n'est
-   * haché que pour un compte qui naît.
+   * appelée. Une adresse déjà compte de connexion ailleurs n'est JAMAIS
+   * rattachée par l'administrateur (second tour, MAJEUR 3) · sur site, elle
+   * est INVITÉE sans courriel (`inviterSurPlace`) et l'acceptera depuis sa
+   * session ; en ligne, refus « messagerie requise ». Le mot de passe saisi
+   * par l'administrateur n'est haché que pour un compte qui naît.
    */
-  async creer(tenantId: string, dto: CreerUtilisateurDto, surSite = estSurSite()) {
+  async creer(tenantId: string, dto: CreerUtilisateurDto, surSite = estSurSite(), inviterSurPlace?: InviterSurPlace) {
     dto = { ...dto, email: normaliserCourriel(dto.email) };
-    const rattacher = async (compte: { id: string; tenantId: string }) => {
-      if (!surSite) throw new ServiceUnavailableException(MOTIF_MESSAGERIE_REQUISE);
-      const tire = await bcrypt.hash(randomBytes(24).toString('hex'), SALT_ROUNDS);
-      return creerAppartenance(this.prisma, { tenantId, email: dto.email, motDePasse: tire, role: dto.role, compteDeConnexionId: compte.id }, SELECTION);
+    const inviter = () => {
+      if (!surSite || !inviterSurPlace) throw new ServiceUnavailableException(MOTIF_MESSAGERIE_REQUISE);
+      return inviterSurPlace(dto.email);
     };
     const raison = 'utilisateurs · une adresse déjà compte de connexion ailleurs';
     const compte = await trouverCompteDeConnexion(this.prisma, dto.email, raison);
     try {
-      if (compte && compte.tenantId !== tenantId) return await rattacher(compte);
+      if (compte && compte.tenantId !== tenantId) return await inviter();
       if (!dto.motDePasse) throw new BadRequestException('Le mot de passe provisoire est requis.');
       const motDePasseHache = await bcrypt.hash(dto.motDePasse, SALT_ROUNDS);
       return await this.prisma.user.create({
@@ -144,7 +210,7 @@ export class UtilisateurService {
         // LA COURSE (relecture, m5) · le compte est né ailleurs entre la
         // lecture et la création · la contrainte se relit, et le bon motif suit.
         const apres = await trouverCompteDeConnexion(this.prisma, dto.email, raison);
-        if (apres && apres.tenantId !== tenantId) return rattacher(apres);
+        if (apres && apres.tenantId !== tenantId) return inviter();
         throw new ConflictException(MOTIF_ADRESSE_PRISE);
       }
       throw e;
@@ -342,17 +408,19 @@ export class UtilisateurService {
     }
     const refusOperateur = motifRefusReinitialisationOperateur(user);
     if (refusOperateur) throw new ForbiddenException(refusOperateur);
-    await this.refuserSiConnexionTenueParLaPersonne(user);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        motDePasse: await bcrypt.hash(motDePasseProvisoire, SALT_ROUNDS),
-        doitChangerMotDePasse: true,
-        sessionsInvalidesAvant: new Date(),
-        ...DECOMPTE_REMIS_A_ZERO,
-        ...secondFacteurLeveParReinitialisation(user),
-      },
-    });
+    const motDePasse = await bcrypt.hash(motDePasseProvisoire, SALT_ROUNDS);
+    await this.surLaConnexionDuDossierSeul(user, (tx) =>
+      tx.user.update({
+        where: { id: userId },
+        data: {
+          motDePasse,
+          doitChangerMotDePasse: true,
+          sessionsInvalidesAvant: new Date(),
+          ...DECOMPTE_REMIS_A_ZERO,
+          ...secondFacteurLeveParReinitialisation(user),
+        },
+      }),
+    );
     return { reinitialise: true, email: user.email };
   }
 
@@ -411,11 +479,12 @@ export class UtilisateurService {
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable pour ce tenant');
     }
-    await this.refuserSiConnexionTenueParLaPersonne(user);
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: DECOMPTE_REMIS_A_ZERO,
-      select: SELECTION,
-    });
+    return this.surLaConnexionDuDossierSeul(user, (tx) =>
+      tx.user.update({
+        where: { id: userId },
+        data: DECOMPTE_REMIS_A_ZERO,
+        select: SELECTION,
+      }),
+    );
   }
 }

@@ -108,7 +108,7 @@ describe('F43 · les services normalisent aussi', () => {
     };
     client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
     const s = auth(client);
-    const r = await s.changerAdresse('u1', 'actuel-123456', BRUTE);
+    const r = await s.changerAdresse('u1', 'actuel-123456', BRUTE, null, true);
     expect(r.adresse).toBe(NETTE);
     expect(ecrites[0].data.email).toBe(NETTE);
   });

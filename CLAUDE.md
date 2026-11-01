@@ -5704,18 +5704,29 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   rien n'est créé avant qu'il accepte avec le code ET sa session, ou, adresse
   neuve, crée son compte avec SON mot de passe ; la réponse et le courriel
   sont les mêmes pour une adresse connue ou neuve. Sans messagerie, la
-  création reste directe · sur site (un seul organisme) une adresse connue
-  est rattachée avec son propre mot de passe, en ligne elle est refusée en 503
+  création reste directe pour une adresse neuve ; une adresse connue est, sur
+  site, INVITÉE sans courriel (`acceptableSansCode`, acceptée depuis la
+  session de la personne à sa prochaine connexion), en ligne refusée en 503
   « messagerie requise » (limite écrite · ce refus dit à l'administrateur
-  qu'elle existe ; une adresse neuve est créée). Aucun mot de passe n'est
-  posé ni haché pour une adresse existante. (2) AUCUN ADMINISTRATEUR N'AGIT SUR
-  LA CONNEXION D'UNE PERSONNE QUI A D'AUTRES DOSSIERS · réinitialiser,
-  déverrouiller et lever le second facteur d'un compte que d'autres dossiers
-  pointent, ou d'une ligne rattachée, sont refusés en 403 nommé, sans dire
-  lesquels (`connexionTenueParLaPersonne`) ; la liste du dossier le dit au
-  lieu de servir le verrou de la ligne. L'opérateur réinitialise par un mot de
-  passe tiré au sort envoyé au titulaire, sans lever le second facteur d'un
-  compte à appartenances. (3) DEUX RÉVOCATIONS · `sessionsInvalidesAvant`, par
+  qu'elle existe). Aucun mot de passe n'est posé ni haché pour une adresse
+  existante ; jamais un rattachement sans le consentement de la personne.
+  Plafond de cent invitations en attente par dossier, `@Throttle` sur l'ajout.
+  (2) AUCUN ADMINISTRATEUR NE CONNAÎT LE MOT DE PASSE D'UNE PERSONNE QUI A
+  D'AUTRES DOSSIERS · lui choisir un provisoire, déverrouiller ou lever son
+  second facteur sont refusés en 403 nommé, sans dire lesquels
+  (`connexionTenueParLaPersonne`), décompte et écriture sous le verrou du
+  compte que prend aussi l'acceptation (`verrouillerLeCompte`). Le dépannage
+  reste ouvert · « Réinitialiser par courriel » (administrateur de
+  n'importe lequel de ses dossiers) tire le mot de passe au sort et l'envoie
+  à la SEULE adresse du compte, jamais rendu, second facteur gardé
+  (`auth/reinitialisation-du-compte.ts`) ; le second facteur ne se lève que
+  par l'opérateur (mot de passe au seul titulaire) et, sur site, par
+  l'administrateur de l'installation (`POST /sur-site/comptes/reinitialiser`,
+  qui reçoit le provisoire à l'écran s'il n'y a pas de messagerie, le poste
+  étant le sien). (2 bis) UNE NOUVELLE ADRESSE DE CONNEXION SE CONFIRME par
+  un code reçu à cette adresse (`ConfirmationAdresse`, empreinte, usage
+  unique, vingt-quatre heures), sans messagerie refusée en ligne et posée
+  directement sur site. (3) DEUX RÉVOCATIONS · `sessionsInvalidesAvant`, par
   dossier (l'administrateur ne ferme que les sessions de SON dossier) ;
   `sessionsDuCompteInvalidesAvant`, la personne (mot de passe, adresse,
   second facteur, « toutes mes sessions »), relue par `JwtStrategy` sur le

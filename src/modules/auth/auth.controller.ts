@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Req, Res, UnsupportedMediaTypeException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Param, Post, Req, Res, UnsupportedMediaTypeException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -249,10 +249,22 @@ export class AuthController {
     @Body() dto: ChangerAdresseDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.poserSession(
-      res,
-      await this.authService.changerAdresse(user.userId, dto.motDePasseActuel, dto.nouvelleAdresse, sessionDeLaRequete(res.req)),
-    );
+    const r = await this.authService.changerAdresse(user.userId, dto.motDePasseActuel, dto.nouvelleAdresse, sessionDeLaRequete(res.req));
+    // Avec une messagerie, rien n'a changé · le code part à la nouvelle adresse.
+    return 'confirmationEnvoyee' in r ? r : this.poserSession(res, r);
+  }
+
+  /** Le code reçu à la nouvelle adresse, depuis la session qui l'a demandée (`confirmation-adresse.ts`). */
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('confirmer-adresse')
+  async confirmerAdresse(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: JetonInvitationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.poserSession(res, await this.authService.confirmerAdresse(user.userId, dto.jeton, sessionDeLaRequete(res.req)));
   }
 
   /**
@@ -406,6 +418,26 @@ export class AuthController {
   @Post('invitations/refuser')
   refuserInvitation(@CurrentUser() user: AuthenticatedUser, @Body() dto: JetonInvitationDto) {
     return this.authService.refuserUneInvitation(user.userId, dto.jeton);
+  }
+
+  /**
+   * SUR SITE, L'INVITATION SANS COURRIEL (second tour, MAJEUR 3) · la session
+   * de la personne seule, sur une invitation `acceptableSansCode`.
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/:id/accepter-sur-place')
+  accepterInvitationSurPlace(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.authService.accepterUneInvitationSurPlace(user.userId, id);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @AccesRolesCantonnes({ gestionnairePaie: true })
+  @UseGuards(JwtAuthGuard)
+  @Post('invitations/:id/refuser-sur-place')
+  refuserInvitationSurPlace(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.authService.refuserUneInvitationSurPlace(user.userId, id);
   }
 
   /**

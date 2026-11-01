@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,8 @@ import { appartenanceDeConnexion, idDuCompteDeConnexion } from './compte-de-conn
 import { demandeDeReemission, sessionDuJeton, ChargeJeton } from './session-longue';
 import { MOTIF_DOSSIER_CHANGE, motifDossierChange } from './jwt-auth.guard';
 import { MOTIF_CONNEXION_TENUE_PAR_LA_PERSONNE } from './compte-de-connexion';
-import { InvitationsService, MOTIF_ADRESSE_DU_DOSSIER } from '../utilisateurs/invitations.service';
+import { InvitationsService, MOTIF_ADRESSE_DU_DOSSIER, MOTIF_PLAFOND_INVITATIONS, PLAFOND_INVITATIONS_EN_ATTENTE } from '../utilisateurs/invitations.service';
+import { seulementDesColonnesSansEvenement } from '../../common/audit/champs-audites';
 import { empreinteSession } from './sessions-fermees';
 import { MOTIF_MESSAGERIE_REQUISE, UtilisateurService } from '../utilisateurs/utilisateur.service';
 
@@ -44,6 +45,7 @@ async function monde() {
   ];
   const parId = (id: string) => lignes.find((l) => l.id === id) ?? null;
   const invitations: Ligne[] = [];
+  const confirmations: Ligne[] = [];
   const correspond = (l: Ligne, w: any): boolean =>
     !w ||
     Object.entries(w).every(([k, v]: [string, any]) =>
@@ -90,7 +92,7 @@ async function monde() {
           .filter((i) => !where.expireLe || i.expireLe > where.expireLe.gt)
           .map((i) => ({ ...i, tenant: { nom: dossiers.find((d) => d.id === i.tenantId)!.nom } })),
       count: async ({ where }: any) => invitations.filter((i) => i.tenantId === where.tenantId).length,
-      findUnique: async ({ where }: any) => invitations.find((i) => i.empreinteJeton === where.empreinteJeton) ?? null,
+      findUnique: async ({ where }: any) => invitations.find((i) => (where.id ? i.id === where.id : i.empreinteJeton === where.empreinteJeton)) ?? null,
       updateMany: async ({ where, data }: any) => {
         const vises = invitations.filter((i) => (!where.id || i.id === where.id) && (!where.tenantId || i.tenantId === where.tenantId) && (!where.email || i.email === where.email) && i.statut === where.statut);
         vises.forEach((i) => Object.assign(i, data));
@@ -100,6 +102,19 @@ async function monde() {
         const i = { ...data, id: `inv-${invitations.length}`, statut: 'EN_ATTENTE', createdAt: new Date(), decideLe: null };
         invitations.push(i);
         return { id: i.id, email: i.email, role: i.role, statut: i.statut, expireLe: i.expireLe, createdAt: i.createdAt, decideLe: null };
+      },
+    },
+    confirmationAdresse: {
+      findUnique: async ({ where }: any) => confirmations.find((c) => c.empreinteJeton === where.empreinteJeton) ?? null,
+      updateMany: async ({ where, data }: any) => {
+        const vises = confirmations.filter((c) => (!where.id || c.id === where.id) && (!where.userId || c.userId === where.userId) && c.utiliseLe === null && (where.annuleLe === undefined || c.annuleLe === null));
+        vises.forEach((c) => Object.assign(c, data));
+        return { count: vises.length };
+      },
+      create: async ({ data }: any) => {
+        const c = { ...data, id: `conf-${confirmations.length}`, utiliseLe: null, annuleLe: null };
+        confirmations.push(c);
+        return c;
       },
     },
     exercice: {
@@ -114,11 +129,28 @@ async function monde() {
   const jwt = new JwtService({ secret: 'secret-de-test', signOptions: { expiresIn: '8h' } });
   const none = undefined as never;
   const auth = new AuthService(prisma, jwt, none, none, none, none, none, none, none, none);
+  const facteur = courrier();
+  const authAvecCourrier = new AuthService(prisma, jwt, none, none, none, none, none, none, none, none, undefined, facteur.service as never);
   const strategie = new JwtStrategy({ getOrThrow: () => 'secret-de-test' } as never, prisma, jwt);
   const requete = (jeton: string, method = 'GET', csrf?: string) =>
     ({ method, headers: csrf ? { 'x-csrf-token': csrf } : {}, cookies: { __session: jeton } }) as never;
   const valider = (jeton: string) => strategie.validate(requete(jeton), jwt.verify<ChargeJeton>(jeton));
-  return { lignes, prisma, auth, jwt, valider, parId, invitations };
+  return { lignes, prisma, auth, jwt, valider, parId, invitations, authAvecCourrier, facteur, confirmations };
+}
+
+/** Une messagerie configurée · garde ce qui part, rien ne sort. */
+function courrier() {
+  const envois: { destinataire: string; corps: string; corpsGarde: string }[] = [];
+  return {
+    envois,
+    service: {
+      etatDuTransport: () => ({ configure: true }),
+      envoyerUnSecret: async (_t: string, m: { destinataire: string; corps: string }, corpsGarde: string) => {
+        envois.push({ destinataire: m.destinataire, corps: m.corps, corpsGarde });
+        return { id: 'm', statut: 'ENVOYE', erreur: null };
+      },
+    },
+  };
 }
 
 describe('la connexion · un compte de connexion, plusieurs appartenances', () => {
@@ -282,7 +314,7 @@ describe('le compte de la personne se tient depuis n’importe lequel de ses dos
 
   it('changer son adresse la recopie sur les appartenances de ses autres dossiers', async () => {
     const { auth, parId } = await monde();
-    await auth.changerAdresse('awa-b', 'mot-de-passe-awa', 'Awa.Nouvelle@cabinet.cd', null);
+    await auth.changerAdresse('awa-b', 'mot-de-passe-awa', 'Awa.Nouvelle@cabinet.cd', null, true);
     expect([parId('awa-a')!.email, parId('awa-b')!.email]).toEqual(['awa.nouvelle@cabinet.cd', 'awa.nouvelle@cabinet.cd']);
   });
 
@@ -341,29 +373,133 @@ describe('E1 · la création directe ne pose jamais le mot de passe de l’admin
     expect(lignes.length).toBe(nombre);
   });
 
-  it('sur site · la personne est rattachée directement, avec SON mot de passe, jamais celui saisi', async () => {
-    const { prisma, lignes } = await monde();
-    await new UtilisateurService(prisma).creer('C', { email: 'awa@cabinet.cd', motDePasse: 'Choisi-par-C-2026!', role: 'COMPTABLE' } as never, true);
+  it('sur site · l’adresse connue est INVITÉE sans courriel (MAJEUR 3) · rien n’est rattaché avant qu’elle accepte depuis sa session', async () => {
+    const { prisma, lignes, auth, invitations } = await monde();
+    const inv = new InvitationsService(prisma);
+    const nombre = lignes.length;
+    const r: any = await new UtilisateurService(prisma).creer('C', { email: 'awa@cabinet.cd', motDePasse: 'Choisi-par-C-2026!', role: 'COMPTABLE' } as never, true, (email) =>
+      inv.inviterSurPlace('C', 'bertin-c', email, 'COMPTABLE' as never),
+    );
+    expect(r.invitation.statut).toBe('EN_ATTENTE');
+    expect(lignes.length).toBe(nombre);
+    expect((await auth.mesInvitations('awa-a')).map((i) => [i.dossier, i.sansCode])).toEqual([['Cabinet voisin', true]]);
+    // Un autre compte ne l'accepte pas ; une invitation à code, jamais sans lui.
+    await expect(auth.accepterUneInvitationSurPlace('bertin-c', invitations[0].id)).rejects.toThrow(NotFoundException);
+    await expect(auth.accepterUneInvitationSurPlace('awa-a', invitations[0].id)).resolves.toEqual({ dossierId: 'C' });
     const ligne = lignes.find((l) => l.tenantId === 'C' && l.email === 'awa@cabinet.cd')!;
     expect([ligne.compteDeConnexionId, ligne.role, ligne.doitChangerMotDePasse]).toEqual(['awa-a', 'COMPTABLE', false]);
     expect(await bcrypt.compare('Choisi-par-C-2026!', ligne.motDePasse)).toBe(false);
   });
+
+  it('une invitation partie par courriel ne s’accepte jamais sans son code', async () => {
+    const { prisma, auth, invitations, facteur } = await monde();
+    await new InvitationsService(prisma, facteur.service as never).inviter('C', 'bertin-c', 'awa@cabinet.cd', 'COMPTABLE' as never);
+    await expect(auth.accepterUneInvitationSurPlace('awa-a', invitations[0].id)).rejects.toThrow(NotFoundException);
+  });
+
+  it('une seconde acceptation, ou une personne déjà dans le dossier · 409 nommé, jamais un 500 (mineur 5)', async () => {
+    const { prisma, auth, invitations, lignes } = await monde();
+    const inv = new InvitationsService(prisma);
+    await inv.inviterSurPlace('C', 'bertin-c', 'awa@cabinet.cd', 'COMPTABLE' as never);
+    // La personne entre dans C par un autre chemin entre l'invitation et l'acceptation.
+    lignes.push({ ...lignes[1], id: 'awa-c', tenantId: 'C' });
+    await expect(auth.accepterUneInvitationSurPlace('awa-a', invitations[0].id)).rejects.toThrow(ConflictException);
+    // La course que seule la contrainte voit · rendue en 409 elle aussi.
+    lignes.pop();
+    await inv.inviterSurPlace('C', 'bertin-c', 'awa@cabinet.cd', 'COMPTABLE' as never);
+    const create = prisma.user.create;
+    prisma.user.create = async () => {
+      throw Object.assign(new Error('unique'), { code: 'P2002' });
+    };
+    await expect(auth.accepterUneInvitationSurPlace('awa-a', invitations[1].id)).rejects.toThrow(ConflictException);
+    prisma.user.create = create;
+  });
+
+  it('le plafond des invitations en attente d’un dossier (mineur 7)', async () => {
+    const { prisma, invitations } = await monde();
+    for (let k = 0; k < PLAFOND_INVITATIONS_EN_ATTENTE; k++) invitations.push({ id: `x${k}`, tenantId: 'C', email: `p${k}@x.cd`, statut: 'EN_ATTENTE', expireLe: new Date('2099-01-01') });
+    await expect(new InvitationsService(prisma).inviterSurPlace('C', 'bertin-c', 'awa@cabinet.cd', 'COMPTABLE' as never)).rejects.toThrow(MOTIF_PLAFOND_INVITATIONS);
+  });
+});
+
+describe('BLOQUANT 1 · une personne à plusieurs dossiers se dépanne, sans qu’aucun administrateur ne connaisse son mot de passe', () => {
+  it('l’administrateur de B réinitialise par courriel · tiré au sort, envoyé au seul titulaire, jamais rendu, second facteur gardé', async () => {
+    const { prisma, parId, facteur } = await monde();
+    parId('awa-a')!.doubleAuthActiveDepuis = new Date('2026-03-01');
+    parId('awa-a')!.secretDoubleAuth = 'SECRET';
+    const r = await new UtilisateurService(prisma).reinitialiserParCourriel('B', 'awa-b', 'admin-b', facteur.service as never);
+    expect(JSON.stringify(r)).not.toMatch(/motDePasse/);
+    expect(facteur.envois.map((e) => e.destinataire)).toEqual(['awa@cabinet.cd']);
+    const mot = /Mot de passe provisoire · (\S+)/.exec(facteur.envois[0].corps)![1];
+    expect(facteur.envois[0].corpsGarde).not.toContain(mot);
+    const compte = parId('awa-a')!;
+    expect(await bcrypt.compare(mot, compte.motDePasse)).toBe(true);
+    expect([compte.doitChangerMotDePasse, compte.secretDoubleAuth, compte.sessionsDuCompteInvalidesAvant instanceof Date]).toEqual([true, 'SECRET', true]);
+    expect(parId('awa-b')!.sessionsInvalidesAvant).toBeInstanceOf(Date);
+  });
+
+  it('sans messagerie, rien ne change · 503 nommé, sur site renvoyé à l’administrateur de l’installation', async () => {
+    const { prisma, parId } = await monde();
+    const avant = parId('awa-a')!.motDePasse;
+    await expect(new UtilisateurService(prisma).reinitialiserParCourriel('B', 'awa-b', 'admin-b', undefined, false)).rejects.toThrow(MOTIF_MESSAGERIE_REQUISE);
+    await expect(new UtilisateurService(prisma).reinitialiserParCourriel('B', 'awa-b', 'admin-b', undefined, true)).rejects.toThrow(/administrateur de l'installation/);
+    expect(parId('awa-a')!.motDePasse).toBe(avant);
+  });
+
+  it('sur site, l’administrateur de l’installation réinitialise · par courriel s’il y en a, sinon le provisoire lui est rendu ; le second facteur tombe', async () => {
+    const { auth, authAvecCourrier, parId, facteur } = await monde();
+    parId('awa-a')!.secretDoubleAuth = 'SECRET';
+    const sans: any = await auth.reinitialiserCompteSurSite('Awa@Cabinet.cd', 'admin-installation');
+    expect(sans.parCourriel).toBe(false);
+    expect(await bcrypt.compare(sans.motDePasseProvisoire, parId('awa-a')!.motDePasse)).toBe(true);
+    expect(parId('awa-a')!.secretDoubleAuth).toBeNull();
+    const avec: any = await authAvecCourrier.reinitialiserCompteSurSite('awa@cabinet.cd', 'admin-installation');
+    expect(avec).not.toHaveProperty('motDePasseProvisoire');
+    expect(facteur.envois[0].destinataire).toBe('awa@cabinet.cd');
+  });
+});
+
+describe('MAJEUR 2 · la nouvelle adresse ne se pose qu’avec le code reçu à cette adresse', () => {
+  it('la demande ne change rien ; le code, depuis la même session, la pose ; une seule fois', async () => {
+    const { authAvecCourrier, parId, facteur } = await monde();
+    const r: any = await authAvecCourrier.changerAdresse('awa-b', 'mot-de-passe-awa', 'Awa.Neuve@cabinet.cd', null);
+    expect(r).toEqual({ confirmationEnvoyee: true, adresse: 'awa.neuve@cabinet.cd' });
+    expect(parId('awa-a')!.email).toBe('awa@cabinet.cd');
+    expect(facteur.envois[0].destinataire).toBe('awa.neuve@cabinet.cd');
+    const code = /Code de confirmation · (\S+)/.exec(facteur.envois[0].corps)![1];
+    expect(facteur.envois[0].corpsGarde).not.toContain(code);
+    await expect(authAvecCourrier.confirmerAdresse('bertin-c', code, null)).rejects.toThrow(NotFoundException);
+    await authAvecCourrier.confirmerAdresse('awa-b', code, null);
+    expect([parId('awa-a')!.email, parId('awa-b')!.email]).toEqual(['awa.neuve@cabinet.cd', 'awa.neuve@cabinet.cd']);
+    await expect(authAvecCourrier.confirmerAdresse('awa-b', code, null)).rejects.toThrow(NotFoundException);
+  });
+
+  it('une seconde demande annule la première · son code ne pose plus rien', async () => {
+    const { authAvecCourrier, parId, facteur } = await monde();
+    await authAvecCourrier.changerAdresse('awa-a', 'mot-de-passe-awa', 'un@cabinet.cd', null);
+    await authAvecCourrier.changerAdresse('awa-a', 'mot-de-passe-awa', 'deux@cabinet.cd', null);
+    const premier = /Code de confirmation · (\S+)/.exec(facteur.envois[0].corps)![1];
+    await expect(authAvecCourrier.confirmerAdresse('awa-a', premier, null)).rejects.toThrow(NotFoundException);
+    expect(parId('awa-a')!.email).toBe('awa@cabinet.cd');
+  });
+
+  it('en ligne sans messagerie, refus ; rien ne change', async () => {
+    const { auth, parId } = await monde();
+    await expect(auth.changerAdresse('awa-a', 'mot-de-passe-awa', 'x@cabinet.cd', null, false)).rejects.toThrow(/messagerie est requise/);
+    expect(parId('awa-a')!.email).toBe('awa@cabinet.cd');
+  });
+});
+
+describe('mineur 8 · le changement de dossier ne pose aucun maillon vide dans le dossier quitté', () => {
+  it('une mise à jour qui n’écrit que les sessions fermées ne fait pas d’événement ; une autre colonne, si', () => {
+    expect(seulementDesColonnesSansEvenement('User', { sessionsFermees: [] })).toBe(true);
+    expect(seulementDesColonnesSansEvenement('User', { sessionsFermees: [], sessionsInvalidesAvant: new Date() })).toBe(false);
+    expect(seulementDesColonnesSansEvenement('User', { motDePasse: 'x' })).toBe(false);
+    expect(seulementDesColonnesSansEvenement('Ecriture', { sessionsFermees: [] })).toBe(false);
+  });
 });
 
 describe('l’invitation · rien n’est créé avant que la personne accepte, et l’administrateur ne lit pas si l’adresse existait', () => {
-  function courrier() {
-    const envois: { destinataire: string; corps: string; corpsGarde: string }[] = [];
-    return {
-      envois,
-      service: {
-        etatDuTransport: () => ({ configure: true }),
-        envoyerUnSecret: async (_t: string, m: { destinataire: string; corps: string }, corpsGarde: string) => {
-          envois.push({ destinataire: m.destinataire, corps: m.corps, corpsGarde });
-          return { id: 'm', statut: 'ENVOYE', erreur: null };
-        },
-      },
-    };
-  }
   const jetonDe = (corps: string) => /saisissez ce code : (\S+)/.exec(corps)![1];
 
   it('adresse connue ou neuve · même réponse, même courriel gardé, aucune ligne créée, le jeton jamais dans la file', async () => {

@@ -79,6 +79,7 @@ export function UtilisateursPage() {
    */
   const [invitations, setInvitations] = useState<ListeInvitations | null>(null);
   const [invitee, setInvitee] = useState<string | null>(null);
+  const [envoyeParCourriel, setEnvoyeParCourriel] = useState<string | null>(null);
 
   const charger = async () => {
     try {
@@ -144,6 +145,23 @@ export function UtilisateursPage() {
       setDeconnecte(u.email);
     } catch (err) {
       setErreurChargement(err instanceof ApiError ? err.message : 'Déconnexion impossible');
+    }
+  };
+
+  /**
+   * RÉINITIALISER PAR COURRIEL (second tour, BLOQUANT 1) · pour une personne
+   * qui a d'autres dossiers · le mot de passe tiré au sort part à sa seule
+   * adresse, l'écran n'en voit rien.
+   */
+  const reinitialiserParCourriel = async (u: Utilisateur) => {
+    if (!window.confirm(`Envoyer un mot de passe provisoire à ${u.email} ? Ses sessions seront fermées.`)) return;
+    try {
+      await api.post(`/utilisateurs/${u.id}/reinitialiser-par-courriel`, {});
+      setDeconnecte(null);
+      setReinitFait(null);
+      setEnvoyeParCourriel(u.email);
+    } catch (err) {
+      setErreurChargement(err instanceof ApiError ? err.message : 'Réinitialisation impossible');
     }
   };
 
@@ -233,6 +251,17 @@ export function UtilisateursPage() {
             Sessions de <strong>{deconnecte}</strong> fermées.
           </span>
           <button onClick={() => setDeconnecte(null)} aria-label="Fermer l'avis de déconnexion" className="font-bold hover:underline shrink-0">
+            Fermer
+          </button>
+        </div>
+      )}
+
+      {envoyeParCourriel && (
+        <div role="status" className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mb-2 max-w-[940px] flex justify-between gap-3">
+          <span>
+            Mot de passe provisoire envoyé à <strong>{envoyeParCourriel}</strong>.
+          </span>
+          <button onClick={() => setEnvoyeParCourriel(null)} className="font-bold hover:underline shrink-0">
             Fermer
           </button>
         </div>
@@ -350,6 +379,15 @@ export function UtilisateursPage() {
               >
                 Réinitialiser
               </button>
+              )}
+              {u.connexionTenueParLaPersonne && (
+                <button
+                  onClick={() => void reinitialiserParCourriel(u)}
+                  className="text-[11.5px] text-sel"
+                  title="Un mot de passe provisoire tiré au sort part à la seule adresse de la personne · vous n'en voyez rien. Son second facteur reste actif."
+                >
+                  Réinitialiser par courriel
+                </button>
               )}
               {/* Ni soi-même (Mon compte le fait sans perdre l'appareil en
                   cours), ni un compte désactivé, qui n'a plus de session. */}

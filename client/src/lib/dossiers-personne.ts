@@ -36,6 +36,8 @@ export interface InvitationRecue {
   dossier: string;
   role: RoleUtilisateur;
   expireLe: string;
+  /** Sur site, sans courriel · s'accepte depuis la session, sans code. */
+  sansCode?: boolean;
 }
 
 export const LIBELLES_ACCES: Record<NonNullable<DossierDeLaPersonne['acces']>, string> = {

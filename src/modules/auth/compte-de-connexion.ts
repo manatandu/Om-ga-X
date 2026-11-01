@@ -4,6 +4,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { horsCloisonnement } from '../../common/cloisonnement/contexte-cloisonnement';
 import { acteurCourant, ActeurAudit, dansContexteAudit } from '../../common/audit/contexte-audit';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { prendreLeVerrouDuDossier } from '../../common/audit/extension-audit';
 import type { PrismaService } from '../../common/prisma.service';
 import { LicenceService } from '../licence/licence.service';
 
@@ -302,19 +303,41 @@ export interface InvitationRecue {
   dossier: string;
   role: RoleUtilisateur;
   expireLe: Date;
+  /** Sur site, sans courriel · elle s'accepte depuis la session, sans code (M3). */
+  sansCode: boolean;
 }
+
+/**
+ * LE VERROU DU COMPTE DE CONNEXION (second tour, mineur 4) · le dossier du
+ * compte puis sa ligne (`FOR UPDATE`), dans cet ordre, comme tout acte audité
+ * (`extension-audit.ts`). Un geste d'administrateur qui décide sur « le compte
+ * a-t-il des appartenances » et l'acceptation d'une invitation, qui en crée
+ * une, le prennent tous deux · la décision et l'écriture ne se croisent plus.
+ */
+export async function verrouillerLeCompte(tx: Prisma.TransactionClient, compte: { id: string; tenantId: string }): Promise<void> {
+  await prendreLeVerrouDuDossier(tx, compte.tenantId);
+  await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${compte.id} FOR UPDATE`;
+}
+
+/** Les appartenances qui pointent ce compte · lues sous son verrou. */
+export async function aDesAppartenances(tx: Prisma.TransactionClient, compteId: string): Promise<boolean> {
+  return (await tx.user.count({ where: { compteDeConnexionId: compteId } })) > 0;
+}
+
+/** La personne est déjà utilisatrice du dossier · même phrase que la création (second tour, mineur 5). */
+export const MOTIF_DEJA_DANS_LE_DOSSIER = 'Cette adresse est déjà celle d’un utilisateur de ce dossier';
 
 /** Les invitations en attente adressées à la personne · nom du dossier, rôle, échéance. */
 export async function invitationsRecues(prisma: PrismaService, adresse: string, maintenant = new Date()): Promise<InvitationRecue[]> {
   const lues = await horsCloisonnement('invitations · celles adressées à la personne de la session', () =>
     prisma.invitationDossier.findMany({
       where: { email: adresse, statut: StatutInvitationDossier.EN_ATTENTE, expireLe: { gt: maintenant } },
-      select: { id: true, role: true, expireLe: true, tenant: { select: { nom: true } } },
+      select: { id: true, role: true, expireLe: true, acceptableSansCode: true, tenant: { select: { nom: true } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
     }),
   );
-  return lues.map((i) => ({ id: i.id, dossier: i.tenant.nom, role: i.role, expireLe: i.expireLe }));
+  return lues.map((i) => ({ id: i.id, dossier: i.tenant.nom, role: i.role, expireLe: i.expireLe, sansCode: i.acceptableSansCode }));
 }
 
 export const MOTIF_INVITATION_INVALIDE = 'Invitation introuvable, déjà utilisée ou échue · demandez-en une nouvelle.';
@@ -326,6 +349,21 @@ async function invitationValable(prisma: PrismaService | Prisma.TransactionClien
     prisma.invitationDossier.findUnique({ where: { empreinteJeton: empreinte } }),
   );
   if (!inv || inv.statut !== StatutInvitationDossier.EN_ATTENTE || inv.expireLe <= maintenant) throw new NotFoundException(MOTIF_INVITATION_INVALIDE);
+  return inv;
+}
+
+/**
+ * L'INVITATION SANS COURRIEL QUE DÉSIGNE SON IDENTIFIANT · sur site seulement
+ * (`acceptableSansCode`, M3) · celle qui porte un code envoyé ne s'accepte
+ * jamais sans lui.
+ */
+async function invitationSansCodeValable(prisma: PrismaService | Prisma.TransactionClient, id: string, maintenant: Date) {
+  const inv = await horsCloisonnement('invitations · une invitation sans courriel, sur le poste', () =>
+    prisma.invitationDossier.findUnique({ where: { id } }),
+  );
+  if (!inv || !inv.acceptableSansCode || inv.statut !== StatutInvitationDossier.EN_ATTENTE || inv.expireLe <= maintenant) {
+    throw new NotFoundException(MOTIF_INVITATION_INVALIDE);
+  }
   return inv;
 }
 
@@ -355,24 +393,65 @@ export async function accepterInvitation(
   maintenant = new Date(),
 ): Promise<{ dossierId: string }> {
   const inv = await invitationValable(prisma, jeton, maintenant);
+  return accepter(prisma, compte, inv, motDePasseTire, select, maintenant);
+}
+
+/** SUR SITE, SANS COURRIEL (M3) · la session de la personne seule, sur une invitation `acceptableSansCode`. */
+export async function accepterInvitationSurPlace(
+  prisma: PrismaService,
+  compte: { id: string; email: string; tenantId: string },
+  invitationId: string,
+  motDePasseTire: string,
+  select: Prisma.UserSelect,
+  maintenant = new Date(),
+): Promise<{ dossierId: string }> {
+  const inv = await invitationSansCodeValable(prisma, invitationId, maintenant);
+  return accepter(prisma, compte, inv, motDePasseTire, select, maintenant);
+}
+
+async function accepter(
+  prisma: PrismaService,
+  compte: { id: string; email: string; tenantId: string },
+  inv: { id: string; email: string; tenantId: string; role: RoleUtilisateur },
+  motDePasseTire: string,
+  select: Prisma.UserSelect,
+  maintenant: Date,
+): Promise<{ dossierId: string }> {
   if (inv.email !== compte.email) throw new NotFoundException(MOTIF_INVITATION_INVALIDE);
-  return horsCloisonnement('invitations · acceptation par la personne invitée', () =>
-    dansContexteAudit({ acteurEmail: compte.email, tenantId: inv.tenantId, adresseIp: acteurCourant()?.adresseIp }, () =>
-      transactionJournalisee(prisma, async (tx) => {
-        await decider(tx, inv.id, StatutInvitationDossier.ACCEPTEE, maintenant);
-        const deja = await tx.user.findFirst({ where: { tenantId: inv.tenantId, email: inv.email }, select: { id: true } });
-        if (!deja) {
+  try {
+    return await horsCloisonnement('invitations · acceptation par la personne invitée', () =>
+      dansContexteAudit({ acteurEmail: compte.email, tenantId: inv.tenantId, adresseIp: acteurCourant()?.adresseIp }, () =>
+        transactionJournalisee(prisma, async (tx) => {
+          // Le compte d'abord, sous son verrou (mineur 4) · un administrateur
+          // qui juge « ce compte n'a pas d'autres dossiers » attend la fin.
+          await verrouillerLeCompte(tx, compte);
+          await decider(tx, inv.id, StatutInvitationDossier.ACCEPTEE, maintenant);
+          const deja = await tx.user.findFirst({ where: { tenantId: inv.tenantId, email: inv.email }, select: { id: true } });
+          if (deja) throw new ConflictException(MOTIF_DEJA_DANS_LE_DOSSIER);
           await creerAppartenance(tx, { tenantId: inv.tenantId, email: inv.email, motDePasse: motDePasseTire, role: inv.role, compteDeConnexionId: compte.id }, select);
-        }
-        return { dossierId: inv.tenantId };
-      }),
-    ),
-  );
+          return { dossierId: inv.tenantId };
+        }),
+      ),
+    );
+  } catch (e) {
+    // La course de deux acceptations, ou d'une création dans le dossier · la
+    // contrainte tranche, et la réponse le dit en 409, jamais en 500 (mineur 5).
+    if ((e as { code?: string })?.code === 'P2002') throw new ConflictException(MOTIF_DEJA_DANS_LE_DOSSIER);
+    throw e;
+  }
 }
 
 /** REFUSER · même preuve que l'acceptation · un tiers qui tiendrait le compte sans la boîte ne refuse rien. */
 export async function refuserInvitation(prisma: PrismaService, compte: { email: string }, jeton: string, maintenant = new Date()): Promise<void> {
-  const inv = await invitationValable(prisma, jeton, maintenant);
+  await refuser(prisma, compte, await invitationValable(prisma, jeton, maintenant), maintenant);
+}
+
+/** SUR SITE, SANS COURRIEL · la session de la personne seule. */
+export async function refuserInvitationSurPlace(prisma: PrismaService, compte: { email: string }, invitationId: string, maintenant = new Date()): Promise<void> {
+  await refuser(prisma, compte, await invitationSansCodeValable(prisma, invitationId, maintenant), maintenant);
+}
+
+async function refuser(prisma: PrismaService, compte: { email: string }, inv: { id: string; email: string; tenantId: string }, maintenant: Date): Promise<void> {
   if (inv.email !== compte.email) throw new NotFoundException(MOTIF_INVITATION_INVALIDE);
   await horsCloisonnement('invitations · refus par la personne invitée', () =>
     dansContexteAudit({ acteurEmail: compte.email, tenantId: inv.tenantId }, () =>

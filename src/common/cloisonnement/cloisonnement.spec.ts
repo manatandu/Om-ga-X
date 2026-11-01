@@ -348,6 +348,9 @@ describe('balayage du code · toute collection porte sa borne', () => {
       // ligne de la session ou l'adresse de la connexion, jamais par un
       // dossier reçu d'un appelant.
       'src/modules/auth/compte-de-connexion.ts',
+      // Second tour · la réinitialisation du compte de connexion d'une personne
+      // et son verrou, désignés par la ligne que l'acteur tient dans son dossier.
+      'src/modules/auth/reinitialisation-du-compte.ts',
       // La demande d'information de la page publique (ligne commercial-site) ·
       // une porte sans session, qui trouve le dossier de l'éditeur et y met le
       // message en file pour les opérateurs, rien d'autre.

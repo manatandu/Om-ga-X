@@ -1,5 +1,6 @@
 import { api, setCsrf } from './api';
 import { marquerDossierChoisi } from './dossiers-personne';
+import { adopterDossierDeLEcran } from './dossier-de-l-ecran';
 
 /**
  * Entrer dans un dossier. Le serveur pose la session neuve en cookie et rend
@@ -15,6 +16,9 @@ export async function entrerDansLeDossier(
   },
 ): Promise<void> {
   const r = await api.post<{ change: boolean; csrfToken?: string }>('/auth/changer-dossier', { dossierId });
+  // Adopté AVANT le jeton · le jeton neuf écrit dans le stockage partagé
+  // réveille les autres onglets, qui doivent y lire le dossier neuf.
+  adopterDossierDeLEcran(dossierId);
   if (r.csrfToken) setCsrf(r.csrfToken);
   marquerDossierChoisi();
   recharger();
