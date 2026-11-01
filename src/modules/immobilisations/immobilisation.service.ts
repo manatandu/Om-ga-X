@@ -644,6 +644,11 @@ export type InterneCreationFiche = {
   };
 };
 
+/** Le jour donné est-il le dernier de son mois (UTC, comme `moisEntre`) ? */
+function estDernierJourDuMois(d: Date): boolean {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).getUTCDate() === 1;
+}
+
 @Injectable()
 export class ImmobilisationService {
   constructor(
@@ -3126,9 +3131,16 @@ export class ImmobilisationService {
       };
     }
     const depart = entree.derniereRevisionRealiseeLe ?? entree.dateAcquisition;
-    const MS_PAR_AN = 365.25 * 24 * 3600 * 1000;
-    const anneesEcoulees = Math.max(0, (entree.dateReconstitution.getTime() - depart.getTime()) / MS_PAR_AN);
-    if (anneesEcoulees >= intervalleRevisionsAns) {
+    // EN MOIS, JAMAIS EN JOURS · l'amortissement du module court « à compter
+    // du premier jour du mois de mise en service » (loi n° 23/053, art. 30 et
+    // 34), et le mois est l'unité de l'exercice (AUDCIF art. 7). Le mois de
+    // départ compte entier ; celui de la reconstitution seulement s'il est
+    // achevé (dernier jour). Divisé par 365,25 jours, un exercice civil
+    // bissextile ne faisait que 0,9993 an.
+    const moisEntames = estDernierJourDuMois(entree.dateReconstitution) ? 0 : 1;
+    const moisEcoules = Math.max(0, moisEntre(depart, entree.dateReconstitution) - moisEntames);
+    const anneesEcoulees = moisEcoules / 12;
+    if (moisEcoules > intervalleRevisionsAns * 12) {
       return {
         possible: false,
         motif:

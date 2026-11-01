@@ -43,6 +43,23 @@ describe('l’estimation du ch. 5 § 1', () => {
     expect(r.valeurNetteEstimee).toBe(5_000_000);
   });
 
+  it('compte en MOIS, jamais en jours · une année bissextile ne change rien', () => {
+    // 2024 a 366 jours · divisée par 365,25, l'année entière ne faisait que
+    // 0,9993 an, et la moitié amortie tombait à 4 996 578. Le module compte
+    // l'amortissement en mois (« à compter du premier jour du mois de mise en
+    // service », loi n° 23/053 art. 30 et 34 ; AUDCIF art. 7) · douze mois
+    // écoulés à la clôture du 31 décembre sont une année.
+    const r = ImmobilisationService.reconstitutionRevisionMajeure({
+      ...base,
+      dateAcquisition: new Date('2024-01-01T00:00:00.000Z'),
+      dateReconstitution: new Date('2024-12-31T00:00:00.000Z'),
+    });
+    expect(r.possible).toBe(true);
+    if (!r.possible) return;
+    expect(r.anneesEcoulees).toBe(1);
+    expect(r.amortissementEstime).toBe(5_000_000);
+  });
+
   it('rend le coût entier le jour de l’acquisition · rien n’est encore couru', () => {
     const r = ImmobilisationService.reconstitutionRevisionMajeure({
       ...base,
