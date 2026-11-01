@@ -1301,6 +1301,10 @@ export class PersonnelService {
     // n'est assujetti qu'aux risques professionnels (loi n° 16/009, art. 4).
     // Null sans salarié ou sans contrat couvrant le mois, et la réserve le dit.
     let regimeCnss: RegimeCnss | null = null;
+    // La classe du CONTRAT du mois · lue pour la quotité de l'article 114 quand
+    // la saisie ne la dit pas (simulation du 2026-10-08, relevé mineur · le
+    // bulletin d'un salarié dont le contrat porte sa classe s'abstenait).
+    let classeDuContrat: number | null = null;
     if (salarieId) {
       const salarie = await this.prisma.salarie.findFirst({
         where: { id: salarieId, tenantId },
@@ -1308,13 +1312,16 @@ export class PersonnelService {
           nom: true,
           nomConjoint: true,
           _count: { select: { enfants: true } },
-          contrats: { select: { id: true, type: true, dateEntreeEnVigueur: true, dateFin: true } },
+          contrats: {
+            select: { id: true, type: true, dateEntreeEnVigueur: true, dateFin: true, classeProfessionnelle: true },
+          },
         },
       });
       if (!salarie) throw new NotFoundException('Salarié introuvable dans ce dossier.');
       const contratDuMois = contratCouvrantLeMois(salarie.contrats ?? [], dto.moisDePaie);
       if (contratDuMois) {
         regimeCnss = contratDuMois.type === TypeContratTravail.APPRENTISSAGE ? 'APPRENTI' : 'TRAVAILLEUR';
+        classeDuContrat = contratDuMois.classeProfessionnelle ?? null;
       }
       // ANOMALIE DU TEXTE, signalée (passe F5) · l'art. 124, al. 2 écrit que
       // ne sont à charge que ceux qui « n'aient pas bénéficié [...] des
@@ -1487,7 +1494,9 @@ export class PersonnelService {
       moisDePaie: dto.moisDePaie,
       annexesSmig,
       remunerationFc: deuxAssiettes.assietteSocialeFc,
-      classeProfessionnelle: dto.classeProfessionnelle ?? null,
+      // La saisie prime ; à défaut, la classe du contrat du mois (décret
+      // n° 25/22, art. 4 · celle que le contrat oppose au minimum, P1b).
+      classeProfessionnelle: dto.classeProfessionnelle ?? classeDuContrat,
       // Non chiffrées, elles valent null et la quotité s'abstient · lues
       // comme zéro, elles gonflaient la part saisissable (audit final F104).
       retenuesFiscalesFc: retenue ? retenue.retenueFc : null,

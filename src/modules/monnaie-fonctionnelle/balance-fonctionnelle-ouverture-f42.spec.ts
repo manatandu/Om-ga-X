@@ -142,7 +142,7 @@ describe('F42 · l’ouverture est la clôture du même jeu pour l’exercice pr
       '52100000': [1000, 0, 1000],
       '70100000': [0, 1000, -1000],
     });
-    expect(r.totaux).toEqual({ debit: 2000, credit: 2000, ecartDeConversion: 0, dontOuverture: 0 });
+    expect(r.totaux).toEqual({ debit: 2000, credit: 2000, ecartDeConversion: 0, dontOuverture: 0, arrondiDesLignes: 0 });
     expect(r.lignes.find((x) => x.numero === '24410000')).toMatchObject({ ouvertureDebit: 1000 });
     expect(r.lignes.find((x) => x.numero === '70100000')).toMatchObject({ ouvertureDebit: 0, ouvertureCredit: 0 });
     // Seuls les mouvements de 2027 sont comptés comme lignes converties.

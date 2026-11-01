@@ -1436,6 +1436,15 @@ export class AcquerirAPrixGlobalDto {
   @Min(1)
   @Max(100)
   dureeFondsCommercialAns?: number;
+
+  /**
+   * FONDS_DE_COMMERCE seulement · la date à laquelle le fonds commercial est
+   * en état d'être exploité. Sans elle la fiche naît sans date de mise en
+   * service, et une durée déclarée ne donne aucune dotation.
+   */
+  @IsOptional()
+  @IsDateString()
+  dateMiseEnServiceFondsCommercial?: string;
 }
 
 /**

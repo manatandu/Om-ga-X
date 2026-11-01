@@ -883,7 +883,7 @@ function rubriqueDepartAMiPreavis(
     reserve = 'Les jours restant à courir ne peuvent être négatifs.';
   } else if (restants > moitie) {
     reserve =
-      `${restants} jours restant à courir sur un préavis de ${jours} · le travailleur est parti AVANT la moitié (${moitie} jours). ` +
+      `${restants} jours restant à courir sur un préavis de ${jours} · le travailleur est parti AVANT la moitié (${moitie.toLocaleString('fr-FR')} jours). ` +
       "L'article 66 ne l'autorise à cesser le travail qu'« à l'expiration de la moitié du délai de préavis » · ce départ est un préavis non observé par le travailleur (art. 63, al. 3), ou un départ pour un nouvel emploi (art. 67) s'il en justifie." +
       mentionDureeRetenue(params);
   } else if (jour === null && mensuelle === null) {
@@ -975,7 +975,7 @@ function rubriqueDepartPourNouvelEmploi(
     reserve = `Les jours restant à courir (${restants}) doivent être compris entre zéro et la durée du préavis (${jours}).`;
   } else if (restants <= moitie) {
     reserve =
-      `${restants} jours restant à courir sur un préavis de ${jours} · le travailleur est parti à la moitié (${moitie} jours) ou après. ` +
+      `${restants} jours restant à courir sur un préavis de ${jours} · le travailleur est parti à la moitié (${moitie.toLocaleString('fr-FR')} jours) ou après. ` +
       "L'article 66 lui garde alors « la rémunération et les allocations familiales pendant le temps restant à courir » ; l'article 67, qui les lui retire, ne se lit que pour un départ avant la moitié (lecture protectrice d'OmegaX, le texte ne disant pas à quoi le délai est « moindre »). " +
       'Déclarez le départ à mi-préavis.' +
       mentionDureeRetenue(params);

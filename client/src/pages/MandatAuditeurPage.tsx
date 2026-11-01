@@ -92,6 +92,11 @@ export function MandatAuditeurPage() {
   const [dateDesignation, setDateDesignation] = useState('');
   const [premierExercice, setPremierExercice] = useState(new Date().getFullYear());
   const [nombreExercices, setNombreExercices] = useState(3);
+  // Le rang n'est envoyé que s'il est SAISI · le serveur le compte sur le
+  // registre, par l'inscription au tableau (relecture du 2026-11-01). Compté
+  // ici d'après le nom, il faisait refuser un enregistrement juste.
+  const [rangSaisi, setRangSaisi] = useState('');
+  const [rangRetenu, setRangRetenu] = useState<number | null>(null);
   const [obligation, setObligation] = useState<Obligation | null>(null);
   const [fondement, setFondement] = useState<FondementInscription | null>(null);
   // Nomination initiale, ou mandat qui en continue un autre (art. 706 et 728).
@@ -133,25 +138,22 @@ export function MandatAuditeurPage() {
 
   async function enregistrer() {
     setErreur(null);
-    // Le rang se compte sur la liste LUE · sans elle, un renouvellement
-    // partirait au rang 1.
-    if (mandats === null) {
-      setErreur('La liste des mandats n’a pas pu être lue · le rang du mandat ne se compte pas sans elle.');
-      return;
-    }
+    setRangRetenu(null);
     try {
-      await api.post('/mandat-auditeur', {
+      const cree = await api.post<{ rang: number }>('/mandat-auditeur', {
         nom,
         inscriptionOrdre: inscription,
         organeDesignation: organe,
         dateDesignation,
         premierExercice: Number(premierExercice),
         nombreExercices: Number(nombreExercices),
-        rang: mandats.filter((m) => m.nom.trim() === nom.trim()).length + 1,
+        ...(rangSaisi.trim() ? { rang: Number(rangSaisi) } : {}),
         ...(succession && mandatOrigineId ? { natureSuccession: succession, mandatOrigineId } : {}),
       });
+      setRangRetenu(cree.rang);
       setNom('');
       setInscription('');
+      setRangSaisi('');
       await recharger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : "L'enregistrement n'a pas abouti.");
@@ -307,6 +309,17 @@ export function MandatAuditeurPage() {
                 }
               />
             </label>
+            <label className="text-[11.5px]">
+              Rang du mandat (facultatif)
+              <input
+                type="number"
+                className="w-full border border-border px-1.5 py-1 text-[11.5px]"
+                value={rangSaisi}
+                onChange={(e) => setRangSaisi(e.target.value)}
+                min={1}
+                placeholder="Lu au registre"
+              />
+            </label>
           </div>
 
           {duree && (
@@ -337,6 +350,7 @@ export function MandatAuditeurPage() {
           )}
 
           {erreur && <p className="text-[11.5px] text-danger mt-2">{erreur}</p>}
+          {rangRetenu !== null && <p className="text-[11.5px] mt-2">Mandat enregistré au rang {rangRetenu}.</p>}
           <button
             className="mt-2 border border-border px-2.5 py-1 text-[11.5px] disabled:opacity-50"
             disabled={Boolean(duree?.organeRefuse) || (Boolean(succession) && !mandatOrigineId)}

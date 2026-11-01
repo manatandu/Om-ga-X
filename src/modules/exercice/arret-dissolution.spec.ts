@@ -299,6 +299,14 @@ describe('annuler l’arrêt · une dissolution mal datée n’enferme plus le d
     expect(monde.tables.ecriture.find((e) => e.id === 'e7')!.exerciceId).toBe('l');
   });
 
+  it('une liquidation clôturée refuse d’abord, avant de nommer un acte de la période (relevé d)', async () => {
+    const monde = new Monde({
+      exercice: [arrete, { id: 'l', tenantId: 't1', dateDebut: jour(2026, 7, 1), dateFin: jour(2026, 12, 31), statut: 'CLOTURE' }],
+      reevaluationBilan: [{ id: 'rb', tenantId: 't1', exerciceId: 'l', ecritureId: 'x' }],
+    });
+    await expect(service(monde).annulerArretDissolution('t1', 'n')).rejects.toThrow('l’arrêt ne s’annule plus');
+  });
+
   it('une fin qui n’est pas un 31 décembre se ramène d’abord · issue dite', async () => {
     const monde = new Monde({
       exercice: [arrete, { id: 'l', tenantId: 't1', dateDebut: jour(2026, 7, 1), dateFin: jour(2027, 3, 31), statut: 'OUVERT' }],

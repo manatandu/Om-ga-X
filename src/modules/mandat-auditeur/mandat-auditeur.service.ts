@@ -92,7 +92,26 @@ export class MandatAuditeurService {
     },
   ) {
     const t = await this.dossier(tenantId);
-    const rang = dto.rang ?? 1;
+    // LE RANG SE LIT AUSSI SUR LE REGISTRE (simulation du 2026-10-08, relevé
+    // mineur) · un troisième mandat consécutif du MÊME auditeur passait dès
+    // que le cabinet ne disait pas le rang (1 par défaut). Le mandat de ce
+    // dossier, du même auditeur (même inscription au tableau), qui s'achève
+    // à l'exercice qui précède, fait de celui-ci son renouvellement · rang
+    // au moins le sien plus un. Contiguïté stricte seulement · c'est un
+    // plancher, il ne refuse jamais un mandat qu'un écart sépare du précédent.
+    //
+    // UN RANG DÉCLARÉ NE SE REMPLACE PAS EN SILENCE (relecture du 2026-11-01)
+    // · plus bas que celui du registre, il est refusé en nommant les deux ;
+    // non déclaré, le rang du registre est retenu et rendu avec le mandat.
+    const rangDuRegistre = await this.rangDuRegistre(tenantId, dto);
+    if (dto.rang !== undefined && dto.rang < rangDuRegistre) {
+      throw new BadRequestException(
+        `Rang déclaré ${dto.rang}, quand le registre de ce dossier en fait le mandat de rang ${rangDuRegistre} · ` +
+          'le même auditeur (même inscription au tableau) tient le mandat qui s’achève à l’exercice précédent. ' +
+          `Déclarez le rang ${rangDuRegistre}, ou corrigez le mandat précédent au registre.`,
+      );
+    }
+    const rang = dto.rang ?? rangDuRegistre;
 
     // REFUS 1 · L'INSCRIPTION AU TABLEAU DE L'ORDRE.
     //
@@ -180,6 +199,35 @@ export class MandatAuditeurService {
         natureSuccession: origine ? dto.natureSuccession! : null,
       },
     });
+  }
+
+  /** Rang que le registre impose · 1 sans mandat précédent contigu. */
+  private async rangDuRegistre(
+    tenantId: string,
+    dto: { inscriptionOrdre: string; premierExercice: number; mandatOrigineId?: string },
+  ): Promise<number> {
+    // Un remplacement ou un suppléant continue un mandat, il ne le renouvelle pas.
+    if (dto.mandatOrigineId) return 1;
+    const inscription = dto.inscriptionOrdre.trim();
+    if (!inscription) return 1;
+    // LE MANDAT POURSUIVI COMPTE (relecture du 2026-11-01) · un remplaçant
+    // ou un suppléant continue le mandat d'origine, qu'il ne renouvelle pas ·
+    // renouvelé à son tour, il renouvelle CE mandat, dont le rang est celui
+    // de l'origine (SYCEBNL art. 21, « nommé pour trois (3) exercices
+    // renouvelables une fois »). L'écarter du registre faisait repartir son
+    // renouvellement au rang 1.
+    const precedents = await this.prisma.mandatAuditeur.findMany({
+      where: { tenantId, inscriptionOrdre: inscription },
+      select: {
+        premierExercice: true,
+        nombreExercices: true,
+        rang: true,
+        mandatOrigine: { select: { rang: true } },
+      },
+    });
+    const contigu = precedents.filter((m) => m.premierExercice + m.nombreExercices === dto.premierExercice);
+    const rangPoursuivi = (m: (typeof precedents)[number]) => m.mandatOrigine?.rang ?? m.rang;
+    return contigu.length === 0 ? 1 : Math.max(...contigu.map(rangPoursuivi)) + 1;
   }
 
   /**

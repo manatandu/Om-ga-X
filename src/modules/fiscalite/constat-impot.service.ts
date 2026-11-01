@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { retirerLesLignesLibres } from '../comptabilite/lignes-libres';
 import { Prisma, StatutEcriture, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -156,8 +156,20 @@ export class ConstatImpotService {
       where: { tenantId, exerciceId, annuleeLe: { not: null } },
     });
     if (enPlace) {
-      const calcul = await this.fiscalite.resultatFiscal(tenantId, exerciceId);
-      const recalcule = ConstatImpotService.impotDeLExercice(calcul);
+      // LE CONSTAT EN PLACE RESTE VISIBLE ET ANNULABLE même quand le calcul
+      // refuse aujourd'hui (relevé du second tour d'A11, point 2 · forme qui a
+      // quitté l'impôt sur les sociétés, régime changé). Un refus nommé du
+      // calcul rend `impotRecalcule: null` avec son motif ; une panne, elle,
+      // remonte.
+      let recalcule: ReturnType<typeof ConstatImpotService.impotDeLExercice>;
+      let motifRecalcul: string | null = null;
+      try {
+        recalcule = ConstatImpotService.impotDeLExercice(await this.fiscalite.resultatFiscal(tenantId, exerciceId));
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        motifRecalcul = e.message;
+        recalcule = { impotDu: null, minimumApplique: false, tropPaye: 0, motifTotalisation: null, secondeCotisation: false };
+      }
       const montant = Number(enPlace.montantImpot);
       const tropPaye = Number(enPlace.tropPayeLiquidation ?? 0);
       // L'ÉCART DIT, JAMAIS CORRIGÉ · un retraitement ajouté après le clic, ou
@@ -177,6 +189,7 @@ export class ConstatImpotService {
           ecriture: enPlace.ecriture,
           createdAt: enPlace.createdAt,
           impotRecalcule: recalcule.impotDu,
+          motifRecalcul,
           ecartAvecCalcul: ecart,
           // Exercice de liquidation · le trop-payé constaté (D 441 / C 8994)
           // et celui que la totalisation rend aujourd'hui, l'écart dit.

@@ -7,6 +7,7 @@ import type { DecompteFinalDto, EmissionDecompteFinalDto, SimulationPaieDto } fr
 import {
   DecompteFinalDto as DecompteFinalDtoClasse,
   EmissionDecompteFinalDto as EmissionDecompteFinalDtoClasse,
+  MOTIF_ANCIENNETE_AU_CALCUL,
   MOTIF_ANCIENNETE_EXIGEE,
   MOTIF_MOIS_NON_COUVERTS_EXIGES,
 } from './dto/personnel.dto';
@@ -411,6 +412,13 @@ describe('A8 (B2) · ancienneté et mois non couverts exigés à l’ÉMISSION, 
     void anneesAnciennete;
     const erreurs = await validate(plainToInstance(DecompteFinalDtoClasse, reste));
     expect(JSON.stringify(erreurs)).not.toContain(MOTIF_ANCIENNETE_EXIGEE);
+  });
+
+  it('le calcul seul nomme l’ancienneté qui manque, jamais par le message brut du validateur', async () => {
+    const { anneesAnciennete, ...reste } = FAITS;
+    void anneesAnciennete;
+    const erreurs = await validate(plainToInstance(DecompteFinalDtoClasse, reste));
+    expect(JSON.stringify(erreurs)).toContain(MOTIF_ANCIENNETE_AU_CALCUL);
   });
 });
 

@@ -167,7 +167,14 @@ function service(
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 't', referentiel, formeJuridiqueSyscohada }) },
     exercice: { count: jest.fn().mockResolvedValue(nbExercices) },
     mandatAuditeur: {
-      findMany: jest.fn().mockResolvedValue([]),
+      // Honore le filtre · le registre du dossier, par inscription.
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { tenantId: string; inscriptionOrdre?: string } }) =>
+          Promise.resolve(
+            cree.filter((m) => where.inscriptionOrdre === undefined || m.inscriptionOrdre === where.inscriptionOrdre),
+          ),
+        ),
       // Honore le filtre · un mandat d'un autre dossier n'existe pas.
       findFirst: jest
         .fn()
@@ -219,6 +226,36 @@ describe('Enregistrement du mandat · ce que les textes refusent', () => {
     const { svc } = service(Referentiel.SYCEBNL, null);
     await expect(svc.enregistrer('t', { ...mandatValide, rang: 3 })).rejects.toThrow(/renouvelables UNE FOIS/i);
     await expect(svc.enregistrer('t', { ...mandatValide, rang: 2 })).resolves.toBeDefined();
+  });
+
+  it('REFUSE un troisième mandat consécutif du même auditeur, rang non dit (simulation du 2026-10-08)', async () => {
+    // Le rang par défaut valait 1 · trois mandats contigus du même cabinet
+    // passaient l'un après l'autre. Le registre fait le rang.
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    await svc.enregistrer('t', mandatValide);
+    await svc.enregistrer('t', { ...mandatValide, premierExercice: 2029 });
+    expect(cree[1].rang).toBe(2);
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2032 })).rejects.toThrow(/renouvelables UNE FOIS/i);
+    // Un autre auditeur, ou un mandat séparé par un écart, repart au rang 1.
+    await expect(
+      svc.enregistrer('t', { ...mandatValide, premierExercice: 2032, inscriptionOrdre: 'ONEC/EC/2020/007' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('REFUSE un rang déclaré plus bas que celui du registre, en nommant les deux (relecture du 2026-11-01)', async () => {
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    await svc.enregistrer('t', mandatValide);
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2029, rang: 1 })).rejects.toThrow(
+      /Rang déclaré 1, quand le registre .* rang 2/,
+    );
+    expect(cree).toHaveLength(1);
+  });
+
+  it('compte le mandat d’origine d’un remplaçant renouvelé · le renouvellement vise le mandat poursuivi', async () => {
+    const { svc, cree } = service(Referentiel.SYCEBNL, null);
+    // Le remplaçant a fini en 2028 un mandat d'origine de rang 2.
+    cree.push({ ...mandatValide, premierExercice: 2027, nombreExercices: 2, rang: 1, mandatOrigineId: 'o', mandatOrigine: { rang: 2 } });
+    await expect(svc.enregistrer('t', { ...mandatValide, premierExercice: 2029 })).rejects.toThrow(/renouvelables UNE FOIS/i);
   });
 
   it('N’INVENTE PAS cette limite pour une SARL', async () => {

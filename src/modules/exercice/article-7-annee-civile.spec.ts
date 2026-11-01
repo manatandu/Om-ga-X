@@ -156,6 +156,27 @@ describe('article 7 al. 4 · l’exercice de liquidation d’une société disso
     expect(espion.where?.statut).toBeUndefined();
   });
 
+  it('REFUSE l’exercice de liquidation d’une société dissoute SANS liquidation (AUSCGIE art. 201 al. 4)', async () => {
+    // Relevé de la seconde relecture du quatrième lot, point a · l'associé
+    // unique personne morale reçoit le patrimoine sans liquidation · aucun
+    // exercice ne suit l'exercice arrêté, ni civil ni de liquidation.
+    const sans = { ...SARL_DISSOUTE, associeUniquePersonneMorale: true, regimeLiquidation: null };
+    await expect(
+      service(1, null, undefined, sans).creer('t1', { dateDebut: '2026-07-01', dateFin: '2027-03-31', liquidation: true }),
+    ).rejects.toThrow('sans qu');
+    await expect(
+      service(1, null, undefined, sans).creer('t1', { dateDebut: '2027-01-01', dateFin: '2027-12-31' }),
+    ).rejects.toThrow('n’en ouvre aucun');
+    // En procédure collective, la liquidation reste ouverte (AUPCAP art. 53).
+    await expect(
+      service(1, null, undefined, { ...sans, regimeLiquidation: 'PROCEDURE_COLLECTIVE' }).creer('t1', {
+        dateDebut: '2026-07-01',
+        dateFin: '2027-03-31',
+        liquidation: true,
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('une société sans dissolution déclarée la déclare d’abord ; l’association garde le régime d’avant', async () => {
     await expect(
       service(1, null, undefined, { ...SARL_DISSOUTE, dateDissolution: null }).creer('t1', {

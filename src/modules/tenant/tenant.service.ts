@@ -1063,6 +1063,16 @@ export class TenantService {
           "un dossier d'entreprise n'en a pas.",
       );
     }
+    // Le Système minimal tient une comptabilité de TRÉSORERIE · son compte de
+    // résultat ne lit que des « Revenus encaissés » (SYCEBNL Partie 4 ch. 4,
+    // poste KA), la méthode de l'appel n'y a pas d'objet. Il recevait le motif
+    // des projets de développement (simulation du 2026-10-08, relevé mineur).
+    if (tenant.jeuEtatsFinanciersSycebnl === JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE) {
+      throw new BadRequestException(
+        'Le Système minimal de trésorerie ne lit que les revenus encaissés (SYCEBNL Partie 4 ch. 4, poste KA) · ' +
+          "les cotisations s'y comptabilisent à leur encaissement, la méthode ne se déclare pas.",
+      );
+    }
     if (tenant.jeuEtatsFinanciersSycebnl !== JeuEtatsFinanciersSycebnl.ASSOCIATIONS_ORDRES_PROFESSIONNELS) {
       throw new BadRequestException(
         "Les cotisations sont celles des ADHÉRENTS d'une association ou d'un ordre professionnel · " +

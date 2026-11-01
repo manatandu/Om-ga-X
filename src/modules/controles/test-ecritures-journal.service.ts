@@ -67,8 +67,11 @@ export class TestEcrituresJournalService {
         // les vire au 13, validé depuis l'audit final F4. Comptées, elles
         // ajoutaient un mouvement à chaque compte touché, et un compte de
         // charge servi deux fois cessait d'être « rarement utilisé » sur tout
-        // exercice clos.
-        where: { ecriture: { tenantId, exerciceId, estGenereeParCloture: false, ...HORS_SITUATION } },
+        // exercice clos. L'à-nouveau provisoire non plus, comme la sélection
+        // plus bas · il recopie le report de N-1 (relecture du 2026-11-01).
+        where: {
+          ecriture: { tenantId, exerciceId, estGenereeParCloture: false, estANouveauProvisoire: false, ...HORS_SITUATION },
+        },
         _count: { _all: true },
       }),
     ]);
@@ -142,7 +145,12 @@ export class TestEcrituresJournalService {
         this.prisma.ecriture.findMany({
           // Jamais une écriture de situation · elle n'est pas au livre-journal
           // et l'auditeur n'a rien à y tester (ligne sage-l1, fonction 12).
-          where: { tenantId, exerciceId, ...HORS_SITUATION },
+          // Ni les écritures que la clôture engendre (solde des comptes de
+          // gestion, report à-nouveau), ni l'à-nouveau provisoire · personne
+          // ne les saisit, elles recopient des soldes déjà au livre-journal
+          // (simulation du 2026-10-08, relevé mineur · l'écriture de clôture
+          // sortait retenue en fin de période et en montant rond).
+          where: { tenantId, exerciceId, estGenereeParCloture: false, estANouveauProvisoire: false, ...HORS_SITUATION },
           include: { lignes: { include: { compte: { select: { numero: true, intitule: true } } } }, journal: true },
           ...pageApres(curseur, LOT_ECRITURES),
         }),

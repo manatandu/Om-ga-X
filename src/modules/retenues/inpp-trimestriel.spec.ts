@@ -1,3 +1,4 @@
+import { BadRequestException, Logger } from '@nestjs/common';
 import { RetenuesService } from './retenues.service';
 import { PrismaService } from '../../common/prisma.service';
 import { NATURES_RETENUES } from './correspondance-retenues';
@@ -336,6 +337,31 @@ describe('Le solde d’ouverture de l’INPP et de l’ONEM se ventile sur l’e
     const n = inppOnem(await deuxExercices(70_000).registre('t1', { exerciceId: 'e27', dateReference: '2027-02-01' }));
     expect(n.mois.filter((m) => m.enRetard).reduce((s, m) => s + m.solde, 0)).toBe(67_000);
     expect(n.moisEnRetard).toBe(2);
+  });
+
+  const lectureN1Refusee = (erreur: Error) => {
+    const svc = deuxExercices(70_000);
+    const prisma = (svc as unknown as { prisma: { ligneEcriture: { findMany: jest.Mock } } }).prisma;
+    const lire = prisma.ligneEcriture.findMany.getMockImplementation()!;
+    prisma.ligneEcriture.findMany.mockImplementation((a: { where: { ecriture: { exerciceId?: string } } }) =>
+      a.where.ecriture.exerciceId === 'e26' ? Promise.reject(erreur) : lire(a),
+    );
+    return svc;
+  };
+
+  it('une perte de connexion en lisant l’exercice précédent REMONTE · jamais un registre plausible sur une base muette', async () => {
+    const svc = lectureN1Refusee(new Error('connexion perdue'));
+    await expect(svc.registre('t1', { exerciceId: 'e27', dateReference: '2027-01-16' })).rejects.toThrow('connexion perdue');
+  });
+
+  it('une lecture de l’exercice précédent REFUSÉE retombe sur le bloc, et le dit (relevé de la ligne INPP trimestriel)', async () => {
+    const svc = lectureN1Refusee(new BadRequestException('lecture refusée'));
+    const erreur = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const r = await svc.registre('t1', { exerciceId: 'e27', dateReference: '2027-01-16' });
+    const n = inppOnem(r) as NatureLue & { mentionOuvertureNonVentilee: string | null };
+    expect(n.mentionOuvertureNonVentilee).toContain("n'a pas pu être lu");
+    expect(erreur).toHaveBeenCalled();
+    erreur.mockRestore();
   });
 
   it('une ouverture que l’exercice précédent ne rend pas au centime reste en bloc, au trimestre, et c’est dit', async () => {

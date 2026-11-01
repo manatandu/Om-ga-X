@@ -3365,6 +3365,8 @@ export interface PlanningCloture {
     annulationProposee?: boolean;
     rattachementPropose?: boolean;
     exerciceDeLiquidation: boolean;
+    /** Faux · société dissoute sans liquidation (AUSCGIE art. 201 al. 4), aucun exercice de liquidation proposé. */
+    liquidationOuverte?: boolean;
     dateClotureLiquidation: string | null;
     actesDeLaPeriodeARetirer?: string[];
   } | null;
@@ -5306,6 +5308,8 @@ export interface BalanceFonctionnelle {
     ecartDeConversion: number;
     /** La part de l'écart reprise à l'ouverture, née des exercices précédents. */
     dontOuverture: number;
+    /** L'arrondi au centime des lignes servies, dit à part de l'écart de conversion. */
+    arrondiDesLignes: number;
   };
   origine: {
     lignes: number;

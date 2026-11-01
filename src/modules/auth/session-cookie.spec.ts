@@ -70,6 +70,21 @@ describe('JwtStrategy · contrôle CSRF sur le cookie de session', () => {
     expect(u.userId).toBe('u1');
   });
 
+  it('le cookie porte le jeton même quand un en-tête Authorization l’accompagne · le CSRF reste exigé', async () => {
+    // Le cookie est lu EN PREMIER (`jwtFromRequest`) · c'est lui qui
+    // authentifie. Exempter la requête sur la seule PRÉSENCE de l'en-tête
+    // laissait une mutation portée par le cookie sans contrôle (relevé de
+    // sécurité du 2026-10-09, fermé jusque-là par CORS seul).
+    await expect(
+      strategie().validate(requete({ method: 'POST', cookie: true, bearer: true }), charge),
+    ).rejects.toThrow(ForbiddenException);
+    const u = await strategie().validate(
+      requete({ method: 'POST', cookie: true, bearer: true, csrf: 'abc123' }),
+      charge,
+    );
+    expect(u.userId).toBe('u1');
+  });
+
   it('un jeton d’avant la migration (sans claim csrf) est refusé sur une mutation cookie', async () => {
     await expect(
       strategie().validate(requete({ method: 'POST', cookie: true, csrf: 'abc123' }), { sub: 'u1' }),

@@ -106,6 +106,8 @@ describe("A9 · article 66 · le départ à mi-préavis, et l'employeur doit le 
     const p = v.rubriques.find((r) => r.cle === CLE_REMUNERATION_PREAVIS_RESTANT)!;
     expect(p.montantFc).toBeNull();
     expect(p.reserve).toContain('AVANT la moitié');
+    // Relevé A9 (7) · la moitié s'écrit à la française, jamais « 17.5 ».
+    expect(p.reserve).toContain('(17,5 jours)');
     // M5 · sans durée retenue, la moitié vient du plancher, et c'est dit.
     expect(p.reserve).toContain('déclarez la durée retenue');
     expect(v.totalBrutFc).toBeNull();

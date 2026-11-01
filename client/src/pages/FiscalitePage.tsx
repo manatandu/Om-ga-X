@@ -1158,10 +1158,15 @@ function OrigineDeficits({
   lireNombre: (v: string) => number | null;
   enregistrer: (origines: { dateFin: string; montant: number }[] | null) => void;
 }) {
-  const [lignes, setLignes] = useState<{ dateFin: string; montant: string }[]>(
-    (origines ?? []).map((o) => ({ dateFin: o.dateFin, montant: String(o.montant) })),
+  // Relevés de la ligne des cas chiffrés de l'IS · une clé STABLE par ligne
+  // (l'index faisait passer la saisie d'une ligne retirée à la suivante), et
+  // « Enregistrer » sans objet tant qu'il n'y a ni ligne ni origine à retirer.
+  const prochaineCle = useRef(0);
+  const [lignes, setLignes] = useState<{ cle: number; dateFin: string; montant: string }[]>(() =>
+    (origines ?? []).map((o) => ({ cle: prochaineCle.current++, dateFin: o.dateFin, montant: String(o.montant) })),
   );
   const valides = lignes.every((l) => /^\d{4}-\d{2}-\d{2}$/.test(l.dateFin) && (lireNombre(l.montant) ?? 0) > 0);
+  const sansObjet = lignes.length === 0 && origines === null;
   return (
     <div className="mt-2 text-[11.5px]">
       <div className="text-[11px] font-semibold text-text-dim flex items-center gap-1.5">
@@ -1176,7 +1181,7 @@ function OrigineDeficits({
         <div className="text-warning mt-1">Origine non déclarée · report borné par prudence dans les exercices suivants</div>
       )}
       {lignes.map((l, i) => (
-        <div key={i} className="flex items-center gap-2 mt-1">
+        <div key={l.cle} className="flex items-center gap-2 mt-1">
           <input
             type="date"
             value={l.dateFin}
@@ -1198,6 +1203,7 @@ function OrigineDeficits({
             disabled={envoi}
             onClick={() => setLignes(lignes.filter((_, j) => j !== i))}
             className="text-[11px] text-text-dim hover:text-danger"
+            aria-label={`Retirer l’exercice déficitaire ${l.dateFin || `n° ${i + 1}`}`}
           >
             Retirer
           </button>
@@ -1207,14 +1213,14 @@ function OrigineDeficits({
         <button
           type="button"
           disabled={envoi}
-          onClick={() => setLignes([...lignes, { dateFin: '', montant: '' }])}
+          onClick={() => setLignes([...lignes, { cle: prochaineCle.current++, dateFin: '', montant: '' }])}
           className="text-[11px] border border-border rounded-[3px] px-2 py-[2px]"
         >
           Ajouter un exercice
         </button>
         <button
           type="button"
-          disabled={envoi || !valides}
+          disabled={envoi || !valides || sansObjet}
           onClick={() =>
             enregistrer(
               lignes.length === 0 ? null : lignes.map((l) => ({ dateFin: l.dateFin, montant: lireNombre(l.montant) ?? 0 })),

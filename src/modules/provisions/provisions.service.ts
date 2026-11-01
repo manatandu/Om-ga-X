@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { NatureProvision, Prisma, Referentiel, StatutProvision } from '@prisma/client';
+import { NatureProvision, Prisma, Referentiel, StatutExercice, StatutProvision } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { notePassifsEventuelsDuDossier } from '../notes-annexes/passifs-eventuels-en-note';
@@ -716,6 +716,28 @@ export class ProvisionsService {
     exerciceCibleId: string,
     utilisateur: string,
   ) {
+    // LE REPORT VA VERS L'EXERCICE QUI SUIT, ENCORE OUVERT (simulation du
+    // 2026-10-08, relevé mineur) · rien n'empêchait de « reporter » vers un
+    // exercice ANTÉRIEUR, clos, dont le registre recevait des ouvertures
+    // venues de l'avenir. L'ouverture du § 5.3 est celle de l'exercice qui
+    // commence après la clôture lue, et un exercice clos ne se retouche pas
+    // (AUDCIF art. 20, al. 3).
+    const exercices = await this.prisma.exercice.findMany({
+      where: { tenantId, id: { in: [exerciceSourceId, exerciceCibleId] } },
+      select: { id: true, dateDebut: true, dateFin: true, statut: true },
+    });
+    const source = exercices.find((e) => e.id === exerciceSourceId);
+    const cible = exercices.find((e) => e.id === exerciceCibleId);
+    if (!source || !cible) throw new NotFoundException('Exercice introuvable dans ce dossier');
+    if (cible.dateDebut.getTime() <= source.dateFin.getTime()) {
+      throw new BadRequestException(
+        "Le report se fait vers l'exercice qui SUIT celui dont on reprend la clôture · l'exercice choisi commence " +
+          'avant sa fin.',
+      );
+    }
+    if (cible.statut !== StatutExercice.OUVERT) {
+      throw new BadRequestException("L'exercice de destination est clôturé · son registre ne se modifie plus (AUDCIF art. 20, al. 3).");
+    }
     const sources = await this.prisma.provisionRisqueCharge.findMany({
       where: { tenantId, exerciceId: exerciceSourceId },
     });

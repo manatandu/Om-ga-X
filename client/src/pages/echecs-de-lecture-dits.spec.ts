@@ -79,10 +79,10 @@ describe('mandat · un échec n’est pas une absence de mandat (F184)', () => {
     expect(vide).toBeGreaterThan(lecture);
   });
 
-  it('le rang ne se compte jamais sur une liste non lue', () => {
+  it('le rang ne se compte jamais à l’écran · le serveur le lit au registre (relecture du 2026-11-01)', () => {
     const debut = source.indexOf('async function enregistrer()');
-    const corps = source.slice(debut, source.indexOf('await api.post', debut));
-    expect(corps).toContain('if (mandats === null) {');
+    const corps = source.slice(debut, source.indexOf('async function', debut + 10));
+    expect(corps).not.toContain('mandats.filter(');
   });
 });
 

@@ -74,7 +74,18 @@ function service(referentiel: Referentiel, lignes: Record<string, unknown>[] = [
   ];
   const prisma = {
     tenant: { findFirst: jest.fn().mockResolvedValue({ referentiel, jeuEtatsFinanciersSycebnl: null, systemeComptableSyscohada: null }) },
-    exercice: { findFirst: jest.fn().mockResolvedValue({ dateFin: new Date('2026-12-31') }) },
+    exercice: {
+      findFirst: jest.fn().mockResolvedValue({ dateFin: new Date('2026-12-31') }),
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; id: { in: string[] } } }) =>
+        [
+          { id: 'ex1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'CLOTURE' },
+          { id: 'ex2', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'), statut: 'OUVERT' },
+          { id: 'n', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'CLOTURE' },
+          { id: 'n1', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31'), statut: 'OUVERT' },
+          { id: 'ex0', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31'), statut: 'CLOTURE' },
+        ].filter((e) => where.tenantId === 't1' && where.id.in.includes(e.id)),
+      ),
+    },
     compte: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
         comptes.find((c) => c.id === where.id && c.tenantId === where.tenantId) ?? null,

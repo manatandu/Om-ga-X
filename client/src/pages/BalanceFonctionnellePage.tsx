@@ -166,9 +166,17 @@ export function BalanceFonctionnellePage() {
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums">{montant(balance.totaux.debit)}</td>
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums">{montant(balance.totaux.credit)}</td>
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums">
-                    {montant(balance.totaux.ecartDeConversion)}
+                    {montant(balance.totaux.ecartDeConversion + (balance.totaux.arrondiDesLignes ?? 0))}
                   </td>
                 </tr>
+                {(balance.totaux.arrondiDesLignes ?? 0) !== 0 && (
+                  <tr className="text-text-dim">
+                    <td className="px-2.5 py-1" colSpan={4}>
+                      Arrondi au centime des lignes converties
+                    </td>
+                    <td className="px-2.5 py-1 text-right font-mono tabular-nums">{montant(balance.totaux.arrondiDesLignes)}</td>
+                  </tr>
+                )}
               </tfoot>
             </table>
           </div>

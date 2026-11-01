@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 import {
   ArrayMaxSize,
   IsArray,
@@ -73,7 +74,7 @@ export class ReclasserCreanceDto extends MotifEtPiecesDto {
    * Les factures que le reclassement reprend (ligne A7 bis) · facultatives
    * ici, désignables ensuite. Rien n'est lettré (A7 ter).
    */
-  @IsOptional()
+  @FacultatifNonNul('Les factures ne peuvent pas valoir null · omettez le champ ou envoyez une liste.')
   @IsArray()
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
@@ -93,12 +94,12 @@ export class ReclasserCreanceDto extends MotifEtPiecesDto {
   compteCreanceId!: string;
 
   /** Le 416 choisi · absent, le serveur prend celui qu'il propose. */
-  @IsOptional()
+  @FacultatifNonNul('Le compte 416 ne peut pas valoir null · omettez le champ pour garder la proposition.')
   @IsUUID('4')
   compte416Id?: string;
 
   /** m5 · le 491 choisi sous la racine de la nature · absent, le premier de détail. */
-  @IsOptional()
+  @FacultatifNonNul('Le compte 491 ne peut pas valoir null · omettez le champ pour garder la proposition.')
   @IsUUID('4')
   compte491Id?: string;
 
@@ -137,7 +138,7 @@ export class PerteCreanceDto extends MotifEtPiecesDto {
   montant!: number;
 
   /** Le 651 choisi · absent, le serveur prend celui qu'il propose. */
-  @IsOptional()
+  @FacultatifNonNul('Le compte de la perte ne peut pas valoir null · omettez le champ pour garder la proposition.')
   @IsUUID('4')
   comptePerteId?: string;
 
@@ -149,7 +150,7 @@ export class PerteCreanceDto extends MotifEtPiecesDto {
    * d'origine) ; absents, elle passe au TTC entier. Le montant de la taxe
    * n'est jamais reçu, il est rejoué par le serveur.
    */
-  @IsOptional()
+  @FacultatifNonNul('Les duplicatas ne peuvent pas valoir null · omettez le champ ou envoyez une liste.')
   @IsArray()
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
@@ -232,7 +233,7 @@ export class DeclarerCreanceOuvertureDto {
   compte416Id!: string;
 
   /** m5 · le 491 choisi sous la racine de la nature · absent, le premier de détail. */
-  @IsOptional()
+  @FacultatifNonNul('Le compte 491 ne peut pas valoir null · omettez le champ pour garder la proposition.')
   @IsUUID('4')
   compte491Id?: string;
 
@@ -249,12 +250,12 @@ export class DeclarerCreanceOuvertureDto {
   @MaxLength(500)
   source!: string;
 
-  @IsOptional()
+  @FacultatifNonNul('Le motif ne peut pas valoir null · omettez le champ.')
   @IsString()
   @MaxLength(2000)
   motif?: string;
 
-  @IsOptional()
+  @FacultatifNonNul('Les pièces ne peuvent pas valoir null · omettez le champ ou envoyez une liste.')
   @IsArray()
   @ArrayMaxSize(20)
   @ValidateNested({ each: true })

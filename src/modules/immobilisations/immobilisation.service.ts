@@ -644,6 +644,11 @@ export type InterneCreationFiche = {
   };
 };
 
+/** Le jour donné est-il le dernier de son mois (UTC, comme `moisEntre`) ? */
+function estDernierJourDuMois(d: Date): boolean {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).getUTCDate() === 1;
+}
+
 @Injectable()
 export class ImmobilisationService {
   constructor(
@@ -3126,9 +3131,22 @@ export class ImmobilisationService {
       };
     }
     const depart = entree.derniereRevisionRealiseeLe ?? entree.dateAcquisition;
-    const MS_PAR_AN = 365.25 * 24 * 3600 * 1000;
-    const anneesEcoulees = Math.max(0, (entree.dateReconstitution.getTime() - depart.getTime()) / MS_PAR_AN);
-    if (anneesEcoulees >= intervalleRevisionsAns) {
+    // EN MOIS, JAMAIS EN JOURS · l'amortissement du module court « à compter
+    // du premier jour du mois de mise en service » (loi n° 23/053, art. 30 et
+    // 34), et le mois est l'unité de l'exercice (AUDCIF art. 7). Le mois de
+    // départ compte entier ; celui de la reconstitution seulement s'il est
+    // achevé (dernier jour). Divisé par 365,25 jours, un exercice civil
+    // bissextile ne faisait que 0,9993 an.
+    const moisEntames = estDernierJourDuMois(entree.dateReconstitution) ? 0 : 1;
+    const moisEcoules = Math.max(0, moisEntre(depart, entree.dateReconstitution) - moisEntames);
+    const anneesEcoulees = moisEcoules / 12;
+    // AU BORD EXACT, L'ESTIMATION TIENT (relecture du 2026-11-01) · le
+    // composant est « amorti sur la durée restant à courir jusqu'à la
+    // prochaine révision » (AUDCIF Titre VIII ch. 5 § 1) · l'intervalle
+    // achevé l'amortit en entier, valeur nette nulle, sans fiction. C'est
+    // AU-DELÀ, mois entamé suivant, qu'une révision a normalement eu lieu et
+    // que la date réelle est réclamée · d'où `>` et non `>=`.
+    if (moisEcoules > intervalleRevisionsAns * 12) {
       return {
         possible: false,
         motif:
@@ -6382,8 +6400,10 @@ export class ImmobilisationService {
       if ((dto.stocks?.length ?? 0) > 0) throw new BadRequestException("Des stocks ne se reprennent qu'avec un fonds de commerce.");
       // Une déclaration que personne ne lirait se refuse (ligne A22) · la durée
       // du fonds commercial n'a pas de fiche à porter hors d'un fonds de commerce.
-      if (dto.dureeFondsCommercialAns != null) {
-        throw new BadRequestException("La durée du fonds commercial ne se déclare qu'avec un fonds de commerce.");
+      if (dto.dureeFondsCommercialAns != null || dto.dateMiseEnServiceFondsCommercial != null) {
+        throw new BadRequestException(
+          "La durée et la date de mise en service du fonds commercial ne se déclarent qu'avec un fonds de commerce.",
+        );
       }
       if (dto.fondement !== 'ACTE' && !dto.sourceValeurs?.trim()) {
         throw new BadRequestException("Indiquez d'où viennent les valeurs retenues · la modalité est mentionnée aux Notes annexes (AUDCIF art. 38).");
@@ -6423,9 +6443,10 @@ export class ImmobilisationService {
       // LIGNE A22 · sans reliquat, aucun fonds commercial ne naît (ch. 2
       // § 7.2.1, « l'élément RÉSIDUEL ») · une durée déclarée pour lui n'aurait
       // aucune fiche à porter, et l'écran qui la saisissait le laissait croire.
-      if (!(v.fondsCommercial > 0) && dto.dureeFondsCommercialAns != null) {
+      const declareFonds = dto.dureeFondsCommercialAns != null || dto.dateMiseEnServiceFondsCommercial != null;
+      if (!(v.fondsCommercial > 0) && declareFonds) {
         throw new BadRequestException(
-          "Les éléments séparables et les stocks épuisent le prix · aucun fonds commercial ne s'inscrit, sa durée ne se déclare pas (AUDCIF Titre VIII ch. 2 § 7.2.1).",
+          "Les éléments séparables et les stocks épuisent le prix · aucun fonds commercial ne s'inscrit, ni sa durée ni sa mise en service ne se déclarent (AUDCIF Titre VIII ch. 2 § 7.2.1).",
         );
       }
       if (v.fondsCommercial > 0) {
@@ -6440,7 +6461,10 @@ export class ImmobilisationService {
           select: { id: true },
         });
         if (!compte215) throw new BadRequestException('Le compte 21500000 Fonds commercial est absent du plan du dossier.');
-        aCreer.push({ compteImmobilisationId: compte215.id, numero: '21500000', designation: `Fonds commercial · ${reference}`, montant: v.fondsCommercial, dureeAmortissementAns: dto.dureeFondsCommercialAns });
+        aCreer.push({ compteImmobilisationId: compte215.id, numero: '21500000', designation: `Fonds commercial · ${reference}`, montant: v.fondsCommercial,
+          dureeAmortissementAns: dto.dureeFondsCommercialAns,
+          dateMiseEnService: dto.dateMiseEnServiceFondsCommercial,
+        });
       }
       lignesStock = (dto.stocks ?? []).map((st) => ({ compteId: st.compteId, montant: st.montant }));
       modalite =

@@ -788,6 +788,7 @@ export function ExercicePage() {
             </button>
           )}
           {estAdmin &&
+            planning.dissolution.liquidationOuverte !== false &&
             exercice.dateFin.slice(0, 10) === planning.dissolution.date.slice(0, 10) &&
             !exercices.some((e) => e.dateDebut.slice(0, 10) > planning.dissolution!.date.slice(0, 10)) && (
               <button
