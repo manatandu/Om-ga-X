@@ -448,7 +448,10 @@ describe('5 · la chaîne de recours va jusqu’au bout', () => {
     // Le second facteur tombe avec le mot de passe · sinon un administrateur
     // qui a perdu son téléphone et ses codes resterait dehors pour de bon.
     expect(capture.data).toMatchObject({ secretDoubleAuth: null, doubleAuthActiveDepuis: null, codesSecoursDoubleAuth: [] });
-  });
+    // Hachage et comparaison bcrypt au coût réel · 1,2 s seul, au-delà des
+    // 5 s par défaut quand la suite complète charge la machine (tombé deux
+    // fois de suite le 2026-11-01). Le délai suit la mesure, le test reste.
+  }, 20_000);
 
   it('refuse un compte qui n’est PAS administrateur du dossier visé', async () => {
     // Sans cette borne, la console deviendrait un passe-partout sur tous les
