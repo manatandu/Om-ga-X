@@ -648,6 +648,28 @@ export class InventaireService {
       );
     }
 
+    // LA CAMPAGNE MIXTE (second tour du paquet 1, ligne B, voisin) · un PV de
+    // caisse à écart dont la caisse n'a pas de fiche n'entre dans aucun écart
+    // rapproché · la campagne passait à l'arbitrage, puis se clôturait avec
+    // le manquant du PV jamais décidé (CPCC, étape 5 · « la sous-commission
+    // doit déterminer le responsable de chaque type d'écart »). Son écart se
+    // décide par la fiche de la caisse, comme pour une campagne de caisses
+    // seules (B10) · on la réclame ici, tant qu'une fiche peut encore naître.
+    const comptesDesFiches = new Set(fiches.map((f) => f.compteId));
+    const pvSansFiche = (
+      await this.prisma.procesVerbalComptageCaisse.findMany({
+        where: { tenantId, campagneId, NOT: { ecart: 0 } },
+        select: { compteId: true, compte: { select: { numero: true } } },
+      })
+    ).filter((pv) => !comptesDesFiches.has(pv.compteId));
+    if (pvSansFiche.length > 0) {
+      throw new BadRequestException(
+        `${pvSansFiche.length} caisse(s) au procès-verbal à écart sans fiche (${[...new Set(pvSansFiche.map((pv) => pv.compte.numero))].join(', ')}) · ` +
+          "créez la fiche de chaque caisse et portez-y la valeur du comptage avant de rapprocher · sans elle, l'écart " +
+          "du procès-verbal n'entrerait dans aucun arbitrage et la campagne se clôturerait sans qu'il soit décidé (CPCC, étape 5).",
+      );
+    }
+
     const lignesAuBrouillard = await this.prisma.ligneEcriture.count({
       where: {
         compteId: { in: [...new Set(fiches.map((f) => f.compteId))] },
