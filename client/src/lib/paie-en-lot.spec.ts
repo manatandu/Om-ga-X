@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { corpsAEmettre, emettreLesCoches, entierSaisi, prerempliParametres, type CorpsPropose } from './paie-en-lot';
+import { corpsAEmettre, emettreLesCoches, entierSaisi, moisDeKinshasa, prerempliParametres, type CorpsPropose } from './paie-en-lot';
 
 // Aucun import de « vitest » · convention du dépôt (la suite tourne aussi sous Jest).
 
@@ -40,19 +40,30 @@ describe('paie en lot · ce qui casserait en silence', () => {
   });
 
   it('le préremplissage n’écrase jamais un champ tapé', () => {
-    const p = { natureEmployeurInpp: 'PRIVE' as const, regimeSalarial: null, effectifInpp: 0, joursPayes: null };
-    expect(prerempliParametres({ natureInpp: '', effectifInpp: '', regimeSalarial: '', joursPayes: '' }, p)).toEqual({
+    const p = { natureEmployeurInpp: 'PRIVE' as const, effectifInpp: 0, inppDepuisMois: '2026-12', regimeSalarial: null };
+    expect(prerempliParametres({ natureInpp: '', effectifInpp: '', regimeSalarial: '' }, p, '2027-01')).toEqual({
       natureInpp: 'PRIVE',
       // Zéro déclaré est une réponse · il se reprend.
       effectifInpp: '0',
       regimeSalarial: '',
-      joursPayes: '',
     });
-    expect(prerempliParametres({ natureInpp: 'PUBLIC', effectifInpp: '7', regimeSalarial: '', joursPayes: '20' }, p)).toMatchObject({
+    expect(prerempliParametres({ natureInpp: 'PUBLIC', effectifInpp: '7', regimeSalarial: '' }, p, '2027-01')).toMatchObject({
       natureInpp: 'PUBLIC',
       effectifInpp: '7',
-      joursPayes: '20',
     });
+  });
+
+  it('nature et effectif INPP ne se reprennent pas pour un mois antérieur à leur déclaration (M1)', () => {
+    const p = { natureEmployeurInpp: 'PRIVE' as const, effectifInpp: 12, inppDepuisMois: '2026-12', regimeSalarial: 'BAREME_ARTICLE_118' as const };
+    expect(prerempliParametres({ natureInpp: '', effectifInpp: '', regimeSalarial: '' }, p, '2026-11')).toEqual({
+      natureInpp: '',
+      effectifInpp: '',
+      regimeSalarial: 'BAREME_ARTICLE_118',
+    });
+  });
+
+  it('le mois proposé est celui de Kinshasa · le 31 décembre à 23 h 30 UTC est déjà janvier', () => {
+    expect(moisDeKinshasa(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01');
   });
 
   it('l’émission en lot passe par la route unitaire, cases décochées par défaut', () => {

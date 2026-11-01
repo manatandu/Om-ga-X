@@ -6,16 +6,17 @@ import { Aide } from '../chrome/Aide';
 import {
   corpsAEmettre,
   emettreLesCoches,
+  LIBELLES_REGIME,
   type CorpsPropose,
   type IssueEmission,
   type LigneLot,
   type PropositionLot,
   type VerdictLot,
+  moisDeKinshasa,
 } from '../../lib/paie-en-lot';
 
 type LigneProposee = Extract<LigneLot, { verdict: VerdictLot }>;
 
-const moisCourant = () => new Date().toISOString().slice(0, 7);
 
 /**
  * LIGNE PAIE-LOT · LA PAIE DU MOIS EN LOT. Le serveur PROPOSE un bulletin à
@@ -26,7 +27,7 @@ const moisCourant = () => new Date().toISOString().slice(0, 7);
  * et se dit nommément.
  */
 export function OngletPaieEnLot({ peutEcrire }: { peutEcrire: boolean }) {
-  const [mois, setMois] = useState(moisCourant());
+  const [mois, setMois] = useState(() => moisDeKinshasa(new Date()));
   const [lot, setLot] = useState<PropositionLot | null>(null);
   const [erreur, setErreur] = useState('');
   const [lecture, setLecture] = useState(false);
@@ -86,6 +87,9 @@ export function OngletPaieEnLot({ peutEcrire }: { peutEcrire: boolean }) {
       setRecalculs((r) => ({ ...r, [l.salarieId]: { pour: saisie, refus: c.refus } }));
       return;
     }
+    // Une réponse arrivée après une relecture du lot (autre mois, émission)
+    // parlerait d'un autre lot · elle est jetée.
+    const lecture = jeton.current;
     api
       .post<{ net: { totalVerseFc: number; netAPayerFc: number | null }; cotisations: { totalTravailleurFc: number; totalEmployeurFc: number }; retenue: { retenueFc: number } | null; conversion: VerdictLot['conversion'] }>(
         `/personnel/simulation?salarieId=${l.salarieId}`,
@@ -93,6 +97,7 @@ export function OngletPaieEnLot({ peutEcrire }: { peutEcrire: boolean }) {
       )
       .then(
         (s) =>
+          lecture === jeton.current &&
           setRecalculs((r) => ({
             ...r,
             [l.salarieId]: {
@@ -107,7 +112,7 @@ export function OngletPaieEnLot({ peutEcrire }: { peutEcrire: boolean }) {
               },
             },
           })),
-        (e: ApiError) => setRecalculs((r) => ({ ...r, [l.salarieId]: { pour: saisie, refus: e.message } })),
+        (e: ApiError) => lecture === jeton.current && setRecalculs((r) => ({ ...r, [l.salarieId]: { pour: saisie, refus: e.message } })),
       );
   };
 
@@ -296,6 +301,16 @@ function Observations({
   const textes: { t: string; grave: boolean }[] = [];
   for (const m of l.motifs) textes.push({ t: m, grave: true });
   for (const m of l.manques ?? []) textes.push({ t: m, grave: false });
+  if (l.reprise) {
+    // Ce que la ligne a repris du dossier, avec sa source (M1).
+    const r = l.reprise;
+    const inpp =
+      r.natureEmployeurInpp === null
+        ? null
+        : `INPP · ${r.natureEmployeurInpp === 'PUBLIC' ? 'public' : 'privé'}${r.effectifInpp !== null ? `, ${r.effectifInpp} travailleur(s)` : ''}, déclaré au dossier depuis ${r.inppDepuisMois?.slice(5, 7)}/${r.inppDepuisMois?.slice(0, 4)}`;
+    if (inpp) textes.push({ t: inpp, grave: false });
+    if (r.regimeSalarial) textes.push({ t: `Régime de la retenue · ${LIBELLES_REGIME[r.regimeSalarial]}, déclaré au dossier`, grave: false });
+  }
   if (l.etat === 'EMISSIBLE' || l.etat === 'NON_EMISSIBLE') {
     for (const a of l.avertissements) textes.push({ t: a, grave: false });
     if (l.verdict.conversion) textes.push({ t: `Converti au cours du ${l.verdict.conversion.dateCours.slice(0, 10)} · ${fc(l.verdict.conversion.cours)} FC pour 1 USD.`, grave: false });

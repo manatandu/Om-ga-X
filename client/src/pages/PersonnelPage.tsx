@@ -813,28 +813,43 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
 
   // LIGNE PAIE-LOT · LES PARAMÈTRES DE PAIE DU DOSSIER préremplissent les
   // champs VIDES de la simulation · un champ tapé n'est jamais écrasé, un
-  // paramètre non déclaré laisse le champ vide (le serveur s'abstient ou le dit).
+  // paramètre non déclaré laisse le champ vide (le serveur s'abstient ou le
+  // dit), et nature et effectif INPP ne valent que pour un mois couvert par
+  // leur déclaration · un champ prérempli et intact se retire pour un mois
+  // antérieur, au lieu d'y appliquer une déclaration qui ne le régit pas.
+  const prerempli = useRef<{ natureInpp: string; effectifInpp: string; regimeSalarial: string }>({ natureInpp: '', effectifInpp: '', regimeSalarial: '' });
+  const champsCourants = useRef({ natureInpp, effectifInpp, regimeSalarial });
+  champsCourants.current = { natureInpp, effectifInpp, regimeSalarial };
   useEffect(() => {
     if (onglet !== 'simulation') return;
     let actuel = true;
     api.get<ParametresPaie>('/personnel/parametres-paie').then(
       (p) => {
         if (!actuel) return;
-        const r = prerempliParametres({ natureInpp, effectifInpp, regimeSalarial, joursPayes }, p);
-        if (r.natureInpp !== natureInpp) setNatureInpp(r.natureInpp as '' | 'PUBLIC' | 'PRIVE');
-        if (r.effectifInpp !== effectifInpp) setEffectifInpp(r.effectifInpp);
-        if (r.regimeSalarial !== regimeSalarial) setRegimeSalarial(r.regimeSalarial);
-        if (r.joursPayes !== joursPayes) setJoursPayes(r.joursPayes);
+        const c = champsCourants.current;
+        const avant = prerempli.current;
+        // Un champ resté à sa valeur préremplie compte pour vide.
+        const libres = {
+          natureInpp: c.natureInpp === avant.natureInpp ? '' : c.natureInpp,
+          effectifInpp: c.effectifInpp === avant.effectifInpp ? '' : c.effectifInpp,
+          regimeSalarial: c.regimeSalarial === avant.regimeSalarial ? '' : c.regimeSalarial,
+        };
+        const r = prerempliParametres(libres, p, moisDePaie);
+        prerempli.current = {
+          natureInpp: libres.natureInpp ? '\u0000' : r.natureInpp,
+          effectifInpp: libres.effectifInpp ? '\u0000' : r.effectifInpp,
+          regimeSalarial: libres.regimeSalarial ? '\u0000' : r.regimeSalarial,
+        };
+        if (r.natureInpp !== c.natureInpp) setNatureInpp(r.natureInpp as '' | 'PUBLIC' | 'PRIVE');
+        if (r.effectifInpp !== c.effectifInpp) setEffectifInpp(r.effectifInpp);
+        if (r.regimeSalarial !== c.regimeSalarial) setRegimeSalarial(r.regimeSalarial);
       },
       (e: ApiError) => actuel && setErreur(e.message),
     );
     return () => {
       actuel = false;
     };
-    // Lu à l'ouverture de l'onglet seulement · relu à chaque frappe, il
-    // remplirait un champ que le cabinet vient de vider.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onglet]);
+  }, [onglet, moisDePaie]);
 
   // LIGNE PAIE-LOT · LE SALAIRE DU CONTRAT, PREMIER ÉLÉMENT, DANS SA MONNAIE
   // (salaire des jours dus quand le mois porte des absences ou des congés).

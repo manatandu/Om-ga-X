@@ -1,3 +1,4 @@
+import { jourDeKinshasaIso } from './roles-cantonnes';
 /**
  * LIGNE PAIE-LOT · ce que l'écran lit et envoie. Aucun calcul de paie ici ·
  * le corps proposé et le verdict viennent du serveur, et l'émission envoie
@@ -5,20 +6,30 @@
  */
 
 export type NatureInpp = 'PUBLIC' | 'PRIVE';
-export type RegimeSalarialDeclare = 'BAREME_ARTICLE_118' | 'FORFAIT_PERSONNEL_DOMESTIQUE' | 'FORFAIT_SALARIE_DE_MICRO_ENTREPRISE';
+/** Au dossier, seulement ce qui qualifie l'employeur · le personnel domestique se déclare au salarié (art. 121, al. 2). */
+export type RegimeSalarialDeclare = 'BAREME_ARTICLE_118' | 'FORFAIT_SALARIE_DE_MICRO_ENTREPRISE';
 
 export interface ParametresPaie {
   natureEmployeurInpp: NatureInpp | null;
-  regimeSalarial: RegimeSalarialDeclare | null;
   effectifInpp: number | null;
-  joursPayes: number | null;
+  /** Premier mois (AAAA-MM) où nature et effectif valent · null sans déclaration. */
+  inppDepuisMois: string | null;
+  regimeSalarial: RegimeSalarialDeclare | null;
 }
 
 export const LIBELLES_REGIME: Record<RegimeSalarialDeclare, string> = {
   BAREME_ARTICLE_118: 'Barème progressif',
-  FORFAIT_PERSONNEL_DOMESTIQUE: 'Forfait du personnel domestique',
-  FORFAIT_SALARIE_DE_MICRO_ENTREPRISE: 'Forfait du salarié de micro-entreprise',
+  FORFAIT_SALARIE_DE_MICRO_ENTREPRISE: 'Forfait des salariés d’une micro-entreprise',
 };
+
+/** Ce que la ligne a repris du dossier, avec sa source. */
+export interface RepriseDuDossier {
+  natureEmployeurInpp: NatureInpp | null;
+  effectifInpp: number | null;
+  inppDepuisMois: string | null;
+  regimeSalarial: RegimeSalarialDeclare | null;
+  source: string;
+}
 
 export interface CorpsPropose {
   moisDePaie: string;
@@ -51,6 +62,7 @@ export type LigneLot =
       matricule: string | null;
       corps?: CorpsPropose;
       manques?: string[];
+      reprise?: RepriseDuDossier;
       motifs: string[];
     }
   | {
@@ -61,6 +73,7 @@ export type LigneLot =
       corps: CorpsPropose;
       manques: string[];
       salaireRepris: boolean;
+      reprise: RepriseDuDossier;
       motifs: string[];
       verdict: VerdictLot;
       personnesAChargeProposees: number | null;
@@ -124,17 +137,24 @@ export async function emettreLesCoches(
 
 /**
  * LE PRÉREMPLISSAGE DE LA SIMULATION UNITAIRE · un champ déjà tapé n'est
- * jamais écrasé ; seul un champ vide reçoit le paramètre déclaré, et un
- * paramètre non déclaré laisse le champ vide.
+ * jamais écrasé ; seul un champ vide reçoit le paramètre déclaré, un
+ * paramètre non déclaré laisse le champ vide, et nature et effectif INPP ne
+ * se reprennent que pour un mois couvert par leur déclaration (mois d'effet).
  */
 export function prerempliParametres(
-  champs: { natureInpp: string; effectifInpp: string; regimeSalarial: string; joursPayes: string },
+  champs: { natureInpp: string; effectifInpp: string; regimeSalarial: string },
   p: ParametresPaie,
-): { natureInpp: string; effectifInpp: string; regimeSalarial: string; joursPayes: string } {
+  moisDePaie: string,
+): { natureInpp: string; effectifInpp: string; regimeSalarial: string } {
+  const couvert = p.inppDepuisMois !== null && /^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie) && moisDePaie >= p.inppDepuisMois;
   return {
-    natureInpp: champs.natureInpp || (p.natureEmployeurInpp ?? ''),
-    effectifInpp: champs.effectifInpp || (p.effectifInpp === null ? '' : String(p.effectifInpp)),
+    natureInpp: champs.natureInpp || (couvert ? (p.natureEmployeurInpp ?? '') : ''),
+    effectifInpp: champs.effectifInpp || (couvert && p.effectifInpp !== null ? String(p.effectifInpp) : ''),
     regimeSalarial: champs.regimeSalarial || (p.regimeSalarial ?? ''),
-    joursPayes: champs.joursPayes || (p.joursPayes === null ? '' : String(p.joursPayes)),
   };
+}
+
+/** Le mois courant à Kinshasa (UTC+1), jamais celui de l'horloge UTC. */
+export function moisDeKinshasa(maintenant: Date): string {
+  return jourDeKinshasaIso(maintenant).slice(0, 7);
 }

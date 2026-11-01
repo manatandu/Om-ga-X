@@ -781,24 +781,28 @@ model Tenant {
 
   // LIGNE PAIE-LOT (2026-11-01, gel levé par Manasse) · LES PARAMÈTRES DE PAIE
   // DU DOSSIER, déclarés UNE fois au lieu d'être ressaisis à chaque
-  // simulation. Chacun garde sa règle · il se DÉCLARE, null = « pas encore
-  // dit », jamais un défaut (le calcul s'abstient ou le dit, comme quand le
-  // champ manque à la simulation). Ils ne font que PRÉREMPLIR la saisie · le
-  // bulletin fige ce qu'il a lu, et le calcul du serveur ne les lit pas.
+  // simulation. Chacun se DÉCLARE, null = « pas encore dit », jamais un
+  // défaut. Ils ne font que PRÉREMPLIR la saisie · le bulletin fige ce qu'il a
+  // lu, et le calcul du serveur ne les lit pas.
   //  · nature de l'employeur au sens des arrêtés INPP (« PUBLIC » ou
-  //    « PRIVE », art. 1er de l'arrêté interministériel n° 002/CAB/MET/2025) ;
-  //  · régime de la retenue de l'art. 121 de la loi n° 23/053 (trois valeurs
-  //    de `RegimeSalarial`, bareme-irpp.ts) ;
-  //  · effectif déclaré pour la tranche INPP du PRIVÉ (« occupant entre 1 à
-  //    50 travailleurs »…) · distinct d'`effectifPermanent`, dont le zéro par
-  //    défaut ne dit pas « pas encore dit » ;
-  //  · jours payés proposés d'un mois, plancher CNSS (décret n° 18/041,
-  //    art. 8 ; décret n° 25/22, art. 7, vingt-six par mois).
+  //    « PRIVE ») et effectif de la tranche du PRIVÉ (« occupant entre 1 à 50
+  //    travailleurs »…), distinct d'`effectifPermanent`, dont le zéro par
+  //    défaut ne dit pas « pas encore dit » ; tous deux DATÉS · le taux INPP
+  //    dépend du mois (décision T5), la déclaration vaut à partir du premier
+  //    jour du mois `paieInppDepuisMois` (AAAA-MM), jamais pour un mois
+  //    antérieur ;
+  //  · régime de la retenue de l'art. 121 de la loi n° 23/053, au dossier
+  //    seulement pour ce qui qualifie l'EMPLOYEUR · le barème de l'art. 118
+  //    ou les salariés relevant de l'IRPP de l'Administration des
+  //    Micro-entreprises ; le personnel domestique est une qualité du
+  //    travailleur et se déclare à la simulation du salarié.
+  // Les jours payés ne sont PAS au dossier · ils sont un fait du salarié et du
+  // mois (relecture du 2026-11-01, B1).
   // Bornes tenues aussi par la base (CHECK de la migration).
   paieNatureEmployeurInpp String?
-  paieRegimeSalarial      String?
   paieEffectifInpp        Int?
-  paieJoursPayes          Int?
+  paieInppDepuisMois      String?
+  paieRegimeSalarial      String?
 
   // LE REGISTRE DU PERSONNEL · P1 de la paie. Voir le bloc « Le registre du
   // personnel » en fin de schéma.

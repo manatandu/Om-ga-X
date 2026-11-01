@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { PaieDuMois } from './PaieDuMois';
@@ -113,6 +113,9 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
   // imprimés en un seul document · `null` hors de l'aperçu.
   const [impression, setImpression] = useState<Bulletin[] | null>(null);
   const [lectureImpression, setLectureImpression] = useState(false);
+  // Le mois affiché, lu par une lecture en vol · `mois` de sa fermeture est figé.
+  const moisCourantRef = useRef(mois);
+  moisCourantRef.current = mois;
 
   const charger = useCallback(() => {
     setErreur('');
@@ -133,15 +136,30 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
   const preparerImpression = async () => {
     if (!liste || lectureImpression) return;
     setErreur('');
-    if (liste.tronque) return setErreur(`Plus de ${liste.bulletins.length} bulletins ce mois · imprimez-les un par un.`);
-    const emis = [...liste.bulletins].filter((b) => b.statut === 'EMIS').sort((a, b) => a.numero - b.numero);
-    if (emis.length === 0) return setErreur('Aucun bulletin émis ce mois.');
+    // LE MOIS DEMANDÉ EST FIGÉ AU CLIC · un changement de mois pendant la
+    // lecture mettrait les bulletins d'un mois sous l'en-tête d'un autre.
+    const moisDemande = mois;
+    const nombreAffiche = liste.totauxEmis.nombre;
     setLectureImpression(true);
-    const lus: Bulletin[] = [];
     try {
-      for (const b of emis) lus.push(await api.get<Bulletin>(`/personnel/bulletins/${b.id}`));
-      // Un bulletin annulé entre la liste et la lecture ne s'imprime pas comme émis.
-      if (lus.some((b) => b.statut !== 'EMIS')) {
+      // La liste du mois RELUE juste avant · un bulletin émis ou annulé
+      // depuis l'affichage ferait un document qui ne serait pas celui du mois.
+      const relue = await api.get<ListeBulletins>(`/personnel/bulletins?mois=${moisDemande}`);
+      if (moisCourantRef.current !== moisDemande) return;
+      if (relue.tronque) return setErreur(`Plus de ${relue.bulletins.length} bulletins ce mois · imprimez-les un par un.`);
+      const emis = relue.bulletins.filter((b) => b.statut === 'EMIS').sort((a, b) => a.numero - b.numero);
+      if (emis.length !== relue.totauxEmis.nombre || relue.totauxEmis.nombre !== nombreAffiche) {
+        setListe(relue);
+        return setErreur(`La liste du mois a changé (${nombreAffiche} bulletin(s) émis affichés, ${relue.totauxEmis.nombre} à présent) · relisez-la, rien n’est imprimé.`);
+      }
+      if (emis.length === 0) return setErreur('Aucun bulletin émis ce mois.');
+      const lus: Bulletin[] = [];
+      for (const b of emis) {
+        lus.push(await api.get<Bulletin>(`/personnel/bulletins/${b.id}`));
+        if (moisCourantRef.current !== moisDemande) return;
+      }
+      // Un bulletin annulé ou d'un autre mois entre la liste et la lecture ne s'imprime pas.
+      if (lus.some((b) => b.statut !== 'EMIS' || b.moisDePaie !== moisDemande)) {
         charger();
         return setErreur('Un bulletin a changé depuis la liste · relisez-la, rien n’est imprimé.');
       }

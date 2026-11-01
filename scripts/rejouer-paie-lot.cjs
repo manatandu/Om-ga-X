@@ -75,13 +75,16 @@ async function main() {
 
     console.log('1. Paramètres de paie · jamais présumés');
     let p = await A.get('/personnel/parametres-paie');
-    verifier(p.natureEmployeurInpp === null && p.regimeSalarial === null && p.effectifInpp === null && p.joursPayes === null, 'dossier neuf · tout « pas encore dit »');
-    p = await A.put('/personnel/parametres-paie', { natureEmployeurInpp: 'PRIVE', effectifInpp: 12, regimeSalarial: 'BAREME_ARTICLE_118', joursPayes: 20 });
-    p = await A.put('/personnel/parametres-paie', { joursPayes: null });
-    verifier(p.natureEmployeurInpp === 'PRIVE' && p.effectifInpp === 12 && p.regimeSalarial === 'BAREME_ARTICLE_118' && p.joursPayes === null, 'déclarés, puis jours payés effacés par null (les autres inchangés)');
-    const refus = await A.statut('PUT', '/personnel/parametres-paie', { joursPayes: 27 });
-    verifier(refus.statut === 400, `jours payés 27 refusés (${refus.statut})`);
-    const refusNature = await A.statut('PUT', '/personnel/parametres-paie', { natureEmployeurInpp: 'MIXTE' });
+    verifier(p.natureEmployeurInpp === null && p.regimeSalarial === null && p.effectifInpp === null && p.inppDepuisMois === null, 'dossier neuf · tout « pas encore dit »');
+    const sansDate = await A.statut('PUT', '/personnel/parametres-paie', { natureEmployeurInpp: 'PRIVE', effectifInpp: 12 });
+    verifier(sansDate.statut === 400, `nature et effectif sans mois d'effet refusés (${sansDate.statut})`);
+    const domestique = await A.statut('PUT', '/personnel/parametres-paie', { regimeSalarial: 'FORFAIT_PERSONNEL_DOMESTIQUE' });
+    verifier(domestique.statut === 400, `personnel domestique refusé au dossier, il se déclare au salarié (${domestique.statut})`);
+    const jours = await A.statut('PUT', '/personnel/parametres-paie', { joursPayes: 20 });
+    verifier(jours.statut === 400, `les jours payés ne sont plus un paramètre du dossier (${jours.statut})`);
+    p = await A.put('/personnel/parametres-paie', { natureEmployeurInpp: 'PRIVE', effectifInpp: 12, inppDepuisMois: '2026-12', regimeSalarial: 'BAREME_ARTICLE_118' });
+    verifier(p.natureEmployeurInpp === 'PRIVE' && p.effectifInpp === 12 && p.inppDepuisMois === '2026-12' && p.regimeSalarial === 'BAREME_ARTICLE_118', 'déclarés à partir de décembre 2026');
+    const refusNature = await A.statut('PUT', '/personnel/parametres-paie', { natureEmployeurInpp: 'MIXTE', inppDepuisMois: '2026-12' });
     verifier(refusNature.statut === 400, `nature inconnue refusée (${refusNature.statut})`);
     const audit = await prisma.evenementAudit.findMany({ where: { tenantId, entite: 'Tenant' }, orderBy: { rang: 'asc' } }).catch(() => null);
     verifier(audit !== null && audit.some((a) => JSON.stringify(a).includes('paieNatureEmployeurInpp')), `déclaration au journal d'audit (${audit?.length ?? 'lecture impossible'} maillon(s) Tenant)`);
@@ -103,7 +106,11 @@ async function main() {
     await contrat(s4, { remunerationBase: 30000, deviseRemuneration: 'CDF', periodiciteRemuneration: 'JOUR' });
     const s5 = await A.post('/personnel/salaries', { nom: 'ESAKA', prenoms: 'Anne', sexe: 'FEMININ', dateNaissance: '1995-03-03' });
     // Un salarié actif SANS contrat · hors du lot, compté.
-    console.log('3. Décembre 2026 · proposition');
+    console.log('3. Novembre 2026 · avant le mois d\'effet');
+    const nov = await A.get('/personnel/paie-en-lot/2026-11');
+    const n1 = nov.lignes.find((x) => x.salarieId === s1.id);
+    verifier(n1.etat === 'NON_EMISSIBLE' && !('natureEmployeurInpp' in n1.corps) && n1.manques.some((m) => /à partir de 12\/2026/.test(m)), `novembre · rien de l'INPP repris, la ligne le dit, non émissible (${n1.etat})`);
+    console.log('3 bis. Décembre 2026 · proposition');
     let lot = await A.get('/personnel/paie-en-lot/2026-12');
     const ligne = (l, s) => l.lignes.find((x) => x.salarieId === s.id);
     verifier(lot.lignes.length === 4 && lot.sansContrat === 1 && lot.totalActifs === 5, `4 sous contrat, 1 sans contrat, 5 actifs (${lot.lignes.length}, ${lot.sansContrat}, ${lot.totalActifs})`);
@@ -114,6 +121,8 @@ async function main() {
     verifier(l1.personnesAChargeProposees === 1, `S1 · le registre propose 1 personne à charge, non substituée (${l1.personnesAChargeProposees})`);
     const l2 = ligne(lot, s2);
     verifier(l2.etat === 'EMISSIBLE' && l2.corps.elements[0].montantFc === 1250000 && l2.corps.elements[0].libelle === 'Salaire des jours dus', `S2 · une absence non autorisée retranche 1/26 · 1 250 000 (${l2.corps.elements[0]?.montantFc})`);
+    verifier(l2.corps.joursPayes === 25 && !('joursPayes' in l1.corps), `jours payés du salarié · S2 25 (absence d'un jour), S1 rien envoyé, mois entier (${l2.corps.joursPayes})`);
+    verifier(l1.reprise.natureEmployeurInpp === 'PRIVE' && l1.reprise.effectifInpp === 12 && l1.reprise.inppDepuisMois === '2026-12' && l1.reprise.source === 'Déclaré au dossier', 'la ligne dit la nature et l’effectif repris, avec leur source');
     const l3 = ligne(lot, s3);
     verifier(l3.corps.deviseStipulation === 'USD' && l3.corps.elements[0].montantUsd === 600 && !('montantFc' in l3.corps.elements[0]), 'S3 · salaire en dollars, 600 USD, jamais des francs');
     if (usd) verifier(l3.etat === 'EMISSIBLE' && Math.abs(l3.verdict.totalVerseFc - 1680000) < 0.005, `S3 · converti au cours du jour 2 800 · 1 680 000 FC (${l3.verdict?.totalVerseFc})`);

@@ -6,8 +6,12 @@ sauvegarde `travail/paie-lot`, partie d'`origin/main` (d3212cc47).
 ## Fait
 
 1. **Paramètres de paie du dossier** · `Tenant.paieNatureEmployeurInpp`,
-   `paieRegimeSalarial`, `paieEffectifInpp`, `paieJoursPayes`, nullables sans
-   défaut (null = pas encore dit), bornes en CHECK
+   `paieEffectifInpp`, `paieInppDepuisMois` (mois d'effet, exigé avec la
+   nature ou l'effectif, jamais repris pour un mois antérieur),
+   `paieRegimeSalarial` (barème ou salariés d'une micro-entreprise seulement ·
+   le personnel domestique, qualité du travailleur, reste à la simulation du
+   salarié, loi n° 23/053, art. 121, al. 2 lu), nullables sans défaut (null =
+   pas encore dit), bornes en CHECK
    (`20270246500000_parametres_de_paie_du_dossier`). Routes
    `GET|PUT /personnel/parametres-paie` (classe ouverte au gestionnaire de
    paie, PUT sous `@Roles` admin et comptable). Journal d'audit par `Tenant`.
@@ -59,13 +63,33 @@ sauvegarde `travail/paie-lot`, partie d'`origin/main` (d3212cc47).
   imprimé), lecture des bulletins actifs bornée par les salariés lus, jour de
   lecture des soldes dit même sans salarié.
 
+## Relecture indépendante du 2026-11-01 (traitée)
+
+- B1 · les jours payés ne sont plus un paramètre du dossier · ceux du salarié
+  et du mois, lus sur la proposition des absences (jours payés à plein et
+  jours de congé), rien envoyé un mois entier, rien et dit avec des jours aux
+  deux tiers.
+- B2 · une allocation de congé du mois non chiffrée ou d'une autre monnaie
+  rend la ligne non émissible, motif nommé.
+- M1 · mois d'effet de la nature et de l'effectif INPP ; la ligne du lot dit
+  ce qu'elle a repris, « déclaré au dossier depuis ».
+- M2 · régime domestique refusé au dossier (DTO, base).
+- M3 · impression · mois figé au clic, liste relue juste avant et confrontée
+  au nombre affiché, bulletins d'un autre mois refusés.
+- Mineurs · lecture des bulletins actifs refusée si elle se coupe, recalculs
+  périmés jetés, mois proposé de Kinshasa, journal du serveur sans message
+  brut (nom et code).
+
 ## Questions ouvertes (corpus lu, non tranché)
 
-- Régime de la retenue (art. 121, al. 2) au DOSSIER · un dossier qui emploie
-  à la fois du personnel de droit commun et du personnel domestique devra
-  changer le champ dans la simulation du salarié concerné. Un régime par
-  salarié serait plus juste ; non fait (hors du périmètre demandé, « au
-  dossier »).
+- Les jours payés aux deux tiers (mention 17) comptent-ils au SMIG des jours
+  payés du plancher CNSS (décret n° 18/041, art. 8) pour un jour, une
+  fraction ou pas du tout ? Le corpus ne le dit pas · la proposition
+  n'envoie rien et le cabinet les déclare dans la Simulation.
+
+- Le personnel domestique (art. 121, al. 2) se déclare à la simulation de
+  chaque bulletin · un régime enregistré par salarié serait plus commode ;
+  non fait (hors du périmètre).
 - L'effectif de la tranche INPP est un champ distinct d'`effectifPermanent`
   (dont le zéro par défaut ne dit pas « pas encore dit »). Les arrêtés INPP
   disent « occupant entre 1 à 50 travailleurs » sans définir la date ni la

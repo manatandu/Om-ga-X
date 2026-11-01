@@ -7,13 +7,15 @@ import { entierSaisi, LIBELLES_REGIME, type ParametresPaie, type RegimeSalarialD
  * LIGNE PAIE-LOT · LES PARAMÈTRES DE PAIE DU DOSSIER, déclarés une fois.
  * Chaque champ vide est « pas encore dit » · rien ne se présume, et le calcul
  * s'abstient ou le dit comme quand la simulation ne reçoit pas le champ.
+ * Nature et effectif INPP portent leur mois d'effet · ils ne se reprennent
+ * jamais pour un mois antérieur.
  */
 export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
   const [lus, setLus] = useState<ParametresPaie | null>(null);
   const [nature, setNature] = useState('');
-  const [regime, setRegime] = useState('');
   const [effectif, setEffectif] = useState('');
-  const [jours, setJours] = useState('');
+  const [depuis, setDepuis] = useState('');
+  const [regime, setRegime] = useState('');
   const [erreur, setErreur] = useState('');
   const [succes, setSucces] = useState('');
   const [enCours, setEnCours] = useState(false);
@@ -21,9 +23,9 @@ export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
   const poser = (p: ParametresPaie) => {
     setLus(p);
     setNature(p.natureEmployeurInpp ?? '');
-    setRegime(p.regimeSalarial ?? '');
     setEffectif(p.effectifInpp === null ? '' : String(p.effectifInpp));
-    setJours(p.joursPayes === null ? '' : String(p.joursPayes));
+    setDepuis(p.inppDepuisMois ?? '');
+    setRegime(p.regimeSalarial ?? '');
   };
 
   useEffect(() => {
@@ -34,16 +36,16 @@ export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
     setErreur('');
     setSucces('');
     const e = entierSaisi(effectif);
-    const j = entierSaisi(jours);
     if (e === undefined) return setErreur('Effectif illisible · un nombre entier de travailleurs.');
-    if (j === undefined || (j !== null && (j < 1 || j > 26))) return setErreur('Jours payés illisibles · un nombre entier de 1 à 26.');
+    const inppDit = nature !== '' || e !== null;
+    if (inppDit && !/^\d{4}-(0[1-9]|1[0-2])$/.test(depuis)) return setErreur('La nature et l’effectif INPP se déclarent avec leur mois d’effet.');
     setEnCours(true);
     api
       .put<ParametresPaie>('/personnel/parametres-paie', {
         natureEmployeurInpp: nature === '' ? null : nature,
-        regimeSalarial: regime === '' ? null : regime,
         effectifInpp: e,
-        joursPayes: j,
+        inppDepuisMois: inppDit ? depuis : null,
+        regimeSalarial: regime === '' ? null : regime,
       })
       .then(
         (p) => {
@@ -65,8 +67,8 @@ export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
         Paramètres de paie du dossier
         <Aide
           titre="Paramètres de paie"
-          texte="Déclarés une fois, ils préremplissent la simulation et la paie du mois en lot ; un champ vide reste « pas encore dit » et le calcul le signale (cotisation INPP non chiffrée, barème de droit commun retenu en le disant). La nature de l’employeur fixe le taux INPP, puis, pour le privé seulement, la tranche d’effectif. Les jours payés ne servent qu’au plancher de la CNSS d’un mois incomplet ; vide, le mois est entier. Le bulletin fige ce qu’il a lu · changer un paramètre ne touche aucun bulletin émis."
-          source="Arrêté interministériel n° 002/CAB/MET/2025, art. 1er · loi n° 23/053, art. 118 et 121 · décret n° 18/041, art. 8 · décret n° 25/22, art. 7"
+          texte="Déclarés une fois, ils préremplissent la simulation et la paie du mois en lot ; un champ vide reste « pas encore dit » et le calcul le signale (cotisation INPP non chiffrée, barème de droit commun retenu en le disant). La nature de l’employeur fixe le taux INPP, puis, pour le privé seulement, la tranche d’effectif · tous deux valent à partir du mois d’effet déclaré, jamais pour un mois antérieur. Le régime déclaré ici est celui que l’employeur porte (barème, ou salariés d’une micro-entreprise) ; le personnel domestique se déclare dans la simulation du salarié. Les jours payés sont ceux de chaque salarié, lus sur ses absences et ses congés du mois. Le bulletin fige ce qu’il a lu · changer un paramètre ne touche aucun bulletin émis."
+          source="Arrêté interministériel n° 002/CAB/MET/2025, art. 1er · loi n° 23/053, art. 118 et 121"
         />
       </div>
       {erreur && <div className="border border-danger/30 bg-danger-soft px-3 py-1.5 mb-2">{erreur}</div>}
@@ -87,6 +89,10 @@ export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
             <input inputMode="numeric" value={effectif} onChange={(e) => setEffectif(e.target.value)} placeholder="Pas encore dit" className={champ} />
           </label>
           <label className="flex flex-col gap-1">
+            À partir du mois de paie
+            <input type="month" value={depuis} onChange={(e) => setDepuis(e.target.value)} className={champ} />
+          </label>
+          <label className="flex flex-col gap-1">
             Régime de la retenue IRPP
             <select value={regime} onChange={(e) => setRegime(e.target.value)} className={champ}>
               <option value="">Pas encore dit</option>
@@ -96,10 +102,6 @@ export function OngletParametresPaie({ peutEcrire }: { peutEcrire: boolean }) {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Jours payés du mois
-            <input inputMode="numeric" value={jours} onChange={(e) => setJours(e.target.value)} placeholder="Mois entier" className={champ} />
           </label>
           {peutEcrire && (
             <div className="sm:col-span-2">

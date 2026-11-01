@@ -29,16 +29,16 @@ export const PLAFOND_SOLDES_CONGES = 500;
 
 type ParametresLus = {
   paieNatureEmployeurInpp: string | null;
-  paieRegimeSalarial: string | null;
   paieEffectifInpp: number | null;
-  paieJoursPayes: number | null;
+  paieInppDepuisMois: string | null;
+  paieRegimeSalarial: string | null;
 };
 
 const SELECT_PARAMETRES = {
   paieNatureEmployeurInpp: true,
-  paieRegimeSalarial: true,
   paieEffectifInpp: true,
-  paieJoursPayes: true,
+  paieInppDepuisMois: true,
+  paieRegimeSalarial: true,
 } as const;
 
 @Injectable()
@@ -69,10 +69,24 @@ export class PaieEnLotService {
    */
   async modifierParametres(tenantId: string, dto: ParametresPaieDto) {
     const data: Record<string, string | number | null> = {};
-    if (dto.natureEmployeurInpp !== undefined) data.paieNatureEmployeurInpp = dto.natureEmployeurInpp;
     if (dto.regimeSalarial !== undefined) data.paieRegimeSalarial = dto.regimeSalarial;
-    if (dto.effectifInpp !== undefined) data.paieEffectifInpp = dto.effectifInpp;
-    if (dto.joursPayes !== undefined) data.paieJoursPayes = dto.joursPayes;
+    const toucheInpp = dto.natureEmployeurInpp !== undefined || dto.effectifInpp !== undefined || dto.inppDepuisMois !== undefined;
+    if (toucheInpp) {
+      // NATURE, EFFECTIF ET MOIS D'EFFET SE DÉCLARENT ENSEMBLE · une nature
+      // ou un effectif nouveau sous l'ancienne date s'appliquerait à des mois
+      // qu'il ne régit pas (le taux INPP dépend du mois, décision T5).
+      const nature = dto.natureEmployeurInpp ?? null;
+      const effectif = dto.effectifInpp ?? null;
+      const depuis = dto.inppDepuisMois ?? null;
+      if (nature === null && effectif === null) {
+        if (depuis !== null) throw new BadRequestException("Un mois d'effet sans nature ni effectif INPP ne déclare rien.");
+      } else if (depuis === null) {
+        throw new BadRequestException("La nature de l'employeur et l'effectif INPP se déclarent avec leur mois d'effet (AAAA-MM) · le taux dépend du mois.");
+      }
+      data.paieNatureEmployeurInpp = nature;
+      data.paieEffectifInpp = effectif;
+      data.paieInppDepuisMois = nature === null && effectif === null ? null : depuis;
+    }
     if (Object.keys(data).length === 0) throw new BadRequestException('Aucun paramètre de paie à déclarer.');
     const t = await this.prisma.tenant.update({ where: { id: tenantId }, data, select: SELECT_PARAMETRES });
     return lireParametresPaie(t);
@@ -88,7 +102,7 @@ export class PaieEnLotService {
     if (!salarie) throw new NotFoundException('Salarié introuvable dans ce dossier.');
     const contrat = contratCouvrantLeMois(salarie.contrats, mois);
     if (!contrat) {
-      return { corps: { moisDePaie: mois, elements: [] } as CorpsPropose, manques: [`Aucun contrat en cours en ${mois}.`], salaireRepris: false };
+      return { corps: { moisDePaie: mois, elements: [] } as CorpsPropose, manques: [`Aucun contrat en cours en ${mois}.`], bloquants: [] as string[], salaireRepris: false };
     }
     const parametres = lireParametresPaie(await this.parametresLus(tenantId));
     return this.proposer(tenantId, salarieId, mois, contrat, parametres);
@@ -159,6 +173,11 @@ export class PaieEnLotService {
       select: { salarieId: true, numero: true, nature: true },
       take: lus.length * 4 + 1,
     });
+    // Une lecture coupée dirait « pas encore émis » d'un salarié qui l'est ·
+    // refus nommé plutôt qu'un lot faux.
+    if (actifsDuMois.length > lus.length * 4) {
+      throw new BadRequestException(`Plus de bulletins actifs que prévu pour ${mois} · ouvrez l'onglet Bulletins et annulez les doublons avant le lot.`);
+    }
     const dejaEmis = new Map(actifsDuMois.map((b) => [b.salarieId, b]));
 
     const lignes = [];
@@ -187,16 +206,17 @@ export class PaieEnLotService {
         try {
           simulation = (await this.personnel.simulerPaie(tenantId, s.id, p.corps as unknown as SimulationPaieDto, maintenant)) as unknown as SimulationEmissible & Record<string, unknown>;
         } catch (e) {
-          lignes.push({ ...base, etat: 'REFUSE' as const, corps: p.corps, manques: p.manques, salaireRepris: p.salaireRepris, motifs: [messageDe(e)] });
+          lignes.push({ ...base, etat: 'REFUSE' as const, corps: p.corps, manques: p.manques, salaireRepris: p.salaireRepris, reprise: p.reprise, motifs: [...p.bloquants, messageDe(e)] });
           continue;
         }
-        const motifs = motifsNonEmissible(p.corps, motifsRefusEmission(simulation));
+        const motifs = motifsNonEmissible(p.corps, motifsRefusEmission(simulation), p.bloquants);
         lignes.push({
           ...base,
           etat: motifs.length ? ('NON_EMISSIBLE' as const) : ('EMISSIBLE' as const),
           corps: p.corps,
           manques: p.manques,
           salaireRepris: p.salaireRepris,
+          reprise: p.reprise,
           motifs,
           verdict: {
             totalVerseFc: simulation.net.totalVerseFc,
@@ -307,7 +327,10 @@ export function messageDe(e: unknown): string {
   }
   // Une panne n'est pas un refus · consignée au journal du serveur, dite sur
   // la ligne sans le texte technique (qui peut citer une donnée).
-  JOURNAL.error(`Paie en lot · panne sur une ligne · ${e instanceof Error ? e.message : String(e)}`);
+  // Le nom et le code seuls · le message d'une erreur de la base peut citer
+  // une valeur du dossier.
+  const code = (e as { code?: unknown } | null)?.code;
+  JOURNAL.error(`Paie en lot · panne sur une ligne · ${e instanceof Error ? e.name : typeof e}${typeof code === 'string' ? ` (${code})` : ''}`);
   return 'Erreur du serveur à la lecture de ce salarié · ouvrez-le dans la Simulation, ou réessayez.';
 }
 
