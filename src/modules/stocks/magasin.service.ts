@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import {
   ClasseCompte,
   MethodeInventaireStocks,
@@ -391,7 +391,7 @@ export class MagasinService {
   ): Promise<string | null> {
     const entree = dto.sens === SensMouvementStock.ENTREE;
     const lignes = await this.prisma.ligneEcriture.findMany({
-      where: { ecritureId: dto.ecritureId!, compteId: article.compteId, ecriture: { tenantId } },
+      where: { ecritureId: dto.ecritureId!, compteId: article.compteId, ecriture: { tenantId, ...HORS_SITUATION } },
       select: { debit: true, credit: true },
     });
     const porte = Math.round(lignes.reduce((t, l) => t + Number(entree ? l.debit : l.credit), 0) * 100);
