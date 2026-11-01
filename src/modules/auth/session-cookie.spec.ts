@@ -1,13 +1,9 @@
-import { ForbiddenException } from "@nestjs/common";
-import * as bcrypt from "bcryptjs";
-import { JwtStrategy, extraireJetonDuCookie } from "./jwt.strategy";
-import { AuthService } from "./auth.service";
-import {
-  AuthController,
-  MOTIF_CONNEXION_EN_JSON,
-  MOTIF_LICENCE_A_L_INSCRIPTION,
-} from "./auth.controller";
-import { COOKIE_SESSION } from "./session.constants";
+import { ForbiddenException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { JwtStrategy, extraireJetonDuCookie } from './jwt.strategy';
+import { AuthService } from './auth.service';
+import { AuthController, MOTIF_CONNEXION_EN_JSON, MOTIF_LICENCE_A_L_INSCRIPTION } from './auth.controller';
+import { COOKIE_SESSION } from './session.constants';
 
 /**
  * SESSION EN COOKIE httpOnly + CSRF · les garanties qui font tenir le
@@ -25,125 +21,90 @@ import { COOKIE_SESSION } from "./session.constants";
  */
 
 const UTILISATEUR = {
-  id: "u1",
-  tenantId: "t1",
-  email: "a@a.cd",
-  role: "ADMIN_CABINET",
+  id: 'u1',
+  tenantId: 't1',
+  email: 'a@a.cd',
+  role: 'ADMIN_CABINET',
   estActif: true,
   estOperateurPlateforme: false,
-  tenant: { referentiel: "SYCEBNL", licence: null },
+  tenant: { referentiel: 'SYCEBNL', licence: null },
 };
 
 const strategie = () =>
   new JwtStrategy(
-    { getOrThrow: () => "secret-de-test" } as never,
+    { getOrThrow: () => 'secret-de-test' } as never,
     { user: { findUnique: async () => UTILISATEUR } } as never,
   );
 
-const requete = (options: {
-  method: string;
-  cookie?: boolean;
-  csrf?: string;
-  bearer?: boolean;
-}) =>
+const requete = (options: { method: string; cookie?: boolean; csrf?: string; bearer?: boolean }) =>
   ({
     method: options.method,
-    cookies: options.cookie ? { [COOKIE_SESSION]: "jeton" } : {},
+    cookies: options.cookie ? { [COOKIE_SESSION]: 'jeton' } : {},
     headers: {
-      ...(options.bearer ? { authorization: "Bearer jeton" } : {}),
-      ...(options.csrf !== undefined ? { "x-csrf-token": options.csrf } : {}),
+      ...(options.bearer ? { authorization: 'Bearer jeton' } : {}),
+      ...(options.csrf !== undefined ? { 'x-csrf-token': options.csrf } : {}),
     },
   }) as never;
 
-describe("JwtStrategy · contrôle CSRF sur le cookie de session", () => {
-  const charge = { sub: "u1", csrf: "abc123" };
+describe('JwtStrategy · contrôle CSRF sur le cookie de session', () => {
+  const charge = { sub: 'u1', csrf: 'abc123' };
 
-  it("une lecture portée par le cookie passe sans en-tête CSRF", async () => {
-    const u = await strategie().validate(
-      requete({ method: "GET", cookie: true }),
-      charge,
-    );
-    expect(u.userId).toBe("u1");
+  it('une lecture portée par le cookie passe sans en-tête CSRF', async () => {
+    const u = await strategie().validate(requete({ method: 'GET', cookie: true }), charge);
+    expect(u.userId).toBe('u1');
   });
 
-  it("une mutation portée par le cookie exige l’en-tête apparié · absent ou faux, refus", async () => {
+  it('une mutation portée par le cookie exige l’en-tête apparié · absent ou faux, refus', async () => {
+    await expect(strategie().validate(requete({ method: 'POST', cookie: true }), charge)).rejects.toThrow(
+      ForbiddenException,
+    );
     await expect(
-      strategie().validate(requete({ method: "POST", cookie: true }), charge),
+      strategie().validate(requete({ method: 'DELETE', cookie: true, csrf: 'autre' }), charge),
     ).rejects.toThrow(ForbiddenException);
-    await expect(
-      strategie().validate(
-        requete({ method: "DELETE", cookie: true, csrf: "autre" }),
-        charge,
-      ),
-    ).rejects.toThrow(ForbiddenException);
-    const u = await strategie().validate(
-      requete({ method: "POST", cookie: true, csrf: "abc123" }),
-      charge,
-    );
-    expect(u.userId).toBe("u1");
+    const u = await strategie().validate(requete({ method: 'POST', cookie: true, csrf: 'abc123' }), charge);
+    expect(u.userId).toBe('u1');
   });
 
-  it("une mutation authentifiée par Authorization est exemptée · un en-tête personnalisé ne se forge pas inter-site", async () => {
-    const u = await strategie().validate(
-      requete({ method: "POST", bearer: true }),
-      charge,
-    );
-    expect(u.userId).toBe("u1");
+  it('une mutation authentifiée par Authorization est exemptée · un en-tête personnalisé ne se forge pas inter-site', async () => {
+    const u = await strategie().validate(requete({ method: 'POST', bearer: true }), charge);
+    expect(u.userId).toBe('u1');
   });
 
-  it("le cookie porte le jeton même quand un en-tête Authorization l’accompagne · le CSRF reste exigé", async () => {
+  it('le cookie porte le jeton même quand un en-tête Authorization l’accompagne · le CSRF reste exigé', async () => {
     // Le cookie est lu EN PREMIER (`jwtFromRequest`) · c'est lui qui
     // authentifie. Exempter la requête sur la seule PRÉSENCE de l'en-tête
     // laissait une mutation portée par le cookie sans contrôle (relevé de
     // sécurité du 2026-10-09, fermé jusque-là par CORS seul).
     await expect(
-      strategie().validate(
-        requete({ method: "POST", cookie: true, bearer: true }),
-        charge,
-      ),
+      strategie().validate(requete({ method: 'POST', cookie: true, bearer: true }), charge),
     ).rejects.toThrow(ForbiddenException);
     const u = await strategie().validate(
-      requete({ method: "POST", cookie: true, bearer: true, csrf: "abc123" }),
+      requete({ method: 'POST', cookie: true, bearer: true, csrf: 'abc123' }),
       charge,
     );
-    expect(u.userId).toBe("u1");
+    expect(u.userId).toBe('u1');
   });
 
-  it("un jeton d’avant la migration (sans claim csrf) est refusé sur une mutation cookie", async () => {
+  it('un jeton d’avant la migration (sans claim csrf) est refusé sur une mutation cookie', async () => {
     await expect(
-      strategie().validate(
-        requete({ method: "POST", cookie: true, csrf: "abc123" }),
-        { sub: "u1" },
-      ),
+      strategie().validate(requete({ method: 'POST', cookie: true, csrf: 'abc123' }), { sub: 'u1' }),
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it("extraireJetonDuCookie lit le cookie de session, et rien d’autre", () => {
-    expect(
-      extraireJetonDuCookie({ cookies: { [COOKIE_SESSION]: "x" } } as never),
-    ).toBe("x");
+  it('extraireJetonDuCookie lit le cookie de session, et rien d’autre', () => {
+    expect(extraireJetonDuCookie({ cookies: { [COOKIE_SESSION]: 'x' } } as never)).toBe('x');
     expect(extraireJetonDuCookie({ cookies: {} } as never)).toBeNull();
     expect(extraireJetonDuCookie({} as never)).toBeNull();
   });
 });
 
-describe("AuthService · jeton CSRF apparié au jeton de session", () => {
-  it("login émet un JWT dont le claim csrf égale le csrfToken renvoyé", async () => {
+describe('AuthService · jeton CSRF apparié au jeton de session', () => {
+  it('login émet un JWT dont le claim csrf égale le csrfToken renvoyé', async () => {
     let payload: Record<string, unknown> | undefined;
-    const hash = await bcrypt.hash("mot-de-passe-correct", 4);
+    const hash = await bcrypt.hash('mot-de-passe-correct', 4);
     const s = new AuthService(
-      {
-        user: {
-          findUnique: async () => ({
-            id: "u1",
-            motDePasse: hash,
-            estActif: true,
-          }),
-        },
-      } as never,
-      {
-        sign: (p: Record<string, unknown>) => ((payload = p), "jwt-signe"),
-      } as never,
+      { user: { findUnique: async () => ({ id: 'u1', motDePasse: hash, estActif: true }) } } as never,
+      { sign: (p: Record<string, unknown>) => ((payload = p), 'jwt-signe') } as never,
       undefined as never,
       undefined as never,
       undefined as never,
@@ -153,190 +114,129 @@ describe("AuthService · jeton CSRF apparié au jeton de session", () => {
       undefined as never,
       undefined as never,
     );
-    const resultat = await s.login({
-      email: "a@a.cd",
-      motDePasse: "mot-de-passe-correct",
-    });
-    if ("deuxiemeFacteurRequis" in resultat)
-      throw new Error("second facteur inattendu");
+    const resultat = await s.login({ email: 'a@a.cd', motDePasse: 'mot-de-passe-correct' });
+    if ('deuxiemeFacteurRequis' in resultat) throw new Error('second facteur inattendu');
     expect(resultat.csrfToken).toBe(payload!.csrf);
     expect(resultat.csrfToken).toMatch(/^[0-9a-f]{32}$/);
-    expect(resultat.accessToken).toBe("jwt-signe");
+    expect(resultat.accessToken).toBe('jwt-signe');
   });
 });
 
-describe("AuthController · le jeton de session ne sort que par le cookie", () => {
+describe('AuthController · le jeton de session ne sort que par le cookie', () => {
   const reponse = () => {
     const appels: Array<{ nom: string; args: unknown[] }> = [];
     return {
       appels,
       res: {
-        cookie: (...args: unknown[]) => appels.push({ nom: "cookie", args }),
-        clearCookie: (...args: unknown[]) =>
-          appels.push({ nom: "clearCookie", args }),
+        cookie: (...args: unknown[]) => appels.push({ nom: 'cookie', args }),
+        clearCookie: (...args: unknown[]) => appels.push({ nom: 'clearCookie', args }),
       } as never,
     };
   };
 
-  it("login pose le cookie httpOnly et le corps ne porte que le jeton CSRF", async () => {
+  it('login pose le cookie httpOnly et le corps ne porte que le jeton CSRF', async () => {
     const { appels, res } = reponse();
     const controleur = new AuthController(
       {
-        login: async () => ({ accessToken: "jwt-secret", csrfToken: "csrf-1" }),
+        login: async () => ({ accessToken: 'jwt-secret', csrfToken: 'csrf-1' }),
       } as never,
       { get: () => undefined } as never,
     );
-    const corps = await controleur.login(
-      { email: "a@a.cd", motDePasse: "x" } as never,
-      res,
-    );
-    expect(corps).toEqual({ csrfToken: "csrf-1" });
-    expect(corps).not.toHaveProperty("accessToken");
-    const [nomCookie, valeur, options] = appels[0].args as [
-      string,
-      string,
-      Record<string, unknown>,
-    ];
+    const corps = await controleur.login({ email: 'a@a.cd', motDePasse: 'x' } as never, res);
+    expect(corps).toEqual({ csrfToken: 'csrf-1' });
+    expect(corps).not.toHaveProperty('accessToken');
+    const [nomCookie, valeur, options] = appels[0].args as [string, string, Record<string, unknown>];
     expect(nomCookie).toBe(COOKIE_SESSION);
-    expect(valeur).toBe("jwt-secret");
+    expect(valeur).toBe('jwt-secret');
     expect(options.httpOnly).toBe(true);
     expect(options.secure).toBe(true);
-    expect(options.sameSite).toBe("none");
+    expect(options.sameSite).toBe('none');
   });
 
-  it("PISTE 9 · une connexion postée par formulaire est refusée avant tout essai de mot de passe", async () => {
+  it('PISTE 9 · une connexion postée par formulaire est refusée avant tout essai de mot de passe', async () => {
     // Un formulaire d'un autre site poste en urlencoded sans contrôle
     // préalable, et sa réponse posait la session de l'attaquant chez la
     // victime (audit de sécurité du 2026-10-25).
     const { appels, res } = reponse();
     const login = jest.fn();
-    const controleur = new AuthController(
-      { login } as never,
-      { get: () => undefined } as never,
+    const controleur = new AuthController({ login } as never, { get: () => undefined } as never);
+    const formulaire = { is: (t: string) => (t === 'application/json' ? false : t), ip: '1.2.3.4' };
+    await expect(controleur.login({ email: 'a@a.cd', motDePasse: 'x' } as never, res, formulaire as never)).rejects.toThrow(
+      MOTIF_CONNEXION_EN_JSON,
     );
-    const formulaire = {
-      is: (t: string) => (t === "application/json" ? false : t),
-      ip: "1.2.3.4",
-    };
-    await expect(
-      controleur.login(
-        { email: "a@a.cd", motDePasse: "x" } as never,
-        res,
-        formulaire as never,
-      ),
-    ).rejects.toThrow(MOTIF_CONNEXION_EN_JSON);
     expect(login).not.toHaveBeenCalled();
     expect(appels).toEqual([]);
-    const json = {
-      is: (t: string) => (t === "application/json" ? t : false),
-      ip: "1.2.3.4",
-    };
-    login.mockResolvedValue({ accessToken: "jwt", csrfToken: "c" });
-    await expect(
-      controleur.login(
-        { email: "a@a.cd", motDePasse: "x" } as never,
-        res,
-        json as never,
-      ),
-    ).resolves.toEqual({ csrfToken: "c" });
+    const json = { is: (t: string) => (t === 'application/json' ? t : false), ip: '1.2.3.4' };
+    login.mockResolvedValue({ accessToken: 'jwt', csrfToken: 'c' });
+    await expect(controleur.login({ email: 'a@a.cd', motDePasse: 'x' } as never, res, json as never)).resolves.toEqual({ csrfToken: 'c' });
   });
 
-  it("logout efface le cookie de session", async () => {
+  it('logout efface le cookie de session', async () => {
     const { appels, res } = reponse();
-    const controleur = new AuthController(
-      {} as never,
-      { get: () => undefined } as never,
-    );
+    const controleur = new AuthController({} as never, { get: () => undefined } as never);
     await controleur.logout(res);
-    expect(appels[0].nom).toBe("clearCookie");
+    expect(appels[0].nom).toBe('clearCookie');
     expect((appels[0].args as [string])[0]).toBe(COOKIE_SESSION);
   });
 });
 
-describe("AuthController · auto-inscription fermée (option A)", () => {
-  const res = {
-    cookie: () => undefined,
-    clearCookie: () => undefined,
-  } as never;
+describe('AuthController · auto-inscription fermée (option A)', () => {
+  const res = { cookie: () => undefined, clearCookie: () => undefined } as never;
 
-  it("refuse /auth/register par défaut · un dossier naît depuis la console de l’éditeur, pas tout seul", async () => {
+  it('refuse /auth/register par défaut · un dossier naît depuis la console de l’éditeur, pas tout seul', async () => {
     let registerAppele = false;
     const controleur = new AuthController(
       {
         register: async () => {
           registerAppele = true;
-          return { accessToken: "x", csrfToken: "y" };
+          return { accessToken: 'x', csrfToken: 'y' };
         },
       } as never,
       { get: () => undefined } as never,
     );
-    await expect(controleur.register({} as never, res)).rejects.toThrow(
-      /par l'éditeur/,
-    );
+    await expect(controleur.register({} as never, res)).rejects.toThrow(/par l'éditeur/);
     expect(registerAppele).toBe(false);
   });
 
   it("INSCRIPTION_PUBLIQUE=true rouvre la porte · fermée à clé, pas démolie", async () => {
     const controleur = new AuthController(
-      { register: async () => ({ accessToken: "x", csrfToken: "y" }) } as never,
-      {
-        get: (cle: string) =>
-          cle === "INSCRIPTION_PUBLIQUE" ? "true" : undefined,
-      } as never,
+      { register: async () => ({ accessToken: 'x', csrfToken: 'y' }) } as never,
+      { get: (cle: string) => (cle === 'INSCRIPTION_PUBLIQUE' ? 'true' : undefined) } as never,
     );
-    await expect(controleur.register({} as never, res)).resolves.toEqual({
-      csrfToken: "y",
-    });
+    await expect(controleur.register({} as never, res)).resolves.toEqual({ csrfToken: 'y' });
   });
 
   // Relevé de sécurité du 2026-10-23 · la porte rouverte laissait l'inscrit se
   // donner une licence perpétuelle (sondé sur une instance jetable, 201).
-  it.each(["PERPETUEL_SAAS", "PERPETUEL_ONPREMISE", "ABONNEMENT"])(
-    "la porte publique refuse une licence choisie (%s) · avant toute création",
+  it.each(['PERPETUEL_SAAS', 'PERPETUEL_ONPREMISE', 'ABONNEMENT'])(
+    'la porte publique refuse une licence choisie (%s) · avant toute création',
     async (typeLicence) => {
       let registerAppele = false;
       const controleur = new AuthController(
         {
           register: async () => {
             registerAppele = true;
-            return { accessToken: "x", csrfToken: "y" };
+            return { accessToken: 'x', csrfToken: 'y' };
           },
         } as never,
-        {
-          get: (cle: string) =>
-            cle === "INSCRIPTION_PUBLIQUE" ? "true" : undefined,
-        } as never,
+        { get: (cle: string) => (cle === 'INSCRIPTION_PUBLIQUE' ? 'true' : undefined) } as never,
       );
-      await expect(
-        controleur.register({ typeLicence } as never, res),
-      ).rejects.toThrow(MOTIF_LICENCE_A_L_INSCRIPTION);
+      await expect(controleur.register({ typeLicence } as never, res)).rejects.toThrow(MOTIF_LICENCE_A_L_INSCRIPTION);
       expect(registerAppele).toBe(false);
     },
   );
 });
 
-describe("la double authentification voyage avec l’utilisateur relu", () => {
+describe('la double authentification voyage avec l’utilisateur relu', () => {
   const avec = (doubleAuthActiveDepuis: Date | null) =>
     new JwtStrategy(
-      { getOrThrow: () => "secret-de-test" } as never,
-      {
-        user: {
-          findUnique: async () => ({ ...UTILISATEUR, doubleAuthActiveDepuis }),
-        },
-      } as never,
+      { getOrThrow: () => 'secret-de-test' } as never,
+      { user: { findUnique: async () => ({ ...UTILISATEUR, doubleAuthActiveDepuis }) } } as never,
     );
 
-  it("active seulement si une date d’activation est posée", async () => {
-    const req = {
-      method: "GET",
-      cookies: {},
-      headers: { authorization: "Bearer jeton" },
-    } as never;
-    await expect(
-      avec(null).validate(req, { sub: "u1" }),
-    ).resolves.toMatchObject({ doubleAuthentificationActive: false });
-    await expect(
-      avec(new Date()).validate(req, { sub: "u1" }),
-    ).resolves.toMatchObject({ doubleAuthentificationActive: true });
+  it('active seulement si une date d’activation est posée', async () => {
+    const req = { method: 'GET', cookies: {}, headers: { authorization: 'Bearer jeton' } } as never;
+    await expect(avec(null).validate(req, { sub: 'u1' })).resolves.toMatchObject({ doubleAuthentificationActive: false });
+    await expect(avec(new Date()).validate(req, { sub: 'u1' })).resolves.toMatchObject({ doubleAuthentificationActive: true });
   });
 });
