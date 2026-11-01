@@ -439,7 +439,14 @@ export class ExerciceService {
           `${montantFr(Math.abs(groupe.solde))} ${groupe.solde > 0 ? 'au débit' : 'au crédit'}, écritures validées de tous les ` +
           "dossiers du groupe. Un transfert est passé d'un seul côté, sa contrepartie n'est pas encore validée, ou un dossier a " +
           "quitté le groupe en gardant un virement · passez et validez la contrepartie, ou reclassez le solde, puis clôturez " +
-          "(fiche du compte 58, « soldés à la fin de l'exercice »).",
+          "(fiche du compte 58, « soldés à la fin de l'exercice »)." +
+          // G1 · l'issue qui existe déjà, nommée · un exercice antérieur encore
+          // ouvert d'un dossier du groupe est lu avec le sien, tant que sa
+          // clôture n'a pas passé le report qui arrête la remontée.
+          (groupe.precedentsOuvertsLus
+            ? ` ${groupe.precedentsOuvertsLus} exercice(s) antérieur(s) encore ouvert(s) dans le groupe sont lus avec l'exercice ` +
+              "courant de leur dossier · si le virement y est passé, clôturez-les d'abord, leur report arrête cette lecture."
+            : ''),
       );
     }
     const part585 =

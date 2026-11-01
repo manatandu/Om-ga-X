@@ -220,7 +220,7 @@ describe('le 585 du groupe à la date de clôture', () => {
       // cellule · réception en 2025, reportée en 2026.
       soldes585: { s25: 2_000_000, s26: 0, c25: -2_000_000, c26: -2_000_000 },
     });
-    expect(await service.virements585DuGroupe('C1', AU_31_12_2026)).toEqual({ solde: 0 });
+    expect(await service.virements585DuGroupe('C1', AU_31_12_2026)).toEqual({ solde: 0, precedentsOuvertsLus: 1 });
   });
 
   /**
@@ -243,7 +243,7 @@ describe('le 585 du groupe à la date de clôture', () => {
         soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
         ecritures: [extourne],
       }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
-    expect(await jouer()).toEqual({ solde: 0 });
+    expect(await jouer()).toEqual({ solde: 0, precedentsOuvertsLus: 1 });
     // Liée à rien, la même OD est une ouverture validée · la remontée s'arrête.
     extourne.reevaluationExtourne = null;
     expect(await jouer()).toEqual({ solde: 2_000_000 });
@@ -281,7 +281,7 @@ describe('le 585 du groupe à la date de clôture', () => {
         soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
         ecritures: [declaree],
       }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
-    expect(await jouer()).toEqual({ solde: 0 });
+    expect(await jouer()).toEqual({ solde: 0, precedentsOuvertsLus: 1 });
     // Déclaration ANNULÉE (sa réévaluation l'est) · l'OD redevient une
     // ouverture validée, la remontée s'arrête.
     (declaree.reevaluationContrePassationDeclaree as R).annuleeLe = new Date('2026-03-01');
@@ -309,7 +309,7 @@ describe('le 585 du groupe à la date de clôture', () => {
         soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
         ecritures,
       }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
-    expect(await jouer([od, negatif])).toEqual({ solde: 0 });
+    expect(await jouer([od, negatif])).toEqual({ solde: 0, precedentsOuvertsLus: 1 });
     // Sans son négatif, l'OD fait foi · la remontée s'arrête.
     expect(await jouer([od])).toEqual({ solde: 2_000_000 });
   });

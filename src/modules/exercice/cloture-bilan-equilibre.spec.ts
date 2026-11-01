@@ -24,7 +24,7 @@ function monter(
   treize = { debit: 0, credit: 0 },
   virements585 = { debit: 0, credit: 0 },
   // Le 585 de tout le groupe sur la période · soldé par défaut.
-  groupe: { solde: number } | 'absent' = { solde: 0 },
+  groupe: { solde: number; precedentsOuvertsLus?: number } | 'absent' = { solde: 0 },
 ) {
   const lecteur = { bilan: jest.fn().mockResolvedValue(bilan) };
   const lecteurGroupe = { virements585DuGroupe: jest.fn().mockResolvedValue(groupe) };
@@ -127,6 +127,16 @@ describe('Clôture · le bilan doit s’équilibrer', () => {
       await expect(refuser('t', 'e', SIEGE)).rejects.toThrow(
         /585[\s\S]*du groupe n'est pas soldé au 31\/12\/2026[\s\S]*2\s000\s000,00 au débit[\s\S]*quitté le groupe/,
       );
+    });
+
+    it('G1 · un exercice antérieur encore ouvert, lu avec le courant, est nommé avec son issue', async () => {
+      const { refuser } = monter(
+        { totalActif: 3_000_000, totalPassif: 5_000_000, controle: SANS_RESULTAT },
+        undefined,
+        { debit: 2_000_000, credit: 0 },
+        { solde: 2_000_000, precedentsOuvertsLus: 1 },
+      );
+      await expect(refuser('t', 'e', SIEGE)).rejects.toThrow(/1 exercice\(s\) antérieur\(s\) encore ouvert\(s\)[\s\S]*clôturez-les d'abord/);
     });
 
     it('sans lecteur du groupe, rien n’est présumé · refus nommé', async () => {
