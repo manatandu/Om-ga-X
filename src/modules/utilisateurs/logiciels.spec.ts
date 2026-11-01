@@ -54,27 +54,28 @@ describe('la définition des logiciels attribués', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('pose la liste sans doublon et NE FERME AUCUNE SESSION (c’est un affichage)', async () => {
+  it('pose la liste sans doublon et FERME LES SESSIONS (le serveur la refuse désormais)', async () => {
     const { s, update } = service(RoleUtilisateur.COMPTABLE);
     await s.definirLogiciels('t1', 'u2', { restreindre: true, logiciels: ['PAIE', 'COMPTABILITE', 'PAIE'] });
     const data = (update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
-    expect(data).toEqual({ restreindreLogiciels: true, logicielsAutorises: ['PAIE', 'COMPTABILITE'] });
-    expect(data).not.toHaveProperty('sessionsInvalidesAvant');
+    expect(data).toMatchObject({ restreindreLogiciels: true, logicielsAutorises: ['PAIE', 'COMPTABILITE'] });
+    expect(data.sessionsInvalidesAvant).toBeInstanceOf(Date);
   });
 
   it('lever la restriction (null = toutes) vide la liste', async () => {
     const { s, update } = service(RoleUtilisateur.COMPTABLE);
     await s.definirLogiciels('t1', 'u2', { restreindre: false, logiciels: ['PAIE'] });
-    expect((update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toEqual({
-      restreindreLogiciels: false,
-      logicielsAutorises: [],
-    });
+    const data = (update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ restreindreLogiciels: false, logicielsAutorises: [] });
+    expect(data.sessionsInvalidesAvant).toBeInstanceOf(Date);
   });
 
   it('lever la restriction d’un administrateur reste permis (rien à restreindre)', async () => {
     const { s, update } = service(RoleUtilisateur.ADMIN_CABINET);
     await s.definirLogiciels('t1', 'u2', { restreindre: false, logiciels: [] });
     expect(update).toHaveBeenCalled();
+    // Rien ne change pour lui · il n'est pas mis dehors.
+    expect((update.mock.calls[0][0] as { data: Record<string, unknown> }).data).not.toHaveProperty('sessionsInvalidesAvant');
   });
 });
 
@@ -101,10 +102,9 @@ describe('les clés mortes, le gestionnaire de paie, le changement de rôle', ()
   it('la liste est facultative quand on lève la restriction', async () => {
     const { s, update } = service(RoleUtilisateur.COMPTABLE);
     await s.definirLogiciels('t1', 'u2', { restreindre: false });
-    expect((update.mock.calls[0][0] as { data: Record<string, unknown> }).data).toEqual({
-      restreindreLogiciels: false,
-      logicielsAutorises: [],
-    });
+    const data = (update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ restreindreLogiciels: false, logicielsAutorises: [] });
+    expect(data.sessionsInvalidesAvant).toBeInstanceOf(Date);
   });
 
   it('promu administrateur, le compte perd son attribution (elle ne ressuscite pas au retour à comptable)', async () => {
@@ -139,11 +139,6 @@ describe('la route et la session', () => {
     expect(auth).toContain('logicielsAutorises: logicielsDeLaSession(user),');
   });
 
-  it('le service ne ferme aucune session dans cette méthode', () => {
-    const service = readFileSync(join(__dirname, 'utilisateur.service.ts'), 'utf8');
-    const corps = service.slice(service.indexOf('async definirLogiciels'), service.indexOf('async modifier('));
-    expect(corps).not.toContain('sessionsInvalidesAvant');
-  });
 
   it('la liste fermée a neuf tuiles, sans doublon', () => {
     expect(new Set(LOGICIELS).size).toBe(LOGICIELS.length);

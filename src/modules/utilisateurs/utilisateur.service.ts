@@ -195,6 +195,12 @@ export class UtilisateurService {
       data: {
         restreindreLogiciels: dto.restreindre,
         logicielsAutorises: dto.restreindre ? choisis : [],
+        // L'ATTRIBUTION EST UN DROIT DEPUIS QUE LE SERVEUR LA REFUSE (ligne
+        // commercial-site) · elle ferme les sessions comme le profil de
+        // fonctions, pour que l'écran ouvert relise ses tuiles au lieu de
+        // tomber sur des refus. L'administrateur n'est jamais restreint · lever
+        // une attribution qui ne le touche pas ne le met pas dehors.
+        ...(user.role === RoleUtilisateur.ADMIN_CABINET ? {} : { sessionsInvalidesAvant: new Date() }),
       },
       select: SELECTION,
     });

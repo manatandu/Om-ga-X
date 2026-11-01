@@ -10,6 +10,7 @@ import {
 import { MotDePasseAChangerGuard } from '../../common/guards/mot-de-passe-a-changer.guard';
 import { ROLES_CANTONNES, routeOuverteAuRoleCantonne } from '../../common/guards/roles-cantonnes';
 import { fonctionDeRoute, motifRefusFonction } from '../../common/fonctions/fonctions-metier';
+import { motifRefusLogiciel, porteeDeRoute } from '../../common/logiciels/logiciels-des-routes';
 import { sessionDeLaRequete } from './session-longue';
 import { poserCookieSession } from './session.constants';
 
@@ -98,12 +99,23 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const fonction = fonctionDeRoute(contexte.getClass().name, contexte.getHandler().name, utilisateur.role);
       const motif = motifRefusFonction(utilisateur, requete?.method ?? 'GET', fonction);
       if (motif) throw new ForbiddenException(motif);
+
+      // 3 bis · Les logiciels attribués REFUSENT, lectures comprises, ce
+      // qu'ils n'ouvrent pas (common/logiciels/logiciels-des-routes.ts) ·
+      // masquer la tuile ne suffisait pas, une adresse tapée ouvrait la
+      // fenêtre et le serveur la servait.
+      const motifLogiciel = motifRefusLogiciel(
+        utilisateur,
+        requete?.method ?? 'GET',
+        porteeDeRoute(contexte.getClass().name, contexte.getHandler().name),
+      );
+      if (motifLogiciel) throw new ForbiddenException(motifLogiciel);
     }
 
     // 4 · « Rester connecté » · chaque usage prolonge la session longue (audit
     // final F270). Le jeton est signé par JwtStrategy, qui tient la charge et
     // le signataire ; il n'est posé qu'ICI, une fois la requête ADMISE par
-    // les trois contrôles ci-dessus, et par la seule fonction qui pose le
+    // les contrôles ci-dessus, et par la seule fonction qui pose le
     // cookie de session · un refus de cette garde ne prolonge rien. Une garde
     // posée après elle (rôle, licence) peut encore refuser la route · la
     // session, authentifiée et non révoquée, reste prolongée, comme l'usage

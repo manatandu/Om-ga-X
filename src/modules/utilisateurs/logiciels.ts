@@ -2,15 +2,16 @@
  * LES « LOGICIELS » (TUILES) QU'UN UTILISATEUR VOIT APRÈS SA CONNEXION.
  *
  * Demande de Manasse du 2026-10-25 : l'utilisateur choisit ce qui le concerne,
- * le reste n'est pas à sa portée. Cette liste ne porte QUE les clés, fermée ·
- * les libellés et le rangement des commandes vivent dans le client
+ * le reste n'est pas à sa portée. Cette liste porte les clés, fermée, et les
+ * noms que cite le refus · le rangement des commandes vit dans le client
  * (`client/src/lib/logiciels.ts`), confrontés au menu réel, et un spec du
  * client relit CE fichier pour que les deux listes ne divergent pas.
  *
- * C'EST UN AFFICHAGE, JAMAIS UN DROIT (masquer n'est pas refuser). Aucune
- * route ne se refuse sur ce fondement · les droits restent ceux du rôle, du
- * référentiel et du profil de fonctions. Refuser module par module est le
- * niveau 3, au suivi (AVANCEMENT-ecran-logiciels.md).
+ * LE SERVEUR REFUSE CE QUI N'EST PAS ATTRIBUÉ (ligne commercial-site, gel levé
+ * par Manasse le 2026-11-01) · `common/logiciels/logiciels-des-routes.ts`
+ * rattache chaque contrôleur à son logiciel, et `JwtAuthGuard` refuse à
+ * l'utilisateur restreint les lectures et les écritures des autres, sauf ce
+ * qu'un logiciel attribué lit nécessairement d'un autre, écrit dans la table.
  */
 export const LOGICIELS = [
   'COMPTABILITE',
@@ -25,6 +26,22 @@ export const LOGICIELS = [
 ] as const;
 
 export type Logiciel = (typeof LOGICIELS)[number];
+
+/**
+ * Les noms que le refus du serveur cite · les mêmes que les tuiles du client,
+ * que `logiciels-des-routes.spec.ts` confronte à `client/src/lib/logiciels.ts`.
+ */
+export const LIBELLES_LOGICIEL: Record<Logiciel, string> = {
+  COMPTABILITE: 'Comptabilité',
+  TIERS_TRESORERIE: 'Tiers et trésorerie',
+  IMMOBILISATIONS: 'Immobilisations',
+  PAIE: 'Paie',
+  REVISION_AUDIT: 'Révision et audit',
+  GESTION_COMMERCIALE: 'Gestion commerciale',
+  GROUPE_CONSOLIDATION: 'Groupe et consolidation',
+  IFRS: 'IFRS',
+  ADMINISTRATION: 'Administration',
+};
 
 /**
  * Ce que la session rend à l'écran · `null` = toutes les tuiles. Un
