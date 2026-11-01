@@ -7,5 +7,7 @@ import { DemandeInformationService } from './demande-information.service';
   imports: [CourrierModule],
   controllers: [DemandeInformationController],
   providers: [DemandeInformationService],
+  // La console de l'éditeur compte les demandes non parties et les reprend.
+  exports: [DemandeInformationService],
 })
 export class DemandeInformationModule {}

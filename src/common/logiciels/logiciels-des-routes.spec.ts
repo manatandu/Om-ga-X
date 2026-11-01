@@ -65,7 +65,8 @@ function routesDuServeur(): { routes: Route[]; classes: Map<string, Set<string>>
       classes.set(classe, methodes);
       const classeAdmin = /@Roles\(RoleUtilisateur\.ADMIN_CABINET\)/.test(tete);
       const corps = bloc.slice(bloc.indexOf('export class'));
-      for (const m of corps.matchAll(/@(Get|Post|Put|Patch|Delete)\((?:'([^']*)')?\)[\s\S]*?\n {2}(?:async )?(\w+)\(/g)) {
+      // Le décorateur ouvre sa ligne · un `@Post()` cité dans un commentaire n'est pas une route.
+      for (const m of corps.matchAll(/\n {2}@(Get|Post|Put|Patch|Delete)\((?:'([^']*)')?\)[\s\S]*?\n {2}(?:async )?(\w+)\(/g)) {
         const debut = Math.max(corps.lastIndexOf('\n  }', m.index ?? 0), 0);
         const decorateurs = corps.slice(debut, (m.index ?? 0) + m[0].length);
         const roles = /@Roles\(([^)]*)\)/.exec(decorateurs)?.[1];
@@ -138,7 +139,9 @@ describe('la règle', () => {
   it('laisse le commun et le logiciel attribué', () => {
     expect(motifRefusLogiciel(paie, 'POST', porteeDeRoute('AuthController', 'changerMotDePasse'))).toBeNull();
     expect(motifRefusLogiciel(paie, 'POST', porteeDeRoute('PersonnelController', 'x'))).toBeNull();
-    expect(motifRefusLogiciel(paie, 'GET', porteeDeRoute('ControlesController', 'analyser'))).toBeNull();
+    // L'accueil de toute tuile lit la synthèse (compteurs) ; le rapport complet porte comptes, tiers et montants.
+    expect(motifRefusLogiciel(paie, 'GET', porteeDeRoute('ControlesController', 'synthese'))).toBeNull();
+    expect(motifRefusLogiciel(paie, 'GET', porteeDeRoute('ControlesController', 'analyser'))).toMatch(/Comptabilité.*Révision et audit/);
   });
 
   it('nomme plusieurs logiciels au pluriel', () => {
@@ -268,11 +271,65 @@ const cheminsCommuns = [...(/CHEMINS_COMMUNS: readonly string\[\] = \[([^\]]*)\]
   .map((m) => m[1])
   .filter((c) => c !== '/plateforme');
 
+/*
+ * LES ADRESSES CALCULÉES · un appel dont le chemin vient d'une variable
+ * (`api.telecharger(chemin)`, `api.post(p.chemin)`, `${base}/bilan`, une
+ * fonction qui compose l'adresse) échappe au relevé des appels littéraux.
+ * LISTE FERMÉE, chaque fichier avec son motif · on y relève TOUT littéral de
+ * chemin (`const base = '…'` substitué), et chacun est éprouvé sous chaque
+ * verbe qu'une route du serveur porte à cette adresse. Un fichier nouveau qui
+ * compose ses adresses s'ajoute ici.
+ */
+const ADRESSES_CALCULEES: Record<string, string> = {
+  'lib/regle-par.ts': 'contreparties admises d’une acquisition, composées par contrepartiesAdmises (ChampReglePar)',
+  'lib/export-livres.ts': 'adresses des exports du journal, des balances et des grands livres, passées à api.telecharger(chemin) de JournalPage',
+  'pages/JournalPage.tsx': 'lancerExport(chemin) · le chemin vient de lib/export-livres.ts ou d’un littéral du fichier',
+  'pages/EtatsSmtSyscohadaPage.tsx': '`${base}/bilan`, base littérale du fichier',
+  'pages/FinancementsPlacementsPage.tsx': 'api.post(p.chemin) · les chemins d’annulation sont des littéraux du fichier ou de TitresPlacementSection',
+  'components/TitresPlacementSection.tsx': 'chemins d’annulation des titres, passés à ModaleMotif',
+  'pages/RemisesPage.tsx': 'api.post(p.chemin) · chemins d’annulation littéraux du fichier',
+  'pages/EffetsPage.tsx': 'api.post(p.chemin) · chemins d’annulation littéraux du fichier',
+  'pages/CreancesDouteusesPage.tsx': 'api.post(chemin) et api.delete(chemin) · chemins littéraux du fichier',
+  'pages/DevisesPage.tsx': 'api.post(chemin) et api.delete(chemin) · chemins littéraux du fichier',
+};
+
+/** Les pièces jointes · l'objet rendu dit les adresses (lib/pieces-jointes.ts, ADRESSES_PIECES). */
+const piecesSource = readFileSync(join(CLIENT, 'lib', 'pieces-jointes.ts'), 'utf-8');
+const ADRESSES_PAR_OBJET = new Map(
+  [...piecesSource.matchAll(/(ECRITURE|SECTION|IMMOBILISATION|SALARIE): \{\s*liste: \(id\) => `([^`]+)`,\s*piece: \(id\) => `([^`]+)`/g)].map((m) => [
+    m[1],
+    [m[2], m[3], `${m[3]}/fichier`],
+  ]),
+);
+/** Les composants de PiecesJointes.tsx qui n'agissent que sur les pièces d'écriture. */
+const COMPOSANTS_ECRITURE = /\b(ModalePiecesEcriture|ModalePiecesDetachees|BoutonPiecesEcriture)\b/;
+
+const VERBES = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+function adressesCalculees(f: string): { verbe: string; url: string }[] {
+  const rel = relative(CLIENT, f);
+  const sortie: { verbe: string; url: string }[] = [];
+  const source = readFileSync(f, 'utf-8');
+  const eprouver = (url: string) => VERBES.forEach((verbe) => sortie.push({ verbe, url }));
+  if (rel in ADRESSES_CALCULEES) {
+    const base = /const base = '([^']+)'/.exec(source)?.[1];
+    for (const m of source.matchAll(/[`'"](\/[a-z][^`'"\s]*|\$\{base\}[^`'"\s]*)[`'"]/g)) {
+      eprouver(base ? m[1].replace('${base}', base) : m[1]);
+    }
+  }
+  if (rel !== 'components/PiecesJointes.tsx' && rel !== 'lib/pieces-jointes.ts') {
+    for (const m of source.matchAll(/objet="(ECRITURE|SECTION|IMMOBILISATION|SALARIE)"/g)) (ADRESSES_PAR_OBJET.get(m[1]) ?? []).forEach(eprouver);
+    if (/from '[./]+components\/PiecesJointes'|from '\.\/PiecesJointes'/.test(source) && COMPOSANTS_ECRITURE.test(source)) {
+      (ADRESSES_PAR_OBJET.get('ECRITURE') ?? []).forEach(eprouver);
+    }
+  }
+  return sortie;
+}
+
 function refusesPour(logiciel: Logiciel, fichiersLus: Iterable<string>): string[] {
   const utilisateur = { role: RoleUtilisateur.COMPTABLE, restreindreLogiciels: true, logicielsAutorises: [logiciel] };
   const refus = new Set<string>();
   for (const f of fichiersLus) {
-    for (const { verbe, url } of appels(f)) {
+    for (const { verbe, url } of [...appels(f), ...adressesCalculees(f)]) {
       for (const r of routesAppelees(verbe, url)) {
         if (r.administrateurSeul) continue;
         if (motifRefusLogiciel(utilisateur, verbe, porteeDeRoute(r.classe, r.methode))) {
@@ -291,6 +348,14 @@ describe('les écrans d’une tuile ne tombent pas sur un refus', () => {
     expect(cheminsCommuns).toEqual(expect.arrayContaining(['/courrier', '/messages']));
     const saisie = pageDe('/saisie') as string;
     expect(appels(saisie).length).toBeGreaterThan(5);
+  });
+
+  it('la liste des adresses calculées vise des fichiers qui existent, et les pièces se lisent par objet', () => {
+    for (const f of Object.keys(ADRESSES_CALCULEES)) expect([f, existsSync(join(CLIENT, f))]).toEqual([f, true]);
+    expect([...ADRESSES_PAR_OBJET.keys()].sort()).toEqual(['ECRITURE', 'IMMOBILISATION', 'SALARIE', 'SECTION']);
+    // Le relevé trouve bien des adresses calculées (un relevé vide ne prouverait rien).
+    expect(adressesCalculees(join(CLIENT, 'pages', 'EtatsSmtSyscohadaPage.tsx')).some((a) => a.url.startsWith('/etats-financiers-syscohada/smt/bilan'))).toBe(true);
+    expect(adressesCalculees(join(CLIENT, 'pages', 'PersonnelPage.tsx')).some((a) => a.url.startsWith('/personnel/salaries/'))).toBe(true);
   });
 
   it.each(LOGICIELS.map((l) => [l]))('%s · chaque fenêtre gardée au menu et ses imports', (logiciel) => {

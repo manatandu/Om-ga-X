@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DemandeInformationModule } from '../demande-information/demande-information.module';
 import { AuthModule } from '../auth/auth.module';
 import { FacturationModule } from '../facturation/facturation.module';
 import { AbonnementsService } from './abonnements/abonnements.service';
@@ -33,6 +34,7 @@ import { QuestionnaireModule } from '../questionnaire/questionnaire.module';
     PersonnelModule,
     RapprochementModule,
     QuestionnaireModule,
+    DemandeInformationModule,
   ],
   controllers: [PlateformeController],
   providers: [

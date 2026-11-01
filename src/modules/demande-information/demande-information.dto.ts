@@ -33,6 +33,18 @@ export class DemandeInformationDto {
   @MaxLength(3000, { message: 'Le message compte au plus 3 000 caractères' })
   message!: string;
 
+  /**
+   * LE CHAMP PIÈGE · invisible pour une personne (hors de l'écran, masqué aux
+   * lecteurs d'écran, jamais atteint au clavier), un robot qui remplit tout le
+   * remplit. Rempli, la demande reçoit la réponse ordinaire et rien n'est écrit
+   * (`DemandeInformationService.transmettre`) · un refus lui apprendrait à le
+   * laisser vide.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  site?: string;
+
   @IsBoolean()
   @Equals(true, { message: 'Cochez la case de consentement · sans elle, la demande ne peut pas être traitée.' })
   consentement!: boolean;

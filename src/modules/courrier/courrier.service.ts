@@ -351,8 +351,12 @@ export class CourrierService {
    * quatre, voir CLAUDE.md § 5) · le même message partirait deux fois à un
    * tiers. La reprise est donc une ACTION, appelée depuis l'écran, bornée à un
    * dossier et à un lot.
+   *
+   * `origines` · celles que l'utilisateur lit (`origines-par-logiciel.ts`),
+   * `null` pour toute la file · la reprise ne fait partir que ce qu'une tuile
+   * attribuée émet.
    */
-  async reprendre(tenantId: string, limite = REPRISE_PAR_APPEL): Promise<BilanReprise> {
+  async reprendre(tenantId: string, limite = REPRISE_PAR_APPEL, origines: readonly string[] | null = null): Promise<BilanReprise> {
     const etat = this.transport.etat();
     const maintenant = new Date();
 
@@ -369,12 +373,12 @@ export class CourrierService {
         echoues: 0,
         abandonnes: 0,
         ignores: 0,
-        restants: await this.prisma.message.count({ where: this.filtreEligibles(tenantId, maintenant) }),
+        restants: await this.prisma.message.count({ where: this.filtreEligibles(tenantId, maintenant, origines) }),
       };
     }
 
     const candidats = await this.prisma.message.findMany({
-      where: this.filtreEligibles(tenantId, maintenant),
+      where: this.filtreEligibles(tenantId, maintenant, origines),
       // Le plus ancien d'abord · une relance de la semaine dernière passe
       // avant celle de ce matin, sinon un lot volumineux repousse indéfiniment
       // les messages qu'il a lui-même fait échouer.
@@ -415,7 +419,7 @@ export class CourrierService {
     }
 
     bilan.restants = await this.prisma.message.count({
-      where: this.filtreEligibles(tenantId, new Date()),
+      where: this.filtreEligibles(tenantId, new Date(), origines),
     });
     return bilan;
   }
@@ -446,14 +450,18 @@ export class CourrierService {
   }
 
   /** La file du dossier, la plus récente d'abord, éventuellement filtrée par état. */
-  async lister(tenantId: string, options: { statut?: StatutMessage; limite?: number } = {}) {
+  async lister(tenantId: string, options: { statut?: StatutMessage; limite?: number; origines?: readonly string[] | null } = {}) {
     const plafond = Math.min(Math.max(1, Math.trunc(options.limite ?? LISTE_PAR_DEFAUT)), LISTE_MAXIMUM);
     // Le `tenantId` est écrit DANS chaque appel plutôt que rangé dans une
     // variable commune · le balayage de `cloisonnement.spec.ts` lit le corps
     // de l'appel et ne suit pas les variables, si bien qu'une borne portée par
     // une variable doit être gelée à la main dans une liste d'exceptions.
     // Deux caractères de plus valent mieux qu'une exception de plus.
-    const etat: Prisma.MessageWhereInput = options.statut ? { statut: options.statut } : {};
+    const etat: Prisma.MessageWhereInput = {
+      ...(options.statut ? { statut: options.statut } : {}),
+      // L'utilisateur restreint ne voit que ce qu'émettent ses logiciels.
+      ...(options.origines ? { origine: { in: [...options.origines] } } : {}),
+    };
     // Le total est pris sur le PÉRIMÈTRE ENTIER, pas sur la tranche rendue ·
     // un écran de travail peut ne montrer qu'une tranche à condition de le
     // dire (CLAUDE.md § 8 bis).
@@ -468,8 +476,12 @@ export class CourrierService {
   }
 
   /** Un message entier, CORPS COMPRIS · c'est ici qu'on lit ce qui est parti. */
-  async lire(tenantId: string, id: string) {
-    const message = await this.prisma.message.findFirst({ where: { id, tenantId } });
+  async lire(tenantId: string, id: string, origines: readonly string[] | null = null) {
+    // Hors de ses origines, le message est introuvable pour lui · un 404, comme
+    // la ligne d'un autre dossier, jamais un 403 qui en confirmerait l'existence.
+    const message = await this.prisma.message.findFirst({
+      where: { id, tenantId, ...(origines ? { origine: { in: [...origines] } } : {}) },
+    });
     if (!message) throw new NotFoundException('Message introuvable dans ce dossier');
     return message;
   }
@@ -481,10 +493,10 @@ export class CourrierService {
    * différente selon ce que contient la file affiche « undefined » le jour où
    * un état se vide, et c'est ce jour-là qu'on voudrait la croire.
    */
-  async compterParStatut(tenantId: string): Promise<CompteursParStatut> {
+  async compterParStatut(tenantId: string, origines: readonly string[] | null = null): Promise<CompteursParStatut> {
     const groupes = await this.prisma.message.groupBy({
       by: ['statut'],
-      where: { tenantId },
+      where: { tenantId, ...(origines ? { origine: { in: [...origines] } } : {}) },
       _count: { _all: true },
     });
     const compteurs = Object.values(StatutMessage).reduce(
@@ -498,7 +510,7 @@ export class CourrierService {
       // les envoyés, ni les abandonnés, ni les échecs dont l'heure n'est pas
       // venue. Une pastille qui compte des messages sur lesquels le bouton ne
       // fera rien apprend à ignorer la pastille.
-      aRelancer: await this.prisma.message.count({ where: this.filtreEligibles(tenantId, new Date()) }),
+      aRelancer: await this.prisma.message.count({ where: this.filtreEligibles(tenantId, new Date(), origines) }),
     };
   }
 
@@ -511,10 +523,11 @@ export class CourrierService {
    * DEUX bouts, la garde de `src/common/cloisonnement/` refusant par ailleurs
    * toute collection non bornée.
    */
-  private filtreEligibles(tenantId: string, maintenant: Date): Prisma.MessageWhereInput {
+  private filtreEligibles(tenantId: string, maintenant: Date, origines: readonly string[] | null = null): Prisma.MessageWhereInput {
     const seuilOrphelin = new Date(maintenant.getTime() - DELAI_ORPHELIN_MS);
     return {
       tenantId,
+      ...(origines ? { origine: { in: [...origines] } } : {}),
       OR: [
         // Écrits sans transport · ils repartent tels quels le jour où les
         // identifiants sont posés, sans avoir été réécrits. C'est tout l'objet

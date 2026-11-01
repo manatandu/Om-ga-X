@@ -291,6 +291,7 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:72px;height:5px;bor
 .champ textarea{resize:vertical;min-height:140px}
 .champ input:focus,.champ textarea:focus{border-color:var(--violet)}
 .champ [aria-invalid="true"]{border-color:var(--signal)}
+.piege{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
 .consentement{display:flex;align-items:flex-start;gap:10px;margin:22px 0 0;font-size:15px}
 .consentement input{flex:none;width:20px;height:20px;margin:2px 0 0;accent-color:var(--encre)}
 .mention{margin:10px 0 0;font-size:14px;color:var(--discret)}

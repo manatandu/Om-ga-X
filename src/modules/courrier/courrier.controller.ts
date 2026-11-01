@@ -6,6 +6,16 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { CourrierService } from './courrier.service';
+import { logicielsOpposables } from '../../common/logiciels/logiciels-des-routes';
+import { originesLisibles } from './origines-par-logiciel';
+
+/**
+ * Les origines que cet utilisateur lit · `null` s'il n'est pas restreint
+ * (ligne commercial-site · ce qu'une tuile émet, elle le lit).
+ */
+function origines(user: AuthenticatedUser): string[] | null {
+  return originesLisibles(logicielsOpposables(user));
+}
 import { ListerFileDto, ReprendreDto } from './dto/courrier.dto';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
@@ -29,13 +39,13 @@ export class CourrierController {
   /** Le compte par état, pour la cloche · déclaré AVANT `:id`, qui l'avalerait. */
   @Get('compteurs')
   compteurs(@CurrentUser() user: AuthenticatedUser) {
-    return this.courrier.compterParStatut(user.tenantId);
+    return this.courrier.compterParStatut(user.tenantId, origines(user));
   }
 
   /** La file du dossier, filtrable par état. */
   @Get()
   lister(@CurrentUser() user: AuthenticatedUser, @Query() dto: ListerFileDto) {
-    return this.courrier.lister(user.tenantId, { statut: dto.statut, limite: dto.limite });
+    return this.courrier.lister(user.tenantId, { statut: dto.statut, limite: dto.limite, origines: origines(user) });
   }
 
   /**
@@ -48,12 +58,12 @@ export class CourrierController {
   @Post('reprendre')
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   reprendre(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReprendreDto) {
-    return this.courrier.reprendre(user.tenantId, dto.limite);
+    return this.courrier.reprendre(user.tenantId, dto.limite, origines(user));
   }
 
   /** Un message entier, CORPS COMPRIS · déclaré en dernier, il attrape tout. */
   @Get(':id')
   lire(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.courrier.lire(user.tenantId, id);
+    return this.courrier.lire(user.tenantId, id, origines(user));
   }
 }

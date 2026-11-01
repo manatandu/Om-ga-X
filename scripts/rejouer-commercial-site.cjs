@@ -253,6 +253,24 @@ async function principal() {
       const r = await collab.appeler('GET', chemin);
       verifier(r.statut === 200, `la paie lit ${chemin} (${r.statut}${r.statut === 200 ? '' : ' · ' + r.texte.slice(0, 160)})`);
     }
+    const rapport = await collab.appeler('GET', `/controles?exerciceId=${exerciceId}`);
+    verifier(rapport.statut === 403, `le rapport complet des contrôles lui est refusé (${rapport.statut})`);
+    const synthese = await collab.appeler('GET', `/controles/synthese?exerciceId=${exerciceId}`);
+    verifier(
+      synthese.statut === 200 && synthese.corps?.totaux && !('anomalies' in (synthese.corps ?? {})),
+      `l'accueil lit la synthèse, compteurs seuls (${synthese.statut})`,
+    );
+    // La file des courriers · un message de relance du dossier, que la paie ne lit pas.
+    const relance = await prisma.message.create({
+      data: { tenantId: me.tenantId ?? (await prisma.user.findUnique({ where: { email: emailAdmin } })).tenantId, destinataire: 'client@exemple.invalid', sujet: 'Relance', corps: 'Créance de 1 000 000', origine: 'RELANCE', statut: 'SANS_TRANSPORT' },
+    });
+    const fileAdmin = await admin.ok('GET', '/courrier');
+    const filePaie = await collab.appeler('GET', '/courrier');
+    verifier(fileAdmin.messages.some((m) => m.id === relance.id), 'l’administrateur voit la relance dans la file');
+    verifier(filePaie.statut === 200 && filePaie.corps.total === 0, `la paie ne voit aucun message de la file (${filePaie.statut} · total ${filePaie.corps?.total})`);
+    const fichePaie = await collab.appeler('GET', `/courrier/${relance.id}`);
+    verifier(fichePaie.statut === 404, `la fiche de la relance lui est introuvable (${fichePaie.statut})`);
+
     const adminBalance = await admin.appeler('GET', `/ecritures/balance?exerciceId=${exerciceId}`);
     verifier(adminBalance.statut === 200, `l'administrateur n'est jamais restreint (${adminBalance.statut})`);
 
@@ -293,10 +311,28 @@ async function principal() {
     for (let i = 0; i < 6; i += 1) statuts.push((await rafale.appeler('POST', '/demandes/information', { ...DEMANDE, nom: `Rafale ${i}` })).statut);
     verifier(statuts.slice(0, 5).every((s) => s === 200) && statuts[5] === 429, `cinq par heure et par adresse, la sixième en 429 (${statuts.join(', ')})`);
 
+    const avantPiege = await compterDemandes();
+    const piege = await new Client().appeler('POST', '/demandes/information', { ...DEMANDE, site: 'http://robot.invalid' });
+    verifier(piege.statut === 200 && piege.corps?.recue === true, `le champ piège rempli reçoit la réponse ordinaire (${piege.statut})`);
+    verifier((await compterDemandes()) === avantPiege, 'et rien n’est écrit');
+    // Le plafond global de l'heure, lu en base · on remplit la file jusqu'au plafond.
+    const deja = await prisma.message.count({ where: { tenantId: tenantEditeur, origine: 'DEMANDE_INFORMATION', createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
+    const manque = Math.max(0, 60 - deja);
+    if (manque > 0) {
+      await prisma.message.createMany({
+        data: Array.from({ length: manque }, (_, i) => ({ tenantId: tenantEditeur, destinataire: EMAIL_OPERATEUR, sujet: `Rempli ${i}`, corps: 'rempli', origine: 'DEMANDE_INFORMATION', statut: 'ENVOYE' })),
+      });
+    }
+    const avantPlafond = await compterDemandes();
+    const plafond = await new Client().appeler('POST', '/demandes/information', DEMANDE);
+    verifier(plafond.statut === 429 && /Trop de demandes ont été reçues dans l'heure/.test(plafond.texte), `au plafond global de l’heure, 429 nommé (${plafond.statut} · ${plafond.texte.slice(0, 120)})`);
+    verifier((await compterDemandes()) === avantPlafond, 'et rien n’est écrit');
+
     console.log('== 3. La demande d’information, sans messagerie');
     await arreter(serveur);
     serveur = demarrerServeur(false);
     await attendreSante();
+    await prisma.message.deleteMany({ where: { origine: 'DEMANDE_INFORMATION', sujet: { startsWith: 'Rempli ' } } });
     const avantSans = await compterDemandes();
     const r503 = await new Client().appeler('POST', '/demandes/information', DEMANDE);
     verifier(r503.statut === 503 && /aucune messagerie/.test(r503.texte), `sans messagerie, 503 nommé (${r503.statut} · ${r503.texte.slice(0, 160)})`);

@@ -241,6 +241,9 @@
         consentement: true
       };
       if (telephone.value.trim()) corps.telephone = telephone.value.trim();
+      // Le champ piège · une personne ne le voit pas, un robot le remplit ; le serveur l'écarte sans rien écrire.
+      var piege = champ('d-site');
+      if (piege && piege.value) corps.site = piege.value;
       enCours = true;
       envoyer.disabled = true;
       dire('Envoi en cours…', null);

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { ServiceUnavailableException, UnsupportedMediaTypeException, ValidationPipe } from '@nestjs/common';
+import { HttpException, ServiceUnavailableException, UnsupportedMediaTypeException, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { THROTTLER_LIMIT } from '@nestjs/throttler/dist/throttler.constants';
@@ -7,7 +7,14 @@ import { PrismaService } from '../../common/prisma.service';
 import { CourrierService } from '../courrier/courrier.service';
 import { DemandeInformationController } from './demande-information.controller';
 import { DemandeInformationDto } from './demande-information.dto';
-import { DemandeInformationService, MOTIF_NON_ENREGISTREE, MOTIF_SANS_MESSAGERIE, REPONSE_DEMANDE_RECUE } from './demande-information.service';
+import {
+  DEMANDES_PAR_HEURE_AU_PLUS,
+  DemandeInformationService,
+  MOTIF_NON_ENREGISTREE,
+  MOTIF_PLAFOND_GLOBAL,
+  MOTIF_SANS_MESSAGERIE,
+  REPONSE_DEMANDE_RECUE,
+} from './demande-information.service';
 import { ORIGINE_DEMANDE_INFORMATION, composerDemande, destinatairesDesDemandes, surUneLigne } from './demande-information';
 
 const DEMANDE = {
@@ -45,14 +52,16 @@ describe('les règles pures de la demande', () => {
 });
 
 describe('le service', () => {
-  function monter(options: { transport?: boolean; operateurs?: string; editeur?: boolean } = {}) {
+  function monter(options: { transport?: boolean; operateurs?: string; editeur?: boolean; recentes?: number } = {}) {
     const mettreEnFile = jest.fn(async () => ({ id: 'm1', statut: 'ENVOYE', erreur: null }));
-    const courrier = { etatDuTransport: () => ({ configure: options.transport ?? true }), mettreEnFile };
+    const reprendre = jest.fn(async () => ({ transportConfigure: true }));
+    const courrier = { etatDuTransport: () => ({ configure: options.transport ?? true }), mettreEnFile, reprendre };
     const findFirst = jest.fn(async () => (options.editeur === false ? null : { tenantId: 'editeur' }));
-    const prisma = { licence: { findFirst } };
+    const count = jest.fn(async (a: { where: { statut: unknown } }) => (typeof a.where.statut === 'string' ? 1 : 3));
+    const prisma = { licence: { findFirst }, message: { count: (a: { where: { createdAt?: unknown; statut?: unknown } }) => (a.where.createdAt ? Promise.resolve(options.recentes ?? 0) : count(a as never)) } };
     const config = { get: (k: string) => (k === 'OPERATEURS_PLATEFORME' ? (options.operateurs ?? 'ops@omegax.cd') : undefined) };
     const s = new DemandeInformationService(prisma as unknown as PrismaService, config as unknown as ConfigService, courrier as unknown as CourrierService);
-    return { s, mettreEnFile, findFirst };
+    return { s, mettreEnFile, findFirst, reprendre, count };
   }
 
   it('met la demande en file dans le dossier de l’éditeur, une par opérateur, et ne rend aucune adresse', async () => {
@@ -77,6 +86,44 @@ describe('le service', () => {
     const { s, mettreEnFile } = monter({ operateurs: 'a@omegax.cd,b@omegax.cd' });
     mettreEnFile.mockRejectedValueOnce(new Error('refus') as never);
     await expect(s.transmettre(DEMANDE as DemandeInformationDto)).resolves.toEqual({ recue: true, message: REPONSE_DEMANDE_RECUE });
+  });
+
+  it('un message non parti se dit en avertissement, sans adresse ni contenu', async () => {
+    const { s, mettreEnFile } = monter();
+    mettreEnFile.mockResolvedValueOnce({ id: 'm1', statut: 'ECHEC', erreur: 'x' } as never);
+    const warn = jest.spyOn((s as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn').mockImplementation(() => undefined);
+    await s.transmettre(DEMANDE as DemandeInformationDto);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const texte = String(warn.mock.calls[0][0]);
+    expect(texte).toMatch(/non parti.*console/);
+    expect(texte).not.toMatch(/@|Ruth|Lumière/);
+  });
+
+  it('la console compte les demandes non parties de son dossier, et la reprise ne prend qu’elles', async () => {
+    const { s, count, reprendre } = monter();
+    expect(await s.etatPourLaConsole('editeur')).toEqual({ nonEnvoyees: 3, abandonnees: 1 });
+    expect(count.mock.calls[0][0]).toEqual({
+      where: { tenantId: 'editeur', origine: ORIGINE_DEMANDE_INFORMATION, statut: { in: ['EN_ATTENTE', 'ECHEC', 'SANS_TRANSPORT'] } },
+    });
+    await s.reprendre('editeur');
+    expect(reprendre).toHaveBeenCalledWith('editeur', undefined, [ORIGINE_DEMANDE_INFORMATION]);
+  });
+
+  it('le champ piège rempli · la réponse ordinaire, et rien d’écrit', async () => {
+    const { s, mettreEnFile } = monter();
+    const r = await s.transmettre({ ...DEMANDE, site: 'http://robot' } as DemandeInformationDto);
+    expect(r).toEqual({ recue: true, message: REPONSE_DEMANDE_RECUE });
+    expect(mettreEnFile).not.toHaveBeenCalled();
+  });
+
+  it('le plafond global de l’heure, lu en base, refuse en 429 nommé et n’écrit rien', async () => {
+    const { s, mettreEnFile } = monter({ operateurs: 'a@omegax.cd,b@omegax.cd', recentes: DEMANDES_PAR_HEURE_AU_PLUS * 2 });
+    const e = await s.transmettre(DEMANDE as DemandeInformationDto).catch((x: HttpException) => x);
+    expect((e as HttpException).getStatus()).toBe(429);
+    expect((e as HttpException).message).toBe(MOTIF_PLAFOND_GLOBAL);
+    expect(mettreEnFile).not.toHaveBeenCalled();
+    const sous = monter({ operateurs: 'a@omegax.cd,b@omegax.cd', recentes: DEMANDES_PAR_HEURE_AU_PLUS * 2 - 1 });
+    await expect(sous.s.transmettre(DEMANDE as DemandeInformationDto)).resolves.toMatchObject({ recue: true });
   });
 
   it('la réponse ne promet aucun délai', () => {

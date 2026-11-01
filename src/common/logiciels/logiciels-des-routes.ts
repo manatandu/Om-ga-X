@@ -69,7 +69,8 @@ export const CONTROLEURS_COMMUNS: Record<string, string> = {
   MessagerieController: "Messagerie interne · fenêtre commune à toutes les tuiles, chacun ses propres messages.",
   NotificationsController: "Notifications · le chrome compte les non lues, fenêtre commune à toutes les tuiles.",
   PreferencesController: "Préférences d'affichage · lues au démarrage de l'interface, chacun règle les siennes.",
-  CourrierController: "Courrier sortant · fenêtre commune à toutes les tuiles (file des messages du dossier).",
+  CourrierController:
+    "Courrier sortant · fenêtre commune à toutes les tuiles, mais la liste, la cloche, la fiche d'un message et la reprise sont FILTRÉES par l'origine du message (courrier/origines-par-logiciel.ts · ce qu'une tuile émet, elle le lit).",
   ModelesEditionController: "Modèles des éditions de travail · une présentation de liste imprimée, sans donnée propre à un logiciel.",
   SelectionsEditionController: "Sélections enregistrées des éditions · des critères de lecture rappelés, lus par la fenêtre commune des impressions différées.",
 };
@@ -254,8 +255,11 @@ export const LOGICIEL_PAR_METHODE: Record<string, PorteeLogiciel | 'COMMUN'> = {
   'TiersController.devisesDesComptes': { logiciels: [T], lecture: [C] },
   'TiersController.echeancierDeLigne': { logiciels: [T], lecture: [C] },
   'BanquesController.lister': { logiciels: [T], lecture: TOUS },
-  // Le chrome lit l'analyse du dossier (barre d'état) depuis toute tuile.
-  'ControlesController.analyser': 'COMMUN',
+  // L'accueil, monté pour toute tuile, lit la SYNTHÈSE des contrôles ·
+  // compteurs et intitulé seuls (synthese-controles.ts). Le rapport complet
+  // (`analyser`) porte comptes, tiers et montants · il reste à la
+  // Comptabilité et à la Révision, comme le reste du contrôleur.
+  'ControlesController.synthese': 'COMMUN',
   // Viser une facture est un geste de la facturation.
   'CircuitVisaController.viserFacture': { logiciels: [C, G] },
   // Personnaliser le compte d'un bien depuis sa fiche (compte retenu).
@@ -318,12 +322,12 @@ export function motifRefusLogiciel(
   if (!attribues) return null;
   if (portee === 'COMMUN') return null;
   if (!portee) {
-    return "Cette fonction n'est rattachée à aucun logiciel, et vos accès sont restreints à certains logiciels · voyez l'administrateur du dossier.";
+    return "Cette fonction n'est rattachée à aucun logiciel, et vos accès sont restreints à certains logiciels · l'administrateur du dossier peut corriger vos logiciels attribués (Utilisateurs).";
   }
   if (portee.logiciels.some((l) => attribues.includes(l))) return null;
   if (LECTURES.has(verbeHttp.toUpperCase()) && portee.lecture) {
     if (portee.lecture === TOUS) return null;
     if (portee.lecture.some((l) => attribues.includes(l))) return null;
   }
-  return `Cette fonction relève ${nommer(portee.logiciels)} · voyez l'administrateur du dossier.`;
+  return `Cette fonction relève ${nommer(portee.logiciels)} · l'administrateur du dossier peut corriger vos logiciels attribués (Utilisateurs).`;
 }

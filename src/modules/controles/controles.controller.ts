@@ -7,6 +7,7 @@ import { ClasseCompte } from '@prisma/client';
 import { ControlesService } from './controles.service';
 import { DossierRevisionService } from './dossier-revision.service';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { syntheseDuRapport } from './synthese-controles';
 
 /**
  * Consultation · un contrôle ne modifie rien, et aucune route d'ici ne porte
@@ -40,6 +41,12 @@ export class ControlesController {
   @Get('dossier-revision')
   async dossierRevision(@CurrentUser() user: AuthenticatedUser, @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string) {
     return this.revision.dossier(user.tenantId, exerciceId, user.referentiel);
+  }
+
+  /** Ce que l'accueil montre · compteurs et intitulé seuls (synthese-controles.ts). */
+  @Get('synthese')
+  async synthese(@CurrentUser() user: AuthenticatedUser, @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string) {
+    return syntheseDuRapport(await this.controles.analyser(user.tenantId, exerciceId));
   }
 
   @Get()

@@ -2259,6 +2259,18 @@ export interface AnomalieControle {
   nombre?: number;
 }
 
+/**
+ * Ce que l'accueil lit (`GET /controles/synthese`) · compteurs et intitulé de
+ * la première anomalie, jamais les occurrences (comptes, tiers, montants), que
+ * le serveur réserve à la Comptabilité et à la Révision.
+ */
+export interface SyntheseControles {
+  exerciceId: string;
+  genereLe: string;
+  totaux: { bloquants: number; avertissements: number; informations: number };
+  premiereAnomalie: { code: string; gravite: string; libelle: string } | null;
+}
+
 export interface RapportControles {
   exerciceId: string;
   genereLe: string;
