@@ -193,6 +193,16 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **PAIE EN LOT (gel levé le 2026-11-01), questions que le corpus ne
+  tranche pas.** (1) Un jour payé aux deux tiers (livre de paie, mention 17)
+  compte-t-il au SMIG des jours payés du plancher CNSS (décret n° 18/041,
+  art. 8) pour un jour, une fraction ou rien ? La proposition en lot
+  n'envoie alors aucun nombre de jours et le cabinet les déclare à la
+  Simulation. (2) Le personnel domestique (loi n° 23/053, art. 121, al. 2)
+  se déclare bulletin par bulletin · un régime enregistré par salarié serait
+  plus commode. (3) L'effectif de la tranche INPP est déclaré par le
+  cabinet · les arrêtés ne fixent ni la date ni la méthode du décompte.
+
 - **RATTACHEMENT D'UN COLLABORATEUR À PLUSIEURS DOSSIERS (décision de
   Manasse du 2026-10-30, D9), après le pilote.** Un cabinet qui tient
   plusieurs dossiers ouvre aujourd'hui un compte par personne et par dossier.
