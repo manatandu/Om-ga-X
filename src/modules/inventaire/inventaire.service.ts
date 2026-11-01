@@ -658,20 +658,7 @@ export class InventaireService {
     // doit déterminer le responsable de chaque type d'écart »). Son écart se
     // décide par la fiche de la caisse, comme pour une campagne de caisses
     // seules (B10) · on la réclame ici, tant qu'une fiche peut encore naître.
-    const comptesDesFiches = new Set(fiches.map((f) => f.compteId));
-    const pvSansFiche = (
-      await this.prisma.procesVerbalComptageCaisse.findMany({
-        where: { tenantId, campagneId, NOT: { ecart: 0 } },
-        select: { compteId: true, compte: { select: { numero: true } } },
-      })
-    ).filter((pv) => !comptesDesFiches.has(pv.compteId));
-    if (pvSansFiche.length > 0) {
-      throw new BadRequestException(
-        `${pvSansFiche.length} caisse(s) au procès-verbal à écart sans fiche (${[...new Set(pvSansFiche.map((pv) => pv.compte.numero))].join(', ')}) · ` +
-          "créez la fiche de chaque caisse et portez-y la valeur du comptage avant de rapprocher · sans elle, l'écart " +
-          "du procès-verbal n'entrerait dans aucun arbitrage et la campagne se clôturerait sans qu'il soit décidé (CPCC, étape 5).",
-      );
-    }
+    await this.refuserPvAEcartSansFiche(this.prisma, tenantId, campagneId);
 
     const lignesAuBrouillard = await this.prisma.ligneEcriture.count({
       where: {
@@ -699,6 +686,14 @@ export class InventaireService {
 
     const maintenant = new Date();
     await transactionJournalisee(this.prisma, async (tx) => {
+      // Relu DANS la transaction qui fait passer la campagne à l'arbitrage,
+      // sous son verrou exclusif (seconde relecture des relevés, MAJEUR 1) ·
+      // un PV à écart établi entre la vérification du haut et ce passage
+      // échappait sinon à la fiche réclamée.
+      await prendreLeVerrouDuDossierBorne(tx, tenantId);
+      await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      await this.campagneOuverte(tenantId, campagneId, [StatutCampagneInventaire.PREPARATION, StatutCampagneInventaire.RECENSEMENT], tx);
+      await this.refuserPvAEcartSansFiche(tx, tenantId, campagneId);
       await tx.ecartInventaire.deleteMany({ where: { tenantId, campagneId } });
       for (const [compteId, { valeur, nombre }] of parCompte.entries()) {
         // Un compte d'actif a un solde débiteur ; la balance le rend positif.
@@ -726,6 +721,26 @@ export class InventaireService {
       });
     });
     return this.consulter(tenantId, campagneId);
+  }
+
+  /** Le refus de la campagne mixte · un PV de caisse à écart sans fiche de sa caisse. */
+  private async refuserPvAEcartSansFiche(db: Prisma.TransactionClient | PrismaService, tenantId: string, campagneId: string) {
+    const [fiches, pvs] = await Promise.all([
+      db.ficheInventaire.findMany({ where: { tenantId, campagneId }, select: { compteId: true } }),
+      db.procesVerbalComptageCaisse.findMany({
+        where: { tenantId, campagneId, NOT: { ecart: 0 } },
+        select: { compteId: true, compte: { select: { numero: true } } },
+      }),
+    ]);
+    const comptesDesFiches = new Set(fiches.map((f) => f.compteId));
+    const pvSansFiche = pvs.filter((pv) => !comptesDesFiches.has(pv.compteId));
+    if (pvSansFiche.length > 0) {
+      throw new BadRequestException(
+        `${pvSansFiche.length} caisse(s) au procès-verbal à écart sans fiche (${[...new Set(pvSansFiche.map((pv) => pv.compte.numero))].join(', ')}) · ` +
+          "créez la fiche de chaque caisse et portez-y la valeur du comptage avant de rapprocher · sans elle, l'écart " +
+          "du procès-verbal n'entrerait dans aucun arbitrage et la campagne se clôturerait sans qu'il soit décidé (CPCC, étape 5).",
+      );
+    }
   }
 
   /**
@@ -1179,7 +1194,7 @@ export class InventaireService {
         // Le statut relu sous verrou partagé (mineur 1 du second tour, ligne
         // B) · un PV ne s'ajoute pas à une campagne que la clôture vient de
         // fermer entre la lecture du haut et cette transaction.
-        await this.campagneSousVerrouPartage(tx, tenantId, campagneId, [
+        const campagneLue = await this.campagneSousVerrouPartage(tx, tenantId, campagneId, [
           StatutCampagneInventaire.PREPARATION,
           StatutCampagneInventaire.RECENSEMENT,
           StatutCampagneInventaire.ARBITRAGE,
@@ -1200,6 +1215,21 @@ export class InventaireService {
         // Espèces, écart et coupures sont dans l'UNITÉ du PV · la devise de la
         // caisse quand toutes ses lignes la portent (B1).
         const ecart = Number((dto.especesComptees - lecture.soldeComptable).toFixed(2));
+        // UN PV À ÉCART EN ARBITRAGE EXIGE LA FICHE DE SA CAISSE (seconde
+        // relecture des relevés, MAJEUR 1) · rapprochée, la campagne ne prend
+        // plus de fiche, et l'écart d'une caisse sans fiche n'entrerait dans
+        // aucun arbitrage · la campagne se clôturait sans qu'il soit décidé
+        // (CPCC, étape 5). Relu sous le verrou partagé de la campagne.
+        if (campagneLue.statut === StatutCampagneInventaire.ARBITRAGE && Math.abs(ecart) > 0.005) {
+          const fiche = await tx.ficheInventaire.findFirst({ where: { tenantId, campagneId, compteId: compte.id }, select: { id: true } });
+          if (!fiche) {
+            throw new BadRequestException(
+              `La campagne est rapprochée et la caisse ${compte.numero} n'y a pas de fiche · un procès-verbal à écart ne ` +
+                "s'y ajoute plus, son écart n'entrerait dans aucun arbitrage (CPCC, étape 5). Comptez cette caisse dans une " +
+                'nouvelle campagne, où sa fiche pourra naître, ou, si le comptage est sans écart, établissez-le ici.',
+            );
+          }
+        }
         const pv = await tx.procesVerbalComptageCaisse.create({
           data: {
             tenantId,
@@ -1496,6 +1526,7 @@ export class InventaireService {
           dateComptage: true,
           especesComptees: true,
           soldeALaCloture: true,
+          soldeComptableFige: true,
           encaissementsPosterieurs: true,
           decaissementsPosterieurs: true,
           modeComparaison: true,
@@ -1532,14 +1563,22 @@ export class InventaireService {
       // l'avant les espèces existant à la clôture. Illisible, rien n'est
       // chiffré et la phrase dit encore que les mouvements entrent dans
       // l'écart.
+      // Les deux soldes se relisent AUJOURD'HUI, au comptage et à la clôture
+      // (seconde relecture des relevés, 5) · leur différence est le
+      // mouvement d'entre les deux, et une pièce validée après le PV y entre.
       const soldesALaCloture = new Map<string, number>();
+      const soldesAuComptage = new Map<string, number>();
       const exercice = campagne?.exercice ?? null;
       if (exercice) {
         for (const pv of avecEcart) {
           if (pv.modeComparaison !== ModeComparaisonCaisse.FRANCS) continue;
           if (jourUtc(pv.dateComptage).getTime() >= jourUtc(exercice.dateFin).getTime()) continue;
           const lu = await lireSoldeCaisseAuComptage(db as Prisma.TransactionClient, tenantId, pv.compteId, exercice, exercice.dateFin);
+          const auComptage = await lireSoldeCaisseAuComptage(db as Prisma.TransactionClient, tenantId, pv.compteId, exercice, pv.dateComptage);
           if (lu.lisible && lu.unite.mode === ModeComparaisonCaisse.FRANCS) soldesALaCloture.set(pv.compteId, lu.soldeComptable);
+          if (auComptage.lisible && auComptage.unite.mode === ModeComparaisonCaisse.FRANCS) {
+            soldesAuComptage.set(pv.compteId, auComptage.soldeComptable);
+          }
         }
       }
       const valeurs = avecEcart.map((pv) =>
@@ -1547,6 +1586,8 @@ export class InventaireService {
           {
             ecart: Number(pv.ecart),
             soldeLivreALaCloture: soldesALaCloture.get(pv.compteId) ?? null,
+            soldeLivreAuComptage: soldesAuComptage.get(pv.compteId) ?? null,
+            soldeComptableFige: Number(pv.soldeComptableFige),
             numero: pv.compte.numero,
             dateComptage: pv.dateComptage,
             especesComptees: Number(pv.especesComptees),

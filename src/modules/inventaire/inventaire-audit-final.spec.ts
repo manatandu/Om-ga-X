@@ -109,6 +109,17 @@ describe('F134 · le premier comptage ouvre le recensement', () => {
   });
 });
 
+describe('seconde relecture des relevés, MAJEUR 1 · un PV à écart en arbitrage exige la fiche de sa caisse', () => {
+  it('rapprochée, la campagne refuse le PV à écart d’une caisse sans fiche, rien n’est créé', async () => {
+    const m = monter(StatutCampagneInventaire.ARBITRAGE);
+    await expect(
+      m.svc.etablirPvCaisse('t1', 'camp1', 'u1', {
+        compteId: 'c57', sousCommissionId: 'sc1', dateComptage: '2025-12-31', especesComptees: 90, modeComparaison: 'FRANCS',
+      } as never),
+    ).rejects.toThrow(/57100000 n'y a pas de fiche[\s\S]*nouvelle campagne/);
+  });
+});
+
 describe('F135 · une fiche se retire tant que rien n’est figé', () => {
   it.each([StatutCampagneInventaire.PREPARATION, StatutCampagneInventaire.RECENSEMENT])('en %s, la fiche part', async (statut) => {
     const m = monter(statut);

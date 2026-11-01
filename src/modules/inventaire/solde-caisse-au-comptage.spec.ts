@@ -963,6 +963,31 @@ describe('la valeur que la fiche d’une caisse à l’écart doit porter', () =
     expect(sp(t)).not.toContain('995000');
   });
 
+  it('seconde relecture, 5 · relue aujourd’hui, une pièce antérieure au comptage validée après le PV est comptée et dite', () => {
+    // Comptés 995 000 le 20 décembre contre 1 000 000 figés ; une recette de
+    // 50 000 du 18 décembre validée après le PV porte le solde au comptage à
+    // 1 050 000 ; 300 000 payés le 28, solde de clôture 750 000 · existaient à
+    // la clôture 995 000 − 300 000 = 695 000, jamais 750 000 − 5 000 = 745 000.
+    const t = valeurAPorterSurLaFiche(
+      {
+        ...base,
+        dateComptage: new Date('2026-12-20T00:00:00Z'),
+        especesComptees: 995_000,
+        soldeALaCloture: null,
+        encaissementsPosterieurs: null,
+        decaissementsPosterieurs: null,
+        ecart: -5_000,
+        soldeLivreALaCloture: 750_000,
+        soldeLivreAuComptage: 1_050_000,
+        soldeComptableFige: 1_000_000,
+      },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('lesespècesexistantàlaclôture,695000,00');
+    expect(t).toMatch(/lus aujourd'hui/);
+    expect(sp(t)).toContain('achangéde50000,00depuisleprocès-verbal');
+  });
+
   it('un PV dans une devise · montants dans la devise, la fiche se valorise en francs, aucun cours choisi', () => {
     const t = valeurAPorterSurLaFiche({ ...base, especesComptees: 1_190, soldeALaCloture: 1_300, decaissementsPosterieurs: 100, unite: 'USD' }, CLOTURE);
     expect(sp(t)).toContain('1290,00USD');
