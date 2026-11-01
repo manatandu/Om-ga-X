@@ -24,6 +24,7 @@ import {
   cotisationsExactes,
   netAPayerExact,
   netNegatifAuCentime,
+  centimesRetenablesAuPlus,
   type NatureEmployeurInpp,
   type RegimeCnss,
 } from './cotisations-paie';
@@ -1441,8 +1442,13 @@ export class PersonnelService {
     // paquet 1, jumeau m1) · le reste flottant -1,16e-10 refusait une retenue
     // égale au net affiché (`netNegatifAuCentime`, la convention y est dite).
     if (netExact !== null && netNegatifAuCentime(netExact)) {
+      // LE REFUS DIT LE MAXIMUM RETENABLE (second tour du paquet 1, ligne C,
+      // M3) · « réduisez-les » laissait le cabinet chercher le chiffre à
+      // tâtons, au centime près.
+      const maximum = Number(centimesRetenablesAuPlus(plus(netExact, retenuesAvancesExactes))) / 100;
       throw new BadRequestException(
-        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
+        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · ` +
+          `réduisez-les à ${maximum.toFixed(2)} FC au plus.`,
       );
     }
 

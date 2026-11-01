@@ -56,8 +56,8 @@
  *    qu'elle ne peut réduire (art. 37) · OmegaX n'en déduit rien.
  */
 
-import { centimesLoinDeZero, depuisNombre, moins } from '../../common/decimal-exact';
-import { netNegatifAuCentime } from './cotisations-paie';
+import { depuisNombre } from '../../common/decimal-exact';
+import { centimesRetenablesAuPlus } from './cotisations-paie';
 
 const c = (n: number) => Math.round(n * 100);
 const deCentimes = (n: number) => n / 100;
@@ -73,11 +73,7 @@ const deCentimes = (n: number) => n / 100;
  * plus grande qui laisse un net non négatif au centime.
  */
 function disponibleEnCentimes(netDisponibleFc: number): number {
-  const net = depuisNombre(netDisponibleFc);
-  let r = Number(centimesLoinDeZero(net));
-  if (r <= 0) return 0;
-  if (netNegatifAuCentime(moins(net, depuisNombre(r / 100)))) r -= 1;
-  return Math.max(0, r);
+  return Number(centimesRetenablesAuPlus(depuisNombre(netDisponibleFc)));
 }
 
 export type AvanceARetenir = {

@@ -965,3 +965,17 @@ export function netAPayerExact(
 export function netNegatifAuCentime(net: DecimalExact): boolean {
   return centimesLoinDeZero(net) < 0n;
 }
+
+/**
+ * LA PLUS GRANDE RETENUE, EN CENTIMES, QUE LE NET AVANT RETENUES PORTE (second
+ * tour du paquet 1, ligne C, M1 et M3) · celle qui laisse un net non négatif
+ * au centime par la règle de `netNegatifAuCentime`. Un net exact de
+ * 503 900,095 porte 503 900,09, jamais 503 900,10. Le refus d'une retenue
+ * trop forte la nomme, et la proposition du décompte s'y borne.
+ */
+export function centimesRetenablesAuPlus(netAvantRetenues: DecimalExact): bigint {
+  let r = centimesLoinDeZero(netAvantRetenues);
+  if (r <= 0n) return 0n;
+  if (netNegatifAuCentime(moins(netAvantRetenues, { mantisse: r, echelle: 2 }))) r -= 1n;
+  return r > 0n ? r : 0n;
+}
