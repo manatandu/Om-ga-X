@@ -67,8 +67,11 @@ export class TestEcrituresJournalService {
         // les vire au 13, validé depuis l'audit final F4. Comptées, elles
         // ajoutaient un mouvement à chaque compte touché, et un compte de
         // charge servi deux fois cessait d'être « rarement utilisé » sur tout
-        // exercice clos.
-        where: { ecriture: { tenantId, exerciceId, estGenereeParCloture: false, ...HORS_SITUATION } },
+        // exercice clos. L'à-nouveau provisoire non plus, comme la sélection
+        // plus bas · il recopie le report de N-1 (relecture du 2026-11-01).
+        where: {
+          ecriture: { tenantId, exerciceId, estGenereeParCloture: false, estANouveauProvisoire: false, ...HORS_SITUATION },
+        },
         _count: { _all: true },
       }),
     ]);

@@ -83,9 +83,12 @@ function service(ecritures: Faux[]) {
     ligneEcriture: {
       // LA DOUBLURE HONORE LE FILTRE DES ÉCRITURES DE CLÔTURE · elle ne les
       // écarte du décompte que si la requête le demande.
-      groupBy: jest.fn(async ({ where }: { where: { ecriture: { estGenereeParCloture?: boolean } } }) => {
+      groupBy: jest.fn(
+        async ({ where }: { where: { ecriture: { estGenereeParCloture?: boolean; estANouveauProvisoire?: boolean } } }) => {
         const retenues = ecritures.filter(
-          (e) => !(e.estGenereeParCloture === true && where.ecriture.estGenereeParCloture === false),
+          (e) =>
+            !(e.estGenereeParCloture === true && where.ecriture.estGenereeParCloture === false) &&
+            !(e.estANouveauProvisoire === true && where.ecriture.estANouveauProvisoire === false),
         );
         const lignes = lignesDe(retenues);
         return numeros
@@ -193,6 +196,23 @@ describe('la sélection ISA 240 · § 33 a)', () => {
   // MONTANT_ROND). Personne ne la saisit · elle n'est ni un ajustement de fin
   // de période ni l'acte d'un auteur (ISA 240 § 33 a), et le règlement
   // intérieur dit que le test ne compte pas les écritures de clôture.
+  it('un compte rare le reste · l’à-nouveau provisoire n’est pas un usage (relecture du 2026-11-01)', async () => {
+    const usage = (id: string) => ({
+      ...ORDINAIRE, id, lignes: [ligne('27500000', 3_400_000), ligne('40100000', 0, 3_400_000)],
+    });
+    const provisoire = {
+      ...ORDINAIRE, id: 'pv', estANouveauProvisoire: true,
+      lignes: [ligne('27500000', 6_800_000), ligne('10100000', 0, 6_800_000)],
+    };
+    const r = await service([
+      ...Array.from({ length: 5 }, (_, i) => ({ ...ORDINAIRE, id: `r${i}` })),
+      usage('u1'),
+      usage('u2'),
+      provisoire,
+    ]).selection('t1', 'ex');
+    expect(r.selection.find((s) => s.id === 'u1')?.comptesRares).toEqual(['27500000']);
+  });
+
   it('ne sélectionne ni l’écriture de clôture, ni le report, ni l’à-nouveau provisoire', async () => {
     const cloture = {
       ...ORDINAIRE, id: 'cl', estGenereeParCloture: true, date: new Date('2026-12-31'),
