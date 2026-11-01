@@ -259,8 +259,22 @@ export class BalanceFonctionnelleService {
       lignes.reduce((t, l) => t + enCentimes(l[cle]), 0);
     const debitTotal = somme('debit');
     const creditTotal = somme('credit');
-    const ouvertureDebitTotal = somme('ouvertureDebit');
-    const ouvertureCreditTotal = somme('ouvertureCredit');
+    // L'ÉCART DE CONVERSION SE LIT SUR LA CONVERSION EXACTE (relecture du
+    // 2026-11-01) · arrondies ligne à ligne, les lignes servies s'écartent
+    // de quelques centimes de leur somme exacte. Cet arrondi ne naît pas de
+    // la conversion · il a sa ligne, « Arrondi au centime des lignes
+    // converties », et l'écart reste celui des montants exacts.
+    let exactDebit = 0;
+    let exactCredit = 0;
+    let exactOuvertureDebit = 0;
+    let exactOuvertureCredit = 0;
+    for (const v of jeu.parCompte.values()) {
+      exactDebit += v.ouvertureDebit + v.debit;
+      exactCredit += v.ouvertureCredit + v.credit;
+      exactOuvertureDebit += v.ouvertureDebit;
+      exactOuvertureCredit += v.ouvertureCredit;
+    }
+    const ecartExact = enCentimes(exactDebit - exactCredit);
     return {
       monnaie: fonctionnelle,
       monnaieTenue,
@@ -281,9 +295,15 @@ export class BalanceFonctionnelleService {
          * même origine. Le loger dans un compte de bouclage ferait équilibrer
          * l'état et disparaître l'information.
          */
-        ecartDeConversion: (debitTotal - creditTotal) / 100,
+        ecartDeConversion: ecartExact / 100,
         /** La part de l'écart reprise à l'ouverture, née des exercices précédents. */
-        dontOuverture: (ouvertureDebitTotal - ouvertureCreditTotal) / 100,
+        dontOuverture: enCentimes(exactOuvertureDebit - exactOuvertureCredit) / 100,
+        /**
+         * L'arrondi au centime des lignes servies · total débit moins total
+         * crédit, moins l'écart de conversion. Dit à part, jamais rangé dans
+         * l'écart.
+         */
+        arrondiDesLignes: (debitTotal - creditTotal - ecartExact) / 100,
       },
       origine: {
         lignes: jeu.lignes,

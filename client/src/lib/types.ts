@@ -5308,6 +5308,8 @@ export interface BalanceFonctionnelle {
     ecartDeConversion: number;
     /** La part de l'écart reprise à l'ouverture, née des exercices précédents. */
     dontOuverture: number;
+    /** L'arrondi au centime des lignes servies, dit à part de l'écart de conversion. */
+    arrondiDesLignes: number;
   };
   origine: {
     lignes: number;

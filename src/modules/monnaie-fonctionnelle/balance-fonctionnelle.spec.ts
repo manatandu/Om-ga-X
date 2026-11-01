@@ -260,7 +260,10 @@ describe('la balance du second jeu', () => {
     expect(sommeDebits).toBe(999.99);
     expect(r.totaux.debit).toBe(999.99);
     expect(r.totaux.credit).toBe(1000);
-    expect(r.totaux.ecartDeConversion).toBe(-0.01);
+    // L'écart de la conversion EXACTE est nul · le centime manquant vient de
+    // l'arrondi des lignes, dit sur sa propre ligne (relecture du 2026-11-01).
+    expect(r.totaux.ecartDeConversion).toBe(0);
+    expect(r.totaux.arrondiDesLignes).toBe(-0.01);
   });
 
   it('MONTRE l’écart de conversion, jamais absorbé dans un compte', async () => {

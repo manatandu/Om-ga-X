@@ -184,7 +184,7 @@ describe('F189 · la balance fonctionnelle lue par tranches', () => {
     ]);
     // Débit 33 600 + 67 100 = 100 700 ; crédit 33 600 + 34 170 + 33 600 =
     // 101 370 ; l'écart, 335 × 2 = 670, reste sur sa ligne, jamais absorbé.
-    expect(r.totaux).toEqual({ debit: 100_700, credit: 101_370, ecartDeConversion: -670, dontOuverture: 0 });
+    expect(r.totaux).toEqual({ debit: 100_700, credit: 101_370, ecartDeConversion: -670, dontOuverture: 0, arrondiDesLignes: 0 });
     // 2 lignes par écriture, une banque de septembre sur trois prise à son
     // montant d'origine.
     expect(r.origine).toEqual({
