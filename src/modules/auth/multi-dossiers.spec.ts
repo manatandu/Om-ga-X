@@ -123,7 +123,9 @@ describe('la connexion · un compte de connexion, plusieurs appartenances', () =
   });
 
   it('le choix de la session · compte de connexion actif d’abord, sinon la plus ancienne active', () => {
-    const a = (id: string, estActif: boolean, t: string) => ({ id, tenantId: t, role: 'COMPTABLE' as never, estActif, sessionsInvalidesAvant: null, createdAt: new Date(t) });
+    const a = (id: string, estActif: boolean, t: string) => ({
+      id, tenantId: t, role: 'COMPTABLE' as never, estActif, sessionsInvalidesAvant: null, doitChangerMotDePasse: false, compteDeConnexionId: null, createdAt: new Date(t),
+    });
     expect(appartenanceDeConnexion('c', [a('x', true, '2026-01-01'), a('c', true, '2026-02-01')])?.id).toBe('c');
     expect(appartenanceDeConnexion('c', [a('c', false, '2026-01-01'), a('x', true, '2026-02-01')])?.id).toBe('x');
     expect(appartenanceDeConnexion('c', [a('c', false, '2026-01-01')])).toBeNull();
@@ -250,6 +252,21 @@ describe('le compte de la personne se tient depuis n’importe lequel de ses dos
     const me = await auth.me('awa-b');
     expect([me.plusieursDossiers, me.doitChangerMotDePasse, me.tenant.id]).toEqual([true, true, 'B']);
     expect((await auth.me('bertin-c')).plusieursDossiers).toBe(false);
+  });
+});
+
+describe('le mot de passe provisoire d’une appartenance rattachée tombe à sa première entrée', () => {
+  it('entrer dans B l’efface sur la ligne de B, jamais tant que le compte attend son changement', async () => {
+    const { auth, parId, jwt } = await monde();
+    parId('awa-b')!.doitChangerMotDePasse = true;
+    parId('awa-a')!.doitChangerMotDePasse = true;
+    const r: any = await auth.login({ email: 'awa@cabinet.cd', motDePasse: 'mot-de-passe-awa' } as never);
+    await auth.changerDeDossier('awa-a', 'B', sessionDuJeton(jwt.verify(r.accessToken), Math.floor(Date.now() / 1000)));
+    expect(parId('awa-b')!.doitChangerMotDePasse).toBe(true);
+    parId('awa-a')!.doitChangerMotDePasse = false;
+    const r2: any = await auth.login({ email: 'awa@cabinet.cd', motDePasse: 'mot-de-passe-awa' } as never);
+    await auth.changerDeDossier('awa-a', 'B', sessionDuJeton(jwt.verify(r2.accessToken), Math.floor(Date.now() / 1000)));
+    expect(parId('awa-b')!.doitChangerMotDePasse).toBe(false);
   });
 });
 

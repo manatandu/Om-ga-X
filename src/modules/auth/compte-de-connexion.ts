@@ -61,6 +61,8 @@ export interface Appartenance {
   role: RoleUtilisateur;
   estActif: boolean;
   sessionsInvalidesAvant: Date | null;
+  doitChangerMotDePasse: boolean;
+  compteDeConnexionId: string | null;
   createdAt: Date;
 }
 
@@ -70,6 +72,8 @@ const SELECTION_APPARTENANCE = {
   role: true,
   estActif: true,
   sessionsInvalidesAvant: true,
+  doitChangerMotDePasse: true,
+  compteDeConnexionId: true,
   createdAt: true,
 } as const;
 
@@ -188,6 +192,26 @@ export function creerAppartenance(
 ) {
   return horsCloisonnement('appartenances · une personne rattachée au dossier de la session', () =>
     prisma.user.create({ data: { ...donnees, doitChangerMotDePasse: true }, select }),
+  );
+}
+
+/**
+ * LE MOT DE PASSE PROVISOIRE D'UNE APPARTENANCE RATTACHÉE TOMBE À SA PREMIÈRE
+ * ENTRÉE · elle naît « à changer », comme toute création (la réponse au
+ * rattachement doit être celle d'une création), mais la personne entre avec
+ * SON mot de passe · sans ce geste, la liste du dossier dirait pour toujours
+ * qu'elle n'a pas posé le sien. Rien n'est effacé tant que le compte de
+ * connexion lui-même attend son changement.
+ */
+export async function effacerLeProvisoireALEntree(
+  prisma: PrismaService,
+  appartenance: Pick<Appartenance, 'id' | 'compteDeConnexionId' | 'doitChangerMotDePasse'>,
+  compte: { doitChangerMotDePasse: boolean },
+): Promise<void> {
+  if (!appartenance.compteDeConnexionId || !appartenance.doitChangerMotDePasse || compte.doitChangerMotDePasse) return;
+  const id = appartenance.id;
+  await horsCloisonnement('appartenances · la personne entre avec son propre mot de passe', () =>
+    prisma.user.update({ where: { id }, data: { doitChangerMotDePasse: false } }),
   );
 }
 

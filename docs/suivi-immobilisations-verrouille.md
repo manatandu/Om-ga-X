@@ -264,6 +264,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   Le chantier touche l'authentification · session et choix du dossier,
   cloisonnement, journal d'audit, rôle et journaux autorisés PAR dossier,
   révocation. Il ne s'ouvre ni pendant le gel ni pendant le pilote.
+  OUVERT le 2026-11-01 (gel levé par Manasse, « Enchaîne le point 3 et 4 »),
+  construit sur `travail/multi-dossiers` · conception et limites écrites dans
+  `AVANCEMENT-multi-dossiers.md`, règle au § 8 de CLAUDE.md.
 
 - **PAQUET 1, LIGNE A (2026-10-09), second et dernier tour de relecture, non
   corrigés (règle des deux tours, CLAUDE.md § 11).** Les deux BLOQUANTS du

@@ -139,13 +139,68 @@ cet email » · c'était la divulgation que la ligne supprime.
 
 ## 2. Fait
 
-(rempli au fil des commits)
+- Schéma et migration `20270247000000_comptes_rattaches` (§ 1.2), déclencheur
+  `omegax_courriel_de_connexion`. `prisma migrate diff` contre une base
+  d'ombre · aucune différence (le déclencheur n'est pas lu par Prisma).
+- `auth/compte-de-connexion.ts` · seule sortie de cloisonnement de la ligne,
+  gelée par `cloisonnement.spec.ts`.
+- `JwtStrategy` · compte de connexion relu pour une appartenance rattachée.
+- `AuthService` · connexion (appartenances, `plusieursDossiers`), mot de
+  passe, adresse (recopiée sur les appartenances), second facteur, autres
+  appareils, toutes mes sessions, `/auth/me`, `mesDossiers`,
+  `changerDeDossier` ; routes `GET /auth/mes-dossiers`,
+  `POST /auth/changer-dossier`.
+- `UtilisateurService.creer` · rattachement à réponse identique.
+- Console · réinitialisation de l'administrateur sur le compte de connexion,
+  promotion des opérateurs sur un compte de connexion seulement. Essais
+  échus · un dossier qui touche un rattachement n'est jamais concerné.
+- Journal d'audit et restitution · `compteDeConnexionId`,
+  `courrielDeConnexion` exclus.
+- Le mot de passe provisoire d'une appartenance rattachée tombe à sa première
+  entrée (sinon la liste du dossier la disait « à changer » pour toujours).
+- Écran · `ChoixDossierPage` (après le mot de passe provisoire, avant les
+  logiciels), Fichier > Changer de dossier (`ModaleChangerDossier`), liste
+  partagée `ListeDesDossiers`, `lib/dossiers-personne.ts`,
+  `lib/entree-dossier.ts` (la page repart neuve sur l'accueil).
+- Tests · `multi-dossiers.spec.ts` (connexion, session, changement, liste,
+  compte tenu depuis un autre dossier, rattachement), `dossier-de-la-session.spec.ts`
+  (le dossier ne se lit que dans la session), `dossiers-personne.spec.ts`
+  (client), `e2e/tests/multi-dossiers.e2e.ts`, et
+  `scripts/rejouer-multi-dossiers.cjs` (base peuplée par le serveur
+  d'`origin/main`, migration appliquée, comptes existants qui se connectent
+  comme avant, rattachement, changement, saisie et clôture traversée dans B,
+  banque reportée à 2 500 000 en N+1, retrait qui coupe l'accès, mot de passe
+  changé depuis B valable partout).
 
-## 3. Reste
+## 3. Limites écrites, reste
+
+- Réinitialiser (administrateur du dossier) ou déverrouiller la ligne d'une
+  appartenance rattachée ne touche pas le compte de connexion · ses sessions
+  dans CE dossier se ferment, la personne garde son mot de passe. Voulu (un
+  client ne prend jamais la main sur l'accès d'une personne aux dossiers d'un
+  autre), mais l'administrateur ne le voit pas dit à l'écran. L'état « verrou »
+  et « double authentification » de la liste du dossier est celui de la ligne.
+- Le mot de passe saisi par l'administrateur pour une adresse rattachée ne
+  sert à rien · la personne qui l'essaierait apprendrait que son compte
+  existait déjà. La réponse du serveur, elle, est identique.
+- Le réinitialisateur du compte de connexion (administrateur du dossier
+  d'origine, opérateur) tient de fait l'accès de la personne à TOUS ses
+  dossiers jusqu'au changement du mot de passe provisoire · c'est le régime
+  de tout mot de passe provisoire, dit ici.
+- Aucun courriel n'avertit la personne qu'un dossier lui a été ouvert · elle
+  le voit à sa prochaine connexion (la demande ne l'exigeait pas).
+- La messagerie interne, les notifications et la présence restent par
+  dossier (une ligne par appartenance) · voulu.
+- Un compte de connexion dont l'appartenance d'origine est désactivée garde
+  son mot de passe et son second facteur · il entre par ses autres dossiers.
+- WebKit non lancé en local (non installé) · Chromium seul.
 
 ## 4. Vérification
 
 ```bash
 npx tsc --noEmit && npx jest && npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
+# vraie base · PHASE=ancien (dist d'origin/main, base sans la migration), puis
+# migration, puis PHASE=nouveau · voir l'en-tête du script
+node scripts/rejouer-multi-dossiers.cjs
 ```
