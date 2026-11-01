@@ -6394,8 +6394,10 @@ export class ImmobilisationService {
       if ((dto.stocks?.length ?? 0) > 0) throw new BadRequestException("Des stocks ne se reprennent qu'avec un fonds de commerce.");
       // Une déclaration que personne ne lirait se refuse (ligne A22) · la durée
       // du fonds commercial n'a pas de fiche à porter hors d'un fonds de commerce.
-      if (dto.dureeFondsCommercialAns != null) {
-        throw new BadRequestException("La durée du fonds commercial ne se déclare qu'avec un fonds de commerce.");
+      if (dto.dureeFondsCommercialAns != null || dto.dateMiseEnServiceFondsCommercial != null) {
+        throw new BadRequestException(
+          "La durée et la date de mise en service du fonds commercial ne se déclarent qu'avec un fonds de commerce.",
+        );
       }
       if (dto.fondement !== 'ACTE' && !dto.sourceValeurs?.trim()) {
         throw new BadRequestException("Indiquez d'où viennent les valeurs retenues · la modalité est mentionnée aux Notes annexes (AUDCIF art. 38).");
@@ -6435,9 +6437,10 @@ export class ImmobilisationService {
       // LIGNE A22 · sans reliquat, aucun fonds commercial ne naît (ch. 2
       // § 7.2.1, « l'élément RÉSIDUEL ») · une durée déclarée pour lui n'aurait
       // aucune fiche à porter, et l'écran qui la saisissait le laissait croire.
-      if (!(v.fondsCommercial > 0) && dto.dureeFondsCommercialAns != null) {
+      const declareFonds = dto.dureeFondsCommercialAns != null || dto.dateMiseEnServiceFondsCommercial != null;
+      if (!(v.fondsCommercial > 0) && declareFonds) {
         throw new BadRequestException(
-          "Les éléments séparables et les stocks épuisent le prix · aucun fonds commercial ne s'inscrit, sa durée ne se déclare pas (AUDCIF Titre VIII ch. 2 § 7.2.1).",
+          "Les éléments séparables et les stocks épuisent le prix · aucun fonds commercial ne s'inscrit, ni sa durée ni sa mise en service ne se déclarent (AUDCIF Titre VIII ch. 2 § 7.2.1).",
         );
       }
       if (v.fondsCommercial > 0) {
@@ -6452,7 +6455,10 @@ export class ImmobilisationService {
           select: { id: true },
         });
         if (!compte215) throw new BadRequestException('Le compte 21500000 Fonds commercial est absent du plan du dossier.');
-        aCreer.push({ compteImmobilisationId: compte215.id, numero: '21500000', designation: `Fonds commercial · ${reference}`, montant: v.fondsCommercial, dureeAmortissementAns: dto.dureeFondsCommercialAns });
+        aCreer.push({ compteImmobilisationId: compte215.id, numero: '21500000', designation: `Fonds commercial · ${reference}`, montant: v.fondsCommercial,
+          dureeAmortissementAns: dto.dureeFondsCommercialAns,
+          dateMiseEnService: dto.dateMiseEnServiceFondsCommercial,
+        });
       }
       lignesStock = (dto.stocks ?? []).map((st) => ({ compteId: st.compteId, montant: st.montant }));
       modalite =

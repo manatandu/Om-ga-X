@@ -65,6 +65,7 @@ export function PrixGlobalImmobilisations({
   const [biens, setBiens] = useState<LigneBien[]>([ligneVide(), ligneVide()]);
   const [stocks, setStocks] = useState<{ compteId: string; montant: string }[]>([]);
   const [dureeFonds, setDureeFonds] = useState('');
+  const [miseEnServiceFonds, setMiseEnServiceFonds] = useState('');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [resultat, setResultat] = useState<{ modalite: string; biens: { designation: string; montant: number }[] } | null>(null);
@@ -170,6 +171,7 @@ export function PrixGlobalImmobilisations({
               // Une durée ne part qu'avec un fonds commercial qui naît · le
               // serveur refuse celle d'un fonds sans reliquat.
               ...(dureeFonds && avecFondsCommercial ? { dureeFondsCommercialAns: Number(dureeFonds) } : {}),
+              ...(miseEnServiceFonds && avecFondsCommercial ? { dateMiseEnServiceFondsCommercial: miseEnServiceFonds } : {}),
             }
           : {}),
       });
@@ -336,10 +338,16 @@ export function PrixGlobalImmobilisations({
                 <div className="text-warning">Le compte 21500000 Fonds commercial est absent du plan du dossier.</div>
               )}
               {avecFondsCommercial && (
-                <label className="flex flex-col w-fit">
-                  Durée du fonds commercial (ans)
-                  <input type="number" min="1" max="100" value={dureeFonds} onChange={(e) => setDureeFonds(e.target.value)} className={`${champ} w-20`} />
-                </label>
+                <div className="flex gap-3 flex-wrap">
+                  <label className="flex flex-col w-fit">
+                    Durée du fonds commercial (ans)
+                    <input type="number" min="1" max="100" value={dureeFonds} onChange={(e) => setDureeFonds(e.target.value)} className={`${champ} w-20`} />
+                  </label>
+                  <label className="flex flex-col w-fit">
+                    Mise en service du fonds commercial
+                    <input type="date" value={miseEnServiceFonds} onChange={(e) => setMiseEnServiceFonds(e.target.value)} className={champ} />
+                  </label>
+                </div>
               )}
             </>
           )}

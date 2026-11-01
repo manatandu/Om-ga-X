@@ -256,6 +256,34 @@ describe('le service · prix global, une pièce par bien', () => {
     stocks: [{ compteId: 'stock', montant: 150 }],
   };
 
+  it('fonds commercial à durée limitée · sa date de mise en service se déclare et passe à la fiche', async () => {
+    // Sans elle, la fiche naissait sans date de mise en service, et la durée
+    // déclarée ne donnait aucune dotation (« en état de fonctionner »).
+    const { svc, creer } = monter();
+    await svc.acquerirAPrixGlobal('t', 'u', {
+      ...ensemble,
+      prix: 1_000,
+      nature: 'FONDS_DE_COMMERCE',
+      fondement: undefined,
+      compteContrepartieId: 'banque',
+      biens: [{ compteImmobilisationId: 'c241', designation: 'Matériel', montant: 300, dureeAmortissementAns: 5 }],
+      dureeFondsCommercialAns: 10,
+      dateMiseEnServiceFondsCommercial: '2026-03-01',
+    });
+    expect(creer.mock.calls[1][2]).toMatchObject({ compteImmobilisationId: 'c215', dateMiseEnService: '2026-03-01' });
+  });
+
+  it('une date de mise en service du fonds commercial sans fonds commercial est refusée', async () => {
+    const { svc, creer } = monter();
+    await expect(
+      svc.acquerirAPrixGlobal('t', 'u', { ...ensemble, dateMiseEnServiceFondsCommercial: '2026-03-01' }),
+    ).rejects.toThrow(/qu'avec un fonds de commerce/);
+    await expect(
+      svc.acquerirAPrixGlobal('t', 'u', { ...fondsSansReliquat, dateMiseEnServiceFondsCommercial: '2026-03-01' }),
+    ).rejects.toThrow(/aucun fonds commercial ne s'inscrit/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
   it('prix entièrement ventilé · aucun fonds commercial ne naît', async () => {
     const { svc, creer } = monter();
     await svc.acquerirAPrixGlobal('t', 'u', fondsSansReliquat);
