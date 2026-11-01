@@ -37,6 +37,31 @@ type Etat = {
   soldeLivre?: number;
 };
 
+/**
+ * La doublure de la somme par caisse (second tour, ligne B, mineur 2) · le
+ * service demande `groupBy` par compte à la base, et lit les comptes à part ;
+ * la somme est rejouée ici sur les lignes de l'état. Un `groupBy` sur la
+ * devise (lecture du solde du PV) rend une caisse en francs.
+ */
+type LigneCaisse = { debit: number; credit: number; compte: { id: string; numero: string; intitule: string } };
+function sommesParCaisse(lignes: LigneCaisse[]) {
+  return (a: { by: string[] }) => {
+    if (!a.by.includes('compteId')) return Promise.resolve([{ deviseId: null }]);
+    const parCompte = new Map<string, { compteId: string; _sum: { debit: number; credit: number } }>();
+    for (const l of lignes) {
+      const g = parCompte.get(l.compte.id) ?? { compteId: l.compte.id, _sum: { debit: 0, credit: 0 } };
+      g._sum.debit += l.debit;
+      g._sum.credit += l.credit;
+      parCompte.set(l.compte.id, g);
+    }
+    return Promise.resolve([...parCompte.values()]);
+  };
+}
+function comptesDesCaisses(lignes: LigneCaisse[]) {
+  return (a: { where: { id: { in: string[] } } }) =>
+    Promise.resolve([...new Map(lignes.map((l) => [l.compte.id, l.compte])).values()].filter((c) => a.where.id.in.includes(c.id)));
+}
+
 function service(etat: Etat = {}) {
   const creerPv = jest.fn().mockImplementation((a: { data: Record<string, unknown> }) =>
     Promise.resolve({ id: 'pv1', ...a.data }),
@@ -69,7 +94,10 @@ function service(etat: Etat = {}) {
         return Promise.resolve(voulue ? (toutes.find((sc) => sc.id === voulue) ?? null) : (toutes[0] ?? null));
       }),
     },
-    compte: { findFirst: jest.fn().mockResolvedValue(etat.compte ?? null) },
+    compte: {
+      findFirst: jest.fn().mockResolvedValue(etat.compte ?? null),
+      findMany: jest.fn().mockImplementation(comptesDesCaisses((etat.lignesCaisse ?? []) as LigneCaisse[])),
+    },
     // Le solde comparé est LU au livre-journal (ligne A10) · exercice 2025,
     // comptage au 31 décembre, rien au brouillard. Les cas de la date du
     // comptage sont dans `solde-caisse-au-comptage.spec.ts`, sur une doublure
@@ -82,8 +110,9 @@ function service(etat: Etat = {}) {
       findMany: jest.fn().mockResolvedValue(etat.lignesCaisse ?? []),
       count: jest.fn().mockResolvedValue(0),
       aggregate: jest.fn().mockResolvedValue({ _sum: { debit: etat.soldeLivre ?? 1_250_000, credit: 0 }, _count: { _all: 1 } }),
-      // Une caisse en francs · aucune ligne ne porte de devise (seconde passe A10).
-      groupBy: jest.fn().mockResolvedValue([{ deviseId: null }]),
+      // Une caisse en francs · aucune ligne ne porte de devise (seconde passe
+      // A10) ; par compte, la somme des caisses (mineur 2).
+      groupBy: jest.fn().mockImplementation(sommesParCaisse((etat.lignesCaisse ?? []) as LigneCaisse[])),
     },
     procesVerbalComptageCaisse: {
       findMany: jest.fn().mockResolvedValue(etat.pvCaisse ?? []),
@@ -289,19 +318,23 @@ describe('la couverture des caisses · la question composite rendue mécanique',
   });
 
   it('liste les caisses à solde non nul sans PV', async () => {
-    const { svc } = service({
+    const { svc, prisma } = service({
       campagne: CAMPAGNE,
       lignesCaisse: [ligne('c1', '57100000', 900_000), ligne('c2', '57200000', 400_000)],
       pvCaisse: [{ compteId: 'c1' }],
     });
     const manquantes = await svc.caissesNonComptees('t1', 'camp1');
     expect(manquantes.map((c) => c.numero)).toEqual(['57200000']);
+    expect(manquantes[0].solde).toBe(400_000);
+    // La somme est demandée à la base, jamais rapatriée ligne à ligne (second
+    // tour, ligne B, mineur 2 ; § 8 bis).
+    expect(prisma.ligneEcriture.findMany as jest.Mock).not.toHaveBeenCalled();
   });
 
   it('une simulation sur un 57 ne fait réclamer aucun procès-verbal (ligne sage-l1, relecture M5)', async () => {
     const { svc, prisma } = service({ campagne: CAMPAGNE, lignesCaisse: [], pvCaisse: [] });
     await svc.caissesNonComptees('t1', 'camp1');
-    const lu = (prisma.ligneEcriture.findMany as jest.Mock).mock.calls[0][0];
+    const lu = (prisma.ligneEcriture.groupBy as jest.Mock).mock.calls[0][0];
     expect(lu.where.ecriture).toMatchObject({ tenantId: 't1', statut: { not: 'SITUATION' } });
   });
 
@@ -513,7 +546,8 @@ describe('deux clôtures simultanées · une seule passe', () => {
           findMany: jest.fn().mockResolvedValue([{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }]),
         },
         ecartInventaire: { count: jest.fn().mockResolvedValue(0) },
-        ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+        ligneEcriture: { groupBy: jest.fn().mockImplementation(sommesParCaisse(lignes as LigneCaisse[])) },
+        compte: { findMany: jest.fn().mockImplementation(comptesDesCaisses(lignes as LigneCaisse[])) },
       };
     };
     const prisma = {

@@ -39,5 +39,11 @@ export interface LecteurVirementsGroupe {
    * cette date, chacun lu sur son exercice qui la contient, ouverture
    * comprise, en remontant les exercices non clôturés sans ouverture validée.
    */
-  virements585DuGroupe(tenantId: string, dateArrete: Date): Promise<{ solde: number }>;
+  /**
+   * `precedentsOuvertsLus` (relevés du paquet 1, ligne A, G1), posé
+   * seulement s'il est non nul · le nombre d'exercices ANTÉRIEURS encore
+   * ouverts dont le 585 a été lu avec celui du dossier · un nombre, jamais
+   * un dossier ni une ligne d'un voisin.
+   */
+  virements585DuGroupe(tenantId: string, dateArrete: Date): Promise<{ solde: number; precedentsOuvertsLus?: number }>;
 }

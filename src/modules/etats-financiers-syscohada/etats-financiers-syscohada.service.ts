@@ -31,6 +31,7 @@ import {
   ouvertureTenue,
   precedentNonTenuCloture,
   trouverExerciceN1,
+  ouvertureEnOdAuxReports,
 } from '../etats-financiers/etats-financiers.communs';
 import {
   BornesExercice,
@@ -1669,8 +1670,15 @@ export class EtatsFinanciersSyscohadaService {
     const precedentN1 = ouverturePasseeN1
       ? await etatDuPrecedentNonTenu(this.ecritureService, this.exerciceService, tenantId, exerciceN2Id, n2Tenu)
       : null;
+    // Relevés du paquet 1, m2 · derrière un exercice précédent tenu, la
+    // position d'ouverture passée en OD au premier jour est l'ouverture, pas
+    // un flux (`ouvertureEnOdAuxReports`) · même règle pour la colonne N-1.
+    const [lignesNFlux, lignesN1Flux] = await Promise.all([
+      ouvertureEnOdAuxReports(this.ecritureService, tenantId, exerciceId, n1Tenu, lignesN),
+      exerciceN1Id ? ouvertureEnOdAuxReports(this.ecritureService, tenantId, exerciceN1Id, n2Tenu, lignesN1) : Promise.resolve(lignesN1),
+    ]);
     const resN = this.resoudreFluxPourExercice(
-      lignesN,
+      lignesNFlux,
       n1Tenu ? lignesN1 : ouvertureN,
       n1Tenu,
       reevaluationsN,
@@ -1684,7 +1692,7 @@ export class EtatsFinanciersSyscohadaService {
     // de N-1).
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
-          lignesN1,
+          lignesN1Flux,
           n2Tenu ? lignesN2 : ouvertureN1,
           n2Tenu,
           reevaluationsN1,

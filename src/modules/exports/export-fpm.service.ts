@@ -39,6 +39,7 @@ import {
   plageBalance,
   totauxBalance,
   type TotauxBalance,
+  virementDeClotureAuxMouvements,
 } from './balance-fpm';
 
 /**
@@ -205,8 +206,12 @@ export class ExportFpmService {
   private async balanceFpm(tenantId: string, exerciceId: string, periode?: PeriodeExtrait): Promise<LigneBalanceFpm[]> {
     // Sur une période, « Mouvements au <veille> » garde tout ce qui précède le
     // premier jour (`filtresDesTroisColonnesDeLaPeriode`, condition 1).
-    const { lignes } = await this.ecritureService.balance(tenantId, exerciceId, true, undefined, periode ? { periode } : {});
-    return lignes.map((l) => ({
+    const [{ lignes }, avantCloture] = await Promise.all([
+      this.ecritureService.balance(tenantId, exerciceId, true, undefined, periode ? { periode } : {}),
+      // Hors période, le virement de clôture du 13 quitte « au <veille> » (A4).
+      periode ? Promise.resolve(null) : this.ecritureService.balance(tenantId, exerciceId, true, undefined, { avantLaCloture: true }),
+    ]);
+    const fpm: LigneBalanceFpm[] = lignes.map((l) => ({
       compteId: l.compteId,
       numero: l.numero,
       intitule: l.intitule,
@@ -220,6 +225,7 @@ export class ExportFpmService {
       totalDebit: l.totalDebit,
       totalCredit: l.totalCredit,
     }));
+    return avantCloture ? virementDeClotureAuxMouvements(fpm, new Map(avantCloture.lignes.map((l) => [l.compteId, l]))) : fpm;
   }
 
   /**

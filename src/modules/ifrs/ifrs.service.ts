@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { chargerLignes, LigneBalancePourEtat } from '../etats-financiers/etats-financiers.communs';
+import { chargerLignes, chargerOuverture, LigneBalancePourEtat } from '../etats-financiers/etats-financiers.communs';
 import { EtatsFinanciersSyscohadaService } from '../etats-financiers-syscohada/etats-financiers-syscohada.service';
 import { CumulService } from '../consolidation/cumul.service';
 import { PerimetreService } from '../consolidation/perimetre.service';
@@ -242,13 +242,15 @@ export class IfrsService {
     regles: { prefixe: string; rubrique: string }[],
     activite: ActiviteIfrsDto['activitePrincipale'],
   ): Promise<PremiereApplication> {
-    const ouvertureLegale: LigneBalancePourEtat[] = lignesComparatif
-      .filter((l) => /^[1-5]/.test(l.numero))
-      .map((l) => {
-        const rd = Number(l.reportDebit ?? 0);
-        const rc = Number(l.reportCredit ?? 0);
-        return { ...l, totalDebit: rd, totalCredit: rc, mouvementDebit: 0, mouvementCredit: 0, solde: rd - rc };
-      });
+    // L'OUVERTURE SE LIT AVANT CE QUE LA CLÔTURE Y PORTE (relevés du paquet
+    // 1, ligne A, voisin A4 · `chargerOuverture`) · la colonne report d'un
+    // comparatif clôturé porte aussi le virement du résultat antérieur non
+    // affecté, daté de son dernier jour, et le 13 de transition se lisait
+    // déjà viré au report à nouveau. `lignesComparatif` sert les capitaux
+    // propres du comparatif.
+    const ouvertureLegale: LigneBalancePourEtat[] = (await chargerOuverture(this.ecritures, tenantId, comparatif.id)).filter((l) =>
+      /^[1-5]/.test(l.numero),
+    );
     const ajustements = (await this.retraitementsDe(tenantId, comparatif.id, true)).map(versMoteur);
     const retraitementsComparatif = (await this.retraitementsDe(tenantId, comparatif.id)).map(versMoteur);
     const ouverture = construireEtatsIfrs(

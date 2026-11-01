@@ -143,13 +143,21 @@ export function EtatsSmtSyscohadaPage() {
     let annule = false;
     // Le refus du journal d'un autre exercice ne se lit pas sur celui-ci.
     setErreurNote4(null);
-    const echec = (e: Error) => !annule && setErreur(e.message);
+    setErreur(null);
+    // Un refus retire l'état qu'il visait (second tour du paquet 1, ligne B,
+    // mineur 5) · gardé à côté du message, l'état de l'exercice d'avant se
+    // lisait comme celui de l'exercice choisi.
+    const echec = (vider: () => void) => (e: Error) => {
+      if (annule) return;
+      vider();
+      setErreur(e.message);
+    };
     const q = `?exerciceId=${exerciceCourant.id}`;
     const base = '/etats-financiers-syscohada/smt';
-    api.get<BilanSmtSyscohada>(`${base}/bilan${q}`).then((r) => !annule && setBilan(r), echec);
-    api.get<CompteDeResultatSmtSyscohada>(`${base}/compte-de-resultat${q}`).then((r) => !annule && setCr(r), echec);
-    api.get<NotesSmtSyscohada>(`${base}/notes${q}`).then((r) => !annule && setNotes(r), echec);
-    api.get<EligibiliteSmtSyscohada>(`${base}/eligibilite${q}`).then((r) => !annule && setEligibilite(r), echec);
+    api.get<BilanSmtSyscohada>(`${base}/bilan${q}`).then((r) => !annule && setBilan(r), echec(() => setBilan(null)));
+    api.get<CompteDeResultatSmtSyscohada>(`${base}/compte-de-resultat${q}`).then((r) => !annule && setCr(r), echec(() => setCr(null)));
+    api.get<NotesSmtSyscohada>(`${base}/notes${q}`).then((r) => !annule && setNotes(r), echec(() => setNotes(null)));
+    api.get<EligibiliteSmtSyscohada>(`${base}/eligibilite${q}`).then((r) => !annule && setEligibilite(r), echec(() => setEligibilite(null)));
     return () => {
       annule = true;
     };

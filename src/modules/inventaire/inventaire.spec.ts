@@ -43,7 +43,7 @@ type Etat = {
   exercice?: Record<string, unknown>;
   /** Les lignes des comptes 57 · ce que la couverture des caisses regarde. */
   lignesCaisse?: { debit: number; credit: number; compte: { id: string; numero: string; intitule: string } }[];
-  pvCaisse?: { compteId: string }[];
+  pvCaisse?: { compteId: string; ecart?: number; compte?: { numero: string } }[];
   sousCommission?: Record<string, unknown> | null;
   compte?: Record<string, unknown> | null;
 };
@@ -89,6 +89,8 @@ function service(etat: Etat = {}) {
     // table absente plutôt que la couverture complète.
     ligneEcriture: {
       findMany: jest.fn().mockResolvedValue(etat.lignesCaisse ?? []),
+      // La somme par caisse se demande à la base (second tour, ligne B, mineur 2).
+      groupBy: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(etat.lignesAuBrouillard ?? 0),
     },
     procesVerbalComptageCaisse: {
@@ -181,6 +183,29 @@ describe('rapprochement · étape 4, la comparaison avec la balance provisoire',
     // Traitée comme zéro, la seconde fiche produirait un manquant de 0 ici,
     // mais un manquant PLEIN dès que le solde dépasse la seule fiche servie.
     await expect(svc.rapprocher('t1', 'camp1')).rejects.toThrow(/sans valeur d'inventaire/);
+  });
+
+  it('REFUSE de rapprocher une campagne mixte dont un PV à écart n’a pas la fiche de sa caisse (second tour, ligne B, voisin)', async () => {
+    const { svc, prisma } = service({
+      campagne: campagne(StatutCampagneInventaire.RECENSEMENT),
+      fiches: [fiche('c1', 400)],
+      balance: [{ compteId: 'c1', solde: 400 }],
+      pvCaisse: [{ compteId: 'c57', ecart: -5_000, compte: { numero: '57100000' } }],
+    });
+    await expect(svc.rapprocher('t1', 'camp1')).rejects.toThrow(/57100000.*créez la fiche de chaque caisse/);
+    // Seuls les PV à écart sont relus.
+    const lu = (prisma.procesVerbalComptageCaisse.findMany as jest.Mock).mock.calls[0][0];
+    expect(lu.where).toMatchObject({ tenantId: 't1', campagneId: 'camp1', NOT: { ecart: 0 } });
+  });
+
+  it('rapproche quand la caisse du PV à écart a sa fiche', async () => {
+    const { svc } = service({
+      campagne: campagne(StatutCampagneInventaire.RECENSEMENT),
+      fiches: [fiche('c1', 400)],
+      balance: [{ compteId: 'c1', solde: 400 }],
+      pvCaisse: [{ compteId: 'c1', ecart: -5_000, compte: { numero: '57100000' } }],
+    });
+    await expect(svc.rapprocher('t1', 'camp1')).resolves.toBeDefined();
   });
 
   it('prend la balance du LIVRE-JOURNAL · un solde figé ne se prend pas sur du provisoire (F6)', async () => {

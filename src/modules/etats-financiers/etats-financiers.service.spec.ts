@@ -73,6 +73,7 @@ function serviceAvecExercices(
     ),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
     // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
     positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
@@ -2001,5 +2002,51 @@ describe('TFT des associations · la classe 9 est sans trésorerie (constat N5 d
     });
     const tft: any = await service.tableauFluxTresorerie('t1', 'e1');
     expect(tft.comptesNonVentiles.map((c: any) => c.numero)).toEqual([]);
+  });
+});
+
+/**
+ * RELEVÉS DU PAQUET 1, LIGNE A, m2 · une ouverture passée en OD au premier
+ * jour derrière un exercice précédent TENU (la clôture la trouve concordante
+ * et ne passe aucun report, AU2) est l'ouverture · le tableau la lisait comme
+ * un flux, la dotation encaissée une seconde fois à côté de la trésorerie
+ * d'ouverture lue sur N-1, et le contrôle sortait en écart.
+ */
+describe('tableau des flux · l’ouverture en OD derrière un précédent tenu (m2)', () => {
+  const ref = (tft: any, r: string) => tft.lignes.find((l: any) => l.ref === r);
+  const dossier = () =>
+    serviceAvecExercices(
+      {
+        eN1: [ligneF('52110000', ClasseCompte.CLASSE_5, 1_000_000, 0), ligneF('10200000', ClasseCompte.CLASSE_1, 0, 1_000_000)],
+        // N · l'OD du premier jour reprend les positions de N-1, aucun report.
+        eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 1_000_000, 0), ligneF('10200000', ClasseCompte.CLASSE_1, 0, 1_000_000)],
+      },
+      DEUX_EXERCICES,
+    );
+
+  it('sa position passe au report · aucun encaissement de dotation, le tableau boucle', async () => {
+    const service = dossier();
+    const ecritures = (service as unknown as { ecritureService: { positionsOuvertureEnOdParCompte: jest.Mock } }).ecritureService;
+    ecritures.positionsOuvertureEnOdParCompte.mockImplementation((_t: string, ex: string) =>
+      Promise.resolve(
+        ex === 'eN'
+          ? new Map([
+              ['id-52110000', { debit: 1_000_000, credit: 0 }],
+              ['id-10200000', { debit: 0, credit: 1_000_000 }],
+            ])
+          : new Map(),
+      ),
+    );
+    const tft: any = await service.tableauFluxTresorerie('t1', 'eN');
+    expect(ref(tft, 'ZA').montant).toBe(1_000_000);
+    expect(ref(tft, 'FM').montant).toBe(0);
+    expect(tft.controle.coherent).toBe(true);
+    expect(ecritures.positionsOuvertureEnOdParCompte).toHaveBeenCalledWith('t1', 'eN');
+  });
+
+  it('sans la règle, la même OD est un encaissement · le témoin du défaut', async () => {
+    const tft: any = await dossier().tableauFluxTresorerie('t1', 'eN');
+    expect(ref(tft, 'FM').montant).toBe(1_000_000);
+    expect(tft.controle.coherent).toBe(false);
   });
 });

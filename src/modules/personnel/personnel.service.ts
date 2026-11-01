@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { motifPlanNonPropose } from './visa-plan-etalement';
-import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
+import { depuisNombre, plus, somme, versChaine, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
   DecompteFinalDto,
@@ -24,6 +24,7 @@ import {
   cotisationsExactes,
   netAPayerExact,
   netNegatifAuCentime,
+  centimesRetenablesAuPlus,
   type NatureEmployeurInpp,
   type RegimeCnss,
 } from './cotisations-paie';
@@ -1448,8 +1449,13 @@ export class PersonnelService {
     // paquet 1, jumeau m1) · le reste flottant -1,16e-10 refusait une retenue
     // égale au net affiché (`netNegatifAuCentime`, la convention y est dite).
     if (netExact !== null && netNegatifAuCentime(netExact)) {
+      // LE REFUS DIT LE MAXIMUM RETENABLE (second tour du paquet 1, ligne C,
+      // M3) · « réduisez-les » laissait le cabinet chercher le chiffre à
+      // tâtons, au centime près.
+      const maximum = Number(centimesRetenablesAuPlus(plus(netExact, retenuesAvancesExactes))) / 100;
       throw new BadRequestException(
-        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
+        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · ` +
+          `réduisez-les à ${maximum.toFixed(2)} FC au plus.`,
       );
     }
 
@@ -1576,6 +1582,10 @@ export class PersonnelService {
       reserveIndemniteLogement: reserveIndemniteLogementKinshasa(elements, tenant.ville, dto.moisDePaie),
       cotisations: lesCotisations,
       net,
+      // LE NET EXACT, EN DÉCIMAL ÉCRIT (seconde relecture des relevés, 6) ·
+      // la proposition des retenues du décompte se borne sur lui, jamais sur
+      // le flottant de `net.netAPayerFc` relu par son écriture la plus courte.
+      netExact: netExact === null ? null : versChaine(netExact),
       baremeApplicable: borne.applicable,
       motifBaremeInapplicable: borne.motif,
       regimeSalarial: {
@@ -2196,7 +2206,8 @@ export class PersonnelService {
     const p = await this.preparerDecompteFinal(tenantId, salarieId, sansRetenues, maintenant, false);
     const { avances, tronque } = await this.avancesARetenir(tenantId, salarieId);
     const net = p.etat === 'CHIFFRE' ? p.simulation.net.netAPayerFc : null;
-    const proposition = propositionRetenuesDecompte(avances, net);
+    const netExact = p.etat === 'CHIFFRE' ? p.simulation.netExact : null;
+    const proposition = propositionRetenuesDecompte(avances, net, netExact);
     return {
       ...proposition,
       fondement: FONDEMENT_RETENUES_DECOMPTE,

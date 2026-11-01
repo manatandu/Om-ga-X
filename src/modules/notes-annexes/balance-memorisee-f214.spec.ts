@@ -101,6 +101,7 @@ function balanceComptee(): EcritureService {
     virementsDeMiseEnService: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
   } as unknown as EcritureService;
 }
 
@@ -255,6 +256,9 @@ describe('notes du jeu associations · la mémoire garde les options de la lectu
       cleDeLectureDeBalance(['t', 'e', false, date, { avantLaCloture: false }]),
     );
     expect(cleDeLectureDeBalance(['t', 'e', true])).not.toBe(cleDeLectureDeBalance(['t', 'e', false]));
+    // Second tour, ligne A, mineur 4 · une date illisible n'est pas l'absence
+    // de date, et la clé ne lève pas.
+    expect(cleDeLectureDeBalance(['t', 'e', false, new Date('illisible')])).not.toBe(cleDeLectureDeBalance(['t', 'e', false]));
   });
 
   it('les notes d’un exercice sans N-1 lisent l’ouverture AVANT la clôture, à travers la mémoire', async () => {

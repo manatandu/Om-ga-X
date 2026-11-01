@@ -207,3 +207,27 @@ que « un test de source s'ancre sur une structure, jamais sur une distance ».
 
 **Huit contresens réinjectés dans la passation, huit attrapés.** 3950 tests
 serveur, 503 client.
+
+---
+
+## 11. Les centimes figés d'un bulletin (second tour du paquet 1, ligne C, M2)
+
+Depuis la ligne C du paquet 1, les montants d'un bulletin se calculent en
+DÉCIMAL EXACT (`common/decimal-exact.ts`) et se figent dans des colonnes
+`Decimal(18,2)`, que PostgreSQL arrondit au demi-centime **loin de zéro**.
+Les bulletins ORDINAIRES suivent donc cette règle comme le décompte final ·
+là où le calcul flottant d'avant pouvait ranger un demi-centime de l'autre
+côté. Témoin · 380 107 FC, employeur privé, mars 2026, `totalEmployeurFc`
+exact 13 303,745, figé 13 303,75.
+
+Ce n'est pas une règle d'un texte · aucun texte n'arrondit le net ni les
+cotisations au centime. C'est la convention de l'éditeur, la même pour le
+calcul, la colonne et l'affichage (`lib/montants.ts`), et la même que juge
+le refus d'un net négatif (`netNegatifAuCentime`). La proposition des
+retenues d'un décompte se borne par elle aussi (M1) · elle propose la plus
+grande retenue qui laisse un net non négatif au centime.
+
+Conséquence pour un bulletin émis avant la ligne C · il garde les centimes
+qu'il a figés, et sa passation se rejoue sur eux (P9, « rejouée sur les
+chiffres figés »). Un écart d'un centime entre un bulletin d'avant et un
+bulletin d'après, à salaire égal, vient de là, jamais d'un taux.

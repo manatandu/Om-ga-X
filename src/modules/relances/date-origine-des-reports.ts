@@ -1,4 +1,4 @@
-import { Prisma, StatutEcriture } from '@prisma/client';
+import { Prisma, StatutEcriture, StatutExercice } from '@prisma/client';
 import { lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau';
 import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail';
@@ -63,10 +63,30 @@ import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail'
  * (« toutes choses égales, elle se fait proportionnellement »). L'échéance
  * ne date pas la dette · elle dit si la dette est échue à la date du
  * paiement, ce que l'imputation lit à part (`restesParLImputationLegale`).
- * Une ligne d'à-nouveau d'un exercice qui A un précédent (un bilan importé
- * dans un dossier qui garde son exercice d'avant) se cherche toujours dans
- * ce précédent · introuvable, elle est rendue comme telle, et le groupe nommé.
+ * Une ligne d'à-nouveau d'un exercice qui A un précédent se cherche dans ce
+ * précédent · introuvable, elle est rendue comme telle, et le groupe nommé.
+ *
+ * LE BILAN D'OUVERTURE IMPORTÉ ARRÊTE LA CHAÎNE (second tour du paquet 1,
+ * ligne B, MAJEUR B7 incomplet). Un bilan d'ouverture importé dans un
+ * exercice qui A un précédent (N-1 gardé pour les comparatifs) se cherchait
+ * encore dans ce précédent · aucune pièce de N-1 ne porte sa clé (l'import
+ * n'a ni libellé de ligne ni échéance), il revenait introuvable, le groupe
+ * posé en N+1 retombait au prorata et la relance surévaluait le retard. La
+ * ligne importée EST l'origine, à la date de son écriture, comme au premier
+ * exercice tenu (M1) et pour la même raison · rien en amont ne la porte,
+ * l'import reprend une clôture tenue hors d'OmegaX. Elle se reconnaît à son
+ * écriture · `reference === 'IMPORT'` et `estGenereeParCloture` (le drapeau
+ * que `ImportService` pose sur le seul bilan d'ouverture, jamais sur une
+ * reprise de balance ni sur un import d'écritures), comme la déclaration de
+ * devise d'un à-nouveau la reconnaît (`declaration-devise-a-nouveau.service.ts`).
+ * Elle arrête aussi la remontée quand on la RENCONTRE comme candidate
+ * (report de N+1 d'une ligne importée en N).
  */
+
+/** L'écriture d'un bilan d'ouverture importé · elle arrête la chaîne des reports (B7). */
+export function estImportDOuverture(e: { reference?: string | null; estGenereeParCloture?: boolean | null }): boolean {
+  return e.reference === 'IMPORT' && e.estGenereeParCloture === true;
+}
 
 export const PROFONDEUR_MAX = 10;
 
@@ -91,6 +111,11 @@ export interface LigneReportee {
    * lignes VALIDÉES (mineur 2).
    */
   provisoire?: boolean;
+  /**
+   * Vraie pour une ligne d'un bilan d'ouverture IMPORTÉ (`estImportDOuverture`)
+   * · elle est sa propre origine, à la date de son écriture (B7).
+   */
+  importOuverture?: boolean;
 }
 
 /** Une ligne candidate de l'exercice précédent. */
@@ -128,6 +153,18 @@ export function apparierAuxOrigines(
     const reportsTries = [...rs].sort((a, b) => a.id.localeCompare(b.id));
     const originesTriees = [...os].sort((a, b) => a.date.getTime() - b.date.getTime() || a.id.localeCompare(b.id));
     reportsTries.forEach((r, i) => resultat.set(r.id, originesTriees[i]));
+  }
+  return resultat;
+}
+
+/** Le rattachement d'une ligne importée · même compte et mêmes montants au centime, une pièce et une seule de chaque côté. */
+function apparierParMontant(reports: LigneReportee[], candidates: LigneCandidate[]): Map<string, LigneCandidate> {
+  const cle = (l: { compteId: string; debit: number; credit: number }) => `${l.compteId}|${Math.round(l.debit * 100)}|${Math.round(l.credit * 100)}`;
+  const resultat = new Map<string, LigneCandidate>();
+  for (const r of reports) {
+    const memeCle = reports.filter((x) => cle(x) === cle(r));
+    const os = candidates.filter((o) => cle(o) === cle(r));
+    if (memeCle.length === 1 && os.length === 1) resultat.set(r.id, os[0]);
   }
   return resultat;
 }
@@ -175,14 +212,38 @@ export async function originesDesReports(
   const introuvables: string[] = [];
   // Chaque niveau · la ligne reportée de départ, et la ligne qu'on cherche à
   // rattacher à ce niveau (la même au premier, son origine reportée ensuite).
+  // Une ligne de bilan d'ouverture importé est sa propre origine (B7) · elle
+  // ne se cherche dans aucun exercice précédent.
+  //
+  // SAUF DERRIÈRE UN EXERCICE PRÉCÉDENT TENU ET CLÔTURÉ DANS OmegaX (seconde
+  // relecture des relevés, 4) · ses pièces y sont, et la ligne importée en
+  // reprend peut-être une · la date de l'import, à son défaut, sous-estimait
+  // le retard sans le dire. L'origine réelle se cherche d'abord dans ce
+  // précédent ; introuvable, la ligne importée reste sa propre origine (B7),
+  // jamais une ligne « introuvable » qui ferait lire le groupe ligne à ligne.
+  const imports = new Set(reports.filter((r) => r.importOuverture === true).map((r) => r.id));
   let enCours = reports.map((r) => ({ depart: r.id, ligne: r }));
   let borne = debutExercice;
   for (let niveau = 0; niveau < PROFONDEUR_MAX && enCours.length; niveau++) {
     const precedent = await client.exercice.findFirst({
       where: { tenantId, dateFin: { lt: borne } },
       orderBy: { dateFin: 'desc' },
-      select: { id: true, dateDebut: true },
+      select: { id: true, dateDebut: true, statut: true },
     });
+    if (niveau === 0 && imports.size > 0) {
+      const tenuEtClos =
+        precedent !== null &&
+        precedent.statut === StatutExercice.CLOTURE &&
+        (await client.ligneEcriture.findFirst({
+          where: { ecriture: { tenantId, exerciceId: precedent.id, statut: StatutEcriture.VALIDEE } },
+          select: { id: true },
+        })) !== null;
+      if (!tenuEtClos) {
+        for (const e of enCours) if (imports.has(e.depart)) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
+        enCours = enCours.filter((e) => !imports.has(e.depart));
+        if (enCours.length === 0) break;
+      }
+    }
     if (!precedent) {
       // Le premier exercice tenu · la ligne d'ouverture EST l'origine (M1).
       for (const e of enCours) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
@@ -211,7 +272,7 @@ export async function originesDesReports(
             credit: true,
             libelle: true,
             dateEcheance: true,
-            ecriture: { select: { date: true, libelle: true, statut: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+            ecriture: { select: { date: true, libelle: true, statut: true, reference: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
           },
         }),
       (l) =>
@@ -226,7 +287,10 @@ export async function originesDesReports(
           libelle: l.libelle ?? l.ecriture.libelle ?? null,
           dateEcheance: l.dateEcheance ?? null,
           date: l.ecriture.date,
-          estReport: l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true,
+          // Une ligne de bilan d'ouverture importé n'est pas un report · la
+          // chaîne s'y arrête, elle est l'origine à sa date (B7).
+          estReport:
+            !estImportDOuverture(l.ecriture) && (l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true),
           provisoire: l.ecriture.estANouveauProvisoire === true,
           validee: l.ecriture.statut === StatutEcriture.VALIDEE,
         }),
@@ -239,15 +303,25 @@ export async function originesDesReports(
         candidates.filter((c) => c.validee),
       ),
       ...apparierAuxOrigines(
-        enCours.filter((e) => e.ligne.provisoire !== true).map((e) => e.ligne),
+        enCours.filter((e) => e.ligne.provisoire !== true && !(niveau === 0 && imports.has(e.depart))).map((e) => e.ligne),
         candidates,
+      ),
+      // La ligne importée n'a ni libellé de pièce ni échéance (une ligne par
+      // compte) · elle se rattache par son compte et son montant seuls, et
+      // seulement à une pièce unique de N-1 qui les porte (seconde relecture, 4).
+      ...apparierParMontant(
+        enCours.filter((e) => niveau === 0 && imports.has(e.depart)).map((e) => e.ligne),
+        candidates.filter((c) => c.validee),
       ),
     ]);
     const suivants: typeof enCours = [];
     for (const e of enCours) {
       const o = trouvees.get(e.ligne.id);
       if (!o) {
-        introuvables.push(e.depart);
+        // Une ligne importée sans pièce retrouvée en amont reste sa propre
+        // origine (B7) · seulement au premier niveau, où elle est elle-même.
+        if (niveau === 0 && imports.has(e.depart)) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
+        else introuvables.push(e.depart);
         continue;
       }
       if (o.estReport) suivants.push({ depart: e.depart, ligne: o });

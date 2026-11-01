@@ -6,6 +6,7 @@ import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentio
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
 import type { Writable } from 'stream';
 import type { PerimetreBalanceAgee } from '../comptabilite/ecriture.service';
+import { mentionGroupesLusLigneALigne, type GroupesLusLigneALigne } from '../lettrage/reste-des-lignes-ouvertes';
 import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
@@ -98,7 +99,7 @@ import {
   sommeColonneBalance,
   titreNote,
 } from './theme-etafi';
-import { arrondi as arrondi2, divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
+import { arrondi as arrondi2, divisionsDeLaClasse9, type LigneBalanceFpm, virementDeClotureAuxMouvements } from './balance-fpm';
 import { PLAFOND_PERIMETRE } from '../immobilisations/reevaluation-bilan.service';
 import {
   construireFeuilleEtat,
@@ -1623,6 +1624,15 @@ export class ExportService {
       etat.totaux.net,
     );
     net.font = ENTETE_FONT;
+    // Les groupes à la répartition incertaine se DISENT, comme à l'écran
+    // (second tour du paquet 1, ligne B, voisin) · le total est exact, leur
+    // ventilation par tranche ne l'est pas.
+    const mentionGroupes = mentionGroupesLusLigneALigne(etat.groupesLusLigneALigne);
+    if (mentionGroupes) {
+      const r = feuille.addRow([]);
+      r.getCell(1).value = mentionGroupes;
+      r.font = { size: 9, italic: true };
+    }
 
     for (let i = 2; i <= nbColonnes; i++) feuille.getColumn(i).numFmt = FORMAT_MONTANT;
     this.piedDePageEtat(feuille, identite);
@@ -3397,7 +3407,12 @@ export class ExportService {
   }
 
   private construireClasseurNotes(
-    resultat: { notes: NoteCalculee[]; ficheRecapitulative: any[]; couverture: { transcrites: number; attendues: number } },
+    resultat: {
+      notes: NoteCalculee[];
+      ficheRecapitulative: any[];
+      couverture: { transcrites: number; attendues: number };
+      groupesLusLigneALigne?: GroupesLusLigneALigne;
+    },
     ident: IdentiteLiasse,
     parties?: Array<[string, string[]]>,
     classeur?: ExcelJS.Workbook,
@@ -3444,6 +3459,20 @@ export class ExportService {
       const propre = feuillesPropres[code];
       if (propre) propre(cible, parCode.get(code)!);
       else this.feuilleNote(cible, parCode.get(code)!, ident);
+    }
+    // LES GROUPES LUS LIGNE À LIGNE SE DISENT (second tour du paquet 1, ligne
+    // B, voisin) · la ventilation par échéance des notes (créances, dettes)
+    // les lit ligne à ligne ; l'écran les nomme, le classeur remis les
+    // taisait. Une feuille à part, en dernier, et seulement quand il y en a ·
+    // un classeur sans groupe incertain reste celui d'avant.
+    const mention = mentionGroupesLusLigneALigne(resultat.groupesLusLigneALigne);
+    if (mention) {
+      const ws = cible.addWorksheet('Mentions');
+      ws.getCell('A1').value = 'Répartition par échéance · groupes de lettrage lus ligne à ligne';
+      ws.getCell('A1').font = ENTETE_FONT;
+      ws.getCell('A3').value = mention;
+      ws.getCell('A3').alignment = { wrapText: true, vertical: 'top' };
+      ws.getColumn(1).width = 120;
     }
     return cible;
   }
@@ -3967,6 +3996,24 @@ export class ExportService {
     const estPoste = (v: any) =>
       v !== null && typeof v === 'object' && ('ref' in v || 'section' in v) && !Array.isArray(v);
 
+    // LES POSTES LAISSÉS VIDES RESTENT VIDES (second tour du paquet 1, ligne
+    // A, MAJEUR) · le tableau des flux sert ses postes illisibles à 0 et les
+    // nomme (`postesVides`, `postesNonCalculables`, paquet 1, A7) ; l'écran et
+    // la liasse les écrivent vides, le livre d'inventaire les figeait 0,00,
+    // un montant constaté que personne n'a constaté. Un état figé avant la
+    // règle n'a pas `postesVides` · il se rend tel qu'il a été transcrit.
+    const vides = new Set<string>(Array.isArray(etat?.postesVides) ? etat.postesVides : []);
+    // La colonne N-1 se vide de même pour les postes que le comparatif n'a
+    // pas lus (`postesNonCalculablesN1`) · un état figé avant que le service
+    // ne les serve vides y portait 0 (seconde relecture des relevés, 7).
+    const videsN1 = new Set<string>(
+      (Array.isArray(etat?.postesNonCalculablesN1) ? etat.postesNonCalculablesN1 : [])
+        .map((p: any) => p?.ref)
+        .filter((r: unknown): r is string => typeof r === 'string'),
+    );
+    // Les totaux chiffrés écrits à côté d'un poste laissé vide · ils ne
+    // comptent pas ce poste, et le livre le dit.
+    const totauxAuxComposantsVides: string[] = [];
     let sectionCourante = '';
     for (const [cle, valeur] of Object.entries(etat ?? {})) {
       if (!Array.isArray(valeur) || valeur.length === 0 || !valeur.some(estPoste)) continue;
@@ -3983,11 +4030,29 @@ export class ExportService {
         const rang = feuille.addRow({
           ref: l.ref,
           libelle: l.libelle,
-          montant: l.montant,
-          montantN1: l.montantN1,
+          montant: l.ref && vides.has(l.ref) ? null : l.montant,
+          montantN1: l.ref && videsN1.has(l.ref) ? null : l.montantN1,
         });
         if (l.estTotal) rang.font = ENTETE_FONT;
+        if (l.estTotal && l.ref && vides.size > 0 && !vides.has(l.ref) && typeof l.montant === 'number') totauxAuxComposantsVides.push(l.ref);
       }
+    }
+    // Le motif des postes laissés vides, une ligne par motif, sous le tableau.
+    const motifs = new Map<string, string[]>();
+    for (const p of Array.isArray(etat?.postesNonCalculables) ? etat.postesNonCalculables : []) {
+      if (!p || typeof p.ref !== 'string' || !vides.has(p.ref)) continue;
+      const raison = String(p.raison ?? '');
+      motifs.set(raison, [...(motifs.get(raison) ?? []), p.ref]);
+    }
+    for (const [raison, refs] of motifs) {
+      const r = feuille.addRow({ libelle: `Laissés vides (${refs.join(', ')}) · ${raison}` });
+      r.font = { italic: true };
+    }
+    if (totauxAuxComposantsVides.length > 0) {
+      const r = feuille.addRow({
+        libelle: `Totaux chiffrés sans les postes laissés vides (${totauxAuxComposantsVides.join(', ')}) · ils ne les comptent pas.`,
+      });
+      r.font = { italic: true };
     }
 
     this.appliquerFormats(feuille, { montant: FORMAT_MONTANT, montantN1: FORMAT_MONTANT });
@@ -4015,10 +4080,19 @@ export class ExportService {
       }
       if (controle && typeof controle === 'object') {
         for (const [cle, v] of Object.entries(controle)) {
-          const rang = feuille.addRow({
-            libelle: typeof v === 'boolean' ? `${enMots(cle)} : ${v ? 'oui' : 'NON'}` : enMots(cle),
-            montant: typeof v === 'number' ? v : undefined,
-          });
+          // UN CONTRÔLE NON EFFECTUÉ SE DIT (relevés du paquet 1, ligne A,
+          // voisin A7) · la trésorerie d'ouverture ou la variation laissées
+          // vides (`null`) se lisaient comme une ligne sans montant, et le
+          // motif (`motifNonControlable`, un texte) n'était pas écrit du tout.
+          const lu =
+            typeof v === 'boolean'
+              ? `${enMots(cle)} : ${v ? 'oui' : 'NON'}`
+              : typeof v === 'string'
+                ? `${enMots(cle)} : ${v}`
+                : v === null
+                  ? `${enMots(cle)} : non calculé`
+                  : enMots(cle);
+          const rang = feuille.addRow({ libelle: lu, montant: typeof v === 'number' ? v : undefined });
           rang.getCell('montant').numFmt = FORMAT_MONTANT;
           if (typeof v === 'boolean' && !v) rang.font = { bold: true, color: { argb: 'FFB3261E' } };
         }
@@ -5371,8 +5445,10 @@ export class ExportService {
    * d'équilibre ne le voie.
    */
   private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<BalanceLiasse> {
-    const [balance, exercice, identite] = await Promise.all([
+    const [balance, avantCloture, exercice, identite] = await Promise.all([
       this.ecritureService.balance(tenantId, exerciceId, false),
+      // Le virement de clôture du 13 n'est pas « au <veille> » (A4).
+      this.ecritureService.balance(tenantId, exerciceId, false, undefined, { avantLaCloture: true }),
       this.prisma.exercice.findFirstOrThrow({
         where: { id: exerciceId, tenantId },
         select: { dateDebut: true, dateFin: true },
@@ -5382,7 +5458,7 @@ export class ExportService {
       this.identiteEtat(tenantId, { exerciceId }),
     ]);
     const soldeRetire = balance.lignes.some((l) => (l.clotureDebit ?? 0) !== 0 || (l.clotureCredit ?? 0) !== 0);
-    const lignes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
+    const lignesBrutes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
       // Redondant par construction, gardé contre le double comptage.
       .filter((l) => l.typeCompte !== 'TOTAL')
       .map((l) => ({
@@ -5401,6 +5477,7 @@ export class ExportService {
         totalDebit: l.totalDebit,
         totalCredit: l.totalCredit,
       }));
+    const lignes = virementDeClotureAuxMouvements(lignesBrutes, new Map(avantCloture.lignes.map((l) => [l.compteId, l])));
     const divisions = divisionsDeLaClasse9(lignes);
     const intitulesDivisions = divisions.length
       ? new Map(
@@ -5651,7 +5728,9 @@ export class ExportService {
         'A_VERIFIER',
         'XC',
         "Compte d'exploitation",
-        `XC = ${ce.solde.toFixed(2)} · le compte d'exploitation ne boucle pas à zéro.`,
+        // Le solde se dit, il n'est pas une égalité du texte (paquet 1, A9 ;
+        // second tour, ligne A, voisin) · même phrase que la feuille.
+        `XC = ${ce.solde.toFixed(2)} · solde non nul des opérations de l'exercice, à expliquer en Notes (produit ou charge hors de la neutralisation par le 702).`,
         'Vérifier la consommation des fonds (Partie 3, ch. 3) et les comptes non rattachés.',
       ]);
     }

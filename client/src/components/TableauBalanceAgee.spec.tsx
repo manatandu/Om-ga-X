@@ -108,6 +108,8 @@ describe('TableauBalanceAgee · la structure d’un tableau', () => {
   it('les en-têtes de colonne · l’âge, puis le tiers, les périodes et le solde', () => {
     const [ages, periodes] = tableaux[0].enfants[0].enfants;
     expect(ages.enfants.map((c) => c.texte)).toEqual(['', '+ 365 j', '+ 150 j', '0 à 30 j', '']);
+    // Aucun en-tête sans nom (second tour, ligne B, mineur 7).
+    expect(ages.enfants.every((c) => c.texte !== '' || Boolean(c.attributs['aria-label']))).toBe(true);
     expect(periodes.enfants.every((c) => role(c) === 'columnheader')).toBe(true);
     expect(periodes.enfants.map((c) => c.texte)).toEqual(['TIERS', 'Avant le 01/01/2026', 'Janvier à juillet', 'Décembre 2026', 'SOLDE']);
   });

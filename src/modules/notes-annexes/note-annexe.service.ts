@@ -312,7 +312,13 @@ export function cleDeLectureDeBalance(parametres: ParametresDeBalance): string {
         .sort()
         .map((k) => [k, (options as Record<string, unknown>)[k]])
     : null;
-  return JSON.stringify([tenantId, exerciceId, inclureBrouillard ?? null, arreteAu ? arreteAu.getTime() : null, optionsTriees]);
+  // UNE DATE ILLISIBLE A SA PROPRE CLÉ (second tour du paquet 1, ligne A,
+  // mineur 4) · `getTime` y rend NaN, que `JSON.stringify` écrit `null` · la
+  // clé se confondait avec celle d'une lecture SANS date d'arrêté, et la
+  // mémoire servait la balance de l'exercice entier à une demande bornée.
+  // Marquée, la lecture part à la balance, qui en juge comme sans mémoire.
+  const date = arreteAu ? (Number.isNaN(arreteAu.getTime()) ? 'date-illisible' : arreteAu.getTime()) : null;
+  return JSON.stringify([tenantId, exerciceId, inclureBrouillard ?? null, date, optionsTriees]);
 }
 
 export function balanceMemorisee(ecritureService: EcritureService): EcritureService {

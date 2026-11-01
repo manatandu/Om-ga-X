@@ -1183,7 +1183,7 @@ describe('Second tour, jumeau m1 · le net négatif se juge en centimes sur la v
 
   it('un centime de plus est refusé, avec son issue', async () => {
     await expect(avecRetenue(730_000.01).simulerPaie('t-1', null, prive(cinqLignes))).rejects.toThrow(
-      /dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les/,
+      /dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les à 730000\.00 FC au plus/,
     );
   });
 
@@ -1195,7 +1195,8 @@ describe('Second tour, jumeau m1 · le net négatif se juge en centimes sur la v
     expect(sans.cotisations.totalTravailleurFc).toBe(30_000.005);
     expect(sans.retenue?.retenueFc).toBe(66_100);
     expect(sans.net.netAPayerFc).toBe(503_900.095);
-    await expect(avecRetenue(503_900.1).simulerPaie('t-1', null, prive([600_000.1]))).rejects.toThrow(/réduisez-les/);
+    // Le refus dit le maximum retenable (second tour, ligne C, M3).
+    await expect(avecRetenue(503_900.1).simulerPaie('t-1', null, prive([600_000.1]))).rejects.toThrow(/réduisez-les à 503900\.09 FC au plus/);
     const passe = await avecRetenue(503_900.09).simulerPaie('t-1', null, prive([600_000.1]));
     expect(passe.net.netAPayerFc).toBeCloseTo(0.005, 9);
   });

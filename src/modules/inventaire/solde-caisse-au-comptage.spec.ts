@@ -372,6 +372,8 @@ function monter(lignes: Ligne[], exercices = [EX25, EX26]) {
   const prisma: Record<string, unknown> = {
     ...base,
     // La transaction rejoue le même client · lecture et création y passent (b).
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     campagneInventaire: {
       findFirst: jest.fn(async () => ({ id: 'camp1', tenantId: 't1', exerciceId: 'ex25', statut: StatutCampagneInventaire.RECENSEMENT })),
@@ -937,6 +939,53 @@ describe('la valeur que la fiche d’une caisse à l’écart doit porter', () =
     );
     expect(sp(t)).toContain('lesespècescomptées,1190000,00');
     expect(t).toMatch(/ne sont pas reconstitués et entrent dans l'écart du rapprochement/);
+  });
+
+  it('comptée avant la clôture, solde de clôture lu · les espèces existant à la clôture, reconstituées vers l’avant (second tour, ligne B, mineur 3)', () => {
+    // 995 000 comptés le 20 décembre contre un solde de 1 000 000 (5 000
+    // manquants), 300 000 payés le 28 · solde de clôture 700 000 · la fiche
+    // porte 695 000, jamais 995 000.
+    const t = valeurAPorterSurLaFiche(
+      {
+        ...base,
+        dateComptage: new Date('2026-12-20T00:00:00Z'),
+        especesComptees: 995_000,
+        soldeALaCloture: null,
+        encaissementsPosterieurs: null,
+        decaissementsPosterieurs: null,
+        ecart: -5_000,
+        soldeLivreALaCloture: 700_000,
+      },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('lesespècesexistantàlaclôture,695000,00');
+    expect(t).toMatch(/jamais les espèces comptées/);
+    expect(sp(t)).not.toContain('995000');
+  });
+
+  it('seconde relecture, 5 · relue aujourd’hui, une pièce antérieure au comptage validée après le PV est comptée et dite', () => {
+    // Comptés 995 000 le 20 décembre contre 1 000 000 figés ; une recette de
+    // 50 000 du 18 décembre validée après le PV porte le solde au comptage à
+    // 1 050 000 ; 300 000 payés le 28, solde de clôture 750 000 · existaient à
+    // la clôture 995 000 − 300 000 = 695 000, jamais 750 000 − 5 000 = 745 000.
+    const t = valeurAPorterSurLaFiche(
+      {
+        ...base,
+        dateComptage: new Date('2026-12-20T00:00:00Z'),
+        especesComptees: 995_000,
+        soldeALaCloture: null,
+        encaissementsPosterieurs: null,
+        decaissementsPosterieurs: null,
+        ecart: -5_000,
+        soldeLivreALaCloture: 750_000,
+        soldeLivreAuComptage: 1_050_000,
+        soldeComptableFige: 1_000_000,
+      },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('lesespècesexistantàlaclôture,695000,00');
+    expect(t).toMatch(/lus aujourd'hui/);
+    expect(sp(t)).toContain('achangéde50000,00depuisleprocès-verbal');
   });
 
   it('un PV dans une devise · montants dans la devise, la fiche se valorise en francs, aucun cours choisi', () => {

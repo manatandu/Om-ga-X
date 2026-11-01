@@ -18,7 +18,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { prochainNumeroPiece } from '../journaux/numerotation-piece';
-import { LecteurOuverturePassee, ouverturePasseeNonNulle } from '../exercice/ouverture-passee';
+import { ouverturePasseeNonNulle } from '../exercice/ouverture-passee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { AuthService } from '../auth/auth.service';
 import { ClasseurExporte, ExportService } from '../exports/export.service';
@@ -408,9 +408,10 @@ export class GroupeService {
       // (`ouverturePasseeNonNulle`, position nette au livre-journal) · seul
       // le oui ou le non en sort, jamais une ligne d'un voisin.
       const ouvertureValidee = async (membre: string, exercice: { id: string; dateDebut: Date }) =>
-        (await ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, membre, exercice, { validees: true })) !== null;
+        (await ouverturePasseeNonNulle(this.prisma, membre, exercice, { validees: true })) !== null;
 
       let total = 0;
+      let precedentsOuvertsLus = 0;
       for (const membre of membres) {
         const siens = exercices.filter((e) => e.tenantId === membre);
         let i = siens.length - 1;
@@ -418,10 +419,14 @@ export class GroupeService {
         total += await lire585(membre, siens[i].id);
         while (i > 0 && siens[i - 1].statut !== StatutExercice.CLOTURE && !(await ouvertureValidee(membre, siens[i]))) {
           i -= 1;
+          precedentsOuvertsLus += 1;
           total += await lire585(membre, siens[i].id);
         }
       }
-      return { solde: Math.round(total * 100) / 100 };
+      // Compté pour que le refus nomme l'issue (relevés du paquet 1, G1) ·
+      // clôturer d'abord l'exercice antérieur encore ouvert, dont la clôture
+      // passe le report qui arrête la remontée.
+      return { solde: Math.round(total * 100) / 100, ...(precedentsOuvertsLus > 0 ? { precedentsOuvertsLus } : {}) };
     });
   }
 

@@ -96,7 +96,14 @@ export function BalanceAgeePage() {
               sensInverse: r.totaux.sensInverse ?? 0,
             },
           }),
-        (e) => !annule && setErreur(e instanceof ApiError ? e.message : 'Chargement impossible'),
+        // Un refus retire l'ancien tableau (second tour du paquet 1, ligne
+        // B, mineur 5) · gardé à côté du message, il se lisait comme la
+        // balance de la date ou du périmètre qu'on venait de choisir.
+        (e) => {
+          if (annule) return;
+          setDonnees(null);
+          setErreur(e instanceof ApiError ? e.message : 'Chargement impossible');
+        },
       );
     return () => {
       annule = true;

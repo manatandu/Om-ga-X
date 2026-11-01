@@ -60,6 +60,7 @@ import {
   type Referentiel,
   type SensLigne,
 } from './passation-paie';
+import { centimesLoinDeZero, depuisNombre } from '../../common/decimal-exact';
 
 export type BulletinAComptabiliser = {
   readonly id: string;
@@ -204,7 +205,32 @@ export const TOTAL_DU_BLOC: Readonly<
   AVANTAGES_EN_NATURE: { role: 'TRANSFERTS_DE_CHARGES', sens: 'CREDIT' },
 };
 
-const enCentimes = (fc: number) => Math.round(fc * 100);
+// LE CENTIME SE PREND SUR LA VALEUR EXACTE, LOIN DE ZÉRO (second tour du
+// paquet 1, ligne C, m2) · `Math.round` sur un produit flottant passait
+// l'ONEM de 285 340,725 à ,72 (le produit tombe juste sous le demi-centime),
+// là où la colonne `Decimal(18,2)` du bulletin et l'affichage disent ,73. Une
+// seule règle, celle des centimes figés (`centimesLoinDeZero`).
+const centimesLoinDeZeroExacts = (fc: number) => Number(centimesLoinDeZero(depuisNombre(fc)));
+/**
+ * LA RÈGLE D'AVANT (seconde relecture des relevés, 2) · `Math.round` sur le
+ * produit flottant, sous laquelle les écritures de paie validées avant la
+ * ligne C ont été passées. Seule la reconstitution d'une écriture d'origine
+ * la relit (`seReconstitueALaRegleDuJour`) · une passation nouvelle ne la
+ * prend jamais.
+ */
+const centimesDeLaRegleDAvant = (fc: number) => Math.round(fc * 100);
+let regleDesCentimes: (fc: number) => number = centimesLoinDeZeroExacts;
+export const enCentimes = (fc: number) => regleDesCentimes(fc);
+/** Un calcul SYNCHRONE sous une règle des centimes, rétablie ensuite quoi qu'il arrive. */
+function sousLaRegle<T>(regle: (fc: number) => number, calcul: () => T): T {
+  const avant = regleDesCentimes;
+  regleDesCentimes = regle;
+  try {
+    return calcul();
+  } finally {
+    regleDesCentimes = avant;
+  }
+}
 const enFrancs = (centimes: number) => centimes / 100;
 
 type Json = Record<string, unknown> | null | undefined;
@@ -639,7 +665,26 @@ function empreinte(lignes: readonly { compte: string; sens: SensLigne; centimes:
  * reprenait) ? Alors la part d'un bulletin s'y lit par son rejeu. Sinon elle a
  * été passée sous une autre règle, ou retouchée, et sa part ne se lit pas.
  */
+/**
+ * Une écriture d'origine se reconstitue sous l'une OU l'autre règle des
+ * centimes (seconde relecture des relevés, 2) · validée avant la ligne C, un
+ * demi-centime y est rangé par `Math.round` (l'ONEM de 285 340,725 à ,72), et
+ * la seule règle du jour la déclarait illisible, la reprise en négatif
+ * refusée sans issue réelle.
+ */
 function seReconstitueALaRegleDuJour(
+  origine: OrigineDuBulletin,
+  portes: readonly BulletinAComptabiliser[],
+  reprisesPortees: readonly BulletinAComptabiliser[],
+  referentiel: Referentiel,
+): boolean {
+  return (
+    sousLaRegle(centimesLoinDeZeroExacts, () => seReconstitueSousLaRegle(origine, portes, reprisesPortees, referentiel)) ||
+    sousLaRegle(centimesDeLaRegleDAvant, () => seReconstitueSousLaRegle(origine, portes, reprisesPortees, referentiel))
+  );
+}
+
+function seReconstitueSousLaRegle(
   origine: OrigineDuBulletin,
   portes: readonly BulletinAComptabiliser[],
   reprisesPortees: readonly BulletinAComptabiliser[],

@@ -202,9 +202,18 @@ const FORMAT_MONTANT_PV = new Intl.NumberFormat('fr-FR', { minimumFractionDigits
  * § VI), par le même calcul que le PV imprime (`especesReconstitueesALaCloture`).
  *
  * Un PV établi avant la règle n'a pas figé la reconstitution · la phrase le
- * dit, sans chiffre inventé. Compté AVANT la clôture, les mouvements jusqu'à
- * elle ne sont pas reconstitués (la mention du PV le dit déjà) · ils entrent
- * dans l'écart du rapprochement. Un PV dans une devise donne ses montants dans
+ * dit, sans chiffre inventé. COMPTÉ AVANT LA CLÔTURE (second tour du paquet 1,
+ * ligne B, mineur 3) · « portez les espèces comptées » faisait entrer les
+ * mouvements intercalés dans l'écart du rapprochement (comptés 1 000 000 le
+ * 20 décembre contre un solde de 1 000 000, 300 000 payés le 28 · la fiche
+ * rapprochée du solde de clôture de 700 000 montrait un excédent de 300 000
+ * qui n'existe pas). Les espèces existant à la clôture se reconstituent vers
+ * l'avant, par le même raisonnement que le comptage d'après (AUDCIF art. 42 ;
+ * CPCC § VI) · les espèces comptées et les mouvements du livre-journal
+ * jusqu'à la clôture, soit le solde du livre-journal à la clôture et l'écart
+ * que le PV a constaté. Ce solde est LU par l'appelant
+ * (`soldeLivreALaCloture`, en francs seulement) ; sans lui, la phrase dit
+ * encore que les mouvements entrent dans l'écart. Un PV dans une devise donne ses montants dans
  * cette devise, et la fiche se valorise en francs, comme le solde auquel elle
  * se rapproche · aucun cours n'est choisi ici.
  */
@@ -218,6 +227,24 @@ export function valeurAPorterSurLaFiche(
     decaissementsPosterieurs: number | null;
     /** Le code de la devise d'un PV compté dans une devise, `null` en francs. */
     unite: string | null;
+    /** L'écart que le PV a constaté (espèces comptées moins solde au comptage). */
+    ecart?: number | null;
+    /**
+     * Le solde du livre-journal à la clôture, lu par l'appelant pour un PV en
+     * francs compté AVANT la clôture (mineur 3) · `null` ou absent, non lu.
+     */
+    soldeLivreALaCloture?: number | null;
+    /**
+     * Le solde du livre-journal au jour du comptage, relu AUJOURD'HUI avec le
+     * solde à la clôture (seconde relecture des relevés, 5) · leur différence
+     * est le mouvement d'entre le comptage et la clôture tel que le livre le
+     * porte maintenant ; le solde figé au PV ne voit pas une pièce antérieure
+     * au comptage validée après lui. `null` ou absent, la règle d'avant
+     * (solde à la clôture plus l'écart du PV).
+     */
+    soldeLivreAuComptage?: number | null;
+    /** Le solde figé par le PV au jour du comptage, pour dire l'écart avec la relecture. */
+    soldeComptableFige?: number | null;
   },
   dateCloture: Date | null,
 ): string {
@@ -247,7 +274,34 @@ export function valeurAPorterSurLaFiche(
       `n'existe pas${devise}`
     );
   }
-  if (dateCloture && jourUtc(pv.dateComptage).getTime() < jourUtc(dateCloture).getTime()) {
+  const avantLaCloture = dateCloture !== null && jourUtc(pv.dateComptage).getTime() < jourUtc(dateCloture).getTime();
+  if (avantLaCloture && !pv.unite && pv.soldeLivreALaCloture != null && pv.soldeLivreAuComptage != null) {
+    const mouvements = arrondi(pv.soldeLivreALaCloture - pv.soldeLivreAuComptage);
+    const aLaCloture = arrondi(pv.especesComptees + mouvements);
+    const validationsPosterieures =
+      pv.soldeComptableFige != null ? arrondi(pv.soldeLivreAuComptage - pv.soldeComptableFige) : 0;
+    return (
+      `${pv.numero}, comptée le ${jour(pv.dateComptage)}, avant la clôture${cloture} · portez sur sa fiche les espèces ` +
+      `existant à la clôture, ${m(aLaCloture)} (${m(pv.especesComptees)} comptés et ${m(mouvements)} de mouvements du ` +
+      "livre-journal d'entre le comptage et la clôture, lus aujourd'hui" +
+      (Math.abs(validationsPosterieures) >= 0.005
+        ? ` · le solde au jour du comptage a changé de ${m(validationsPosterieures)} depuis le procès-verbal, par une pièce validée après lui`
+        : '') +
+      "), jamais les espèces comptées · la fiche se rapproche du solde de clôture, et les mouvements d'entre le " +
+      "comptage et la clôture y feraient un écart qui n'existe pas"
+    );
+  }
+  if (avantLaCloture && !pv.unite && pv.soldeLivreALaCloture != null && pv.ecart != null) {
+    const aLaCloture = arrondi(pv.soldeLivreALaCloture + pv.ecart);
+    return (
+      `${pv.numero}, comptée le ${jour(pv.dateComptage)}, avant la clôture${cloture} · portez sur sa fiche les espèces ` +
+      `existant à la clôture, ${m(aLaCloture)} (solde du livre-journal à la clôture lu aujourd'hui, ${m(pv.soldeLivreALaCloture)}, ` +
+      `et l'écart constaté par le procès-verbal, ${m(pv.ecart)}), jamais les espèces comptées · la fiche se ` +
+      "rapproche du solde de clôture, et les mouvements d'entre le comptage et la clôture y feraient un écart qui " +
+      "n'existe pas"
+    );
+  }
+  if (avantLaCloture) {
     return (
       `${pv.numero} · portez sur sa fiche les espèces comptées, ${m(pv.especesComptees)} ; comptée le ` +
       `${jour(pv.dateComptage)}, avant la clôture${cloture}, ses mouvements jusqu'à la clôture ne sont pas ` +

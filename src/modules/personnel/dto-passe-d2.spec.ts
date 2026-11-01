@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { LivreDePaieDto, MOTIF_MONTANT_AU_CENTIME, SimulationPaieDto } from './dto/personnel.dto';
+import { LivreDePaieDto, MOTIF_MONTANT_AU_CENTIME, MOTIF_MONTANT_DEUX_DECIMALES, SimulationPaieDto } from './dto/personnel.dto';
+import { lireValeurs } from './baremes-dossier';
 
 /**
  * PASSE D2 · deux portes du corps de requête.
@@ -48,5 +49,33 @@ describe('Passe D2 · les portes du corps de requête', () => {
     expect(await erreursSur(LivreDePaieDto, { mentionsPortees: [1, 33] }, 'mentionsPortees')).toEqual([]);
     expect((await erreursSur(LivreDePaieDto, { mentionsPortees: [34] }, 'mentionsPortees')).length).toBe(1);
     expect((await erreursSur(LivreDePaieDto, { mentionsPortees: [0] }, 'mentionsPortees')).length).toBe(1);
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE C, m2 · les autres montants de la paie sont
+ * refusés au-delà du centime, comme le montant d'un élément · ils
+ * s'arrondissaient en silence d'un demi-centime au plus.
+ */
+describe('second tour, m2 · les montants de la paie se saisissent au centime', () => {
+  const simulation = { moisDePaie: '2026-03', elements: [] };
+
+  it.each(['retenuesArticle71Fc', 'tauxLegalAllocationsFamilialesFc'])('%s', async (champ) => {
+    expect(await erreursSur(SimulationPaieDto, { ...simulation, [champ]: 1_000.01 }, champ)).toEqual([]);
+    const [e] = await erreursSur(SimulationPaieDto, { ...simulation, [champ]: 1_000.005 }, champ);
+    expect(JSON.stringify(e.constraints)).toContain(MOTIF_MONTANT_DEUX_DECIMALES);
+  });
+
+  it('le montant en dollars d’un élément', async () => {
+    const element = { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantUsd: 500.005 };
+    const [e] = (await validate(plainToInstance(SimulationPaieDto, { ...simulation, elements: [element] }))).filter(
+      (x) => x.property === 'elements',
+    );
+    expect(JSON.stringify(e.children)).toContain(MOTIF_MONTANT_DEUX_DECIMALES);
+  });
+
+  it('le SMIG journalier saisi par le cabinet', () => {
+    expect(lireValeurs('SMIG', { smigJournalierFc: 21_500.5 }).ok).toBe(true);
+    expect(lireValeurs('SMIG', { smigJournalierFc: 21_500.005 }).ok).toBe(false);
   });
 });

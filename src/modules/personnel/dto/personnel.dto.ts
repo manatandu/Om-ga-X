@@ -28,6 +28,17 @@ import {
 } from 'class-validator';
 import { PeriodiciteRemuneration, SexeTravailleur, TypeContratTravail } from '@prisma/client';
 
+/**
+ * LE MÊME REFUS POUR LES AUTRES MONTANTS DE PAIE (second tour du paquet 1,
+ * ligne C, m2) · seul `ElementPaieDto.montantFc` refusait un montant au-delà
+ * du centime ; les autres s'arrondissaient en silence d'un demi-centime au
+ * plus, dans la colonne `Decimal(18,2)` ou au calcul, et le bulletin figeait
+ * un net qui n'était plus celui de la saisie.
+ */
+export const MOTIF_MONTANT_DEUX_DECIMALES = 'Ce montant se saisit au centime (deux décimales au plus).';
+const AU_CENTIME = [{ maxDecimalPlaces: 2 }, { message: MOTIF_MONTANT_DEUX_DECIMALES }] as const;
+
+
 export class EnfantAChargeDto {
   @IsString()
   @MaxLength(120)
@@ -235,7 +246,7 @@ export class ContratTravailDto {
   manoeuvreSansSpecialite?: boolean;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   remunerationBase?: number;
 
@@ -323,6 +334,7 @@ export class TerminerContratDto {
 export const MOTIF_MONTANT_AU_CENTIME =
   "Le montant d'un élément de paie se saisit en francs, au centime (deux décimales au plus).";
 
+
 /**
  * UN ÉLÉMENT DE PAIE SOUMIS À LA SIMULATION. Rien n'est stocké · P2a rend
  * deux assiettes et une retenue, le bulletin est de P2b.
@@ -373,7 +385,7 @@ export class ElementPaieDto {
    * au dossier, jamais à un cours fourni par le client.
    */
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   montantUsd?: number;
 
@@ -550,7 +562,7 @@ export class SimulationPaieDto {
    * la saisir ici la déduirait deux fois (audit final F109).
    */
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   retenuesArticle71Fc?: number;
 
@@ -562,7 +574,7 @@ export class SimulationPaieDto {
    * fourni, il prime, et l'absence des deux vaut abstention.
    */
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   tauxLegalAllocationsFamilialesFc?: number;
 
@@ -733,7 +745,7 @@ export class ParametresCotisationsDto {
  * nommé, plutôt que par un message de validation.
  */
 export class GratificationStipuleeDto {
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   montantAnnuelFc!: number;
 
@@ -750,7 +762,7 @@ export class GratificationStipuleeDto {
 
 /** A18 · L'INDEMNITÉ DE FIN DE CONTRAT STIPULÉE · recopiée avec sa source, jamais calculée. */
 export class IndemniteStipuleeDto {
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   montantFc!: number;
 
@@ -877,7 +889,7 @@ export class DecompteFinalDto {
    * avantages accordés exclusivement pour l'accomplissement des fonctions.
    */
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   avantagesEnNatureRestantsFc?: number;
 
@@ -902,7 +914,7 @@ export class DecompteFinalDto {
   partieResponsable?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   remunerationJournaliereFc?: number;
 
@@ -915,10 +927,13 @@ export class DecompteFinalDto {
    * (art. 63, al. 3 ; art. 93).
    */
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   remunerationMensuelleFc?: number;
 
+  // Une MOYENNE de douze mois est une grandeur intermédiaire, jamais au
+  // centime · elle ne porte pas le refus des montants (seconde relecture des
+  // relevés, 3).
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -930,7 +945,7 @@ export class DecompteFinalDto {
   moyenneMensuelleArticle142Fc?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   avantagesPendantPreavisFc?: number;
 
@@ -951,22 +966,22 @@ export class DecompteFinalDto {
   dateTermeContrat?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   avantagesJusquAuTermeFc?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   montantConvenuCommunAccordFc?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   arrieresFc?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   gratificationFc?: number;
 
@@ -1024,7 +1039,7 @@ export class VentilationAvantageDto {
   @MaxLength(160)
   libelle!: string;
 
-  @IsNumber()
+  @IsNumber(...AU_CENTIME)
   @Min(0)
   montantFc!: number;
 

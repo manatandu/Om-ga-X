@@ -14,6 +14,7 @@ import {
   TITRE_NATURE_NON_VENTILEE,
   TITRE_PART_NON_VENTILEE,
   aidePartNonVentilee,
+  phraseEcartCloture,
   phraseNatureNonVentilee,
   phrasePartNonVentilee,
 } from '../lib/part-non-ventilee';
@@ -159,6 +160,8 @@ function LigneTableauNote({
   const cellules = ligne.saisie;
   const ecarts = (ligne as LigneNoteCalculee & { ecartsSaisie?: EcartSaisieNote[] }).ecartsSaisie ?? [];
   const partNonVentilee = phrasePartNonVentilee(ligne);
+  // Second tour, ligne A, voisin A10 · servis par le serveur, jamais lus ici.
+  const ecartCloture = phraseEcartCloture(ligne);
   const natureNonVentilee = phraseNatureNonVentilee(ligne);
   return (
     <>
@@ -276,6 +279,16 @@ function LigneTableauNote({
       <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
         {partNonVentilee}
         <Aide titre={TITRE_PART_NON_VENTILEE} texte={aidePartNonVentilee(ligne)} source="Notes annexes · ventilation par échéance" />
+      </div>
+    )}
+    {ecartCloture && (
+      <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
+        {ecartCloture}
+        <Aide
+          titre="Écart de clôture"
+          texte="La clôture de la note se recalcule (ouverture, plus augmentations, moins diminutions) et se confronte au solde de la balance. Un écart est une anomalie du dossier · un report à-nouveau manquant, une écriture passée hors des comptes de la rubrique. Il est dit, jamais corrigé."
+          source="Notes annexes · contrôle de la clôture"
+        />
       </div>
     )}
     {natureNonVentilee && (

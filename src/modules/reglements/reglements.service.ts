@@ -333,6 +333,7 @@ export class ReglementsService {
           select: {
             exerciceId: true,
             date: true,
+            reference: true,
             estANouveauProvisoire: true,
             estGenereeParCloture: true,
             estSoldeDesComptesDeGestion: true,

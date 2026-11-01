@@ -300,6 +300,40 @@ export async function lireOuverturePasseeEnOd(
 }
 
 /**
+ * L'OUVERTURE EN OD DERRIÈRE UN EXERCICE PRÉCÉDENT TENU N'EST PAS UN FLUX
+ * (relevés du paquet 1, ligne A, m2). La clôture qui la trouve concordante
+ * ne passe aucun report (AU2) · la position du premier jour est alors
+ * l'ouverture de l'exercice, et le tableau des flux, qui lit ses postes sur
+ * les MOUVEMENTS, comptait l'apport et les biens repris comme des flux à côté
+ * de la trésorerie d'ouverture lue sur l'exercice précédent · la variation
+ * doublait la trésorerie et le contrôle sortait en écart. La position passe
+ * à la colonne report, le solde ne bouge pas ; une position conservée
+ * divergente laisse son écart au contrôle, où il se voit.
+ */
+export async function ouvertureEnOdAuxReports<L extends LigneBalancePourEtat>(
+  ecritureService: EcritureService,
+  tenantId: string,
+  exerciceId: string,
+  precedentTenu: boolean,
+  lignes: L[],
+): Promise<L[]> {
+  if (!precedentTenu) return lignes;
+  const positions = await ecritureService.positionsOuvertureEnOdParCompte(tenantId, exerciceId);
+  if (positions.size === 0) return lignes;
+  return lignes.map((l) => {
+    const p = positions.get(l.compteId);
+    if (!p) return l;
+    return {
+      ...l,
+      reportDebit: l.reportDebit + p.debit,
+      reportCredit: l.reportCredit + p.credit,
+      mouvementDebit: l.mouvementDebit - p.debit,
+      mouvementCredit: l.mouvementCredit - p.credit,
+    };
+  });
+}
+
+/**
  * SECOND TOUR DE RELECTURE DU PAQUET 1, JUMEAU DU BLOQUANT 1 · une ouverture
  * saisie en OD au premier jour et annulée par son négatif inscrit plus tard
  * (« Corriger » depuis le Journal, date du jour) se solde à zéro · l'entité

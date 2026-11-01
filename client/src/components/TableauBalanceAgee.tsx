@@ -149,14 +149,16 @@ export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
       <div role="rowgroup">
         <div role="row" style={grille} className="px-3.5 pt-1.5 text-[10.5px] italic text-text-dim border-b border-border/40">
           {/* L'âge, au-dessus de la période · la colonne des tiers et celle du
-              solde n'en ont pas. */}
-          <span role="columnheader" />
+              solde n'en ont pas. Leur en-tête vide porte un nom (second tour
+              du paquet 1, ligne B, mineur 7) · un lecteur d'écran annonçait
+              une colonne sans titre. */}
+          <span role="columnheader" aria-label="Tiers" />
           {donnees.tranches.map((t) => (
             <span key={t.cle} role="columnheader" className="text-right">
               {t.libelleAge}
             </span>
           ))}
-          <span role="columnheader" />
+          <span role="columnheader" aria-label="Solde" />
         </div>
         <div
           role="row"

@@ -28,6 +28,7 @@ function serviceAvec(saisies: Array<Record<string, unknown>>) {
     mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
     // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
     positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
@@ -124,6 +125,7 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
       mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
       // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
       ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+      positionsOuvertureEnOdParCompte: jest.fn().mockResolvedValue(new Map()),
       // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
       positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
       mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),

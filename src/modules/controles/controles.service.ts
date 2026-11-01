@@ -517,6 +517,25 @@ function chargesToutesAu67HorsDotations(lignesDeCharge: EcritureControlee['ligne
 }
 
 /**
+ * LES FRAIS BANCAIRES PRÉLEVÉS SUR LE RELEVÉ (second tour du paquet 1, ligne
+ * B, voisin de B2) · le 631 « Frais bancaires » est un compte du 63, que la
+ * fiche des comptes 62 et 63 des deux plans fait débiter « par le crédit d'un
+ * compte de tiers ou de trésorerie » (AUDCIF Titre VII ; SYCEBNL Partie 2
+ * ch. 3). La banque les prélève sans facture à part · le cas est NOMMÉ comme
+ * celui du 67, le signal reste. Une pièce qui ne porte que du 631, ou du 631
+ * et des frais financiers du 67 (hors 679), est ce cas ; toute autre charge
+ * le défait.
+ */
+function chargesFraisBancaires(lignesDeCharge: EcritureControlee['lignes']): boolean {
+  return (
+    lignesDeCharge.some((l) => l.compte.numero.startsWith('631')) &&
+    lignesDeCharge.every(
+      (l) => l.compte.numero.startsWith('631') || (l.compte.numero.startsWith('67') && !l.compte.numero.startsWith('679')),
+    )
+  );
+}
+
+/**
  * L'ÉCRITURE QUE TIENT UNE CRÉANCE DOUTEUSE EN VIGUEUR (ligne A7 ter, B2) ·
  * son reclassement au 416, une perte ou un recouvrement, une revue de sa
  * dépréciation, tant que ni l'acte ni la créance ne sont annulés. Le contrôle
@@ -2224,7 +2243,11 @@ export class ControlesService {
               ? ' · frais financiers, que la fiche du compte 67 fait débiter « par le crédit des comptes de tiers ' +
                 'concernés ou des comptes de trésorerie » · à justifier par le relevé de banque et le décompte ' +
                 "d'intérêt (éléments de contrôle du compte 67)"
-              : '';
+              : chargesFraisBancaires(lignesDeCharge)
+                ? " · frais bancaires, que la fiche des comptes 62 et 63 fait débiter « par le crédit d'un compte de " +
+                  'tiers ou de trésorerie » · à justifier par le relevé de banque et les dispositions de la convention ' +
+                  'de compte (éléments de contrôle des comptes 62 et 63)'
+                : '';
             return {
               reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
               detail: `${e.libelle} · ${comptes} soldé(s) directement en trésorerie${fraisFinanciers}`,

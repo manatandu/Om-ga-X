@@ -56,8 +56,27 @@
  *    qu'elle ne peut réduire (art. 37) · OmegaX n'en déduit rien.
  */
 
+import { depuisChaine, depuisNombre } from '../../common/decimal-exact';
+import { centimesRetenablesAuPlus } from './cotisations-paie';
+
 const c = (n: number) => Math.round(n * 100);
 const deCentimes = (n: number) => n / 100;
+
+/**
+ * LE PLUS GRAND MONTANT RETENABLE, EN CENTIMES, JUGÉ COMME L'ÉMISSION LE JUGE
+ * (second tour du paquet 1, ligne C, M1). L'émission refuse une retenue qui
+ * laisse un net négatif AU CENTIME, arrondi loin de zéro
+ * (`netNegatifAuCentime`) ; la proposition arrondissait le net au centime le
+ * plus proche, en flottant · un net exact de 503 900,095 proposait
+ * 503 900,10, que l'émission refusait (reste -0,005, un centime négatif loin
+ * de zéro). Le net est relu en décimal exact, et la retenue proposée est la
+ * plus grande qui laisse un net non négatif au centime.
+ */
+function disponibleEnCentimes(netDisponibleFc: number, netExact: string | null): number {
+  // Le décimal exact servi par la simulation d'abord (seconde relecture des
+  // relevés, 6) ; à défaut le flottant, relu par son écriture la plus courte.
+  return Number(centimesRetenablesAuPlus(netExact !== null ? depuisChaine(netExact) : depuisNombre(netDisponibleFc)));
+}
 
 export type AvanceARetenir = {
   readonly avanceId: string;
@@ -115,6 +134,7 @@ export const FONDEMENT_RETENUES_DECOMPTE =
 export function propositionRetenuesDecompte(
   avances: readonly AvanceARetenir[],
   netDisponibleFc: number | null,
+  netExact: string | null = null,
 ): PropositionRetenues {
   const reserves: string[] = [];
   const ordre = (a: AvanceARetenir) => (a.type === 'PRET' ? 1 : 0);
@@ -129,7 +149,7 @@ export function propositionRetenuesDecompte(
   if (netDisponibleFc === null && candidates.length > 0) reserves.push(RESERVE_NET_NON_CHIFFRE);
 
   // Le disponible en centimes · un net négatif ou nul ne laisse rien à retenir.
-  let disponible = netDisponibleFc === null ? Number.POSITIVE_INFINITY : Math.max(0, c(netDisponibleFc));
+  let disponible = netDisponibleFc === null ? Number.POSITIVE_INFINITY : disponibleEnCentimes(netDisponibleFc, netExact);
   let reste = 0;
   const retenues: RetenueProposee[] = candidates.map((a) => {
     const solde = c(a.soldeFc);

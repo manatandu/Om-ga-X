@@ -1,5 +1,5 @@
 import { TypeRelance } from '@prisma/client';
-import { apparierAuxOrigines, datesOrigineDesReports, originesDesReports, type LigneCandidate, type LigneReportee } from './date-origine-des-reports';
+import { apparierAuxOrigines, datesOrigineDesReports, estImportDOuverture, originesDesReports, type LigneCandidate, type LigneReportee } from './date-origine-des-reports';
 import { RelancesService } from './relances.service';
 import type { PrismaService } from '../../common/prisma.service';
 import type { CourrierService } from '../courrier/courrier.service';
@@ -304,6 +304,87 @@ describe('date d’origine des reports · le premier exercice tenu (relecture, M
 });
 
 /**
+ * SECOND TOUR DU PAQUET 1, LIGNE B, MAJEUR B7 INCOMPLET · LE BILAN D'OUVERTURE
+ * IMPORTÉ DANS UN EXERCICE QUI A UN PRÉCÉDENT. 2025 est gardé pour les
+ * comparatifs, 2026 ouvert par un bilan importé (F0, 1 000 000), F1 de mars
+ * 2026. La ligne importée se cherchait dans 2025, où rien ne porte sa clé ·
+ * introuvable, le groupe posé en 2027 retombait au prorata.
+ */
+describe('date d’origine des reports · le bilan importé derrière un exercice gardé (B7)', () => {
+  const exercices = [
+    { id: 'e2025', dateDebut: d('2025-01-01'), dateFin: d('2025-12-31') },
+    { id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') },
+  ];
+  type L = { id: string; debit: number; libelle: string | null; libelleEcriture: string; date: Date; report: boolean; reference: string | null };
+  const lignes: Record<string, L[]> = {
+    e2025: [{ id: 'v25', debit: 3_000, libelle: 'Vieille', libelleEcriture: 'Vieille', date: d('2025-06-01'), report: false, reference: null }],
+    e2026: [
+      { id: 'imp', debit: 1_000_000, libelle: null, libelleEcriture: 'Bilan d’ouverture · ouverture.csv', date: d('2026-01-01'), report: true, reference: 'IMPORT' },
+      { id: 'f1', debit: 1_000_000, libelle: 'Facture FV-1', libelleEcriture: 'Facture FV-1', date: d('2026-03-01'), report: false, reference: null },
+    ],
+  };
+  const lus: string[] = [];
+  const client = {
+    exercice: {
+      findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
+        exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+    },
+    ligneEcriture: {
+      findMany: async (a: { where: FiltreDuReport; cursor?: unknown }) => {
+        if (a.cursor) return [];
+        lus.push(a.where.ecriture.exerciceId);
+        return (lignes[a.where.ecriture.exerciceId] ?? [])
+          .filter(() => honoreLeReport({ exerciceId: a.where.ecriture.exerciceId, compteId: 'c1', lettre: null }, a.where))
+          .map((l) => ({
+            id: l.id,
+            compteId: 'c1',
+            debit: l.debit,
+            credit: 0,
+            libelle: l.libelle,
+            dateEcheance: null,
+            ecriture: {
+              date: l.date,
+              libelle: l.libelleEcriture,
+              statut: 'VALIDEE',
+              reference: l.reference,
+              estGenereeParCloture: l.report,
+              estANouveauProvisoire: false,
+            },
+          }));
+      },
+    },
+  };
+
+  it('dans 2026 même, la ligne importée est sa propre origine, sans chercher dans 2025', async () => {
+    lus.length = 0;
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2026-01-01'), [
+      { id: 'imp', compteId: 'c1', numeroCompte: '41110001', debit: 1_000_000, credit: 0, libelle: null, date: d('2026-01-01'), importOuverture: true },
+    ]);
+    expect(origines.get('imp')).toEqual({ date: d('2026-01-01'), id: 'imp' });
+    expect(introuvables).toEqual([]);
+    expect(lus).toEqual([]);
+  });
+
+  it('en 2027, le report de la ligne importée s’arrête sur elle et ne remonte pas dans 2025', async () => {
+    lus.length = 0;
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2027-01-01'), [
+      report('r-imp', 1_000_000, 'Bilan d’ouverture · ouverture.csv'),
+      report('r-f1', 1_000_000, 'Facture FV-1'),
+    ]);
+    expect(origines.get('r-imp')).toEqual({ date: d('2026-01-01'), id: 'imp' });
+    expect(origines.get('r-f1')).toEqual({ date: d('2026-03-01'), id: 'f1' });
+    expect(introuvables).toEqual([]);
+    expect(lus).toEqual(['e2026']);
+  });
+
+  it('une reprise de balance (sans le drapeau d’ouverture) ou un import d’écritures n’arrête rien', () => {
+    expect(estImportDOuverture({ reference: 'IMPORT', estGenereeParCloture: true })).toBe(true);
+    expect(estImportDOuverture({ reference: 'IMPORT', estGenereeParCloture: false })).toBe(false);
+    expect(estImportDOuverture({ reference: null, estGenereeParCloture: true })).toBe(false);
+  });
+});
+
+/**
  * RELECTURE « ÉCHECS SILENCIEUX » DU PAQUET 1, MINEUR 2 · LES ORIGINES SE
  * CHERCHENT PAR LE FILTRE DU REPORT. Les candidates étaient lues par
  * `lettre: null` seulement, quand le report au détail reporte aussi une
@@ -503,5 +584,62 @@ describe('date d’origine des reports · un report AVEC échéance garde la dat
     expect(p.derniereRelance).toEqual({ niveau: 3, date: '2026-06-30' });
     // Rien au-delà du niveau 3 · la mise en demeure n'est pas resuggérée.
     expect(p.niveauSuggere).toBeNull();
+  });
+});
+
+/**
+ * SECONDE RELECTURE DES RELEVÉS, 4 · derrière un exercice précédent TENU et
+ * CLÔTURÉ dans OmegaX, la ligne importée cherche d'abord sa pièce d'origine ;
+ * à son défaut, elle reste sa propre origine, jamais « introuvable ».
+ */
+describe('date d’origine des reports · le bilan importé derrière un exercice tenu et clôturé (seconde relecture, 4)', () => {
+  const exercices = [
+    { id: 'e2025', dateDebut: d('2025-01-01'), dateFin: d('2025-12-31'), statut: 'CLOTURE' },
+    { id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31'), statut: 'OUVERT' },
+  ];
+  const client = {
+    exercice: {
+      findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
+        exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+    },
+    ligneEcriture: {
+      findFirst: async () => ({ id: 'tenu' }),
+      findMany: async (a: { where: FiltreDuReport; cursor?: unknown }) => {
+        if (a.cursor || a.where.ecriture.exerciceId !== 'e2025') return [];
+        return [
+          {
+            id: 'f0',
+            compteId: 'c1',
+            debit: 1_000_000,
+            credit: 0,
+            libelle: 'Facture F0',
+            dateEcheance: null,
+            ecriture: { date: d('2025-03-10'), libelle: 'Facture F0', statut: 'VALIDEE', reference: null, estGenereeParCloture: false, estANouveauProvisoire: false },
+          },
+        ];
+      },
+    },
+  };
+  const importee = (id: string, debit: number, libelle: string) => ({
+    id,
+    compteId: 'c1',
+    numeroCompte: '41110001',
+    debit,
+    credit: 0,
+    libelle,
+    date: d('2026-01-01'),
+    importOuverture: true,
+  });
+
+  it('la pièce de 2025 qui porte sa clé est son origine, à sa date', async () => {
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2026-01-01'), [importee('imp', 1_000_000, 'Bilan d’ouverture · ouverture.csv')]);
+    expect(origines.get('imp')).toEqual({ date: d('2025-03-10'), id: 'f0' });
+    expect(introuvables).toEqual([]);
+  });
+
+  it('sans pièce retrouvée, la ligne importée reste sa propre origine', async () => {
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2026-01-01'), [importee('imp', 7_000, 'Autre')]);
+    expect(origines.get('imp')).toEqual({ date: d('2026-01-01'), id: 'imp' });
+    expect(introuvables).toEqual([]);
   });
 });

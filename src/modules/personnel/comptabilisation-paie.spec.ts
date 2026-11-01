@@ -1,5 +1,6 @@
 import {
   dernierJourDuMois,
+  enCentimes,
   MOTIF_ORIGINE_INTROUVABLE,
   motifPartIllisible,
   propositionPaieDuMois,
@@ -489,5 +490,54 @@ describe('M3 · la reprise en négatif recopie l’écriture d’origine', () =>
     expect(p.refus).toEqual([]);
     expect(p.equilibree).toBe(true);
     expect(net(p)['66110000']).toBe(10_000);
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE C, m2 · la passation prend le centime sur la
+ * valeur EXACTE, loin de zéro, comme la colonne du bulletin et l'affichage ·
+ * `Math.round` passait l'ONEM de 285 340,725 à ,72.
+ */
+describe('passation · le centime loin de zéro, sur la valeur exacte', () => {
+  it('285 340,725 se passe 285 340,73', () => {
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
+    expect(enCentimes(-0.005)).toBe(-1);
+    expect(enCentimes(0.004)).toBe(0);
+    expect(enCentimes(13_303.745)).toBe(1_330_375);
+  });
+});
+
+/**
+ * SECONDE RELECTURE DES RELEVÉS, 2 · une écriture d'origine validée avant la
+ * ligne C range le demi-centime par `Math.round` (ONEM 285 340,725 à ,72) ·
+ * elle se reconstitue sous l'une ou l'autre règle, et la reprise en négatif
+ * n'est pas refusée.
+ */
+describe('reconstitution · l’écriture d’avant la règle des centimes figés', () => {
+  const avecOnem = (numero: number, over: Partial<BulletinAComptabiliser> = {}) => {
+    const b = bulletin(numero, over);
+    const cot = (b.calcul as { cotisations: { lignes: { cle: string; montantFc: number }[] } }).cotisations;
+    cot.lignes = cot.lignes.map((l) => (l.cle === 'onem' ? { ...l, montantFc: 285_340.725 } : l));
+    return b;
+  };
+  it('les centimes passés par Math.round (,72 deux fois) se reconnaissent · la reprise se propose', () => {
+    const lignes = propositionPaieDuMois('2026-03', 'SYSCOHADA', [avecOnem(1), avecOnem(2)]).lignes;
+    // La règle d'avant · 2 × 285 340,72, deux centimes de moins au 6413 et au 4428.
+    const commune = {
+      ecritureId: 'e-commune',
+      numeroPiece: '9',
+      lignes: lignes.map((l) => {
+        const montant = ['64130000', '44280000'].includes(l.compte) ? Math.round((l.montantFc - 0.02) * 100) / 100 : l.montantFc;
+        return { compte: l.compte, intitule: l.intitule, debit: l.sens === 'DEBIT' ? montant : 0, credit: l.sens === 'CREDIT' ? montant : 0 };
+      }),
+    };
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
+    const p = propositionPaieDuMois('2026-03', 'SYSCOHADA', [
+      avecOnem(1, { statut: 'ANNULE', ecritureId: 'e-commune', origine: commune }),
+      avecOnem(2, { ecritureId: 'e-commune' }),
+    ]);
+    expect(p.refus).toEqual([]);
+    // La règle du jour est rétablie après la reconstitution.
+    expect(enCentimes(285_340.725)).toBe(28_534_073);
   });
 });

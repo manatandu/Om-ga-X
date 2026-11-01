@@ -1094,6 +1094,16 @@ describe('passe F5 · observations du Titre 3', () => {
     }
   });
 
+  it('unipersonnaliteDeLArticle63 · une entreprise DÉCLARÉE du portefeuille de l’État n’a pas d’associé unique personne physique (second tour, ligne C, m3 · loi n° 08/010, art. 3)', () => {
+    const F = FormeJuridiqueSyscohada;
+    const u = (entreprisePortefeuilleEtat: boolean | null) =>
+      unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada: F.SOCIETE_ANONYME, associeUnique: null, associeUniquePersonneMorale: null, entreprisePortefeuilleEtat });
+    expect(u(true)).toBeNull();
+    // « Non » ou « pas encore dit » ne retirent rien.
+    expect(u(false)).toBe('UNICITE_NON_DECLAREE');
+    expect(u(null)).toBe('UNICITE_NON_DECLAREE');
+  });
+
   it('unipersonnaliteDeLArticle63 · la règle seule, forme par forme', () => {
     const F = FormeJuridiqueSyscohada;
     const u = (formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null, associeUnique?: boolean | null, associeUniquePersonneMorale?: boolean | null) =>

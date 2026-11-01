@@ -60,7 +60,14 @@ export function depuisNombre(x: number): DecimalExact {
     throw new RangeError(`Valeur non finie (${x}) · elle n'a pas d'écriture décimale exacte.`);
   }
   // `String(-0)` vaut "0" · le zéro négatif est le zéro.
-  const ecriture = String(x);
+  return depuisChaine(String(x));
+}
+
+/**
+ * La valeur exacte d'une écriture décimale (« 503900.095 »), telle que
+ * `versChaine` l'écrit · la voie d'un montant exact qui a voyagé en texte.
+ */
+export function depuisChaine(ecriture: string): DecimalExact {
   const forme = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(ecriture);
   if (!forme) throw new RangeError(`Écriture décimale illisible : ${ecriture}`);
   const [, signe, entiere, fraction = '', exposant = '0'] = forme;

@@ -75,3 +75,17 @@ export const AIDE_NATURE_NON_VENTILEE =
   'd’exploitation, financière ou H.A.O.). Un virement de provision à provision, ou une écriture dont la ' +
   'contrepartie n’est d’aucune des trois, n’est rangé dans aucune colonne : le mettre d’office en exploitation ' +
   'donnerait une ventilation complète et fausse.';
+
+/**
+ * L'ÉCART DE CLÔTURE, DIT À L'ÉCRAN DES NOTES (second tour du paquet 1, ligne
+ * A, voisin A10). Le serveur le servait (`ecartCloture`), l'export le disait
+ * en commentaire de cellule, et l'écran ne le lisait pas · une note dont la
+ * clôture recalculée (D = A + B − C) ne rend pas le solde s'y lisait
+ * complète. Même garde que la part non ventilée · rien sous le demi-centime.
+ */
+export function phraseEcartCloture(ligne: Pick<LigneNoteCalculee, 'ecartCloture'>): string | null {
+  const m = ligne.ecartCloture;
+  if (typeof m !== 'number' || !Number.isFinite(m) || Math.abs(m) < 0.005) return null;
+  return `Écart de clôture : ${montant(m)} · la clôture recalculée ne rend pas le solde de la balance.`;
+}
+

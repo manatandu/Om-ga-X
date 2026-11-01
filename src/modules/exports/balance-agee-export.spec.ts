@@ -186,3 +186,41 @@ describe('balance âgée exportée · trois populations', () => {
     expect(formule(f, `E${net}`).formula).toBe(`E${total}`);
   });
 });
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE B, VOISIN · le classeur dit les groupes lus
+ * ligne à ligne, comme l'écran · il les taisait, et la ventilation incertaine
+ * se présentait comme sûre au réviseur.
+ */
+describe('balance âgée exportée · les groupes lus ligne à ligne se disent', () => {
+  const etat = (groupesLusLigneALigne: unknown) => ({
+    type: 'CLIENTS_41',
+    tranches,
+    debiteurs: [ligne('411001 - Client A', [0, 500_000, 0], 500_000)],
+    crediteurs: [],
+    sensInverse: [],
+    soldesNuls: [],
+    totaux: { parTranche: [0, 500_000, 0], parTrancheCrediteurs: [0, 0, 0], debiteurs: 500_000, crediteurs: 0, sensInverse: 0, net: 500_000 },
+    groupesLusLigneALigne,
+  });
+  const texteDe = (f: ExcelJS.Worksheet) => {
+    const textes: string[] = [];
+    f.eachRow((r) => textes.push(String(r.getCell(1).value ?? '')));
+    return textes.join('\n');
+  };
+
+  it('nomme chaque groupe et son motif sous le net', async () => {
+    const f = await feuilleDe(
+      monter(etat({ total: 3, groupes: [{ code: 'AB', compte: '41110001', motif: 'A_NOUVEAU_SANS_ORIGINE' }], tronque: true })),
+      'CLIENTS_41',
+    );
+    const t = texteDe(f);
+    expect(t).toContain('3 groupes de lettrage à la répartition incertaine · AB (41110001, à-nouveau sans pièce d’origine), 2 autres');
+    expect(t).toMatch(/le total est exact/);
+  });
+
+  it('aucun groupe · aucune mention', async () => {
+    const f = await feuilleDe(monter(etat({ total: 0, groupes: [], tronque: false })), 'CLIENTS_41');
+    expect(texteDe(f)).not.toMatch(/répartition incertaine/);
+  });
+});

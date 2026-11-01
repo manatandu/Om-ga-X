@@ -4,6 +4,7 @@ import { montant } from '../lib/montants';
 import {
   TITRE_PART_NON_VENTILEE,
   aidePartNonVentilee,
+  phraseEcartCloture,
   phraseNatureNonVentilee,
   phrasePartNonVentilee,
 } from '../lib/part-non-ventilee';
@@ -70,5 +71,25 @@ describe('le jumeau par nature · mouvements de provision hors des trois natures
     const corps = rendu.slice(debut, fin);
     expect(corps).toMatch(/const natureNonVentilee = phraseNatureNonVentilee\(ligne\);/);
     expect(corps).toMatch(/\{natureNonVentilee && \([\s\S]*\{natureNonVentilee\}/);
+  });
+});
+
+/**
+ * SECOND TOUR DU PAQUET 1, LIGNE A, VOISIN A10 · l'écart de clôture et la
+ * nature non ventilée, servis par le serveur, ne se lisaient pas à l'écran.
+ */
+describe('écart de clôture et nature non ventilée, dits sous la ligne', () => {
+  it('l’écart de clôture se dit, jamais sous le demi-centime', () => {
+    expect(phraseEcartCloture({ ecartCloture: 250_000 })).toBe(
+      `Écart de clôture : ${montant(250_000)} · la clôture recalculée ne rend pas le solde de la balance.`,
+    );
+    expect(phraseEcartCloture({ ecartCloture: 0.004 })).toBeNull();
+    expect(phraseEcartCloture({})).toBeNull();
+  });
+
+  it('le rendu les affiche sous la ligne', () => {
+    const source = readFileSync(join(__dirname, 'NotesAnnexesRendu.tsx'), 'utf8');
+    expect(source).toMatch(/const ecartCloture = phraseEcartCloture\(ligne\)/);
+    expect(source).toMatch(/\{ecartCloture && \([\s\S]*\{ecartCloture\}/);
   });
 });

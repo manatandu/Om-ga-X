@@ -640,7 +640,11 @@ export function cotisationsExactes(
   parametres: ParametresCotisations,
 ): { verdict: VerdictCotisations; totalTravailleurExact: DecimalExact } {
   const lignes: LigneCotisation[] = [];
-  const montantsExacts: DecimalExact[] = [];
+  // Les montants exacts PAR CHARGE, cumulés là où la ligne se pose (second
+  // tour du paquet 1, ligne C, M4) · deux tableaux appariés par RANG
+  // (lignes et montants) tenaient tant que rien d'autre n'ajoutait une ligne ;
+  // une ligne ajoutée hors de `poser` aurait décalé tous les totaux en silence.
+  const exactsParCharge = new Map<ChargeCotisation, DecimalExact[]>();
   const abstentions: string[] = [];
   const reserves: string[] = [];
   const assietteExacte = maximum(ZERO, assietteSociale);
@@ -666,7 +670,7 @@ export function cotisationsExactes(
     base: DecimalExact = assietteExacte,
   ) => {
     const montantExact = pourCent(base, depuisNombre(tauxPourCent));
-    montantsExacts.push(montantExact);
+    exactsParCharge.set(charge, [...(exactsParCharge.get(charge) ?? []), montantExact]);
     lignes.push({
       cle,
       libelle,
@@ -806,8 +810,7 @@ export function cotisationsExactes(
     poser('onem', 'ONEM · contribution patronale', 'ONEM', 'EMPLOYEUR', onem.tauxPourCent, onem.source, reserveOnem);
   }
 
-  const totalExact = (charge: ChargeCotisation) =>
-    somme(montantsExacts.filter((_, i) => lignes[i].charge === charge));
+  const totalExact = (charge: ChargeCotisation) => somme(exactsParCharge.get(charge) ?? []);
   const totalEmployeurFc = versNombre(totalExact('EMPLOYEUR'));
   const totalTravailleurExact = totalExact('TRAVAILLEUR');
 
@@ -964,4 +967,18 @@ export function netAPayerExact(
  */
 export function netNegatifAuCentime(net: DecimalExact): boolean {
   return centimesLoinDeZero(net) < 0n;
+}
+
+/**
+ * LA PLUS GRANDE RETENUE, EN CENTIMES, QUE LE NET AVANT RETENUES PORTE (second
+ * tour du paquet 1, ligne C, M1 et M3) · celle qui laisse un net non négatif
+ * au centime par la règle de `netNegatifAuCentime`. Un net exact de
+ * 503 900,095 porte 503 900,09, jamais 503 900,10. Le refus d'une retenue
+ * trop forte la nomme, et la proposition du décompte s'y borne.
+ */
+export function centimesRetenablesAuPlus(netAvantRetenues: DecimalExact): bigint {
+  let r = centimesLoinDeZero(netAvantRetenues);
+  if (r <= 0n) return 0n;
+  if (netNegatifAuCentime(moins(netAvantRetenues, { mantisse: r, echelle: 2 }))) r -= 1n;
+  return r > 0n ? r : 0n;
 }

@@ -215,6 +215,7 @@ export function unipersonnaliteDeLArticle63(t: {
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
   associeUnique?: boolean | null;
   associeUniquePersonneMorale?: boolean | null;
+  entreprisePortefeuilleEtat?: boolean | null;
 }): UnipersonnaliteArticle63 | null {
   const forme = t.formeJuridiqueSyscohada;
   if (
@@ -227,6 +228,15 @@ export function unipersonnaliteDeLArticle63(t: {
   // L'art. 63 vise la personne physique · un associé unique déclaré personne
   // morale l'écarte, quelle que soit la forme.
   if (t.associeUniquePersonneMorale === true) return null;
+  // L'ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT, DÉCLARÉE (second tour du paquet 1,
+  // ligne C, m3) · loi n° 08/010, art. 3 · « toute société dans laquelle
+  // l'État ou toute personne morale de droit public détient la totalité des
+  // actions ou une participation ». Ou bien la personne publique détient
+  // TOUT, et l'associé unique est une personne morale ; ou bien elle détient
+  // une participation, et la société a plus d'un associé. Dans les deux cas,
+  // aucun associé unique PERSONNE PHYSIQUE · l'observation ne vise pas ce
+  // dossier. « Pas encore dit » (`null`) ne retire rien.
+  if (t.entreprisePortefeuilleEtat === true) return null;
   // L'unicité se déclare pour les trois formes depuis la décision de Manasse
   // du 2026-10-09 (`Tenant.associeUnique`) · plus aucune n'est
   // « non déclarable ».
@@ -1578,7 +1588,7 @@ export class FiscaliteService {
     forme: FormeJuridiqueSyscohada | null,
     chiffreAffaires: number,
     chiffresAffairesAnterieurs: number[],
-    faits: { associeUnique?: boolean | null; associeUniquePersonneMorale?: boolean | null } = {},
+    faits: { associeUnique?: boolean | null; associeUniquePersonneMorale?: boolean | null; entreprisePortefeuilleEtat?: boolean | null } = {},
   ): { regime: RegimeImposition; observations: string[] } {
     const observations: string[] = [];
     const physique = forme !== null && FORMES_PERSONNES_PHYSIQUES.includes(forme);
@@ -1864,7 +1874,11 @@ export class FiscaliteService {
       tenant.formeJuridiqueSyscohada,
       brut.chiffreAffaires,
       chiffresAffairesAnterieurs,
-      { associeUnique: tenant.associeUnique, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale },
+      {
+        associeUnique: tenant.associeUnique,
+        associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
+        entreprisePortefeuilleEtat: tenant.entreprisePortefeuilleEtat,
+      },
     );
     observations.push(...this.avertissementsReportDeficitaire(deficitAnterieur));
     // C15 · le déficit d'avant la loi se dit dans la vue qui l'IMPUTE, pas
