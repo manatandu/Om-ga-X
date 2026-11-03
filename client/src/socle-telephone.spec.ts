@@ -1,0 +1,342 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// AUCUN import de « vitest », comme chrome-etroit.spec.ts · describe/it/expect
+// arrivent par les globales, ce qui rend le fichier exécutable par les DEUX
+// lanceurs (le jest de la racine ramasse aussi client/src).
+
+/**
+ * LE SOCLE TÉLÉPHONE (reprise du design, lot 2, 2026-11-03).
+ *
+ * Aucun de ces défauts ne lève d'erreur ni ne se voit au bureau : une barre
+ * d'état sous la barre d'URL, un champ qui fait zoomer iOS, une fenêtre que le
+ * doigt pousse hors de l'écran. jsdom ne calcule aucune mise en page, on gèle
+ * donc la CAUSE dans la source, ancrée sur une STRUCTURE (une classe, une
+ * règle, un appel), jamais sur une distance en caractères (CLAUDE.md § 10). Les
+ * mesures au navigateur (cibles, débordement, pixels du bureau) sont rejouées
+ * à la main et dites dans AVANCEMENT-design-lot2.md.
+ */
+const lire = (chemin: string) => readFileSync(join(__dirname, chemin), 'utf8');
+const sansCommentaires = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** Le corps d'un bloc `{ … }` qui s'ouvre à `debut`, accolades équilibrées. */
+function bloc(css: string, debut: string): string {
+  const i = css.indexOf(debut);
+  expect(i).toBeGreaterThanOrEqual(0);
+  let profondeur = 0;
+  for (let k = css.indexOf('{', i); k < css.length; k++) {
+    if (css[k] === '{') profondeur++;
+    if (css[k] === '}' && --profondeur === 0) return css.slice(css.indexOf('{', i) + 1, k);
+  }
+  throw new Error(`bloc non refermé : ${debut}`);
+}
+
+/**
+ * L'ÉLÉMENT OUVRANT qui porte une ancre, découpé par STRUCTURE · du `<` qui
+ * précède l'ancre au premier `>` hors accolades et hors guillemets (un `=>` dans
+ * un gestionnaire n'en est pas la fin). Jamais une distance en caractères.
+ */
+function balise(src: string, ancre: string): string {
+  const i = src.indexOf(ancre);
+  expect(i).toBeGreaterThanOrEqual(0);
+  const debut = src.lastIndexOf('<button', i);
+  expect(debut).toBeGreaterThanOrEqual(0);
+  let accolades = 0;
+  let guillemet = '';
+  for (let k = debut; k < src.length; k++) {
+    const c = src[k];
+    if (guillemet) {
+      if (c === guillemet) guillemet = '';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') guillemet = c;
+    else if (c === '{') accolades++;
+    else if (c === '}') accolades--;
+    else if (c === '>' && accolades === 0) return src.slice(debut, k + 1);
+  }
+  throw new Error('balise non refermée');
+}
+
+describe('le cadre suit la hauteur VISIBLE du téléphone', () => {
+  it("aucun conteneur d'écran n'est en 100vh (`h-screen`, `min-h-screen`)", () => {
+    for (const f of [
+      'components/chrome/AppShell.tsx',
+      'App.tsx',
+      'pages/AuthPage.tsx',
+      'pages/EssaiPage.tsx',
+      'pages/InvitationPage.tsx',
+      'pages/ChoixDossierPage.tsx',
+      'pages/ChangerMotDePassePage.tsx',
+      'pages/RegisterPage.tsx',
+    ]) {
+      // Les classes seulement · les commentaires disent l'ancien nom pour l'expliquer.
+      expect(sansCommentaires(lire(f))).not.toMatch(/\b(min-)?h-screen\b/);
+    }
+  });
+
+  it("l'application est en `h-dvh`, les portes d'ouverture en `min-h-svh`", () => {
+    expect(lire('components/chrome/AppShell.tsx')).toMatch(/className="h-dvh flex flex-col bg-bg text-text overflow-x-hidden"/);
+    expect(lire('pages/AuthPage.tsx')).toMatch(/min-h-svh/);
+  });
+
+  it('la borne des modales garde `vh` PUIS `dvh` (navigateurs sans dvh)', () => {
+    const regle = bloc(lire('index.css'), '.modale-bornee');
+    expect(regle.indexOf('100vh')).toBeGreaterThanOrEqual(0);
+    expect(regle.indexOf('100vh')).toBeLessThan(regle.indexOf('100dvh'));
+  });
+});
+
+describe('la méta viewport', () => {
+  const html = lire('../index.html');
+  const viewport = html.match(/<meta\s+name="viewport"\s+content="([^"]+)"/)?.[1] ?? '';
+
+  it('peint sous l\'encoche et laisse le clavier réduire la mise en page', () => {
+    expect(viewport).toContain('width=device-width');
+    expect(viewport).toContain('viewport-fit=cover');
+    expect(viewport).toContain('interactive-widget=resizes-content');
+  });
+
+  it("n'interdit JAMAIS le zoom (échec d'accessibilité)", () => {
+    expect(viewport).not.toMatch(/user-scalable|maximum-scale/);
+  });
+
+  it("un seul theme-color · l'interface n'a pas de thème sombre", () => {
+    expect(html.match(/name="theme-color"/g)).toHaveLength(1);
+    expect(lire('index.css')).not.toMatch(/prefers-color-scheme/);
+  });
+});
+
+describe('les règles du pointeur grossier (index.css)', () => {
+  const css = lire('index.css');
+  const grossier = bloc(css, '@media (pointer: coarse) {');
+
+  it('champs à 16 px SOUS le pointeur grossier seulement · le bureau reste à 12 px', () => {
+    // Le sélecteur doit battre `text-[12px]` (0,1,0) des champs · un sélecteur d'élément
+    // seul (0,0,1) perdait, mesuré au navigateur : le champ restait à 12 px.
+    expect(grossier).toMatch(
+      /input:not\(\[data-taille-fixe\]\),\s*select:not\(\[data-taille-fixe\]\),\s*textarea:not\(\[data-taille-fixe\]\)\s*\{\s*font-size:\s*16px;/,
+    );
+    // Hors du bloc, aucune règle ne fixe les champs à 16 px · le corps reste à 12 px.
+    expect(css.replace(grossier, '')).not.toMatch(/(^|\n)\s*(input|select|textarea)[^{]*\{\s*font-size:\s*16px/);
+    expect(bloc(css, '  body {')).toMatch(/font-size:\s*12px;/);
+  });
+
+  it('zone de toucher · pseudo-élément PLAFONNÉ à 32 px (il ne vole pas les voisins), taille réelle pour les boutons et boîtes', () => {
+    // 44 px de pseudo-élément recouvrait l'onglet voisin et les libellés autour de l'aide « ? ».
+    expect(grossier).toMatch(/\.cible-tactile::after\s*\{[^}]*width:\s*max\(100%,\s*32px\)[^}]*height:\s*max\(100%,\s*32px\)/);
+    expect(grossier).not.toMatch(/max\(100%,\s*44px\)/);
+    expect(grossier).toMatch(/\.btn\s*\{\s*min-height:\s*44px;/);
+    expect(grossier).toMatch(/\[role='dialog'\] button/);
+  });
+
+  it('le bloc dit que le pointeur grossier vaut aussi au-delà de 640 px, et ne le double pas de max-sm', () => {
+    const entete = css.slice(css.indexOf('SOUS UN POINTEUR GROSSIER'), css.indexOf('@media (pointer: coarse) {'));
+    expect(entete).toContain('SUIVENT LE POINTEUR, NON LA LARGEUR');
+    expect(entete).toContain('tablette tactile de');
+    expect(grossier).not.toMatch(/max-sm|@media[^{]*width/);
+  });
+
+  it('les gestes du navigateur · pas de surbrillance, pas de rebond de page, pas de double-toucher', () => {
+    expect(css).toMatch(/html\s*\{[^}]*-webkit-tap-highlight-color:\s*transparent/);
+    expect(css).toMatch(/html,\s*body\s*\{\s*overscroll-behavior:\s*none;/);
+    expect(css).toMatch(/summary\s*\{\s*touch-action:\s*manipulation;/);
+  });
+
+  it('les zones sûres bordent les barres, sans pixel de plus quand il n\'y a pas d\'encoche', () => {
+    expect(css).toMatch(/padding-left:\s*env\(safe-area-inset-left,\s*0px\)/);
+    expect(bloc(css, '.barre-sur-haut {')).toContain('env(safe-area-inset-top, 0px)');
+    expect(bloc(css, '.barre-sur-bas {')).toContain('env(safe-area-inset-bottom, 0px)');
+    // La hauteur s'AJOUTE (border-box) · un `content-box` ajouterait la bordure à 24 px.
+    expect(bloc(css, '.barre-sur-bas {')).toMatch(/height:\s*calc\(24px \+/);
+    expect(lire('components/chrome/StatusBar.tsx')).toContain('barre-sur-bas');
+    expect(lire('components/chrome/AppShell.tsx')).toContain('barre-sur-haut');
+  });
+
+  it("les conteneurs défilants ne chaînent au parent qu'au doigt (le bureau garde son rendu)", () => {
+    for (const f of ['components/chrome/Fenetre.tsx', 'components/chrome/AppShell.tsx', 'pages/AccueilPage.tsx']) {
+      expect(lire(f)).toMatch(/pointer-coarse:overscroll-contain/);
+      expect(lire(f)).not.toMatch(/[^:]overscroll-contain/);
+    }
+  });
+
+  it('les petits contrôles du chrome portent la zone de toucher', () => {
+    expect(lire('components/chrome/Aide.tsx')).toMatch(/cible-tactile relative inline-flex/);
+    expect(lire('components/chrome/OutilsChrome.tsx').match(/cible-tactile relative/g)?.length).toBeGreaterThanOrEqual(3);
+    // La croix d'un onglet prend sa TAILLE RÉELLE au doigt · son pseudo-élément aurait capté les touchers de l'onglet voisin (2 px d'écart).
+    expect(lire('components/chrome/BarreFenetres.tsx')).toMatch(/mr-1 flex items-center justify-center w-\[16px\] h-\[16px\] pointer-coarse:size-10/);
+  });
+});
+
+describe('la seule borne de 640 px', () => {
+  it('`useSous640` est la source unique · la barre de menus en prend la négation', () => {
+    expect(lire('lib/media.ts')).toContain("'not all and (min-width: 640px)'");
+    // Deux lectures de la largeur (`min-width: 640px` d'un côté, négation de l'autre)
+    // donnaient des défauts contraires sans `matchMedia` · une seule source.
+    expect(lire('components/chrome/MenuBar.tsx')).toContain('const volant = !useSous640();');
+    expect(lire('components/chrome/MenuBar.tsx')).not.toContain("useMedia('(min-width: 640px)')");
+  });
+
+  it("`useMedia` se rabat sur addListener quand addEventListener manque (Safari avant 14)", () => {
+    const media = lire('lib/media.ts');
+    expect(media).toMatch(/else mq\.addListener\?\.\(suivre\)/);
+    expect(media).toMatch(/else mq\.removeListener\?\.\(suivre\)/);
+  });
+});
+
+describe('sous 640 px, les fenêtres sont le plein écran de la zone de travail', () => {
+  const src = lire('components/chrome/Fenetre.tsx');
+
+  it('le style rendu devient `inset: 0`, sans toucher à la géométrie mémorisée', () => {
+    expect(src).toContain('const telephone = useSous640();');
+    expect(src).toMatch(/const style: React\.CSSProperties = telephone\s*\?\s*\{ inset: 0, zIndex: fenetre\.ordre \}/);
+    // Le mode ne ré-écrit jamais le cadre : retour au-dessus de 640 px = géométrie d'avant.
+    expect(src.slice(src.indexOf('const style: React.CSSProperties'), src.indexOf('return (', src.indexOf('const style: React.CSSProperties')))).not.toMatch(/deplacer\(/);
+  });
+
+  it('ni déplacement, ni poignées, ni agrandir/restaurer', () => {
+    expect(src).toMatch(/if \(telephone\) return;[^\n]*\n/);
+    expect(src).toMatch(/\{!agrandie && !telephone &&\s*POIGNEES\.map/);
+    expect(src).toMatch(/\{!telephone && \(\s*<BoutonTitre[\s\S]*?titre=\{agrandie \? 'Restaurer' : 'Agrandir'\}/);
+    expect(src).toMatch(/onDoubleClick=\{telephone \? undefined/);
+    // Les poignées sont aussi cachées par la classe sous 640 px (coin bas droit compris).
+    const poignees = src.slice(src.indexOf('const POIGNEES'), src.indexOf('];', src.indexOf('const POIGNEES')));
+    expect(poignees.match(/hidden sm:block/g)).toHaveLength(8);
+  });
+
+  it('réduire et fermer restent', () => {
+    expect(src).toMatch(/titre="Réduire"/);
+    expect(src).toMatch(/titre="Fermer"/);
+  });
+});
+
+describe('sous 640 px, les menus passent derrière « ☰ »', () => {
+  const src = lire('components/chrome/MenuBar.tsx');
+
+  it('bouton nommé, déplié/replié, relié à son panneau', () => {
+    expect(src).toMatch(/aria-label="Menus"/);
+    expect(src).toMatch(/aria-expanded=\{burger\}/);
+    expect(src).toMatch(/aria-controls="panneau-des-menus"/);
+    expect(src).toMatch(/id="panneau-des-menus"/);
+  });
+
+  it("le panneau est un volet de navigation, pas un role=menu (ses entrées n'ont ni menuitem ni flèches)", () => {
+    const panneau = src.slice(src.indexOf('<nav\n              id="panneau-des-menus"'), src.indexOf('</nav>'));
+    expect(panneau.length).toBeGreaterThan(0);
+    expect(panneau).not.toMatch(/role="menu/);
+    expect(panneau).not.toMatch(/aria-haspopup/);
+    expect(panneau).not.toMatch(/role="menuitem"/);
+    expect(src).toMatch(/role=\{dansUnMenu \? 'menuitem' : undefined\}/);
+  });
+
+  it("une bascule de largeur referme le panneau ET le titre déplié (sinon le premier Échap part pour rien)", () => {
+    const effet = src.slice(src.indexOf('useEffect(() => {\n    fermer();'), src.indexOf('}, [volant]);'));
+    expect(effet).toContain('fermer();');
+    expect(src).toMatch(/const fermer = \(\) => \{[\s\S]*?setOuvert\(null\);[\s\S]*?setBurger\(false\);/);
+  });
+
+  it("la hauteur du panneau tient compte des marges d'encoche et de barre d'accueil", () => {
+    expect(src).toMatch(/max-h-\[calc\(100dvh-9rem-env\(safe-area-inset-top,0px\)-env\(safe-area-inset-bottom,0px\)\)\] overflow-y-auto/);
+  });
+
+  it('même contenu · le panneau reprend `menus` et le repli existant', () => {
+    expect(src).toMatch(/\{!volant && \(/);
+    expect(src).toMatch(/\{rendreReplie\(m\.items\)\}/);
+  });
+
+  it('Échap referme et rend le focus au bouton', () => {
+    expect(src).toMatch(/if \(etaitLePanneau\) refBurger\.current\?\.focus\(\);/);
+  });
+
+  it('la déconnexion garde son nom en icône, le nom du dossier se tronque avec son infobulle', () => {
+    const shell = lire('components/chrome/AppShell.tsx');
+    expect(shell).toMatch(/aria-label="Déconnexion"/);
+    expect(shell).toMatch(/<span className="truncate text-white" title=\{utilisateur\?\.tenant\.nom\}>/);
+  });
+
+  it("la barre verticale de l'accueil se replie derrière un bouton, fermé au départ", () => {
+    const accueil = lire('pages/AccueilPage.tsx');
+    expect(accueil).toContain('const [barreOuverte, setBarreOuverte] = useState(false);');
+    expect(accueil).toMatch(/aria-controls="barre-verticale"/);
+    expect(accueil).toMatch(/barreOuverte \? 'max-sm:max-h-\[60dvh\]' : 'max-sm:hidden'/);
+  });
+});
+
+describe('journal, grand livre et balance ont leur carte sous 640 px', () => {
+  const page = lire('pages/JournalPage.tsx');
+
+  it('une SEULE présentation dans le DOM · grille au bureau, cartes au téléphone', () => {
+    expect(page).toContain('const telephone = useSous640();');
+    expect(page).toMatch(/\{onglet === 'journal' && !telephone && \(/);
+    expect(page).toMatch(/\{onglet === 'journal' && telephone && \(/);
+    expect(page).toMatch(/\{onglet === 'balance' && !telephone && \(/);
+    expect(page).toMatch(/\{onglet === 'balance' && telephone && \(/);
+    expect(page).toMatch(/\{!telephone \? \(\s*<>/);
+    expect(page).toContain('<CarteLigneGrandLivre');
+  });
+
+  it("aucune action perdue · le double-clic de la balance a son bouton, l'état du journal les mêmes badges", () => {
+    // Le double-clic et le bouton « Grand livre » appellent LA MÊME fonction.
+    expect(page).toMatch(/onDoubleClick=\{l\.regroupe \? undefined : \(\) => ouvrirGrandLivreDe\(l\)\}/);
+    expect(page).toMatch(/onGrandLivre=\{l\.regroupe \? undefined : \(\) => ouvrirGrandLivreDe\(l\)\}/);
+    // L'état d'une pièce (brouillard, correction, revue) est écrit une fois.
+    expect(page.match(/\{badgesLigne\(l\)\}/g)).toHaveLength(2);
+    expect(page).toMatch(/setFicheOuverte\(l\.ecritureId\)/);
+  });
+
+  it("la carte du journal dit l'intitulé du compte, et ses boutons font 44 px", () => {
+    expect(page).toMatch(/compteIntitule: l\.compte\?\.intitule \?\? ''/);
+    expect(page).toMatch(/\{l\.compteIntitule && <div[^>]*>\{l\.compteIntitule\}<\/div>\}/);
+    // Revoir, Revue, Corriger, pièces jointes, pièce n : tous les boutons de l'en-tête de carte.
+    expect(page).toMatch(/\[&_button\]:min-h-11 \[&_button\]:min-w-11/);
+  });
+
+  it("les totaux de la balance ne se rendent pas tant que la balance n'est pas lue", () => {
+    expect(page).toMatch(/\{balance !== null && \(\s*<CarteTotauxBalance/);
+  });
+
+  it('les cartes du grand livre sont des <li> sous un <ul>, comme la balance', () => {
+    const cartes = lire('components/CartesComptables.tsx');
+    for (const nom of ['CarteLigneGrandLivre', 'CarteRepereGrandLivre']) {
+      const corps = cartes.slice(cartes.indexOf(`export function ${nom}`));
+      expect(corps.slice(0, corps.indexOf('\n}\n'))).toMatch(/<li className=/);
+    }
+    expect(page).toMatch(/\) : \(\s*<ul>\s*\{section\.report && \(\s*<CarteRepereGrandLivre/);
+  });
+
+  it("un zéro se lit « · », jamais un libellé sans valeur · et `cle` n'est plus un champ inutile", () => {
+    const cartes = lire('components/CartesComptables.tsx');
+    expect(cartes).toContain("const valeur = (v: number) => montantOuVide(v) || '·';");
+    expect(cartes).not.toMatch(/\bcle: string/);
+    expect(page).not.toMatch(/\bcle: l\.(id|compteId)/);
+    // Les montants nus de PaireDebitCredit passent tous par `valeur`.
+    const paire = cartes.slice(cartes.indexOf('export function PaireDebitCredit'), cartes.indexOf('/** Un bloc nommé'));
+    expect(paire).not.toMatch(/montantOuVide\(/);
+  });
+
+  it('les cartes gardent les montants en une ligne (jamais coupés)', () => {
+    const cartes = lire('components/CartesComptables.tsx');
+    expect(cartes).toMatch(/font-mono text-\[11px\] tabular-nums whitespace-nowrap/);
+    expect(cartes).toMatch(/grid grid-cols-2/);
+  });
+});
+
+describe('la porte de connexion', () => {
+  const auth = lire('pages/AuthPage.tsx');
+
+  it("pas de focus d'office au doigt (il ouvre le clavier)", () => {
+    expect(auth).toContain("const auDoigt = useMedia('(pointer: coarse)');");
+    expect(auth).toContain('autoFocus={!auDoigt && !email}');
+    expect(auth).toContain('autoFocus={!auDoigt && Boolean(email)}');
+  });
+
+  it('les gestionnaires de mots de passe reconnaissent les champs', () => {
+    expect(auth).toContain('autoComplete="username"');
+    expect(auth).toContain('autoComplete="current-password"');
+  });
+
+  it("l'œil est nommé et atteignable au clavier", () => {
+    const oeil = balise(auth, 'setMotDePasseVisible((v) => !v)');
+    expect(oeil).toMatch(/aria-label=\{motDePasseVisible \?/);
+    expect(oeil).not.toMatch(/tabIndex=/);
+  });
+});

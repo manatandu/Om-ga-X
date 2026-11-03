@@ -130,7 +130,7 @@ export function Aide(
         onMouseLeave={fermerBientot}
         onFocus={() => setOuvert(true)}
         onBlur={fermerBientot}
-        className={`inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border text-[11px] font-bold leading-none align-middle transition-colors shrink-0 ${
+        className={`cible-tactile relative inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border text-[11px] font-bold leading-none align-middle transition-colors shrink-0 ${
           ouvert
             ? 'bg-sel text-white border-sel'
             : 'bg-transparent text-text-dim border-border-dark hover:bg-sel-soft hover:text-sel hover:border-sel'

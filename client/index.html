@@ -2,7 +2,18 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      `viewport-fit=cover` : la page se peint jusque sous l'encoche et la barre
+      d'accueil, et les marges `env(safe-area-inset-*)` la rembourrent (index.css :
+      le corps pour les côtés, `.barre-sur-haut` pour la barre de titre,
+      `.barre-sur-bas` pour la barre d'état) · sans la balise, ces insets valent zéro.
+      `interactive-widget=resizes-content` : le clavier d'un téléphone réduit la
+      zone de mise en page (Android Chrome), comme sur iOS · `100dvh` suit.
+      JAMAIS `user-scalable=no` ni `maximum-scale` : ce sont des échecs
+      d'accessibilité, et le zoom d'un champ se corrige par sa taille (16 px).
+      Un seul `theme-color` : l'interface n'a pas de thème sombre.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>OmegaX</title>
     <meta
       name="description"

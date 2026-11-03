@@ -27,7 +27,7 @@ export function StatusBar() {
   const titreFenetre = fenetres.find((f) => f.cle === cleActive)?.titre ?? tr('Accueil');
 
   return (
-    <div className="h-[24px] bg-surface border-t border-border flex items-center justify-between gap-3 px-3 text-[11px] text-text-dim shrink-0">
+    <div className="barre-sur-bas bg-surface border-t border-border flex items-center justify-between gap-3 px-3 text-[11px] text-text-dim shrink-0">
       {/*
         `min-w-0` des deux côtés et `truncate` sur les textes : sans eux, un
         élément flex refuse de descendre sous la largeur de son contenu, et
