@@ -57,7 +57,8 @@ describe('chrome à 360 px', () => {
     // se cale sur la barre et s'étend d'un bord à l'autre, ses 9 rem retranchés
     // gardant son bas dans l'écran (il défile en dedans).
     expect(src).toMatch(/absolute left-2 right-2 top-full mt-1 z-30/);
-    expect(src).toMatch(/max-h-\[calc\(100dvh-9rem\)\] overflow-y-auto/);
+    // Les marges d'encoche et de barre d'accueil (`env()`) sont retranchées aussi.
+    expect(src).toMatch(/max-h-\[calc\(100dvh-9rem-env\(safe-area-inset-top,0px\)-env\(safe-area-inset-bottom,0px\)\)\] overflow-y-auto/);
     // Au-delà, le panneau d'un titre s'ancre à son titre, par la gauche.
     expect(src).toMatch(/absolute left-0 top-full mt-1 z-30 min-w-\[232px\]/);
   });
@@ -312,7 +313,8 @@ describe('menu « État » à 360 px', () => {
     // « Nouveau » du clic droit de Windows. La raison de l'interdiction tient
     // toujours, mais seulement sous 640 px · le volant est donc borné à la
     // largeur, et le repli demeure en dessous.
-    expect(src).toMatch(/const volant = useMedia\('\(min-width: 640px\)'\)/);
+    // UNE SEULE source de la largeur (`lib/media.ts`) · `volant` est la négation de `useSous640`.
+    expect(src).toMatch(/const volant = !useSous640\(\)/);
     // Le panneau d'un titre de la barre rend les sous-menus volants ; celui du
     // bouton « ☰ » (sous 640 px) rend le repli, titre par titre.
     expect(src).toMatch(/\{rendreVolant\(m\.items\)\}/);

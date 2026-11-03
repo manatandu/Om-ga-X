@@ -6,7 +6,11 @@ import { useEffect, useState } from 'react';
  * est ouvert, et le mode doit suivre. Une seule écriture pour la barre de
  * menus, les fenêtres et les tableaux : le capteur de largeur ne se copie pas.
  *
- * Sans `matchMedia` (jsdom), la requête vaut faux.
+ * Sans `matchMedia` (jsdom), la requête vaut faux · d'où la lecture de la
+ * largeur par UNE SEULE source, `useSous640` (faux sans `matchMedia`, donc le
+ * bureau) et son contraire pour la barre de menus : aucun écran n'a une moitié
+ * en bureau et l'autre en téléphone. Un vieux Safari (avant 14) n'a que
+ * `addListener`, d'où le repli.
  */
 export function useMedia(requete: string): boolean {
   const lire = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(requete).matches;
@@ -16,8 +20,12 @@ export function useMedia(requete: string): boolean {
     const mq = window.matchMedia(requete);
     const suivre = () => setVrai(mq.matches);
     suivre();
-    mq.addEventListener?.('change', suivre);
-    return () => mq.removeEventListener?.('change', suivre);
+    if (mq.addEventListener) mq.addEventListener('change', suivre);
+    else mq.addListener?.(suivre);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', suivre);
+      else mq.removeListener?.(suivre);
+    };
   }, [requete]);
   return vrai;
 }

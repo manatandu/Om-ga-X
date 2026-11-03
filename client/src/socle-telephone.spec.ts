@@ -168,9 +168,18 @@ describe('les règles du pointeur grossier (index.css)', () => {
 });
 
 describe('la seule borne de 640 px', () => {
-  it('`useSous640` est la négation du `min-width: 640px` de la barre de menus', () => {
+  it('`useSous640` est la source unique · la barre de menus en prend la négation', () => {
     expect(lire('lib/media.ts')).toContain("'not all and (min-width: 640px)'");
-    expect(lire('components/chrome/MenuBar.tsx')).toContain("useMedia('(min-width: 640px)')");
+    // Deux lectures de la largeur (`min-width: 640px` d'un côté, négation de l'autre)
+    // donnaient des défauts contraires sans `matchMedia` · une seule source.
+    expect(lire('components/chrome/MenuBar.tsx')).toContain('const volant = !useSous640();');
+    expect(lire('components/chrome/MenuBar.tsx')).not.toContain("useMedia('(min-width: 640px)')");
+  });
+
+  it("`useMedia` se rabat sur addListener quand addEventListener manque (Safari avant 14)", () => {
+    const media = lire('lib/media.ts');
+    expect(media).toMatch(/else mq\.addListener\?\.\(suivre\)/);
+    expect(media).toMatch(/else mq\.removeListener\?\.\(suivre\)/);
   });
 });
 
@@ -208,6 +217,25 @@ describe('sous 640 px, les menus passent derrière « ☰ »', () => {
     expect(src).toMatch(/aria-expanded=\{burger\}/);
     expect(src).toMatch(/aria-controls="panneau-des-menus"/);
     expect(src).toMatch(/id="panneau-des-menus"/);
+  });
+
+  it("le panneau est un volet de navigation, pas un role=menu (ses entrées n'ont ni menuitem ni flèches)", () => {
+    const panneau = src.slice(src.indexOf('<nav\n              id="panneau-des-menus"'), src.indexOf('</nav>'));
+    expect(panneau.length).toBeGreaterThan(0);
+    expect(panneau).not.toMatch(/role="menu/);
+    expect(panneau).not.toMatch(/aria-haspopup/);
+    expect(panneau).not.toMatch(/role="menuitem"/);
+    expect(src).toMatch(/role=\{dansUnMenu \? 'menuitem' : undefined\}/);
+  });
+
+  it("une bascule de largeur referme le panneau ET le titre déplié (sinon le premier Échap part pour rien)", () => {
+    const effet = src.slice(src.indexOf('useEffect(() => {\n    fermer();'), src.indexOf('}, [volant]);'));
+    expect(effet).toContain('fermer();');
+    expect(src).toMatch(/const fermer = \(\) => \{[\s\S]*?setOuvert\(null\);[\s\S]*?setBurger\(false\);/);
+  });
+
+  it("la hauteur du panneau tient compte des marges d'encoche et de barre d'accueil", () => {
+    expect(src).toMatch(/max-h-\[calc\(100dvh-9rem-env\(safe-area-inset-top,0px\)-env\(safe-area-inset-bottom,0px\)\)\] overflow-y-auto/);
   });
 
   it('même contenu · le panneau reprend `menus` et le repli existant', () => {

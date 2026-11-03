@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMedia } from '../../lib/media';
+import { useMedia, useSous640 } from '../../lib/media';
 import { IconMenus } from './icons';
 import {
   coteSousMenu,
@@ -57,17 +57,20 @@ function CommandeMenu({
   retrait,
   apresClic,
   auSurvol,
+  dansUnMenu = true,
 }: {
   item: MenuItemDef;
   retrait: boolean;
   apresClic: () => void;
   auSurvol?: () => void;
+  /** Faux dans le panneau ☰ : c'est un volet de navigation, pas un `role="menu"`. */
+  dansUnMenu?: boolean;
 }) {
   const { tr } = useLangue();
   return (
     <button
       type="button"
-      role="menuitem"
+      role={dansUnMenu ? 'menuitem' : undefined}
       disabled={item.disabled}
       onMouseEnter={auSurvol}
       onClick={() => {
@@ -159,7 +162,7 @@ export function MenuBar({
   const minuterieSous = useRef<number | undefined>(undefined);
 
   // Sous-menus volants au-delà de 640 px ; repli dans le panneau en deçà.
-  const volant = useMedia('(min-width: 640px)');
+  const volant = !useSous640();
   // Ouverture au survol seulement là où le survol EXISTE · sur un écran
   // tactile, un « survol » est émis au toucher, juste avant le clic : il
   // ouvrirait le menu, et le clic qui suit le refermerait aussitôt.
@@ -173,10 +176,13 @@ export function MenuBar({
     setOuvert(null);
     setBurger(false);
   };
-  // Une fenêtre élargie (rotation d'un téléphone) rend la barre classique, le
-  // panneau ne doit pas rester ouvert derrière elle.
+  // Une fenêtre élargie ou rétrécie (rotation d'un téléphone) change de barre :
+  // le panneau ☰ et le menu déplié se referment.
+  // Un titre déplié d'un mode ne survit pas à l'autre (sinon le premier Échap
+  // serait consommé pour fermer un menu que personne ne voit).
   useEffect(() => {
-    if (volant) setBurger(false);
+    fermer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [volant]);
 
   // Refermer ou changer de menu referme ses groupes · le menu se rouvre
@@ -335,7 +341,7 @@ export function MenuBar({
               <span className="min-w-0 truncate">{tr(ligne.groupe.titre)}</span>
             </button>
           ) : (
-            <CommandeMenu item={ligne.item} retrait={ligne.retrait} apresClic={fermer} />
+            <CommandeMenu item={ligne.item} retrait={ligne.retrait} apresClic={fermer} dansUnMenu={false} />
           )}
         </div>
       );
@@ -394,22 +400,24 @@ export function MenuBar({
             // coup (mouvement-des-gestes.spec.ts). Il se cale sur la BARRE, d'un bord à l'autre, et défile en
             // dedans (la page ne défile pas · l'application est en `h-dvh`). Les
             // 9 rem retranchés sont la barre de titre, la barre de menus et la
-            // barre d'état : le bas du panneau reste dans l'écran.
-            <div
+            // barre d'état, plus les marges d'encoche et de barre d'accueil
+            // (`env()`) : le bas du panneau reste dans l'écran.
+            // Un `<nav>`, pas un `role="menu"` : ses entrées ne sont pas des
+            // `menuitem` et il n'a pas la navigation aux flèches d'un menu. L'état
+            // se dit par aria-expanded / aria-controls, comme un volet.
+            <nav
               id="panneau-des-menus"
-              role="menu"
               aria-label="Menus"
-              className="absolute left-2 right-2 top-full mt-1 z-30 rounded-[4px] border border-border panneau-menu p-1 max-h-[calc(100dvh-9rem)] overflow-y-auto pointer-coarse:overscroll-contain"
+              className="absolute left-2 right-2 top-full mt-1 z-30 rounded-[4px] border border-border panneau-menu p-1 max-h-[calc(100dvh-9rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] overflow-y-auto pointer-coarse:overscroll-contain"
             >
-              {menus.map((m) => {
+              {menus.map((m, indice) => {
                 const deplie = ouvert === m.titre;
                 return (
                   <div key={m.titre}>
                     <button
                       type="button"
-                      role="menuitem"
-                      aria-haspopup="menu"
                       aria-expanded={deplie}
+                      aria-controls={deplie ? `groupe-menu-${indice}` : undefined}
                       onClick={() => setOuvert(deplie ? null : m.titre)}
                       className={`w-full flex items-center justify-between gap-2 text-left rounded-[3px] px-3 h-11 text-[12px] font-semibold ${
                         deplie ? 'bg-sel-soft text-sel' : 'hover:bg-chrome-alt'
@@ -419,14 +427,14 @@ export function MenuBar({
                       <Chevron vers={deplie ? 'bas' : 'droite'} />
                     </button>
                     {deplie && (
-                      <div role="group" aria-label={tr(m.titre)} className="pb-1">
+                      <div id={`groupe-menu-${indice}`} role="group" aria-label={tr(m.titre)} className="pb-1">
                         {rendreReplie(m.items)}
                       </div>
                     )}
                   </div>
                 );
               })}
-            </div>
+            </nav>
           )}
         </>
       )}
