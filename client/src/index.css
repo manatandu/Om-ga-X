@@ -224,11 +224,13 @@
   /* Le survol FONCE (a-600 à a-700, blanc à 8,32 puis 10,28:1) · il
      éclaircissait vers a-400, où le texte blanc de 11,5 px tombait à 3,63:1,
      sous le plancher AA (mesuré le 2026-10-15). */
-  &:hover:not(:disabled) {
-    background: linear-gradient(180deg, var(--a-600), var(--a-700));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 3px 10px -2px color-mix(in srgb, var(--a-600) 45%, transparent);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not(:disabled) {
+      background: linear-gradient(180deg, var(--a-600), var(--a-700));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 3px 10px -2px color-mix(in srgb, var(--a-600) 45%, transparent);
+    }
   }
 }
 
@@ -237,18 +239,22 @@
   border-color: var(--border);
   color: var(--text);
   box-shadow: var(--ombre-plate);
-  &:hover:not(:disabled) {
-    background: var(--surface-alt);
-    border-color: var(--border-dark);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not(:disabled) {
+      background: var(--surface-alt);
+      border-color: var(--border-dark);
+    }
   }
 }
 
 @utility btn-fantome {
   background: transparent;
   color: var(--text-dim);
-  &:hover:not(:disabled) {
-    background: var(--n-100);
-    color: var(--text);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not(:disabled) {
+      background: var(--n-100);
+      color: var(--text);
+    }
   }
 }
 
@@ -257,8 +263,10 @@
   @apply relative px-3 py-1.5 text-[11.5px] font-semibold;
   color: var(--text-dim);
   transition: color 0.14s var(--t-doux);
-  &:hover {
-    color: var(--text);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      color: var(--text);
+    }
   }
 }
 
@@ -734,17 +742,21 @@
   :where(main button.border:not(.bg-sel)) {
     background-color: var(--surface);
   }
-  :where(main button.border:not(.bg-sel):not(:disabled):hover) {
-    background-color: var(--chrome-alt);
-    border-color: var(--border-dark);
+  @media (hover: hover) and (pointer: fine) {
+    :where(main button.border:not(.bg-sel):not(:disabled):hover) {
+      background-color: var(--chrome-alt);
+      border-color: var(--border-dark);
+    }
   }
   /* Bouton principal en pilule, comme le « + Créer » de Sage Active. Hors
    :where() · il doit l'emporter sur l'arrondi posé par l'écran. */
   main button.bg-sel {
     border-radius: 999px;
   }
-  :where(main button.bg-sel:not(:disabled):hover) {
-    filter: brightness(1.08);
+  @media (hover: hover) and (pointer: fine) {
+    :where(main button.bg-sel:not(:disabled):hover) {
+      filter: brightness(1.08);
+    }
   }
   :where(main button:not(:disabled):active) {
     filter: brightness(0.96);
@@ -807,8 +819,10 @@
     background-color: var(--a-50);
     border-top: 1px solid var(--a-200);
   }
-  :where(main tbody tr:hover) {
-    background-color: color-mix(in srgb, var(--sel) 7%, transparent);
+  @media (hover: hover) and (pointer: fine) {
+    :where(main tbody tr:hover) {
+      background-color: color-mix(in srgb, var(--sel) 7%, transparent);
+    }
   }
 
   /* Une surface posée ou flottante est arrondie et clippe son contenu · les
@@ -1220,11 +1234,13 @@ tbody tr {
   transition: opacity 0.18s var(--t-sortie);
   pointer-events: none;
 }
-.carte-indicateur:hover {
-  transform: translate3d(0, -1px, 0);
-}
-.carte-indicateur:hover::after {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .carte-indicateur:hover {
+    transform: translate3d(0, -1px, 0);
+  }
+  .carte-indicateur:hover::after {
+    opacity: 1;
+  }
 }
 
 /* « Ma demande est-elle partie ? » · un anneau qui tourne dans le bouton qui
@@ -1512,9 +1528,9 @@ summary:focus-visible {
 .cadre-public-entete{display:flex;align-items:center;gap:24px;padding:10px max(20px,calc((100vw - 880px) / 2));background:var(--a-900);color:#fff}
 .cadre-public-entete nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
 .cadre-public-entete nav a{padding:10px 12px;font-size:14px;font-weight:500;color:rgba(255,255,255,.82);text-decoration:none;border-radius:4px}
-.cadre-public-entete nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+@media (hover: hover) and (pointer: fine){.cadre-public-entete nav a:hover{color:#fff;background:rgba(255,255,255,.08)}}
 .cadre-public-bouton{display:inline-flex;align-items:center;min-height:40px;padding:0 18px;border:1.5px solid rgba(255,255,255,.5);border-radius:999px;color:#fff;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
-.cadre-public-bouton:hover{background:rgba(255,255,255,.1)}
+@media (hover: hover) and (pointer: fine){.cadre-public-bouton:hover{background:rgba(255,255,255,.1)}}
 .cadre-public-tete{position:relative;padding:clamp(36px,6vw,64px) max(20px,calc((100vw - 880px) / 2)) clamp(32px,5vw,52px);background:
   radial-gradient(640px 320px at 90% 0%,rgba(79,59,168,.55),transparent 70%),
   repeating-linear-gradient(90deg,transparent 0 159px,rgba(255,255,255,.05) 159px 160px),
@@ -1540,7 +1556,7 @@ summary:focus-visible {
 .cadre-public-pied{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:22px max(20px,calc((100vw - 880px) / 2)) 28px;background:var(--a-900);font-size:13.5px;color:rgba(255,255,255,.72)}
 .cadre-public-pied nav{display:flex;flex-wrap:wrap;gap:4px 20px}
 .cadre-public-pied a{color:rgba(255,255,255,.82)}
-.cadre-public-pied a:hover{color:#fff}
+@media (hover: hover) and (pointer: fine){.cadre-public-pied a:hover{color:#fff}}
 @media (max-width:640px){.cadre-public-entete nav{display:none}.cadre-public-entete{justify-content:space-between}}
 @media print{.cadre-public-tete{background:#fff!important;color:#000;padding:0 0 8mm}.cadre-public-tete h1{color:#000}.cadre-public-tete h1::after{border-color:#000}.cadre-public-tete p{color:#000}.cadre-public-corps{padding:0}}
 }
