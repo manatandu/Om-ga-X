@@ -40,3 +40,6 @@ Les règles `pointer: coarse` (boutons de boîtes de dialogue à 44 px, entrées
 - Tests navigateur sous Chromium (ecrans, parcours, ecran-logiciels, rester-connecte, deconnexion-utilisateur, multi-dossiers, pages-legales, sage-l7-largeurs, cloture, lettrage-cloture, logiciels-refus) : 19 passés.
 - Bureau 1440 x 900, avant et après : 0 pixel de différence sur 7 captures sur 9 ; journal 36 px (icône d'export, zone de 10 x 10) et états financiers 102 px, du niveau du bruit de capture à capture mesuré sur origin/main contre lui-même (90 px).
 - Non vérifié : WebKit (non installé ici), vrai appareil, clavier virtuel.
+
+## Passe de relecture (2026-11-03)
+Onze points des deux relectures corrigés, un commit par étape (zone de toucher, panneau ☰, cartes). Mesure à 390 px, pointeur grossier émulé : l'onglet voisin d'une croix garde 94 à 96 % de sa surface (la croix, de 40 x 40, a sa vraie boîte et ne la recouvre plus) ; le libellé voisin de l'aide « ? » n'en perd que 2 %. Bloc § 3 : tsc des deux côtés, jest racine entier 1 077 suites et 15 504 tests, vitest client 2 724 tests, builds.
