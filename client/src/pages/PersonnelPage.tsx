@@ -1650,7 +1650,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   };
 
   const champ =
-    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
+    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-sel';
   const cell = 'px-2 py-1 border border-border';
   const etiquette = 'text-[10.5px] text-text-dim uppercase tracking-wide';
   const choisi = salaries.find((s) => s.id === selection) ?? null;
@@ -1700,7 +1700,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               setOnglet(o);
             }}
             className={`px-3 py-1 border ${
-              onglet === o ? 'border-accent text-accent' : 'border-border text-text-dim'
+              onglet === o ? 'border-sel text-sel' : 'border-border text-text-dim'
             }`}
           >
             {o === 'registre'
@@ -1782,7 +1782,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   Inclure les inactifs
                 </label>
                 {peutEcrire && (
-                  <button type="button" onClick={nouveau} className="text-[11px] text-accent">
+                  <button type="button" onClick={nouveau} className="text-[11px] text-sel">
                     Nouveau
                   </button>
                 )}
@@ -1801,7 +1801,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   <tr
                     key={s.id}
                     onClick={() => choisir(s)}
-                    className={`cursor-pointer ${s.id === selection ? 'bg-accent/10' : ''}`}
+                    className={`cursor-pointer ${s.id === selection ? 'bg-sel/10' : ''}`}
                   >
                     <td className={cell}>{s.matricule ?? ''}</td>
                     <td className={cell}>
@@ -2009,7 +2009,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   {peutEcrire && (
                     <button
                       type="button"
-                      className="text-[11px] text-accent"
+                      className="text-[11px] text-sel"
                       onClick={() =>
                         setEnfants([...enfants, { nom: '', postNom: '', prenoms: '', dateNaissance: '' }])
                       }
@@ -2070,7 +2070,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 type="button"
                 disabled={enCours || !salarie.nom.trim() || !salarie.sexe}
                 onClick={enregistrerSalarie}
-                className="mt-2 px-3 py-1 border border-accent text-accent text-[11.5px] disabled:opacity-40"
+                className="mt-2 px-3 py-1 border border-sel text-sel text-[11.5px] disabled:opacity-40"
               >
                 {selection ? 'Mettre à jour' : 'Inscrire au registre'}
               </button>
@@ -2429,7 +2429,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                         enCours || !contrat.dateEntreeEnVigueur || (!!contrat.remunerationBase && !contrat.deviseRemuneration)
                       }
                       onClick={creerContrat}
-                      className="mt-2 px-3 py-1 border border-accent text-accent text-[11.5px] disabled:opacity-40"
+                      className="mt-2 px-3 py-1 border border-sel text-sel text-[11.5px] disabled:opacity-40"
                     >
                       Enregistrer le contrat
                     </button>
@@ -3564,7 +3564,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               type="button"
               disabled={enCours || !moisDePaie}
               onClick={simuler}
-              className="border border-accent text-accent px-3 py-1 disabled:opacity-40"
+              className="border border-sel text-sel px-3 py-1 disabled:opacity-40"
             >
               Simuler
             </button>
@@ -4712,7 +4712,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 type="button"
                 disabled={enCours}
                 onClick={calculerDecompte}
-                className="border border-accent text-accent px-3 py-1 disabled:opacity-40"
+                className="border border-sel text-sel px-3 py-1 disabled:opacity-40"
               >
                 Calculer
               </button>
@@ -4733,7 +4733,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     disabled={enCours || motifEmissionDecompte !== null}
                     onClick={proposerRetenues}
                     title={motifEmissionDecompte ?? undefined}
-                    className="border border-accent text-accent px-3 py-1 disabled:opacity-40"
+                    className="border border-sel text-sel px-3 py-1 disabled:opacity-40"
                   >
                     Proposer les retenues d’avance
                   </button>
@@ -4839,7 +4839,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   <button
                     type="button"
                     onClick={() => setRetenuesAvances((avant) => retenuesReprises(avant, propositionRetenues.retenues))}
-                    className="border border-accent text-accent px-3 py-1 mt-1.5"
+                    className="border border-sel text-sel px-3 py-1 mt-1.5"
                   >
                     Reprendre dans la paie du mois
                   </button>
@@ -4925,7 +4925,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                                 gratificationFc: montantPourChamp(decompte.propositionGratification?.montantFc),
                               })
                             }
-                            className="border border-accent text-accent px-2 py-0.5 ml-2"
+                            className="border border-sel text-sel px-2 py-0.5 ml-2"
                           >
                             Reprendre la proposition
                           </button>
@@ -5074,7 +5074,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 type="button"
                 onClick={verifierLivre}
                 disabled={enCours}
-                className="border border-accent text-accent px-3 py-1"
+                className="border border-sel text-sel px-3 py-1"
               >
                 Vérifier
               </button>

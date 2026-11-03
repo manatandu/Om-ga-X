@@ -364,7 +364,7 @@ export function MagasinPage() {
 
   const c = confrontation?.confrontation;
   const champ =
-    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
+    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-sel';
   const cell = 'px-2 py-1 border border-border';
 
   return (
@@ -417,7 +417,7 @@ export function MagasinPage() {
             onClick={() => setOnglet(id)}
             className={`px-3 py-1 text-[11.5px] border ${
               onglet === id
-                ? 'border-accent bg-accent/10 font-semibold'
+                ? 'border-sel bg-sel/10 font-semibold'
                 : 'border-border bg-surface-2 text-text-dim'
             }`}
           >
@@ -496,7 +496,7 @@ export function MagasinPage() {
                     !nouveau.methodeValorisation
                   }
                   onClick={creerArticle}
-                  className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40"
+                  className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40"
                 >
                   Créer l'article
                 </button>
@@ -525,7 +525,7 @@ export function MagasinPage() {
                 <tr
                   key={a.id}
                   onClick={() => setSelection(a.id)}
-                  className={`cursor-pointer ${selection === a.id ? 'bg-accent/10' : ''}`}
+                  className={`cursor-pointer ${selection === a.id ? 'bg-sel/10' : ''}`}
                 >
                   <td className={`${cell} font-mono`}>{a.code}</td>
                   <td className={cell}>{a.designation}</td>
@@ -767,7 +767,7 @@ export function MagasinPage() {
                         (mvt.sens === 'ENTREE' && !mvt.cout)
                       }
                       onClick={ajouterMouvement}
-                      className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40"
+                      className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40"
                     >
                       Enregistrer le mouvement
                     </button>
@@ -878,7 +878,7 @@ export function MagasinPage() {
             type="button"
             disabled={enCours || corpsComptages.length === 0 || !dateComptage}
             onClick={confronter}
-            className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40 mb-2.5"
+            className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40 mb-2.5"
           >
             Confronter au magasin
           </button>
@@ -984,7 +984,7 @@ export function MagasinPage() {
                       type="button"
                       disabled={enCours || !regul.journalId || !regul.date}
                       onClick={enregistrerRegularisation}
-                      className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40"
+                      className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40"
                     >
                       Passer la régularisation
                     </button>

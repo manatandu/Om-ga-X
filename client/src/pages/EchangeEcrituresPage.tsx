@@ -32,7 +32,7 @@ function dateHeure(iso: string): string {
 
 function CompteRendu({ r }: { r: CompteRenduReception }) {
   return (
-    <div className={`border px-3 py-2 flex flex-col gap-1.5 ${r.simulation ? 'border-border' : 'border-success/30 bg-success-soft'}`} role="status">
+    <div className={`border px-3 py-2 flex flex-col gap-1.5 ${r.simulation ? 'border-border' : 'border-positive/30 bg-positive-soft'}`} role="status">
       <p>
         <span className="font-semibold">
           {r.simulation ? 'Aperçu' : 'Reçu'} · envoi n° {r.numeroExport} de « {r.dossierSource} »

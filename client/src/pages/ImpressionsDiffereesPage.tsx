@@ -375,7 +375,7 @@ export function ImpressionsDiffereesPage() {
           </p>
         )}
         {message && (
-          <p role="status" className="border border-success/30 bg-success-soft px-3 py-2">
+          <p role="status" className="border border-positive/30 bg-positive-soft px-3 py-2">
             {message}
           </p>
         )}

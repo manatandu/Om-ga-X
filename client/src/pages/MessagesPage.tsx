@@ -158,7 +158,7 @@ export function MessagesPage() {
         />
       </div>
       {fait && (
-        <p role="status" className="text-success">
+        <p role="status" className="text-positive">
           {fait}
         </p>
       )}

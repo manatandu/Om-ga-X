@@ -183,7 +183,7 @@ export function EmballagesPage() {
   };
 
   const champ =
-    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-accent';
+    'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-hidden focus:border-sel';
   const cell = 'px-2 py-1 border border-border';
 
   return (
@@ -294,7 +294,7 @@ export function EmballagesPage() {
               !nouvelle.montant
             }
             onClick={creer}
-            className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40"
+            className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40"
           >
             Enregistrer au registre
           </button>
@@ -329,7 +329,7 @@ export function EmballagesPage() {
                 else setSelection(null);
               }}
               className={`cursor-pointer ${c.etat === 'EN_COURS' ? '' : 'text-text-dim'} ${
-                lienOuvert === c.id ? 'bg-accent/10' : ''
+                lienOuvert === c.id ? 'bg-sel/10' : ''
               }`}
             >
               <td className={`${cell} font-mono`}>{c.dateConsignation}</td>
@@ -446,7 +446,7 @@ export function EmballagesPage() {
                   type="button"
                   disabled={enCours || !dateDenouement || !!proposition?.refus}
                   onClick={denouer}
-                  className="px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40"
+                  className="px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40"
                 >
                   Dénouer
                 </button>
@@ -558,7 +558,7 @@ function LienEcriture({
     }
   };
 
-  const bouton = 'px-3 py-1 text-[11.5px] border border-accent bg-accent/10 disabled:opacity-40';
+  const bouton = 'px-3 py-1 text-[11.5px] border border-sel bg-sel/10 disabled:opacity-40';
   return (
     <div className="flex items-center gap-2 text-[11.5px] mb-1">
       <span className="w-[90px] font-semibold">{titre}</span>

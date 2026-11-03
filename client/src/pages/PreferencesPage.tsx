@@ -67,7 +67,7 @@ export function PreferencesPage() {
         </p>
       )}
       {fait && (
-        <p role="status" className="text-success">
+        <p role="status" className="text-positive">
           {fait}
         </p>
       )}

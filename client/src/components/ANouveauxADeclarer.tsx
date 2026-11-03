@@ -115,7 +115,7 @@ export function ANouveauxADeclarer(p: {
           source="AUDCIF art. 20, al. 2 ; art. 22, 2° ; art. 52 et 54"
         />
       </div>
-      {message && <div className="px-3 py-2 text-[11.5px] text-success border-b border-border">{message}</div>}
+      {message && <div className="px-3 py-2 text-[11.5px] text-positive border-b border-border">{message}</div>}
       {erreurLecture && (
         <div role="alert" className="px-3 py-2 text-[11.5px] text-danger">
           {erreurLecture}

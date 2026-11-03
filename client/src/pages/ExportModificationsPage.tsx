@@ -264,7 +264,7 @@ export function ExportModificationsPage() {
           </p>
         )}
         {resultat && (
-          <p role="status" className="border border-success/30 bg-success-soft px-3 py-2">
+          <p role="status" className="border border-positive/30 bg-positive-soft px-3 py-2">
             Export n° {resultat.numero} produit · {resultat.nombreEcritures.toLocaleString('fr-FR')} écriture
             {resultat.nombreEcritures > 1 ? 's' : ''}, {resultat.nombreSupprimees.toLocaleString('fr-FR')} retrait
             {resultat.nombreSupprimees > 1 ? 's' : ''}, {resultat.nombreLignes.toLocaleString('fr-FR')} ligne

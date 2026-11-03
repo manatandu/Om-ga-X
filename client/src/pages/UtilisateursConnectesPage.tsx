@@ -77,7 +77,7 @@ export function UtilisateursConnectesPage() {
           </p>
         )}
         {fait && (
-          <p role="status" className="px-3.5 pb-2.5 text-success">
+          <p role="status" className="px-3.5 pb-2.5 text-positive">
             {fait}
           </p>
         )}
@@ -113,7 +113,7 @@ export function UtilisateursConnectesPage() {
                     </td>
                     <td className="px-2 py-1">{dateHeure(s.ouverteLe)}</td>
                     <td className="px-2 py-1">{dateHeure(s.derniereActiviteLe)}</td>
-                    <td className={`px-2 py-1 ${s.connectee ? 'text-success font-semibold' : 'text-text-dim'}`}>{etatDeLaSession(s, maintenant)}</td>
+                    <td className={`px-2 py-1 ${s.connectee ? 'text-positive font-semibold' : 'text-text-dim'}`}>{etatDeLaSession(s, maintenant)}</td>
                     <td className="px-2 py-1 text-right">
                       {estAdmin && s.userId !== utilisateur?.id && (
                         <button type="button" onClick={() => void deconnecter(s.userId, s.email)} className="border border-border px-2 py-0.5 hover:bg-sel-soft">

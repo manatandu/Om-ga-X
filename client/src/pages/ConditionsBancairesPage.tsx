@@ -256,7 +256,7 @@ export function ConditionsBancairesPage() {
           </button>
         </div>
       )}
-      <div role="status" className="text-[11.5px] text-success mb-2">
+      <div role="status" className="text-[11.5px] text-positive mb-2">
         {info}
       </div>
       {!servie && !erreurLecture && (
@@ -415,7 +415,7 @@ function BlocConditions({
                   <td className="font-mono">
                     {date(c.dateEffet)}
                     {c.enVigueur && (
-                      <span className="ml-1 text-success font-sans">
+                      <span className="ml-1 text-positive font-sans">
                         · en vigueur
                       </span>
                     )}

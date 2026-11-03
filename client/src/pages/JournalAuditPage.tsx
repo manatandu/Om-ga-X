@@ -51,7 +51,7 @@ interface ObjetAudite {
 }
 
 const COULEUR_ACTION: Record<string, string> = {
-  CREATION: 'text-success',
+  CREATION: 'text-positive',
   MODIFICATION: 'text-text',
   SUPPRESSION: 'text-danger',
 };
@@ -204,7 +204,7 @@ export function JournalAuditPage() {
       {verdict && (
         <div
           className={`text-[11.5px] px-3 py-2 mb-2.5 border ${
-            verdict.intacte ? 'bg-success-soft border-success/30 text-success' : 'bg-danger-soft border-danger/30 text-danger'
+            verdict.intacte ? 'bg-positive-soft border-positive/30 text-positive' : 'bg-danger-soft border-danger/30 text-danger'
           }`}
         >
           {verdict.intacte ? (

@@ -565,7 +565,7 @@ export function NotesIfrs({
             Enregistrer les déclarations
           </button>
         )}
-        {message && <p className="text-[11.5px] text-success mt-1">{message}</p>}
+        {message && <p className="text-[11.5px] text-positive mt-1">{message}</p>}
         {erreur && <p className="text-[11.5px] text-danger mt-1">{erreur}</p>}
       </section>
     </>
