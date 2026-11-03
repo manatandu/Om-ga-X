@@ -21,6 +21,14 @@ import { montant, montantOuVide } from '../lib/montants';
  * d'au moins 127 px à 360 px d'écran : deux cellules par rangée, jamais trois.
  */
 
+/**
+ * Un montant de carte · jamais un libellé sans valeur : le zéro d'une colonne
+ * vide sur la grille (« le zéro reste vide ») se lit « · » sur la carte, où la
+ * colonne n'est pas là pour dire qu'elle est vide. Le formatage reste celui de
+ * `lib/montants.ts`.
+ */
+const valeur = (v: number) => montantOuVide(v) || '·';
+
 /** Une paire Débit / Crédit · deux cellules, chacune son libellé à gauche et son montant à droite. */
 export function PaireDebitCredit({
   debit,
@@ -35,11 +43,11 @@ export function PaireDebitCredit({
     <div className={`grid grid-cols-2 gap-2 ${gras ? 'font-bold' : ''}`}>
       <div className="flex items-baseline justify-between gap-1 min-w-0">
         <span className="text-[10.5px] font-normal text-text-dim">Débit</span>
-        <span className="font-mono text-[11px] tabular-nums whitespace-nowrap">{montantOuVide(debit)}</span>
+        <span className="font-mono text-[11px] tabular-nums whitespace-nowrap">{valeur(debit)}</span>
       </div>
       <div className="flex items-baseline justify-between gap-1 min-w-0">
         <span className="text-[10.5px] font-normal text-text-dim">Crédit</span>
-        <span className="font-mono text-[11px] tabular-nums whitespace-nowrap">{montantOuVide(credit)}</span>
+        <span className="font-mono text-[11px] tabular-nums whitespace-nowrap">{valeur(credit)}</span>
       </div>
     </div>
   );
@@ -56,7 +64,6 @@ function BlocBalance({ titre, debit, credit }: { titre: string; debit: number; c
 }
 
 export interface DonneesCarteBalance {
-  cle: string;
   numero: string;
   intitule: string;
   /** Mention après l'intitulé, quand la ligne fond des comptes de tiers. */
@@ -97,7 +104,7 @@ export function CarteCompteBalance({
             type="button"
             onClick={onGrandLivre}
             title="Ouvrir le grand livre du compte"
-            className="shrink-0 rounded-[3px] border border-border bg-surface px-2.5 min-h-9 text-[11.5px] font-semibold text-sel"
+            className="shrink-0 rounded-[3px] border border-border bg-surface px-2.5 min-h-11 text-[11.5px] font-semibold text-sel"
           >
             Grand livre
           </button>
@@ -133,7 +140,6 @@ export function CarteTotauxBalance({
 }
 
 export interface DonneesCarteGrandLivre {
-  cle: string;
   date: string;
   journal: string;
   piece: string;
@@ -148,7 +154,7 @@ export interface DonneesCarteGrandLivre {
 /** Une ligne du grand livre · date, journal, pièce et lettre en tête, libellé, Débit et Crédit, solde progressif, contrepartie. */
 export function CarteLigneGrandLivre({ donnees }: { donnees: DonneesCarteGrandLivre }) {
   return (
-    <div className="px-3.5 py-2 border-b border-border/50 text-[11.5px]">
+    <li className="px-3.5 py-2 border-b border-border/50 text-[11.5px]">
       <div className="flex flex-wrap items-center gap-x-2 text-[11px] font-mono text-text-dim">
         <span>{donnees.date}</span>
         <span>{donnees.journal}</span>
@@ -162,11 +168,11 @@ export function CarteLigneGrandLivre({ donnees }: { donnees: DonneesCarteGrandLi
         <span className="font-mono text-[11px] tabular-nums whitespace-nowrap">{montant(donnees.solde)}</span>
       </div>
       <div className="font-mono text-[10.5px] text-text-dim break-words">Contrepartie {donnees.contrepartie}</div>
-    </div>
+    </li>
   );
 }
 
-/** Une ligne de repère d'un grand livre (report, total) : un libellé et ses montants. */
+/** Une ligne de repère d'un grand livre (report, total) · des `<li>`, sous le `<ul>` de la section, comme la balance. : un libellé et ses montants. */
 export function CarteRepereGrandLivre({
   titre,
   debit,
@@ -183,7 +189,7 @@ export function CarteRepereGrandLivre({
   enfant?: ReactNode;
 }) {
   return (
-    <div className={`px-3.5 py-2 border-b border-border/50 text-[11.5px] ${italique ? 'italic' : 'bg-surface-alt font-bold border-border-dark'}`}>
+    <li className={`px-3.5 py-2 border-b border-border/50 text-[11.5px] ${italique ? 'italic' : 'bg-surface-alt font-bold border-border-dark'}`}>
       <div className="text-[11px] text-text-dim">{titre}</div>
       <PaireDebitCredit debit={debit} credit={credit} />
       {solde !== null && (
@@ -193,6 +199,6 @@ export function CarteRepereGrandLivre({
         </div>
       )}
       {enfant}
-    </div>
+    </li>
   );
 }

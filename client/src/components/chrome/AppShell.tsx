@@ -862,7 +862,7 @@ export function AppShell() {
   // jour, il sera rogné au lieu d'emmener toute l'application sur le côté.
   return (
     <LogicielActifProvider value={valeurLogicielActif}>
-    <div className="cadre-sur h-dvh flex flex-col bg-bg text-text overflow-x-hidden">
+    <div className="h-dvh flex flex-col bg-bg text-text overflow-x-hidden">
       {/*
         Barre de titre · elle porte l'identité du dossier ouvert, comme la
         barre de titres de Sage (« Le nouvel exercice s'affiche dans la barre

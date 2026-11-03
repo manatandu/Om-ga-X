@@ -589,6 +589,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       libelleLigne: l.libelle ?? e.libelle,
       compte: l.compte ? `${l.compte.numero} · ${l.compte.intitule}` : l.compteId,
       compteNumero: l.compte?.numero ?? '',
+      compteIntitule: l.compte?.intitule ?? '',
       debit: Number(l.debit),
       credit: Number(l.credit),
       // Le n° de pièce est celui attribué par le journal ; `reference` est la
@@ -1321,7 +1322,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 }`}
               >
                 {l.premiereLigne && (
-                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-dim">
+                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-dim [&_button]:min-h-11 [&_button]:min-w-11">
                     <span className="font-mono">{new Date(l.date).toLocaleDateString('fr-FR')}</span>
                     {l.dateValeur && (
                       <span className="font-mono" title="Opération d'une période clôturée, enregistrée au premier jour de la période ouverte (AUDCIF art. 22, 4°)">
@@ -1333,7 +1334,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                       type="button"
                       onClick={() => setFicheOuverte(l.ecritureId)}
                       title="Fiche d'imputation"
-                      className="font-mono min-h-9 px-1 text-sel hover:underline"
+                      className="font-mono px-1 text-sel hover:underline"
                     >
                       pièce {l.numeroPiece ?? '·'}
                     </button>
@@ -1350,6 +1351,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 <div className="font-mono" title={l.compte}>
                   {l.compteNumero}
                 </div>
+                {l.compteIntitule && <div className="text-[11px] text-text-dim break-words">{l.compteIntitule}</div>}
                 <div className="break-words" title={`${l.compte} · ${l.libelleLigne}`}>
                   {l.libelleLigne}
                 </div>
@@ -1527,7 +1529,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               </div>
                 </>
               ) : (
-                <>
+                <ul>
                   {section.report && (
                     <CarteRepereGrandLivre
                       titre={`Report au ${jourFr(section.report.au)}`}
@@ -1541,7 +1543,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                     <CarteLigneGrandLivre
                       key={l.id}
                       donnees={{
-                        cle: l.id,
                         date: new Date(l.date).toLocaleDateString('fr-FR'),
                         journal: l.journalCode,
                         piece: String(l.numeroPiece ?? '·'),
@@ -1564,7 +1565,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                     credit={section.totalCredit}
                     solde={section.soldeFinal}
                   />
-                </>
+                </ul>
               )}
               {cachees > 0 && (
                 <div className="px-3.5 py-1 border-b border-border text-[11px] text-text-dim">
@@ -1724,7 +1725,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                     titres={titres}
                     onGrandLivre={l.regroupe ? undefined : () => ouvrirGrandLivreDe(l)}
                     donnees={{
-                      cle: l.compteId,
                       numero: l.numero,
                       intitule: l.intitule,
                       mention: l.regroupe ? `${l.regroupe} compte(s) de tiers` : null,
@@ -1735,12 +1735,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   />
                 );
               })}
+              {balance !== null && (
               <CarteTotauxBalance
                 titres={titres}
                 ouverture={{ debit: cumul((l) => Math.max(ouv(l), 0)), credit: cumul((l) => Math.max(-ouv(l), 0)) }}
                 mouvements={{ debit: cumul((l) => mouvementsDuJournal(l).debit), credit: cumul((l) => mouvementsDuJournal(l).credit) }}
                 cloture={{ debit: cumul((l) => Math.max(l.solde, 0)), credit: cumul((l) => Math.max(-l.solde, 0)) }}
               />
+              )}
             </ul>
           </div>
         );

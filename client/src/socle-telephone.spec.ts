@@ -75,7 +75,7 @@ describe('le cadre suit la hauteur VISIBLE du téléphone', () => {
   });
 
   it("l'application est en `h-dvh`, les portes d'ouverture en `min-h-svh`", () => {
-    expect(lire('components/chrome/AppShell.tsx')).toMatch(/className="cadre-sur h-dvh flex flex-col/);
+    expect(lire('components/chrome/AppShell.tsx')).toMatch(/className="h-dvh flex flex-col bg-bg text-text overflow-x-hidden"/);
     expect(lire('pages/AuthPage.tsx')).toMatch(/min-h-svh/);
   });
 
@@ -281,6 +281,36 @@ describe('journal, grand livre et balance ont leur carte sous 640 px', () => {
     // L'état d'une pièce (brouillard, correction, revue) est écrit une fois.
     expect(page.match(/\{badgesLigne\(l\)\}/g)).toHaveLength(2);
     expect(page).toMatch(/setFicheOuverte\(l\.ecritureId\)/);
+  });
+
+  it("la carte du journal dit l'intitulé du compte, et ses boutons font 44 px", () => {
+    expect(page).toMatch(/compteIntitule: l\.compte\?\.intitule \?\? ''/);
+    expect(page).toMatch(/\{l\.compteIntitule && <div[^>]*>\{l\.compteIntitule\}<\/div>\}/);
+    // Revoir, Revue, Corriger, pièces jointes, pièce n : tous les boutons de l'en-tête de carte.
+    expect(page).toMatch(/\[&_button\]:min-h-11 \[&_button\]:min-w-11/);
+  });
+
+  it("les totaux de la balance ne se rendent pas tant que la balance n'est pas lue", () => {
+    expect(page).toMatch(/\{balance !== null && \(\s*<CarteTotauxBalance/);
+  });
+
+  it('les cartes du grand livre sont des <li> sous un <ul>, comme la balance', () => {
+    const cartes = lire('components/CartesComptables.tsx');
+    for (const nom of ['CarteLigneGrandLivre', 'CarteRepereGrandLivre']) {
+      const corps = cartes.slice(cartes.indexOf(`export function ${nom}`));
+      expect(corps.slice(0, corps.indexOf('\n}\n'))).toMatch(/<li className=/);
+    }
+    expect(page).toMatch(/\) : \(\s*<ul>\s*\{section\.report && \(\s*<CarteRepereGrandLivre/);
+  });
+
+  it("un zéro se lit « · », jamais un libellé sans valeur · et `cle` n'est plus un champ inutile", () => {
+    const cartes = lire('components/CartesComptables.tsx');
+    expect(cartes).toContain("const valeur = (v: number) => montantOuVide(v) || '·';");
+    expect(cartes).not.toMatch(/\bcle: string/);
+    expect(page).not.toMatch(/\bcle: l\.(id|compteId)/);
+    // Les montants nus de PaireDebitCredit passent tous par `valeur`.
+    const paire = cartes.slice(cartes.indexOf('export function PaireDebitCredit'), cartes.indexOf('/** Un bloc nommé'));
+    expect(paire).not.toMatch(/montantOuVide\(/);
   });
 
   it('les cartes gardent les montants en une ligne (jamais coupés)', () => {
