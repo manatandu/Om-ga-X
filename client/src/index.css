@@ -1312,9 +1312,9 @@ summary:focus-visible {
    d'Emil Kowalski). Chaque règle dit le défaut qu'elle ferme. Le BUREAU n'y
    change pas d'un pixel : tout ce qui change la taille d'un contrôle vit sous
    `@media (pointer: coarse)`, et un pointeur fin (souris, trackpad) ne le lit
-   jamais. Cette feuille est HORS de toute couche : une règle non stratifiée
-   l'emporte sur les utilitaires de Tailwind (`text-[12px]` d'un champ) sans
-   `!important`.
+   jamais. Ce bloc vit dans la couche `utilities`, APRÈS les utilitaires de
+   Tailwind : à spécificité égale il l'emporte, mais une classe (0,1,0) bat un
+   sélecteur d'élément (0,0,1) · d'où le `:not([data-taille-fixe])` des champs.
    --------------------------------------------------------------------------- */
 
 /* Le gris ou bleu translucide que iOS et Android peignent sur tout élément
@@ -1407,14 +1407,24 @@ body {
     min-height: 44px;
     min-width: 44px;
   }
+  /* À 16 px, la liste « tous les comptes mouvementés » dépassait sa boîte : un
+     choix ne sort jamais de son conteneur. */
+  select {
+    max-width: 100%;
+  }
 
   /* iOS ZOOME LA PAGE quand un champ de moins de 16 px reçoit le focus, et ne
      la dézoome pas : l'utilisateur reste devant une mise en page rognée. Le
      remède n'est pas `maximum-scale=1` (échec d'accessibilité) mais la taille
      du champ. Le bureau reste à 12 px, strictement. */
-  input,
-  select,
-  textarea {
+  /* `:not([data-taille-fixe])` n'est pas décoratif : il porte la règle à (0,1,1),
+     au-dessus d'une classe `text-[12px]` (0,1,0) que les champs de l'écran
+     portent presque tous · un sélecteur d'élément seul perdait, et le champ
+     restait à 12 px (mesuré au navigateur, 390 px, pointeur grossier). L'attribut
+     est la porte de sortie d'un champ qui doit garder sa taille. */
+  input:not([data-taille-fixe]),
+  select:not([data-taille-fixe]),
+  textarea:not([data-taille-fixe]) {
     font-size: 16px;
   }
 }

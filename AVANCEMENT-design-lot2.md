@@ -14,9 +14,19 @@ aucune fonction nouvelle, le bureau ne change pas d'un pixel.
 - G. Sous 640 px : bouton « ☰ » (même contenu, Échap, retour du focus), Déconnexion en icône nommée, nom du dossier tronqué avec `title`, barre latérale de l'accueil repliée derrière un bouton « Fonctions » (icône grille).
 - I. Connexion : pas d'`autoFocus` au doigt, `autoComplete`, œil nommé et atteignable au clavier.
 
-## Reste
-- H. Cartes sous 640 px : journal, grand livre, balance (JournalPage).
-- Spec de source `socle-telephone.spec.ts`, preuves visuelles, bloc § 3, tests navigateur.
+- H. Cartes sous 640 px : journal, grand livre, balance (`CartesComptables.tsx`, une seule présentation dans le DOM par `useSous640`) ; bouton « Grand livre » = le double-clic de la balance.
+- Spec de source `client/src/socle-telephone.spec.ts`.
+
+## Décisions prises en lisant le code
+- La règle des champs à 16 px porte `:not([data-taille-fixe])` : un sélecteur d'élément (0,0,1) perdait contre `text-[12px]` (0,1,0), mesuré au navigateur.
+- `overscroll-contain` sous `pointer-coarse:` seulement : posé au bureau, il changeait l'anticrénelage du texte des conteneurs défilants (4 000 pixels différents).
+- Barres de titre et d'état : hauteur `calc(… + env(safe-area-inset-*))` en border-box, un `content-box` ajoutait la bordure (25 px au lieu de 24).
+- « Bouton grille existant » : celui du chrome rappelle l'écran des logiciels, il n'ouvre pas la barre de l'accueil ; un bouton « Fonctions » (icône grille) est posé en tête de l'accueil sous 640 px.
+- Barre des fenêtres : l'inset du bas est porté par la barre d'état, qui est toujours la dernière ; les côtés par le corps.
+
+## Reste (hors lot, listé)
+- Contrôles DANS les fenêtres (Filtrer, Exporter, etc., 30 px), états financiers, saisie des journaux, tous les tableaux autres que les trois ci-dessus : débordent encore à 390 px.
+- WebKit, vrai appareil, clavier virtuel : non vérifiés.
 
 ## Vérification
 `npx tsc --noEmit`, `npx jest`, `npm run build` à la racine ; `npx tsc --noEmit`, `npm test`, `npm run build` dans `client/`.

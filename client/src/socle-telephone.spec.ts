@@ -85,9 +85,13 @@ describe('les règles du pointeur grossier (index.css)', () => {
   const grossier = bloc(css, '@media (pointer: coarse) {');
 
   it('champs à 16 px SOUS le pointeur grossier seulement · le bureau reste à 12 px', () => {
-    expect(grossier).toMatch(/input,\s*select,\s*textarea\s*\{\s*font-size:\s*16px;/);
+    // Le sélecteur doit battre `text-[12px]` (0,1,0) des champs · un sélecteur d'élément
+    // seul (0,0,1) perdait, mesuré au navigateur : le champ restait à 12 px.
+    expect(grossier).toMatch(
+      /input:not\(\[data-taille-fixe\]\),\s*select:not\(\[data-taille-fixe\]\),\s*textarea:not\(\[data-taille-fixe\]\)\s*\{\s*font-size:\s*16px;/,
+    );
     // Hors du bloc, aucune règle ne fixe les champs à 16 px · le corps reste à 12 px.
-    expect(css.replace(grossier, '')).not.toMatch(/input,\s*select,\s*textarea\s*\{\s*font-size:\s*16px/);
+    expect(css.replace(grossier, '')).not.toMatch(/(^|\n)\s*(input|select|textarea)[^{]*\{\s*font-size:\s*16px/);
     expect(bloc(css, '  body {')).toMatch(/font-size:\s*12px;/);
   });
 
