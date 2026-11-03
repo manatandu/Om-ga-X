@@ -101,7 +101,7 @@ const RESTENT_A_ECHAPPER: Record<string, number> = {
  * `.claude/worktrees` peut héberger, qui reproduiraient chaque exception.
  */
 const DOSSIERS_IGNORES = new Set(['.git', 'node_modules', 'dist', 'dist-e2e', 'test-results', 'playwright-report', '__pycache__', 'coverage']);
-// `.claude/amont` · les sources AMONT, intactes, de deux projets tiers (ui-ux-pro-max
+// `.claude/amont` · les sources AMONT, intactes, de projets tiers (ui-ux-pro-max
 // et impeccable) que Manasse a demandé de garder en entier (2026-10-17). Le
 // caractère y est parfois une DONNÉE (le détecteur d'impeccable le cherche dans les
 // textes) · le remplacer changerait ce que le code détecte. Les compétences

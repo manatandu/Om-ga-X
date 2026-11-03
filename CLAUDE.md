@@ -97,8 +97,10 @@ docs/            plan de construction, audits, guides pilote, notes de droit
                  · historique/ range les documents révolus, sous bandeau (F267)
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
 .claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
-                 et ses six compagnes, impeccable, security-audit (§ 11)
-.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max et d'impeccable (§ 11)
+                 et ses six compagnes, impeccable, security-audit, les seize
+                 d'Emil Kowalski (§ 11)
+.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max, d'impeccable et
+                 d'Emil Kowalski (§ 11)
 ```
 
 ## 3. Commandes
@@ -6382,6 +6384,28 @@ d'OmegaX n'est jamais lancé par elle hors d'un bac à sable isolé du réseau ;
 faute de ce bac à sable, l'audit reste une lecture du source, et ce qui ne s'y
 tranche pas est dit « à valider ». Ses constats se classent comme ceux des
 autres relecteurs et ne priment pas sur ce fichier.
+
+COMPÉTENCES D'EMIL KOWALSKI (2026-11-03, demande expresse de Manasse · « Extrait
+ce lien, puis installé dans ce dépôt ») · `https://github.com/emilkowalski/skills.git`,
+commit `f1090be`, licence MIT jointe (`.claude/amont/emil-kowalski-skills/LICENSE`).
+Rien n'y est exécuté, rien n'est téléchargé à l'installation · le dépôt ne porte
+que du Markdown (un fichier `.pl` vide, non copié). SEIZE compétences vivantes
+sous `.claude/skills/` (`animate`, `animate-expo`, `animation-performance`,
+`animation-vocabulary`, `apple-design`, `ask-sonner`, `break-ui`,
+`emil-design-eng`, `find-animation-opportunities`, `improve-animations`,
+`mobile-native`, `pick-ui-library`, `prototype`, `remove-animations`,
+`review-animations`, `write-swift`), aucune ne porte le nom d'une compétence déjà
+là ; la source ENTIÈRE, intacte, sous `.claude/amont/emil-kowalski-skills/` (avec
+`ORIGINE.txt`, qui dit l'adresse et le commit), hors de la relecture des
+cadratins comme les deux autres. Une seule retouche · les tirets cadratins des
+fichiers vivants sont remplacés par « · » (§ 4). `pick-ui-library`, `prototype`
+et `review-animations` ne se lancent que sur demande (`disable-model-invocation`,
+leur réglage d'origine). Leurs conseils ne priment JAMAIS sur ce fichier · la
+charte OmegaX (§ 9 bis), le modèle Sage (§ 9 ter), « aucun paragraphe explicatif à
+l'écran » et le mouvement sobre qui se coupe sous `prefers-reduced-motion` (§ 9 ter)
+l'emportent là où elles les contredisent, `prototype` en particulier ne bâtit rien
+dans `main` sans demande de Manasse (gel, § 5). Cela ne remplace pas leur
+déploiement par Réglages → Compétences, que Manasse tient seul.
 
 SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
 « Installe ce MCP ») · déclaré dans `.mcp.json` à la racine, composants Magic UI
