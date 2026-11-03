@@ -75,6 +75,19 @@ describe('grille de saisie · date de versement', () => {
     expect(page).toContain('loi n° 004/2003, art. 18');
   });
 
+  it('range l’explication et la citation dans la bulle, jamais en paragraphe permanent (charte § 9 ter)', () => {
+    // La phrase « À ne remplir que si… » et la loi vivent dans les props d'une
+    // `Aide` ; le seul texte posé en clair est l'avertissement sur la donnée
+    // saisie, derrière sa condition.
+    const aide = /<Aide\s+titre="Date de versement"\s+texte="([^"]+)"\s+source="([^"]+)"/.exec(page);
+    expect(aide).not.toBeNull();
+    expect(aide?.[1]).toContain('À ne remplir que si');
+    expect(aide?.[2]).toContain('doivent être versées au plus tard le 15 du mois qui suit celui du versement de ces revenus aux bénéficiaires ou de leur mise à disposition');
+    const enClair = page.split('<Aide')
+      .join('\n').split('\n').filter((l) => l.includes('À ne remplir que si') && !l.includes('texte="'));
+    expect(enClair).toEqual([]);
+  });
+
   it('dit au comptable quand elle n’apporte rien', () => {
     // Même mois que l'écriture · la saisir ne change aucun rattachement.
     expect(page).toContain('moisDeLaPeriode');

@@ -2804,11 +2804,18 @@ export function SaisiePage() {
                 className="border border-border-dark px-1.5 py-0.5 font-mono text-[11.5px]"
               />
             </label>
-            <span className="text-[11px] text-text-dim leading-normal flex-1 min-w-[260px]">
-              {versement && periode && versement.slice(0, 7) === moisDeLaPeriode
-                ? 'Ce versement tombe dans le mois de l’écriture · laissez le champ vide, la date de l’écriture fait foi.'
-                : 'À ne remplir que si le versement, ou la mise à disposition, tombe dans un autre mois que l’écriture · l’échéance de la retenue se compte sur le mois du versement (loi n° 004/2003, art. 18).'}
-            </span>
+            <Aide
+              titre="Date de versement"
+              texte="À ne remplir que si le versement, ou la mise à disposition, tombe dans un autre mois que l’écriture · l’échéance de la retenue se compte sur le mois du versement. Vide, la date de l’écriture fait foi."
+              source="Loi n° 004/2003, art. 18 : les retenues « doivent être versées au plus tard le 15 du mois qui suit celui du versement de ces revenus aux bénéficiaires ou de leur mise à disposition »."
+            />
+            {/* Un avertissement sur la DONNÉE saisie reste à l'écran (charte § 9 ter) ;
+                l'explication permanente est dans la bulle. */}
+            {versement && periode && versement.slice(0, 7) === moisDeLaPeriode && (
+              <span className="text-[11px] text-text-dim leading-normal flex-1 min-w-[260px]">
+                Ce versement tombe dans le mois de l’écriture · laissez le champ vide, la date de l’écriture fait foi.
+              </span>
+            )}
           </div>
 
           {/*
