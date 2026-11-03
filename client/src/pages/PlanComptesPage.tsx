@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState, useRef } from 'react';
+import { BoutonTri, attributsEntete } from '../components/GrilleOutils';
+import { trierLignes, type EtatTri } from '../lib/grille';
 import { ModaleFusion } from '../components/ModaleFusion';
 import { ModalePersonnaliser } from '../components/ModalePersonnaliser';
 import { useNavigate } from 'react-router-dom';
@@ -225,6 +227,21 @@ export function PlanComptesPage() {
   // Ce que l'option masque se COMPTE · sans quoi une recherche du numéro à
   // personnaliser lisait « Aucun compte ne correspond » d'un compte présent.
   const masquesParLOption = avantFiltre.length - liste.length;
+  // Tri par clic sur l'en-tête, à l'écran seulement et sur la liste lue (le plan
+  // n'est pas tronqué) · l'ordre du plan, celui des numéros, revient au troisième clic.
+  const [tri, setTri] = useState<EtatTri | null>(null);
+  const listeAffichee = useMemo(
+    () =>
+      trierLignes(liste, tri, {
+        numero: (c) => c.numero,
+        intitule: (c) => c.intitule,
+        type: (c) => (estComptePrincipalOfficiel(c) ? 'Principal' : c.typeCompte === 'TOTAL' ? 'Total' : 'Détail'),
+        report: (c) => LIBELLE_RAN[c.modeReportANouveau] ?? '',
+        etat: (c) => (c.estActif ? 'Actif' : 'Sommeil'),
+        personnalise: (c) => (c.typeCompte !== 'DETAIL' ? '' : c.subdivise ? 'Subdivisé' : c.estRetenu ? 'Oui' : c.utilise ? 'D’office' : ''),
+      }) as typeof liste,
+    [liste, tri],
+  );
 
   const neRetenirQueLesUtilises = async () => {
     if (!window.confirm('Ne garder personnalisés que les comptes du plan officiel déjà utilisés ? Les autres comptes du plan ne seront plus proposés ni admis à la saisie ; les comptes que vous avez créés le restent. Rien n’est supprimé.')) return;
@@ -468,22 +485,52 @@ export function PlanComptesPage() {
           // fenêtre à 360 px, et sans conteneur le débordement remontait à la fenêtre,
           // qui emportait alors titre, onglets et boutons hors de l'écran.
           className="flex-1 min-w-0 bg-surface border border-border shadow-posee flex flex-col overflow-x-auto"
+          role="grid"
+          aria-label="Plan comptable"
+          aria-colcount={6}
         >
-          <div className="entete-colonnes grid grid-cols-[92px_1fr_58px_72px_74px_58px] min-w-[590px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-b border-border-dark text-[11px] font-bold text-text-dim shrink-0">
-            <span>N° compte</span>
-            <span>Intitulé</span>
-            <span>Type</span>
-            <span title="Mode de report à-nouveau en fin d'exercice">À-nouveau</span>
-            <span>État</span>
-            <span title="Admis à la saisie · adopté ou créé par le cabinet, ou d’office quand quelque chose l’utilise">Personnalisé</span>
+          <div role="row" className="entete-colonnes grid grid-cols-[92px_1fr_58px_72px_74px_58px] min-w-[590px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-b border-border-dark text-[11px] font-bold text-text-dim shrink-0">
+            <span {...attributsEntete(tri, 'numero')}>
+              <BoutonTri cle="numero" tri={tri} onTri={setTri}>N° compte</BoutonTri>
+            </span>
+            <span {...attributsEntete(tri, 'intitule')}>
+              <BoutonTri cle="intitule" tri={tri} onTri={setTri}>Intitulé</BoutonTri>
+            </span>
+            <span {...attributsEntete(tri, 'type')}>
+              <BoutonTri cle="type" tri={tri} onTri={setTri}>Type</BoutonTri>
+            </span>
+            <span {...attributsEntete(tri, 'report')} title="Mode de report à-nouveau en fin d'exercice">
+              <BoutonTri cle="report" tri={tri} onTri={setTri}>À-nouveau</BoutonTri>
+            </span>
+            <span {...attributsEntete(tri, 'etat')}>
+              <BoutonTri cle="etat" tri={tri} onTri={setTri}>État</BoutonTri>
+            </span>
+            <span {...attributsEntete(tri, 'personnalise')} title="Admis à la saisie · adopté ou créé par le cabinet, ou d’office quand quelque chose l’utilise">
+              <BoutonTri cle="personnalise" tri={tri} onTri={setTri}>Personnalisé</BoutonTri>
+            </span>
           </div>
-          <div className="flex-1 overflow-auto min-w-[590px]">
-            {!comptes && <div className="px-3.5 py-3 text-[11.5px] text-text-dim">Chargement…</div>}
-            {liste.map((c) => (
-              <button
+          <div role="rowgroup" className="flex-1 overflow-auto min-w-[590px]">
+            {!comptes && (
+              <div role="row">
+                <div role="gridcell" aria-colspan={6} className="px-3.5 py-3 text-[11.5px] text-text-dim">
+                  Chargement…
+                </div>
+              </div>
+            )}
+            {listeAffichee.map((c) => (
+              <div
                 key={c.id}
-                type="button"
+                role="row"
+                tabIndex={0}
+                aria-selected={selectionId === c.id}
                 onClick={() => setSelectionId(c.id)}
+                onKeyDown={(e) => {
+                  // Entrée ou Espace choisit le compte, comme le clic (lot 3).
+                  if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                    e.preventDefault();
+                    setSelectionId(c.id);
+                  }
+                }}
                 onDoubleClick={() => c.typeCompte === 'DETAIL' && navigate(`/comptes/${c.id}/lettrage`)}
                 title={c.typeCompte === 'TOTAL' ? 'Compte Total · agrège les comptes Détail de même racine' : 'Double-clic : interroger le compte'}
                 /*
@@ -508,16 +555,16 @@ export function PlanComptesPage() {
                         : 'hover:bg-sel-soft'
                 } ${!c.estActif && selectionId !== c.id ? 'opacity-55' : ''}`}
               >
-                <span className={`font-mono ${estComptePrincipalOfficiel(c) ? 'font-bold' : ''}`}>{c.numero}</span>
-                <span className="truncate">{c.intitule}</span>
-                <span className={`text-[11px] font-normal ${selectionId === c.id ? 'text-white/80' : 'text-text-dim'}`}>
+                <span role="gridcell" className={`font-mono ${estComptePrincipalOfficiel(c) ? 'font-bold' : ''}`}>{c.numero}</span>
+                <span role="gridcell" className="truncate">{c.intitule}</span>
+                <span role="gridcell" className={`text-[11px] font-normal ${selectionId === c.id ? 'text-white/80' : 'text-text-dim'}`}>
                   {estComptePrincipalOfficiel(c) ? 'Principal' : c.typeCompte === 'TOTAL' ? 'Total' : 'Détail'}
                 </span>
-                <span className={`text-[11px] ${selectionId === c.id ? 'text-white/80' : 'text-text-dim'}`}>
+                <span role="gridcell" className={`text-[11px] ${selectionId === c.id ? 'text-white/80' : 'text-text-dim'}`}>
                   {LIBELLE_RAN[c.modeReportANouveau] ?? '·'}
                   {c.lettrable && <span title="Compte lettrable"> · L</span>}
                 </span>
-                <span className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : c.estActif ? 'text-positive' : 'text-warning'}`}>
+                <span role="gridcell" className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : c.estActif ? 'text-positive' : 'text-warning'}`}>
                   {c.estActif ? 'Actif' : 'Sommeil'}
                 </span>
                 <span
@@ -534,24 +581,32 @@ export function PlanComptesPage() {
                 >
                   {c.typeCompte !== 'DETAIL' ? '' : c.subdivise ? 'Subdivisé' : c.estRetenu ? 'Oui' : c.utilise ? 'D’office' : '·'}
                 </span>
-              </button>
+              </div>
             ))}
             {comptes && liste.length === 0 && masquesParLOption === 0 && (
-              <div className="px-3.5 py-3 text-[11.5px] text-text-dim italic">Aucun compte ne correspond.</div>
+              <div role="row">
+                <div role="gridcell" aria-colspan={6} className="px-3.5 py-3 text-[11.5px] text-text-dim italic">
+                  Aucun compte ne correspond.
+                </div>
+              </div>
             )}
             {masquesParLOption > 0 && (
-              <div className="px-3.5 py-2 text-[11.5px] text-text-dim">
+              <div role="row">
+              <div role="gridcell" aria-colspan={6} className="px-3.5 py-2 text-[11.5px] text-text-dim">
                 {masquesParLOption} compte{masquesParLOption > 1 ? 's' : ''} non personnalisé{masquesParLOption > 1 ? 's' : ''} masqué
                 {masquesParLOption > 1 ? 's' : ''} ·{' '}
                 <button type="button" className="text-sel underline" onClick={() => setRetenusSeuls(false)}>
                   les afficher
                 </button>
               </div>
+              </div>
             )}
           </div>
-          <div className="px-3.5 py-1 bg-surface-alt border-t border-border text-[11px] text-text-dim shrink-0">
-            {liste.length} compte{liste.length > 1 ? 's' : ''}
-            {recherche.trim() === '' && ` · classe ${classeFiltre.replace('CLASSE_', '')}`}
+          <div role="row" className="px-3.5 py-1 bg-surface-alt border-t border-border text-[11px] text-text-dim shrink-0">
+            <span role="gridcell" aria-colspan={6}>
+              {liste.length} compte{liste.length > 1 ? 's' : ''}
+              {recherche.trim() === '' && ` · classe ${classeFiltre.replace('CLASSE_', '')}`}
+            </span>
           </div>
         </div>
 

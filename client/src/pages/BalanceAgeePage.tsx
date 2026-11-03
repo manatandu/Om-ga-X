@@ -6,6 +6,8 @@ import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { TableauBalanceAgee, type BalanceAgee } from '../components/TableauBalanceAgee';
+import { FiltreGrille } from '../components/GrilleOutils';
+import { filtrerLignes } from '../lib/grille';
 
 /**
  * BALANCE ÂGÉE · l'antériorité des créances et dettes non lettrées, tiers par
@@ -70,6 +72,7 @@ export function BalanceAgeePage() {
   const [dateReference, setDateReference] = useState(new Date().toISOString().slice(0, 10));
   const [donnees, setDonnees] = useState<BalanceAgee | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [filtreTiers, setFiltreTiers] = useState('');
 
   useEffect(() => {
     if (!exerciceCourant) return;
@@ -178,8 +181,23 @@ export function BalanceAgeePage() {
         <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2 mb-2.5">{erreur}</div>
       )}
 
-      <div className="border border-border bg-surface shadow-posee overflow-x-auto">
-        {donnees && <TableauBalanceAgee donnees={donnees} />}
+      {donnees && (
+        <FiltreGrille
+          valeur={filtreTiers}
+          onChange={setFiltreTiers}
+          etiquette="Filtrer la balance âgée par tiers, code ou compte"
+          lues={donnees.debiteurs.length + donnees.crediteurs.length + donnees.sensInverse.length + donnees.soldesNuls.length}
+          montrees={
+            [donnees.debiteurs, donnees.crediteurs, donnees.sensInverse, donnees.soldesNuls].reduce(
+              (n, liste) => n + filtrerLignes(liste, filtreTiers, (l) => [l.libelle, l.codeTiers, l.numero]).length,
+              0,
+            )
+          }
+          className="mb-1.5"
+        />
+      )}
+      <div className="border border-border bg-surface shadow-posee grille-longue">
+        {donnees && <TableauBalanceAgee donnees={donnees} filtre={filtreTiers} />}
       </div>
       {/* Paquet 1, B5 · les groupes lus ligne à ligne · leur total est dans les
           tranches, leur répartition par ancienneté ne l'est pas. */}

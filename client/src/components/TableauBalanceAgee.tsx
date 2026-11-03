@@ -1,4 +1,7 @@
+import { useMemo, useState } from 'react';
 import type { GroupesLusLigneALigne } from '../lib/types';
+import { filtrerLignes, trierLignes, type EtatTri } from '../lib/grille';
+import { BoutonTri, attributsEntete } from './GrilleOutils';
 import { montant as montantTotal, montantOuVide as montant } from '../lib/montants';
 
 /**
@@ -70,7 +73,31 @@ export interface BalanceAgee {
   libellePerimetre: string;
 }
 
-export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
+export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: BalanceAgee; filtre?: string }) {
+  // TRI PAR CLIC SUR L'EN-TÊTE ET FILTRE DU TIERS, à l'écran seulement (lot 3) ·
+  // chaque population (débiteurs, créditeurs, sens inverse, soldes nuls) se
+  // range pour elle-même, jamais mêlée aux autres. Les TOTAUX restent ceux de
+  // la balance entière : un filtre ne change pas ce que la balance totalise.
+  const [tri, setTri] = useState<EtatTri | null>(null);
+  const donnees = useMemo<BalanceAgee>(() => {
+    const colonnes: Record<string, (l: LigneAgee) => number | string> = {
+      tiers: (l) => l.libelle,
+      solde: (l) => l.solde,
+    };
+    lues.tranches.forEach((_t, i) => {
+      colonnes[`t${i}`] = (l) => l.montants[i] ?? 0;
+    });
+    const range = (liste: LigneAgee[]) =>
+      trierLignes(filtrerLignes(liste, filtre, (l) => [l.libelle, l.codeTiers, l.numero]), tri, colonnes) as LigneAgee[];
+    return {
+      ...lues,
+      debiteurs: range(lues.debiteurs),
+      crediteurs: range(lues.crediteurs),
+      sensInverse: range(lues.sensInverse),
+      soldesNuls: range(lues.soldesNuls),
+    };
+  }, [lues, filtre, tri]);
+
   // La grille suit le NOMBRE de tranches renvoyé · il varie avec la longueur
   // de l'exercice (un exercice de moins de cinq mois n'a pas de bloc « reste
   // de l'exercice »), et le figer casserait l'alignement en silence.
@@ -138,6 +165,7 @@ export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
     </div>
   );
 
+  const filtreActif = filtre.trim() !== '';
   const vide =
     donnees.debiteurs.length === 0 &&
     donnees.crediteurs.length === 0 &&
@@ -146,7 +174,7 @@ export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
 
   return (
     <div role="table" aria-label={`Balance âgée · ${donnees.libellePerimetre}`} aria-colcount={nbColonnes}>
-      <div role="rowgroup">
+      <div role="rowgroup" className="entete-fixe bg-surface">
         <div role="row" style={grille} className="px-3.5 pt-1.5 text-[10.5px] italic text-text-dim border-b border-border/40">
           {/* L'âge, au-dessus de la période · la colonne des tiers et celle du
               solde n'en ont pas. Leur en-tête vide porte un nom (second tour
@@ -165,21 +193,32 @@ export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
           style={grille}
           className="px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark"
         >
-          <span role="columnheader">TIERS</span>
-          {donnees.tranches.map((t) => (
-            <span key={t.cle} role="columnheader" className="text-right">
-              {t.libellePeriode}
+          <span {...attributsEntete(tri, 'tiers')}>
+            <BoutonTri cle="tiers" tri={tri} onTri={setTri}>
+              TIERS
+            </BoutonTri>
+          </span>
+          {donnees.tranches.map((t, i) => (
+            <span key={t.cle} {...attributsEntete(tri, `t${i}`)} className="text-right">
+              <BoutonTri cle={`t${i}`} tri={tri} onTri={setTri}>
+                {t.libellePeriode}
+              </BoutonTri>
             </span>
           ))}
-          <span role="columnheader" className="text-right">
-            SOLDE
+          <span {...attributsEntete(tri, 'solde')} className="text-right">
+            <BoutonTri cle="solde" tri={tri} onTri={setTri}>
+              SOLDE
+            </BoutonTri>
           </span>
         </div>
       </div>
 
       <div role="rowgroup">
         {vide &&
-          rangeePleine('Aucune échéance non lettrée sur les comptes de tiers de cet exercice.', 'px-3.5 py-4 text-[11.5px] text-text-dim')}
+          rangeePleine(
+            filtreActif ? 'Aucun tiers ne correspond au filtre.' : 'Aucune échéance non lettrée sur les comptes de tiers de cet exercice.',
+            'px-3.5 py-4 text-[11.5px] text-text-dim',
+          )}
 
         {donnees.debiteurs.length > 0 && (
           <>
