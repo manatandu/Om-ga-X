@@ -35,7 +35,7 @@ export function AllerAFonction({ commandes, onFermer }: { commandes: CommandeDuM
   return (
     <PortailModale>
       <div
-        className="anim-voile fixed inset-0 z-50 bg-black/25 flex items-start justify-center p-4 pt-[12vh]"
+        className="fixed inset-0 z-50 bg-black/25 flex items-start justify-center p-4 pt-[12vh]"
         onMouseDown={(e) => {
           if (e.target === e.currentTarget) onFermer();
         }}
@@ -44,7 +44,7 @@ export function AllerAFonction({ commandes, onFermer }: { commandes: CommandeDuM
           role="dialog"
           aria-modal="true"
           aria-label="Aller à une fonction"
-          className="anim-modale w-full max-w-[560px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[12px]"
+          className="w-full max-w-[560px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[12px]"
         >
           <div className="h-[32px] flex items-center px-2.5 border-b border-border">Aller à une fonction</div>
           <div className="p-3 space-y-2">

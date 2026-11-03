@@ -7,7 +7,9 @@ Fait
 
 - 3. Saisie : paragraphe de la date de versement déplacé dans une bulle Aide (citation mot pour mot) ; l avertissement sur la donnée reste conditionnel.
 
-Reste : points 4 à 6 de la demande.
+- 4. Mouvement : liste de comptes de la saisie et palette F7 sans animation ; menu et sous-menu animés seulement à la première ouverture (décision au geste, par référence) ; accueil sans compte à rebours ; barre des fenêtres (scale, `scale` car Tailwind 4 emploie la propriété individuelle) et barre du démarrage guidé en transform ; spec lib/mouvement-des-gestes.spec.ts.
+
+Reste : points 5 à 6 de la demande.
 
 Décisions
 - Aucune couleur déclarée ; contrastes mesurés : sel/blanc 8,32:1, sel sur sel/10 7,08:1, positive/blanc 6,12:1, positive sur positive-soft 5,45:1.

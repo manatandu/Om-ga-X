@@ -298,7 +298,7 @@ describe('menu « État » à 360 px', () => {
     expect(src).toMatch(/lignesDuMenu\(items, groupeDeplie\)/);
     // Un état qui porterait une collection laisserait ouvrir les six groupes
     // et rendrait au panneau les vingt-deux lignes qu'on lui retire.
-    expect(src).toMatch(/const \[groupeDeplie, setGroupeDeplie\] = useState<string \| null>\(null\)/);
+    expect(src).toMatch(/const \[groupeDeplie, setGroupeDeplie(?:Brut)?\] = useState<string \| null>\(null\)/);
     // CE TEST INTERDISAIT TOUT SOUS-MENU VOLANT, et Manasse l'a demandé le
     // 2026-09-23 : sur ordinateur, le groupe s'ouvre à DROITE, comme le
     // « Nouveau » du clic droit de Windows. La raison de l'interdiction tient

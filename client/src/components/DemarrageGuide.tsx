@@ -63,7 +63,10 @@ export function DemarrageGuide({ etat, onFermer, onPasser }: { etat: EtatDemarra
           <div className="p-3.5">
             <div className="flex items-center gap-2 mb-3">
               <div className="flex-1 h-[6px] bg-surface-alt rounded-full overflow-hidden" aria-hidden>
-                <div className="h-full bg-sel transition-[width] duration-300" style={{ width: `${(faites / aFaire) * 100}%` }} />
+                <div
+                  className="h-full w-full origin-left bg-sel transition-transform duration-200 ease-out"
+                  style={{ transform: `scaleX(${aFaire > 0 ? faites / aFaire : 0})` }}
+                />
               </div>
               <span className="text-text-dim">
                 {faites} sur {aFaire}

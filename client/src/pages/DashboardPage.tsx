@@ -10,7 +10,6 @@ import { echeancesAVenir, libelleDelai } from '../lib/echeances-a-venir';
 import { libelleJoursRestants, libelleSens, type EcheancesTiers } from '../lib/echeances-tiers';
 import { indicateursTableauDeBord } from '../lib/indicateurs-tableau-de-bord';
 import { montant } from '../lib/montants';
-import { useCompteur } from '../lib/compteur';
 import { LignesSquelette } from '../components/chrome/Squelette';
 
 /**
@@ -340,12 +339,13 @@ export function DashboardPage() {
 }
 
 /**
- * Le montant d'un indicateur, qui monte à son arrivée. Chaque étape passe par
- * `montant()` et la dernière est la valeur exacte (lib/compteur.ts) · la
- * COULEUR, elle, est décidée par l'appelant sur la valeur finale, si bien
- * qu'un résultat négatif ne passe jamais par le vert en montant.
+ * Le montant d'un indicateur, écrit d'emblée à sa valeur exacte
+ * (`lib/montants.ts`). Il montait jusqu'ici à chaque arrivée sur l'accueil, un
+ * setState par image, pour un écran que l'on rouvre dix fois par jour (norme 2
+ * de review-animations, geste très fréquent) · le chiffre est ce que l'on vient
+ * lire, il n'a pas à se faire attendre. `useCompteur` (lib/compteur.ts) reste
+ * pour une valeur qui change sous les yeux, après une action.
  */
 function ValeurIndicateur({ valeur }: { valeur: number }) {
-  const affiche = useCompteur(valeur);
-  return <>{montant(affiche)}</>;
+  return <>{montant(valeur)}</>;
 }

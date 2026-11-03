@@ -41,8 +41,11 @@ export function BarreFenetres() {
               {!reduite && (
                 <span
                   aria-hidden
-                  className={`absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] rounded-full transition-all duration-200 ${
-                    active ? 'w-4 bg-sel' : 'w-1.5 bg-border-dark'
+                  className={`absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-4 rounded-full transition-[scale,background-color] duration-150 ease-out ${
+                    // Largeur FIXE, jamais animée (elle redessinerait la mise en page) ·
+                    // le trait passe de 6 à 16 px par `scale` (6/16 = 0,375), propriété
+                    // individuelle de Tailwind 4, d'où `scale` et non `transform`.
+                    active ? 'scale-x-100 bg-sel' : 'scale-x-[0.375] bg-border-dark'
                   }`}
                 />
               )}

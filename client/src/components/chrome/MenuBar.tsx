@@ -128,7 +128,21 @@ export function MenuBar({
   /** Commandes posées à l'extrémité droite de la ligne (calculette). */
   apres?: React.ReactNode;
 }) {
-  const [ouvert, setOuvert] = useState<string | null>(null);
+  const [ouvert, setOuvertBrut] = useState<string | null>(null);
+  // CE QUI S'ANIME, ET CE QUI NE S'ANIME PAS (norme 2 de review-animations, geste
+  // répété) · seule la PREMIÈRE ouverture d'un menu, ou d'un sous-menu, joue son
+  // entrée ; passer d'un titre à l'autre, menu déjà ouvert, le remplace sans
+  // mouvement (150 ms rejoués à chaque survol sont du retard, pas du soin). La
+  // décision est prise AU GESTE, dans une référence que le rendu lit : un rendu
+  // ultérieur, menu ouvert, ne retire donc jamais en cours de route l'animation
+  // d'un panneau qui joue encore son entrée.
+  const sansAnimationMenu = useRef(false);
+  const sansAnimationSousMenu = useRef(false);
+  const setOuvert = (titre: string | null) => {
+    // Le même titre re-posé ne change rien (un survol qui revient en cours d'entrée).
+    if (titre !== ouvertRef.current) sansAnimationMenu.current = ouvertRef.current !== null && titre !== null;
+    setOuvertBrut(titre);
+  };
   // Ligne dossier-l9, fonction 96 · les titres se traduisent au rendu, les
   // clés d'état (`ouvert`, `groupeDeplie`) restent le titre français.
   const { langue, tr } = useLangue();
@@ -138,7 +152,13 @@ export function MenuBar({
   // UN SEUL groupe ouvert à la fois, en sous-menu comme en repli · voir
   // `lignesDuMenu`. Un état qui porterait une collection laisserait rouvrir
   // les six groupes du menu « État » d'un coup.
-  const [groupeDeplie, setGroupeDeplie] = useState<string | null>(null);
+  const [groupeDeplie, setGroupeDeplieBrut] = useState<string | null>(null);
+  const groupeDeplieRef = useRef<string | null>(null);
+  groupeDeplieRef.current = groupeDeplie;
+  const setGroupeDeplie = (titre: string | null) => {
+    if (titre !== groupeDeplieRef.current) sansAnimationSousMenu.current = groupeDeplieRef.current !== null && titre !== null;
+    setGroupeDeplieBrut(titre);
+  };
   const [cote, setCote] = useState<'droite' | 'gauche'>('droite');
   const ref = useRef<HTMLDivElement>(null);
   const refPanneau = useRef<HTMLDivElement>(null);
@@ -269,7 +289,7 @@ export function MenuBar({
               onKeyDown={(e) => {
                 if (e.key === 'ArrowLeft') setGroupeDeplie(null);
               }}
-              className={`anim-sous-menu ${
+              className={`${sansAnimationSousMenu.current ? '' : 'anim-sous-menu'} ${
                 cote === 'droite' ? 'sous-menu-droite' : 'sous-menu-gauche'
               } absolute top-[-5px] z-10 min-w-[232px] rounded-[4px] border border-border panneau-menu p-1`}
             >
@@ -384,7 +404,7 @@ export function MenuBar({
               // En mode volant, le panneau ne défile pas : un conteneur qui
               // défile rogne tout ce qui en dépasse, sous-menu compris. Il
               // n'en a plus besoin, les groupes gardant sa hauteur fixe.
-              className={`anim-menu absolute left-2 right-2 sm:left-0 sm:right-auto top-full mt-1 z-30 sm:min-w-[232px] rounded-[4px] border border-border panneau-menu p-1 ${
+              className={`${sansAnimationMenu.current ? '' : 'anim-menu'} absolute left-2 right-2 sm:left-0 sm:right-auto top-full mt-1 z-30 sm:min-w-[232px] rounded-[4px] border border-border panneau-menu p-1 ${
                 volant ? '' : 'max-h-[calc(100dvh-64px)] overflow-y-auto'
               }`}
             >
