@@ -941,3 +941,5 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   apporte un compte, numéro proposé pris sous verrou. Reste en attente ·
   (3) d'autres modules qui exigeraient un compte précis à la saisie ne sont
   pas recensés (les deux ci-dessus sont les seuls trouvés par la relecture).
+
+- **DESIGN · LOT 2 INTÉGRÉ (2026-11-03).** Socle téléphone, deux relectures (React, échecs silencieux), onze points corrigés. Restent, hors lot · contrôles DANS les fenêtres (Filtrer, Exporter…, 30 px), états financiers, saisie des journaux et tous les autres tableaux débordent encore à 390 px ; WebKit, vrai appareil, clavier virtuel et encoche non vérifiés (le run navigateur sous WebKit après le push est la première preuve) ; aucun test de rendu sous 640 px, seulement des tests de source.

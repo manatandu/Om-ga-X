@@ -363,9 +363,16 @@ charte l'interdit ; `lib/couleurs-declarees.spec.ts` refuse d'en réintroduire),
 les colonnes de montants de la balance, du grand livre et du journal assez larges
 pour treize chiffres entiers, l'explication de la date de versement de la saisie
 dans sa bulle d'aide, le mouvement retiré des gestes de clavier ou très
-fréquents, les survols limités au pointeur de souris. Les lots 2 (socle
-téléphone) et 3 (grilles, enfermement du clavier dans les modales) attendent
-son accord.
+fréquents, les survols limités au pointeur de souris. Le lot 2 (socle
+téléphone, « Lot 2 go ») suit, de même nature · viewport et zones sûres, champs à
+16 px au doigt, cibles tactiles plafonnées à 32 px de zone fantôme (44 px
+recouvrait l'onglet voisin et les libellés autour de l'aide), fenêtres en plein
+écran sous 640 px, menus derrière ☰, journal, grand livre et balance en cartes ;
+LES RÈGLES DU POINTEUR GROSSIER SUIVENT LE POINTEUR ET NON LA LARGEUR (boutons de
+dialogue, entrées de menu, barre de titre de fenêtre, champs à 16 px valent aussi
+sur une tablette tactile de plus de 640 px, `socle-telephone.spec.ts`). Le lot 3
+(grilles, enfermement du clavier dans les modales) est autorisé (« Dès que tu
+finis lot 2, tu enchaînes directement le lot 3 »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
