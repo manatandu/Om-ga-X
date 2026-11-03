@@ -233,7 +233,7 @@ export function ANouveauxADeclarer(p: {
                     </label>
                     <label className="text-[11.5px] font-semibold text-text-dim">
                       Montant en devise
-                      <input
+                      <input inputMode="decimal"
                         value={part.montantDevise}
                         onChange={(e) => {
                           const parts = [...enCours.parts];
@@ -245,7 +245,7 @@ export function ANouveauxADeclarer(p: {
                     </label>
                     <label className="text-[11.5px] font-semibold text-text-dim">
                       Part en francs
-                      <input
+                      <input inputMode="decimal"
                         value={part.montant}
                         onChange={(e) => {
                           const parts = [...enCours.parts];
@@ -257,7 +257,7 @@ export function ANouveauxADeclarer(p: {
                     </label>
                     <label className="text-[11.5px] font-semibold text-text-dim">
                       Cours (facultatif)
-                      <input
+                      <input inputMode="decimal"
                         value={part.cours}
                         onChange={(e) => {
                           const parts = [...enCours.parts];

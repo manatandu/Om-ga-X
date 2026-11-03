@@ -234,7 +234,7 @@ export function OngletMissionsPaie({ salaries, peutEcrire }: { salaries: Salarie
                     </option>
                   ))}
                 </select>
-                <input aria-label={`Montant du frais de la mission ${m.numero}`} placeholder="Montant FC" value={f.montantFc} onChange={(e) => setFrais({ ...frais, [m.id]: { ...f, montantFc: e.target.value } })} className={`${champ} w-[110px] text-right`} />
+                <input inputMode="decimal" aria-label={`Montant du frais de la mission ${m.numero}`} placeholder="Montant FC" value={f.montantFc} onChange={(e) => setFrais({ ...frais, [m.id]: { ...f, montantFc: e.target.value } })} className={`${champ} w-[110px] text-right`} />
                 <input aria-label={`Pièce du frais de la mission ${m.numero}`} placeholder="Pièce justificative" value={f.piece} onChange={(e) => setFrais({ ...frais, [m.id]: { ...f, piece: e.target.value } })} className={`${champ} w-[180px]`} />
                 <button type="button" className="hover:underline" disabled={envoi || !f.montantFc.trim()} onClick={() => ajouterFrais(m)}>
                   Ajouter le frais

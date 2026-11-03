@@ -453,7 +453,7 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
               <div className="flex flex-wrap gap-1.5 mt-1 items-center">
                 <input aria-label={`Début réel de ${x.intitule}`} type="date" value={r.du} onChange={(e) => setRealisation({ ...realisation, [x.id]: { ...r, du: e.target.value } })} className={champ} />
                 <input aria-label={`Fin réelle de ${x.intitule}`} type="date" value={r.au} onChange={(e) => setRealisation({ ...realisation, [x.id]: { ...r, au: e.target.value } })} className={champ} />
-                <input aria-label={`Coût réel de ${x.intitule}`} placeholder="Coût réel FC" value={r.cout} onChange={(e) => setRealisation({ ...realisation, [x.id]: { ...r, cout: e.target.value } })} className={`${champ} w-[110px] text-right`} />
+                <input inputMode="decimal" aria-label={`Coût réel de ${x.intitule}`} placeholder="Coût réel FC" value={r.cout} onChange={(e) => setRealisation({ ...realisation, [x.id]: { ...r, cout: e.target.value } })} className={`${champ} w-[110px] text-right`} />
                 {x.participants.map((p) => (
                   <label key={p.salarieId} className="flex items-center gap-1">
                     <input
@@ -514,7 +514,7 @@ export function OngletFormation({ salaries, peutEcrire }: { salaries: SalarieMin
           </label>
           <input aria-label="Début prévu" type="date" value={f.prevueDu} onChange={(e) => setF({ ...f, prevueDu: e.target.value })} className={champ} />
           <input aria-label="Fin prévue" type="date" value={f.prevueAu} onChange={(e) => setF({ ...f, prevueAu: e.target.value })} className={champ} />
-          <input aria-label="Coût prévu" placeholder="Coût prévu FC" value={f.coutPrevuFc} onChange={(e) => setF({ ...f, coutPrevuFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
+          <input inputMode="decimal" aria-label="Coût prévu" placeholder="Coût prévu FC" value={f.coutPrevuFc} onChange={(e) => setF({ ...f, coutPrevuFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
           <input aria-label="Financement" placeholder="Financement" value={f.financement} onChange={(e) => setF({ ...f, financement: e.target.value })} className={`${champ} w-[120px]`} />
           <select
             aria-label="Participants"

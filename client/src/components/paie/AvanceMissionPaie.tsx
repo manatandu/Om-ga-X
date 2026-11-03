@@ -220,7 +220,7 @@ export function AvanceMissionPaie({
             ))}
           </select>
           <input aria-label={`Date de l'avance de la mission ${mission.numero}`} type="date" value={avance.date} onChange={(e) => setAvance({ ...avance, date: e.target.value })} className={champ} />
-          <input aria-label={`Montant de l'avance de la mission ${mission.numero}`} placeholder="Montant FC" value={avance.montant} onChange={(e) => setAvance({ ...avance, montant: e.target.value })} className={`${champ} w-[110px] text-right`} />
+          <input inputMode="decimal" aria-label={`Montant de l'avance de la mission ${mission.numero}`} placeholder="Montant FC" value={avance.montant} onChange={(e) => setAvance({ ...avance, montant: e.target.value })} className={`${champ} w-[110px] text-right`} />
           <input aria-label={`Pièce de l'avance de la mission ${mission.numero}`} placeholder="Reçu, bon de sortie" value={avance.piece} onChange={(e) => setAvance({ ...avance, piece: e.target.value })} className={`${champ} w-[150px]`} />
           <button
             type="button"

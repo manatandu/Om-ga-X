@@ -600,7 +600,7 @@ export function DevisesPage() {
                         source="Banque Centrale du Congo"
                       />
                     </span>
-                    <input
+                    <input inputMode="decimal"
                       required
                       value={valeurCours}
                       onChange={(e) => setValeurCours(e.target.value)}

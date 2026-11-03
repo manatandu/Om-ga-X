@@ -285,7 +285,7 @@ export function CumulConsolidation(props: {
               </select>
             </label>
             <label className="text-[11.5px]">Compte de A<input className={champ} value={recip.compteA} onChange={(e) => setRecip({ ...recip, compteA: e.target.value })} /></label>
-            <label className="text-[11.5px]">Montant confirmé (FC)<input className={champ} value={recip.montant} onChange={(e) => setRecip({ ...recip, montant: e.target.value })} /></label>
+            <label className="text-[11.5px]">Montant confirmé (FC)<input inputMode="decimal" className={champ} value={recip.montant} onChange={(e) => setRecip({ ...recip, montant: e.target.value })} /></label>
             <label className="text-[11.5px]">
               Entité B
               <select className={champ} value={recip.entiteBId} onChange={(e) => setRecip({ ...recip, entiteBId: e.target.value })}>
@@ -527,7 +527,7 @@ export function CumulConsolidation(props: {
                 void agir(() => api.put('/consolidation/fiscalite', fiscaliteDe(ev.currentTarget, x.id)));
               }}
             >
-              <label className="text-[11.5px]">Taux d’impôt (%)<input name="taux" className={champ} defaultValue={x.f?.tauxImpotDiffere ?? ''} disabled={!peutEcrire} /></label>
+              <label className="text-[11.5px]">Taux d’impôt (%)<input inputMode="decimal" name="taux" className={champ} defaultValue={x.f?.tauxImpotDiffere ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px] sm:col-span-2">Source du taux<input name="source" className={champ} defaultValue={x.f?.sourceTauxImpot ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px]">Impôt différé actif, ouverture<input name="idaOuv" className={champ} defaultValue={x.f?.idaOuverture ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px]">Impôt différé actif, clôture<input name="idaClo" className={champ} defaultValue={x.f?.idaCloture ?? ''} disabled={!peutEcrire} /></label>
@@ -581,9 +581,9 @@ export function CumulConsolidation(props: {
             >
               <label className="text-[11.5px]">Monnaie de la balance (code ISO)<input name="monnaie" className={champ} defaultValue={e.monnaieBalance ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px] sm:col-span-2">Pourquoi c’est sa monnaie fonctionnelle<input name="justifMonnaie" className={champ} defaultValue={e.justificationMonnaie ?? ''} disabled={!peutEcrire} /></label>
-              <label className="text-[11.5px]">Cours de clôture<input name="coursClo" className={champ} defaultValue={e.coursCloture ?? ''} disabled={!peutEcrire} /></label>
-              <label className="text-[11.5px]">Cours des charges et produits<input name="coursPc" className={champ} defaultValue={e.coursProduitsCharges ?? ''} disabled={!peutEcrire} /></label>
-              <label className="text-[11.5px]">Cours à la date d’entrée<input name="coursEntree" className={champ} defaultValue={e.coursEntree ?? ''} disabled={!peutEcrire} /></label>
+              <label className="text-[11.5px]">Cours de clôture<input inputMode="decimal" name="coursClo" className={champ} defaultValue={e.coursCloture ?? ''} disabled={!peutEcrire} /></label>
+              <label className="text-[11.5px]">Cours des charges et produits<input inputMode="decimal" name="coursPc" className={champ} defaultValue={e.coursProduitsCharges ?? ''} disabled={!peutEcrire} /></label>
+              <label className="text-[11.5px]">Cours à la date d’entrée<input inputMode="decimal" name="coursEntree" className={champ} defaultValue={e.coursEntree ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px] sm:col-span-2">Capitaux propres hors résultat, au cours historique (monnaie des états)<input name="cpHist" className={champ} defaultValue={e.capitauxPropresHistoriques ?? ''} disabled={!peutEcrire} /></label>
               <label className="text-[11.5px] flex items-center gap-1.5">
                 <input type="checkbox" name="hyper" defaultChecked={e.hyperinflation ?? false} disabled={!peutEcrire} /> Économie hyperinflationniste

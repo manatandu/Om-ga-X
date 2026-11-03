@@ -217,7 +217,7 @@ export function PerimetreConsolidationPage() {
             </label>
             <label className="text-[11.5px]" title="AUDCIF art. 95">
               Équivalent en FC de 500 000 000 FCFA
-              <input className={champ} defaultValue={faits.seuilEquivalentFc ?? ''} onBlur={(e) => void enregistrerFaits({ seuilEquivalentFc: nombre(e.target.value) })} />
+              <input inputMode="decimal" className={champ} defaultValue={faits.seuilEquivalentFc ?? ''} onBlur={(e) => void enregistrerFaits({ seuilEquivalentFc: nombre(e.target.value) })} />
             </label>
           </div>
         )}
@@ -415,7 +415,7 @@ export function PerimetreConsolidationPage() {
             </label>
             <label className="text-[11.5px]">
               % capital
-              <input className={champ} value={capital} onChange={(e) => setCapital(e.target.value)} />
+              <input inputMode="decimal" className={champ} value={capital} onChange={(e) => setCapital(e.target.value)} />
             </label>
             <button
               className="border border-border px-2.5 py-1 text-[11.5px]"

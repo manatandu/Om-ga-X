@@ -332,7 +332,7 @@ export function ModelesSaisiePage() {
                     ))}
                   </select>
                 ) : (
-                  <input
+                  <input inputMode="decimal"
                     value={l.fonction === 'SAISIR' ? l.montant : ''}
                     disabled={l.fonction !== 'SAISIR'}
                     onChange={(e) => setLignes((p) => p.map((x, k) => (k === i ? { ...x, montant: e.target.value } : x)))}

@@ -561,7 +561,7 @@ export function PlansAnalytiquesPage() {
                   </div>
                   {budgetModifiable && (
                     <div className="flex gap-1.5 mb-2">
-                      <input
+                      <input inputMode="decimal"
                         value={dotation}
                         onChange={(e) => setDotation(e.target.value)}
                         placeholder="Montant annuel"
@@ -594,7 +594,7 @@ export function PlansAnalytiquesPage() {
                           <div key={m.mois} className="flex items-center justify-between text-[11.5px]">
                             <span className="text-text-dim">{MOIS[m.mois - 1]}</span>
                             {budgetModifiable ? (
-                              <input
+                              <input inputMode="decimal"
                                 defaultValue={m.montant}
                                 onBlur={(e) => modifierMois(m.mois, e.target.value)}
                                 className="w-[86px] text-right font-mono border border-transparent hover:border-border focus:border-sel rounded-[4px] px-1 bg-transparent focus:outline-hidden"

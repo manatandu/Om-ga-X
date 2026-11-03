@@ -553,7 +553,7 @@ export function RegularisationPage() {
 
                 <label className="text-[11.5px] font-semibold text-text-dim">
                   {estRattachement(type) ? 'Montant de la charge ou du produit' : 'Montant total comptabilisé'}
-                  <input
+                  <input inputMode="decimal"
                     required
                     value={montantTotal}
                     onChange={(e) => {
@@ -567,7 +567,7 @@ export function RegularisationPage() {
                 {compteTva && (
                   <label className="text-[11.5px] font-semibold text-text-dim" title={`Compte ${compteTva} · AUDCIF, Titre VII, fiches des comptes 40 et 41`}>
                     TVA ({compteTva}), si applicable
-                    <input
+                    <input inputMode="decimal"
                       value={montantTva}
                       onChange={(e) => {
                         setMontantTva(e.target.value);
@@ -870,7 +870,7 @@ export function RegularisationPage() {
                 </label>
                 <label className="text-[11.5px] font-semibold text-text-dim col-span-2">
                   Montant de chaque échéance
-                  <input
+                  <input inputMode="decimal"
                     required
                     value={aboMontant}
                     onChange={(e) => setAboMontant(e.target.value)}

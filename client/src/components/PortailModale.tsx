@@ -1,5 +1,7 @@
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ATTRIBUT_MODALE } from '../lib/echap';
+import { rangApresTab, SELECTEUR_FOCALISABLE } from '../lib/piege-focus';
 
 /**
  * UNE MODALE SE POSE SUR L'ÉCRAN, PAS DANS LA BARRE QUI L'A OUVERTE.
@@ -31,12 +33,89 @@ import { ATTRIBUT_MODALE } from '../lib/echap';
  * et n'a pas à en porter · c'est la racine de la page.
  */
 export function PortailModale({ children }: { children: React.ReactNode }) {
+  const enveloppe = useRef<HTMLDivElement>(null);
+  const identifiant = useId();
+  // LE DÉCLENCHEUR SE LIT AU RENDU, avant que la modale ne mette le focus dans un
+  // de ses champs (`autoFocus` joue au montage) · lu dans l'effet, il aurait
+  // retenu ce champ-là, et la fermeture n'aurait rien rendu à personne.
+  const [declencheur] = useState<HTMLElement | null>(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+
+  // LE CLAVIER RESTE DANS LA MODALE (lot 3 du design, 2026-11-03). Trois gestes,
+  // tous posés ici pour que les cinquante modales les aient sans y toucher ·
+  //  (1) à l'ouverture, le focus entre dans la modale (si elle n'y a pas déjà
+  //      mis un champ), et l'élément qui l'a ouverte est retenu ;
+  //  (2) Tab et Maj+Tab BOUCLENT dans la modale, et un focus sorti y rentre ;
+  //  (3) à la fermeture, le focus retourne à l'élément déclencheur, s'il est
+  //      encore là, jamais sur le corps de la page.
+  // Échap n'est pas touché (`lib/echap.ts`, `useGardeFermeture`). Deux modales
+  // empilées : seule la plus haute pilote Tab.
+  useEffect(() => {
+    const racine = enveloppe.current;
+    if (!racine) return;
+    const focalisables = (): HTMLElement[] =>
+      Array.from(racine.querySelectorAll<HTMLElement>(SELECTEUR_FOCALISABLE)).filter(
+        (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden',
+      );
+    const boite = (): HTMLElement | null => racine.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+
+    // aria-modal et aria-labelledby, là où la modale ne les a pas posés elle-même ·
+    // le titre est le premier intitulé de la boîte. Ce qu'elle a déjà dit reste.
+    const dialogue = boite();
+    if (dialogue) {
+      if (!dialogue.hasAttribute('aria-modal')) dialogue.setAttribute('aria-modal', 'true');
+      if (!dialogue.hasAttribute('aria-labelledby') && !dialogue.hasAttribute('aria-label')) {
+        const titre = dialogue.querySelector<HTMLElement>('h1, h2, h3, [data-titre-modale]');
+        if (titre) {
+          if (!titre.id) titre.id = `${identifiant}-titre`;
+          dialogue.setAttribute('aria-labelledby', titre.id);
+        }
+      }
+    }
+
+    if (!racine.contains(document.activeElement)) {
+      const premier = focalisables()[0];
+      if (premier) premier.focus({ preventScroll: true });
+      else {
+        const cible = boite();
+        if (cible) {
+          if (!cible.hasAttribute('tabindex')) cible.setAttribute('tabindex', '-1');
+          cible.focus({ preventScroll: true });
+        }
+      }
+    }
+
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
+      const modales = document.querySelectorAll(`[${ATTRIBUT_MODALE}]`);
+      if (modales[modales.length - 1] !== racine) return;
+      const liste = focalisables();
+      const rang = liste.indexOf(document.activeElement as HTMLElement);
+      const suite = rangApresTab(liste.length, rang, e.shiftKey);
+      if (suite === null) return;
+      e.preventDefault();
+      if (suite === -2) boite()?.focus({ preventScroll: true });
+      else liste[suite].focus({ preventScroll: true });
+    };
+    document.addEventListener('keydown', surTouche);
+
+    return () => {
+      document.removeEventListener('keydown', surTouche);
+      // Le focus ne revient que s'il est perdu (sur le corps) ou resté dans la
+      // modale qui part · une fermeture qui a déjà placé le focus ailleurs gagne.
+      const actif = document.activeElement;
+      const perdu = !actif || actif === document.body || racine.contains(actif);
+      if (perdu && declencheur && declencheur.isConnected) declencheur.focus({ preventScroll: true });
+    };
+  }, [identifiant, declencheur]);
+
   // LE MARQUEUR DIT QU'UNE MODALE EST OUVERTE (audit final F177) · Échap ne
   // ferme plus la fenêtre qui est dessous, même quand la modale ne gère pas la
   // touche elle-même. `contents` · l'enveloppe n'a aucune boîte, le voile garde
   // sa mise en page.
   return createPortal(
-    <div {...{ [ATTRIBUT_MODALE]: '' }} style={{ display: 'contents' }}>
+    <div ref={enveloppe} {...{ [ATTRIBUT_MODALE]: '' }} style={{ display: 'contents' }}>
       {children}
     </div>,
     document.body,

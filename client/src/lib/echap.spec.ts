@@ -119,7 +119,7 @@ describe('Échap · le câblage', () => {
   });
 
   it('toute modale porte le marqueur', () => {
-    expect(lire('components/PortailModale.tsx')).toContain('<div {...{ [ATTRIBUT_MODALE]: \'\' }} style={{ display: \'contents\' }}>');
+    expect(lire('components/PortailModale.tsx')).toContain('<div ref={enveloppe} {...{ [ATTRIBUT_MODALE]: \'\' }} style={{ display: \'contents\' }}>');
   });
 
   it('la fermeture consulte la garde avant de retirer la fenêtre, et Accueil aussi', () => {

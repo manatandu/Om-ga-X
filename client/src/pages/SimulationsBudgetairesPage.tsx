@@ -205,9 +205,9 @@ export function SimulationsBudgetairesPage() {
                 className={champ}
               />
               <span>Jauge · orange au-delà de %</span>
-              <input aria-label="Seuil orange" value={f.orange} onChange={(e) => setF({ ...f, orange: e.target.value })} disabled={!peutValider} className={`${champ} w-[90px] text-right`} />
+              <input inputMode="decimal" aria-label="Seuil orange" value={f.orange} onChange={(e) => setF({ ...f, orange: e.target.value })} disabled={!peutValider} className={`${champ} w-[90px] text-right`} />
               <span>Jauge · rouge au-delà de %</span>
-              <input aria-label="Seuil rouge" value={f.rouge} onChange={(e) => setF({ ...f, rouge: e.target.value })} disabled={!peutValider} className={`${champ} w-[90px] text-right`} />
+              <input inputMode="decimal" aria-label="Seuil rouge" value={f.rouge} onChange={(e) => setF({ ...f, rouge: e.target.value })} disabled={!peutValider} className={`${champ} w-[90px] text-right`} />
             </div>
             {peutValider && (
               <div className="flex gap-2 mt-2">

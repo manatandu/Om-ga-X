@@ -998,14 +998,14 @@ export function BrouillardPage() {
                           />
                         </td>
                         <td>
-                          <input
+                          <input inputMode="decimal"
                             value={l.debit}
                             onChange={(e) => changerLigne(i, 'debit', e.target.value)}
                             className="w-full border border-border px-1.5 py-0.5 text-right"
                           />
                         </td>
                         <td>
-                          <input
+                          <input inputMode="decimal"
                             value={l.credit}
                             onChange={(e) => changerLigne(i, 'credit', e.target.value)}
                             className="w-full border border-border px-1.5 py-0.5 text-right"

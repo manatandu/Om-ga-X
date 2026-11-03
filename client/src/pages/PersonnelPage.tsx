@@ -2720,7 +2720,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               </label>
               <label className="flex flex-col gap-0.5">
                 <span className={etiquette}>Taux légal alloc. fam. (FC)</span>
-                <input
+                <input inputMode="decimal"
                   value={tauxAllocations}
                   onChange={(e) => setTauxAllocations(e.target.value)}
                   className="border border-border bg-transparent px-2 py-1 w-[160px] text-right"
@@ -2779,7 +2779,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     source="Ordonnance n° 84/186 du 15 octobre 1984, art. 1er, al. 2"
                   />
                 </span>
-                <input
+                <input inputMode="decimal"
                   aria-label="Réduction du taux INPP, en points"
                   value={reductionInpp}
                   onChange={(e) => setReductionInpp(e.target.value)}
@@ -3096,7 +3096,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                         />
                       </td>
                       <td className="py-1 pr-2">
-                        <input
+                        <input inputMode="decimal"
                           value={l.montantFc}
                           onChange={(e) =>
                             setLignes(
@@ -3220,7 +3220,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                         <td className="py-1 pr-2 text-text-dim">{a.compte.compte}</td>
                         <td className="py-1 pr-2 text-right">solde {fc(a.soldeFc)} FC</td>
                         <td className="py-1 text-right">
-                          <input
+                          <input inputMode="decimal"
                             aria-label={`Retenue sur ${a.objet}`}
                             value={retenuesAvances[a.id] ?? ''}
                             placeholder={a.retenueMensuelleFc ? fc(Math.min(a.retenueMensuelleFc, a.soldeFc)) : ''}
@@ -4489,7 +4489,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               {dec.motif === 'COMMUN_ACCORD' && (
                 <label className="flex flex-col gap-0.5">
                   <span className={etiquette} title="Code du travail, art. 61 bis">Montant convenu (FC)</span>
-                  <input
+                  <input inputMode="decimal"
                     value={dec.montantConvenuCommunAccordFc}
                     onChange={(e) => setDec({ ...dec, montantConvenuCommunAccordFc: e.target.value })}
                     className="border border-border bg-transparent px-2 py-1 w-[150px] text-right"

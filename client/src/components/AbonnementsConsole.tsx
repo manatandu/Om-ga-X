@@ -159,10 +159,10 @@ export function AbonnementsConsole({ cabinets }: { cabinets: { id: string; nom: 
                 <td>{x.libelle}</td>
                 <td className="text-text-dim">{x.contenu}</td>
                 <td className="text-right">
-                  <input className={`${champ} w-20 text-right`} value={prix[x.code]?.m ?? ''} placeholder="non fixé" onChange={(e) => setPrix({ ...prix, [x.code]: { ...prix[x.code], m: e.target.value } })} />
+                  <input inputMode="decimal" className={`${champ} w-20 text-right`} value={prix[x.code]?.m ?? ''} placeholder="non fixé" onChange={(e) => setPrix({ ...prix, [x.code]: { ...prix[x.code], m: e.target.value } })} />
                 </td>
                 <td className="text-right">
-                  <input className={`${champ} w-20 text-right`} value={prix[x.code]?.a ?? ''} placeholder="non fixé" onChange={(e) => setPrix({ ...prix, [x.code]: { ...prix[x.code], a: e.target.value } })} />
+                  <input inputMode="decimal" className={`${champ} w-20 text-right`} value={prix[x.code]?.a ?? ''} placeholder="non fixé" onChange={(e) => setPrix({ ...prix, [x.code]: { ...prix[x.code], a: e.target.value } })} />
                 </td>
                 <td>
                   <button type="button" className="underline" onClick={() => enregistrerPrix(x.code)}>

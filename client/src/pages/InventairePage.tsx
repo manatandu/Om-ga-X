@@ -930,7 +930,7 @@ function LigneFiche({ fiche, saisissable, agir }: { fiche: FicheInventaire; sais
               </label>
               <label className="text-[11px] text-text-dim">
                 Valeur d’inventaire
-                <input
+                <input inputMode="decimal"
                   value={valeur}
                   onChange={(e) => setValeur(e.target.value)}
                   className={`${CHAMP} w-[140px] text-right`}
@@ -1392,7 +1392,7 @@ function FormulairePvCaisse({
         Ventilation par coupure{unite ? ` (${unite})` : ''}
         {coupures.map((c, i) => (
           <div key={i} className="flex gap-2 items-center mt-1">
-            <input
+            <input inputMode="decimal"
               value={c.valeur}
               onChange={(ev) => setCoupures(coupures.map((x, j) => (j === i ? { ...x, valeur: ev.target.value } : x)))}
               placeholder="Valeur faciale"

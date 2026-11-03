@@ -276,7 +276,7 @@ export function EmballagesPage() {
             value={nouvelle.dateConsignation}
             onChange={(e) => setNouvelle({ ...nouvelle, dateConsignation: e.target.value })}
           />
-          <input
+          <input inputMode="decimal"
             className={champ}
             placeholder="Montant consigné"
             value={nouvelle.montant}
@@ -424,7 +424,7 @@ export function EmballagesPage() {
               <option value="CONSERVATION">Conservation par le consignataire</option>
               <option value="REPRISE_PRIX_INFERIEUR">Reprise sous le prix de consignation</option>
             </select>
-            <input
+            <input inputMode="decimal"
               className={champ}
               placeholder="Prix repris"
               disabled={mode !== 'REPRISE_PRIX_INFERIEUR'}

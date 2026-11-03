@@ -405,7 +405,7 @@ export function OngletRubriquesAvances({ salaries, peutEcrire }: { salaries: Sal
               </>
             )}
             <input aria-label={avance.type === 'SAISIE_ARRET' ? 'Date de notification' : "Date d'octroi"} type="date" value={avance.dateOctroi} onChange={(e) => setAvance({ ...avance, dateOctroi: e.target.value })} className={champ} />
-            <input aria-label="Montant consenti" placeholder="Montant FC" value={avance.montantFc} onChange={(e) => setAvance({ ...avance, montantFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
+            <input inputMode="decimal" aria-label="Montant consenti" placeholder="Montant FC" value={avance.montantFc} onChange={(e) => setAvance({ ...avance, montantFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
             <input aria-label="Retenue mensuelle proposée" placeholder="Retenue / mois" value={avance.retenueMensuelleFc} onChange={(e) => setAvance({ ...avance, retenueMensuelleFc: e.target.value })} className={`${champ} w-[110px] text-right`} />
             {avance.type !== 'SAISIE_ARRET' && (
               <>

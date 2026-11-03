@@ -872,9 +872,15 @@ textarea:focus-visible {
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--sel);
   outline-offset: 1px;
   box-shadow: 0 0 0 1px #fff;
+}
+/* Sur le bandeau d'encre (barre de titre, titre de la fenêtre active) l'anneau
+   de l'encre s'y fondrait · il y est blanc (14,49:1 sur l'encre), sans halo. */
+.bg-\(--bandeau\) :is(button, a, [role='button']):focus-visible {
+  outline-color: #ffffff;
+  box-shadow: none;
 }
 
 /* Une ligne de tableau survolée doit se distinguer sans clignoter. */
@@ -1285,7 +1291,7 @@ tr[tabindex]:focus-visible,
 [role='tab']:focus-visible,
 [role='button']:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--sel);
   outline-offset: -2px;
 }
 
