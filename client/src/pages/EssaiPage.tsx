@@ -71,7 +71,7 @@ export function EssaiPage() {
   const champ = 'w-full border border-border bg-surface px-2 py-1.5 text-[12px] rounded-[4px]';
 
   return (
-    <div className="porte-fond min-h-screen flex items-center justify-center px-4 py-8 font-marque">
+    <div className="porte-fond min-h-svh flex items-center justify-center px-4 py-8 font-marque">
       <div className="w-full max-w-[460px] bg-surface border border-border rounded-[8px] overflow-hidden shadow-dominante anim-modale">
         <div className="h-[32px] flex items-center gap-2 px-3 text-text text-[11.5px] border-b border-border">
           <SymboleOmegaX taille={14} className="text-(--a-900)" />

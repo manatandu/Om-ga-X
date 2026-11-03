@@ -101,3 +101,17 @@ export const IconCalculette = (p: SVGProps<SVGSVGElement>) => (
 export const IconCloche = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M6 16V10a6 6 0 1112 0v6l1.5 2.5h-15L6 16z" /><path d="M10 21h4" /></svg>
 );
+
+/** Déconnexion · une porte et sa flèche, pour le bouton qui n'a plus de place pour son mot (sous 640 px). */
+export const IconSortie = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base({ strokeLinecap: 'round', strokeLinejoin: 'round', ...p })}>
+    <path d="M9 4H5.5A1.5 1.5 0 004 5.5v13A1.5 1.5 0 005.5 20H9M15 8l4 4-4 4M19 12H9" />
+  </svg>
+);
+
+/** Menus · les trois traits du bouton « ☰ » de la barre de menus repliée (sous 640 px). */
+export const IconMenus = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base({ strokeLinecap: 'round', ...p })}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+);

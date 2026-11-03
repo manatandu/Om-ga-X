@@ -11,6 +11,7 @@ import { LogotypeOmegaX, SymboleOmegaX } from '../components/chrome/Logo';
 import { lireDossiersRecents } from '../lib/dossiersRecents';
 import { corpsConnexion, issueConnexion, type ReponseConnexion } from '../lib/connexion';
 import { apresDeconnexion } from '../lib/deconnexion';
+import { useMedia } from '../lib/media';
 import { messageConnexion } from '../lib/message-connexion';
 
 /**
@@ -91,6 +92,10 @@ export function AuthPage() {
   // Le second facteur · demandé par le serveur, jamais supposé par l'écran.
   const [codeRequis, setCodeRequis] = useState(false);
   const [code, setCode] = useState('');
+  // AUCUN FOCUS D'OFFICE AU DOIGT (reprise du design, lot 2) · sur un téléphone,
+  // `autoFocus` ouvre le clavier avant que la personne ait lu l'écran, et il en
+  // recouvre la moitié. Au bureau, le curseur arrive dans le champ, comme avant.
+  const auDoigt = useMedia('(pointer: coarse)');
   const idCode = useId();
   // « Rester connecté sur cet appareil » (audit final F270) · DÉCOCHÉE par
   // défaut, et jamais mémorisée d'une ouverture à l'autre · sur un poste
@@ -146,7 +151,7 @@ export function AuthPage() {
     // `porte-fond` (index.css) · le bureau du logiciel, en aplat. Ni cercles
     // ni halos décoratifs (charte § 9 bis, 2026-10-23) · ils signaient un
     // gabarit, pas un logiciel installé.
-    <div className="porte-fond relative min-h-screen overflow-x-clip flex flex-col items-center justify-center px-4 py-8 font-marque">
+    <div className="porte-fond relative min-h-svh overflow-x-clip flex flex-col items-center justify-center px-4 py-8 font-marque">
 
       {/* ------------------------------------------------------------------
           FENÊTRE DE DIALOGUE, et non page web · chez Sage cet écran est une
@@ -220,7 +225,8 @@ export function AuthPage() {
             <input
               type="email"
               required
-              autoFocus={!email}
+              autoComplete="username"
+              autoFocus={!auDoigt && !email}
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -240,16 +246,20 @@ export function AuthPage() {
               <input
                 type={motDePasseVisible ? 'text' : 'password'}
                 required
-                autoFocus={Boolean(email)}
+                autoComplete="current-password"
+                autoFocus={!auDoigt && Boolean(email)}
                 value={motDePasse}
                 onChange={(e) => setMotDePasse(e.target.value)}
                 className={`${champClasse} pr-9`}
               />
+              {/* L'œil est atteignable au clavier et nommé pour les lecteurs
+                  d'écran (il était `tabIndex={-1}`, sans nom). */}
               <button
                 type="button"
                 onClick={() => setMotDePasseVisible((v) => !v)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text"
-                tabIndex={-1}
+                aria-label={motDePasseVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                aria-pressed={motDePasseVisible}
+                className="cible-44 absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[3px] text-text-dim hover:text-text focus-visible:ring-2 focus-visible:ring-sel/40 focus-visible:outline-hidden"
               >
                 <IconOeil ouvert={motDePasseVisible} />
               </button>

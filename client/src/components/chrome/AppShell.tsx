@@ -8,6 +8,7 @@ import { useFenetres } from '../../lib/fenetres';
 import { definitionPour } from '../../lib/registre-fenetres';
 import { fenetreDisponible } from '../../lib/referentiel-fenetre';
 import { SymboleOmegaX } from './Logo';
+import { IconSortie } from './icons';
 import { MenuBar, type MenuDef } from './MenuBar';
 import { CalculetteChrome, ClocheChrome, NavigationChrome, NotificationsChrome } from './OutilsChrome';
 import { StatusBar } from './StatusBar';
@@ -491,7 +492,7 @@ export function AppShell() {
       // menus repliée sur deux rangs (≈ 82 px du haut de l'écran) alors que
       // sa hauteur est plafonnée à `100dvh - 64px` (MenuBar.tsx) · il finit
       // donc TOUJOURS une vingtaine de pixels sous le bord bas, et son défilé
-      // interne n'y peut rien puisque l'application est en `h-screen`
+      // interne n'y peut rien puisque l'application est en `h-dvh`
       // `overflow-hidden`. Les dernières entrées, la fiscalité, étaient
       // matériellement inatteignables.
       //
@@ -861,7 +862,7 @@ export function AppShell() {
   // jour, il sera rogné au lieu d'emmener toute l'application sur le côté.
   return (
     <LogicielActifProvider value={valeurLogicielActif}>
-    <div className="h-screen flex flex-col bg-bg text-text overflow-x-hidden">
+    <div className="cadre-sur h-dvh flex flex-col bg-bg text-text overflow-x-hidden">
       {/*
         Barre de titre · elle porte l'identité du dossier ouvert, comme la
         barre de titres de Sage (« Le nouvel exercice s'affiche dans la barre
@@ -870,7 +871,9 @@ export function AppShell() {
         versions web actuelles de Sage. Le symbole y passe en BLANC, le rendu
         que la charte prévoit sur fond sombre (logo-omegax-signe-blanc.svg).
       */}
-      <div className="ecran-seul h-[38px] flex items-center justify-between px-3 bg-(--bandeau) text-white text-[11.5px] shrink-0 relative">
+      {/* `barre-sur-haut` · la barre se rembourre de l'encoche (index.css), son fond passe dessous.
+            `max-sm:h-11` · 44 px de haut sous 640 px, la hauteur d'un toucher. */}
+      <div className="ecran-seul barre-sur-haut h-[38px] max-sm:h-11 flex items-center justify-between px-3 bg-(--bandeau) text-white text-[11.5px] shrink-0 relative">
         <div className="flex items-center gap-2.5 min-w-0">
           <SymboleOmegaX taille={18} className="text-white" />
           {/*
@@ -881,7 +884,10 @@ export function AppShell() {
           */}
           <span className="hidden sm:inline font-marque font-semibold tracking-[-0.015em]">OmegaX</span>
           <span className="hidden sm:inline text-white/40">/</span>
-          <span className="truncate text-white">{utilisateur?.tenant.nom}</span>
+          {/* Le nom du dossier se tronque par « … » et se lit en entier à l'infobulle. */}
+          <span className="truncate text-white" title={utilisateur?.tenant.nom}>
+            {utilisateur?.tenant.nom}
+          </span>
           {exerciceAffiche && (
             <span className="shrink-0 rounded-full bg-white/15 px-2 py-px text-[11px] font-semibold text-white">
               Exercice {exerciceAffiche}
@@ -890,11 +896,18 @@ export function AppShell() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-white/75 text-[11.5px] hidden sm:inline">{utilisateur?.email}</span>
+          {/* Sous 640 px la pilule devient une icône de 44 px, et le mot passe au
+              libellé accessible (`sr-only`) : collée au badge d'exercice, elle
+              mangeait le nom du dossier. Le bouton garde son nom pour les
+              lecteurs d'écran et pour l'infobulle, à toute largeur. */}
           <button
             onClick={seDeconnecter}
-            className="rounded-full border border-white/30 px-3 py-[3px] text-[11.5px] font-semibold text-white hover:bg-white/10"
+            aria-label="Déconnexion"
+            title="Déconnexion"
+            className="rounded-full border border-white/30 px-3 py-[3px] text-[11.5px] font-semibold text-white hover:bg-white/10 max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center max-sm:border-0 max-sm:p-0"
           >
-            Déconnexion
+            <span className="max-sm:sr-only">Déconnexion</span>
+            <IconSortie width={20} height={20} aria-hidden className="hidden max-sm:block" />
           </button>
         </div>
       </div>
@@ -938,7 +951,7 @@ export function AppShell() {
       <main className="relative z-0 flex-1 min-h-0 overflow-hidden">
         {/* `inert` tant que l'écran des logiciels est posé · ni le clavier ni
             un lecteur d'écran n'atteignent ce qu'il recouvre. */}
-        <div className="absolute inset-0 overflow-auto" {...(ecranAffiche ? { inert: '' } : {})}>
+        <div className="absolute inset-0 overflow-auto overscroll-contain" {...(ecranAffiche ? { inert: '' } : {})}>
           {utilisateur?.role !== 'GESTIONNAIRE_PAIE' && (
             <LimiteErreur titreFenetre="Accueil">
               <AccueilPage />

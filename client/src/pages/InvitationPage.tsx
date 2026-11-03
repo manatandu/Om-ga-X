@@ -66,7 +66,7 @@ export function InvitationPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-svh flex items-center justify-center p-4">
       <div className="anim-modale w-full max-w-[460px] bg-surface border border-border-dark shadow-flottante text-[11.5px]">
         <div className="h-[32px] flex items-center px-2.5 border-b border-border">Invitation à un dossier</div>
         <div className="p-4 space-y-3">

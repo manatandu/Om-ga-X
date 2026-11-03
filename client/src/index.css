@@ -1304,6 +1304,102 @@ summary:focus-visible {
   user-select: none;
 }
 
+/* ---------------------------------------------------------------------------
+   LE SOCLE TÉLÉPHONE (reprise du design, lot 2, 2026-11-03).
+
+   Des CORRECTIFS de présentation, aucune fonction : ce qui sépare « un site
+   dans un navigateur » d'une application installée (compétence mobile-native,
+   d'Emil Kowalski). Chaque règle dit le défaut qu'elle ferme. Le BUREAU n'y
+   change pas d'un pixel : tout ce qui change la taille d'un contrôle vit sous
+   `@media (pointer: coarse)`, et un pointeur fin (souris, trackpad) ne le lit
+   jamais. Cette feuille est HORS de toute couche : une règle non stratifiée
+   l'emporte sur les utilitaires de Tailwind (`text-[12px]` d'un champ) sans
+   `!important`.
+   --------------------------------------------------------------------------- */
+
+/* Le gris ou bleu translucide que iOS et Android peignent sur tout élément
+   cliquable : le signe le plus fort de « ceci est un site ». Chaque contrôle a
+   son propre `:active`, c'est lui qui répond au doigt. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  /* Pas de gonflement du texte en paysage. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Pas de rebond de page ni d'actualisation par tirage : l'application tient
+   dans `h-dvh` et défile dans ses propres conteneurs (`overscroll-contain` sur
+   chacun, pour que le bout d'une liste ne tire pas la page). Cela ne bloque
+   JAMAIS un défilement · seul le chaînage au parent est coupé. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Le doigt ne zoome pas deux fois sur un bouton : le navigateur n'attend plus
+   un éventuel second toucher avant d'émettre le `click`. */
+button,
+a,
+[role='button'],
+input,
+select,
+label,
+summary {
+  touch-action: manipulation;
+}
+
+/* L'ENCOCHE ET LA BARRE D'ACCUEIL (`viewport-fit=cover`, index.html) · les
+   marges latérales d'un téléphone en paysage, pour toute page ; les marges du
+   haut et du bas sont portées par la barre de titre et la barre d'état, qui
+   gardent ainsi leur fond sous l'encoche. Quatre zéros sur un poste sans
+   encoche : aucun effet. */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.barre-sur-haut {
+  box-sizing: content-box;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.barre-sur-bas {
+  box-sizing: content-box;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* SOUS UN POINTEUR GROSSIER (le doigt) · la zone de toucher d'au moins 44 px
+   (Apple, Human Interface Guidelines ; WCAG 2.5.8 vise 24 px, le doigt en
+   demande près du double).
+   (1) Les petits contrôles d'une barre dense (aide « ? » de 15 px, boutons de
+       22 px du chrome, titres de menu) gardent leur DESSIN : un pseudo-élément
+       transparent centré étend la zone de toucher à 44 px. L'élément qui le
+       porte est positionné (`relative`, écrit dans le composant).
+   (2) Les contrôles qui peuvent grandir sans rien déplacer de neuf (boutons
+       `.btn`, entrées de menu, boutons de titre de fenêtre) prennent la taille. */
+@media (pointer: coarse) {
+  .cible-44::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+  .btn {
+    min-height: 44px;
+  }
+
+  /* iOS ZOOME LA PAGE quand un champ de moins de 16 px reçoit le focus, et ne
+     la dézoome pas : l'utilisateur reste devant une mise en page rognée. Le
+     remède n'est pas `maximum-scale=1` (échec d'accessibilité) mais la taille
+     du champ. Le bureau reste à 12 px, strictement. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-fenetre,
   .anim-menu,
@@ -1468,7 +1564,7 @@ summary:focus-visible {
     page-break-before: always;
   }
 
-  /* Le conteneur d'application est en h-screen + overflow auto à l'écran :
+  /* Le conteneur d'application est en h-dvh + overflow auto à l'écran :
      sans cette libération, l'impression s'arrêterait à la première page. */
   #root,
   #root > div,
@@ -1524,7 +1620,7 @@ summary:focus-visible {
    le même double trait et le même pied que la page d'accueil du site. Les contenus sont
    partagés avec les fenêtres de l'espace de travail (12 px) ; ici, sur une page de lecture,
    ils passent à 15 px. */
-.cadre-public{font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;background:#fff;color:var(--text,#1d1a2e)}
+.cadre-public{font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;background:#fff;color:var(--text,#1d1a2e)}
 .cadre-public-entete{display:flex;align-items:center;gap:24px;padding:10px max(20px,calc((100vw - 880px) / 2));background:var(--a-900);color:#fff}
 .cadre-public-entete nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
 .cadre-public-entete nav a{padding:10px 12px;font-size:14px;font-weight:500;color:rgba(255,255,255,.82);text-decoration:none;border-radius:4px}

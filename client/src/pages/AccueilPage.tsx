@@ -180,6 +180,11 @@ export function AccueilPage() {
   const tenantId = utilisateur?.tenant.id ?? '';
   const [onglet, setOnglet] = useState<Onglet>(() => lireOnglet());
   const [groupeOuvert, setGroupeOuvert] = useState<string>(GROUPES[0].titre);
+  // SOUS 640 PX la barre verticale (236 px de large au bureau, empilée au-dessus
+  // du contenu sous `md`) mangeait 230 px de haut avant la première tuile · elle
+  // est REPLIÉE derrière un bouton « Fonctions » (la grille du chrome), fermée
+  // au départ, et se referme au choix d'une fonction. Au bureau, rien ne change.
+  const [barreOuverte, setBarreOuverte] = useState(false);
   const [favoris, setFavoris] = useState<string[]>([]);
   useEffect(() => setFavoris(lireFavoris(tenantId)), [tenantId]);
   const choisirOnglet = (o: Onglet) => {
@@ -323,9 +328,21 @@ export function AccueilPage() {
   return (
     <div className="flex flex-col md:flex-row h-full min-h-0">
       {/* --- Barre verticale · groupes de fonctions, un seul ouvert ------- */}
+      <button
+        type="button"
+        aria-expanded={barreOuverte}
+        aria-controls="barre-verticale"
+        onClick={() => setBarreOuverte((v) => !v)}
+        className="sm:hidden shrink-0 flex items-center gap-2 h-11 px-3 text-left text-[12px] font-semibold bg-(--bandeau) text-white border-b border-white/10"
+      >
+        <IconGrille width={16} height={16} aria-hidden className="shrink-0 text-(--a-200)" />
+        <span className="flex-1">Fonctions</span>
+        <span aria-hidden className="text-[10px] text-white/70">{barreOuverte ? '▾' : '▸'}</span>
+      </button>
       <nav
+        id="barre-verticale"
         aria-label="Barre verticale"
-        className="md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-(--bandeau) bg-(--bandeau) text-white flex flex-col min-h-0 overflow-y-auto"
+        className={`${barreOuverte ? 'max-sm:max-h-[60dvh]' : 'max-sm:hidden'} md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-(--bandeau) bg-(--bandeau) text-white flex flex-col min-h-0 overflow-y-auto overscroll-contain`}
       >
         {GROUPES.map((groupe) => {
           const tuiles = tuilesVisibles(groupe);
@@ -337,7 +354,7 @@ export function AccueilPage() {
                 type="button"
                 aria-expanded={ouvert}
                 onClick={() => setGroupeOuvert(groupe.titre)}
-                className={`w-full flex items-center gap-2 px-2.5 h-[26px] text-left text-[11.5px] font-semibold border-l-[3px] ${
+                className={`w-full flex items-center gap-2 px-2.5 pointer-coarse:h-11 h-[26px] text-left text-[11.5px] font-semibold border-l-[3px] ${
                   ouvert ? 'bg-(--bandeau-survol) border-l-(--a-400) text-white' : 'border-l-transparent text-white/85 hover:bg-white/10'
                 }`}
               >
@@ -352,8 +369,11 @@ export function AccueilPage() {
                     <li key={t.chemin} className="group flex items-center">
                       <button
                         type="button"
-                        onClick={() => navigate(t.chemin)}
-                        className="flex-1 min-w-0 flex items-center gap-2 pl-3 pr-1 h-[24px] text-left text-[11.5px] text-white/85 hover:bg-white/10 hover:text-white"
+                        onClick={() => {
+                          setBarreOuverte(false);
+                          navigate(t.chemin);
+                        }}
+                        className="flex-1 min-w-0 flex items-center gap-2 pl-3 pr-1 pointer-coarse:h-11 h-[24px] text-left text-[11.5px] text-white/85 hover:bg-white/10 hover:text-white"
                       >
                         <t.Icon width={13} height={13} className="shrink-0 text-(--a-200)" />
                         <span className="truncate">{t.label}</span>
@@ -382,7 +402,7 @@ export function AccueilPage() {
                 // Le trait de l'onglet actif est un élément à part (`trait-actif`),
                 // animé comme celui de `.onglet` · une bordure ne s'anime pas
                 // en `transform`, elle ne ferait que sauter d'un onglet à l'autre.
-                className={`relative px-3 h-[32px] text-[12px] -mb-px border-b-2 border-b-transparent ${
+                className={`relative px-3 pointer-coarse:h-11 h-[32px] text-[12px] -mb-px border-b-2 border-b-transparent ${
                   onglet === o ? 'text-sel font-semibold' : 'text-text-dim hover:text-text'
                 }`}
               >
@@ -631,8 +651,9 @@ function BoutonFavori({ actif, onClick }: { actif: boolean; onClick: () => void 
       onClick={onClick}
       title={actif ? 'Retirer des favoris' : 'Ajouter aux favoris'}
       aria-pressed={actif}
-      className={`shrink-0 w-[22px] h-[22px] flex items-center justify-center ${
-        actif ? 'text-[#c98a00]' : 'text-white/60 opacity-0 group-hover:opacity-100 focus:opacity-100'
+      className={`shrink-0 w-[22px] h-[22px] pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center ${
+        // Au doigt, `group-hover` n'existe pas : l'étoile resterait invisible.
+        actif ? 'text-[#c98a00]' : 'text-white/60 opacity-0 pointer-coarse:opacity-100 group-hover:opacity-100 focus:opacity-100'
       }`}
     >
       <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>

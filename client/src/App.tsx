@@ -26,7 +26,7 @@ const QuestionsFrequentesPage = lazy(() => import('./pages/QuestionsFrequentesPa
 /** L'attente d'une page publique chargée à la demande · dite, jamais un écran vide. */
 function PagePublique({ children }: { children: JSX.Element }) {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>}>
+    <Suspense fallback={<div className="min-h-svh flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>}>
       {children}
     </Suspense>
   );
@@ -35,7 +35,7 @@ function PagePublique({ children }: { children: JSX.Element }) {
 function ZoneProtegee({ children }: { children: JSX.Element }) {
   const { chargement, connecte, utilisateur, invitationsEnAttente } = useAuth();
   if (chargement) {
-    return <div className="min-h-screen flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>;
+    return <div className="min-h-svh flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>;
   }
   if (!connecte) return <Navigate to="/connexion" replace />;
   // Mot de passe provisoire (remis par la console de l'éditeur, le siège d'un groupe

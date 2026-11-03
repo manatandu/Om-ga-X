@@ -43,15 +43,23 @@ describe('chrome à 360 px', () => {
     // `h-full` vaut 100 % de la BARRE : repliée sur deux rangs de 24 px, elle
     // en faisait 49, et chaque titre réclamait donc 49 px. Le second rang
     // débordait par le bas, jusque sur l'espace de travail.
-    expect(src).toMatch(/static sm:relative self-stretch/);
-    expect(src).not.toMatch(/static sm:relative h-full/);
+    // La barre classique n'existe plus qu'à partir de 640 px (`volant`), le
+    // titre s'ancre donc toujours à lui-même · `static sm:relative` n'avait
+    // d'objet qu'en deçà, où le panneau du bouton « ☰ » a pris le relais.
+    expect(src).toMatch(/relative self-stretch flex items-center/);
+    expect(src).not.toMatch(/relative h-full flex items-center/);
   });
 
   it("un menu déroulé reste dans l'écran", () => {
     const src = lire('MenuBar.tsx');
     // Ancré à son titre, le menu « État » s'ouvrait 103 px hors de l'écran.
-    // Sous `sm` il se cale sur la barre et s'étend d'un bord à l'autre.
-    expect(src).toMatch(/left-2 right-2 sm:left-0 sm:right-auto/);
+    // Sous 640 px il n'y a plus de titre en barre · le panneau du bouton « ☰ »
+    // se cale sur la barre et s'étend d'un bord à l'autre, ses 9 rem retranchés
+    // gardant son bas dans l'écran (il défile en dedans).
+    expect(src).toMatch(/absolute left-2 right-2 top-full mt-1 z-30/);
+    expect(src).toMatch(/max-h-\[calc\(100dvh-9rem\)\] overflow-y-auto/);
+    // Au-delà, le panneau d'un titre s'ancre à son titre, par la gauche.
+    expect(src).toMatch(/absolute left-0 top-full mt-1 z-30 min-w-\[232px\]/);
   });
 
   it("la barre d'état borne ses deux libellés au lieu de les laisser déborder", () => {
@@ -305,14 +313,22 @@ describe('menu « État » à 360 px', () => {
     // toujours, mais seulement sous 640 px · le volant est donc borné à la
     // largeur, et le repli demeure en dessous.
     expect(src).toMatch(/const volant = useMedia\('\(min-width: 640px\)'\)/);
-    expect(src).toMatch(/\{volant \? rendreVolant\(m\.items\) : rendreReplie\(m\.items\)\}/);
+    // Le panneau d'un titre de la barre rend les sous-menus volants ; celui du
+    // bouton « ☰ » (sous 640 px) rend le repli, titre par titre.
+    expect(src).toMatch(/\{rendreVolant\(m\.items\)\}/);
+    expect(src).toMatch(/\{rendreReplie\(m\.items\)\}/);
+    expect(src).toMatch(/\{!volant && \(/);
+    expect(src).toMatch(/\{volant && menus\.map/);
   });
 
   it('en mode volant, le panneau ne défile pas · sinon il rognerait le sous-menu', () => {
     const src = lire('MenuBar.tsx');
     // Un conteneur à `overflow-y-auto` rogne aussi ce qui dépasse sur le
     // côté : le sous-menu existait, positionné, et restait invisible.
-    expect(src).toMatch(/volant \? '' : 'max-h-\[calc\(100dvh-64px\)\] overflow-y-auto'/);
+    // C'est le panneau du bouton « ☰ » qui défile, lui seul (sous 640 px, sans
+    // sous-menu volant) · celui d'un titre de la barre n'a aucun `overflow`.
+    const panneauTitre = src.slice(src.indexOf('absolute left-0 top-full mt-1 z-30 min-w-[232px]'), src.indexOf('{rendreVolant(m.items)}'));
+    expect(panneauTitre).not.toMatch(/overflow-/);
     // Même piège par une autre porte · `shadow-flottante` impose
     // `overflow: hidden` (index.css). Vu au navigateur le 2026-09-23.
     expect(src).not.toMatch(/shadow-flottante/);

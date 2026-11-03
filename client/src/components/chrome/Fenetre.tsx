@@ -7,6 +7,7 @@ import { rendreFenetre } from '../../lib/registre-fenetres';
 import { LimiteErreur } from './LimiteErreur';
 import { LignesSquelette } from './Squelette';
 import { useLangue } from '../../lib/langue';
+import { useSous640 } from '../../lib/media';
 
 /**
  * CADRE DE FENÊTRE · la fenêtre MDI de Sage 100 i7 : une barre de titre
@@ -61,9 +62,10 @@ const MARGE_AGRANDIE = 8;
  * de 10 px, pouce visible de 3 px centré à 5 px du bord, `index.css`), et
  * viser le pouce d'un grand livre étirait la fenêtre une fois sur deux.
  *
- * Sous 640 px, seul le coin bas droit reste · une fenêtre y tient déjà
- * toute la largeur (`LARGEUR_MIN` dépasse l'espace), et des bandes de 5 px
- * en `touch-action: none` aux bords de l'écran avalaient les glissés du
+ * Sous 640 px, AUCUNE poignée (reprise du design, lot 2) · la fenêtre y
+ * occupe toute la zone de travail et ne se redimensionne plus (voir
+ * `telephone` ci-dessous). Avant, le coin bas droit restait, et des bandes de
+ * 5 px en `touch-action: none` aux bords de l'écran avalaient les glissés du
  * doigt sans rien changer.
  */
 const POIGNEES: { bord: BordFenetre; place: string }[] = [
@@ -74,7 +76,7 @@ const POIGNEES: { bord: BordFenetre; place: string }[] = [
   { bord: 'no', place: 'hidden sm:block top-0 left-0 w-2.5 h-2.5' },
   { bord: 'ne', place: 'hidden sm:block top-0 right-0 w-2.5 h-2.5' },
   { bord: 'so', place: 'hidden sm:block bottom-0 left-0 w-2.5 h-2.5' },
-  { bord: 'se', place: 'bottom-0 right-0 w-4 h-4' },
+  { bord: 'se', place: 'hidden sm:block bottom-0 right-0 w-4 h-4' },
 ];
 
 /**
@@ -90,6 +92,21 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
   const refCadre = useRef<HTMLDivElement>(null);
 
   const agrandie = fenetre.etat === 'agrandie';
+  /**
+   * SOUS 640 px, LA FENÊTRE EST LE PLEIN ÉCRAN DE LA ZONE DE TRAVAIL (reprise
+   * du design, lot 2 · compétence mobile-native, apple-design § 7) · une
+   * fenêtre flottante, déplaçable et redimensionnable n'a pas de sens sur un
+   * écran de 390 px : sa barre de titre se saisissait au doigt pour la pousser
+   * hors de l'écran, et ses 380 px minimum la faisaient déjà déborder.
+   * La géométrie mémorisée (`fenetre.cadre`) n'est JAMAIS réécrite par ce
+   * mode : il ne déplace ni ne redimensionne rien, il substitue seulement le
+   * style rendu. Passé au-dessus de 640 px (rotation, redimensionnement), la
+   * fenêtre reprend donc exactement celle qu'elle avait.
+   * Les autres gestes restent · réduire, fermer, barre des fenêtres, Échap.
+   * Seuls disparaissent ceux qui n'ont plus de sens : agrandir/restaurer, le
+   * déplacement et les huit poignées.
+   */
+  const telephone = useSous640();
 
   /**
    * Un geste = un point de départ figé (position du pointeur ET du cadre au
@@ -102,6 +119,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       // Le bouton principal seul · un clic droit sur un bord démarrait un
       // geste dont le menu contextuel avalait parfois le `pointerup`.
       if (!estLeBoutonPrincipal(e.pointerType, e.button)) return;
+      if (telephone) return; // plein écran : ni déplacement ni redimensionnement
       if (agrandie && mode === 'deplacer') return; // une fenêtre plein écran ne se déplace pas
       e.preventDefault();
       const cible = e.currentTarget as HTMLElement;
@@ -150,7 +168,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       // rejouait l'ancien geste. Voir `suivreGeste`.
       suivreGeste(cible, e.pointerId, onMove);
     },
-    [agrandie, deplacer, fenetre.cadre, fenetre.cle],
+    [agrandie, telephone, deplacer, fenetre.cadre, fenetre.cle],
   );
 
   // Échap ferme la fenêtre ACTIVE · réflexe Windows, et seule façon de
@@ -173,7 +191,9 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
 
   if (fenetre.etat === 'reduite') return null;
 
-  const style: React.CSSProperties = agrandie
+  const style: React.CSSProperties = telephone
+    ? { inset: 0, zIndex: fenetre.ordre }
+    : agrandie
     ? { inset: MARGE_AGRANDIE, zIndex: fenetre.ordre }
     : (() => {
         // Le gabarit par défaut (940×560) peut dépasser un petit espace de
@@ -212,17 +232,20 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       style={style}
       // UNE FENÊTRE INACTIVE NE S'IMPRIME PAS · sans cela, « Imprimer » sortait
       // aussi toutes les fenêtres ouvertes derrière celle qu'on regardait.
-      className={`${fenetre.enFermeture ? 'anim-fenetre-sortie pointer-events-none' : 'anim-fenetre'} absolute flex flex-col overflow-hidden rounded-[4px] border bg-surface ${active ? '' : 'fenetre-inactive'} ${
+      className={`${fenetre.enFermeture ? 'anim-fenetre-sortie pointer-events-none' : 'anim-fenetre'} absolute flex flex-col overflow-hidden ${telephone ? '' : 'rounded-[4px]'} border bg-surface ${active ? '' : 'fenetre-inactive'} ${
         active ? 'border-border-dark shadow-dominante' : 'border-border shadow-posee'
       }`}
     >
       {/* --- Barre de titre ------------------------------------------------ */}
       <div
         onPointerDown={(e) => demarrerGeste(e, 'deplacer')}
-        onDoubleClick={() => basculerAgrandissement(fenetre.cle)}
+        onDoubleClick={telephone ? undefined : () => basculerAgrandissement(fenetre.cle)}
         // `touch-action: none` · sans lui, le doigt qui tire la barre fait
-        // défiler la page et le navigateur annule le geste.
-        style={{ height: HAUTEUR_TITRE, touchAction: 'none' }}
+        // défiler la page et le navigateur annule le geste. Plein écran, la
+        // barre ne se tire plus : elle laisse le navigateur tranquille.
+        // 32 px à la souris (`HAUTEUR_TITRE` ne sert plus qu'à borner le
+        // déplacement), 44 px au doigt · la hauteur d'un toucher.
+        style={telephone ? undefined : { touchAction: 'none' }}
         /*
           BARRE DE TITRE CLAIRE, À LA WINDOWS 11 (2026-09-23). Elle était un
           bandeau bleu nuit, celui de Sage et de Windows 7 · c'est ce qui
@@ -231,8 +254,8 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
           pleine, ceux des autres fenêtres s'éteignent, et son ombre est plus
           profonde. La distinction demeure, elle change seulement de forme.
         */
-        className={`shrink-0 flex items-center justify-between gap-2 pl-3.5 select-none border-b border-border transition-colors duration-150 ${
-          agrandie ? '' : 'cursor-move'
+        className={`shrink-0 h-[32px] pointer-coarse:h-11 flex items-center justify-between gap-2 pl-3.5 select-none border-b border-border transition-colors duration-150 ${
+          agrandie || telephone ? '' : 'cursor-move'
         } ${active ? 'bg-(--bandeau) text-white' : 'bg-chrome text-text-dim'}`}
       >
         <span className="truncate text-[12px] font-semibold">{fenetre.titre}</span>
@@ -243,21 +266,24 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
             onClick={() => reduire(fenetre.cle)}
             dessin={<rect x="3.5" y="8" width="9" height="1.4" rx="0.7" />}
           />
-          <BoutonTitre
-            actif={active}
-            titre={agrandie ? 'Restaurer' : 'Agrandir'}
-            onClick={() => basculerAgrandissement(fenetre.cle)}
-            dessin={
-              agrandie ? (
-                <>
-                  <rect x="3" y="5.4" width="7.2" height="7.2" rx="1.2" fill="none" strokeWidth="1.3" stroke="currentColor" />
-                  <path d="M5.6 5.4V4.2A1.2 1.2 0 0 1 6.8 3h5.4A1.2 1.2 0 0 1 13.4 4.2v5.4a1.2 1.2 0 0 1-1.2 1.2H11" fill="none" strokeWidth="1.3" stroke="currentColor" />
-                </>
-              ) : (
-                <rect x="3.4" y="3.4" width="9.2" height="9.2" rx="1.3" fill="none" strokeWidth="1.3" stroke="currentColor" />
-              )
-            }
-          />
+          {/* Plein écran, agrandir ou restaurer n'a plus de sens. */}
+          {!telephone && (
+            <BoutonTitre
+              actif={active}
+              titre={agrandie ? 'Restaurer' : 'Agrandir'}
+              onClick={() => basculerAgrandissement(fenetre.cle)}
+              dessin={
+                agrandie ? (
+                  <>
+                    <rect x="3" y="5.4" width="7.2" height="7.2" rx="1.2" fill="none" strokeWidth="1.3" stroke="currentColor" />
+                    <path d="M5.6 5.4V4.2A1.2 1.2 0 0 1 6.8 3h5.4A1.2 1.2 0 0 1 13.4 4.2v5.4a1.2 1.2 0 0 1-1.2 1.2H11" fill="none" strokeWidth="1.3" stroke="currentColor" />
+                  </>
+                ) : (
+                  <rect x="3.4" y="3.4" width="9.2" height="9.2" rx="1.3" fill="none" strokeWidth="1.3" stroke="currentColor" />
+                )
+              }
+            />
+          )}
           <BoutonTitre
             actif={active}
             titre="Fermer"
@@ -271,7 +297,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       </div>
 
       {/* --- Contenu -------------------------------------------------------- */}
-      <div className="flex-1 min-h-0 overflow-auto bg-(--fenetre)">
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain bg-(--fenetre)">
         <LimiteErreur titreFenetre={fenetre.titre}>
           {/* La clé porte le compteur d'Actualiser : l'incrémenter remonte le
               contenu, qui recharge ses données · le F5 de Sage.
@@ -296,7 +322,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       </div>
 
       {/* --- Bords et coins de redimensionnement ---------------------------- */}
-      {!agrandie &&
+      {!agrandie && !telephone &&
         POIGNEES.map(({ bord, place }) => (
           <div
             key={bord}
@@ -348,7 +374,7 @@ function BoutonTitre({
       // 46 px de large sur toute la hauteur de la barre, sans arrondi : les
       // boutons de légende de Windows 11. Fermer vire au rouge système au
       // survol, les deux autres à un gris léger.
-      className={`flex items-center justify-center w-[46px] transition-colors duration-100 ${
+      className={`flex items-center justify-center w-[46px] pointer-coarse:w-12 transition-colors duration-100 ${
         danger ? 'hover:bg-[#c42b1c] hover:text-white' : actif ? 'hover:bg-white/10' : 'hover:bg-chrome-alt'
       } ${actif ? 'text-white' : 'text-text-dim'}`}
     >

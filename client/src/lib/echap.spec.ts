@@ -113,8 +113,9 @@ describe('Échap · le câblage', () => {
     for (const f of ['components/chrome/MenuBar.tsx', 'components/chrome/Aide.tsx', 'components/Calculette.tsx', 'components/ModaleCorrection.tsx']) {
       expect(lire(f)).toContain('ecouterEchap(() => {');
     }
-    // Le menu ne prend la touche qu'ouvert.
-    expect(lire('components/chrome/MenuBar.tsx')).toContain('if (ouvertRef.current === null) return false;');
+    // Le menu ne prend la touche qu'ouvert · un titre déplié, ou le panneau du
+    // bouton « ☰ » sous 640 px (le focus lui revient alors).
+    expect(lire('components/chrome/MenuBar.tsx')).toContain('if (ouvertRef.current === null && !burgerRef.current) return false;');
   });
 
   it('toute modale porte le marqueur', () => {

@@ -42,11 +42,11 @@ export function RegisterPage() {
     };
   }, []);
 
-  if (!porte) return <div className="min-h-screen bg-bg" />;
+  if (!porte) return <div className="min-h-svh bg-bg" />;
 
   if (porte.mode === 'SUR_SITE_FERMEE') {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center px-4">
+      <div className="min-h-svh bg-bg flex items-center justify-center px-4">
         <div className="w-full max-w-[460px] bg-surface border border-border px-5 py-4 text-[12px]">
           <p role="status">{porte.motif}</p>
           <a href="#/connexion" className="mt-3 inline-block text-[11.5px] underline">
@@ -58,7 +58,7 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-svh bg-bg">
       <NouveauFichierWizard onClose={() => navigate('/connexion')} onTermine={() => navigate('/parametres-dossier')} />
     </div>
   );

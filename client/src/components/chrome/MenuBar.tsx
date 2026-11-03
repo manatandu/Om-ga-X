@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMedia } from '../../lib/media';
+import { IconMenus } from './icons';
 import {
   coteSousMenu,
   estGroupe,
@@ -16,24 +18,6 @@ import { attributLang } from '../../lib/traduction';
 // exécutable par le jest de la racine) · ils continuent de s'importer d'ici,
 // puisque c'est le composant que les écrans connaissent.
 export type { MenuDef, MenuEntreeDef, MenuGroupeDef, MenuItemDef };
-
-/**
- * UNE MÉDIA-REQUÊTE SUIVIE EN DIRECT · la fenêtre du navigateur peut changer
- * de taille pendant qu'un menu est ouvert, et le mode doit suivre.
- */
-function useMedia(requete: string): boolean {
-  const lire = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(requete).matches;
-  const [vrai, setVrai] = useState(lire);
-  useEffect(() => {
-    if (!window.matchMedia) return;
-    const mq = window.matchMedia(requete);
-    const suivre = () => setVrai(mq.matches);
-    suivre();
-    mq.addEventListener?.('change', suivre);
-    return () => mq.removeEventListener?.('change', suivre);
-  }, [requete]);
-  return vrai;
-}
 
 /**
  * DÉLAIS DU SURVOL, calqués sur Windows 11.
@@ -96,7 +80,7 @@ function CommandeMenu({
       // commande repliée se lit à l'aplomb du titre qui la contient.
       className={`w-full flex items-center text-left rounded-[3px] ${
         retrait ? 'pl-[27px] pr-3' : 'px-3'
-      } h-[24px] text-[12px] hover:enabled:bg-chrome-alt focus-visible:bg-chrome-alt outline-hidden disabled:opacity-40 disabled:cursor-not-allowed`}
+      } pointer-coarse:h-11 h-[24px] text-[12px] hover:enabled:bg-chrome-alt focus-visible:bg-chrome-alt outline-hidden disabled:opacity-40 disabled:cursor-not-allowed`}
     >
       <span className="min-w-0 truncate">{tr(item.label)}</span>
     </button>
@@ -159,6 +143,15 @@ export function MenuBar({
     if (titre !== groupeDeplieRef.current) sansAnimationSousMenu.current = groupeDeplieRef.current !== null && titre !== null;
     setGroupeDeplieBrut(titre);
   };
+  // SOUS 640 PX, LES MENUS PASSENT DERRIÈRE UN BOUTON « ☰ » (reprise du design,
+  // lot 2) · huit titres sur une barre de 390 px la coupaient sur deux lignes et
+  // poussaient le reste du chrome. Même contenu, mêmes commandes, mêmes droits :
+  // le panneau reprend `menus` tel quel, chaque titre se déplie en accordéon et
+  // ses groupes aussi (`rendreReplie`, déjà fait pour cet écran).
+  const [burger, setBurger] = useState(false);
+  const burgerRef = useRef(false);
+  burgerRef.current = burger;
+  const refBurger = useRef<HTMLButtonElement>(null);
   const [cote, setCote] = useState<'droite' | 'gauche'>('droite');
   const ref = useRef<HTMLDivElement>(null);
   const refPanneau = useRef<HTMLDivElement>(null);
@@ -178,7 +171,13 @@ export function MenuBar({
     annuler();
     annulerSous();
     setOuvert(null);
+    setBurger(false);
   };
+  // Une fenêtre élargie (rotation d'un téléphone) rend la barre classique, le
+  // panneau ne doit pas rester ouvert derrière elle.
+  useEffect(() => {
+    if (volant) setBurger(false);
+  }, [volant]);
 
   // Refermer ou changer de menu referme ses groupes · le menu se rouvre
   // replié, dans l'état où il tient à l'écran.
@@ -198,8 +197,12 @@ export function MenuBar({
     // Échap ne se prend que menu OUVERT (audit final F177) · consommé, il ne
     // ferme plus aussi la fenêtre derrière. Menu fermé, il la laisse passer.
     const cesserEchap = ecouterEchap(() => {
-      if (ouvertRef.current === null) return false;
+      if (ouvertRef.current === null && !burgerRef.current) return false;
+      const etaitLePanneau = burgerRef.current;
       fermer();
+      // Le focus revient au bouton qui a ouvert le panneau, comme pour un
+      // menu : le clavier ne se retrouve pas perdu au début de la page.
+      if (etaitLePanneau) refBurger.current?.focus();
       return true;
     });
     document.addEventListener('mousedown', onClicDehors);
@@ -274,7 +277,7 @@ export function MenuBar({
                 setGroupeDeplie(entree.titre);
               }
             }}
-            className={`w-full flex items-center gap-2 text-left rounded-[3px] px-3 h-[24px] text-[12px] outline-hidden focus-visible:bg-chrome-alt ${
+            className={`w-full flex items-center gap-2 text-left rounded-[3px] px-3 pointer-coarse:h-11 h-[24px] text-[12px] outline-hidden focus-visible:bg-chrome-alt ${
               deplie ? 'bg-chrome-alt' : 'hover:bg-chrome-alt'
             }`}
           >
@@ -321,7 +324,7 @@ export function MenuBar({
               type="button"
               aria-expanded={ligne.deplie}
               onClick={() => setGroupeDeplie(ligne.deplie ? null : ligne.groupe.titre)}
-              className="w-full flex items-center gap-[5px] text-left rounded-[3px] px-3 h-[24px] text-[12px] font-semibold hover:bg-chrome-alt"
+              className="w-full flex items-center gap-[5px] text-left rounded-[3px] px-3 pointer-coarse:h-11 h-[24px] text-[12px] font-semibold hover:bg-chrome-alt"
             >
               {/* La petite flèche dit dans quel sens le repli va, comme un
                   dossier de l'explorateur. `aria-hidden` : l'état est déjà
@@ -369,15 +372,73 @@ export function MenuBar({
       className="relative z-40 min-h-[32px] flex flex-wrap items-center gap-0.5 px-2 py-0.5 bg-surface border-b border-border shadow-[0_1px_2px_rgba(42,31,92,0.06)] select-none"
     >
       {avant}
-      {menus.map((m) => (
-        // `static` sous `sm` : le menu déroulé se cale alors sur la BARRE
-        // et non sur son titre. Ancré au titre, un menu de droite (« État »,
-        // « Fenêtre ») partait 103 px hors de l'écran à 360 px.
+      {!volant && (
+        <>
+          <button
+            ref={refBurger}
+            type="button"
+            aria-label="Menus"
+            title="Menus"
+            aria-haspopup="menu"
+            aria-expanded={burger}
+            aria-controls="panneau-des-menus"
+            onClick={() => (burger ? fermer() : setBurger(true))}
+            className={`cible-44 relative flex size-11 shrink-0 items-center justify-center rounded-[3px] transition-colors duration-100 ${
+              burger ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
+            }`}
+          >
+            <IconMenus width={20} height={20} aria-hidden />
+          </button>
+          {burger && (
+            // Sans entrée animée : un panneau qui s'ouvre au toucher se lit d'un
+            // coup (mouvement-des-gestes.spec.ts). Il se cale sur la BARRE, d'un bord à l'autre, et défile en
+            // dedans (la page ne défile pas · l'application est en `h-dvh`). Les
+            // 9 rem retranchés sont la barre de titre, la barre de menus et la
+            // barre d'état : le bas du panneau reste dans l'écran.
+            <div
+              id="panneau-des-menus"
+              role="menu"
+              aria-label="Menus"
+              className="absolute left-2 right-2 top-full mt-1 z-30 rounded-[4px] border border-border panneau-menu p-1 max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain"
+            >
+              {menus.map((m) => {
+                const deplie = ouvert === m.titre;
+                return (
+                  <div key={m.titre}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-haspopup="menu"
+                      aria-expanded={deplie}
+                      onClick={() => setOuvert(deplie ? null : m.titre)}
+                      className={`w-full flex items-center justify-between gap-2 text-left rounded-[3px] px-3 h-11 text-[12px] font-semibold ${
+                        deplie ? 'bg-sel-soft text-sel' : 'hover:bg-chrome-alt'
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">{tr(m.titre)}</span>
+                      <Chevron vers={deplie ? 'bas' : 'droite'} />
+                    </button>
+                    {deplie && (
+                      <div role="group" aria-label={tr(m.titre)} className="pb-1">
+                        {rendreReplie(m.items)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+      {volant && menus.map((m) => (
+        // La barre classique n'existe qu'à partir de 640 px (`volant`) · en deçà,
+        // le panneau du bouton « ☰ » prend le relais (plus haut). Le menu déroulé
+        // s'ancre donc toujours à son titre.
         // `self-stretch` et NON `h-full` : `height:100%` se mesure sur la
         // BARRE entière, si bien qu'une fois celle-ci repliée sur deux rangs
         // chaque titre réclamait le double de son rang. `align-self: stretch`
         // se mesure sur le RANG, ce qui est la mesure voulue dans les deux cas.
-        <div key={m.titre} className="static sm:relative self-stretch flex items-center">
+        <div key={m.titre} className="relative self-stretch flex items-center">
           <button
             type="button"
             aria-haspopup="menu"
@@ -390,7 +451,7 @@ export function MenuBar({
               setOuvert(survolable ? m.titre : ouvert === m.titre ? null : m.titre);
             }}
             onMouseEnter={() => survolerTitre(m.titre)}
-            className={`rounded-[3px] px-2.5 h-[24px] text-[12px] transition-colors duration-100 ${
+            className={`cible-44 relative rounded-[3px] px-2.5 h-[24px] text-[12px] transition-colors duration-100 ${
               ouvert === m.titre ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
             }`}
           >
@@ -404,11 +465,9 @@ export function MenuBar({
               // En mode volant, le panneau ne défile pas : un conteneur qui
               // défile rogne tout ce qui en dépasse, sous-menu compris. Il
               // n'en a plus besoin, les groupes gardant sa hauteur fixe.
-              className={`${sansAnimationMenu.current ? '' : 'anim-menu'} absolute left-2 right-2 sm:left-0 sm:right-auto top-full mt-1 z-30 sm:min-w-[232px] rounded-[4px] border border-border panneau-menu p-1 ${
-                volant ? '' : 'max-h-[calc(100dvh-64px)] overflow-y-auto'
-              }`}
+              className={`${sansAnimationMenu.current ? '' : 'anim-menu'} absolute left-0 top-full mt-1 z-30 min-w-[232px] rounded-[4px] border border-border panneau-menu p-1`}
             >
-              {volant ? rendreVolant(m.items) : rendreReplie(m.items)}
+              {rendreVolant(m.items)}
             </div>
           )}
         </div>

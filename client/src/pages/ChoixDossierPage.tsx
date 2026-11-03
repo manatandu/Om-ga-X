@@ -11,7 +11,7 @@ import { ListeDesDossiers } from '../components/ListeDesDossiers';
 export function ChoixDossierPage() {
   const { utilisateur, seDeconnecter } = useAuth();
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-svh flex items-center justify-center p-4">
       <div className="anim-modale w-full max-w-[640px] bg-surface border border-border-dark shadow-flottante">
         <div className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]">
           <span>Mes dossiers</span>

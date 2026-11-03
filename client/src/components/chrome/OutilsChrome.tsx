@@ -50,7 +50,7 @@ function BoutonChrome({
       title={infobulle ?? titre}
       aria-label={titre}
       onClick={onClick}
-      className="flex items-center justify-center w-[22px] h-[22px] rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       {children}
     </button>
@@ -62,7 +62,7 @@ export function NavigationChrome({ onLogiciels }: { onLogiciels?: () => void } =
   const { fermerTout } = useFenetresActions();
   const { fenetres } = useFenetres();
   return (
-    <div className="flex items-center gap-0.5 pr-1.5 mr-1 border-r border-border">
+    <div className="flex items-center gap-0.5 max-sm:gap-0 pr-1.5 max-sm:pr-0 mr-1 max-sm:mr-0 border-r max-sm:border-r-0 border-border">
       <BoutonChrome titre="Précédent" onClick={() => navigate(-1)}>
         <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M12.5 4.5L7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -158,7 +158,7 @@ export function ClocheChrome() {
       title={titreCloche(compteurs)}
       aria-label={titreCloche(compteurs)}
       onClick={() => navigate('/courrier')}
-      className="relative flex items-center justify-center w-[22px] h-[22px] rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       <IconCloche width={13} height={13} />
       {pastille && (
@@ -209,7 +209,7 @@ export function NotificationsChrome() {
       title={titre}
       aria-label={titre}
       onClick={() => navigate('/notifications')}
-      className="relative flex items-center justify-center w-[22px] h-[22px] rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       <IconInfo width={13} height={13} />
       {pastille && (
