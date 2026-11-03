@@ -1358,11 +1358,22 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 .barre-sur-haut {
-  box-sizing: content-box;
+  /* 38 px au bureau, 44 px sous 640 px (la hauteur d'un toucher) · la marge
+     de l'encoche s'AJOUTE à la hauteur et la remplit de son padding. Sans
+     encoche, `env()` vaut 0 et la barre mesure ce qu'elle mesurait. */
+  --hauteur-barre: 38px;
+  height: calc(var(--hauteur-barre) + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);
 }
+@media not all and (min-width: 640px) {
+  .barre-sur-haut {
+    --hauteur-barre: 44px;
+  }
+}
 .barre-sur-bas {
-  box-sizing: content-box;
+  /* 24 px + la barre d'accueil · même principe, hauteur et bordure incluses
+     (border-box) : à zéro, aucun pixel de différence avec `h-[24px]`. */
+  height: calc(24px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 

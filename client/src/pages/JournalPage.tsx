@@ -17,6 +17,14 @@ import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
 import { masquerLesLettrees } from '../lib/grand-livre-sans-lettrees';
 import { montant, montantOuVide } from '../lib/montants';
+import { useSous640 } from '../lib/media';
+import {
+  CarteCompteBalance,
+  CarteLigneGrandLivre,
+  CarteRepereGrandLivre,
+  CarteTotauxBalance,
+  PaireDebitCredit,
+} from '../components/CartesComptables';
 import {
   cheminBalance,
   cheminGrandLivre,
@@ -163,6 +171,11 @@ function ongletDe(adresse: string | undefined): Onglet {
 
 export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const { exerciceCourant } = useExercice();
+  // SOUS 640 PX, LES TROIS ÉTATS SE PRÉSENTENT EN CARTES (components/CartesComptables.tsx) ·
+  // une grille de 840 à 1 154 px de colonnes fixes n'y tient pas. UNE SEULE des
+  // deux présentations est dans le DOM, jamais les deux : au-dessus de 640 px
+  // la grille est rendue exactement comme avant, et ses sélecteurs n'ont qu'une cible.
+  const telephone = useSous640();
   /*
     L'onglet vient de l'adresse de la FENÊTRE (`?onglet=…`), pour que les
     commandes « État → Journal / Grand livre / Balance » et la barre d'outils
@@ -708,6 +721,62 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     );
   };
 
+  /**
+   * L'ÉTAT D'UNE PIÈCE, rendu sur sa première ligne · brouillard, situation,
+   * correction, revue. Une seule écriture pour la grille et la carte du
+   * téléphone : une action ajoutée ici paraît des deux côtés.
+   */
+  const badgesLigne = (l: (typeof lignesJournal)[number]) => (
+    <>
+      {l.premiereLigne && l.enBrouillard && (
+        <span
+          className="text-[11px] font-bold text-warning bg-warning-soft border border-warning/40 rounded-[3px] px-1"
+          title="En brouillard · pas encore entrée au livre-journal"
+        >
+          Brouillard
+        </span>
+      )}
+      {l.premiereLigne && l.enSituation && (
+        <span
+          className="text-[11px] font-bold text-sel bg-sel-soft border border-sel/40 rounded-[3px] px-1"
+          title="Écriture de situation · elle ne se valide pas et n'entre jamais au livre-journal"
+        >
+          Situation
+        </span>
+      )}
+      {l.premiereLigne && etatCorrection(l)}
+      {l.premiereLigne && l.revue && (
+        <button
+          type="button"
+          disabled={!peutValider || revueEnCours}
+          onClick={() => void retirerRevue(l.ecritureId)}
+          title={`Revue par ${l.revue.auteur} le ${new Date(l.revue.revueLe).toLocaleDateString('fr-FR')}${l.revue.commentaire ? ` · ${l.revue.commentaire}` : ''}${peutValider ? ' · cliquer pour retirer la revue' : ''}`}
+          className="text-[11px] font-bold text-positive bg-positive-soft border border-positive/40 rounded-[3px] px-1 disabled:cursor-default"
+        >
+          Revue
+        </button>
+      )}
+      {l.premiereLigne && !l.revue && l.enValidee && peutValider && (
+        <button
+          type="button"
+          disabled={revueEnCours}
+          onClick={() => void marquerRevues([l.ecritureId])}
+          title="Marquer cette écriture revue"
+          className="text-[11px] text-text-dim border border-border rounded-[3px] px-1 hover:bg-surface-alt"
+        >
+          Revoir
+        </button>
+      )}
+    </>
+  );
+
+  /** Ouvre le grand livre d'un compte de la balance · le double-clic de la grille, le bouton « Grand livre » de la carte. */
+  const ouvrirGrandLivreDe = (l: { compteId: string; numero: string; intitule: string }) => {
+    setLibellesComptes((m) => ({ ...m, [l.compteId]: `${l.numero} · ${l.intitule}` }));
+    setCompteGrandLivreId(l.compteId);
+    setOnglet('grand-livre');
+  };
+
   const boutonExport = (label: string, onClick: () => void, principal = true) => (
     <button
       onClick={onClick}
@@ -1144,7 +1213,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         </div>
       )}
 
-      {onglet === 'journal' && (
+      {onglet === 'journal' && !telephone && (
         <div
           // `overflow-x-auto` ici, `min-w` sur les lignes · les 830 px de colonnes
           // incompressibles du tableau ne tiennent pas dans les ~326 px utiles d'une
@@ -1217,45 +1286,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 )}
               </span>
               <span className="text-[11px] no-underline flex items-center gap-1.5 justify-end">
-                {l.premiereLigne && l.enBrouillard && (
-                  <span
-                    className="text-[11px] font-bold text-warning bg-warning-soft border border-warning/40 rounded-[3px] px-1"
-                    title="En brouillard · pas encore entrée au livre-journal"
-                  >
-                    Brouillard
-                  </span>
-                )}
-                {l.premiereLigne && l.enSituation && (
-                  <span
-                    className="text-[11px] font-bold text-sel bg-sel-soft border border-sel/40 rounded-[3px] px-1"
-                    title="Écriture de situation · elle ne se valide pas et n'entre jamais au livre-journal"
-                  >
-                    Situation
-                  </span>
-                )}
-                {l.premiereLigne && etatCorrection(l)}
-                {l.premiereLigne && l.revue && (
-                  <button
-                    type="button"
-                    disabled={!peutValider || revueEnCours}
-                    onClick={() => void retirerRevue(l.ecritureId)}
-                    title={`Revue par ${l.revue.auteur} le ${new Date(l.revue.revueLe).toLocaleDateString('fr-FR')}${l.revue.commentaire ? ` · ${l.revue.commentaire}` : ''}${peutValider ? ' · cliquer pour retirer la revue' : ''}`}
-                    className="text-[11px] font-bold text-positive bg-positive-soft border border-positive/40 rounded-[3px] px-1 disabled:cursor-default"
-                  >
-                    Revue
-                  </button>
-                )}
-                {l.premiereLigne && !l.revue && l.enValidee && peutValider && (
-                  <button
-                    type="button"
-                    disabled={revueEnCours}
-                    onClick={() => void marquerRevues([l.ecritureId])}
-                    title="Marquer cette écriture revue"
-                    className="text-[11px] text-text-dim border border-border rounded-[3px] px-1 hover:bg-surface-alt"
-                  >
-                    Revoir
-                  </button>
-                )}
+                {badgesLigne(l)}
               </span>
             </div>
           ))}
@@ -1266,6 +1297,69 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.credit)}</span>
             <span />
             <span />
+          </div>
+        </div>
+      )}
+
+      {/* LE JOURNAL EN CARTES (sous 640 px) · une carte par LIGNE d'écriture, les
+          mêmes données que la grille : date, journal, pièce (ouvre la fiche
+          d'imputation), référence, compte, libellé, Débit, Crédit, pièces
+          jointes et état (brouillard, correction, revue), et les mêmes actions. */}
+      {onglet === 'journal' && telephone && (
+        <div className="border border-border bg-surface shadow-posee rounded-t-none">
+          {lignesJournal.length === 0 && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              {filtreActif ? 'Aucune écriture ne correspond au filtre.' : 'Aucune écriture sur cet exercice.'}
+            </div>
+          )}
+          <ul>
+            {lignesJournal.map((l) => (
+              <li
+                key={l.key}
+                className={`px-3 py-2 border-b border-border/50 text-[11.5px] ${l.premiereLigne ? 'border-t border-t-border' : ''} ${
+                  l.annuleePar ? 'opacity-55 line-through decoration-danger/60' : ''
+                }`}
+              >
+                {l.premiereLigne && (
+                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-dim">
+                    <span className="font-mono">{new Date(l.date).toLocaleDateString('fr-FR')}</span>
+                    {l.dateValeur && (
+                      <span className="font-mono" title="Opération d'une période clôturée, enregistrée au premier jour de la période ouverte (AUDCIF art. 22, 4°)">
+                        valeur {new Date(l.dateValeur).toLocaleDateString('fr-FR')}
+                      </span>
+                    )}
+                    <span className="font-mono">{l.journal}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFicheOuverte(l.ecritureId)}
+                      title="Fiche d'imputation"
+                      className="font-mono min-h-9 px-1 text-sel hover:underline"
+                    >
+                      pièce {l.numeroPiece ?? '·'}
+                    </button>
+                    {l.reference && <span className="font-mono truncate">réf. {l.reference}</span>}
+                    <span className="no-underline">
+                      <BoutonPiecesEcriture
+                        nombre={piecesDeLEcriture(decomptePieces, l.ecritureId)}
+                        onOuvrir={() => setPiecesOuvertes(l.ecritureId)}
+                      />
+                    </span>
+                    <span className="text-[11px] no-underline flex items-center gap-1.5">{badgesLigne(l)}</span>
+                  </div>
+                )}
+                <div className="font-mono" title={l.compte}>
+                  {l.compteNumero}
+                </div>
+                <div className="break-words" title={`${l.compte} · ${l.libelleLigne}`}>
+                  {l.libelleLigne}
+                </div>
+                <PaireDebitCredit debit={l.debit} credit={l.credit} />
+              </li>
+            ))}
+          </ul>
+          <div className="px-3 py-2 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
+            <div className="text-[11px] text-text-dim">Totaux de la période</div>
+            <PaireDebitCredit debit={totaux.debit} credit={totaux.credit} gras />
           </div>
         </div>
       )}
@@ -1367,6 +1461,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               <div className="px-3.5 py-1 border-y border-border-dark bg-chrome font-bold text-[11.5px]">
                 <span className="font-mono">{section.compte.numero}</span> · {section.compte.intitule}
               </div>
+              {!telephone ? (
+                <>
               <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border`}>
                 <span>DATE</span>
                 <span>JRN</span>
@@ -1429,6 +1525,47 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 <span />
                 <span />
               </div>
+                </>
+              ) : (
+                <>
+                  {section.report && (
+                    <CarteRepereGrandLivre
+                      titre={`Report au ${jourFr(section.report.au)}`}
+                      debit={section.report.debit}
+                      credit={section.report.credit}
+                      solde={section.report.debit - section.report.credit}
+                      italique
+                    />
+                  )}
+                  {section.lignes.map((l) => (
+                    <CarteLigneGrandLivre
+                      key={l.id}
+                      donnees={{
+                        cle: l.id,
+                        date: new Date(l.date).toLocaleDateString('fr-FR'),
+                        journal: l.journalCode,
+                        piece: String(l.numeroPiece ?? '·'),
+                        libelle: l.libelle,
+                        debit: l.debit,
+                        credit: l.credit,
+                        solde: l.soldeProgressif,
+                        lettre: l.lettre,
+                        contrepartie: l.contrepartie.length > 0 ? l.contrepartie.join(' + ') : '·',
+                      }}
+                    />
+                  ))}
+                  <CarteRepereGrandLivre
+                    titre={
+                      extrait && exerciceCourant
+                        ? `Total de la période · solde au ${jourFr(bornesDeLaPeriode(exerciceCourant, periode).au)}`
+                        : 'Total mouvements · solde final'
+                    }
+                    debit={section.totalDebit}
+                    credit={section.totalCredit}
+                    solde={section.soldeFinal}
+                  />
+                </>
+              )}
               {cachees > 0 && (
                 <div className="px-3.5 py-1 border-b border-border text-[11px] text-text-dim">
                   dont {cachees} ligne{cachees > 1 ? 's' : ''} lettrée{cachees > 1 ? 's' : ''} masquée{cachees > 1 ? 's' : ''} · débit {montant(debitCache)}, crédit {montant(creditCache)}
@@ -1467,7 +1604,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           />
         </label>
       )}
-      {onglet === 'balance' && (
+      {onglet === 'balance' && !telephone && (
         <div className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto">
           <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 pt-1.5 text-[11px] font-bold text-text-dim bg-surface-alt`}>
             <span />
@@ -1503,15 +1640,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               // DOUBLE-CLIC · le grand livre du compte, comme la balance de
               // Sage. Une ligne regroupée sur son collectif n'en a pas à elle ·
               // ses mouvements sont sur les comptes individuels qu'elle fond.
-              onDoubleClick={
-                l.regroupe
-                  ? undefined
-                  : () => {
-                      setLibellesComptes((m) => ({ ...m, [l.compteId]: `${l.numero} · ${l.intitule}` }));
-                      setCompteGrandLivreId(l.compteId);
-                      setOnglet('grand-livre');
-                    }
-              }
+              onDoubleClick={l.regroupe ? undefined : () => ouvrirGrandLivreDe(l)}
               title={l.regroupe ? undefined : 'Double-cliquer pour ouvrir le grand livre du compte'}
               className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] ${
                 l.regroupe ? '' : 'cursor-pointer hover:bg-surface-alt'
@@ -1564,6 +1693,58 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           })()}
         </div>
       )}
+
+      {/* LA BALANCE EN CARTES (sous 640 px) · une carte par compte, ses trois couples
+          Débit / Crédit dans l'ordre de la balance à six colonnes ; le double-clic
+          vers le grand livre est le bouton « Grand livre » de la carte. */}
+      {onglet === 'balance' && telephone && (() => {
+        const bornes = extrait && exerciceCourant ? bornesDeLaPeriode(exerciceCourant, periode) : null;
+        const titres = {
+          ouverture: bornes ? `Solde au ${jourFr(veille(bornes.du))}` : 'Solde d’ouverture',
+          mouvements: extrait ? 'Mouvements de la période' : 'Mouvements',
+          cloture: bornes ? `Solde au ${jourFr(bornes.au)}` : 'Solde de clôture',
+        };
+        const lignes = balance ?? [];
+        const cumul = (f: (l: LigneBalance) => number) => lignes.reduce((t, l) => t + f(l), 0);
+        const ouv = (l: LigneBalance) => l.reportDebit - l.reportCredit;
+        return (
+          <div className="border border-border bg-surface shadow-posee rounded-t-none">
+            {balance === null && (
+              <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+                {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
+              </div>
+            )}
+            <ul>
+              {lignes.map((l) => {
+                const ouverture = ouv(l);
+                const cloture = l.solde;
+                return (
+                  <CarteCompteBalance
+                    key={l.compteId}
+                    titres={titres}
+                    onGrandLivre={l.regroupe ? undefined : () => ouvrirGrandLivreDe(l)}
+                    donnees={{
+                      cle: l.compteId,
+                      numero: l.numero,
+                      intitule: l.intitule,
+                      mention: l.regroupe ? `${l.regroupe} compte(s) de tiers` : null,
+                      ouverture: { debit: ouverture > 0 ? ouverture : 0, credit: ouverture < 0 ? -ouverture : 0 },
+                      mouvements: mouvementsDuJournal(l),
+                      cloture: { debit: cloture > 0 ? cloture : 0, credit: cloture < 0 ? -cloture : 0 },
+                    }}
+                  />
+                );
+              })}
+              <CarteTotauxBalance
+                titres={titres}
+                ouverture={{ debit: cumul((l) => Math.max(ouv(l), 0)), credit: cumul((l) => Math.max(-ouv(l), 0)) }}
+                mouvements={{ debit: cumul((l) => mouvementsDuJournal(l).debit), credit: cumul((l) => mouvementsDuJournal(l).credit) }}
+                cloture={{ debit: cumul((l) => Math.max(l.solde, 0)), credit: cumul((l) => Math.max(-l.solde, 0)) }}
+              />
+            </ul>
+          </div>
+        );
+      })()}
 
       {reimputationOuverte && (
         <ModaleReimputation

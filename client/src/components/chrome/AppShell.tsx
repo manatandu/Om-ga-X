@@ -872,8 +872,8 @@ export function AppShell() {
         que la charte prévoit sur fond sombre (logo-omegax-signe-blanc.svg).
       */}
       {/* `barre-sur-haut` · la barre se rembourre de l'encoche (index.css), son fond passe dessous.
-            `max-sm:h-11` · 44 px de haut sous 640 px, la hauteur d'un toucher. */}
-      <div className="ecran-seul barre-sur-haut h-[38px] max-sm:h-11 flex items-center justify-between px-3 bg-(--bandeau) text-white text-[11.5px] shrink-0 relative">
+            44 px de haut sous 640 px (index.css), la hauteur d'un toucher. */}
+      <div className="ecran-seul barre-sur-haut flex items-center justify-between px-3 bg-(--bandeau) text-white text-[11.5px] shrink-0 relative">
         <div className="flex items-center gap-2.5 min-w-0">
           <SymboleOmegaX taille={18} className="text-white" />
           {/*
