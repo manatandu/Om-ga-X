@@ -1,0 +1,27 @@
+# AVANCEMENT · design lot 3 (grilles, clavier, focus)
+
+Branche de sauvegarde `travail/design-lot3`, depuis `origin/main` (cf2630cc5). Retirée à l'intégration.
+
+## Fait
+
+- A. Journal, grand livre, balance, balance auxiliaire, balance âgée, plan comptable : rôles de tableau (`table`, `row`, `columnheader`, `cell`, `grid` pour le plan), en-têtes figés (`.grille-longue` + `.entete-fixe`), pied de totaux figé (journal, balance), `aria-sort` et bouton de tri sur balance, balance auxiliaire, balance âgée, plan comptable ; filtre sur balance et balance âgée. Tri et filtre à l'écran seulement (`lib/grille.ts`), mention de tranche (`mentionTranche`).
+- B. Balance et balance auxiliaire : ligne atteignable (`tabIndex=0`), Entrée ouvre le grand livre, double-clic gardé.
+- C. `PortailModale` : piège de focus (`lib/piege-focus.ts`), retour au déclencheur (lu au rendu), `aria-modal` et `aria-labelledby` posés s'ils manquent.
+- D. `Aide` : `aria-describedby`, bulle focalisable (flèche bas), Échap rend le focus au « ? ».
+- E. 37 champs de montant, de cours et de taux en `inputMode="decimal"` ; relevé gelé par `lib/montants-clavier.spec.ts`.
+- F. Anneau de focus à l'encre (`--sel`), blanc sur bandeau, en-têtes pleins et ligne choisie ; contraste mesuré par `focus-visible.spec.ts`.
+- G. Titre de la fenêtre Journal : NON modifié, décision ci-dessous.
+
+## Décisions
+
+- Le journal n'a pas de tri : une pièce est un bloc de lignes que le tri défairait. Le grand livre non plus : chronologie d'un livre obligatoire (AUDCIF art. 22, 6°).
+- Champs signés (« Débit + / crédit − », variations) laissés au clavier complet : le pavé décimal d'iOS n'a pas de signe moins.
+- G : le titre « Journal · Grand livre · Balance » nomme la fenêtre à trois onglets, il n'est pas figé par erreur ; les onglets disent l'actif.
+
+## Commandes
+
+```
+cd client && npx tsc --noEmit && npm test && npm run build
+cd .. && npx tsc --noEmit && npx jest && npm run build
+cd e2e && PW_CHROMIUM=... npx playwright test tests/clavier-grilles.e2e.ts --project=chromium
+```
