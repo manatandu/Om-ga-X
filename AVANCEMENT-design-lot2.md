@@ -30,3 +30,9 @@ aucune fonction nouvelle, le bureau ne change pas d'un pixel.
 
 ## Vérification
 `npx tsc --noEmit`, `npx jest`, `npm run build` à la racine ; `npx tsc --noEmit`, `npm test`, `npm run build` dans `client/`.
+
+## Vérifié (2026-11-03)
+- tsc des deux côtés, `npm run build` des deux côtés, jest racine entier (1077 suites, 15 495 tests ; le seul échec, `cadratins.spec`, venait des deux dossiers de construction de la preuve visuelle, retirés), vitest client 338 fichiers, 2 715 tests.
+- Tests navigateur sous Chromium (ecrans, parcours, ecran-logiciels, rester-connecte, deconnexion-utilisateur, multi-dossiers, pages-legales, sage-l7-largeurs, cloture, lettrage-cloture, logiciels-refus) : 19 passés.
+- Bureau 1440 x 900, avant et après : 0 pixel de différence sur 7 captures sur 9 ; journal 36 px (icône d'export, zone de 10 x 10) et états financiers 102 px, du niveau du bruit de capture à capture mesuré sur origin/main contre lui-même (90 px).
+- Non vérifié : WebKit (non installé ici), vrai appareil, clavier virtuel.
