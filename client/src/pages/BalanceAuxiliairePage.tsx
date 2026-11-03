@@ -131,13 +131,14 @@ export function BalanceAuxiliairePage() {
     );
   };
 
-  // 814 px de colonnes fixes + 8 gouttières de 10 px + 28 px de marges =
-  // 922 px incompressibles, pour ~326 px utiles à 360 px · c'est la grille la
+  // 994 px de colonnes fixes (montants à 136 px · treize chiffres entiers
+  // tiennent en 127 px, voir GRILLE_BALANCE de JournalPage) + 8 gouttières de
+  // 10 px + 28 px de marges = 1 102 px incompressibles, pour ~326 px utiles à 360 px · c'est la grille la
   // plus large du logiciel après le journal général, et ses six colonnes de
   // montants étaient purement inatteignables. Le `min-w` va de pair avec le
   // conteneur défilant posé sur le panneau.
   const grille =
-    'grid grid-cols-[92px_86px_1fr_106px_106px_106px_106px_106px_106px] min-w-[922px] gap-2.5';
+    'grid grid-cols-[92px_86px_1fr_136px_136px_136px_136px_136px_136px] min-w-[1102px] gap-2.5';
 
   return (
     <div className="p-2">
@@ -275,24 +276,24 @@ export function BalanceAuxiliairePage() {
             <span className={`truncate ${c.sansTiers ? 'text-warning italic' : ''}`}>
               {c.sansTiers ? `${c.intitule} · aucun tiers rattaché` : c.nomTiers}
             </span>
-            <span className="font-mono text-right text-text-dim">{montant(c.reportDebit)}</span>
-            <span className="font-mono text-right text-text-dim">{montant(c.reportCredit)}</span>
-            <span className="font-mono text-right">{montant(c.mouvementDebit)}</span>
-            <span className="font-mono text-right">{montant(c.mouvementCredit)}</span>
-            <span className="font-mono text-right font-semibold">{montant(c.soldeDebit)}</span>
-            <span className="font-mono text-right font-semibold">{montant(c.soldeCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeCredit)}</span>
           </div>
         ))}
 
         {donnees && filtre !== 'TOUS' && retenus.length > 0 && (
           <div className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
             <span className="col-span-3">Total des comptes retenus</span>
-            <span className="font-mono text-right">{montant(totalRetenus.reportDebit)}</span>
-            <span className="font-mono text-right">{montant(totalRetenus.reportCredit)}</span>
-            <span className="font-mono text-right">{montant(totalRetenus.mouvementDebit)}</span>
-            <span className="font-mono text-right">{montant(totalRetenus.mouvementCredit)}</span>
-            <span className="font-mono text-right">{montant(totalRetenus.soldeDebit)}</span>
-            <span className="font-mono text-right">{montant(totalRetenus.soldeCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementCredit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeDebit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeCredit)}</span>
           </div>
         )}
         {donnees && donnees.comptes.length > 0 && (

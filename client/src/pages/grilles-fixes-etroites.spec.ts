@@ -414,7 +414,7 @@ describe('les écrans qui débordaient le plus', () => {
     // colonne des pièces jointes (44 px et sa gouttière) porte le minimum à 1 030 px.
     const src = lire('JournalPage.tsx');
     expect(src).toMatch(/className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"/);
-    expect(src).toMatch(/grid-cols-\[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px\] min-w-\[1030px\]/);
+    expect(src).toMatch(/grid-cols-\[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px\] min-w-\[1086px\]/);
   });
 
   it("le registre des immobilisations aussi, avec sa colonne d'amortissement", () => {
@@ -455,21 +455,21 @@ describe('les écrans qui débordaient le plus', () => {
   });
 
   it('la balance auxiliaire rend ses six colonnes de montants atteignables', () => {
-    // 814 px de colonnes + 8 gouttières de 10 px + 28 px = 922 px, la plus
+    // 994 px de colonnes + 8 gouttières de 10 px + 28 px = 1 102 px, la plus
     // large grille du logiciel après le journal général. Elle était invisible
     // du relevé parce que rangée dans une constante.
     const src = lire('BalanceAuxiliairePage.tsx');
     expect(src).toMatch(/border border-border bg-surface shadow-posee overflow-x-auto/);
-    expect(src).toMatch(/grid-cols-\[92px_86px_1fr_106px_106px_106px_106px_106px_106px\] min-w-\[922px\]/);
+    expect(src).toMatch(/grid-cols-\[92px_86px_1fr_136px_136px_136px_136px_136px_136px\] min-w-\[1102px\]/);
   });
 
   it('les deux autres onglets du journal ont enfin le conteneur du premier', () => {
     // La vague précédente avait servi l'onglet JOURNAL GÉNÉRAL et laissé le
-    // GRAND LIVRE (588 px) et la BALANCE (716 px) de côté : leurs grilles
+    // GRAND LIVRE (588 px, 840 depuis les montants à 136 px) et la BALANCE (716 px, 1 154) de côté : leurs grilles
     // vivaient dans des constantes de module.
     const src = lire('JournalPage.tsx');
-    expect(src).toMatch(/grid-cols-\[66px_40px_54px_1\.8fr_92px_92px_98px_54px_1fr\] min-w-\[588px\]/);
-    expect(src).toMatch(/grid-cols-\[80px_1fr_repeat\(6,92px\)\] min-w-\[716px\]/);
+    expect(src).toMatch(/grid-cols-\[66px_40px_54px_minmax\(120px,1\.8fr\)_136px_136px_140px_54px_1fr\] min-w-\[840px\]/);
+    expect(src).toMatch(/grid-cols-\[80px_minmax\(150px,420px\)_repeat\(6,140px\)\] min-w-\[1154px\]/);
     expect(src).toMatch(/onglet === 'grand-livre' && \(\s*\n\s*<div className="border border-border overflow-x-auto">/);
     expect(src).toMatch(/rounded-t-none overflow-x-auto/);
   });
@@ -512,5 +512,35 @@ describe('les écrans qui débordaient le plus', () => {
       // infobulle (titres formels) · il ne change rien à la forme.
       /const bloc = \(titre: string, contenu: React\.ReactNode(?:, fondement\?: string)?\) => \(\s*\n\s*<div className="border border-border bg-surface mb-3 overflow-x-auto">/,
     );
+  });
+});
+
+describe('les colonnes de montants portent treize chiffres entiers', () => {
+  // « 1 234 567 890 123,45 » mesure 127 px à 11,5 px (2026-11-03) · à 92 px les
+  // quatre totaux de la balance se touchaient. Gelé : la PROPRIÉTÉ (une colonne
+  // de montant d'au moins 127 px, chiffres tabulaires, sans retour à la ligne),
+  // lue sur la structure des grilles, jamais une distance en caractères.
+  const lire = (p: string) => readFileSync(join(PAGES, p), 'utf8');
+  const MESURE = 127;
+  const largeurs = (src: string, constante: string) => {
+    const m = new RegExp(`const ${constante} = '([^']+)'`).exec(src);
+    return m ? m[1] : '';
+  };
+  it('la balance, le grand livre et le journal ont des colonnes de montants assez larges', () => {
+    const src = lire('JournalPage.tsx');
+    const balance = largeurs(src, 'GRILLE_BALANCE');
+    const rep = /repeat\(6,(\d+)px\)/.exec(balance);
+    expect(Number(rep?.[1])).toBeGreaterThanOrEqual(MESURE);
+    const gl = largeurs(src, 'GRILLE_GL').replace(/ min-w-.*/, '').split(/[[\]_]/).filter((t) => /^\d+px$/.test(t)).map((t) => parseInt(t, 10));
+    expect(gl.filter((l) => l >= MESURE).length).toBe(3);
+    const corps = src.slice(src.indexOf('function Montant'), src.indexOf('\n}\n', src.indexOf('function Montant')));
+    expect(corps).toMatch(/className="[^"]*tabular-nums whitespace-nowrap/);
+  });
+  it('la balance auxiliaire a ses six colonnes de montants assez larges', () => {
+    const src = lire('BalanceAuxiliairePage.tsx');
+    const g = /grid-cols-\[92px_86px_1fr_((?:\d+px_?)+)\]/.exec(src)?.[1] ?? '';
+    const cols = g.split('_').map((t) => parseInt(t, 10));
+    expect(cols).toHaveLength(6);
+    for (const c of cols) expect(c).toBeGreaterThanOrEqual(MESURE);
   });
 });

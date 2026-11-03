@@ -52,24 +52,34 @@ type Onglet = 'journal' | 'grand-livre' | 'balance';
  * d'une même grille finissent toujours par diverger d'une colonne.
  */
 /**
- * 632 px de colonnes (80 px plus six de 92 px) + 7 gouttières de 8 px + 28 px
- * de marges = 716 px incompressibles, pour ~326 px utiles à 360 px. Le relevé
- * ne les voyait pas : il découpait la définition sur les `_` et ne savait pas
- * lire `repeat(6,92px)`, qui compte pour SIX colonnes en un seul terme · 552
- * px de largeur et cinq gouttières passaient sous la mesure.
+ * LARGEUR DES COLONNES DE MONTANTS · 140 px, mesurés (2026-11-03) · « 1 234 567
+ * 890 123,45 » (treize chiffres entiers, deux décimales, séparateurs) tient en
+ * 127 px à 11,5 px, chiffres tabulaires ; 92 px laissaient les totaux déborder
+ * l'un sur l'autre (« 1 005 559 396,19 » de quatre colonnes collés). Les lignes
+ * de la balance sont autant de grilles séparées (en-tête, lignes, pied) : une
+ * colonne `max-content` y prendrait une largeur par ligne et les colonnes ne
+ * s'aligneraient plus · la largeur est donc fixe et partagée. L'intitulé est
+ * borné (420 px), sans quoi il repousse les chiffres loin de leur compte.
+ *
+ * 80 + 150 (borne basse de l'intitulé) + six de 140 = 1 070 px de colonnes + 7
+ * gouttières de 8 px + 28 px de marges = 1 154 px incompressibles, pour ~326 px
+ * utiles à 360 px (le panneau défile). Le relevé de grilles-fixes-etroites
+ * lit `repeat(6,140px)` et le `minmax` à leur borne basse.
  */
-const GRILLE_BALANCE = 'grid-cols-[80px_1fr_repeat(6,92px)] min-w-[716px]';
+const GRILLE_BALANCE = 'grid-cols-[80px_minmax(150px,420px)_repeat(6,140px)] min-w-[1154px]';
 
 /**
  * Grille du grand livre · même définition pour l'en-tête, les lignes et le pied.
  *
- * 496 px de colonnes fixes + 8 gouttières de 8 px + 28 px de marges = 588 px
- * incompressibles, pour ~326 px utiles à 360 px. La vague du 2026-09-05 avait
+ * 66 + 40 + 54 + 120 (borne basse du libellé) + 136 + 136 + 140 + 54 = 746 px de
+ * colonnes + 8 gouttières de 8 px + 28 px de marges = 838 px incompressibles
+ * (840 posés), pour ~326 px utiles à 360 px · les montants à 136 et 140 px
+ * portent treize chiffres entiers (127 px mesurés, voir GRILLE_BALANCE). La vague du 2026-09-05 avait
  * donné son conteneur à l'onglet JOURNAL GÉNÉRAL et laissé celui-ci de côté :
  * la grille était rangée dans cette constante, et le garde-fou ne suivait pas
  * les variables. Le `min-w` va de pair avec le conteneur défilant du panneau.
  */
-const GRILLE_GL = 'grid-cols-[66px_40px_54px_1.8fr_92px_92px_98px_54px_1fr] min-w-[588px]';
+const GRILLE_GL = 'grid-cols-[66px_40px_54px_minmax(120px,1.8fr)_136px_136px_140px_54px_1fr] min-w-[840px]';
 
 /** Un compte du grand livre complet, tel que le sert `GET /ecritures/grand-livre`. */
 interface SectionGrandLivre {
@@ -88,7 +98,7 @@ interface SectionGrandLivre {
 
 /** Une cellule de montant · le zéro reste VIDE, comme sur une balance imprimée. */
 function Montant({ valeur }: { valeur: number }) {
-  return <span className="font-mono text-right">{montantOuVide(valeur)}</span>;
+  return <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(valeur)}</span>;
 }
 
 function estOnglet(v: string | null): v is Onglet {
@@ -1142,7 +1152,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           // qui emportait alors titre, onglets et boutons hors de l'écran.
           className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"
         >
-          <div className="entete-colonnes grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
+          <div className="entete-colonnes grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
             <span>Date</span>
             <span>Jrn</span>
             <span className="text-right">Pièce</span>
@@ -1162,7 +1172,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {lignesJournal.map((l) => (
             <div
               key={l.key}
-              className={`grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-[3px] items-center text-[11.5px] border-b border-border/50 ${
+              className={`grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-[3px] items-center text-[11.5px] border-b border-border/50 ${
                 l.premiereLigne ? 'border-t border-t-border' : ''
               } ${l.annuleePar ? 'opacity-55 line-through decoration-danger/60' : ''}`}
             >
@@ -1196,8 +1206,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               <span className="truncate" title={`${l.compte} · ${l.libelleLigne}`}>
                 {l.libelleLigne}
               </span>
-              <span className="font-mono text-right">{montantOuVide(l.debit)}</span>
-              <span className="font-mono text-right">{montantOuVide(l.credit)}</span>
+              <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.debit)}</span>
+              <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.credit)}</span>
               <span className="no-underline">
                 {l.premiereLigne && (
                   <BoutonPiecesEcriture
@@ -1249,7 +1259,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               </span>
             </div>
           ))}
-          <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
+          <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
             <span className="col-span-5" />
             <span className="text-right text-[11px] text-text-dim self-center">Totaux de la période</span>
             <span className="font-mono text-right">{montant(totaux.debit)}</span>
@@ -1398,7 +1408,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   </span>
                   <Montant valeur={l.debit} />
                   <Montant valeur={l.credit} />
-                  <span className="font-mono text-right font-semibold">{montant(l.soldeProgressif)}</span>
+                  <span className="font-mono text-right font-semibold tabular-nums whitespace-nowrap">{montant(l.soldeProgressif)}</span>
                   <span className="font-mono text-text-dim">{l.lettre ?? ''}</span>
                   <span className="font-mono text-[11px] text-text-dim truncate">
                     {l.contrepartie.length > 0 ? l.contrepartie.join(' + ') : '·'}
@@ -1415,7 +1425,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 </span>
                 <Montant valeur={section.totalDebit} />
                 <Montant valeur={section.totalCredit} />
-                <span className="font-mono text-right">{montant(section.soldeFinal)}</span>
+                <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(section.soldeFinal)}</span>
                 <span />
                 <span />
               </div>
