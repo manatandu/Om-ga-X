@@ -75,7 +75,10 @@ export function PortailModale({ children }: { children: React.ReactNode }) {
     }
 
     if (!racine.contains(document.activeElement)) {
-      const premier = focalisables()[0];
+      // Jamais un déclencheur de bulle d'aide (`aria-expanded`) : la bulle
+      // s'ouvre au focus, et la modale s'ouvrirait avec une définition dessus
+      // (relevé à la mesure du lot 3, démarrage du dossier).
+      const premier = focalisables().find((el) => !el.hasAttribute('aria-expanded'));
       if (premier) premier.focus({ preventScroll: true });
       else {
         const cible = boite();

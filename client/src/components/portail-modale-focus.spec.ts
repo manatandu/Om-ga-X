@@ -35,6 +35,10 @@ describe('PortailModale · le clavier reste dans la modale', () => {
     expect(source).toContain("setAttribute('aria-labelledby'");
   });
 
+  it('l’entrée du focus ne tombe jamais sur le « ? » d’une aide, qui ouvrirait sa bulle au focus', () => {
+    expect(source).toContain("focalisables().find((el) => !el.hasAttribute('aria-expanded'))");
+  });
+
   it('ne touche pas à Échap · il reste à lib/echap.ts', () => {
     expect(source).not.toContain('Escape');
   });

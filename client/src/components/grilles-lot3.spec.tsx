@@ -97,6 +97,11 @@ describe('pages · rôles, en-têtes figés, clavier', () => {
     expect(src).toContain('onDoubleClick={l.regroupe ? undefined : () => ouvrirGrandLivreDe(l)}');
   });
 
+  it('« aucun compte ne correspond au filtre » ne se dit que d\u2019une balance lue, non vide, et filtrée', () => {
+    const src = page('JournalPage.tsx');
+    expect(src).toContain("balance.length > 0 && balanceAffichee?.length === 0 && filtreBalance.trim() !== ''");
+  });
+
   it('les totaux de la balance restent ceux de la balance entière, filtre ou non', () => {
     const src = page('JournalPage.tsx');
     expect(src).toContain('(balance ?? []).reduce((s, l) => s + f(l), 0)');

@@ -1764,7 +1764,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               })()}
             </div>
           ))}
-          {balance !== null && balanceAffichee?.length === 0 && (
+          {balance !== null && balance.length > 0 && balanceAffichee?.length === 0 && filtreBalance.trim() !== '' && (
             <div role="row">
               <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">
                 Aucun compte ne correspond au filtre.
