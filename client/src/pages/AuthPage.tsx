@@ -259,7 +259,7 @@ export function AuthPage() {
                 onClick={() => setMotDePasseVisible((v) => !v)}
                 aria-label={motDePasseVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                 aria-pressed={motDePasseVisible}
-                className="cible-44 absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[3px] text-text-dim hover:text-text focus-visible:ring-2 focus-visible:ring-sel/40 focus-visible:outline-hidden"
+                className="cible-tactile absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[3px] text-text-dim hover:text-text focus-visible:ring-2 focus-visible:ring-sel/40 focus-visible:outline-hidden"
               >
                 <IconOeil ouvert={motDePasseVisible} />
               </button>

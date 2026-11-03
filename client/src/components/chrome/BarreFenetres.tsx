@@ -73,7 +73,7 @@ export function BarreFenetres() {
                   dévoilement au survol sur les pointeurs fins, et on affiche
                   la croix en permanence partout ailleurs.
                 */
-                className="cible-44 relative mr-1 flex items-center justify-center w-[16px] h-[16px] rounded-[4px] text-text-dim opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 hover:bg-danger hover:text-white transition-opacity duration-150"
+                className="mr-1 flex items-center justify-center w-[16px] h-[16px] pointer-coarse:size-10 rounded-[4px] text-text-dim opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 hover:bg-danger hover:text-white transition-opacity duration-150"
               >
                 <svg viewBox="0 0 16 16" width="9" height="9">
                   <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />

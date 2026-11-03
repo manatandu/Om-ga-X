@@ -383,7 +383,7 @@ export function MenuBar({
             aria-expanded={burger}
             aria-controls="panneau-des-menus"
             onClick={() => (burger ? fermer() : setBurger(true))}
-            className={`cible-44 relative flex size-11 shrink-0 items-center justify-center rounded-[3px] transition-colors duration-100 ${
+            className={`cible-tactile relative flex size-11 shrink-0 items-center justify-center rounded-[3px] transition-colors duration-100 ${
               burger ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
             }`}
           >
@@ -451,7 +451,7 @@ export function MenuBar({
               setOuvert(survolable ? m.titre : ouvert === m.titre ? null : m.titre);
             }}
             onMouseEnter={() => survolerTitre(m.titre)}
-            className={`cible-44 relative rounded-[3px] px-2.5 h-[24px] text-[12px] transition-colors duration-100 ${
+            className={`cible-tactile relative rounded-[3px] px-2.5 h-[24px] text-[12px] transition-colors duration-100 ${
               ouvert === m.titre ? 'bg-sel-soft text-sel' : 'text-text hover:bg-sel-soft hover:text-sel'
             }`}
           >

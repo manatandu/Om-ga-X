@@ -50,7 +50,7 @@ function BoutonChrome({
       title={infobulle ?? titre}
       aria-label={titre}
       onClick={onClick}
-      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-tactile relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       {children}
     </button>
@@ -158,7 +158,7 @@ export function ClocheChrome() {
       title={titreCloche(compteurs)}
       aria-label={titreCloche(compteurs)}
       onClick={() => navigate('/courrier')}
-      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-tactile relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       <IconCloche width={13} height={13} />
       {pastille && (
@@ -209,7 +209,7 @@ export function NotificationsChrome() {
       title={titre}
       aria-label={titre}
       onClick={() => navigate('/notifications')}
-      className="cible-44 relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
+      className="cible-tactile relative flex items-center justify-center w-[22px] h-[22px] max-sm:size-11 rounded-[3px] text-text-dim transition-colors duration-150 hover:bg-chrome-alt hover:text-text"
     >
       <IconInfo width={13} height={13} />
       {pastille && (

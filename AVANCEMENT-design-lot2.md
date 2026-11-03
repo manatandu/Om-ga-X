@@ -24,6 +24,10 @@ aucune fonction nouvelle, le bureau ne change pas d'un pixel.
 - « Bouton grille existant » : celui du chrome rappelle l'écran des logiciels, il n'ouvre pas la barre de l'accueil ; un bouton « Fonctions » (icône grille) est posé en tête de l'accueil sous 640 px.
 - Barre des fenêtres : l'inset du bas est porté par la barre d'état, qui est toujours la dernière ; les côtés par le corps.
 
+## Pointeur grossier ET largeur (à consigner au règlement)
+Les règles `pointer: coarse` (boutons de boîtes de dialogue à 44 px, entrées de menu `pointer-coarse:h-11`, `.btn` min 44, barre de titre de fenêtre 44 px, champs à 16 px) valent AUSSI sur une tablette tactile de plus de 640 px, où le bureau garde sa disposition : le doigt est le même à 800 px qu'à 390. C'est voulu, écrit en tête du bloc CSS, et PAS doublé d'un `max-sm:`.
+`.cible-tactile` (ex `cible-44`) est plafonné à 32 px de pseudo-élément : 44 px recouvrait l'onglet voisin et les libellés autour de l'aide « ? ». La croix d'onglet de la barre des fenêtres prend sa taille réelle (40 x 40) au doigt.
+
 ## Reste (hors lot, listé)
 - Contrôles DANS les fenêtres (Filtrer, Exporter, etc., 30 px), états financiers, saisie des journaux, tous les tableaux autres que les trois ci-dessus : débordent encore à 390 px.
 - WebKit, vrai appareil, clavier virtuel : non vérifiés.

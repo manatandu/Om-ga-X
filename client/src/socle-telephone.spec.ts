@@ -31,6 +31,32 @@ function bloc(css: string, debut: string): string {
   throw new Error(`bloc non refermé : ${debut}`);
 }
 
+/**
+ * L'ÉLÉMENT OUVRANT qui porte une ancre, découpé par STRUCTURE · du `<` qui
+ * précède l'ancre au premier `>` hors accolades et hors guillemets (un `=>` dans
+ * un gestionnaire n'en est pas la fin). Jamais une distance en caractères.
+ */
+function balise(src: string, ancre: string): string {
+  const i = src.indexOf(ancre);
+  expect(i).toBeGreaterThanOrEqual(0);
+  const debut = src.lastIndexOf('<button', i);
+  expect(debut).toBeGreaterThanOrEqual(0);
+  let accolades = 0;
+  let guillemet = '';
+  for (let k = debut; k < src.length; k++) {
+    const c = src[k];
+    if (guillemet) {
+      if (c === guillemet) guillemet = '';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') guillemet = c;
+    else if (c === '{') accolades++;
+    else if (c === '}') accolades--;
+    else if (c === '>' && accolades === 0) return src.slice(debut, k + 1);
+  }
+  throw new Error('balise non refermée');
+}
+
 describe('le cadre suit la hauteur VISIBLE du téléphone', () => {
   it("aucun conteneur d'écran n'est en 100vh (`h-screen`, `min-h-screen`)", () => {
     for (const f of [
@@ -95,10 +121,19 @@ describe('les règles du pointeur grossier (index.css)', () => {
     expect(bloc(css, '  body {')).toMatch(/font-size:\s*12px;/);
   });
 
-  it('zone de toucher de 44 px · pseudo-élément pour les petits contrôles, taille pour les boutons et boîtes', () => {
-    expect(grossier).toMatch(/\.cible-44::after\s*\{[^}]*width:\s*max\(100%,\s*44px\)[^}]*height:\s*max\(100%,\s*44px\)/);
+  it('zone de toucher · pseudo-élément PLAFONNÉ à 32 px (il ne vole pas les voisins), taille réelle pour les boutons et boîtes', () => {
+    // 44 px de pseudo-élément recouvrait l'onglet voisin et les libellés autour de l'aide « ? ».
+    expect(grossier).toMatch(/\.cible-tactile::after\s*\{[^}]*width:\s*max\(100%,\s*32px\)[^}]*height:\s*max\(100%,\s*32px\)/);
+    expect(grossier).not.toMatch(/max\(100%,\s*44px\)/);
     expect(grossier).toMatch(/\.btn\s*\{\s*min-height:\s*44px;/);
     expect(grossier).toMatch(/\[role='dialog'\] button/);
+  });
+
+  it('le bloc dit que le pointeur grossier vaut aussi au-delà de 640 px, et ne le double pas de max-sm', () => {
+    const entete = css.slice(css.indexOf('SOUS UN POINTEUR GROSSIER'), css.indexOf('@media (pointer: coarse) {'));
+    expect(entete).toContain('SUIVENT LE POINTEUR, NON LA LARGEUR');
+    expect(entete).toContain('tablette tactile de');
+    expect(grossier).not.toMatch(/max-sm|@media[^{]*width/);
   });
 
   it('les gestes du navigateur · pas de surbrillance, pas de rebond de page, pas de double-toucher', () => {
@@ -125,9 +160,10 @@ describe('les règles du pointeur grossier (index.css)', () => {
   });
 
   it('les petits contrôles du chrome portent la zone de toucher', () => {
-    expect(lire('components/chrome/Aide.tsx')).toMatch(/cible-44 relative inline-flex/);
-    expect(lire('components/chrome/OutilsChrome.tsx').match(/cible-44 relative/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(lire('components/chrome/BarreFenetres.tsx')).toMatch(/cible-44 relative mr-1/);
+    expect(lire('components/chrome/Aide.tsx')).toMatch(/cible-tactile relative inline-flex/);
+    expect(lire('components/chrome/OutilsChrome.tsx').match(/cible-tactile relative/g)?.length).toBeGreaterThanOrEqual(3);
+    // La croix d'un onglet prend sa TAILLE RÉELLE au doigt · son pseudo-élément aurait capté les touchers de l'onglet voisin (2 px d'écart).
+    expect(lire('components/chrome/BarreFenetres.tsx')).toMatch(/mr-1 flex items-center justify-center w-\[16px\] h-\[16px\] pointer-coarse:size-10/);
   });
 });
 
@@ -241,8 +277,8 @@ describe('la porte de connexion', () => {
   });
 
   it("l'œil est nommé et atteignable au clavier", () => {
-    const oeil = auth.slice(auth.indexOf('setMotDePasseVisible((v) => !v)') - 80, auth.indexOf('<IconOeil'));
+    const oeil = balise(auth, 'setMotDePasseVisible((v) => !v)');
     expect(oeil).toMatch(/aria-label=\{motDePasseVisible \?/);
-    expect(oeil).not.toMatch(/tabIndex=\{-1\}/);
+    expect(oeil).not.toMatch(/tabIndex=/);
   });
 });

@@ -1377,23 +1377,33 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* SOUS UN POINTEUR GROSSIER (le doigt) · la zone de toucher d'au moins 44 px
-   (Apple, Human Interface Guidelines ; WCAG 2.5.8 vise 24 px, le doigt en
-   demande près du double).
-   (1) Les petits contrôles d'une barre dense (aide « ? » de 15 px, boutons de
-       22 px du chrome, titres de menu) gardent leur DESSIN : un pseudo-élément
-       transparent centré étend la zone de toucher à 44 px. L'élément qui le
-       porte est positionné (`relative`, écrit dans le composant).
-   (2) Les contrôles qui peuvent grandir sans rien déplacer de neuf (boutons
-       `.btn`, entrées de menu, boutons de titre de fenêtre) prennent la taille. */
+/* SOUS UN POINTEUR GROSSIER (le doigt) · la zone de toucher (Apple, Human
+   Interface Guidelines : 44 px ; WCAG 2.5.8 : 24 px).
+   (1) Sous 640 px, les contrôles du chrome ont leur vraie taille de 44 px
+       (`max-sm:size-11`, barre de titre, ☰) · rien ne se recouvre.
+   (2) `.cible-tactile` étend la zone d'un petit contrôle SANS toucher à son
+       dessin, par un pseudo-élément transparent plafonné à 32 px : au-delà, il
+       volerait les touchers de ses voisins (l'aide « ? » de 15 px au milieu
+       d'un texte, la croix d'un onglet à 2 px de l'onglet suivant). Un contrôle
+       qui a de la place de chaque côté prend plutôt sa taille réelle (la croix
+       des onglets de la barre des fenêtres : 40 x 40 au doigt). L'élément qui
+       porte la classe est positionné (`relative`, écrit dans le composant).
+   (3) Les contrôles qui peuvent grandir sans rien déplacer de neuf (`.btn`,
+       entrées de menu, barre de titre et boutons de fenêtre, boutons des boîtes
+       de dialogue) prennent la taille.
+   CES RÈGLES SUIVENT LE POINTEUR, NON LA LARGEUR : sur une tablette tactile de
+   plus de 640 px, le bureau garde sa disposition mais ses boutons de dialogue
+   font 44 px, ses entrées de menu 44 px, sa barre de titre de fenêtre 44 px et
+   ses champs 16 px. C'est voulu (le doigt est le même à 800 px qu'à 390) et ce
+   n'est PAS doublé d'un `max-sm:`. */
 @media (pointer: coarse) {
-  .cible-44::after {
+  .cible-tactile::after {
     content: '';
     position: absolute;
     left: 50%;
     top: 50%;
-    width: max(100%, 44px);
-    height: max(100%, 44px);
+    width: max(100%, 32px);
+    height: max(100%, 32px);
     transform: translate(-50%, -50%);
   }
   .btn {
