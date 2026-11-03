@@ -42,7 +42,7 @@ function fichiers(dossier: string, sortie: string[] = []): string[] {
     const chemin = join(dossier, nom);
     if (statSync(chemin).isDirectory()) {
       if (nom !== 'node_modules') fichiers(chemin, sortie);
-    } else if (nom.endsWith('.tsx') && !nom.endsWith('.spec.tsx')) sortie.push(chemin);
+    } else if (/\.tsx?$/.test(nom) && !/\.spec\.tsx?$/.test(nom) && !nom.endsWith('.d.ts')) sortie.push(chemin);
   }
   return sortie;
 }

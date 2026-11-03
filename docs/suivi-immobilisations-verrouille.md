@@ -215,6 +215,33 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   créances d'adhérents (non tranché) ; reprise d'un verrou de garnissage
   tombé après trente minutes, convention d'OmegaX.
 
+- **DESIGN · AUDIT DU 2026-11-03 ET LOT 1 INTÉGRÉ.** Trois relectures (mouvement,
+  finition et robustesse, rendu réel sur 110 captures), notes 7,5, 7 et 6, 7 pour
+  le rendu. Lot 1 intégré (couleurs mortes, totaux de balance, bulle de la date
+  de versement, mouvement des gestes de clavier, survol tactile). RESTE, mineurs
+  de la relecture du lot 1 · `useCompteur` n'a plus d'appelant (le retirer avec
+  son spec, ou l'employer pour une valeur qui change après une action) ; le trait
+  de `BarreFenetres` en `scale-x` écrase ses bouts ronds (imperceptible) ;
+  l'intitulé de la balance est plafonné à 420 px, du blanc à droite sur une
+  fenêtre large ; `mouvement-des-gestes.spec.ts` ancre deux assertions sur une
+  distance lâche (§ 10). RESTE, du mouvement · bulle `Aide` en `anim-menu` (origine
+  au haut au lieu du point d'ancrage), `fenetre-in` à 280 ms, `anim-panneau` des
+  onglets d'accueil, `anim-cascade` des indicateurs, squelette animé sur
+  `background-position`, ombre et ressort globaux, révélations au défilement de
+  la page publique (600 ms, courbe intégrée), reduced-motion « tout à zéro » au
+  lieu de « plus doux ». RESTE, LOT 2 (socle téléphone) · `h-screen` en `h-dvh`,
+  champs à 16 px sous `pointer: coarse` (zoom iOS), cibles de 44 px (l'aide « ? »
+  fait 15 px), `viewport-fit`, `tap-highlight`, `overscroll`, `touch-action`,
+  fenêtres en plein écran et tableaux en cartes sous 640 px, menus derrière un
+  bouton, barre latérale repliée. RESTE, LOT 3 (grilles) · en-têtes figés,
+  `role` de tableau sur journal, grand livre et balance, onglets en `role=tab`,
+  tri et filtre par colonne, ouverture du grand livre au clavier depuis la
+  balance, piège de focus dans `PortailModale`, `aria-describedby` de l'aide,
+  montants en `inputMode` décimal. RESTE, hors lots · paragraphes explicatifs
+  encore à l'écran (fenêtre Personnel, onglet Simulation), route refusée sans
+  message, cadre de fenêtre qui laisse voir un liseré de 7 px, anneau de focus
+  noir resté après un menu, titre de la fenêtre Journal figé, dates en format
+  américain à confirmer avec une langue française.
 - **MULTI-DOSSIERS · LIMITES ÉCRITES (ligne intégrée le 2026-11-01).** (1)
   L'administrateur d'un dossier apprend, par un seul booléen, qu'un
   collaborateur a d'autres dossiers (jamais lesquels ni combien). (2) En ligne

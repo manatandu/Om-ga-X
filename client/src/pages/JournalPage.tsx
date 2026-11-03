@@ -1262,8 +1262,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
             <span className="col-span-5" />
             <span className="text-right text-[11px] text-text-dim self-center">Totaux de la période</span>
-            <span className="font-mono text-right">{montant(totaux.debit)}</span>
-            <span className="font-mono text-right">{montant(totaux.credit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.debit)}</span>
+            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.credit)}</span>
             <span />
             <span />
           </div>

@@ -354,6 +354,18 @@ composants, ses comptes et leur grand livre, en lecture, aux mêmes gardes que
 l'état) ; et la ligne MULTI-DOSSIERS · une personne, une adresse, un mot de
 passe, plusieurs dossiers, chacun avec son rôle, son profil, ses journaux et
 ses logiciels (§ 8).
+Puis, le 2026-11-03, la REPRISE DU DESIGN, lot 1 (« Oui, commence par le lot 1 »,
+après l'audit de l'interface rendu avec les compétences d'Emil Kowalski) · des
+CORRECTIFS, aucune fonction nouvelle : les couleurs `accent` et `success`, que le
+thème ne déclarait pas et que le code employait soixante-deux fois sans effet,
+remplacées par l'encre `sel` et `positive` (aucune couleur d'accent ajoutée, la
+charte l'interdit ; `lib/couleurs-declarees.spec.ts` refuse d'en réintroduire),
+les colonnes de montants de la balance, du grand livre et du journal assez larges
+pour treize chiffres entiers, l'explication de la date de versement de la saisie
+dans sa bulle d'aide, le mouvement retiré des gestes de clavier ou très
+fréquents, les survols limités au pointeur de souris. Les lots 2 (socle
+téléphone) et 3 (grilles, enfermement du clavier dans les modales) attendent
+son accord.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
