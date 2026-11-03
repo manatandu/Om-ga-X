@@ -1328,7 +1328,7 @@ html {
 }
 
 /* Pas de rebond de page ni d'actualisation par tirage : l'application tient
-   dans `h-dvh` et défile dans ses propres conteneurs (`overscroll-contain` sur
+   dans `h-dvh` et défile dans ses propres conteneurs (`pointer-coarse:overscroll-contain` sur
    chacun, pour que le bout d'une liste ne tire pas la page). Cela ne bloque
    JAMAIS un défilement · seul le chaînage au parent est coupé. */
 html,
@@ -1398,6 +1398,14 @@ body {
   }
   .btn {
     min-height: 44px;
+  }
+  /* Les boîtes de dialogue : leurs boutons (croix de 18 x 12 px, « Fermer » de
+     24 px) prennent la zone de toucher. Une boîte n'est pas une grille dense ;
+     les boutons de FENÊTRE (formulaires, listes) restent à leur taille, au lot 3. */
+  [role='dialog'] button,
+  [role='dialog'] [role='button'] {
+    min-height: 44px;
+    min-width: 44px;
   }
 
   /* iOS ZOOME LA PAGE quand un champ de moins de 16 px reçoit le focus, et ne

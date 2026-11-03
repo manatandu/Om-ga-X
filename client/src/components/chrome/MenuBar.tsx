@@ -399,7 +399,7 @@ export function MenuBar({
               id="panneau-des-menus"
               role="menu"
               aria-label="Menus"
-              className="absolute left-2 right-2 top-full mt-1 z-30 rounded-[4px] border border-border panneau-menu p-1 max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain"
+              className="absolute left-2 right-2 top-full mt-1 z-30 rounded-[4px] border border-border panneau-menu p-1 max-h-[calc(100dvh-9rem)] overflow-y-auto pointer-coarse:overscroll-contain"
             >
               {menus.map((m) => {
                 const deplie = ouvert === m.titre;

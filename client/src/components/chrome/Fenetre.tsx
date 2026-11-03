@@ -297,7 +297,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       </div>
 
       {/* --- Contenu -------------------------------------------------------- */}
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain bg-(--fenetre)">
+      <div className="flex-1 min-h-0 overflow-auto pointer-coarse:overscroll-contain bg-(--fenetre)">
         <LimiteErreur titreFenetre={fenetre.titre}>
           {/* La clé porte le compteur d'Actualiser : l'incrémenter remonte le
               contenu, qui recharge ses données · le F5 de Sage.

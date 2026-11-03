@@ -951,7 +951,7 @@ export function AppShell() {
       <main className="relative z-0 flex-1 min-h-0 overflow-hidden">
         {/* `inert` tant que l'écran des logiciels est posé · ni le clavier ni
             un lecteur d'écran n'atteignent ce qu'il recouvre. */}
-        <div className="absolute inset-0 overflow-auto overscroll-contain" {...(ecranAffiche ? { inert: '' } : {})}>
+        <div className="absolute inset-0 overflow-auto pointer-coarse:overscroll-contain" {...(ecranAffiche ? { inert: '' } : {})}>
           {utilisateur?.role !== 'GESTIONNAIRE_PAIE' && (
             <LimiteErreur titreFenetre="Accueil">
               <AccueilPage />

@@ -342,7 +342,7 @@ export function AccueilPage() {
       <nav
         id="barre-verticale"
         aria-label="Barre verticale"
-        className={`${barreOuverte ? 'max-sm:max-h-[60dvh]' : 'max-sm:hidden'} md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-(--bandeau) bg-(--bandeau) text-white flex flex-col min-h-0 overflow-y-auto overscroll-contain`}
+        className={`${barreOuverte ? 'max-sm:max-h-[60dvh]' : 'max-sm:hidden'} md:w-[236px] shrink-0 border-b md:border-b-0 md:border-r border-(--bandeau) bg-(--bandeau) text-white flex flex-col min-h-0 overflow-y-auto pointer-coarse:overscroll-contain`}
       >
         {GROUPES.map((groupe) => {
           const tuiles = tuilesVisibles(groupe);

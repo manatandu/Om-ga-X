@@ -27,7 +27,7 @@ export function BarreFenetres() {
       Windows cherche déjà.
     */
     <div className="ecran-seul relative z-20 h-[34px] pointer-coarse:h-11 shrink-0 flex items-center gap-1 px-2 bg-surface border-t border-border">
-      <div className="flex-1 min-w-0 flex items-center gap-0.5 overflow-x-auto overscroll-contain h-full">
+      <div className="flex-1 min-w-0 flex items-center gap-0.5 overflow-x-auto pointer-coarse:overscroll-contain h-full">
         {onglets.map((f) => {
           const active = f.cle === cleActive;
           const reduite = f.etat === 'reduite';
