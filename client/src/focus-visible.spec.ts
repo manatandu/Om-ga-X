@@ -33,7 +33,7 @@ describe('focus visible', () => {
   it('l’encre fait au moins 3:1 sur chaque fond où l’anneau se pose', () => {
     const sel = jeton('--a-600'); // --sel: var(--a-600)
     expect(css).toMatch(/--sel: var\(--a-600\);/);
-    for (const fond of ['--bg', '--fenetre']) expect(contraste(sel, jeton(fond)), fond).toBeGreaterThanOrEqual(3);
+    for (const fond of ['--bg', '--fenetre']) expect(contraste(sel, jeton(fond))).toBeGreaterThanOrEqual(3);
     expect(contraste(sel, '#ffffff')).toBeGreaterThanOrEqual(3);
   });
 

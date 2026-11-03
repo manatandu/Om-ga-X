@@ -25,3 +25,10 @@ cd client && npx tsc --noEmit && npm test && npm run build
 cd .. && npx tsc --noEmit && npx jest && npm run build
 cd e2e && PW_CHROMIUM=... npx playwright test tests/clavier-grilles.e2e.ts --project=chromium
 ```
+
+## Vérifications
+
+- Client : tsc, vitest 2772 tests (345 fichiers), build verts. Racine : tsc, build verts ; jest entier 15538 tests, 2 échecs (spec de la balance âgée et `montants-clavier`, lus par jest racine) corrigés puis repassés seuls au vert.
+- e2e Chromium seul (`tests/clavier-grilles.e2e.ts`, 3 parcours) verts ; WebKit non rejoué.
+- Mesure avant/après (Playwright 1440x900 et 390x844, dossier vide) : journal 15 px, plan comptable 533 px (ancrage des lignes en div), balance 34 000 px (champ de filtre et en-têtes), mobile 2 à 1324 px.
+- Relevé à la mesure : le focus initial de la modale tombait sur le « ? » et ouvrait sa bulle · corrigé (saute les éléments `aria-expanded`).

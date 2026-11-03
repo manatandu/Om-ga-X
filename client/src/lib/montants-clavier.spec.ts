@@ -101,7 +101,7 @@ describe('champs de montant · clavier numérique', () => {
   it('les exceptions signées existent encore (la liste ne ment pas)', () => {
     for (const k of Object.keys(SIGNES)) {
       const [fichier, extrait] = k.split(' :: ');
-      expect(relevees.some((r) => r.fichier === fichier && r.balise.includes(extrait)), k).toBe(true);
+      expect([k, relevees.some((r) => r.fichier === fichier && r.balise.includes(extrait))]).toEqual([k, true]);
     }
   });
 
