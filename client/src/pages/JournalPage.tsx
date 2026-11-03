@@ -17,6 +17,8 @@ import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
 import { masquerLesLettrees } from '../lib/grand-livre-sans-lettrees';
 import { montant, montantOuVide } from '../lib/montants';
+import { BoutonTri, FiltreGrille, attributsEntete } from '../components/GrilleOutils';
+import { filtrerLignes, trierLignes, type EtatTri } from '../lib/grille';
 import { useSous640 } from '../lib/media';
 import {
   CarteCompteBalance,
@@ -106,7 +108,11 @@ interface SectionGrandLivre {
 
 /** Une cellule de montant · le zéro reste VIDE, comme sur une balance imprimée. */
 function Montant({ valeur }: { valeur: number }) {
-  return <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(valeur)}</span>;
+  return (
+    <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">
+      {montantOuVide(valeur)}
+    </span>
+  );
 }
 
 function estOnglet(v: string | null): v is Onglet {
@@ -204,6 +210,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [balanceLue, setBalanceLue] = useState<Lu<(LigneBalance & { regroupe?: number })[]> | null>(null);
   // Balance générale façon Sage · les tiers fondus sur leur compte collectif.
   const [regrouperTiers, setRegrouperTiers] = useState(false);
+  // Tri et filtre de la BALANCE, à l'écran seulement · sur les lignes lues
+  // (`lib/grille.ts`). Le journal garde l'ordre des pièces (une pièce est un
+  // bloc de lignes que le tri défairait) et le grand livre sa chronologie,
+  // livre obligatoire (AUDCIF art. 22, 6°).
+  const [triBalance, setTriBalance] = useState<EtatTri | null>(null);
+  const [filtreBalance, setFiltreBalance] = useState('');
   const [journaux, setJournaux] = useState<Journal[]>([]);
   const [compteGrandLivreId, setCompteGrandLivreId] = useState(() => compteDeLAdresse(adresse) ?? '');
   // Présentation du grand livre exporté et contenu de la balance exportée ·
@@ -244,6 +256,26 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const cleBalance = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode, regrouperTiers) : '';
   const cleGrandLivre = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode) : '';
   const balance = lueePour(balanceLue, cleBalance);
+  const colonnesBalance = useMemo(
+    () => ({
+      numero: (l: LigneBalance) => l.numero,
+      intitule: (l: LigneBalance) => l.intitule,
+      ouvD: (l: LigneBalance) => Math.max(l.reportDebit - l.reportCredit, 0),
+      ouvC: (l: LigneBalance) => Math.max(l.reportCredit - l.reportDebit, 0),
+      movD: (l: LigneBalance) => mouvementsDuJournal(l).debit,
+      movC: (l: LigneBalance) => mouvementsDuJournal(l).credit,
+      cloD: (l: LigneBalance) => Math.max(l.solde, 0),
+      cloC: (l: LigneBalance) => Math.max(-l.solde, 0),
+    }),
+    [],
+  );
+  // Les totaux généraux restent ceux de la balance ENTIÈRE (`balance`) · un
+  // filtre ne change pas ce que la balance totalise.
+  const balanceAffichee = useMemo(() => {
+    if (!balance) return balance;
+    const filtrees = filtrerLignes(balance, filtreBalance, (l) => [l.numero, l.intitule]);
+    return trierLignes(filtrees, triBalance, colonnesBalance) as typeof balance;
+  }, [balance, filtreBalance, triBalance, colonnesBalance]);
   const grandLivre = lueePour(grandLivreLu, cleGrandLivre);
   /** Le motif du refus du grand livre COMPLET, quand son volume dépasse une fenêtre. */
   const [refusGrandLivre, setRefusGrandLivre] = useState<string | null>(null);
@@ -1220,33 +1252,38 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           // incompressibles du tableau ne tiennent pas dans les ~326 px utiles d'une
           // fenêtre à 360 px, et sans conteneur le débordement remontait à la fenêtre,
           // qui emportait alors titre, onglets et boutons hors de l'écran.
-          className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"
+          className="border border-border bg-surface shadow-posee rounded-t-none grille-longue"
+          role="table"
+          aria-label="Journal des écritures"
         >
-          <div className="entete-colonnes grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
-            <span>Date</span>
-            <span>Jrn</span>
-            <span className="text-right">Pièce</span>
-            <span>Référence</span>
-            <span>N° compte</span>
-            <span>Libellé écriture</span>
-            <span className="text-right">Débit</span>
-            <span className="text-right">Crédit</span>
-            <span title="Pièces jointes">PJ</span>
-            <span title="AUDCIF, art. 20">CORRECTION</span>
+          <div role="row" className="entete-colonnes entete-fixe grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
+            <span role="columnheader">Date</span>
+            <span role="columnheader">Jrn</span>
+            <span role="columnheader" className="text-right">Pièce</span>
+            <span role="columnheader">Référence</span>
+            <span role="columnheader">N° compte</span>
+            <span role="columnheader">Libellé écriture</span>
+            <span role="columnheader" className="text-right">Débit</span>
+            <span role="columnheader" className="text-right">Crédit</span>
+            <span role="columnheader" title="Pièces jointes">PJ</span>
+            <span role="columnheader" title="AUDCIF, art. 20">CORRECTION</span>
           </div>
           {lignesJournal.length === 0 && (
-            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-              {filtreActif ? 'Aucune écriture ne correspond au filtre.' : 'Aucune écriture sur cet exercice.'}
+            <div role="row">
+              <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">
+                {filtreActif ? 'Aucune écriture ne correspond au filtre.' : 'Aucune écriture sur cet exercice.'}
+              </div>
             </div>
           )}
           {lignesJournal.map((l) => (
             <div
               key={l.key}
+              role="row"
               className={`grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-[3px] items-center text-[11.5px] border-b border-border/50 ${
                 l.premiereLigne ? 'border-t border-t-border' : ''
               } ${l.annuleePar ? 'opacity-55 line-through decoration-danger/60' : ''}`}
             >
-              <span className="font-mono text-[11px] text-text-dim">
+              <span role="cell" className="font-mono text-[11px] text-text-dim">
                 {l.premiereLigne ? new Date(l.date).toLocaleDateString('fr-FR') : ''}
                 {l.premiereLigne && l.dateValeur && (
                   <span
@@ -1257,8 +1294,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   </span>
                 )}
               </span>
-              <span className="font-mono text-text-dim">{l.premiereLigne ? l.journal : ''}</span>
-              <span className="font-mono text-[11px] text-text-dim text-right">
+              <span role="cell" className="font-mono text-text-dim">{l.premiereLigne ? l.journal : ''}</span>
+              <span role="cell" className="font-mono text-[11px] text-text-dim text-right">
                 {/* La fiche d'imputation (ligne microfina-m1) · la pièce avec sa
                     saisie, son visa et sa validation, imprimable. */}
                 {l.premiereLigne ? (
@@ -1269,16 +1306,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   ''
                 )}
               </span>
-              <span className="font-mono text-[11px] text-text-dim truncate">{l.premiereLigne ? l.reference : ''}</span>
-              <span className="font-mono" title={l.compte}>
+              <span role="cell" className="font-mono text-[11px] text-text-dim truncate">{l.premiereLigne ? l.reference : ''}</span>
+              <span role="cell" className="font-mono" title={l.compte}>
                 {l.compteNumero}
               </span>
-              <span className="truncate" title={`${l.compte} · ${l.libelleLigne}`}>
+              <span role="cell" className="truncate" title={`${l.compte} · ${l.libelleLigne}`}>
                 {l.libelleLigne}
               </span>
-              <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.debit)}</span>
-              <span className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.credit)}</span>
-              <span className="no-underline">
+              <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.debit)}</span>
+              <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montantOuVide(l.credit)}</span>
+              <span role="cell" className="no-underline">
                 {l.premiereLigne && (
                   <BoutonPiecesEcriture
                     nombre={piecesDeLEcriture(decomptePieces, l.ecritureId)}
@@ -1286,18 +1323,18 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   />
                 )}
               </span>
-              <span className="text-[11px] no-underline flex items-center gap-1.5 justify-end">
+              <span role="cell" className="text-[11px] no-underline flex items-center gap-1.5 justify-end">
                 {badgesLigne(l)}
               </span>
             </div>
           ))}
-          <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
-            <span className="col-span-5" />
-            <span className="text-right text-[11px] text-text-dim self-center">Totaux de la période</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.debit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.credit)}</span>
-            <span />
-            <span />
+          <div role="row" className="pied-fixe grid grid-cols-[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px] min-w-[1086px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
+            <span role="cell" className="col-span-5" />
+            <span role="cell" className="text-right text-[11px] text-text-dim self-center">Totaux de la période</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.debit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totaux.credit)}</span>
+            <span role="cell" />
+            <span role="cell" />
           </div>
         </div>
       )}
@@ -1367,7 +1404,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       )}
 
       {onglet === 'grand-livre' && (
-        <div className="border border-border overflow-x-auto">
+        <div className="border border-border">
           {/*
             LE GRAND LIVRE EST COMPLET PAR DÉFAUT · c'est sa définition même :
             le recueil de TOUS les comptes mouvementés de l'exercice, dans
@@ -1413,6 +1450,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             )}
           </div>
 
+          {/* Le LIVRE défile dans son conteneur, filtre du compte en vue · les
+              en-têtes de colonnes de chaque compte y restent figés (lot 3). */}
+          <div className="grille-longue">
           {refusGrandLivre && (
             <div className="px-3.5 py-2 text-[11.5px] text-warning border-b border-border">
               {refusGrandLivre}
@@ -1464,58 +1504,59 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 <span className="font-mono">{section.compte.numero}</span> · {section.compte.intitule}
               </div>
               {!telephone ? (
-                <>
-              <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border`}>
-                <span>DATE</span>
-                <span>JRN</span>
-                <span className="text-right">Pièce</span>
-                <span>Libellé écriture</span>
-                <span className="text-right">Débit</span>
-                <span className="text-right">Crédit</span>
-                <span className="text-right">Solde progr.</span>
-                <span>LETTRE</span>
-                <span title="Comptes de sens opposé dans la même écriture. Plusieurs comptes = écriture N débits/M crédits, répartition non déterminable sans information de saisie supplémentaire.">
+                <div role="table" aria-label={`Grand livre du compte ${section.compte.numero} ${section.compte.intitule}`}>
+              <div role="row" className={`entete-fixe grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border`}>
+                <span role="columnheader">DATE</span>
+                <span role="columnheader">JRN</span>
+                <span role="columnheader" className="text-right">Pièce</span>
+                <span role="columnheader">Libellé écriture</span>
+                <span role="columnheader" className="text-right">Débit</span>
+                <span role="columnheader" className="text-right">Crédit</span>
+                <span role="columnheader" className="text-right">Solde progr.</span>
+                <span role="columnheader">LETTRE</span>
+                <span role="columnheader" title="Comptes de sens opposé dans la même écriture. Plusieurs comptes = écriture N débits/M crédits, répartition non déterminable sans information de saisie supplémentaire.">
                   Contrepartie
                 </span>
               </div>
               {section.report && (
                 // LE REPORT À LA VEILLE (ligne export-periode, condition 1) ·
                 // brut, d'où part le solde progressif de la période.
-                <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] italic`}>
-                  <span className="font-mono text-[11px] text-text-dim">{jourFr(section.report.au)}</span>
-                  <span />
-                  <span />
-                  <span>Report au {jourFr(section.report.au)}</span>
+                <div role="row" className={`grid ${GRILLE_GL} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] italic`}>
+                  <span role="cell" className="font-mono text-[11px] text-text-dim">{jourFr(section.report.au)}</span>
+                  <span role="cell" />
+                  <span role="cell" />
+                  <span role="cell">Report au {jourFr(section.report.au)}</span>
                   <Montant valeur={section.report.debit} />
                   <Montant valeur={section.report.credit} />
-                  <span className="font-mono text-right font-semibold">{montant(section.report.debit - section.report.credit)}</span>
-                  <span />
-                  <span />
+                  <span role="cell" className="font-mono text-right font-semibold">{montant(section.report.debit - section.report.credit)}</span>
+                  <span role="cell" />
+                  <span role="cell" />
                 </div>
               )}
               {section.lignes.map((l) => (
                 <div
                   key={l.id}
+                  role="row"
                   className={`grid ${GRILLE_GL} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px]`}
                 >
-                  <span className="font-mono text-[11px] text-text-dim">{new Date(l.date).toLocaleDateString('fr-FR')}</span>
-                  <span className="font-mono text-text-dim">{l.journalCode}</span>
-                  <span className="font-mono text-[11px] text-text-dim text-right">{l.numeroPiece ?? '·'}</span>
-                  <span className="truncate" title={l.libelle}>
+                  <span role="cell" className="font-mono text-[11px] text-text-dim">{new Date(l.date).toLocaleDateString('fr-FR')}</span>
+                  <span role="cell" className="font-mono text-text-dim">{l.journalCode}</span>
+                  <span role="cell" className="font-mono text-[11px] text-text-dim text-right">{l.numeroPiece ?? '·'}</span>
+                  <span role="cell" className="truncate" title={l.libelle}>
                     {l.libelle}
                   </span>
                   <Montant valeur={l.debit} />
                   <Montant valeur={l.credit} />
-                  <span className="font-mono text-right font-semibold tabular-nums whitespace-nowrap">{montant(l.soldeProgressif)}</span>
-                  <span className="font-mono text-text-dim">{l.lettre ?? ''}</span>
-                  <span className="font-mono text-[11px] text-text-dim truncate">
+                  <span role="cell" className="font-mono text-right font-semibold tabular-nums whitespace-nowrap">{montant(l.soldeProgressif)}</span>
+                  <span role="cell" className="font-mono text-text-dim">{l.lettre ?? ''}</span>
+                  <span role="cell" className="font-mono text-[11px] text-text-dim truncate">
                     {l.contrepartie.length > 0 ? l.contrepartie.join(' + ') : '·'}
                   </span>
                 </div>
               ))}
-              <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt border-b border-border-dark text-[11.5px] font-bold`}>
-                <span className="col-span-3" />
-                <span className="text-right text-[11px] text-text-dim self-center">
+              <div role="row" className={`grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt border-b border-border-dark text-[11.5px] font-bold`}>
+                <span role="cell" className="col-span-3" />
+                <span role="cell" className="text-right text-[11px] text-text-dim self-center">
                   {/* Sur un extrait, les totaux sont ceux de la période · le report n'y entre pas. */}
                   {extrait && exerciceCourant
                     ? `Total de la période · solde au ${jourFr(bornesDeLaPeriode(exerciceCourant, periode).au)}`
@@ -1523,11 +1564,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 </span>
                 <Montant valeur={section.totalDebit} />
                 <Montant valeur={section.totalCredit} />
-                <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(section.soldeFinal)}</span>
-                <span />
-                <span />
+                <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(section.soldeFinal)}</span>
+                <span role="cell" />
+                <span role="cell" />
               </div>
-                </>
+                </div>
               ) : (
                 <ul>
                   {section.report && (
@@ -1574,6 +1615,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               )}
             </div>
           ))}
+          </div>
         </div>
       )}
 
@@ -1595,7 +1637,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         additionnent toutes les lignes sans rien compter deux fois.
       */}
       {onglet === 'balance' && (
-        <label className="flex items-center gap-1.5 text-[11.5px] mb-1.5">
+        <div className="flex items-center gap-x-4 gap-y-1 flex-wrap mb-1.5">
+        <label className="flex items-center gap-1.5 text-[11.5px]">
           <input type="checkbox" checked={regrouperTiers} onChange={(e) => setRegrouperTiers(e.target.checked)} />
           Regrouper les tiers sur leur compte collectif
           <Aide
@@ -1604,10 +1647,24 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             source="Sage 100 i7, plan tiers et compte collectif"
           />
         </label>
+        <FiltreGrille
+          valeur={filtreBalance}
+          onChange={setFiltreBalance}
+          etiquette="Filtrer la balance par numéro ou intitulé de compte"
+          lues={balance?.length ?? 0}
+          montrees={balanceAffichee?.length ?? 0}
+        />
+        </div>
       )}
       {onglet === 'balance' && !telephone && (
-        <div className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto">
-          <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 pt-1.5 text-[11px] font-bold text-text-dim bg-surface-alt`}>
+        <div
+          className="border border-border bg-surface shadow-posee rounded-t-none grille-longue"
+          role="table"
+          aria-label="Balance des comptes"
+          aria-colcount={8}
+        >
+          <div role="rowgroup" className="entete-fixe">
+          <div aria-hidden="true" className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 pt-1.5 text-[11px] font-bold text-text-dim bg-surface-alt`}>
             <span />
             <span />
             {/* Sur une période, l'ouverture est le solde à la veille (report
@@ -1620,35 +1677,69 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               {extrait && exerciceCourant ? `Solde au ${jourFr(bornesDeLaPeriode(exerciceCourant, periode).au)}` : 'Solde de clôture'}
             </span>
           </div>
-          <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark`}>
-            <span>N° compte</span>
-            <span>Intitulé du compte</span>
-            <span className="text-right">Débit</span>
-            <span className="text-right">Crédit</span>
-            <span className="text-right">Débit</span>
-            <span className="text-right">Crédit</span>
-            <span className="text-right">Débit</span>
-            <span className="text-right">Crédit</span>
+          <div role="row" className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark`}>
+            <span {...attributsEntete(triBalance, 'numero')}>
+              <BoutonTri cle="numero" tri={triBalance} onTri={setTriBalance}>N° compte</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'intitule')}>
+              <BoutonTri cle="intitule" tri={triBalance} onTri={setTriBalance}>Intitulé du compte</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'ouvD')} className="text-right">
+              <BoutonTri cle="ouvD" tri={triBalance} onTri={setTriBalance} etiquette="Solde d’ouverture · Débit">Débit</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'ouvC')} className="text-right">
+              <BoutonTri cle="ouvC" tri={triBalance} onTri={setTriBalance} etiquette="Solde d’ouverture · Crédit">Crédit</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'movD')} className="text-right">
+              <BoutonTri cle="movD" tri={triBalance} onTri={setTriBalance} etiquette="Mouvements · Débit">Débit</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'movC')} className="text-right">
+              <BoutonTri cle="movC" tri={triBalance} onTri={setTriBalance} etiquette="Mouvements · Crédit">Crédit</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'cloD')} className="text-right">
+              <BoutonTri cle="cloD" tri={triBalance} onTri={setTriBalance} etiquette="Solde de clôture · Débit">Débit</BoutonTri>
+            </span>
+            <span {...attributsEntete(triBalance, 'cloC')} className="text-right">
+              <BoutonTri cle="cloC" tri={triBalance} onTri={setTriBalance} etiquette="Solde de clôture · Crédit">Crédit</BoutonTri>
+            </span>
+          </div>
           </div>
           {balance === null && (
-            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-              {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
+            <div role="row">
+              <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">
+                {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
+              </div>
             </div>
           )}
-          {(balance ?? []).map((l) => (
+          {(balanceAffichee ?? []).map((l) => (
             <div
               key={l.compteId}
+              role="row"
+              // AU CLAVIER (lot 3) · la ligne se atteint par Tab et Entrée ouvre le
+              // grand livre du compte, comme le double-clic. Une ligne regroupée
+              // n'en a pas, donc n'est pas dans l'ordre de tabulation.
+              tabIndex={l.regroupe ? undefined : 0}
+              onKeyDown={
+                l.regroupe
+                  ? undefined
+                  : (e) => {
+                      if (e.key === 'Enter' && e.target === e.currentTarget) {
+                        e.preventDefault();
+                        ouvrirGrandLivreDe(l);
+                      }
+                    }
+              }
               // DOUBLE-CLIC · le grand livre du compte, comme la balance de
               // Sage. Une ligne regroupée sur son collectif n'en a pas à elle ·
               // ses mouvements sont sur les comptes individuels qu'elle fond.
               onDoubleClick={l.regroupe ? undefined : () => ouvrirGrandLivreDe(l)}
-              title={l.regroupe ? undefined : 'Double-cliquer pour ouvrir le grand livre du compte'}
+              title={l.regroupe ? undefined : 'Double-cliquer, ou Entrée, pour ouvrir le grand livre du compte'}
               className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] ${
                 l.regroupe ? '' : 'cursor-pointer hover:bg-surface-alt'
               }`}
             >
-              <span className="font-mono">{l.numero}</span>
-              <span className="truncate" title={l.intitule}>
+              <span role="cell" className="font-mono">{l.numero}</span>
+              <span role="cell" className="truncate" title={l.intitule}>
                 {l.intitule}
                 {l.regroupe ? <span className="text-text-dim"> · {l.regroupe} compte(s) de tiers</span> : null}
               </span>
@@ -1673,6 +1764,13 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               })()}
             </div>
           ))}
+          {balance !== null && balanceAffichee?.length === 0 && (
+            <div role="row">
+              <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">
+                Aucun compte ne correspond au filtre.
+              </div>
+            </div>
+          )}
           {(() => {
             // Toutes les lignes entrent dans les totaux · la balance ne rend
             // plus de sous-totalisation par compte principal, il n'y a donc
@@ -1680,9 +1778,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             const cumul = (f: (l: LigneBalance) => number) => (balance ?? []).reduce((s, l) => s + f(l), 0);
             const ouv = (l: LigneBalance) => l.reportDebit - l.reportCredit;
             return (
-              <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
-                <span />
-                <span className="text-right text-[11px] text-text-dim self-center">Totaux généraux</span>
+              <div role="row" className={`pied-fixe grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
+                <span role="cell" />
+                <span role="cell" className="text-right text-[11px] text-text-dim self-center">
+                  Totaux généraux
+                  {filtreBalance.trim() !== '' && ' (balance entière)'}
+                </span>
                 <Montant valeur={cumul((l) => Math.max(ouv(l), 0))} />
                 <Montant valeur={cumul((l) => Math.max(-ouv(l), 0))} />
                 <Montant valeur={cumul((l) => mouvementsDuJournal(l).debit)} />
@@ -1705,8 +1806,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           mouvements: extrait ? 'Mouvements de la période' : 'Mouvements',
           cloture: bornes ? `Solde au ${jourFr(bornes.au)}` : 'Solde de clôture',
         };
-        const lignes = balance ?? [];
-        const cumul = (f: (l: LigneBalance) => number) => lignes.reduce((t, l) => t + f(l), 0);
+        const lignes = balanceAffichee ?? [];
+        // Les totaux sont ceux de la balance ENTIÈRE, filtre ou non.
+        const cumul = (f: (l: LigneBalance) => number) => (balance ?? []).reduce((t, l) => t + f(l), 0);
         const ouv = (l: LigneBalance) => l.reportDebit - l.reportCredit;
         return (
           <div className="border border-border bg-surface shadow-posee rounded-t-none">

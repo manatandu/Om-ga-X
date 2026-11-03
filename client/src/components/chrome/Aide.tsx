@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { entreeLexique, type CleLexique, type EntreeLexique } from '../../lib/lexique';
 import { useAuth } from '../../lib/auth';
@@ -34,6 +34,10 @@ export function Aide(
   // la souris, seulement au second clic, à Échap ou au clic à l'extérieur ·
   // c'est ce qui permet de lire tranquillement une définition longue.
   const [epinglee, setEpinglee] = useState(false);
+  const idBulle = useId();
+  // Vrai le temps de rendre le focus au « ? » après Échap depuis la bulle · son
+  // `onFocus` rouvrirait sinon la bulle qu'on vient de fermer.
+  const retourSansOuvrir = useRef(false);
   const ancre = useRef<HTMLButtonElement>(null);
   const bulle = useRef<HTMLDivElement>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,6 +82,12 @@ export function Aide(
     if (!ouvert) return;
     // Échap referme la bulle, et la bulle seule (audit final F177).
     const cesserEchap = ecouterEchap(() => {
+      // Échap depuis la bulle · le focus revient au « ? », il ne se perd pas.
+      if (bulle.current?.contains(document.activeElement)) {
+        retourSansOuvrir.current = true;
+        ancre.current?.focus({ preventScroll: true });
+        retourSansOuvrir.current = false;
+      }
       setOuvert(false);
       setEpinglee(false);
       return true;
@@ -111,6 +121,10 @@ export function Aide(
         type="button"
         aria-label={`Aide : ${entree.titre}`}
         aria-expanded={ouvert}
+        // LE LIEN ENTRE LE CONTRÔLE ET LA BULLE (lot 3 du design) · la définition
+        // est lue avec le bouton par un lecteur d'écran, tant que la bulle est
+        // ouverte (elle s'ouvre au focus, comme au survol).
+        aria-describedby={ouvert && pos ? idBulle : undefined}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -128,8 +142,18 @@ export function Aide(
           setOuvert(true);
         }}
         onMouseLeave={fermerBientot}
-        onFocus={() => setOuvert(true)}
+        onFocus={() => {
+          if (!retourSansOuvrir.current) setOuvert(true);
+        }}
         onBlur={fermerBientot}
+        // Flèche bas · le clavier va lire (et faire défiler) une définition longue ;
+        // Tab, lui, n'est pas détourné.
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && ouvert && bulle.current) {
+            e.preventDefault();
+            bulle.current.focus({ preventScroll: true });
+          }
+        }}
         className={`cible-tactile relative inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border text-[11px] font-bold leading-none align-middle transition-colors shrink-0 ${
           ouvert
             ? 'bg-sel text-white border-sel'
@@ -144,11 +168,18 @@ export function Aide(
         createPortal(
           <div
             ref={bulle}
+            id={idBulle}
             role="tooltip"
+            // ATTEIGNABLE AU CLAVIER · une définition longue défile, et une zone
+            // qui défile doit pouvoir recevoir le focus pour être lue au clavier.
+            // Le focus qui passe du « ? » à la bulle ne la ferme pas.
+            tabIndex={0}
+            onFocus={annulerFermeture}
+            onBlur={fermerBientot}
             onMouseEnter={annulerFermeture}
             onMouseLeave={fermerBientot}
             style={{ top: pos.top, left: pos.left, width: 320, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto' }}
-            className="fixed z-60 bg-surface border border-border shadow-flottante rounded-[4px] p-3.5 anim-menu"
+            className="fixed z-60 bg-surface border border-border shadow-flottante rounded-[4px] p-3.5 anim-menu focus-visible:outline-2 focus-visible:outline-(--sel)"
           >
             <div className="text-[11.5px] font-bold text-text mb-1.5">{entree.titre}</div>
             <p className="text-[11.5px] leading-[1.55] text-text-dim">{entree.texte}</p>

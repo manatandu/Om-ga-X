@@ -883,6 +883,56 @@ a:focus-visible {
   box-shadow: none;
 }
 
+/* GRILLES LONGUES (lot 3 du design, 2026-11-03). Un en-tête ne reste en vue que
+   dans le conteneur qui défile : le conteneur d'une grille a donc sa hauteur
+   bornée à l'écran (jamais moins de 18 rem) et défile lui-même, dans les deux
+   sens. Une liste courte n'atteint pas la borne : rien ne change pour elle. */
+.grille-longue {
+  overflow: auto;
+  max-height: max(18rem, calc(100dvh - 15rem));
+}
+.entete-fixe {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.pied-fixe {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+/* Le bouton d'un en-tête triable · il n'a que le dessin du texte qu'il porte. */
+.bouton-tri {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.bouton-tri .marque-tri {
+  font-size: 8px;
+  line-height: 1;
+}
+/* Sur le fond plein d'un en-tête, l'anneau de l'encre s'y fondrait · il est blanc. */
+main table thead th :is(button, a):focus-visible,
+main .entete-colonnes :is(button, a):focus-visible,
+.bouton-tri:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px #fff;
+}
+main table thead th :is(button, a):focus-visible,
+main .entete-colonnes :is(button, a):focus-visible {
+  outline-color: #ffffff;
+  box-shadow: none;
+}
+
 /* Une ligne de tableau survolée doit se distinguer sans clignoter. */
 tbody tr {
   transition: background-color 0.1s var(--t-doux);
@@ -1288,6 +1338,7 @@ tbody tr {
 /* Ligne cliquable d'une grille (indicateurs de l'accueil) · atteignable au
    clavier, et le focus s'y voit comme sur un bouton. */
 tr[tabindex]:focus-visible,
+[role='row'][tabindex]:focus-visible,
 [role='tab']:focus-visible,
 [role='button']:focus-visible,
 summary:focus-visible {

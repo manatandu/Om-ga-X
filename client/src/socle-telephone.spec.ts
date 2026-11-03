@@ -270,7 +270,7 @@ describe('journal, grand livre et balance ont leur carte sous 640 px', () => {
     expect(page).toMatch(/\{onglet === 'journal' && telephone && \(/);
     expect(page).toMatch(/\{onglet === 'balance' && !telephone && \(/);
     expect(page).toMatch(/\{onglet === 'balance' && telephone && \(/);
-    expect(page).toMatch(/\{!telephone \? \(\s*<>/);
+    expect(page).toMatch(/\{!telephone \? \(\s*<div role="table"/);
     expect(page).toContain('<CarteLigneGrandLivre');
   });
 

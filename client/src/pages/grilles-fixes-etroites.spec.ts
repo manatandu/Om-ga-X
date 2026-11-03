@@ -48,7 +48,8 @@ const PAGES = join(__dirname);
  * fois des tableaux déjà défilants (les listes bornées en hauteur de
  * ControlesPage, la balance en lecture de GroupePage).
  */
-const DEFILE = /overflow-(x-|y-)?(auto|scroll)/;
+// `grille-longue` (index.css) est un `overflow: auto` : un conteneur qui défile (lot 3).
+const DEFILE = /overflow-(x-|y-)?(auto|scroll)|grille-longue/;
 
 /** Échelle d'espacement Tailwind employée dans le dépôt, en pixels. */
 const ESPACEMENT: Record<string, number> = {
@@ -413,7 +414,7 @@ describe('les écrans qui débordaient le plus', () => {
     // page partait de 504 px vers la droite, DATE compris. Ligne sage-l6 · la
     // colonne des pièces jointes (44 px et sa gouttière) porte le minimum à 1 030 px.
     const src = lire('JournalPage.tsx');
-    expect(src).toMatch(/className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"/);
+    expect(src).toMatch(/className="border border-border bg-surface shadow-posee rounded-t-none grille-longue"/);
     expect(src).toMatch(/grid-cols-\[68px_46px_52px_92px_120px_1fr_136px_136px_44px_128px\] min-w-\[1086px\]/);
   });
 
@@ -459,7 +460,7 @@ describe('les écrans qui débordaient le plus', () => {
     // large grille du logiciel après le journal général. Elle était invisible
     // du relevé parce que rangée dans une constante.
     const src = lire('BalanceAuxiliairePage.tsx');
-    expect(src).toMatch(/border border-border bg-surface shadow-posee overflow-x-auto/);
+    expect(src).toMatch(/border border-border bg-surface shadow-posee grille-longue/);
     expect(src).toMatch(/grid-cols-\[92px_86px_1fr_136px_136px_136px_136px_136px_136px\] min-w-\[1102px\]/);
   });
 
@@ -470,8 +471,9 @@ describe('les écrans qui débordaient le plus', () => {
     const src = lire('JournalPage.tsx');
     expect(src).toMatch(/grid-cols-\[66px_40px_54px_minmax\(120px,1\.8fr\)_136px_136px_140px_54px_1fr\] min-w-\[840px\]/);
     expect(src).toMatch(/grid-cols-\[80px_minmax\(150px,420px\)_repeat\(6,140px\)\] min-w-\[1154px\]/);
-    expect(src).toMatch(/onglet === 'grand-livre' && \(\s*\n\s*<div className="border border-border overflow-x-auto">/);
-    expect(src).toMatch(/rounded-t-none overflow-x-auto/);
+    expect(src).toMatch(/onglet === 'grand-livre' && \(\s*\n\s*<div className="border border-border">/);
+    expect(src).toMatch(/<div className="grille-longue">/);
+    expect(src).toMatch(/rounded-t-none grille-longue/);
   });
 
   it("le lettrage garde sa colonne LETTRE et son solde atteignables", () => {

@@ -6,6 +6,8 @@ import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { montantOuVide as montant } from '../lib/montants';
+import { BoutonTri, attributsEntete } from '../components/GrilleOutils';
+import { trierLignes, type EtatTri } from '../lib/grille';
 import {
   adresseGrandLivreDuCompte,
   cheminBalanceTiers,
@@ -84,7 +86,25 @@ export function BalanceAuxiliairePage() {
   const [erreur, setErreur] = useState<string | null>(null);
   // Ligne gl-saisie, fonction 57 · mouvementés, soldés, non soldés (lib/filtre-balance-tiers.ts).
   const [filtre, setFiltre] = useState<FiltreBalanceTiers>('TOUS');
-  const retenus = useMemo(() => (donnees ? filtrerBalance(donnees.comptes, filtre) : []), [donnees, filtre]);
+  // Tri par clic sur l'en-tête, à l'écran seulement et sur les comptes lus ·
+  // la liste est entière (aucune tranche), les totaux restent ceux de la balance.
+  const [tri, setTri] = useState<EtatTri | null>(null);
+  const retenusLus = useMemo(() => (donnees ? filtrerBalance(donnees.comptes, filtre) : []), [donnees, filtre]);
+  const retenus = useMemo(
+    () =>
+      trierLignes(retenusLus, tri, {
+        numero: (c) => c.numero,
+        codeTiers: (c) => c.codeTiers,
+        nom: (c) => (c.sansTiers ? c.intitule : c.nomTiers),
+        reportDebit: (c) => c.reportDebit,
+        reportCredit: (c) => c.reportCredit,
+        mouvementDebit: (c) => c.mouvementDebit,
+        mouvementCredit: (c) => c.mouvementCredit,
+        soldeDebit: (c) => c.soldeDebit,
+        soldeCredit: (c) => c.soldeCredit,
+      }) as typeof retenusLus,
+    [retenusLus, tri],
+  );
   const totalRetenus = useMemo(() => totalDesRetenus(retenus), [retenus]);
 
   useEffect(() => {
@@ -237,76 +257,113 @@ export function BalanceAuxiliairePage() {
         <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2 mb-2.5">{erreur}</div>
       )}
 
-      <div className="border border-border bg-surface shadow-posee overflow-x-auto">
+      <div
+        className="border border-border bg-surface shadow-posee grille-longue"
+        role="table"
+        aria-label="Balance auxiliaire des tiers"
+        aria-colcount={9}
+      >
         <div
-          className={`${grille} px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark`}
+          role="row"
+          className={`entete-fixe ${grille} px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark`}
         >
-          <span>Code compte</span>
-          <span>Code tiers</span>
-          <span>Libellé tiers</span>
-          <span className="text-right">Solde débit av. pér.</span>
-          <span className="text-right">Solde crédit av. pér.</span>
-          <span className="text-right">Débit période</span>
-          <span className="text-right">Crédit période</span>
-          <span className="text-right">Solde débit</span>
-          <span className="text-right">Solde crédit</span>
+          <span {...attributsEntete(tri, 'numero')}>
+            <BoutonTri cle="numero" tri={tri} onTri={setTri}>Code compte</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'codeTiers')}>
+            <BoutonTri cle="codeTiers" tri={tri} onTri={setTri}>Code tiers</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'nom')}>
+            <BoutonTri cle="nom" tri={tri} onTri={setTri}>Libellé tiers</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'reportDebit')} className="text-right">
+            <BoutonTri cle="reportDebit" tri={tri} onTri={setTri}>Solde débit av. pér.</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'reportCredit')} className="text-right">
+            <BoutonTri cle="reportCredit" tri={tri} onTri={setTri}>Solde crédit av. pér.</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'mouvementDebit')} className="text-right">
+            <BoutonTri cle="mouvementDebit" tri={tri} onTri={setTri}>Débit période</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'mouvementCredit')} className="text-right">
+            <BoutonTri cle="mouvementCredit" tri={tri} onTri={setTri}>Crédit période</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'soldeDebit')} className="text-right">
+            <BoutonTri cle="soldeDebit" tri={tri} onTri={setTri}>Solde débit</BoutonTri>
+          </span>
+          <span {...attributsEntete(tri, 'soldeCredit')} className="text-right">
+            <BoutonTri cle="soldeCredit" tri={tri} onTri={setTri}>Solde crédit</BoutonTri>
+          </span>
         </div>
 
         {donnees && donnees.comptes.length === 0 && (
-          <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-            Aucun compte de tiers mouvementé sur cet exercice.
+          <div role="row">
+            <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              Aucun compte de tiers mouvementé sur cet exercice.
+            </div>
           </div>
         )}
 
         {donnees && donnees.comptes.length > 0 && retenus.length === 0 && (
-          <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Aucun compte {LIBELLE_FILTRE[filtre].toLowerCase()} sur cet exercice.</div>
+          <div role="row">
+            <div role="cell" className="px-3.5 py-4 text-[11.5px] text-text-dim">Aucun compte {LIBELLE_FILTRE[filtre].toLowerCase()} sur cet exercice.</div>
+          </div>
         )}
 
         {retenus.map((c) => (
           <div
             key={c.compteId}
+            role="row"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              // Entrée ouvre le grand livre du tiers, comme le double-clic (lot 3).
+              if (e.key === 'Enter' && e.target === e.currentTarget) {
+                e.preventDefault();
+                navigate(adresseGrandLivreDuCompte(c.compteId));
+              }
+            }}
             // DOUBLE-CLIC · le grand livre du tiers, onglet Grand livre de la
             // fenêtre Journal filtré sur son compte.
             onDoubleClick={() => navigate(adresseGrandLivreDuCompte(c.compteId))}
-            title="Double-cliquer pour ouvrir le grand livre du tiers"
+            title="Double-cliquer, ou Entrée, pour ouvrir le grand livre du tiers"
             className={`${grille} px-3.5 py-[4px] items-center border-b border-border/50 text-[11.5px] cursor-pointer hover:bg-surface-alt`}
           >
-            <span className="font-mono">{c.numero}</span>
-            <span className="font-mono text-text-dim">{c.codeTiers}</span>
-            <span className={`truncate ${c.sansTiers ? 'text-warning italic' : ''}`}>
+            <span role="cell" className="font-mono">{c.numero}</span>
+            <span role="cell" className="font-mono text-text-dim">{c.codeTiers}</span>
+            <span role="cell" className={`truncate ${c.sansTiers ? 'text-warning italic' : ''}`}>
               {c.sansTiers ? `${c.intitule} · aucun tiers rattaché` : c.nomTiers}
             </span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportCredit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementCredit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeCredit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap text-text-dim">{montant(c.reportCredit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(c.mouvementCredit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap font-semibold">{montant(c.soldeCredit)}</span>
           </div>
         ))}
 
         {donnees && filtre !== 'TOUS' && retenus.length > 0 && (
-          <div className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
-            <span className="col-span-3">Total des comptes retenus</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportCredit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementCredit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeDebit)}</span>
-            <span className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeCredit)}</span>
+          <div role="row" className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
+            <span role="cell" className="col-span-3">Total des comptes retenus</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.reportCredit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.mouvementCredit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeDebit)}</span>
+            <span role="cell" className="font-mono text-right tabular-nums whitespace-nowrap">{montant(totalRetenus.soldeCredit)}</span>
           </div>
         )}
         {donnees && donnees.comptes.length > 0 && (
-          <div className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
-            <span title={filtre === 'TOUS' ? undefined : 'Tous les comptes, filtre ou non'}>SOLDE</span>
-            <span />
-            <span />
-            <span className="font-mono text-right">{montant(donnees.totaux.reportDebit)}</span>
-            <span className="font-mono text-right">{montant(donnees.totaux.reportCredit)}</span>
-            <span className="font-mono text-right">{montant(donnees.totaux.mouvementDebit)}</span>
-            <span className="font-mono text-right">{montant(donnees.totaux.mouvementCredit)}</span>
-            <span className="font-mono text-right">{montant(donnees.totaux.soldeDebit)}</span>
-            <span className="font-mono text-right">{montant(donnees.totaux.soldeCredit)}</span>
+          <div role="row" className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
+            <span role="cell" title={filtre === 'TOUS' ? undefined : 'Tous les comptes, filtre ou non'}>SOLDE</span>
+            <span role="cell" />
+            <span role="cell" />
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.reportDebit)}</span>
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.reportCredit)}</span>
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.mouvementDebit)}</span>
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.mouvementCredit)}</span>
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.soldeDebit)}</span>
+            <span role="cell" className="font-mono text-right">{montant(donnees.totaux.soldeCredit)}</span>
           </div>
         )}
       </div>
