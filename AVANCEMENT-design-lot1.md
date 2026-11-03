@@ -11,7 +11,9 @@ Fait
 
 - 5. Survol : toutes les règles :hover écrites à la main de index.css (btn-principal, btn-neutre, btn-fantome, onglet, boutons de main, lignes de tableau, carte-indicateur, cadre public) gardées par (hover: hover) and (pointer: fine) ; restent nues, par exception fermée, les barres de défilement et la neutralisation sous mouvement réduit ; spec lib/survol-tactile.spec.ts.
 
-Reste : point 6 de la demande.
+- 6. Preuve visuelle : captures AVANT (origine/main) et APRÈS dans le scratchpad design-lot1 ; e2e ecrans + parcours sous Chromium : 5 passés ; jest racine : tout vert après correction des specs (jest n'accepte pas de message en second argument d'expect).
+
+Reste : rien dans ce lot. Aucune intégration sur main. de la demande.
 
 Décisions
 - Aucune couleur déclarée ; contrastes mesurés : sel/blanc 8,32:1, sel sur sel/10 7,08:1, positive/blanc 6,12:1, positive sur positive-soft 5,45:1.

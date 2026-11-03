@@ -50,11 +50,11 @@ function fichiers(dossier: string, sortie: string[] = []): string[] {
 describe('couleurs employées et couleurs déclarées', () => {
   it('le thème ne déclare aucune couleur d accent ni de succès', () => {
     for (const nom of ABSENTS) {
-      expect(declares.has(nom), nom).toBe(false);
-      expect(declares.has(`${nom}-soft`), `${nom}-soft`).toBe(false);
+      expect(declares.has(nom)).toBe(false);
+      expect(declares.has(`${nom}-soft`)).toBe(false);
     }
     // Les jetons de remplacement existent bien.
-    for (const nom of ['sel', 'sel-soft', 'positive', 'positive-soft']) expect(declares.has(nom), nom).toBe(true);
+    for (const nom of ['sel', 'sel-soft', 'positive', 'positive-soft']) expect(declares.has(nom)).toBe(true);
   });
 
   it('aucun écran n emploie un utilitaire de couleur sans jeton', () => {
@@ -79,7 +79,7 @@ describe('couleurs employées et couleurs déclarées', () => {
       'focus:ring-accent',
       'text-primary',
       'bg-destructive',
-    ]) expect(refuse(mauvais), mauvais).toBe(true);
+    ]) expect(refuse(mauvais)).toBe(true);
     for (const bon of [
       'text-sel',
       'bg-sel/10',
@@ -87,6 +87,6 @@ describe('couleurs employées et couleurs déclarées', () => {
       'text-xs text-center text-white bg-black border-transparent text-current',
       'text-[11px] bg-surface border-border',
       'accent-color-non',
-    ]) expect(refuse(bon), bon).toBe(false);
+    ]) expect(refuse(bon)).toBe(false);
   });
 });

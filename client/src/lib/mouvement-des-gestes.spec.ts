@@ -65,8 +65,8 @@ describe('le mouvement des gestes très fréquents', () => {
     for (const [nom, ref] of [['anim-menu', 'sansAnimationMenu'], ['anim-sous-menu', 'sansAnimationSousMenu']] as const) {
       const occurrences = [...src.matchAll(new RegExp(`'${nom}'`, 'g'))].length;
       const gardees = [...src.matchAll(new RegExp(`${ref}\\.current \\? '' : '${nom}'`, 'g'))].length;
-      expect(occurrences, nom).toBeGreaterThan(0);
-      expect(gardees, nom).toBe(occurrences);
+      expect(occurrences).toBeGreaterThan(0);
+      expect(gardees).toBe(occurrences);
     }
     for (const c of classes(src)) expect(c).not.toMatch(/(^|\s)anim-(sous-)?menu(\s|$)/);
     // La décision se prend au geste (setter), pas au rendu : un rendu menu ouvert ne la défait pas.
