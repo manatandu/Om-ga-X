@@ -241,7 +241,7 @@ test('SYSCOHADA · seuls les comptes personnalisés se saisissent et se rattache
   // À l'écran · « Personnaliser » adopte un compte du plan, l'option ne montre que les personnalisés.
   await page.goto('/#/comptes');
   await page.getByPlaceholder('Rechercher (numéro ou intitulé)…').fill(banqueLibre.numero);
-  await page.getByRole('button', { name: new RegExp(banqueLibre.numero) }).first().click();
+  await page.getByRole('row', { name: new RegExp(banqueLibre.numero) }).first().click();
   await page.getByRole('button', { name: 'Personnaliser…' }).click();
   const boite = page.getByRole('dialog', { name: `Personnaliser le compte ${banqueLibre.numero}` });
   await expect(boite.getByLabel('Numéro :')).toHaveCount(0);
@@ -253,8 +253,8 @@ test('SYSCOHADA · seuls les comptes personnalisés se saisissent et se rattache
   await page.getByPlaceholder('Rechercher (numéro ou intitulé)…').fill('');
   await page.getByLabel('Comptes personnalisés seulement').check();
   await page.getByRole('button', { name: /^Classe 6/ }).click();
-  await expect(page.getByRole('button', { name: new RegExp(`^${sousLoyer.numero}`) })).toBeVisible();
-  await expect(page.getByRole('button', { name: new RegExp(`^${loyer.numero}`) })).toHaveCount(0);
+  await expect(page.getByRole('row', { name: new RegExp(`^${sousLoyer.numero}`) })).toBeVisible();
+  await expect(page.getByRole('row', { name: new RegExp(`^${loyer.numero}`) })).toHaveCount(0);
 
   expect(pannes).toEqual([]);
 });
