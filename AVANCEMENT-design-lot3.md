@@ -32,3 +32,7 @@ cd e2e && PW_CHROMIUM=... npx playwright test tests/clavier-grilles.e2e.ts --pro
 - e2e Chromium seul (`tests/clavier-grilles.e2e.ts`, 3 parcours) verts ; WebKit non rejoué.
 - Mesure avant/après (Playwright 1440x900 et 390x844, dossier vide) : journal 15 px, plan comptable 533 px (ancrage des lignes en div), balance 34 000 px (champ de filtre et en-têtes), mobile 2 à 1324 px.
 - Relevé à la mesure : le focus initial de la modale tombait sur le « ? » et ouvrait sa bulle · corrigé (saute les éléments `aria-expanded`).
+
+## Relectures (M1 à M4, m1 à m7)
+
+Cadre de grille borné par la fenêtre (page colonne flex `page-a-grille`, plancher de page 26 rem, aucune borne vh/dvh) ; tabulation itinérante et flèches au plan comptable, sixième cellule ; totaux dits « balance entière » sous filtre (balance âgée, carte téléphone) ; tri et filtre remis à zéro avec la lecture ; filtre numérique (virgule, espaces fines et insécables, échappements) ; focus tardif des modales ; aide en `region` étiquetée ; bandeau de compte figé au grand livre ; un seul pied figé par grille. Bloc complet relancé : tsc, vitest 2782, jest racine 15543 (1083 suites), builds, e2e Chromium 5 parcours.
