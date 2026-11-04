@@ -33,6 +33,11 @@ export default defineConfig({
   use: {
     baseURL: process.env.OMEGAX_APP ?? 'http://localhost:4173',
     viewport: { width: 1366, height: 900 },
+    // UNE ACTION SANS ÉLÉMENT ÉCHOUE EN TRENTE SECONDES (2026-11-04) · sans borne
+    // propre, un clic sur un élément absent attendait le délai du TEST (cinq
+    // minutes), deux fois sous deux navigateurs, soit dix minutes perdues par
+    // test rouge (run 542).
+    actionTimeout: 30_000,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     launchOptions: process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
@@ -45,5 +50,6 @@ export default defineConfig({
     ...(process.env.PW_WEBKIT
       ? [{ name: 'webkit', use: { ...devices['Desktop Safari'], viewport: { width: 1366, height: 900 } } }]
       : []),
-  ],
+  ].filter((p) => !process.env.PW_PROJET || p.name === process.env.PW_PROJET),
+
 });

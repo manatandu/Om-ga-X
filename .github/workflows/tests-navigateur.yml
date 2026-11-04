@@ -24,6 +24,17 @@ concurrency:
 jobs:
   navigateur:
     runs-on: ubuntu-latest
+    # DEUX JOBS EN PARALLELE (2026-11-04) · Chromium et WebKit tournaient l'un
+    # après l'autre dans un seul job (un seul travailleur, e2e/playwright.config.ts),
+    # soit cinquante minutes. Chaque jambe a son serveur, sa base et son client,
+    # sans rien partager : le travailleur unique reste, la limitation de débit
+    # compte par adresse DANS la jambe. `PW_PROJET` choisit le navigateur de la
+    # jambe, la commande des tests reste `npx playwright test` (relue par
+    # reglement-interieur.spec.ts). Une jambe rouge ne coupe pas l'autre.
+    strategy:
+      fail-fast: false
+      matrix:
+        projet: [chromium, webkit]
     # SOIXANTE MINUTES (2026-10-15) · Chromium puis WebKit, un seul travailleur
     # (playwright.config.ts), et la suite grandit avec chaque ligne · le
     # passage du 12d79f5 a pris 26 minutes, celui de la ligne sage-l7 a été
@@ -75,6 +86,7 @@ jobs:
       OMEGAX_API_RELAIS: http://localhost:8080
       # Le moteur de l'iPhone, en plus de Chrome (e2e/playwright.config.ts).
       PW_WEBKIT: '1'
+      PW_PROJET: ${{ matrix.projet }}
 
     steps:
       - uses: actions/checkout@v7
@@ -145,7 +157,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: rapport-playwright
+          name: rapport-playwright-${{ matrix.projet }}
           path: |
             e2e/playwright-report
             e2e/test-results
