@@ -364,7 +364,7 @@ function EtatsSystemeNormalPage() {
             />
           )}
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           {exerciceCourant && (
             <span className="font-mono text-[11.5px] border border-border bg-surface px-2.5 py-1.5">
               Exercice {libelleExercice(exerciceCourant)}
