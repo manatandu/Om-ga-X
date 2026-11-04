@@ -371,8 +371,16 @@ recouvrait l'onglet voisin et les libellés autour de l'aide), fenêtres en plei
 LES RÈGLES DU POINTEUR GROSSIER SUIVENT LE POINTEUR ET NON LA LARGEUR (boutons de
 dialogue, entrées de menu, barre de titre de fenêtre, champs à 16 px valent aussi
 sur une tablette tactile de plus de 640 px, `socle-telephone.spec.ts`). Le lot 3
-(grilles, enfermement du clavier dans les modales) est autorisé (« Dès que tu
-finis lot 2, tu enchaînes directement le lot 3 »).
+(grilles, enfermement du clavier dans les modales, « Dès que tu finis lot 2, tu
+enchaînes directement le lot 3 ») suit, de même nature · en-têtes de grilles et
+pieds de totaux figés DANS le cadre de la fenêtre (jamais bornés par l'écran),
+rôles de tableau, tri et filtre À L'ÉCRAN sur les lignes lues (balances, balance
+âgée, plan comptable ; totaux de la liste entière, dits « balance entière » sous
+filtre ; JAMAIS de tri sur le journal ni le grand livre, livre obligatoire, art. 22,
+6°), plan comptable en tabulation itinérante, accès clavier de la balance au grand
+livre, piège de focus des modales (`lib/piege-focus.ts`), bulle d'aide reliée par
+`aria-describedby`, clavier décimal sur les champs de montant positifs (les champs
+signés gardent le clavier complet), anneau de focus à l'encre.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
