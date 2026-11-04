@@ -123,15 +123,18 @@ export function CarteTotauxBalance({
   ouverture,
   mouvements,
   cloture,
+  balanceEntiere = false,
 }: {
   titres: { ouverture: string; mouvements: string; cloture: string };
   ouverture: { debit: number; credit: number };
   mouvements: { debit: number; credit: number };
   cloture: { debit: number; credit: number };
+  /** Un filtre est actif · les totaux restent ceux de la balance entière, et le disent. */
+  balanceEntiere?: boolean;
 }) {
   return (
     <li className="px-3 py-2 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
-      <div className="text-[11px] text-text-dim">Totaux généraux</div>
+      <div className="text-[11px] text-text-dim">Totaux généraux{balanceEntiere ? ' (balance entière)' : ''}</div>
       <BlocBalance titre={titres.ouverture} {...ouverture} />
       <BlocBalance titre={titres.mouvements} {...mouvements} />
       <BlocBalance titre={titres.cloture} {...cloture} />

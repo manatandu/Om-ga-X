@@ -143,6 +143,9 @@ export function Aide(
         }}
         onMouseLeave={fermerBientot}
         onFocus={() => {
+          // Le focus qui revient du bulle (Maj+Tab) annule la fermeture armée par
+          // le blur de la bulle, sinon elle se refermait sous le focus.
+          annulerFermeture();
           if (!retourSansOuvrir.current) setOuvert(true);
         }}
         onBlur={fermerBientot}
@@ -169,7 +172,11 @@ export function Aide(
           <div
             ref={bulle}
             id={idBulle}
-            role="tooltip"
+            // UNE RÉGION ÉTIQUETÉE, non un `tooltip` · une infobulle ne reçoit pas le
+            // focus ; celle-ci le reçoit (lecture et défilement au clavier), c'est donc
+            // une zone de contenu nommée, non modale, que le « ? » décrit.
+            role="region"
+            aria-label={entree.titre}
             // ATTEIGNABLE AU CLAVIER · une définition longue défile, et une zone
             // qui défile doit pouvoir recevoir le focus pour être lue au clavier.
             // Le focus qui passe du « ? » à la bulle ne la ferme pas.

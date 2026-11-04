@@ -6,11 +6,9 @@ import { ariaSort, mentionTranche, triSuivant, type EtatTri } from '../lib/grill
  * (`lib/grille.ts`), et le disent quand la liste est une tranche.
  */
 
-/** Attributs ARIA d'une cellule d'en-tête de colonne qui peut se trier. */
-export function attributsEntete(tri: EtatTri | null, cle: string, avecRole = true) {
-  return avecRole
-    ? ({ role: 'columnheader', 'aria-sort': ariaSort(tri, cle) } as const)
-    : ({ scope: 'col', 'aria-sort': ariaSort(tri, cle) } as const);
+/** Attributs ARIA d'une cellule d'en-tête de colonne qui peut se trier (les grilles sont faites de blocs, jamais de th). */
+export function attributsEntete(tri: EtatTri | null, cle: string) {
+  return { role: 'columnheader', 'aria-sort': ariaSort(tri, cle) } as const;
 }
 
 /**

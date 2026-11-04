@@ -471,7 +471,7 @@ describe('les écrans qui débordaient le plus', () => {
     const src = lire('JournalPage.tsx');
     expect(src).toMatch(/grid-cols-\[66px_40px_54px_minmax\(120px,1\.8fr\)_136px_136px_140px_54px_1fr\] min-w-\[840px\]/);
     expect(src).toMatch(/grid-cols-\[80px_minmax\(150px,420px\)_repeat\(6,140px\)\] min-w-\[1154px\]/);
-    expect(src).toMatch(/onglet === 'grand-livre' && \(\s*\n\s*<div className="border border-border">/);
+    expect(src).toMatch(/onglet === 'grand-livre' && \(\s*\n\s*<div className="border border-border cadre-grille">/);
     expect(src).toMatch(/<div className="grille-longue">/);
     expect(src).toMatch(/rounded-t-none grille-longue/);
   });

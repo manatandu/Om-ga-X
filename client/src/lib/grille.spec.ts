@@ -59,6 +59,21 @@ describe('filtre d’une grille', () => {
   });
 });
 
+describe('filtre numérique · comme à l’écran', () => {
+  const nombres = [{ m: 116000 }, { m: 116000.5 }, { m: 42 }];
+  const lire = (l: { m: number }) => [l.m];
+  it('trouve le montant tapé avec espaces, virgule décimale, espace fine ou insécable', () => {
+    expect(filtrerLignes(nombres, '116 000,00', lire)).toEqual([nombres[0]]);
+    expect(filtrerLignes(nombres, '116000,50', lire)).toEqual([nombres[1]]);
+    expect(filtrerLignes(nombres, '116\u00a0000', lire).length).toBe(2);
+    expect(filtrerLignes(nombres, '116\u202f000,5', lire)).toEqual([nombres[1]]);
+    expect(filtrerLignes(nombres, '116000', lire).length).toBe(2);
+  });
+  it('un texte à accents ne se trompe pas de ligne', () => {
+    expect(filtrerLignes([{ m: 1 }], 'zzz', lire)).toEqual([]);
+  });
+});
+
 describe('une tranche ne se présente jamais comme le tout', () => {
   it('rien à dire quand la liste est entière', () => {
     expect(mentionTranche(50, 50, false)).toBeNull();

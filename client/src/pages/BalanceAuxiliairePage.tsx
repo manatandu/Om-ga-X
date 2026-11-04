@@ -89,6 +89,11 @@ export function BalanceAuxiliairePage() {
   // Tri par clic sur l'en-tête, à l'écran seulement et sur les comptes lus ·
   // la liste est entière (aucune tranche), les totaux restent ceux de la balance.
   const [tri, setTri] = useState<EtatTri | null>(null);
+  // Tri et filtre ne survivent pas à une autre lecture (exercice ou périmètre).
+  useEffect(() => {
+    setTri(null);
+    setFiltre('TOUS');
+  }, [exerciceCourant?.id, type]);
   const retenusLus = useMemo(() => (donnees ? filtrerBalance(donnees.comptes, filtre) : []), [donnees, filtre]);
   const retenus = useMemo(
     () =>
@@ -161,7 +166,7 @@ export function BalanceAuxiliairePage() {
     'grid grid-cols-[92px_86px_1fr_136px_136px_136px_136px_136px_136px] min-w-[1102px] gap-2.5';
 
   return (
-    <div className="p-2">
+    <div className="p-2 page-a-grille">
       <EnteteImpression
         titre="Balance auxiliaire"
         sousTitre={filtre === 'TOUS' || !donnees ? undefined : `${LIBELLE_FILTRE[filtre]} · ${retenus.length} compte${retenus.length > 1 ? 's' : ''} sur ${donnees.comptes.length}`}
@@ -342,6 +347,7 @@ export function BalanceAuxiliairePage() {
           </div>
         ))}
 
+        <div role="rowgroup" className="pied-fixe">
         {donnees && filtre !== 'TOUS' && retenus.length > 0 && (
           <div role="row" className={`${grille} px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
             <span role="cell" className="col-span-3">Total des comptes retenus</span>
@@ -366,6 +372,7 @@ export function BalanceAuxiliairePage() {
             <span role="cell" className="font-mono text-right">{montant(donnees.totaux.soldeCredit)}</span>
           </div>
         )}
+        </div>
       </div>
 
     </div>

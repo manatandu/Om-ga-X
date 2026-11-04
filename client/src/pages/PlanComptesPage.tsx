@@ -230,6 +230,9 @@ export function PlanComptesPage() {
   // Tri par clic sur l'en-tête, à l'écran seulement et sur la liste lue (le plan
   // n'est pas tronqué) · l'ordre du plan, celui des numéros, revient au troisième clic.
   const [tri, setTri] = useState<EtatTri | null>(null);
+  // La ligne qui porte l'unique arrêt de tabulation · la dernière visitée, sinon la
+  // ligne choisie, sinon la première.
+  const [ligneActive, setLigneActive] = useState<string | null>(null);
   const listeAffichee = useMemo(
     () =>
       trierLignes(liste, tri, {
@@ -242,6 +245,17 @@ export function PlanComptesPage() {
       }) as typeof liste,
     [liste, tri],
   );
+  const idLigneActive = listeAffichee.some((c) => c.id === ligneActive)
+    ? ligneActive
+    : listeAffichee.some((c) => c.id === selectionId)
+      ? selectionId
+      : (listeAffichee[0]?.id ?? null);
+  // Un autre dossier repart d'un tri vierge.
+  const idDossier = utilisateur?.tenant?.id;
+  useEffect(() => {
+    setTri(null);
+    setLigneActive(null);
+  }, [idDossier]);
 
   const neRetenirQueLesUtilises = async () => {
     if (!window.confirm('Ne garder personnalisés que les comptes du plan officiel déjà utilisés ? Les autres comptes du plan ne seront plus proposés ni admis à la saisie ; les comptes que vous avez créés le restent. Rien n’est supprimé.')) return;
@@ -509,7 +523,26 @@ export function PlanComptesPage() {
               <BoutonTri cle="personnalise" tri={tri} onTri={setTri}>Personnalisé</BoutonTri>
             </span>
           </div>
-          <div role="rowgroup" className="flex-1 overflow-auto min-w-[590px]">
+          <div
+            role="rowgroup"
+            className="flex-1 overflow-auto min-w-[590px]"
+            onKeyDown={(e) => {
+              // TABULATION ITINÉRANTE (modèle WAI-ARIA de la grille) · une seule ligne
+              // est dans l'ordre de tabulation, les flèches haut et bas, Début et Fin
+              // vont de ligne en ligne. Entrée et Espace, eux, choisissent le compte.
+              const lignes = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="row"][data-compte-id]'));
+              const rang = lignes.indexOf(e.target as HTMLElement);
+              if (rang === -1) return;
+              const cible =
+                e.key === 'ArrowDown' ? rang + 1 : e.key === 'ArrowUp' ? rang - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? lignes.length - 1 : null;
+              if (cible === null) return;
+              e.preventDefault();
+              const suivante = lignes[Math.min(Math.max(cible, 0), lignes.length - 1)];
+              if (!suivante) return;
+              setLigneActive(suivante.dataset.compteId ?? null);
+              suivante.focus();
+            }}
+          >
             {!comptes && (
               <div role="row">
                 <div role="gridcell" aria-colspan={6} className="px-3.5 py-3 text-[11.5px] text-text-dim">
@@ -521,9 +554,11 @@ export function PlanComptesPage() {
               <div
                 key={c.id}
                 role="row"
-                tabIndex={0}
+                data-compte-id={c.id}
+                tabIndex={c.id === idLigneActive ? 0 : -1}
                 aria-selected={selectionId === c.id}
                 onClick={() => setSelectionId(c.id)}
+                onFocus={(e) => e.target === e.currentTarget && setLigneActive(c.id)}
                 onKeyDown={(e) => {
                   // Entrée ou Espace choisit le compte, comme le clic (lot 3).
                   if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
@@ -568,6 +603,7 @@ export function PlanComptesPage() {
                   {c.estActif ? 'Actif' : 'Sommeil'}
                 </span>
                 <span
+                  role="gridcell"
                   className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : 'text-sel'}`}
                   title={
                     c.subdivise

@@ -8,7 +8,9 @@ describe('Aide · accessibilité de la bulle', () => {
   it('le bouton est relié à la bulle par aria-describedby tant qu’elle est ouverte', () => {
     expect(source).toContain('aria-describedby={ouvert && pos ? idBulle : undefined}');
     expect(source).toContain('id={idBulle}');
-    expect(source).toContain('role="tooltip"');
+    expect(source).toContain('role="region"');
+    expect(source).not.toContain('role="tooltip"');
+    expect(source).toContain('aria-label={entree.titre}');
   });
 
   it('la bulle reçoit le focus et ne se ferme pas quand il y passe', () => {
@@ -30,5 +32,11 @@ describe('Aide · accessibilité de la bulle', () => {
   it('s’ouvre toujours au focus du « ? » (apparence et comportement d’avant)', () => {
     expect(source).toContain('onMouseEnter={() => {');
     expect(source).toContain('aria-expanded={ouvert}');
+  });
+});
+
+describe('Aide · la fermeture armée ne tombe pas sous le focus', () => {
+  it('le focus du « ? » annule la fermeture différée (Maj+Tab depuis la bulle)', () => {
+    expect(source).toMatch(/onFocus=\{\(\) => \{\s*\/\/[^\n]*\n[^\n]*\n\s*annulerFermeture\(\);/);
   });
 });

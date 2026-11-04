@@ -73,12 +73,25 @@ export interface BalanceAgee {
   libellePerimetre: string;
 }
 
-export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: BalanceAgee; filtre?: string }) {
+export function TableauBalanceAgee({
+  donnees: lues,
+  filtre = '',
+  tri: triRecu,
+  onTri,
+}: {
+  donnees: BalanceAgee;
+  filtre?: string;
+  /** Le tri vit dans la page (il se remet à zéro avec la lecture) ; sans lui, le tableau garde le sien. */
+  tri?: EtatTri | null;
+  onTri?: (suite: EtatTri | null) => void;
+}) {
   // TRI PAR CLIC SUR L'EN-TÊTE ET FILTRE DU TIERS, à l'écran seulement (lot 3) ·
   // chaque population (débiteurs, créditeurs, sens inverse, soldes nuls) se
   // range pour elle-même, jamais mêlée aux autres. Les TOTAUX restent ceux de
   // la balance entière : un filtre ne change pas ce que la balance totalise.
-  const [tri, setTri] = useState<EtatTri | null>(null);
+  const [triLocal, setTriLocal] = useState<EtatTri | null>(null);
+  const tri = onTri ? (triRecu ?? null) : triLocal;
+  const setTri = onTri ?? setTriLocal;
   const donnees = useMemo<BalanceAgee>(() => {
     const colonnes: Record<string, (l: LigneAgee) => number | string> = {
       tiers: (l) => l.libelle,
@@ -108,6 +121,8 @@ export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: Ba
     gridTemplateColumns: `minmax(220px,1fr) repeat(${nbTranches + 1}, 116px)`,
     gap: '10px',
   } as const;
+
+  const filtreActif = filtre.trim() !== '';
 
   // `soldeNul` · le solde s'écrit « 0,00 » · vide, il se lirait comme une
   // absence de solde, alors que c'est la réponse.
@@ -153,7 +168,10 @@ export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: Ba
       style={grille}
       className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
     >
-      <span role="rowheader">{libelle}</span>
+      <span role="rowheader">
+        {libelle}
+        {filtreActif ? ' (balance entière)' : ''}
+      </span>
       {donnees.tranches.map((t, i) => (
         <span key={t.cle} role="cell" className="font-mono text-right">
           {parTranche ? montant(parTranche[i] ?? 0) : ''}
@@ -165,7 +183,6 @@ export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: Ba
     </div>
   );
 
-  const filtreActif = filtre.trim() !== '';
   const vide =
     donnees.debiteurs.length === 0 &&
     donnees.crediteurs.length === 0 &&
@@ -258,9 +275,12 @@ export function TableauBalanceAgee({ donnees: lues, filtre = '' }: { donnees: Ba
           <div
             role="row"
             style={grille}
-            className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
+            className="pied-fixe px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
           >
-            <span role="rowheader">Solde net</span>
+            <span role="rowheader">
+              Solde net
+              {filtreActif ? ' (balance entière)' : ''}
+            </span>
             {donnees.tranches.map((t) => (
               <span key={t.cle} role="cell" />
             ))}

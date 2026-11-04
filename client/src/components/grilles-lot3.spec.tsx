@@ -44,7 +44,6 @@ describe('en-têtes triables', () => {
     const tri = { cle: 'x', sens: 'desc' as const };
     expect(renderToStaticMarkup(<BoutonTri cle="x" tri={tri} onTri={() => {}}>Débit</BoutonTri>)).toContain('marque-tri');
     expect(attributsEntete(tri, 'x')['aria-sort']).toBe('descending');
-    expect(attributsEntete(tri, 'x', false).scope).toBe('col');
   });
 
   it('le filtre de la balance âgée écarte les tiers sans toucher aux totaux', () => {
@@ -111,7 +110,8 @@ describe('pages · rôles, en-têtes figés, clavier', () => {
   it('le grand livre garde sa chronologie : un tableau par compte, en-têtes figés, aucun tri', () => {
     const src = page('JournalPage.tsx');
     expect(src).toContain('aria-label={`Grand livre du compte');
-    expect(src).toMatch(/role="row" className=\{`entete-fixe grid \$\{GRILLE_GL\}/);
+    expect(src).toMatch(/role="row" style=\{\{ top: '1\.625rem' \}\} className=\{`entete-fixe grid \$\{GRILLE_GL\}/);
+    expect(src).toContain('sticky top-0 z-[3] h-[1.625rem]');
     expect(src).not.toMatch(/BoutonTri cle="date"/);
   });
 
@@ -125,8 +125,54 @@ describe('pages · rôles, en-têtes figés, clavier', () => {
   it('le plan comptable est une grille : lignes atteignables, choix à Entrée ou Espace, tri en tête', () => {
     const src = page('PlanComptesPage.tsx');
     expect(src).toContain('role="grid"');
-    expect(src).toMatch(/role="row"\s+tabIndex=\{0\}\s+aria-selected=\{selectionId === c\.id\}/);
+    expect(src).toMatch(/role="row"\s+data-compte-id=\{c\.id\}\s+tabIndex=\{c\.id === idLigneActive \? 0 : -1\}\s+aria-selected=\{selectionId === c\.id\}/);
+    expect(src).toContain("e.key === 'ArrowDown'");
+    expect(src).toContain("e.key === 'End'");
     expect(src).toMatch(/e\.key === 'Enter' \|\| e\.key === ' '/);
     expect(src).toContain("onDoubleClick={() => c.typeCompte === 'DETAIL' && navigate(");
+  });
+
+  it('M1 · le cadre d’une grille est borné par la fenêtre (colonne flex), jamais par l’écran', () => {
+    const css = readFileSync(join(__dirname, '..', 'index.css'), 'utf8');
+    const bloc = css.slice(css.indexOf('.grille-longue {'), css.indexOf('.entete-fixe {'));
+    expect(bloc).not.toMatch(/dvh|\bvh\b/);
+    expect(bloc).toContain('flex: 0 1 auto');
+    for (const f of ['JournalPage.tsx', 'BalanceAgeePage.tsx', 'BalanceAuxiliairePage.tsx']) {
+      expect(page(f), f).toContain('<div className="p-2 page-a-grille">');
+    }
+  });
+
+  it('M2 · sous filtre, les totaux de la balance âgée et de la balance sur téléphone se disent « balance entière »', () => {
+    const tableau = readFileSync(join(__dirname, 'TableauBalanceAgee.tsx'), 'utf8');
+    expect(tableau.match(/\(balance entière\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(page('BalanceAgeePage.tsx')).toContain('Ces groupes sont ceux de la balance entière, non filtrés.');
+    expect(page('BalanceAgeePage.tsx')).not.toMatch(/lues=\{[^}]*soldesNuls/);
+    expect(page('JournalPage.tsx')).toContain('balanceEntiere={filtreBalance.trim() !== \'\'}');
+    const cartes = readFileSync(join(__dirname, 'CartesComptables.tsx'), 'utf8');
+    expect(cartes).toContain("balanceEntiere ? ' (balance entière)' : ''");
+    expect(page('JournalPage.tsx')).toMatch(/lignes\.length === 0 && filtreBalance\.trim\(\) !== ''/);
+  });
+
+  it('M3, M4 · plan comptable à tabulation itinérante, six cellules par ligne', () => {
+    const src = page('PlanComptesPage.tsx');
+    // Un seul arrêt de tabulation : tabIndex 0 pour la ligne active seule.
+    expect(src.match(/tabIndex=\{/g)?.length).toBe(1);
+    const ligne = src.slice(src.indexOf('data-compte-id={c.id}'), src.indexOf('{c.typeCompte !== \'DETAIL\' ? \'\' : c.subdivise'));
+    expect(ligne.match(/role="gridcell"/g)?.length).toBe(6);
+    expect(src).toContain('aria-colcount={6}');
+  });
+
+  it('m3 · tri et filtre repartent à zéro avec la lecture', () => {
+    expect(page('JournalPage.tsx')).toMatch(/setTriBalance\(null\);\s*setFiltreBalance\(''\);\s*\}, \[cleBalance\]\)/);
+    expect(page('BalanceAgeePage.tsx')).toContain('}, [exerciceCourant?.id, dateReference, type]);');
+    expect(page('BalanceAgeePage.tsx')).toContain("cles.has(triBrut.cle) ? triBrut : null");
+    expect(page('BalanceAuxiliairePage.tsx')).toContain('}, [exerciceCourant?.id, type]);');
+    expect(page('PlanComptesPage.tsx')).toContain('}, [idDossier]);');
+  });
+
+  it('m7 · un seul pied figé par grille (jamais deux sticky bas superposés)', () => {
+    expect(page('BalanceAuxiliairePage.tsx')).toContain('<div role="rowgroup" className="pied-fixe">');
+    const tableau = readFileSync(join(__dirname, 'TableauBalanceAgee.tsx'), 'utf8');
+    expect(tableau.match(/pied-fixe/g)?.length).toBe(1);
   });
 });

@@ -89,7 +89,38 @@ export function PortailModale({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // LE CONTENU QUI ARRIVE APRÈS UN FETCH · une modale ouverte vide (chargement)
+    // n'avait aucune cible au premier passage. Tant que le focus n'a pas quitté la
+    // boîte elle-même (corps de page, ou boîte focalisée faute de mieux) et que
+    // personne n'a touché au clavier ni à la souris, la première cible qui paraît
+    // le reçoit. Un focus posé par l'utilisateur ou par la modale n'est jamais volé.
+    let observateur: MutationObserver | null = null;
+    const focusLibre = () => {
+      const actif = document.activeElement;
+      return !actif || actif === document.body || actif === boite();
+    };
+    const arreterObservation = () => {
+      observateur?.disconnect();
+      observateur = null;
+      document.removeEventListener('pointerdown', arreterObservation, true);
+    };
+    if (focusLibre() || !racine.contains(document.activeElement)) {
+      if (focalisables().find((el) => !el.hasAttribute('aria-expanded')) === undefined && typeof MutationObserver !== 'undefined') {
+        observateur = new MutationObserver(() => {
+          if (!focusLibre()) return arreterObservation();
+          const cible = focalisables().find((el) => !el.hasAttribute('aria-expanded'));
+          if (cible) {
+            cible.focus({ preventScroll: true });
+            arreterObservation();
+          }
+        });
+        observateur.observe(racine, { childList: true, subtree: true });
+        document.addEventListener('pointerdown', arreterObservation, true);
+      }
+    }
+
     const surTouche = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') arreterObservation();
       if (e.key !== 'Tab' || e.defaultPrevented) return;
       const modales = document.querySelectorAll(`[${ATTRIBUT_MODALE}]`);
       if (modales[modales.length - 1] !== racine) return;
@@ -105,6 +136,7 @@ export function PortailModale({ children }: { children: React.ReactNode }) {
 
     return () => {
       document.removeEventListener('keydown', surTouche);
+      arreterObservation();
       // Le focus ne revient que s'il est perdu (sur le corps) ou resté dans la
       // modale qui part · une fermeture qui a déjà placé le focus ailleurs gagne.
       const actif = document.activeElement;

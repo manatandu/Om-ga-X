@@ -276,6 +276,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     const filtrees = filtrerLignes(balance, filtreBalance, (l) => [l.numero, l.intitule]);
     return trierLignes(filtrees, triBalance, colonnesBalance) as typeof balance;
   }, [balance, filtreBalance, triBalance, colonnesBalance]);
+  // Tri et filtre ne survivent pas à un autre exercice, une autre période ou un
+  // autre regroupement : ils jugeaient les lignes d'une lecture qui n'est plus là.
+  useEffect(() => {
+    setTriBalance(null);
+    setFiltreBalance('');
+  }, [cleBalance]);
   const grandLivre = lueePour(grandLivreLu, cleGrandLivre);
   /** Le motif du refus du grand livre COMPLET, quand son volume dépasse une fenêtre. */
   const [refusGrandLivre, setRefusGrandLivre] = useState<string | null>(null);
@@ -824,7 +830,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   );
 
   return (
-    <div className="p-2">
+    <div className="p-2 page-a-grille">
       <EnteteImpression
         titre="Journal, grand livre et balance"
         sousTitre={
@@ -1404,7 +1410,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       )}
 
       {onglet === 'grand-livre' && (
-        <div className="border border-border">
+        <div className="border border-border cadre-grille">
           {/*
             LE GRAND LIVRE EST COMPLET PAR DÉFAUT · c'est sa définition même :
             le recueil de TOUS les comptes mouvementés de l'exercice, dans
@@ -1500,12 +1506,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           )}
           {vueGrandLivre.sections.map(({ section, cachees, debitCache, creditCache }) => (
             <div key={section.compte.id}>
-              <div className="px-3.5 py-1 border-y border-border-dark bg-chrome font-bold text-[11.5px]">
-                <span className="font-mono">{section.compte.numero}</span> · {section.compte.intitule}
+              {/* Le bandeau du compte reste figé avec l'en-tête de colonnes de sa
+                  section (hauteur fixe, que `top` de l'en-tête reprend). */}
+              <div className="sticky top-0 z-[3] h-[1.625rem] flex items-center px-3.5 border-y border-border-dark bg-chrome font-bold text-[11.5px]">
+                <span className="font-mono">{section.compte.numero}</span>&nbsp;· {section.compte.intitule}
               </div>
               {!telephone ? (
                 <div role="table" aria-label={`Grand livre du compte ${section.compte.numero} ${section.compte.intitule}`}>
-              <div role="row" className={`entete-fixe grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border`}>
+              <div role="row" style={{ top: '1.625rem' }} className={`entete-fixe grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border`}>
                 <span role="columnheader">DATE</span>
                 <span role="columnheader">JRN</span>
                 <span role="columnheader" className="text-right">Pièce</span>
@@ -1817,6 +1825,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
               </div>
             )}
+            {balance !== null && balance.length > 0 && lignes.length === 0 && filtreBalance.trim() !== '' && (
+              <div role="status" className="px-3.5 py-4 text-[11.5px] text-text-dim">
+                Aucun compte ne correspond au filtre.
+              </div>
+            )}
             <ul>
               {lignes.map((l) => {
                 const ouverture = ouv(l);
@@ -1839,6 +1852,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               })}
               {balance !== null && (
               <CarteTotauxBalance
+                balanceEntiere={filtreBalance.trim() !== ''}
                 titres={titres}
                 ouverture={{ debit: cumul((l) => Math.max(ouv(l), 0)), credit: cumul((l) => Math.max(-ouv(l), 0)) }}
                 mouvements={{ debit: cumul((l) => mouvementsDuJournal(l).debit), credit: cumul((l) => mouvementsDuJournal(l).credit) }}
