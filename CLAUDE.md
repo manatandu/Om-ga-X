@@ -387,6 +387,9 @@ Puis, le 2026-11-04, le BOUTON « ENVOYER À L'ÉDITEUR » de l'écran de licenc
 d'autre ; le poste sur site n'envoie rien de lui-même, le client lit et envoie dans
 son propre logiciel de courriel ; aucune adresse de l'éditeur n'est écrite en dur
 (le contrat de licence la dit « à arrêter par l'éditeur »).
+Puis, le 2026-11-04, le LOT 4 DU DESIGN (« Et t'attends quoi pour corriger ces limites »)
+· débordements à 390 px (états financiers, saisie, contrôles), boutons de fenêtre à
+32 px au toucher, test de rendu sous 640 px (`e2e/tests/rendu-telephone.e2e.ts`).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
