@@ -82,3 +82,29 @@ export function porteInscription(e: EtatSurSite): PorteInscription {
       "Cette installation a déjà son premier dossier · les suivants se créent depuis le dossier d'installation, fenêtre Restitution.",
   };
 }
+
+/**
+ * L'ENVOI DE L'EMPREINTE À L'ÉDITEUR (demande expresse de Manasse du 2026-11-04,
+ * « Oui ajoute le bouton d'envoi de l'empreinte ») · un lien `mailto:` que le
+ * poste ouvre dans SON logiciel de courriel. Le poste sur site n'a, par choix, ni
+ * messagerie du serveur ni connexion exigée : rien ne part sans que le client
+ * ait lu et envoyé le message lui-même. Le destinataire n'est écrit nulle part
+ * en dur · aucune adresse de l'éditeur n'est arrêtée (le contrat de licence dit
+ * « à arrêter par l'éditeur »), le client la saisit ou la connaît. Le message
+ * porte l'empreinte et le numéro de version, jamais un nom de dossier ni une
+ * donnée comptable.
+ */
+export function lienEnvoiEmpreinte(empreinte: string, destinataire = ''): string {
+  const sujet = "Demande de licence OmegaX · empreinte du poste";
+  const corps = [
+    'Bonjour,',
+    '',
+    "Je demande le fichier de licence d'OmegaX pour le poste dont l'empreinte est :",
+    '',
+    empreinte,
+    '',
+    "Merci de m'envoyer le fichier de licence signé.",
+  ].join('\r\n');
+  return `mailto:${encodeURIComponent(destinataire)}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
+}
+

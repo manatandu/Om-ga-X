@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { EtatSurSite, licenceABloquer, resumeLicence } from '../lib/sur-site';
+import { EtatSurSite, lienEnvoiEmpreinte, licenceABloquer, resumeLicence } from '../lib/sur-site';
 import { Aide } from './chrome/Aide';
 
 /**
@@ -85,6 +85,9 @@ export function PanneauSurSite({ onEtat }: { onEtat?: (e: EtatSurSite) => void }
           <button type="button" className="underline" onClick={copier}>
             {copie ? 'Copiée' : 'Copier'}
           </button>
+          <a className="underline" href={lienEnvoiEmpreinte(etat.empreinte)}>
+            Envoyer à l’éditeur
+          </a>
         </div>
       )}
       {bloquee || remplacer ? (

@@ -381,6 +381,12 @@ filtre ; JAMAIS de tri sur le journal ni le grand livre, livre obligatoire, art.
 livre, piège de focus des modales (`lib/piege-focus.ts`), bulle d'aide reliée par
 `aria-describedby`, clavier décimal sur les champs de montant positifs (les champs
 signés gardent le clavier complet), anneau de focus à l'encre.
+Puis, le 2026-11-04, le BOUTON « ENVOYER À L'ÉDITEUR » de l'écran de licence sur site
+(« Oui ajoute le bouton d'envoi de l'empreinte ») · un lien `mailto:` prérempli
+(`lienEnvoiEmpreinte`, `lib/sur-site.ts`) qui porte l'empreinte du poste et rien
+d'autre ; le poste sur site n'envoie rien de lui-même, le client lit et envoie dans
+son propre logiciel de courriel ; aucune adresse de l'éditeur n'est écrite en dur
+(le contrat de licence la dit « à arrêter par l'éditeur »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

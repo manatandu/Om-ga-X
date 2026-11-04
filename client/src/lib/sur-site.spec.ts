@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { creationPremierDossierProposee, licenceABloquer, porteInscription, resumeLicence, type EtatSurSite } from './sur-site';
+import { creationPremierDossierProposee, lienEnvoiEmpreinte, licenceABloquer, porteInscription, resumeLicence, type EtatSurSite } from './sur-site';
 
 const L = { numero: 'OMX-1', titulaire: 'ASBL X', emiseLe: '2026-09-26', finMaintenance: '2027-09-26', expiration: null, dossiersMax: 3 };
 
@@ -81,3 +81,28 @@ describe('la porte /inscription, en ligne et sur site', () => {
     expect(fermee).toContain('href="#/connexion"');
   });
 });
+
+describe('installation sur site · envoi de l’empreinte à l’éditeur', () => {
+  const EMPREINTE = '316ac5f61c95d9e5b2c23763aff1685ae812c53520cca6109cd5a619acd08bf9';
+
+  it('rend un lien mailto qui porte l’empreinte entière, lisible une fois décodée', () => {
+    const lien = lienEnvoiEmpreinte(EMPREINTE);
+    expect(lien.startsWith('mailto:')).toBe(true);
+    const [, requete] = lien.split('?');
+    const params = new URLSearchParams(requete);
+    expect(params.get('body')).toContain(EMPREINTE);
+    expect(params.get('subject')).toContain('empreinte');
+  });
+
+  it('n’invente aucune adresse · le destinataire reste vide tant qu’on ne le donne pas', () => {
+    expect(lienEnvoiEmpreinte(EMPREINTE).startsWith('mailto:?')).toBe(true);
+    expect(lienEnvoiEmpreinte(EMPREINTE, 'licences@exemple.cd').startsWith('mailto:licences%40exemple.cd?')).toBe(true);
+  });
+
+  it('ne porte ni nom de dossier ni donnée comptable, et aucun tiret cadratin', () => {
+    const decode = decodeURIComponent(lienEnvoiEmpreinte(EMPREINTE));
+    expect(decode).not.toContain('\u2014');
+    expect(decode.toLowerCase()).not.toMatch(/dossier|exercice|solde|montant/);
+  });
+});
+
