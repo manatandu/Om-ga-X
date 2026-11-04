@@ -889,20 +889,22 @@ a:focus-visible {
    fenêtre (`flex flex-col h-full min-h-0`), la grille y prend le reste
    (`flex: 0 1 auto` · elle ne grandit pas, elle rétrécit) et défile elle-même dans les deux sens ·
    un seul défilement, et le pied de totaux figé reste visible, dans une fenêtre
-   plus basse que l'écran comme dans une fenêtre agrandie. Sous douze rem de
-   reste, la fenêtre reprend le défilement, comme avant. Aucune borne
+   plus basse que l'écran comme dans une fenêtre agrandie. Sous 26 rem de
+   page, la fenêtre reprend le défilement, comme avant. Aucune borne
    d'écran (`vh`, `dvh`) ne subsiste. */
 .grille-longue {
   overflow: auto;
   flex: 0 1 auto;
-  min-height: min(12rem, 100%);
+  min-height: 0;
 }
 /* Le contenu d'une page à grille : une colonne de la hauteur de la fenêtre. */
 .page-a-grille {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 0;
+  /* Plancher de la PAGE, non de la grille (un plancher de grille étirait les
+     listes courtes) · plus bas, c'est la fenêtre qui défile, comme avant. */
+  min-height: 26rem;
 }
 .page-a-grille > * {
   flex-shrink: 0;
@@ -915,7 +917,7 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   flex: 0 1 auto;
-  min-height: min(12rem, 100%);
+  min-height: 0;
 }
 .cadre-grille > .grille-longue {
   min-height: 0;
