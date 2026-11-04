@@ -28,8 +28,11 @@ jobs:
     # (playwright.config.ts), et la suite grandit avec chaque ligne · le
     # passage du 12d79f5 a pris 26 minutes, celui de la ligne sage-l7 a été
     # COUPÉ à 30 avant la fin, sans qu'aucun test ait échoué. Une coupure ne
-    # dit rien des tests qui n'ont pas tourné.
-    timeout-minutes: 60
+    # dit rien des tests qui n'ont pas tourné. Le passage du lot 3 du design
+    # (2026-11-04, run 541) a été COUPÉ à soixante minutes, le job « cancelled »
+    # sans un seul test rouge · la suite dure environ cinquante-deux minutes
+    # avec son montage, et trois parcours de clavier s'y sont ajoutés.
+    timeout-minutes: 90
 
     # LES VERSIONS DE LA PRODUCTION (audit final F194) · PostgreSQL 18 comme
     # Neon, et Node 22 comme le Dockerfile ; ce job éprouvait 16 et 20. La
