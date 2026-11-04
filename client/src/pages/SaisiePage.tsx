@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { api, ApiError } from '../lib/api';
 import { montant } from '../lib/montants';
 // Les mois de saisie se lisent en UTC, comme les dates de l'exercice.
@@ -1711,7 +1711,13 @@ export function SaisiePage() {
 
   // La grille gagne une colonne par axe analytique doté de sections · sans
   // axe, elle retrouve exactement sa largeur d'origine.
-  const grille = 'grid gap-2';
+  // `grille-saisie-large` (index.css) · sous 640 px, chaque ligne de la grille a
+  // la largeur que ses colonnes exigent (les 566 px fixes, 140 px de libellé,
+  // les écarts et les marges, plus 112 px par axe) et la CARTE défile de côté
+  // d'un bloc : en-tête, lignes et totaux restent alignés. Avant, les 1fr
+  // s'écrasaient à zéro et la fenêtre entière défilait (680 px sur 388).
+  const grille = 'grid gap-2 grille-saisie-large';
+  const largeurGrille = `${786 + axesGrille.length * 112}px`;
   const grilleStyle = {
     gridTemplateColumns: `44px 58px 92px 108px ${axesGrille.map(() => '104px ').join('')}1fr 112px 112px 40px`,
   } as const;
@@ -1818,7 +1824,7 @@ export function SaisiePage() {
               {erreurGrille && (
                 <p className="text-[11.5px] text-danger mb-2">État des journaux par mois illisible · {erreurGrille}</p>
               )}
-              <div className="flex gap-3 mb-3 text-[10.5px] text-text-dim">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-[10.5px] text-text-dim">
                 {(['BROUILLARD', 'NON_IMPRIME', 'SITUATION', 'JOURNAL', 'CLOTURE'] as const).map((e) => (
                   <span key={e} className="flex items-center gap-1">
                     <span className={`inline-block w-[16px] text-center font-bold ${ETATS_JOURNAL[e].classe}`}>{ETATS_JOURNAL[e].sigle}</span>
@@ -1828,7 +1834,7 @@ export function SaisiePage() {
                 <span>· figé en cours de mois</span>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <label className="text-[11.5px]">Période :</label>
                 <select
                   disabled={parPiece}
@@ -1855,7 +1861,7 @@ export function SaisiePage() {
                     setSucces(null);
                     setErreur(null);
                   }}
-                  className="bg-sel text-white px-5 py-1.5 text-[11.5px] font-semibold disabled:opacity-50"
+                  className="bg-sel text-white px-5 py-1.5 text-[11.5px] font-semibold disabled:opacity-50 shrink-0"
                 >
                   Ouvrir le journal
                 </button>
@@ -1869,7 +1875,7 @@ export function SaisiePage() {
 
   // ============ ÉTAPE 2 · le journal du mois, grille de saisie ============
   return (
-    <div className="p-2">
+    <div className="p-2" style={{ '--largeur-grille': largeurGrille } as CSSProperties}>
       <datalist id="libelles-predefinis">
         {libellesPredefinis.map((l) => (
           <option key={l.id} value={l.intitule} label={l.code} />
@@ -2057,7 +2063,7 @@ export function SaisiePage() {
             </button>
           </div>
         )}
-        <div className="max-h-[34vh] overflow-auto">
+        <div className="max-h-[34vh] overflow-auto grille-saisie-large">
           {ecrituresAffichees.map((e) => {
             const jourE = new Date(e.date).getDate();
             const annulee = !!e.correction;
@@ -2199,10 +2205,10 @@ export function SaisiePage() {
         totaux du journal, au-dessus, restent affichés.
       */}
       {peutEcrire ? (
-        <div className="bg-surface border border-border-dark mt-2.5 rounded-[4px]">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-chrome border-b border-border rounded-t-[10px]">
+        <div className="bg-surface border border-border-dark mt-2.5 rounded-[4px] max-sm:overflow-x-auto">
+          <div className="flex flex-wrap items-center justify-between gap-y-1.5 px-3 py-1.5 bg-chrome border-b border-border rounded-t-[10px]">
             <span className="text-[11.5px] font-bold text-text-dim">Pièce en cours de saisie</span>
-            <div className="flex items-center gap-2.5 text-[11.5px]">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11.5px]">
               {parPiece ? (
                 <label className="flex items-center gap-1.5">
                   <span className="text-text-dim">Date :</span>

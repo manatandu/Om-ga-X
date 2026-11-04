@@ -73,7 +73,7 @@ export function ControlesPage() {
     });
 
   const ongletClasse = (o: Onglet) =>
-    `px-4 py-1.5 text-[11.5px] font-bold ${onglet === o ? 'bg-surface border-x border-border' : 'text-text-dim'}`;
+    `px-4 py-1.5 text-[11.5px] font-bold shrink-0 whitespace-nowrap ${onglet === o ? 'bg-surface border-x border-border' : 'text-text-dim'}`;
 
   return (
     <div className="p-2">
@@ -84,7 +84,7 @@ export function ControlesPage() {
         </div>
       )}
 
-      <div className="flex bg-chrome border border-border border-b-0 rounded-t-[10px] overflow-hidden">
+      <div className="flex bg-chrome border border-border border-b-0 rounded-t-[10px] overflow-x-auto overflow-y-hidden">
         <button onClick={() => setOnglet('controles')} className={ongletClasse('controles')}>
           Contrôles de cohérence
         </button>
@@ -97,7 +97,7 @@ export function ControlesPage() {
         <button onClick={() => setOnglet('dormants')} className={ongletClasse('dormants')}>
           Comptes dormants
         </button>
-        <span className="ml-auto flex items-center px-2.5">
+        <span className="ml-auto flex shrink-0 items-center px-2.5">
           <Aide sujet="controles" />
         </span>
       </div>
