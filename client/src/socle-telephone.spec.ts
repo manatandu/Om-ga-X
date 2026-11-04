@@ -340,3 +340,49 @@ describe('la porte de connexion', () => {
     expect(oeil).not.toMatch(/tabIndex=/);
   });
 });
+
+describe('le contenu des fenêtres sous 640 px (lot 4)', () => {
+  const css = sansCommentaires(lire('index.css'));
+  const coarse = bloc(css, '@media (pointer: coarse)');
+
+  it('les boutons de fenêtre prennent 32 px au doigt, jamais au bureau', () => {
+    // La règle vit DANS le bloc du pointeur grossier, et exclut `.cible-tactile`
+    // (zone déjà étendue) ; le bureau ne la lit pas.
+    expect(coarse).toMatch(/\[data-contenu-fenetre\] button:not\(\.cible-tactile\):not\(\[data-taille-fixe\]\)/);
+    const regle = bloc(coarse, "[data-contenu-fenetre] button:not(.cible-tactile)");
+    expect(regle).toMatch(/min-height:\s*32px/);
+    expect(regle).toMatch(/min-width:\s*32px/);
+    expect(sansCommentaires(css.replace(coarse, ''))).not.toMatch(/\[data-contenu-fenetre\] button/);
+  });
+
+  it('la fenêtre porte le marqueur que la règle et le test navigateur lisent', () => {
+    expect(sansCommentaires(lire('components/chrome/Fenetre.tsx'))).toMatch(/<div data-contenu-fenetre className="flex-1 min-h-0 overflow-auto/);
+  });
+
+  it('la carte défile de côté sous 640 px au lieu de rogner ses lignes', () => {
+    const carte = bloc(css, '.shadow-posee {');
+    expect(carte).toMatch(/overflow-x:\s*auto/);
+    expect(carte).toMatch(/overflow-y:\s*hidden/);
+    // ... et seulement sous 640 px : la règle est DANS ce média.
+    const media = css.lastIndexOf('@media not all and (min-width: 640px)', css.indexOf('.shadow-posee {'));
+    expect(media).toBeGreaterThanOrEqual(0);
+    expect(bloc(css.slice(media), '@media')).toContain('.shadow-posee {');
+    // L'utilitaire de base garde `hidden` : le bureau ne bouge pas.
+    expect(bloc(css, '@utility shadow-posee')).toMatch(/overflow:\s*hidden/);
+  });
+
+  it('la grille de saisie prend la largeur de ses colonnes, en-tête, lignes et totaux ensemble', () => {
+    const saisie = sansCommentaires(lire('pages/SaisiePage.tsx'));
+    expect(saisie).toMatch(/const grille = 'grid gap-2 grille-saisie-large'/);
+    expect(saisie).toMatch(/'--largeur-grille': largeurGrille/);
+    expect(saisie).toMatch(/max-h-\[34vh\] overflow-auto grille-saisie-large/);
+    expect(bloc(css, '.grille-saisie-large {')).toMatch(/min-width:\s*var\(--largeur-grille\)/);
+  });
+
+  it("le choix du journal et l'entête des contrôles se replient au lieu de sortir", () => {
+    const saisie = sansCommentaires(lire('pages/SaisiePage.tsx'));
+    expect(saisie).toMatch(/flex flex-wrap items-center gap-x-3 gap-y-2/);
+    expect(saisie).toMatch(/disabled:opacity-50 shrink-0/);
+    expect(sansCommentaires(lire('pages/ControlesPage.tsx'))).toMatch(/rounded-t-\[10px\] overflow-x-auto overflow-y-hidden/);
+  });
+});

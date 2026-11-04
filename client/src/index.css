@@ -1469,6 +1469,23 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* LA CARTE NE ROGNE PLUS SON CONTENU SOUS 640 PX (lot 4). `shadow-posee` pose
+   `overflow: hidden` pour arrondir ses coins ; sur un téléphone, une ligne de
+   tableau plus large que la carte (`min-w-[500px]` des états financiers) y était
+   COUPÉE, colonnes de montants perdues, au lieu de défiler. La carte défile
+   alors de côté dans son propre cadre, la fenêtre jamais. Le bureau garde
+   `hidden`, sans changement d'un pixel (la règle ne le lit pas). */
+@media not all and (min-width: 640px) {
+  /* La grille de la saisie des journaux (SaisiePage, `--largeur-grille`). */
+  .grille-saisie-large {
+    min-width: var(--largeur-grille);
+  }
+  .shadow-posee {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
 /* SOUS UN POINTEUR GROSSIER (le doigt) · la zone de toucher (Apple, Human
    Interface Guidelines : 44 px ; WCAG 2.5.8 : 24 px).
    (1) Sous 640 px, les contrôles du chrome ont leur vraie taille de 44 px
@@ -1509,6 +1526,21 @@ body {
     min-height: 44px;
     min-width: 44px;
   }
+  /* LES BOUTONS DANS LES FENÊTRES (lot 4) · 28 à 30 px au bureau (`py-1.5`
+     sur 11,5 px), 16 à 22 px dans les grilles : au doigt, au moins 32 px dans
+     les deux sens (WCAG 2.5.8 : 24 px ; 32 px est le plafond que le lot 2 s'est
+     donné pour ne pas voler les touchers du voisin). Ne grandit que le MINIMUM,
+     un bouton plus grand garde sa taille. `.cible-tactile` en est exclu : sa
+     zone est déjà étendue par son pseudo-élément, et en lui ajoutant une
+     taille réelle l'aide « ? » de 15 px au milieu d'un texte déplacerait la
+     ligne. `data-taille-fixe` est la porte de sortie, comme pour les champs.
+     Sous un pointeur fin, rien ne change d'un pixel. */
+  [data-contenu-fenetre] button:not(.cible-tactile):not([data-taille-fixe]),
+  [data-contenu-fenetre] [role='button']:not(.cible-tactile):not([data-taille-fixe]) {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
   /* À 16 px, la liste « tous les comptes mouvementés » dépassait sa boîte : un
      choix ne sort jamais de son conteneur. */
   select {
