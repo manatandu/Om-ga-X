@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
@@ -7,7 +7,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { TableauBalanceAgee, type BalanceAgee } from '../components/TableauBalanceAgee';
 import { FiltreGrille } from '../components/GrilleOutils';
-import { filtrerLignes } from '../lib/grille';
+import { filtrerLignes, type EtatTri } from '../lib/grille';
 
 /**
  * BALANCE ÂGÉE · l'antériorité des créances et dettes non lettrées, tiers par
@@ -73,6 +73,18 @@ export function BalanceAgeePage() {
   const [donnees, setDonnees] = useState<BalanceAgee | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [filtreTiers, setFiltreTiers] = useState('');
+  // Le tri vit ici : il se remet à zéro avec la lecture (autre exercice, date ou
+  // périmètre), et tombe si sa colonne n'existe plus (le nombre de tranches change).
+  const [triBrut, setTri] = useState<EtatTri | null>(null);
+  useEffect(() => {
+    setTri(null);
+    setFiltreTiers('');
+  }, [exerciceCourant?.id, dateReference, type]);
+  const tri = useMemo(() => {
+    if (!triBrut || !donnees) return null;
+    const cles = new Set(['tiers', 'solde', ...donnees.tranches.map((_t, i) => `t${i}`)]);
+    return cles.has(triBrut.cle) ? triBrut : null;
+  }, [triBrut, donnees]);
 
   useEffect(() => {
     if (!exerciceCourant) return;
@@ -123,7 +135,7 @@ export function BalanceAgeePage() {
   };
 
   return (
-    <div className="p-2">
+    <div className="p-2 page-a-grille">
       <EnteteImpression titre="Balance âgée" />
       <div className="flex items-end justify-end mb-1.5 gap-3 flex-wrap">
         <div className="flex items-end gap-3 flex-wrap">
@@ -186,9 +198,9 @@ export function BalanceAgeePage() {
           valeur={filtreTiers}
           onChange={setFiltreTiers}
           etiquette="Filtrer la balance âgée par tiers, code ou compte"
-          lues={donnees.debiteurs.length + donnees.crediteurs.length + donnees.sensInverse.length + donnees.soldesNuls.length}
+          lues={donnees.debiteurs.length + donnees.crediteurs.length + donnees.sensInverse.length}
           montrees={
-            [donnees.debiteurs, donnees.crediteurs, donnees.sensInverse, donnees.soldesNuls].reduce(
+            [donnees.debiteurs, donnees.crediteurs, donnees.sensInverse].reduce(
               (n, liste) => n + filtrerLignes(liste, filtreTiers, (l) => [l.libelle, l.codeTiers, l.numero]).length,
               0,
             )
@@ -197,11 +209,14 @@ export function BalanceAgeePage() {
         />
       )}
       <div className="border border-border bg-surface shadow-posee grille-longue">
-        {donnees && <TableauBalanceAgee donnees={donnees} filtre={filtreTiers} />}
+        {donnees && <TableauBalanceAgee donnees={donnees} filtre={filtreTiers} tri={tri} onTri={setTri} />}
       </div>
       {/* Paquet 1, B5 · les groupes lus ligne à ligne · leur total est dans les
           tranches, leur répartition par ancienneté ne l'est pas. */}
       <GroupesLusLigneALigne groupes={donnees?.groupesLusLigneALigne} className="mt-1.5" />
+      {filtreTiers.trim() !== '' && donnees?.groupesLusLigneALigne && (
+        <p className="text-[11px] text-text-dim">Ces groupes sont ceux de la balance entière, non filtrés.</p>
+      )}
 
     </div>
   );

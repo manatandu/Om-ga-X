@@ -29,7 +29,7 @@ const page = ['pages/BalanceAgeePage.tsx', 'components/TableauBalanceAgee.tsx']
 
 describe('balance âgée · le modèle du dossier de révision', () => {
   it('la page rend la grille du composant qu’on relit avec elle', () => {
-    expect(page).toContain('<TableauBalanceAgee donnees={donnees} filtre={filtreTiers} />');
+    expect(page).toContain('<TableauBalanceAgee donnees={donnees} filtre={filtreTiers} tri={tri} onTri={setTri} />');
   });
 
   it('ne ventile plus par tranches glissantes de trente jours', () => {

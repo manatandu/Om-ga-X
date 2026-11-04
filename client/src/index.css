@@ -884,12 +884,43 @@ a:focus-visible {
 }
 
 /* GRILLES LONGUES (lot 3 du design, 2026-11-03). Un en-tête ne reste en vue que
-   dans le conteneur qui défile : le conteneur d'une grille a donc sa hauteur
-   bornée à l'écran (jamais moins de 18 rem) et défile lui-même, dans les deux
-   sens. Une liste courte n'atteint pas la borne : rien ne change pour elle. */
+   dans le conteneur qui défile. La hauteur du cadre est celle de la FENÊTRE, non
+   de l'écran : la page est une colonne flex de la hauteur du contenu de la
+   fenêtre (`flex flex-col h-full min-h-0`), la grille y prend le reste
+   (`flex: 0 1 auto` · elle ne grandit pas, elle rétrécit) et défile elle-même dans les deux sens ·
+   un seul défilement, et le pied de totaux figé reste visible, dans une fenêtre
+   plus basse que l'écran comme dans une fenêtre agrandie. Sous 26 rem de
+   page, la fenêtre reprend le défilement, comme avant. Aucune borne
+   d'écran (`vh`, `dvh`) ne subsiste. */
 .grille-longue {
   overflow: auto;
-  max-height: max(18rem, calc(100dvh - 15rem));
+  flex: 0 1 auto;
+  min-height: 0;
+}
+/* Le contenu d'une page à grille : une colonne de la hauteur de la fenêtre. */
+.page-a-grille {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Plancher de la PAGE, non de la grille (un plancher de grille étirait les
+     listes courtes) · plus bas, c'est la fenêtre qui défile, comme avant. */
+  min-height: 26rem;
+}
+.page-a-grille > * {
+  flex-shrink: 0;
+}
+.page-a-grille > .grille-longue,
+.page-a-grille > .cadre-grille {
+  flex-shrink: 1;
+}
+.cadre-grille {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.cadre-grille > .grille-longue {
+  min-height: 0;
 }
 .entete-fixe {
   position: sticky;

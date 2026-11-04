@@ -39,6 +39,16 @@ describe('PortailModale · le clavier reste dans la modale', () => {
     expect(source).toContain("focalisables().find((el) => !el.hasAttribute('aria-expanded'))");
   });
 
+  it('un contenu qui arrive après un fetch reçoit le focus initial, sans voler un focus posé', () => {
+    expect(source).toContain('new MutationObserver(');
+    expect(source).toContain('if (!focusLibre()) return arreterObservation();');
+    expect(source).toContain("document.addEventListener('pointerdown', arreterObservation, true)");
+  });
+
+  it('Tab sans aucune cible est retenu par la boîte (preventDefault avant le choix de la cible)', () => {
+    expect(source).toMatch(/if \(suite === null\) return;\s*e\.preventDefault\(\);\s*if \(suite === -2\)/);
+  });
+
   it('ne touche pas à Échap · il reste à lib/echap.ts', () => {
     expect(source).not.toContain('Escape');
   });

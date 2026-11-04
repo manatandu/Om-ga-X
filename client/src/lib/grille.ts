@@ -14,6 +14,8 @@
  * rendues) et il ne touche jamais au tableau reçu.
  */
 
+import { montant } from './montants';
+
 export type SensTri = 'asc' | 'desc';
 export interface EtatTri {
   cle: string;
@@ -84,15 +86,26 @@ export function trierLignes<T>(
 export function normaliserRecherche(texte: string): string {
   return texte
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
 }
 
+/** Les espaces de l'écran (fine, insécable, ordinaire) et la virgule décimale se lisent pareil. */
+function sansEspaces(texte: string): string {
+  return texte.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.');
+}
+
+/** Ce qu'un nombre montre à l'écran (`lib/montants.ts`) et ce qu'on en tape · tous lus sans espaces ni virgule. */
+function formesDUnNombre(n: number): string[] {
+  // Le montant est écrit par `lib/montants.ts`, seul porteur du formatage.
+  return [String(n), montant(n)].map(sansEspaces);
+}
+
 /**
  * Lignes dont l'une des cellules contient le texte tapé. Un texte vide ne
- * filtre rien. Les nombres se cherchent tels qu'on les lit (chiffres, sans
- * espaces) · « 116000 » retrouve « 116 000,00 ».
+ * filtre rien. Les nombres se cherchent comme on les lit ou les tape · « 116000 »,
+ * « 116 000,00 » et « 116000,50 » retrouvent 116 000,00 et 116 000,50.
  */
 export function filtrerLignes<T>(
   lignes: readonly T[],
@@ -101,12 +114,13 @@ export function filtrerLignes<T>(
 ): readonly T[] {
   const cherche = normaliserRecherche(texte);
   if (cherche === '') return lignes;
-  const chercheSansEspaces = cherche.replace(/\s/g, '');
+  const chercheNombre = sansEspaces(cherche);
   return lignes.filter((ligne) =>
     lire(ligne).some((c) => {
       if (c === null || c === undefined) return false;
+      if (typeof c === 'number') return formesDUnNombre(c).some((f) => f.includes(chercheNombre));
       const brut = normaliserRecherche(String(c));
-      return brut.includes(cherche) || brut.replace(/[\s  ]/g, '').includes(chercheSansEspaces);
+      return brut.includes(cherche) || sansEspaces(brut).includes(chercheNombre);
     }),
   );
 }
