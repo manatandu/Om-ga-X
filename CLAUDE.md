@@ -98,9 +98,9 @@ docs/            plan de construction, audits, guides pilote, notes de droit
 .github/workflows/  déploiement, tests, sauvegarde, surveillance, paquet (§ 5)
 .claude/skills/  les compétences versionnées avec le dépôt · sage-i7 (§ 1), ui-ux-pro-max
                  et ses six compagnes, impeccable, security-audit, les seize
-                 d'Emil Kowalski (§ 11)
-.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max, d'impeccable et
-                 d'Emil Kowalski (§ 11)
+                 d'Emil Kowalski, system-design-primer (§ 11)
+.claude/amont/   les sources AMONT, intactes, de ui-ux-pro-max, d'impeccable,
+                 d'Emil Kowalski et de system-design-primer (§ 11)
 ```
 
 ## 3. Commandes
@@ -390,6 +390,8 @@ son propre logiciel de courriel ; aucune adresse de l'éditeur n'est écrite en 
 Puis, le 2026-11-04, le LOT 4 DU DESIGN (« Et t'attends quoi pour corriger ces limites »)
 · débordements à 390 px (états financiers, saisie, contrôles), boutons de fenêtre à
 32 px au toucher, test de rendu sous 640 px (`e2e/tests/rendu-telephone.e2e.ts`).
+Puis, le 2026-11-05, la COMPÉTENCE `system-design-primer` (« Installé dans ce dépôt puis renvoie moi le zip du skill »),
+un guide de lecture, aucune ligne de code d'OmegaX.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -6442,6 +6444,21 @@ l'écran » et le mouvement sobre qui se coupe sous `prefers-reduced-motion` (§
 l'emportent là où elles les contredisent, `prototype` en particulier ne bâtit rien
 dans `main` sans demande de Manasse (gel, § 5). Cela ne remplace pas leur
 déploiement par Réglages → Compétences, que Manasse tient seul.
+
+COMPÉTENCE `system-design-primer` (2026-11-05, demande expresse de Manasse · « Installé
+dans ce dépôt puis renvoie moi le zip du skill ») · le dépôt public
+`donnemartin/system-design-primer` (commit `ae9bbd7`, licence CC BY 4.0 jointe,
+`.claude/skills/system-design-primer/LICENSE.txt`) est COPIÉ, rien n'y est exécuté
+(Markdown, images et exemples Python, jamais lancés). Ce dépôt n'étant pas une
+compétence, la fiche `SKILL.md` est écrite ici, en français ; les textes sont
+dans `references/` (le guide et les exercices corrigés), la source entière, images
+comprises, sous `.claude/amont/system-design-primer/` (hors de la relecture des
+cadratins, hors de l'envoi à Cloud Build) ; les traductions (japonais, chinois)
+ne sont pas reprises. Aucune retouche des textes reproduits. Ses conseils visent des
+services à des millions d'utilisateurs et ne priment JAMAIS sur ce fichier · la
+cohérence éventuelle et le partitionnement n'ont aucune place au livre-journal
+(AUDCIF art. 22), et elle ne dit rien du plan de comptes ni du droit. Cela ne remplace
+pas son déploiement par Réglages → Compétences, que Manasse tient seul.
 
 SERVEUR MCP `magicuidesign-mcp` (2026-10-17, demande expresse de Manasse ·
 « Installe ce MCP ») · déclaré dans `.mcp.json` à la racine, composants Magic UI
