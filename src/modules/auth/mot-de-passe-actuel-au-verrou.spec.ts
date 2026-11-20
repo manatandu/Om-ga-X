@@ -12,7 +12,7 @@ import { MOTIF_MOT_DE_PASSE_ACTUEL_INCORRECT, SEUIL_VERROUILLAGE } from './verro
  */
 const MAINTENANT = new Date('2026-11-20T10:00:00Z');
 
-async function monde(etat: Record<string, unknown> = {}) {
+async function monde(etat: Record<string, unknown> = {}, relu: Record<string, unknown> | null = null) {
   const u: Record<string, unknown> = {
     id: 'u1', tenantId: 't1', email: 'titulaire@exemple.cd', estActif: true, estOperateurPlateforme: false,
     motDePasse: await bcrypt.hash('bon-mot-de-passe', 4),
@@ -24,7 +24,9 @@ async function monde(etat: Record<string, unknown> = {}) {
   const client: Record<string, unknown> = {
     $executeRaw: async () => 1,
     // La relecture sous verrou rend la ligne TELLE QU'ELLE EST, compteur compris.
-    $queryRaw: async () => [{ ...u }],
+    // `relu` · ce que des requêtes simultanées ont écrit entre la lecture du
+    // début de la requête et la relecture sous verrou (décision B).
+    $queryRaw: async () => [{ ...u, ...(relu ?? {}) }],
     user: {
       findUnique: async () => ({ ...u }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
@@ -70,5 +72,15 @@ describe('le mot de passe actuel passe par le verrou de connexion', () => {
     const m = await monde({ secretDoubleAuth: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', doubleAuthActiveDepuis: MAINTENANT });
     await expect(m.s.desactiverDoubleAuth('u1', 'bon-mot-de-passe', '000000', MAINTENANT)).rejects.toThrow(/Code de vérification invalide/);
     expect(m.u.tentativesEchouees).toBe(1);
+  });
+
+  // DÉCISION B (relecture du 2026-11-20) · la ligne lue au début de la requête
+  // disait « ouvert » pendant que des requêtes simultanées, mots de passe
+  // faux, fermaient le compte · le bon mot de passe, arrivé dans la rafale,
+  // passait. Le verrou se relit sous `FOR UPDATE` avant d'accepter.
+  it.each(gestes)('%s · lu ouvert, FERMÉ à la relecture sous verrou · le bon mot de passe est refusé', async (_nom, geste) => {
+    const jusqua = new Date(Date.now() + 10 * 60_000);
+    const m = await monde({}, { tentativesEchouees: SEUIL_VERROUILLAGE, verrouilleJusqua: jusqua, dernierEchecLe: new Date() });
+    await expect(geste(m.s, 'bon-mot-de-passe')).rejects.toThrow(/compte est fermé/);
   });
 });

@@ -1412,6 +1412,14 @@ model User {
   empreinteDeverrouillage  String?   @unique
   deverrouillageExpireLe   DateTime?
   deverrouillageEnvoyePour DateTime?
+  /// LES CODES FAUX PENDANT LE VERROU (relecture du 2026-11-20, décision A) ·
+  /// un compte fermé admet le code de sa double authentification, au plus
+  /// cinq codes faux par période de verrou (src/modules/auth/verrouillage.ts,
+  /// CODES_FAUX_PAR_PERIODE_DE_VERROU). `codesFauxSousVerrouPour` retient
+  /// l'échéance du verrou que le compteur vise · une échéance qui change hors
+  /// d'un code faux remet le compteur à zéro.
+  codesFauxSousVerrou     Int       @default(0)
+  codesFauxSousVerrouPour DateTime?
 
   // DOUBLE AUTHENTIFICATION (src/modules/auth/double-authentification.ts) ·
   // TOTP, RFC 6238. Le secret est posé à l'initiation et ne vaut qu'une fois

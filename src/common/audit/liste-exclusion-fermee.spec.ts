@@ -64,6 +64,10 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // empreinte est EXCLUE.
     'deverrouillageExpireLe',
     'deverrouillageEnvoyePour',
+    // Le budget des codes faux pendant le verrou (relecture du 2026-11-20) ·
+    // ADMIS comme le compteur dont il est le voisin.
+    'codesFauxSousVerrou',
+    'codesFauxSousVerrouPour',
     'createdAt',
     // Profil de fonctions (point 15) · ADMIS : qui a ouvert ou fermé quelle
     // fonction à qui est exactement ce qu'un journal d'audit doit rendre.

@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { normaliserCourriel } from '../../common/courriel';
 import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
+import { viderLaFenetreDeLAdresse } from '../auth/limite-par-adresse';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma.service';
 import { FonctionMetier, Prisma, RoleUtilisateur } from '@prisma/client';
@@ -84,6 +85,8 @@ export function retireUnAdministrateur(
 
 @Injectable()
 export class UtilisateurService {
+  private readonly logger = new Logger('Utilisateurs');
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -168,6 +171,8 @@ export class UtilisateurService {
       // ligne s'y ferment, sous son nom à lui.
       if (ligne.id !== compte.id) await tx.user.update({ where: { id: ligne.id }, data: { sessionsInvalidesAvant: maintenant } });
     });
+    // Le compte rouvert repart d'une fenêtre d'essais vide (relecture du 2026-11-20, C2).
+    await viderLaFenetreDeLAdresse(this.prisma, compte.courrielDeConnexion ?? compte.email, compte.id, this.logger);
     return { reinitialise: true, parCourriel: true, email: ligne.email };
   }
 
@@ -421,6 +426,8 @@ export class UtilisateurService {
         },
       }),
     );
+    // Le compte rouvert repart d'une fenêtre d'essais vide (relecture du 2026-11-20, C2).
+    await viderLaFenetreDeLAdresse(this.prisma, user.courrielDeConnexion ?? user.email, user.id, this.logger);
     return { reinitialise: true, email: user.email };
   }
 
@@ -479,12 +486,16 @@ export class UtilisateurService {
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable pour ce tenant');
     }
-    return this.surLaConnexionDuDossierSeul(user, (tx) =>
+    const rouvert = await this.surLaConnexionDuDossierSeul(user, (tx) =>
       tx.user.update({
         where: { id: userId },
         data: DECOMPTE_REMIS_A_ZERO,
         select: SELECTION,
       }),
     );
+    // Le verrou levé, la limite par adresse aussi · sans quoi le titulaire
+    // rouvert trouvait encore un 429 (relecture du 2026-11-20, C2).
+    await viderLaFenetreDeLAdresse(this.prisma, user.courrielDeConnexion ?? user.email, user.id, this.logger);
+    return rouvert;
   }
 }

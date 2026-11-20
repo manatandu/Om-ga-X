@@ -4,6 +4,9 @@ import { AuthController } from './auth.controller';
 import { CLE_SORTIE_MOT_DE_PASSE } from '../../common/decorators/sortie-mot-de-passe.decorator';
 import { AuthService } from './auth.service';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 /**
  * Changer sa propre adresse de connexion · demandé par Manasse le 2026-09-25
  * (une adresse du cabinet qui change de domaine). Aucun écran ne le permettait, et le
@@ -49,7 +52,15 @@ describe('changer son adresse de connexion', () => {
     expect(appel.data.sessionsInvalidesAvant).toBeInstanceOf(Date);
     expect(r).toMatchObject({ adresse: 'admin@nouveau.cd', accessToken: 'jeton' });
     // Le drapeau d'opérateur et le rôle sont sur le compte · rien ne les touche.
-    expect(Object.keys(appel.data).sort()).toEqual(['email', 'sessionsDuCompteInvalidesAvant', 'sessionsInvalidesAvant']);
+    // Le lien de déverrouillage visait l'ancienne adresse · il s'efface (relecture du 2026-11-20).
+    expect(Object.keys(appel.data).sort()).toEqual([
+      'deverrouillageEnvoyePour',
+      'deverrouillageExpireLe',
+      'email',
+      'empreinteDeverrouillage',
+      'sessionsDuCompteInvalidesAvant',
+      'sessionsInvalidesAvant',
+    ]);
   });
 
   it('une adresse déjà prise est refusée sans dire à qui elle appartient', async () => {

@@ -83,8 +83,76 @@ export function decompteApresEchec(
   return { tentativesEchouees: echecs, verrouilleJusqua: instantDeverrouillage(echecs, maintenant), dernierEchecLe: maintenant };
 }
 
-/** Ce qu'écrit toute remise à zéro (succès, mot de passe changé ou réinitialisé, déverrouillage). */
-export const DECOMPTE_REMIS_A_ZERO = { tentativesEchouees: 0, verrouilleJusqua: null, dernierEchecLe: null } as const;
+/**
+ * LE LIEN DE DÉVERROUILLAGE S'EFFACE avec le verrou qu'il levait (relecture du
+ * 2026-11-20) · connexion réussie, mot de passe changé ou réinitialisé,
+ * déverrouillage par l'administrateur, adresse changée. Gardé, il rouvrirait
+ * plus tard un compte refermé pour une autre raison.
+ */
+export const LIEN_DEVERROUILLAGE_EFFACE = { empreinteDeverrouillage: null, deverrouillageExpireLe: null, deverrouillageEnvoyePour: null } as const;
+
+/**
+ * Ce qu'écrit toute remise à zéro (succès, mot de passe changé ou réinitialisé,
+ * déverrouillage) · le compteur, le verrou, le budget des codes faux sous
+ * verrou et le lien de déverrouillage.
+ */
+export const DECOMPTE_REMIS_A_ZERO = {
+  tentativesEchouees: 0,
+  verrouilleJusqua: null,
+  dernierEchecLe: null,
+  codesFauxSousVerrou: 0,
+  codesFauxSousVerrouPour: null,
+  ...LIEN_DEVERROUILLAGE_EFFACE,
+} as const;
+
+/**
+ * LE CODE DE DOUBLE AUTHENTIFICATION PENDANT LE VERROU A SA PROPRE LIMITE
+ * (relecture du 2026-11-20, décision A). Le titulaire entre malgré le verrou
+ * avec son bon mot de passe ET un code valide (`deverrouillage.ts`, porte a) ·
+ * sans limite, qui tient le mot de passe devinait les six chiffres pendant le
+ * verrou, qui ne freinait plus rien. AU PLUS CINQ CODES FAUX PAR PÉRIODE DE
+ * VERROU · au-delà, le code n'est plus jugé jusqu'à l'échéance, et la réponse
+ * reste celle d'un mot de passe faux. Un code faux compte aussi au compteur
+ * du compte, qui prolonge le verrou · la période se poursuit alors, le
+ * compteur suit la nouvelle échéance (`codesFauxSousVerrouPour`), sans quoi
+ * chaque prolongation rouvrirait cinq essais. Une période close (échéance
+ * passée, puis un nouveau verrou) repart de zéro. Convention d'OmegaX, comme
+ * les paliers · cinq, le seuil du verrou lui-même.
+ */
+export const CODES_FAUX_PAR_PERIODE_DE_VERROU = 5;
+
+type EtatCodesSousVerrou = { verrouilleJusqua: Date | null; codesFauxSousVerrou?: number | null; codesFauxSousVerrouPour?: Date | null };
+
+const memeInstant = (a: Date | null | undefined, b: Date | null | undefined) => Boolean(a && b && a.getTime() === b.getTime());
+
+/** Les codes faux déjà comptés pour le verrou EN COURS · zéro s'ils visaient un autre verrou. */
+export function codesFauxDeLaPeriode(u: EtatCodesSousVerrou): number {
+  return memeInstant(u.codesFauxSousVerrouPour, u.verrouilleJusqua) ? (u.codesFauxSousVerrou ?? 0) : 0;
+}
+
+/** Le code se juge-t-il encore pendant ce verrou ? */
+export function codeJugeableSousVerrou(u: EtatCodesSousVerrou): boolean {
+  return codesFauxDeLaPeriode(u) < CODES_FAUX_PAR_PERIODE_DE_VERROU;
+}
+
+/**
+ * Ce qu'écrit un code faux pendant le verrou · l'échec au compteur du compte
+ * (`decompteApresEchec`), le budget de la période porté sur la NOUVELLE
+ * échéance, et le lien déjà parti pour ce verrou porté de même (un lien par
+ * période, prolongations comprises).
+ */
+export function apresUnCodeFauxSousVerrou(
+  u: EtatCodesSousVerrou & { tentativesEchouees: number; dernierEchecLe: Date | null; deverrouillageEnvoyePour?: Date | null },
+  maintenant: Date,
+) {
+  const d = decompteApresEchec(u, maintenant);
+  return {
+    ...d,
+    codesFauxSousVerrou: codesFauxDeLaPeriode(u) + 1,
+    codesFauxSousVerrouPour: d.verrouilleJusqua,
+    ...(memeInstant(u.deverrouillageEnvoyePour, u.verrouilleJusqua) ? { deverrouillageEnvoyePour: d.verrouilleJusqua } : {}),
+  };
+}
 
 /**
  * LE MESSAGE D'UN REFUS DE CONNEXION, UN SEUL (audit final F238). Adresse
@@ -129,5 +197,5 @@ export function motifGesteCompteFerme(jusqua: Date, maintenant: Date): string {
 
 /** Le compte est-il fermé à cet instant ? */
 export function compteFerme(user: { verrouilleJusqua: Date | null }, maintenant: Date): boolean {
-  return user.verrouilleJusqua !== null && user.verrouilleJusqua > maintenant;
+  return Boolean(user.verrouilleJusqua) && user.verrouilleJusqua! > maintenant;
 }

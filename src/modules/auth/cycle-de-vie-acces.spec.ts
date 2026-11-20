@@ -4,10 +4,13 @@ import { PATH_METADATA } from '@nestjs/common/constants';
 import * as bcrypt from 'bcryptjs';
 import { AuthService, EMPREINTE_FACTICE, SALT_ROUNDS } from './auth.service';
 import { sessionRevoquee } from './jwt.strategy';
-import { dureeVerrouMinutes, instantDeverrouillage, MOTIF_IDENTIFIANTS_INVALIDES, SEUIL_VERROUILLAGE } from './verrouillage';
+import { DECOMPTE_REMIS_A_ZERO, dureeVerrouMinutes, instantDeverrouillage, MOTIF_IDENTIFIANTS_INVALIDES, SEUIL_VERROUILLAGE } from './verrouillage';
 import { MotDePasseAChangerGuard } from '../../common/guards/mot-de-passe-a-changer.guard';
 import { CLE_SORTIE_MOT_DE_PASSE } from '../../common/decorators/sortie-mot-de-passe.decorator';
 import { UtilisateurService } from '../utilisateurs/utilisateur.service';
+
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
 
 // La connexion relit la ligne du compte sous verrou, dans une transaction
 // (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
@@ -268,7 +271,10 @@ describe('3 · le verrouillage par compte', () => {
     // NIST SP 800-63B-4 · « the verifier SHOULD disregard any previous failed
     // attempts » après une authentification réussie · la date du dernier
     // échec tombe avec le compteur.
-    expect(capture.data).toEqual({ tentativesEchouees: 0, verrouilleJusqua: null, dernierEchecLe: null });
+    // Le budget des codes faux sous verrou et le lien de déverrouillage
+    // tombent avec lui (relecture du 2026-11-20).
+    expect(capture.data).toEqual(DECOMPTE_REMIS_A_ZERO);
+    expect(capture.data).toMatchObject({ tentativesEchouees: 0, verrouilleJusqua: null, dernierEchecLe: null });
   });
 
   it('dit la même chose dans les trois cas · adresse inconnue, mot de passe faux, compte verrouillé (F238)', async () => {

@@ -69,6 +69,11 @@ describe('F43 · chaque porte qui reçoit une adresse de COMPTE la normalise', (
 });
 
 describe('F43 · les services normalisent aussi', () => {
+  // Le secret de session est exigé par la limite par adresse (limite-par-adresse.ts).
+  beforeAll(() => {
+    process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+  });
+
   it('la connexion cherche l’adresse normalisée', async () => {
     const recherches: unknown[] = [];
     const s = new AuthService(

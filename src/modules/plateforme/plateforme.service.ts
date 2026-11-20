@@ -5,6 +5,7 @@ import { ORIGINE_CREATION_CABINET, ORIGINE_REINITIALISATION_ADMIN, avisCreationC
 import { normaliserCourriel } from '../../common/courriel';
 import { motifRefusReinitialisationOperateur, secondFacteurLeveParReinitialisation } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
+import { viderLaFenetreDeLAdresse } from '../auth/limite-par-adresse';
 import { ConfigService } from '@nestjs/config';
 import { FormeJuridiqueSyscohada, Referentiel, RoleUtilisateur, StatutEcriture, StatutLicence, SystemeComptableSyscohada, TypeLicence } from '@prisma/client';
 import { GarnissageDemonstrationService } from './garnissage-demonstration.service';
@@ -688,6 +689,7 @@ export class PlateformeService implements OnModuleInit {
         },
       }),
     );
+    await viderLaFenetreDeLAdresse(this.prisma, cible.courrielDeConnexion ?? cible.email, cible.id, this.logger);
     this.logger.log(`Mot de passe administrateur réinitialisé et remis par courriel · ${admin.email}`);
     return { reinitialise: true, email: admin.email, courriel: envoi.statut };
   }

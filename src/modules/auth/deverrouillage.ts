@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { ADRESSE_APPLICATION } from '../utilisateurs/invitations';
 
 /**
@@ -30,7 +31,11 @@ import { ADRESSE_APPLICATION } from '../utilisateurs/invitations';
  *      ce que le message tait. Le lien lève le verrou, remet le compteur à
  *      zéro (journal d'audit) et ramène à la connexion.
  *
- * SANS MESSAGERIE (sur site, le plus souvent), rien ne part · le
+ *      Le lien est EFFACÉ par une connexion réussie, un mot de passe changé
+ *      ou réinitialisé, une adresse changée, un déverrouillage par
+ *      l'administrateur (`LIEN_DEVERROUILLAGE_EFFACE`, verrouillage.ts).
+ *
+ * SUR SITE, OU SANS MESSAGERIE, rien ne part · le
  * déverrouillage par l'administrateur du dossier reste la voie
  * (`POST /utilisateurs/:id/deverrouiller`), et pour une personne qui a
  * plusieurs dossiers, « Réinitialiser par courriel » ou, sur site,
@@ -66,4 +71,40 @@ export function avisDeverrouillage(jeton: string): { sujet: string; corps: strin
     corps: texte(`${ADRESSE_APPLICATION}/#/deverrouiller?jeton=${encodeURIComponent(jeton)}`),
     corpsGarde: texte('[remis au seul destinataire, non conservé]'),
   };
+}
+
+/**
+ * POURQUOI UNE RÉSERVATION NE PREND PAS LA PLACE · la ligne relue sous verrou
+ * ne dit plus un compte fermé, ou le lien de ce verrou est déjà parti. `null`
+ * quand la place se prend. Le motif se CONSIGNE (relecture du 2026-11-20,
+ * A3) · une réservation qui ne trouve rien ne se tait plus.
+ */
+export function motifSansLienDeDeverrouillage(
+  frais: { verrouilleJusqua: Date | null; deverrouillageEnvoyePour: Date | null } | null,
+  maintenant: Date,
+): string | null {
+  if (!frais) return 'compte introuvable';
+  if (!frais.verrouilleJusqua || frais.verrouilleJusqua <= maintenant) return 'compte rouvert entre-temps, aucun verrou à lever';
+  if (frais.deverrouillageEnvoyePour && frais.deverrouillageEnvoyePour.getTime() === frais.verrouilleJusqua.getTime()) {
+    return 'lien déjà parti pour ce verrou';
+  }
+  return null;
+}
+
+/**
+ * UN ÉCHEC DE `envoyerUnSecret` LAISSE-T-IL UN LIEN PEUT-ÊTRE REÇU ? (relecture
+ * du 2026-11-20). `false` seulement quand RIEN n'est parti à coup sûr · erreur
+ * levée avant l'envoi (`BadRequestException` de la préparation du message,
+ * `ConflictException` sans messagerie), ou transport qui refuse net (connexion
+ * refusée, hôte introuvable, authentification, code SMTP de refus). Un délai
+ * dépassé ou une connexion coupée en route ne se situent pas · le serveur a pu
+ * accepter le message. Toute autre erreur suit un envoi accepté (la trace de
+ * la file) · `true`.
+ */
+export function envoiPeutEtreParti(erreur: unknown): boolean {
+  if (erreur instanceof BadRequestException || erreur instanceof ConflictException) return false;
+  if (!(erreur instanceof ServiceUnavailableException)) return true;
+  const texte = erreur.message;
+  if (/timeout|timed out|ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|closed unexpectedly|connection closed/i.test(texte)) return true;
+  return !/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|EAUTH|auth|\b[45]\d\d\b|TransportAbsent/i.test(texte);
 }

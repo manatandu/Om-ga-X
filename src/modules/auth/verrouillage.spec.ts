@@ -8,6 +8,9 @@ import {
   SEUIL_VERROUILLAGE,
 } from './verrouillage';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 // La connexion relit la ligne du compte sous verrou, dans une transaction
 // (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
 // elle-même et rend, à la relecture, ce que `findUnique` rend.
@@ -66,7 +69,18 @@ describe('le délai d’oubli, règle pure', () => {
   });
 
   it('la remise à zéro efface aussi la date du dernier échec', () => {
-    expect(DECOMPTE_REMIS_A_ZERO).toEqual({ tentativesEchouees: 0, verrouilleJusqua: null, dernierEchecLe: null });
+    expect(DECOMPTE_REMIS_A_ZERO).toEqual({
+      tentativesEchouees: 0,
+      verrouilleJusqua: null,
+      dernierEchecLe: null,
+      // Le budget des codes faux sous verrou et le lien de déverrouillage
+      // tombent avec le verrou (relecture du 2026-11-20).
+      codesFauxSousVerrou: 0,
+      codesFauxSousVerrouPour: null,
+      empreinteDeverrouillage: null,
+      deverrouillageExpireLe: null,
+      deverrouillageEnvoyePour: null,
+    });
   });
 });
 

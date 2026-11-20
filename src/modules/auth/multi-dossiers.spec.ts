@@ -15,6 +15,9 @@ import { seulementDesColonnesSansEvenement } from '../../common/audit/champs-aud
 import { empreinteSession } from './sessions-fermees';
 import { MOTIF_MESSAGERIE_REQUISE, UtilisateurService } from '../utilisateurs/utilisateur.service';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 /**
  * UNE PERSONNE, PLUSIEURS DOSSIERS (ligne multi-dossiers, 2026-11-01).
  * Chaque garantie ici casserait en silence · une session ouverte sur le

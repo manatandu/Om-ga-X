@@ -3,6 +3,9 @@ import { ActionAudit } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 /**
  * LA CONNEXION RÉUSSIE LAISSE UN MAILLON (passe D4, D4-C4).
  *
@@ -43,6 +46,9 @@ async function service(user: Record<string, unknown>, clientNu: unknown) {
       user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update: async () => ({}) },
       // La limite par adresse (audit de sécurité du 2026-11-19) · un essai compté.
       $queryRaw: async () => [{ n: 1 }],
+      // Le verrou se relit sous `FOR UPDATE` avant d'entrer (relecture du 2026-11-20, B).
+      $executeRaw: async () => 0,
+      $transaction: async (f: (t: unknown) => unknown) => f({ $executeRaw: async () => 0, $queryRaw: async () => [user] }),
       clientNu,
     } as never,
     { sign: () => 'jeton' } as never,

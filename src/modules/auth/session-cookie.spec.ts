@@ -5,6 +5,9 @@ import { AuthService } from './auth.service';
 import { AuthController, MOTIF_CONNEXION_EN_JSON, MOTIF_LICENCE_A_L_INSCRIPTION } from './auth.controller';
 import { COOKIE_SESSION } from './session.constants';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 /**
  * SESSION EN COOKIE httpOnly + CSRF · les garanties qui font tenir le
  * montage :
@@ -103,7 +106,7 @@ describe('AuthService · jeton CSRF apparié au jeton de session', () => {
     let payload: Record<string, unknown> | undefined;
     const hash = await bcrypt.hash('mot-de-passe-correct', 4);
     const s = new AuthService(
-      { user: { findMany: async () => [({ id: 'u1', motDePasse: hash, estActif: true })], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => ({ id: 'u1', motDePasse: hash, estActif: true }) }, $queryRaw: async () => [{ n: 1 }] } as never,
+      { user: { findMany: async () => [({ id: 'u1', motDePasse: hash, estActif: true })], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => ({ id: 'u1', motDePasse: hash, estActif: true }) }, $queryRaw: async () => [{ n: 1 }], $executeRaw: async () => 0, $transaction: async (f: (t: unknown) => unknown) => f({ $executeRaw: async () => 0, $queryRaw: async () => [] }) } as never,
       { sign: (p: Record<string, unknown>) => ((payload = p), 'jwt-signe') } as never,
       undefined as never,
       undefined as never,

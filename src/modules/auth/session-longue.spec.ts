@@ -28,6 +28,9 @@ import { CLE_SORTIE_MOT_DE_PASSE } from '../../common/decorators/sortie-mot-de-p
 import { CLE_ACCES_ROLES_CANTONNES } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { base32, codeHotp, depuisBase32, pasDe } from './double-authentification';
 
+// Le secret de session est exigé par la limite par adresse et le jeton d'appareil (limite-par-adresse.ts).
+process.env.JWT_SECRET ??= 'secret-de-test-assez-long-0123456789abcdef';
+
 // La connexion relit la ligne du compte sous verrou, dans une transaction
 // (piste 10 de l'audit du 2026-10-25) · la doublure rejoue la transaction sur
 // elle-même et rend, à la relecture, ce que `findUnique` rend.
