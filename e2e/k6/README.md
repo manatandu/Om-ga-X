@@ -35,7 +35,7 @@ les constats sont dans `docs/test-de-charge-k6.md` ; ce fichier dit seulement
    npm ci && npm run build
    export DATABASE_URL='postgresql://<utilisateur>@localhost:<port>/<base jetable>?schema=public&connection_limit=10'
    npx prisma migrate deploy
-   JWT_SECRET=jetable NODE_ENV=production PORT=8080 \
+   JWT_SECRET=banc-k6-jetable-0123456789abcdef NODE_ENV=production PORT=8080 \
    INSCRIPTION_PUBLIQUE=true CORS_ORIGIN=http://localhost:4173 \
    taskset -c 0 node --max-old-space-size=460 dist/main.js
    ```

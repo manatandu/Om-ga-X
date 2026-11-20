@@ -253,6 +253,35 @@ jobs:
         with:
           node-version: 22
 
+      # LE SECRET DE SESSION SE JUGE AVANT TOUT (audit de sécurité du
+      # 2026-11-19) · GitHub ne laisse pas relire un secret, et le serveur
+      # refuse désormais de démarrer en production avec un secret faible
+      # (src/config/validate-env.ts). Jugé ici, AVANT les migrations et le
+      # déploiement, un secret faible arrête le workflow avec un message clair
+      # au lieu d'un conteneur qui ne démarre pas. MÊME RÈGLE que
+      # validate-env.ts (absent, `change-me`, `dev-secret-change-me`, moins de
+      # 32 caractères), tenue par chaine-de-livraison.spec.ts. Le secret entre
+      # par l'environnement de l'étape, JAMAIS interpolé dans le script, et
+      # seul le verdict s'imprime · ni la valeur ni sa longueur.
+      - name: Contrôle du secret de session
+        env:
+          SECRET_A_JUGER: ${{ secrets.API_JWT_SECRET }}
+        run: |
+          motif=""
+          if [ -z "$SECRET_A_JUGER" ]; then
+            motif="absent"
+          elif [ "$SECRET_A_JUGER" = "change-me" ] || [ "$SECRET_A_JUGER" = "dev-secret-change-me" ]; then
+            motif="valeur de développement connue"
+          elif [ "${#SECRET_A_JUGER}" -lt 32 ]; then
+            motif="moins de 32 caractères"
+          fi
+          if [ -n "$motif" ]; then
+            echo "::error::API_JWT_SECRET refusé ($motif). Règle de validate-env.ts · ni change-me, ni dev-secret-change-me, au moins 32 caractères."
+            echo "Générez une valeur aléatoire (par exemple : openssl rand -base64 48), posez-la dans Settings > Secrets and variables > Actions > API_JWT_SECRET, puis relancez ce workflow. Toutes les sessions ouvertes seront fermées une fois."
+            exit 1
+          fi
+          echo "API_JWT_SECRET conforme à la règle de validate-env.ts."
+
       # La base se met à jour AVANT le serveur : une migration en attente ne
       # doit jamais arriver après du code qui en dépend déjà.
       # ENDPOINT DIRECT, et jamais le poolé · `migrate deploy` pose un verrou

@@ -105,7 +105,7 @@ function demarrerServeur() {
     env: {
       PATH: process.env.PATH,
       DATABASE_URL: URL_BASE,
-      JWT_SECRET: `rejeu-jetable-${UNIQUE}`,
+      JWT_SECRET: `rejeu-jetable-0123456789abcdef-${UNIQUE}`,
       PORT: String(PORT),
       INSCRIPTION_PUBLIQUE: 'true',
       CORS_ORIGIN: 'http://localhost:4173',
