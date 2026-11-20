@@ -262,17 +262,21 @@ jobs:
       # validate-env.ts (absent, `change-me`, `dev-secret-change-me`, moins de
       # 32 caractères), tenue par chaine-de-livraison.spec.ts. Le secret entre
       # par l'environnement de l'étape, JAMAIS interpolé dans le script, et
-      # seul le verdict s'imprime · ni la valeur ni sa longueur.
+      # seul le verdict s'imprime · ni la valeur ni sa longueur. Il est jugé
+      # SANS ses espaces de début et de fin, comme `motifSecretFaible`
+      # (`trim`) · un secret fait d'espaces est absent.
       - name: Contrôle du secret de session
         env:
           SECRET_A_JUGER: ${{ secrets.API_JWT_SECRET }}
         run: |
+          juge="${SECRET_A_JUGER#"${SECRET_A_JUGER%%[![:space:]]*}"}"
+          juge="${juge%"${juge##*[![:space:]]}"}"
           motif=""
-          if [ -z "$SECRET_A_JUGER" ]; then
+          if [ -z "$juge" ]; then
             motif="absent"
-          elif [ "$SECRET_A_JUGER" = "change-me" ] || [ "$SECRET_A_JUGER" = "dev-secret-change-me" ]; then
+          elif [ "$juge" = "change-me" ] || [ "$juge" = "dev-secret-change-me" ]; then
             motif="valeur de développement connue"
-          elif [ "${#SECRET_A_JUGER}" -lt 32 ]; then
+          elif [ "${#juge}" -lt 32 ]; then
             motif="moins de 32 caractères"
           fi
           if [ -n "$motif" ]; then

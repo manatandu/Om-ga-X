@@ -34,10 +34,16 @@ export const VALEURS_CONNUES_JWT_SECRET: readonly string[] = ['change-me', 'dev-
 export const LONGUEUR_MINIMALE_JWT_SECRET = 32;
 
 /** Le motif du refus, jamais la valeur ni sa longueur · `null` si le secret convient. */
+/**
+ * Jugé SANS les espaces de début et de fin (relecture du 2026-11-20) · un
+ * secret fait d'espaces est absent, et trente espaces autour de « change-me »
+ * ne le rendent pas plus sûr. L'étape du workflow juge la même valeur.
+ */
 export function motifSecretFaible(secret: unknown): string | null {
-  if (typeof secret !== 'string' || secret.trim().length === 0) return 'absent';
-  if (VALEURS_CONNUES_JWT_SECRET.includes(secret)) return 'valeur de développement connue';
-  if (secret.length < LONGUEUR_MINIMALE_JWT_SECRET) return `moins de ${LONGUEUR_MINIMALE_JWT_SECRET} caractères`;
+  const juge = typeof secret === 'string' ? secret.trim() : '';
+  if (juge.length === 0) return 'absent';
+  if (VALEURS_CONNUES_JWT_SECRET.includes(juge)) return 'valeur de développement connue';
+  if (juge.length < LONGUEUR_MINIMALE_JWT_SECRET) return `moins de ${LONGUEUR_MINIMALE_JWT_SECRET} caractères`;
   return null;
 }
 
