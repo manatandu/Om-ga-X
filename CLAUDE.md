@@ -392,6 +392,14 @@ Puis, le 2026-11-04, le LOT 4 DU DESIGN (« Et t'attends quoi pour corriger ces 
 32 px au toucher, test de rendu sous 640 px (`e2e/tests/rendu-telephone.e2e.ts`).
 Puis, le 2026-11-05, la COMPÉTENCE `system-design-primer` (« Installé dans ce dépôt puis renvoie moi le zip du skill »),
 un guide de lecture, aucune ligne de code d'OmegaX.
+Puis, le 2026-11-20, les CINQ CORRECTIONS DE SÉCURITÉ DE LA CONNEXION (« Go »,
+après l'audit de la compétence `security-audit` et le rejeu des attaques) ·
+un compte fermé se rouvre par le second facteur ou par un lien envoyé au seul
+titulaire, la limite d'essais compte aussi par adresse e-mail en base, le mot
+de passe actuel compte au même verrou, le serveur refuse un secret de session
+faible en production (et le déploiement le juge avant), la déconnexion n'est
+admise qu'en JSON (§ 8 ; `scripts/rejouer-attaques-connexion.cjs`, 84
+vérifications ; limites au suivi).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
