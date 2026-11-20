@@ -13,7 +13,7 @@ import { corpsConnexion, issueConnexion, type ReponseConnexion } from '../lib/co
 import { garderJetonDeLAppareil, jetonDeLAppareil } from '../lib/appareil-reconnu';
 import { apresDeconnexion } from '../lib/deconnexion';
 import { useMedia } from '../lib/media';
-import { messageConnexion } from '../lib/message-connexion';
+import { estRefusDIdentifiants, messageConnexion } from '../lib/message-connexion';
 
 /**
  * PORTE D'ENTRÉE · calquée sur la logique d'ouverture de Sage 100, pas sur
@@ -92,6 +92,13 @@ export function AuthPage() {
   const [motDePasseVisible, setMotDePasseVisible] = useState(false);
   // Le second facteur · demandé par le serveur, jamais supposé par l'écran.
   const [codeRequis, setCodeRequis] = useState(false);
+  // LE CODE AJOUTÉ PAR LA PERSONNE (relecture du 2026-11-20, E2) · pendant le
+  // verrou, le serveur ne demande pas le code (la demande dirait le mot de
+  // passe juste) ; le titulaire le joint d'emblée. Offert après un REFUS
+  // D'IDENTIFIANTS seulement (401 ou 429), jamais sur une panne réseau ;
+  // facultatif, il se retire.
+  const [codeAjoute, setCodeAjoute] = useState(false);
+  const [refusIdentifiants, setRefusIdentifiants] = useState(false);
   const [code, setCode] = useState('');
   // AUCUN FOCUS D'OFFICE AU DOIGT (reprise du design, lot 2) · sur un téléphone,
   // `autoFocus` ouvre le clavier avant que la personne ait lu l'écran, et il en
@@ -112,6 +119,7 @@ export function AuthPage() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErreur(null);
+    setRefusIdentifiants(false);
     setEnvoi(true);
     try {
       // Une déconnexion encore en route effacerait, à sa réponse, le cookie
@@ -121,7 +129,7 @@ export function AuthPage() {
       // le serveur ne garde aucun état entre les deux appels.
       const res = await api.post<ReponseConnexion>(
         '/auth/login',
-        corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code, appareil: jetonDeLAppareil(email) }),
+        corpsConnexion({ email, motDePasse, resterConnecte, codeRequis: codeRequis || codeAjoute, code, appareil: jetonDeLAppareil(email) }),
       );
       const issue = issueConnexion(res);
       if (issue.etape === 'CODE_REQUIS') {
@@ -136,6 +144,7 @@ export function AuthPage() {
       navigate('/');
     } catch (err) {
       setErreur(messageConnexion(err));
+      setRefusIdentifiants(estRefusDIdentifiants(err));
     } finally {
       setEnvoi(false);
     }
@@ -235,8 +244,9 @@ export function AuthPage() {
               onChange={(e) => {
                 setEmail(e.target.value);
                 // Le code demandé l'était pour l'ADRESSE d'avant · il part avec elle.
-                if (codeRequis) {
+                if (codeRequis || codeAjoute) {
                   setCodeRequis(false);
+                  setCodeAjoute(false);
                   setCode('');
                 }
               }}
@@ -270,7 +280,7 @@ export function AuthPage() {
             </div>
           </label>
 
-          {codeRequis && (
+          {(codeRequis || codeAjoute) && (
             // L'Aide HORS du <label> · dedans, le libellé désignait le bouton
             // « ? », premier élément qu'il contient, et non le champ.
             <div className="flex flex-col gap-1.5">
@@ -289,13 +299,25 @@ export function AuthPage() {
                 id={idCode}
                 autoComplete="one-time-code"
                 autoCapitalize="characters"
-                required
+                required={codeRequis}
                 autoFocus
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 placeholder="6 chiffres ou code de secours"
                 className={champClasse}
               />
+              {codeAjoute && !codeRequis && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCodeAjoute(false);
+                    setCode('');
+                  }}
+                  className="self-start text-[11.5px] text-sel underline underline-offset-2"
+                >
+                  Retirer le code
+                </button>
+              )}
             </div>
           )}
 
@@ -318,11 +340,12 @@ export function AuthPage() {
           {/* UN COMPTE FERMÉ S'OUVRE AU SECOND FACTEUR (audit de sécurité du
               2026-11-19) · pendant le verrou, le serveur ne demande pas le code
               (la demande dirait le mot de passe juste) ; le titulaire le donne
-              d'emblée. Offert après tout refus, à toute adresse. */}
-          {erreur && !codeRequis && (
+              d'emblée. Offert après un refus d'identifiants, à toute adresse,
+              jamais sur une panne réseau (relecture du 2026-11-20). */}
+          {refusIdentifiants && !codeRequis && !codeAjoute && (
             <button
               type="button"
-              onClick={() => setCodeRequis(true)}
+              onClick={() => setCodeAjoute(true)}
               className="self-start text-[11.5px] text-sel underline underline-offset-2"
             >
               Ajouter le code de la double authentification

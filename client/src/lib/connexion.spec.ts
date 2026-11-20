@@ -53,7 +53,8 @@ describe('l’écran d’ouverture entre dès que la session est ouverte', () =>
 
   it('la réponse passe par issueConnexion, puis l’entrée', () => {
     const envoi = page.slice(page.indexOf('const onSubmit = async'), page.indexOf('const champClasse'));
-    expect(envoi).toContain('corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code, appareil: jetonDeLAppareil(email) })');
+    // Le code part s'il est demandé par le serveur OU ajouté par la personne (E2).
+    expect(envoi).toContain('corpsConnexion({ email, motDePasse, resterConnecte, codeRequis: codeRequis || codeAjoute, code, appareil: jetonDeLAppareil(email) })');
     // Le jeton d'appareil rendu par la session ouverte se garde, avant l'entrée.
     expect(envoi).toContain('garderJetonDeLAppareil(email, issue.appareil);');
     expect(envoi).toContain('const issue = issueConnexion(res);');

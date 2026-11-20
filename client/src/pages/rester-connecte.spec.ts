@@ -38,6 +38,7 @@ describe('la case de l’écran de connexion', () => {
     const appels = [...envoi.matchAll(/api\.post(?:<[^>]*>)?\(\s*'\/auth\/login'\s*,\s*corpsConnexion\(\{([^}]*)\}\)/g)];
     expect(appels).toHaveLength(1);
     const cles = appels[0][1].split(',').map((c) => c.trim().match(/^(\w+)/)?.[1]).filter(Boolean);
+    // `codeRequis: codeRequis || codeAjoute` · le code ajouté par la personne (E2).
     // `appareil` · le jeton d'appareil (audit de sécurité du 2026-11-19).
     expect(cles).toEqual(['email', 'motDePasse', 'resterConnecte', 'codeRequis', 'code', 'appareil']);
     // Et la case part TOUJOURS, qu'un code soit réclamé ou non.

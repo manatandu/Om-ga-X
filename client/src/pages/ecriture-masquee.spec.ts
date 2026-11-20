@@ -20,6 +20,7 @@ import { peutEcrirePourRole } from '../lib/roles-cantonnes';
 
 const EXEMPTS: Record<string, string> = {
   'pages/AuthPage.tsx': "la connexion elle-même · personne n'a encore de rôle",
+  'pages/DeverrouillagePage.tsx': "le lien de déverrouillage reçu par courriel · sans session, le compte est fermé, personne n'a de rôle",
   'pages/InvitationPage.tsx': "la personne invitée accepte, refuse ou crée son compte · elle décide de sa propre entrée dans un dossier, lecture seule comprise (ligne multi-dossiers)",
   'components/ListeDesDossiers.tsx': "la personne accepte ou refuse les invitations qu'elle a reçues · elle décide de sa propre entrée dans un dossier, quel que soit son rôle ailleurs (ligne multi-dossiers)",
   'pages/EssaiPage.tsx': "l'essai en libre-service · le visiteur n'a ni session ni rôle, la porte est close ou ouverte par le serveur",

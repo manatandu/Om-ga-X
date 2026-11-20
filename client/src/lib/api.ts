@@ -24,6 +24,8 @@ export type OptionsAppel = {
    * transaction (`reprise-conflit.ts`, liste fermée dans son spec).
    */
   rejouerConflit?: boolean;
+  /** Abandon de la requête (la personne quitte l'écran avant la réponse). */
+  signal?: AbortSignal;
 };
 
 /**
@@ -100,6 +102,7 @@ async function request<T>(path: string, options: RequestInit = {}, appel: Option
   for (let tentative = 0; ; tentative++) {
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
+      ...(appel.signal ? { signal: appel.signal } : {}),
       // Le cookie de session voyage avec chaque appel. En ligne, l'API est
       // servie sous l'adresse du site (`/api`, relais de Firebase Hosting) ·
       // le cookie est de PREMIÈRE partie. `include` reste nécessaire au

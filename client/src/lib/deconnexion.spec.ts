@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { apresDeconnexion, deconnecterServeur, fermerLaSession } from './deconnexion';
+import { entetesRequete } from './entetes-requete';
 
 // Pas d'import de « vitest » · convention du dépôt (voir calcul.spec.ts).
 
@@ -151,16 +152,28 @@ describe('les portes qui posent une session passent par l’attente', () => {
 
 /**
  * LA DÉCONNEXION PART EN JSON (audit de sécurité du 2026-11-19) · le serveur
- * refuse en 415 une déconnexion qui ne se déclare pas `application/json`, pour
- * qu'un formulaire d'un autre site ne puisse plus fermer la session. Chaque
- * appel de l'écran porte un corps JSON, et la requête un en-tête JSON.
+ * refuse en 415 une déconnexion dont l'EN-TÊTE ne dit pas `application/json`
+ * (il lit l'en-tête, jamais le corps), pour qu'un formulaire d'un autre site
+ * ne puisse plus fermer la session. L'ancre est donc l'en-tête (relecture du
+ * 2026-11-20, E5) · chaque appel passe par `api.post`, dont la requête pose
+ * ses en-têtes par `entetesRequete`, qui met `Content-Type: application/json`
+ * sur toute méthode qui écrit, corps ou pas.
  */
 describe('la déconnexion part en JSON', () => {
-  it('chaque appel de /auth/logout porte un corps JSON', () => {
-    const source = readFileSync(join(__dirname, 'auth.tsx'), 'utf8');
-    const appels = source.match(/api\.post\('\/auth\/logout'[^)]*\)/g) ?? [];
+  it('entetesRequete pose Content-Type: application/json sur un POST, même sans jeton ni corps', () => {
+    expect(entetesRequete('POST', null)).toMatchObject({ 'Content-Type': 'application/json' });
+    expect(entetesRequete('post', 'jeton')).toMatchObject({ 'Content-Type': 'application/json', 'X-CSRF-Token': 'jeton' });
+  });
+
+  it('chaque /auth/logout part par api.post, et api.post pose la méthode POST que entetesRequete lit', () => {
+    const auth = readFileSync(join(__dirname, 'auth.tsx'), 'utf8');
+    const appels = auth.match(/[\w.]+\(\s*'\/auth\/logout'/g) ?? [];
     expect(appels.length).toBeGreaterThan(0);
-    for (const a of appels) expect(a).toBe("api.post('/auth/logout', {})");
+    for (const a of appels) expect(a).toMatch(/^api\.post\(/);
+    const api = readFileSync(join(__dirname, 'api.ts'), 'utf8');
+    const post = api.slice(api.indexOf('  post: <T>'), api.indexOf('  put: <T>'));
+    expect(post).toContain("method: 'POST'");
+    const requete = api.slice(api.indexOf('async function request<T>'), api.indexOf('async function telecharger'));
+    expect(requete).toContain('headers: entetesRequete(options.method,');
   });
 });
-

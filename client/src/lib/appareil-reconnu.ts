@@ -11,14 +11,25 @@
 const CLE = 'omegax:appareils';
 /** Un poste partagé garde au plus dix adresses · la plus ancienne part. */
 export const ADRESSES_GARDEES = 10;
+/**
+ * Quatre-vingt-dix jours, la durée de vie que le serveur donne au jeton
+ * (`JOURS_JETON_APPAREIL`, limite-par-adresse.ts) · au-delà il ne vaut plus
+ * rien, et le carnet l'oublie (relecture du 2026-11-20, E4).
+ */
+export const JOURS_GARDES = 90;
+const MS_GARDES = JOURS_GARDES * 86_400_000;
 
 type Carnet = Record<string, { jeton: string; le: number }>;
 
-function lire(): Carnet {
+function lire(maintenant = Date.now()): Carnet {
   try {
     const brut = localStorage.getItem(CLE);
     const carnet = brut ? (JSON.parse(brut) as unknown) : {};
-    return carnet && typeof carnet === 'object' ? (carnet as Carnet) : {};
+    if (!carnet || typeof carnet !== 'object') return {};
+    // Une entrée de plus de quatre-vingt-dix jours, ou sans date lisible, est oubliée.
+    return Object.fromEntries(
+      Object.entries(carnet as Carnet).filter(([, e]) => typeof e?.le === 'number' && maintenant - e.le <= MS_GARDES),
+    );
   } catch {
     return {};
   }
@@ -26,15 +37,15 @@ function lire(): Carnet {
 
 const cleDeLAdresse = (email: string) => email.trim().toLowerCase();
 
-export function jetonDeLAppareil(email: string): string | undefined {
-  const entree = lire()[cleDeLAdresse(email)];
+export function jetonDeLAppareil(email: string, maintenant = Date.now()): string | undefined {
+  const entree = lire(maintenant)[cleDeLAdresse(email)];
   return typeof entree?.jeton === 'string' ? entree.jeton : undefined;
 }
 
 export function garderJetonDeLAppareil(email: string, jeton: string | undefined, maintenant = Date.now()): void {
   if (!jeton) return;
   try {
-    const carnet = lire();
+    const carnet = lire(maintenant);
     carnet[cleDeLAdresse(email)] = { jeton, le: maintenant };
     const gardees = Object.entries(carnet)
       .sort(([, a], [, b]) => b.le - a.le)

@@ -333,7 +333,9 @@ export function ContenuConfidentialite() {
           Votre navigateur garde aussi, dans son stockage local et sur cet appareil seulement, la liste des cinq
           dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date), qui préremplit l’adresse
           à l’ouverture, le jeton qui protège vos envois contre la falsification de requête, et vos préférences
-          d’affichage (exercice choisi, favoris de l’accueil, onglets). Rien de cela n’est transmis à un tiers ;
+          d’affichage (exercice choisi, favoris de l’accueil, onglets). Il garde enfin, pour dix adresses de
+          connexion au plus et quatre-vingt-dix jours, le jeton qui fait reconnaître cet appareil à la connexion,
+          avec l’adresse qu’il accompagne. Rien de cela n’est transmis à un tiers ;
           effacer les données de ce site dans le navigateur le supprime.
         </P>
         {!surSite && (

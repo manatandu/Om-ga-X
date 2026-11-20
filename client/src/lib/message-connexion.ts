@@ -12,3 +12,14 @@ export function messageConnexion(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   return 'Une erreur est survenue';
 }
+
+/**
+ * UN REFUS D'IDENTIFIANTS (relecture du 2026-11-20, E2) · 401 (mot de passe,
+ * compte fermé) ou 429 (trop d'essais sur l'adresse), rendu par le serveur.
+ * Une panne réseau (TypeError de fetch) ou une erreur 5xx n'en sont pas · le
+ * code de la double authentification n'y changerait rien.
+ */
+export function estRefusDIdentifiants(err: unknown): boolean {
+  const statut = (err as { status?: unknown } | null)?.status;
+  return err instanceof Error && (statut === 401 || statut === 429);
+}
