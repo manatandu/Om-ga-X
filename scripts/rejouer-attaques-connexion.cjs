@@ -485,15 +485,26 @@ async function principal() {
       const secret3 = init3.json?.secret ?? '';
       const act3 = await appel('POST', '/auth/double-authentification/activer', { corps: { motDePasseActuel: MDP, code: codeTotp(secret3) }, cookie: s3.cookie, csrf: s3.csrf });
       constat(act3.statut === 201, `double authentification activée (${act3.statut})`);
-      for (let i = 0; i < 5; i += 1) await connecter(budget, MDP_FAUX);
-      const premierCodeFaux = await connecter(budget, MDP, { code: '000000' });
+      // Depuis le second tour de relecture, TOUT essai sur un compte fermé
+      // compte dans la fenêtre de l'adresse · cinq mots de passe faux et cinq
+      // codes la dépassent, et le 429 tombe avant le code. Pour éprouver le
+      // budget propre au code, l'appareil est RECONNU (jeton pris après
+      // l'activation, qui révoque les jetons d'avant), dispensé de la seule
+      // limite par adresse.
+      const secours3 = act3.json?.codesSecours ?? act3.json?.codes ?? [];
+      const apresActivation = await connecter(budget, MDP, { code: secours3[0] });
+      const appareil3 = apresActivation.json?.appareil;
+      constat(typeof appareil3 === 'string', `jeton d’appareil repris après l’activation (${apresActivation.statut})`);
+      const reconnu3 = { appareil: appareil3 };
+      for (let i = 0; i < 5; i += 1) await connecter(budget, MDP_FAUX, reconnu3);
+      const premierCodeFaux = await connecter(budget, MDP, { code: '000000', ...reconnu3 });
       constat(premierCodeFaux.statut === 401 && JSON.stringify(premierCodeFaux.json) === JSON.stringify(fauxPendant.json), 'compte fermé · bon mot de passe et code faux, la réponse commune');
       constat(Boolean(await attendreLien(budget, 1)), 'un code faux avec le bon mot de passe pendant le verrou · le lien de déverrouillage part bien');
-      for (let i = 1; i < 5; i += 1) await connecter(budget, MDP, { code: `00000${i}` });
+      for (let i = 1; i < 5; i += 1) await connecter(budget, MDP, { code: `00000${i}`, ...reconnu3 });
       await new Promise((r) => setTimeout(r, 1000));
       const budgetBase = execFileSync('psql', [URL_BASE, '-tAc', `select "codesFauxSousVerrou" from users where "courrielDeConnexion" = '${budget}'`], { encoding: 'utf8' }).trim();
       constat(budgetBase === '5', `cinq codes faux comptés pour la période de verrou (${budgetBase})`);
-      const bonCodeRefuse = await connecter(budget, MDP, { code: codeTotp(secret3) });
+      const bonCodeRefuse = await connecter(budget, MDP, { code: codeTotp(secret3), ...reconnu3 });
       constat(
         bonCodeRefuse.statut === 401 && !bonCodeRefuse.cookie && JSON.stringify(bonCodeRefuse.json) === JSON.stringify(fauxPendant.json),
         `au-delà de cinq codes faux, même le BON code n’est plus jugé jusqu’à l’échéance (${bonCodeRefuse.statut})`,
