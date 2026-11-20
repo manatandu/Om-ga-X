@@ -31,8 +31,14 @@
  *      code de secours, ou rouvre par le lien reçu à son adresse, et la
  *      réponse au bon mot de passe reste celle d'un mot de passe faux ;
  *   7. la limite d'essais compte par adresse e-mail · une même adresse est
- *      freinée malgré des adresses IP toutes différentes, l'appareil reconnu
- *      passe ;
+ *      freinée malgré des adresses IP toutes différentes ; au-delà, un mot de
+ *      passe faux reste en 429, le BON mot de passe d'un compte fermé reçoit
+ *      le même 429 (et son lien part), et une fois le verrou échu le
+ *      titulaire entre sur un appareil JAMAIS reconnu (relecture du
+ *      2026-11-20, C) ; l'appareil reconnu passe aussi ;
+ *   6 bis. le code de la double authentification pendant le verrou · un code
+ *      faux avec le bon mot de passe fait partir le lien, et après cinq codes
+ *      faux même le bon code n'est plus jugé (relecture du 2026-11-20, A) ;
  *   8. le mot de passe actuel faux d'un geste authentifié finit par fermer
  *      le geste, la session restant ouverte ;
  *   9. le serveur refuse de démarrer en production avec un secret court ;
@@ -227,6 +233,17 @@ function demarrerSmtp() {
   return new Promise((resolve) => serveur.listen(PORT_SMTP, '127.0.0.1', () => resolve(serveur)));
 }
 const courrielsPour = (email) => courriels.filter((c) => c.a.includes(email));
+// Les seuls LIENS DE DÉVERROUILLAGE · l'avis d'activation de la double
+// authentification part à la même adresse et ne doit pas être compté pour un lien.
+const liensPour = (email) => courrielsPour(email).filter((c) => /deverrouiller\?jeton=/.test(c.corps));
+async function attendreLien(email, nombre = 1, delaiMs = 15_000) {
+  const fin = Date.now() + delaiMs;
+  while (Date.now() < fin) {
+    if (liensPour(email).length >= nombre) return liensPour(email)[nombre - 1];
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
 async function attendreCourriel(email, nombre = 1, delaiMs = 15_000) {
   const fin = Date.now() + delaiMs;
   while (Date.now() < fin) {
@@ -423,7 +440,7 @@ async function principal() {
         `compte fermé · bon et faux mot de passe, même code (${bonPendant.statut}, ${fauxPendant.statut}), aucune session`,
       );
       constat(JSON.stringify(bonPendant.json) === JSON.stringify(fauxPendant.json), 'compte fermé · bon et faux mot de passe, même corps de réponse, mot pour mot');
-      const lien = await attendreCourriel(titulaire, 1);
+      const lien = await attendreLien(titulaire, 1);
       constat(Boolean(lien), 'le bon mot de passe pendant le verrou fait partir un lien au seul courriel du compte');
       const jeton = lien ? decodeURIComponent((/deverrouiller\?jeton=([A-Za-z0-9_%-]+)/.exec(lien.corps) ?? [])[1] ?? '') : '';
       constat(jeton.length >= 40, 'le courriel porte un lien de déverrouillage');
@@ -433,7 +450,7 @@ async function principal() {
       constat(file === '0', 'le jeton n’est jamais écrit dans la file des courriels du dossier');
       await connecter(titulaire, MDP);
       await new Promise((r) => setTimeout(r, 1500));
-      constat(courrielsPour(titulaire).length === 1, `un seul lien par période de verrou (${courrielsPour(titulaire).length} reçu)`);
+      constat(liensPour(titulaire).length === 1, `un seul lien par période de verrou (${liensPour(titulaire).length} reçu)`);
       const ouvre = await appel('POST', '/auth/deverrouiller', { corps: { jeton } });
       constat(ouvre.statut === 201 && ouvre.json?.deverrouille === true, `le lien rouvre le compte (${ouvre.statut})`);
       const apres = await connecter(titulaire, MDP);
@@ -460,6 +477,30 @@ async function principal() {
       const compteur = execFileSync('psql', [URL_BASE, '-tAc', `select "tentativesEchouees" || ':' || coalesce("verrouilleJusqua"::text, 'aucun') from users where "courrielDeConnexion" = '${deux}'`], { encoding: 'utf8' }).trim();
       constat(compteur === '0:aucun', `le compteur et le verrou tombent (${compteur})`);
 
+      console.log('\n6 bis. Le code de la double authentification pendant le verrou');
+      const budget = `verrou-code-${UNIQUE}@exemple.invalid`;
+      await inscrire(budget, 'Cabinet verrou code (rejeu attaques)');
+      const s3 = await connecter(budget, MDP);
+      const init3 = await appel('POST', '/auth/double-authentification/initier', { corps: {}, cookie: s3.cookie, csrf: s3.csrf });
+      const secret3 = init3.json?.secret ?? '';
+      const act3 = await appel('POST', '/auth/double-authentification/activer', { corps: { motDePasseActuel: MDP, code: codeTotp(secret3) }, cookie: s3.cookie, csrf: s3.csrf });
+      constat(act3.statut === 201, `double authentification activée (${act3.statut})`);
+      for (let i = 0; i < 5; i += 1) await connecter(budget, MDP_FAUX);
+      const premierCodeFaux = await connecter(budget, MDP, { code: '000000' });
+      constat(premierCodeFaux.statut === 401 && JSON.stringify(premierCodeFaux.json) === JSON.stringify(fauxPendant.json), 'compte fermé · bon mot de passe et code faux, la réponse commune');
+      constat(Boolean(await attendreLien(budget, 1)), 'un code faux avec le bon mot de passe pendant le verrou · le lien de déverrouillage part bien');
+      for (let i = 1; i < 5; i += 1) await connecter(budget, MDP, { code: `00000${i}` });
+      await new Promise((r) => setTimeout(r, 1000));
+      const budgetBase = execFileSync('psql', [URL_BASE, '-tAc', `select "codesFauxSousVerrou" from users where "courrielDeConnexion" = '${budget}'`], { encoding: 'utf8' }).trim();
+      constat(budgetBase === '5', `cinq codes faux comptés pour la période de verrou (${budgetBase})`);
+      const bonCodeRefuse = await connecter(budget, MDP, { code: codeTotp(secret3) });
+      constat(
+        bonCodeRefuse.statut === 401 && !bonCodeRefuse.cookie && JSON.stringify(bonCodeRefuse.json) === JSON.stringify(fauxPendant.json),
+        `au-delà de cinq codes faux, même le BON code n’est plus jugé jusqu’à l’échéance (${bonCodeRefuse.statut})`,
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+      constat(liensPour(budget).length === 1, `un seul lien pour la période, prolongations comprises (${liensPour(budget).length})`);
+
       console.log('\n7. La limite d’essais compte par adresse e-mail');
       const visee = `jamais-inscrite-${UNIQUE}@exemple.invalid`;
       const statutsAdresse = [];
@@ -473,11 +514,37 @@ async function principal() {
       const premiere = await connecter(habitue, MDP, {}, '10.55.0.1');
       const appareil = premiere.json?.appareil;
       constat(typeof appareil === 'string' && appareil.split('.').length === 3, 'la connexion réussie rend un jeton d’appareil');
-      for (let i = 0; i < 9; i += 1) await connecter(habitue, MDP, {}, `10.55.1.${i + 1}`);
-      const freine = await connecter(habitue, MDP, {}, '10.55.2.1');
-      constat(freine.statut === 429 && !freine.cookie, `adresse connue, bon mot de passe, sans appareil reconnu · 429 au 11e essai (${freine.statut})`);
+      // Un tiers freine l'adresse du titulaire depuis des adresses IP variées ·
+      // dix mots de passe faux. Le cinquième ferme le compte (palier d'une minute).
+      const tiers = [];
+      for (let i = 0; i < 10; i += 1) tiers.push(await connecter(habitue, MDP_FAUX, {}, `10.55.1.${i + 1}`));
+      const fauxFreine = tiers[9];
+      constat(fauxFreine.statut === 429, `au-delà de la limite, un mot de passe faux · 429 (${tiers.map((r) => r.statut).join(',')})`);
       const inconnuFreine = await connecter(visee, MDP_FAUX, {}, '10.55.2.2');
-      constat(JSON.stringify(freine.json) === JSON.stringify(inconnuFreine.json), 'adresse connue et adresse inconnue freinées · même réponse');
+      constat(JSON.stringify(fauxFreine.json) === JSON.stringify(inconnuFreine.json), 'adresse connue et adresse inconnue freinées · même réponse');
+      // Compte fermé · le BON mot de passe reçoit exactement le 429 du faux, et le lien part.
+      const avantLiens = liensPour(habitue).length;
+      const bonFerme = await connecter(habitue, MDP, {}, '10.55.3.1');
+      constat(
+        bonFerme.statut === 429 && !bonFerme.cookie && JSON.stringify(bonFerme.json) === JSON.stringify(fauxFreine.json),
+        `au-delà de la limite, compte fermé · le bon mot de passe reçoit le même 429 que le faux (${bonFerme.statut})`,
+      );
+      constat(Boolean(await attendreLien(habitue, avantLiens + 1)), 'et le lien de déverrouillage part quand même, au seul titulaire');
+      // Le verrou échu (le palier d'une minute), l'adresse reste freinée · le
+      // titulaire entre quand même, sur un appareil JAMAIS reconnu.
+      const echeance = execFileSync('psql', [URL_BASE, '-tAc', `select extract(epoch from "verrouilleJusqua")*1000 from users where "courrielDeConnexion" = '${habitue}'`], { encoding: 'utf8' }).trim();
+      const attente = Math.max(0, Number(echeance) - Date.now()) + 1500;
+      console.log(`     attente de l'échéance du verrou · ${(attente / 1000).toFixed(0)} s`);
+      await new Promise((r) => setTimeout(r, attente));
+      const essaisAdresse = execFileSync('psql', [URL_BASE, '-tAc', 'select count(*) from essais_connexion_adresse where cardinality(instants) > 10'], { encoding: 'utf8' }).trim();
+      constat(Number(essaisAdresse) >= 1, 'l’adresse est toujours au-delà de la limite');
+      const titulaireEntre = await connecter(habitue, MDP, {}, '10.55.4.1');
+      constat(
+        titulaireEntre.statut === 201 && Boolean(titulaireEntre.cookie),
+        `adresse freinée par un tiers, appareil jamais reconnu · le titulaire entre avec le bon mot de passe (${titulaireEntre.statut})`,
+      );
+      const encoreFaux = await connecter(habitue, MDP_FAUX, {}, '10.55.4.2');
+      constat(encoreFaux.statut === 429, `et un mauvais mot de passe reste en 429 (${encoreFaux.statut})`);
       const reconnu = await connecter(habitue, MDP, { appareil }, '10.55.2.3');
       constat(reconnu.statut === 201 && Boolean(reconnu.cookie), `l’appareil reconnu passe la limite (${reconnu.statut})`);
       const volee = await connecter(visee, MDP_FAUX, { appareil }, '10.55.2.4');

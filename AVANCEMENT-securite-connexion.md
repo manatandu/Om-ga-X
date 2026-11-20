@@ -62,6 +62,32 @@ rejeu `scripts/rejouer-attaques-connexion.cjs`. Rien d'autre.
   d'erreur si la remise à zéro de la limite échoue (consignée). Rejeu
   relancé · 72 prouvées.
 
+- RELECTURE DE TROIS RELECTEURS (2026-11-20), décisions A à F, toutes faites ·
+  (A) code de double authentification pendant le verrou · au plus cinq codes
+  faux par période (`codesFauxSousVerrou`, `codesFauxSousVerrouPour`, porté
+  sur l'échéance prolongée), lien réservé sur l'échéance relue AVANT le
+  décompte du code (le lien ne partait jamais), réservation sans effet
+  consignée ; (B) le verrou relu sous `FOR UPDATE` après le verrou du dossier
+  avant d'accepter le bon mot de passe, aux six gestes et à la connexion ;
+  (C) au-delà de la limite par adresse, bcrypt tourne ; faux · 429 et
+  compté ; juste et ouvert · la connexion suit ; juste et fermé · le même
+  429, lien après la réponse ; un essai par connexion pour la double
+  authentification ; fenêtre vidée par les déverrouillages et
+  réinitialisations ; 429 sans durée ; (D) lien réservé, libéré, levé par
+  `update` unitaires après relecture sous verrou ; (E) page de
+  déverrouillage au clic (signal d'abandon, `<main>`, spec), code ajouté
+  après un refus d'identifiants seulement et retirable, confidentialité § 4,
+  carnet oublié à 90 jours, spec de déconnexion ancré sur l'en-tête ; (F)
+  secret exigé, workflow jugeant le secret sans espaces (rejoué par bash
+  dans `chaine-de-livraison.spec.ts`), lien effacé, aucun lien sur site,
+  jeton d'appareil révoqué avec les sessions, tri des erreurs d'envoi,
+  journal après la réponse avec le compte et la pile. Limites écrites au
+  suivi (travail après la réponse perdu à l'arrêt d'une instance, 415 d'un
+  appelant non JSON, budget lu avant la relecture, délai d'envoi ambigu).
+  Migration `20270249000000_securite_connexion` complétée (branche jamais
+  intégrée), `prisma migrate diff` sans différence. Rejeu sur base neuve
+  PostgreSQL 16 · 83 prouvées, 0 non prouvée.
+
 ## Reste
 
 - Intégration sur `main` par le coordinateur (bloc § 3, tests navigateur,
@@ -69,6 +95,10 @@ rejeu `scripts/rejouer-attaques-connexion.cjs`. Rien d'autre.
 
 ## Décisions
 
+- (C, 2026-11-20) Au-delà de la limite, le bon mot de passe d'un compte
+  ouvert passe · le verrou du compte (paliers 1 à 60 minutes, oubli à douze
+  heures) est plus strict que dix essais par dix minutes, il borne la force
+  brute ; la limite garde la limite par IP et l'uniformité des adresses.
 - (2) Une limite par adresse sans exemption se retournait en refus de
   service (dix essais toutes les dix minutes suffisaient à tenir le titulaire
   dehors) · d'où le jeton d'appareil (« device cookie » de l'OWASP), porté

@@ -199,6 +199,9 @@ export class AuthController {
     // d'un autre site ne pose pas ce type sans un contrôle CORS préalable, que
     // la liste des origines refuse. L'EN-TÊTE est lu, pas le corps · une
     // déconnexion légitime peut partir sans corps (`req.is` rend null alors).
+    // LIMITE ÉCRITE (relecture du 2026-11-20, au suivi) · un appelant qui ne
+    // parle pas JSON (script, outil, ancien écran en cache) reçoit 415 et ne
+    // ferme pas sa session · son cookie reste posé jusqu'à son échéance.
     if (req && !enTeteJson(req)) throw new UnsupportedMediaTypeException(MOTIF_DECONNEXION_EN_JSON);
     // LA SESSION SE FERME AUSSI SUR LE SERVEUR (relevé de sécurité du
     // 2026-10-23) · effacer le cookie ne retirait rien à une copie prise

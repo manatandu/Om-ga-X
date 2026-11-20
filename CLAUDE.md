@@ -5830,23 +5830,44 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   heure, gardé en empreinte, `envoyerUnSecret`, une fois par période de
   verrou, `POST /auth/deverrouiller`, page `#/deverrouiller`). Tout ce qui
   distingue le bon mot de passe (courriel, échec d'un code compté) part
-  APRÈS la réponse (`apresLaReponse`), pour que la durée ne le dise pas.
-  Sans messagerie, rien ne part, l'administrateur déverrouille.
+  APRÈS la réponse (`apresLaReponse`), pour que la durée ne le dise pas ·
+  le lien d'abord, réservé sur l'échéance RELUE sous `FOR UPDATE`, puis le
+  code faux (compter d'abord repoussait l'échéance et le lien ne partait
+  jamais). AU PLUS CINQ CODES FAUX PAR PÉRIODE DE VERROU
+  (`CODES_FAUX_PAR_PERIODE_DE_VERROU`, porté sur l'échéance prolongée),
+  au-delà le code n'est plus jugé. Le lien s'écrit par des `update`
+  UNITAIRES après relecture sous verrou, s'efface avec le verrou (connexion
+  réussie, mot de passe ou adresse changés, déverrouillage), et sa place ne
+  se libère que si rien n'est parti à coup sûr (`envoiPeutEtreParti`). Sur
+  site, ou sans messagerie, rien ne part, l'administrateur déverrouille.
+  L'écran ne rouvre qu'au CLIC (« Rouvrir mon compte »), jamais au
+  chargement de la page.
   **LA LIMITE D'ESSAIS COMPTE AUSSI PAR ADRESSE E-MAIL** (même audit,
   `auth/limite-par-adresse.ts`) · `@Throttle` compte par IP, en mémoire, et
   l'accès direct à `*.run.app` laisse le client écrire son IP. Dix essais
   par adresse et par dix minutes glissantes, en base
   (`essais_connexion_adresse`, hors dossier, HMAC de l'adresse, purgée), la
-  même pour une adresse inconnue · au-delà, 429 SANS bcrypt, même phrase.
-  L'APPAREIL RECONNU PASSE · la connexion réussie rend un jeton d'appareil
-  (HMAC, quatre-vingt-dix jours, lié au compte), que l'écran garde
-  (`lib/appareil-reconnu.ts`) et renvoie, sans quoi la limite rouvrait le
-  refus de service. Il ne dispense ni du verrou, ni du second facteur.
+  même pour une adresse inconnue. AU-DELÀ, LE BON MOT DE PASSE PASSE ENCORE
+  (relecture du 2026-11-20, décision C) · bcrypt tourne toujours ; faux,
+  429 et l'échec compte au verrou ; juste sur un compte ouvert, la connexion
+  suit son cours ; juste sur un compte fermé, EXACTEMENT le 429 du faux, et
+  le lien part après la réponse. Le verrou du compte, avec ses paliers, est
+  la vraie borne de la force brute. Un compte à double authentification ne
+  consomme qu'un essai par connexion (l'appel qui porte le code au bon mot
+  de passe relit sans compter). Le déverrouillage (administrateur, lien) et
+  les réinitialisations vident la fenêtre (`viderLaFenetreDeLAdresse`). Le
+  429 ne promet aucune durée. L'APPAREIL RECONNU PASSE AUSSI · la connexion
+  réussie rend un jeton d'appareil (HMAC, quatre-vingt-dix jours, lié au
+  compte, révoqué avec les sessions du compte), que l'écran garde
+  (`lib/appareil-reconnu.ts`, oublié après quatre-vingt-dix jours) et
+  renvoie. Il ne dispense ni du verrou, ni du second facteur.
   **LE MOT DE PASSE ACTUEL COMPTE SES ÉCHECS** (même audit) · changer le
   mot de passe ou l'adresse, déconnecter les autres appareils, activer,
   retirer ou renouveler la double authentification passent par
   `exigerLeMotDePasseActuel`, même compteur, même verrou ; compte fermé, le
-  geste est refusé et le message dit que la session reste ouverte. Les codes
+  geste est refusé et le message dit que la session reste ouverte. Le bon
+  mot de passe n'est accepté qu'après relecture du verrou sous `FOR UPDATE`,
+  après le verrou du dossier (décision B), à la connexion aussi. Les codes
   faux du retrait et du renouvellement comptent aussi, jamais le code
   d'ACTIVATION (secret neuf, rien à deviner).
 - **ACTIVER LE SECOND FACTEUR EXIGE LE MOT DE PASSE, ET LE TITULAIRE EST AVERTI

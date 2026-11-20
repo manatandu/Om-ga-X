@@ -195,8 +195,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 - **AUDIT DE SÉCURITÉ DE LA CONNEXION · CE QUI RESTE (2026-11-20, ligne
   `securite-connexion`).** Manasse a demandé cinq corrections (« Go »),
-  faites et rejouées (`scripts/rejouer-attaques-connexion.cjs`, 72
-  vérifications). Restent HORS DE CETTE LIGNE, avec leur constat du rapport
+  faites et rejouées (`scripts/rejouer-attaques-connexion.cjs`), puis
+  reprises après trois relectures (2026-11-20, décisions A à F · 83
+  vérifications sur base neuve). Restent HORS DE CETTE LIGNE, avec leur constat du rapport
   (`/root/security-audit-skill/omegax/run-1/`) ·
   (1) `omegax-sursite-premier-dossier-course` · sur site, tant qu'aucun
   dossier n'existe, le premier poste qui appelle `POST /auth/register`
@@ -218,11 +219,28 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   (l'adresse IP s'y écrit par le client, `sauts-de-confiance.ts` intouché) ·
   le fermer suppose un équilibreur de charge Google (essai du 2026-10-29,
   `essai-ingress-cloud-run.yml`) ; la limite par adresse e-mail tient dans le
-  code, et un tiers qui la dépasse sans relâche garde une adresse freinée sur
-  un appareil jamais reconnu (l'appareil reconnu du titulaire passe) ;
-  (6) LIMITE DE LA CORRECTION 1 · le lien de déverrouillage part APRÈS la
-  réponse ; en ligne, Cloud Run n'alloue le processeur qu'aux requêtes, et
-  l'envoi peut attendre la requête suivante de l'instance.
+  code ; depuis la décision C du 2026-11-20, le BON mot de passe d'un compte
+  ouvert passe au-delà de la limite, et c'est le verrou du compte qui borne
+  la force brute ;
+  (6) LIMITE DE LA CORRECTION 1 · le lien de déverrouillage et le décompte
+  d'un code faux pendant le verrou partent APRÈS la réponse ; en ligne, Cloud
+  Run n'alloue le processeur qu'aux requêtes · ce travail peut attendre la
+  requête suivante de l'instance, et il est PERDU si l'instance s'arrête
+  avant (le titulaire refait sa connexion, le lien repart ; un code faux
+  perdu n'est pas compté) ;
+  (7) LIMITE DE LA CORRECTION 5 · un appelant qui ne parle pas JSON (script,
+  outil, écran ancien gardé en cache) reçoit 415 à la déconnexion, et sa
+  session reste ouverte jusqu'à son échéance ;
+  (8) LIMITE DE LA DÉCISION A · le budget des codes faux sous verrou est lu
+  sur la ligne du début de la requête, puis relu sous verrou avant toute
+  entrée ; des requêtes simultanées peuvent faire juger quelques codes de
+  plus dans la rafale, bornées par la limite par adresse (comptée
+  atomiquement, sauf l'appel au bon mot de passe qui porte un code) et par la
+  limite par IP ;
+  (9) LIMITE DU TRI DES ERREURS D'ENVOI · un délai dépassé ou une connexion
+  coupée pendant l'envoi du lien gardent la place (le titulaire a peut-être
+  reçu le lien) · si rien n'est parti, aucun lien pour ce verrou ; il reste
+  l'échéance du verrou, ou l'administrateur.
 
 - **PAQUET 1, LIGNES A, B ET C · RELEVÉS TRAITÉS (gel levé le 2026-11-01,
   ligne `releves-paquet1`).** Les trois entrées « PAQUET 1, LIGNE A, B, C »
