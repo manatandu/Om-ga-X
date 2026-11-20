@@ -417,13 +417,13 @@ describe('4 · déconnecter mes autres appareils', () => {
   const MAINTENANT = new Date(T0 + 12 * JOUR_MS + 400);
   const SESSION = { longue: true, origine: S0, iat: S0 + 11 * SECONDES_PAR_JOUR, exp: S0 + 18 * SECONDES_PAR_JOUR, csrf: 'ancien' };
 
-  it('exige le mot de passe actuel, sans rien écrire sinon', async () => {
+  it('exige le mot de passe actuel, et n’écrit sinon que l’échec (audit de sécurité du 2026-11-19)', async () => {
     const capture: { data?: Record<string, unknown> } = {};
     const hash = await bcrypt.hash('le-bon', 4);
     await expect(service(capture, hash).deconnecterAutresAppareils('u1', 'faux', SESSION, MAINTENANT)).rejects.toThrow(
       /mot de passe actuel est incorrect/,
     );
-    expect(capture.data).toBeUndefined();
+    expect(Object.keys(capture.data ?? {}).sort()).toEqual(['dernierEchecLe', 'tentativesEchouees', 'verrouilleJusqua']);
   });
 
   it('ferme les autres sessions à cet instant et garde celle-ci, son régime et son origine', async () => {

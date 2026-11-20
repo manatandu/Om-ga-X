@@ -41,13 +41,16 @@ describe('AuthService · changement de mot de passe', () => {
     );
   };
 
-  it('refuse sans le mot de passe actuel correct, et ne touche à rien', async () => {
+  it('refuse sans le mot de passe actuel correct, et n’écrit que l’échec (audit de sécurité du 2026-11-19)', async () => {
     const capture: { data?: Record<string, unknown> } = {};
     const hash = await bcrypt.hash('bon-mot-de-passe', 4);
     await expect(service(capture, hash).changerMotDePasse('u1', 'mauvais', 'nouveau-tres-long')).rejects.toThrow(
       UnauthorizedException,
     );
-    expect(capture.data).toBeUndefined();
+    // Le mot de passe n'a pas changé · seul le décompte des échecs est écrit,
+    // le même que celui de la connexion.
+    expect(Object.keys(capture.data ?? {}).sort()).toEqual(['dernierEchecLe', 'tentativesEchouees', 'verrouilleJusqua']);
+    expect(capture.data!.tentativesEchouees).toBe(1);
   });
 
   it('hache le nouveau mot de passe et efface le drapeau de première connexion', async () => {

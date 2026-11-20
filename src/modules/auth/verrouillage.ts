@@ -100,3 +100,33 @@ export const DECOMPTE_REMIS_A_ZERO = { tentativesEchouees: 0, verrouilleJusqua: 
 export const MOTIF_IDENTIFIANTS_INVALIDES =
   "Identifiants invalides · après plusieurs essais manqués, un compte reste fermé quelques minutes, ou jusqu'à ce que " +
   "l'administrateur du dossier réinitialise son mot de passe.";
+
+/**
+ * LE MOT DE PASSE ACTUEL D'UN GESTE AUTHENTIFIÉ COMPTE SES ÉCHECS (audit de
+ * sécurité du 2026-11-19, constat `omegax-auth-mot-de-passe-actuel-hors-verrou`).
+ * Changer le mot de passe ou l'adresse, déconnecter les autres appareils,
+ * activer, retirer ou renouveler la double authentification comparaient le
+ * mot de passe actuel sans rien compter · le porteur d'une session volée
+ * (sans le mot de passe) le devinait à vingt essais par minute, puis changeait
+ * le mot de passe et fermait les sessions du titulaire. Ces gestes passent
+ * désormais par le MÊME compteur et le MÊME verrou que la connexion
+ * (`decompteApresEchec`, oubli à douze heures). Le verrou n'éjecte pas la
+ * session en cours · il refuse le geste, et le message le dit. Ici le compte
+ * est celui de la session, déjà authentifiée · dire qu'il est fermé
+ * n'apprend rien à qui ne le sait déjà.
+ */
+export const MOTIF_MOT_DE_PASSE_ACTUEL_INCORRECT = 'Le mot de passe actuel est incorrect';
+export const MOTIF_CODE_INCORRECT = 'Code de vérification invalide';
+
+export function motifGesteCompteFerme(jusqua: Date, maintenant: Date): string {
+  const minutes = Math.max(1, Math.ceil((jusqua.getTime() - maintenant.getTime()) / 60_000));
+  return (
+    `Après plusieurs essais manqués, votre compte est fermé pour ${minutes} minute${minutes > 1 ? 's' : ''} · ` +
+    'ce geste est refusé, et la connexion aussi, jusque-là. Votre session en cours reste ouverte.'
+  );
+}
+
+/** Le compte est-il fermé à cet instant ? */
+export function compteFerme(user: { verrouilleJusqua: Date | null }, maintenant: Date): boolean {
+  return user.verrouilleJusqua !== null && user.verrouilleJusqua > maintenant;
+}

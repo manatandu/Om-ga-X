@@ -17,6 +17,14 @@ rejeu `scripts/rejouer-attaques-connexion.cjs`. Rien d'autre.
 - (5) `POST /auth/logout` exige l'en-tête `application/json` (415,
   `MOTIF_DECONNEXION_EN_JSON`), corps facultatif ; l'écran et les tests
   navigateur envoient `{}`.
+- (3) Les six gestes au mot de passe actuel (mot de passe, adresse, autres
+  appareils, activer, retirer, renouveler la double authentification) passent
+  par `exigerLeMotDePasseActuel` · même compteur et même verrou que la
+  connexion (`decompteApresEchec`), relu `FOR UPDATE` ; compte fermé, le geste
+  est refusé (bon mot de passe compris, sans prolonger), message qui dit que
+  la session reste ouverte. Codes faux du retrait et du renouvellement
+  comptés aussi ; le code d'ACTIVATION non (secret neuf, rien à deviner).
+  Spec `mot-de-passe-actuel-au-verrou.spec.ts`.
 
 ## Reste
 

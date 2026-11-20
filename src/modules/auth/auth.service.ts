@@ -30,7 +30,15 @@ import { prendreLeVerrouDuDossierBorne } from '../../common/transaction-de-saisi
 import { avisDoubleAuth, EvenementDoubleAuth } from './avis-double-authentification';
 import { CourrierService, ORIGINE_DOUBLE_AUTHENTIFICATION } from '../courrier/courrier.service';
 import { modulesServis } from '../tenant/modules-optionnels';
-import { DECOMPTE_REMIS_A_ZERO, decompteApresEchec, MOTIF_IDENTIFIANTS_INVALIDES } from './verrouillage';
+import {
+  compteFerme,
+  DECOMPTE_REMIS_A_ZERO,
+  decompteApresEchec,
+  MOTIF_CODE_INCORRECT,
+  MOTIF_IDENTIFIANTS_INVALIDES,
+  MOTIF_MOT_DE_PASSE_ACTUEL_INCORRECT,
+  motifGesteCompteFerme,
+} from './verrouillage';
 import { genererCodesSecours, genererSecret, secondFacteurAccepte, uriOtpauth, verifierCodeTotp } from './double-authentification';
 import {
   ChargeJeton,
@@ -717,8 +725,10 @@ export class AuthService {
    * (un authentificateur ne se lie qu'après une authentification préalable) ·
    * une session « Rester connecté » peut dater de trente jours, et volée, elle
    * installerait sa propre application et fermerait la porte au titulaire.
-   * Comme au retrait, un mot de passe ou un code faux ne compte pas au verrou
-   * de connexion · il est déjà borné par le `@Throttle` de la route.
+   * Le mot de passe faux COMPTE AU VERROU de connexion (audit de sécurité du
+   * 2026-11-19, `exigerLeMotDePasseActuel`) · le `@Throttle` de la route ne
+   * bornait que l'adresse IP. Le code d'ACTIVATION, lui, ne compte pas · il
+   * confirme un secret que la session vient de tirer, il ne devine rien.
    *
    * Le premier code juste l'active · les codes de secours sont rendus UNE
    * fois, ici, et seules leurs empreintes restent. Les autres sessions sont
@@ -735,7 +745,7 @@ export class AuthService {
     const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification est déjà active.');
     if (!u.secretDoubleAuth) throw new BadRequestException('Affichez d’abord la clé à enregistrer dans l’application.');
-    if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
+    await this.exigerLeMotDePasseActuel(ligne, u, motDePasseActuel, maintenant);
     const pas = verifierCodeTotp(u.secretDoubleAuth, code, maintenant.getTime(), null);
     if (pas === null) {
       throw new BadRequestException('Code invalide · vérifiez que l’heure du téléphone est à l’heure, puis saisissez le code affiché.');
@@ -756,8 +766,8 @@ export class AuthService {
   async desactiverDoubleAuth(userId: string, motDePasse: string, code: string, maintenant = new Date(), session: SessionEnCours | null = null) {
     const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
-    if (!(await bcrypt.compare(motDePasse, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
-    if (!secondFacteurAccepte(u, code, maintenant.getTime())) throw new UnauthorizedException('Code de vérification invalide');
+    await this.exigerLeMotDePasseActuel(ligne, u, motDePasse, maintenant);
+    if (!secondFacteurAccepte(u, code, maintenant.getTime())) await this.refuserLeCode(ligne, u, maintenant);
     await this.revoquerEtFermerLaSession(
       ligne,
       u,
@@ -778,9 +788,9 @@ export class AuthService {
   async regenererCodesSecours(userId: string, motDePasseActuel: string, code: string, maintenant = new Date()) {
     const { ligne, compte: u } = await this.compteDeLaSession(userId);
     if (!u.doubleAuthActiveDepuis) throw new BadRequestException('La double authentification n’est pas active.');
-    if (!(await bcrypt.compare(motDePasseActuel, u.motDePasse))) throw new UnauthorizedException('Le mot de passe actuel est incorrect');
+    await this.exigerLeMotDePasseActuel(ligne, u, motDePasseActuel, maintenant);
     const r = secondFacteurAccepte(u, code, maintenant.getTime());
-    if (!r) throw new UnauthorizedException('Code de vérification invalide');
+    if (!r) return this.refuserLeCode(ligne, u, maintenant);
     const { codes, empreintes } = genererCodesSecours();
     await this.surLeCompte(ligne, u, () => this.prisma.user.update({ where: { id: u.id }, data: { ...r, codesSecoursDoubleAuth: empreintes } }));
     await this.aviserDoubleAuth(ligne, 'CODES_SECOURS_REGENERES', maintenant);
@@ -820,11 +830,8 @@ export class AuthService {
    */
   async changerMotDePasse(userId: string, motDePasseActuel: string, nouveauMotDePasse: string, session: SessionEnCours | null = null) {
     const { ligne, compte: user } = await this.compteDeLaSession(userId);
-    const actuelValide = await bcrypt.compare(motDePasseActuel, user.motDePasse);
-    if (!actuelValide) {
-      throw new UnauthorizedException('Le mot de passe actuel est incorrect');
-    }
     const maintenant = new Date();
+    await this.exigerLeMotDePasseActuel(ligne, user, motDePasseActuel, maintenant);
     await this.revoquerEtFermerLaSession(
       ligne,
       user,
@@ -870,9 +877,7 @@ export class AuthService {
     surSite = estSurSite(),
   ): Promise<{ confirmationEnvoyee: true; adresse: string } | ({ adresse: string } & SessionEmise)> {
     const { ligne, compte: user } = await this.compteDeLaSession(userId);
-    if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
-      throw new UnauthorizedException('Le mot de passe actuel est incorrect');
-    }
+    await this.exigerLeMotDePasseActuel(ligne, user, motDePasseActuel);
     const adresse = normaliserCourriel(nouvelleAdresse);
     if (adresse === user.email) throw new BadRequestException("C'est déjà votre adresse de connexion.");
     // LA NOUVELLE ADRESSE SE CONFIRME (second tour, MAJEUR 2,
@@ -960,9 +965,7 @@ export class AuthService {
     maintenant = new Date(),
   ) {
     const { ligne, compte: user } = await this.compteDeLaSession(userId);
-    if (!(await bcrypt.compare(motDePasseActuel, user.motDePasse))) {
-      throw new UnauthorizedException('Le mot de passe actuel est incorrect');
-    }
+    await this.exigerLeMotDePasseActuel(ligne, user, motDePasseActuel, maintenant);
     await this.revoquerEtFermerLaSession(ligne, user, session, revocationDeLaPersonne(maintenant), maintenant.getTime());
     return { autresAppareilsDeconnectes: true, ...this.reemettre(ligne, session, maintenant.getTime()) };
   }
@@ -1195,6 +1198,52 @@ export class AuthService {
    * AUTRES sessions de la même seconde restent la limite connue de toute
    * révocation à la seconde.
    */
+  /**
+   * LE MOT DE PASSE ACTUEL D'UN GESTE AUTHENTIFIÉ (audit de sécurité du
+   * 2026-11-19, `verrouillage.ts`) · même compteur, même verrou que la
+   * connexion. bcrypt tourne avant le verrou, comme à la connexion. Compte
+   * fermé · le geste est refusé, mot de passe juste ou non, sans compter
+   * (compter prolongerait le verrou au gré de qui tient la session). Mot de
+   * passe faux · l'échec s'écrit sous le verrou de la ligne, et le message dit
+   * si le compte vient de se fermer.
+   */
+  private async exigerLeMotDePasseActuel(ligne: { tenantId: string }, compte: User, motDePasse: string, maintenant = new Date()): Promise<void> {
+    const valide = await bcrypt.compare(motDePasse, compte.motDePasse);
+    if (compteFerme(compte, maintenant)) throw new UnauthorizedException(motifGesteCompteFerme(compte.verrouilleJusqua!, maintenant));
+    if (valide) return;
+    const d = await this.compterEchecDuCompte(ligne, compte, maintenant);
+    throw new UnauthorizedException(d.verrouilleJusqua ? motifGesteCompteFerme(d.verrouilleJusqua, maintenant) : MOTIF_MOT_DE_PASSE_ACTUEL_INCORRECT);
+  }
+
+  /** Un code de second facteur faux, dans un geste authentifié · compté comme à la connexion. */
+  private async refuserLeCode(ligne: { tenantId: string }, compte: User, maintenant: Date): Promise<never> {
+    const d = await this.compterEchecDuCompte(ligne, compte, maintenant);
+    throw new UnauthorizedException(d.verrouilleJusqua ? motifGesteCompteFerme(d.verrouilleJusqua, maintenant) : MOTIF_CODE_INCORRECT);
+  }
+
+  /**
+   * UN ÉCHEC DE PLUS SUR LE COMPTE DE CONNEXION · relu `FOR UPDATE` après le
+   * verrou de son dossier (ordre de tout acte audité), écrit à partir de ce
+   * qui y est · des essais simultanés ne repartent pas du même compteur
+   * (même raison qu'à la connexion, piste 10 de l'audit du 2026-10-25).
+   */
+  private compterEchecDuCompte(
+    ligne: { tenantId: string },
+    compte: { id: string; email: string; tenantId: string; tentativesEchouees: number; dernierEchecLe: Date | null },
+    maintenant: Date,
+  ): Promise<{ tentativesEchouees: number; verrouilleJusqua: Date | null }> {
+    return this.surLeCompte(ligne, compte, () =>
+      transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossierBorne(tx, compte.tenantId);
+        const lignes = await tx.$queryRaw<{ tentativesEchouees: number; dernierEchecLe: Date | null }[]>`
+          SELECT "tentativesEchouees", "dernierEchecLe" FROM "users" WHERE "id" = ${compte.id} FOR UPDATE`;
+        const d = decompteApresEchec(lignes[0] ?? compte, maintenant);
+        await tx.user.update({ where: { id: compte.id }, data: d });
+        return d;
+      }),
+    );
+  }
+
   private async revoquerEtFermerLaSession(
     user: { id: string; tenantId: string },
     compte: { id: string; email: string; tenantId: string },

@@ -33,10 +33,11 @@ describe('changer son adresse de connexion', () => {
   });
   const utilisateur = () => ({ id: 'u1', email: 'admin@ancien.cd', motDePasse: hash });
 
-  it('exige le mot de passe actuel, sans rien écrire sinon', async () => {
+  it('exige le mot de passe actuel, et n’écrit sinon que l’échec (audit de sécurité du 2026-11-19)', async () => {
     const { s, update } = service(utilisateur());
     await expect(s.changerAdresse('u1', 'faux', 'admin@nouveau.cd')).rejects.toThrow(/mot de passe actuel est incorrect/);
-    expect(update).not.toHaveBeenCalled();
+    const ecrits = update.mock.calls.map((c) => Object.keys((c as unknown as [{ data: object }])[0].data).sort().join());
+    expect(ecrits).toEqual(['dernierEchecLe,tentativesEchouees,verrouilleJusqua']);
   });
 
   it('change l’adresse, ferme les sessions et en repose une neuve', async () => {

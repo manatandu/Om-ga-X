@@ -116,7 +116,10 @@ describe('activer, retirer, renouveler', () => {
     const m = await monde({ secretDoubleAuth: SECRET, doubleAuthActiveDepuis: MAINTENANT });
     await expect(m.s.desactiverDoubleAuth('u1', 'faux', codeA(MAINTENANT), MAINTENANT)).rejects.toThrow(/mot de passe/);
     await expect(m.s.desactiverDoubleAuth('u1', 'bon-mot-de-passe', '000000', MAINTENANT)).rejects.toThrow(/Code/);
-    expect(m.ecritures).toHaveLength(0);
+    // Mot de passe faux, puis code faux · deux échecs comptés au verrou
+    // (audit de sécurité du 2026-11-19), rien d'autre d'écrit.
+    expect(m.ecritures.map((e) => e.tentativesEchouees)).toEqual([1, 2]);
+    expect(m.ecritures.every((e) => Object.keys(e).sort().join() === 'dernierEchecLe,tentativesEchouees,verrouilleJusqua')).toBe(true);
     await m.s.desactiverDoubleAuth('u1', 'bon-mot-de-passe', codeA(MAINTENANT), MAINTENANT);
     expect(m.u).toMatchObject({ secretDoubleAuth: null, doubleAuthActiveDepuis: null, codesSecoursDoubleAuth: [] });
   });
@@ -125,7 +128,7 @@ describe('activer, retirer, renouveler', () => {
     const m = await monde({ secretDoubleAuth: SECRET, doubleAuthActiveDepuis: MAINTENANT, codesSecoursDoubleAuth: ['vieux'] });
     await expect(m.s.regenererCodesSecours('u1', 'faux', codeA(MAINTENANT), MAINTENANT)).rejects.toThrow(/mot de passe/);
     await expect(m.s.regenererCodesSecours('u1', 'bon-mot-de-passe', '000000', MAINTENANT)).rejects.toThrow(/Code/);
-    expect(m.ecritures).toHaveLength(0);
+    expect(m.ecritures.map((e) => e.tentativesEchouees)).toEqual([1, 2]);
     expect(m.u.codesSecoursDoubleAuth).toEqual(['vieux']);
     const r = await m.s.regenererCodesSecours('u1', 'bon-mot-de-passe', codeA(MAINTENANT), MAINTENANT);
     expect(m.u.codesSecoursDoubleAuth).toHaveLength(8);
@@ -143,14 +146,21 @@ describe('activer exige le mot de passe actuel (OWASP ASVS 5.0, 7.5.1)', () => {
   it('un mot de passe faux est refusé AVANT le code · rien n’est activé, aucune session fermée', async () => {
     const m = await monde({ secretDoubleAuth: SECRET });
     await expect(m.s.activerDoubleAuth('u1', 'faux', codeA(MAINTENANT), MAINTENANT)).rejects.toThrow('Le mot de passe actuel est incorrect');
-    expect(m.ecritures).toHaveLength(0);
+    // Seul l'échec est écrit (audit de sécurité du 2026-11-19).
+    expect(m.ecritures).toEqual([{ tentativesEchouees: 1, verrouilleJusqua: null, dernierEchecLe: MAINTENANT }]);
     expect(m.u.doubleAuthActiveDepuis).toBeNull();
     expect(m.u.sessionsInvalidesAvant).toBeUndefined();
   });
 
-  it('comme au retrait, un mot de passe faux ne compte pas au verrou de connexion', async () => {
+  it('un mot de passe faux compte au verrou de connexion (audit de sécurité du 2026-11-19)', async () => {
     const m = await monde({ secretDoubleAuth: SECRET });
     await expect(m.s.activerDoubleAuth('u1', 'faux', codeA(MAINTENANT), MAINTENANT)).rejects.toThrow();
+    expect(m.u.tentativesEchouees).toBe(1);
+  });
+
+  it('le code d’ACTIVATION faux ne compte pas · il confirme un secret neuf, il ne devine rien', async () => {
+    const m = await monde({ secretDoubleAuth: SECRET });
+    await expect(m.s.activerDoubleAuth('u1', 'bon-mot-de-passe', '000000', MAINTENANT)).rejects.toThrow(/Code invalide/);
     expect(m.u.tentativesEchouees).toBe(0);
   });
 });
