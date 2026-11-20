@@ -47,16 +47,17 @@ rejeu `scripts/rejouer-attaques-connexion.cjs`. Rien d'autre.
   Migration `20270249000000_securite_connexion`, `prisma migrate diff` sans
   différence. Spec `verrou-et-limite.spec.ts`, client `appareil-reconnu.spec.ts`.
 
+- Rejeu `scripts/rejouer-attaques-connexion.cjs` étendu (sections 6 à 10,
+  second serveur compilé et boîte SMTP de poche) · 72 prouvées, 0 non
+  prouvée, PostgreSQL 16 jetable.
+- Suivi · `docs/suivi-immobilisations-verrouille.md`, relevés en attente
+  (constats sur site 6 et 7, TOTP en clair, écart de durée, limites).
+  CLAUDE.md § 8 tenu à jour.
+
 ## Reste
 
-1. Un inconnu ne tient plus un compte fermé (second facteur pendant le
-   verrou ; lien de déverrouillage au seul titulaire).
-2. Limite d'essais par adresse e-mail, partagée entre instances.
-3. Le mot de passe actuel compte ses échecs.
-4. Secret de session faible refusé au démarrage en production, et contrôlé
-   avant le déploiement (`deploy-cloud-run.yml`).
-5. Déconnexion en JSON seulement (415 sinon).
-6. Rejeu étendu sur base jetable, relecteurs, suivi.
+- Relecture `silent-failure-hunter`, `typescript-reviewer`, `react-reviewer`
+  (deux tours au plus), corrections majeures.
 
 ## Décisions
 

@@ -193,6 +193,37 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **AUDIT DE SÉCURITÉ DE LA CONNEXION · CE QUI RESTE (2026-11-20, ligne
+  `securite-connexion`).** Manasse a demandé cinq corrections (« Go »),
+  faites et rejouées (`scripts/rejouer-attaques-connexion.cjs`, 72
+  vérifications). Restent HORS DE CETTE LIGNE, avec leur constat du rapport
+  (`/root/security-audit-skill/omegax/run-1/`) ·
+  (1) `omegax-sursite-premier-dossier-course` · sur site, tant qu'aucun
+  dossier n'existe, le premier poste qui appelle `POST /auth/register`
+  devient l'administrateur de l'installation (qui tient le `pg_dump` de toute
+  la base), et deux appels simultanés passent tous deux
+  `premierDossierAttendu` ;
+  (2) `omegax-sursite-invitation-sur-place-apres-reinitialisation` · sur
+  site, l'administrateur du dossier A choisit le mot de passe provisoire d'un
+  collaborateur qui n'a que ce dossier, se connecte à sa place, et accepte
+  sur place l'invitation que le dossier B lui adressait ;
+  (3) `omegax-auth-secret-totp-en-clair` · `User.secretDoubleAuth` est en
+  clair en base (exclu du journal d'audit et de la restitution) · qui lit une
+  copie de la base engendre les codes ;
+  (4) `omegax-auth-ecart-de-duree-connexion` · l'écart de durée entre une
+  adresse inconnue et un compte connu au mot de passe faux (le décompte
+  s'écrit en base) reste, mineur, borné à cinq essais puis au verrou ; la
+  limite par adresse le borne désormais aussi à dix essais par dix minutes ;
+  (5) LIMITE DE LA CORRECTION 2 · l'accès DIRECT à `*.run.app` reste ouvert
+  (l'adresse IP s'y écrit par le client, `sauts-de-confiance.ts` intouché) ·
+  le fermer suppose un équilibreur de charge Google (essai du 2026-10-29,
+  `essai-ingress-cloud-run.yml`) ; la limite par adresse e-mail tient dans le
+  code, et un tiers qui la dépasse sans relâche garde une adresse freinée sur
+  un appareil jamais reconnu (l'appareil reconnu du titulaire passe) ;
+  (6) LIMITE DE LA CORRECTION 1 · le lien de déverrouillage part APRÈS la
+  réponse ; en ligne, Cloud Run n'alloue le processeur qu'aux requêtes, et
+  l'envoi peut attendre la requête suivante de l'instance.
+
 - **PAQUET 1, LIGNES A, B ET C · RELEVÉS TRAITÉS (gel levé le 2026-11-01,
   ligne `releves-paquet1`).** Les trois entrées « PAQUET 1, LIGNE A, B, C »
   ci-dessous sont traitées · B7 (bilan d'ouverture importé comme origine,

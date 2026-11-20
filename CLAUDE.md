@@ -5571,7 +5571,8 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   (Firebase Hosting, puis Cloud Run), AUCUN sur site, `SAUTS_PROXY_CONFIANCE`
   prime. Avec un seul, le journal d'audit et la limitation de débit voyaient
   l'adresse du relais Firebase pour tout le monde. Un appel direct à
-  `*.run.app` reste possible, et se ferme dans l'infrastructure.
+  `*.run.app` reste possible, et se ferme dans l'infrastructure · la limite
+  par adresse e-mail (ci-dessous) est ce qui tient dans le code.
 - **Auto-inscription fermée** · `POST /auth/register` refuse sauf si
   `INSCRIPTION_PUBLIQUE=true`. Un dossier naît depuis la console de l'éditeur ou par le
   siège d'un groupe. `AuthService.register` reste le pipeline commun de toutes
@@ -5673,7 +5674,13 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   DOSSIER du compte avant la ligne (ordre de tout acte audité), liste
   plafonnée à cent, au-delà le compte entier se ferme. Une base en panne
   n'empêche pas d'effacer le cookie, et la réponse le dit
-  (`sessionFermee: false`).
+  (`sessionFermee: false`). Elle n'admet que l'en-tête `application/json`
+  (415 sinon, `MOTIF_DECONNEXION_EN_JSON`, audit de sécurité du 2026-11-19) ·
+  un formulaire d'un autre site fermait la session de la victime ; le corps
+  reste facultatif, une session échue efface encore son cookie. LE SECRET DE
+  SESSION est refusé au démarrage en production s'il est absent, connu ou de
+  moins de 32 caractères (`validate-env.ts`, message sans la valeur), et
+  `deploy-cloud-run.yml` le juge par la même règle avant de migrer.
 - **« Rester connecté sur cet appareil »** (`src/modules/auth/session-longue.ts`,
   audit final F270, décision de Manasse). La case est DÉCOCHÉE par défaut.
   Décochée · cookie DE SESSION, sans `maxAge` ni `expires`, fermé avec le
@@ -5812,6 +5819,36 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   n'est jamais atteint (`verrouillage.spec.ts` le tient et rejoue l'attaquant
   patient). Une seule remise à zéro (`DECOMPTE_REMIS_A_ZERO`), un seul
   décompte (`decompteApresEchec`).
+  **UN INCONNU NE TIENT PLUS UN COMPTE FERMÉ** (audit de sécurité du
+  2026-11-19, demande de Manasse, `auth/deverrouillage.ts`) · cinq mots de
+  passe faux puis un essai par échéance tenaient le titulaire dehors. Pendant
+  le verrou, la RÉPONSE reste mot pour mot celle d'un mot de passe faux, et
+  deux portes s'ouvrent au seul titulaire · (a) bon mot de passe ET code
+  valide d'un compte à double authentification, il entre et le compteur
+  tombe (la demande de code ne part jamais pendant le verrou, elle dirait le
+  mot de passe juste) ; (b) bon mot de passe, un lien à usage unique (une
+  heure, gardé en empreinte, `envoyerUnSecret`, une fois par période de
+  verrou, `POST /auth/deverrouiller`, page `#/deverrouiller`). Tout ce qui
+  distingue le bon mot de passe (courriel, échec d'un code compté) part
+  APRÈS la réponse (`apresLaReponse`), pour que la durée ne le dise pas.
+  Sans messagerie, rien ne part, l'administrateur déverrouille.
+  **LA LIMITE D'ESSAIS COMPTE AUSSI PAR ADRESSE E-MAIL** (même audit,
+  `auth/limite-par-adresse.ts`) · `@Throttle` compte par IP, en mémoire, et
+  l'accès direct à `*.run.app` laisse le client écrire son IP. Dix essais
+  par adresse et par dix minutes glissantes, en base
+  (`essais_connexion_adresse`, hors dossier, HMAC de l'adresse, purgée), la
+  même pour une adresse inconnue · au-delà, 429 SANS bcrypt, même phrase.
+  L'APPAREIL RECONNU PASSE · la connexion réussie rend un jeton d'appareil
+  (HMAC, quatre-vingt-dix jours, lié au compte), que l'écran garde
+  (`lib/appareil-reconnu.ts`) et renvoie, sans quoi la limite rouvrait le
+  refus de service. Il ne dispense ni du verrou, ni du second facteur.
+  **LE MOT DE PASSE ACTUEL COMPTE SES ÉCHECS** (même audit) · changer le
+  mot de passe ou l'adresse, déconnecter les autres appareils, activer,
+  retirer ou renouveler la double authentification passent par
+  `exigerLeMotDePasseActuel`, même compteur, même verrou ; compte fermé, le
+  geste est refusé et le message dit que la session reste ouverte. Les codes
+  faux du retrait et du renouvellement comptent aussi, jamais le code
+  d'ACTIVATION (secret neuf, rien à deviner).
 - **ACTIVER LE SECOND FACTEUR EXIGE LE MOT DE PASSE, ET LE TITULAIRE EST AVERTI
   HORS DE LA SESSION** (2026-09-28, décision de Manasse). OWASP ASVS 5.0,
   exigence 7.5.1 (« full re-authentication » avant de modifier la
@@ -5820,7 +5857,8 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   dater de trente jours · volée, elle installerait SA propre application et
   fermerait la porte au titulaire. L'activation et la régénération des codes
   de secours (le « sudo mode » de GitHub) prennent `motDePasseActuel`, vérifié
-  par bcrypt AVANT le code, même refus que le retrait, sans compter au verrou.
+  par bcrypt AVANT le code, même refus que le retrait, compté au verrou depuis
+  l'audit de sécurité du 2026-11-19.
   Activer, retirer ou renouveler les codes met en file un courriel au
   titulaire, sans aucun secret (`avis-double-authentification.ts`) · un échec
   de mise en file ne défait jamais l'acte. `AuthModule` importe
