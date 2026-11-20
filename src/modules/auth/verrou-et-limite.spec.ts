@@ -306,6 +306,26 @@ describe('(2) la limite par adresse e-mail · le bon mot de passe passe encore (
     expect(m.limite.insertions).toBe(2);
   });
 
+  it('second tour (BLOQUANT) · sur un compte FERMÉ, le comptage ne dépend pas du mot de passe · aucun oracle 401 / 429', async () => {
+    // L'attaquant amène la fenêtre au seuil, joint un code au candidat, puis
+    // envoie un faux connu · bon et faux candidat doivent laisser la MÊME
+    // fenêtre, et donc la même réponse suivante.
+    const AU_SEUIL = { essais: LIMITE_ESSAIS_PAR_ADRESSE };
+    for (const etat of [FERME(), { ...FERME(), secretDoubleAuth: SECRET_TOTP, doubleAuthActiveDepuis: new Date('2026-01-01T00:00:00Z') }]) {
+      const issues: unknown[] = [];
+      for (const candidat of ['bon-mot-de-passe', 'autre-faux']) {
+        const m = await monde(etat, AU_SEUIL);
+        await m.s.login(connexion(candidat, { code: '1' })).catch(() => undefined);
+        const suivante = await m.s.login(connexion('faux-connu')).catch((e) => e);
+        issues.push([m.limite.insertions, suivante.getStatus(), suivante.message]);
+      }
+      // Les deux candidats remplissent la fenêtre de la même façon (deux
+      // essais comptés), donc la réponse suivante ne peut pas les départager.
+      expect(issues[0]).toEqual(issues[1]);
+      expect((issues[0] as unknown[])[0]).toBe(2);
+    }
+  });
+
   it('le 429 ne promet aucune durée', () => {
     expect(MOTIF_TROP_D_ESSAIS_SUR_L_ADRESSE).not.toMatch(/minutes? avant|patientez/i);
   });

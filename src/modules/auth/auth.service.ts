@@ -203,7 +203,11 @@ type EtatDuCompteSousVerrou = {
  * de ce qui y est, jamais de la ligne lue au début de la requête.
  */
 async function lireLeCompteSousVerrou(tx: Prisma.TransactionClient, compte: { id: string; tenantId: string }): Promise<EtatDuCompteSousVerrou | null> {
-  await prendreLeVerrouDuDossier(tx, compte.tenantId);
+  // BORNÉ (second tour de relecture, 2026-11-20) · la connexion relit ici son
+  // verrou à chaque entrée ; une clôture ou un import qui tient le verrou du
+  // dossier ne doit pas faire attendre sans fin chaque connexion, chacune
+  // retenant une connexion du pool · au-delà de l'attente bornée, 409 nommé.
+  await prendreLeVerrouDuDossierBorne(tx, compte.tenantId);
   const id = compte.id;
   const lignes = await tx.$queryRaw<EtatDuCompteSousVerrou[]>`
     SELECT "tentativesEchouees", "dernierEchecLe", "verrouilleJusqua", "secretDoubleAuth", "dernierPasDoubleAuth",
@@ -621,7 +625,16 @@ export class AuthService {
     // FERMÉ reçoit le MÊME 429, et son lien part après la réponse ; le BON mot
     // de passe d'un compte ouvert suit son cours.
     const appareil = Boolean(user && appareilReconnu(dto.appareil, user.id, secretDeSession(), maintenant, revocationDuCompte(user)));
-    const freinee = (await this.adresseFreinee(adresse, maintenant, !(motDePasseValide && code))) && !appareil;
+    // LE COMPTAGE NE DÉPEND JAMAIS DE LA JUSTESSE DU MOT DE PASSE SUR UN COMPTE
+    // FERMÉ (second tour de relecture, 2026-11-20, BLOQUANT) · épargner le
+    // seul « bon mot de passe avec un code » laissait la fenêtre à 10 au lieu
+    // de 11, et l'essai suivant répondait 401 au lieu de 429 · un oracle du
+    // mot de passe, pendant un verrou qui ne compte plus rien au compte. Seul
+    // un compte OUVERT à double authentification en est dispensé · là, la
+    // demande du second facteur a déjà dit que le mot de passe est juste, rien
+    // de neuf ne fuit.
+    const epargne = Boolean(motDePasseValide && code && !ferme && user?.doubleAuthActiveDepuis);
+    const freinee = (await this.adresseFreinee(adresse, maintenant, !epargne)) && !appareil;
     if (freinee && (!motDePasseValide || ferme)) {
       if (user && motDePasseValide) this.apresUnRefusSousVerrou(user, false);
       else if (user && !ferme) await this.compterEchecHorsSession(user, maintenant);
@@ -651,8 +664,12 @@ export class AuthService {
     // faux par période ; au-delà, il n'est plus jugé jusqu'à l'échéance, la
     // réponse reste la même. Le budget lu ici l'est sur la ligne du début de
     // la requête ; il se relit sous verrou de la ligne avant toute entrée
-    // (plus bas), et des requêtes simultanées sont bornées par la limite par
-    // adresse, comptée atomiquement, et par la limite par IP.
+    // (plus bas). Des requêtes simultanées sont bornées par la limite par
+    // adresse, comptée atomiquement pour TOUT appel sur un compte fermé
+    // (second tour de relecture) · au plus dix codes jugés par fenêtre de dix
+    // minutes, hors appareil reconnu. LIMITE ÉCRITE · le budget n'est pas
+    // consommé avant le jugement, une rafale sous la limite peut faire juger
+    // quelques codes au-delà de cinq (suivi, relevés en attente).
     let entreeMalgreLeVerrou = false;
     if (ferme) {
       if (!motDePasseValide) throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);

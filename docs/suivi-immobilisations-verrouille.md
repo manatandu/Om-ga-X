@@ -235,8 +235,20 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   sur la ligne du début de la requête, puis relu sous verrou avant toute
   entrée ; des requêtes simultanées peuvent faire juger quelques codes de
   plus dans la rafale, bornées par la limite par adresse (comptée
-  atomiquement, sauf l'appel au bon mot de passe qui porte un code) et par la
-  limite par IP ;
+  atomiquement pour tout appel sur un compte fermé depuis le second tour de
+  relecture, qui fermait un oracle du mot de passe) et par la limite par IP ;
+  à faire · consommer le budget dans la transaction AVANT de juger le code
+  (second tour, MAJEUR) ; un appareil reconnu échappe à la limite par
+  adresse, sa rafale ne l'est que par la limite par IP ;
+  (8 bis) SECOND TOUR, MINEURS · « peut-être parti » admis pour toute erreur
+  d'un type inattendu (garde la place, le titulaire garde l'échéance et
+  l'administrateur) ; le motif réseau lu dans le texte du transport attrape
+  aussi un numéro de port (doublon de lien possible) ; le verrou relu par
+  `exigerLeMotDePasseActuel` ne couvre pas le geste lui-même (fenêtre très
+  courte, titulaire authentifié) ; la révocation posée sur une autre
+  appartenance ne touche pas le jeton d'appareil ; le contrôle du secret du
+  workflow ne retire pas les espaces Unicode (cas d'école) ; budget épuisé, le
+  titulaire au bon code attend l'échéance ou passe par le lien ;
   (9) LIMITE DU TRI DES ERREURS D'ENVOI · un délai dépassé ou une connexion
   coupée pendant l'envoi du lien gardent la place (le titulaire a peut-être
   reçu le lien) · si rien n'est parti, aucun lien pour ce verrou ; il reste
