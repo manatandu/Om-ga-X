@@ -571,7 +571,9 @@ describe('le contrôleur · un seul chemin pour le cookie, et la route nouvelle'
       .sort();
     // Ligne multi-dossiers · une adresse neuve accepte une invitation en
     // choisissant son mot de passe, sans compte donc sans session.
-    expect(sansGarde).toEqual(['creerCompteParInvitation', 'etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
+    // Audit de sécurité du 2026-11-19 · le lien de déverrouillage reçu par
+    // courriel, sans session puisque le compte est fermé, jeton seul.
+    expect(sansGarde).toEqual(['creerCompteParInvitation', 'deverrouiller', 'etatInscriptionEssai', 'inscrireEnEssai', 'login', 'logout', 'register']);
   });
 
   it('la route est ouverte à tous les rôles, et n’est PAS une sortie de mot de passe provisoire', () => {

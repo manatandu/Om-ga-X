@@ -167,8 +167,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // frais par projet (ligne paie-declarations), bornées par leur tenantId ;
     // 245 avec les invitations d'une personne au dossier (ligne
     // multi-dossiers), bornées par leur tenantId ; 246 avec les demandes de
-    // changement d'adresse (second tour, MAJEUR 2), idem.
-    expect(modeles).toHaveLength(246);
+    // changement d'adresse (second tour, MAJEUR 2), idem ; 247 avec la limite
+    // d'essais par adresse (audit de sécurité du 2026-11-19), HORS DOSSIER.
+    expect(modeles).toHaveLength(247);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

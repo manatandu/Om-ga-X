@@ -1,4 +1,5 @@
 import { InvitationPage } from './pages/InvitationPage';
+import { DeverrouillagePage } from './pages/DeverrouillagePage';
 import { ChoixDossierPage } from './pages/ChoixDossierPage';
 import { dossierChoisiDansLaSession } from './lib/dossiers-personne';
 import { lazy, Suspense, useEffect } from 'react';
@@ -57,6 +58,8 @@ function Routage() {
       <Route path="/essai" element={<EssaiPage />} />
       {/* Ligne multi-dossiers · le lien d'une invitation reçue par courriel, connecté ou non. */}
       <Route path="/invitation" element={<InvitationPage />} />
+      {/* Audit de sécurité du 2026-11-19 · le lien de déverrouillage d'un compte fermé, sans session. */}
+      <Route path="/deverrouiller" element={<DeverrouillagePage />} />
       {/*
         HORS de la zone protégée, et c'est tout l'objet de cette route : une
         politique de confidentialité derrière un mot de passe n'est pas une

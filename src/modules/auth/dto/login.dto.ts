@@ -24,4 +24,15 @@ export class LoginDto {
   @IsOptional()
   @IsBoolean()
   resterConnecte?: boolean;
+
+  /**
+   * LE JETON D'APPAREIL (audit de sécurité du 2026-11-19,
+   * `limite-par-adresse.ts`) · rendu à la dernière connexion réussie sur cet
+   * appareil, il le dispense de la limite d'essais par adresse, et de rien
+   * d'autre.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  appareil?: string;
 }

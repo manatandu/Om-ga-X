@@ -1,5 +1,17 @@
 import { faitAssujettissementTva } from '../tenant/faits-declares';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { LicenceSurSiteService } from '../sur-site/licence-sur-site.service';
 import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
 import { articleTrenteSeptApplicable } from '../accord-cadre/conditions-ong-etrangere';
@@ -68,6 +80,7 @@ import {
   idDuCompteDeConnexion,
   recopierLAdresse,
   trouverCompteDeConnexion,
+  verrouillerLeCompte,
 } from './compte-de-connexion';
 import { sessionRevoquee } from './jwt.strategy';
 import {
@@ -78,6 +91,25 @@ import {
   ORIGINE_CONFIRMATION_ADRESSE,
 } from './confirmation-adresse';
 import { estSurSite } from '../../common/mode-installation';
+import {
+  appareilReconnu,
+  auDelaDeLaLimite,
+  compterEssaiSurLAdresse,
+  empreinteAdresse,
+  FENETRE_ESSAIS_PAR_ADRESSE_MINUTES,
+  jetonAppareil,
+  MOTIF_TROP_D_ESSAIS_SUR_L_ADRESSE,
+  oublierLesEssaisDeLAdresse,
+  purgerLesEssaisEchus,
+} from './limite-par-adresse';
+import {
+  avisDeverrouillage,
+  echeanceLienDeverrouillage,
+  jetonDeverrouillage,
+  MOTIF_LIEN_DEVERROUILLAGE_INVALIDE,
+  ORIGINE_DEVERROUILLAGE_COMPTE,
+} from './deverrouillage';
+import { causeDeLException } from '../plateforme/essais-echus/cause-echec-envoi';
 import { avisReinitialisationParCourriel, ORIGINE_REINITIALISATION_PAR_COURRIEL, poserLeProvisoire, sousVerrouDuCompte } from './reinitialisation-du-compte';
 import { LicenceService } from '../licence/licence.service';
 import { dansContexteAudit as dansContexteActeur } from '../../common/audit/contexte-audit';
@@ -110,6 +142,32 @@ export const MOTIF_LICENCE_EDITEUR_A_LA_CREATION =
  */
 function revocationDeLaPersonne(instant: Date) {
   return { sessionsInvalidesAvant: instant, sessionsDuCompteInvalidesAvant: instant };
+}
+
+/** Le secret de session · `validate-env.ts` en garantit la présence au démarrage. */
+function secretDeSession(): string {
+  return process.env.JWT_SECRET ?? '';
+}
+
+/**
+ * CE QUI SE FAIT APRÈS LA RÉPONSE · le compteur d'un code faux pendant le
+ * verrou, le lien de déverrouillage, la purge de la limite par adresse. La
+ * réponse n'attend pas, et sa DURÉE ne dit donc rien de ce qui suit. Un échec
+ * est consigné, jamais rendu (la réponse est partie). Limite écrite · en
+ * ligne, Cloud Run n'alloue le processeur qu'aux requêtes, et ce travail peut
+ * attendre la requête suivante de l'instance.
+ */
+function apresLaReponse(journal: Logger, quoi: string, travail: () => Promise<unknown>): void {
+  setImmediate(() => {
+    // `then(travail)` et non `travail()` · une exception levée AVANT la
+    // première promesse échapperait au `catch` et ferait tomber le processus.
+    void Promise.resolve()
+      .then(travail)
+      .catch((e: unknown) => {
+        const code = (e as { code?: unknown })?.code;
+        journal.error(`Après la réponse (${quoi}) · ${(e as Error)?.name ?? 'erreur'}${typeof code === 'string' ? `, ${code}` : ''}`);
+      });
+  });
 }
 
 @Injectable()
@@ -491,12 +549,24 @@ export class AuthService {
     // à cinq essais par fenêtre, et `@Throttle` le débit par adresse. Le
     // rendre indiscernable demanderait un plancher de durée sur tout refus,
     // qui n'est pas posé (relecture adverse de l'audit final F238).
+    const maintenant = new Date();
+
+    // LA LIMITE PAR ADRESSE E-MAIL, AVANT BCRYPT (audit de sécurité du
+    // 2026-11-19, `limite-par-adresse.ts`) · comptée en base, partagée entre
+    // les instances, la même pour une adresse inconnue. Au-delà, 429 sans
+    // hachage, même phrase pour toute adresse · sauf l'appareil reconnu du
+    // titulaire, que la limite ne doit pas enfermer.
+    if (await this.adresseFreinee(normaliserCourriel(dto.email), maintenant)) {
+      if (!user || !appareilReconnu(dto.appareil, user.id, secretDeSession(), maintenant)) {
+        throw new HttpException(MOTIF_TROP_D_ESSAIS_SUR_L_ADRESSE, HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
+
     if (!user) {
       await bcrypt.compare(dto.motDePasse, EMPREINTE_FACTICE);
       throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
     }
 
-    const maintenant = new Date();
     // bcrypt TOURNE AVANT LE VERROU, et c'est le contraire de ce que ce code
     // faisait jusqu'au 2026-09-28. Le verrou répondait sans hachage, pour ne
     // pas offrir un levier d'épuisement du processeur ; mais une adresse
@@ -513,8 +583,30 @@ export class AuthService {
     // frappe ce compte. Un essai pendant le verrou n'est pas compté · le
     // compter prolongerait le verrou au gré de qui connaît l'adresse, et
     // l'adresse d'un comptable n'est pas un secret (verrouillage.ts).
+    // DEUX PORTES AU SEUL TITULAIRE (audit de sécurité du 2026-11-19,
+    // `deverrouillage.ts`) · un inconnu qui connaît l'adresse tenait le compte
+    // fermé sans fin. (a) Bon mot de passe ET code valide d'un compte à double
+    // authentification · il entre, et le compteur tombe. (b) Bon mot de passe
+    // sans entrée · un lien de déverrouillage part au seul courriel du compte.
+    // LA RÉPONSE NE CHANGE PAS · tout ce qui n'entre pas reçoit le message
+    // commun, et ce qui distingue le bon mot de passe (l'échec d'un code
+    // compté, le courriel) se fait APRÈS la réponse, pour que la durée ne le
+    // dise pas non plus.
+    let entreeMalgreLeVerrou = false;
     if (user.verrouilleJusqua && user.verrouilleJusqua > maintenant) {
-      throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
+      if (!motDePasseValide) throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
+      const code = dto.code?.trim() ?? '';
+      const codeEnApparence = Boolean(user.doubleAuthActiveDepuis && code && secondFacteurAccepte(user, code, maintenant.getTime()));
+      if (!codeEnApparence) {
+        const verrou = user.verrouilleJusqua;
+        const coder = Boolean(user.doubleAuthActiveDepuis && code);
+        apresLaReponse(this.logger, 'connexion pendant le verrou', async () => {
+          if (coder) await this.compterEchecHorsSession(user, new Date());
+          await this.envoyerLienDeDeverrouillage(user, verrou);
+        });
+        throw new UnauthorizedException(MOTIF_IDENTIFIANTS_INVALIDES);
+      }
+      entreeMalgreLeVerrou = true;
     }
 
     // Le compteur NE repart PLUS de zéro à l'échéance du verrou · il
@@ -577,6 +669,9 @@ export class AuthService {
     // transaction · un code qui vient de servir n'y passe plus.
     if (user.doubleAuthActiveDepuis) {
       if (!dto.code?.trim()) return { deuxiemeFacteurRequis: true as const };
+      // Pendant le verrou, le code a été jugé en apparence · il se rejuge ici
+      // SOUS VERROU de la ligne, et un échec garde la réponse commune.
+
       const code = dto.code;
       const accepte = await sousVerrouDuCompte('connexion · second facteur jugé sous verrou du compte', async (tx, frais) => {
         const r = secondFacteurAccepte(frais, code, maintenant.getTime());
@@ -586,7 +681,7 @@ export class AuthService {
         });
         return r !== null;
       });
-      if (!accepte) throw new UnauthorizedException('Code de vérification invalide');
+      if (!accepte) throw new UnauthorizedException(entreeMalgreLeVerrou ? MOTIF_IDENTIFIANTS_INVALIDES : 'Code de vérification invalide');
     } else if (user.tentativesEchouees > 0 || user.verrouilleJusqua || user.dernierEchecLe) {
       // Connexion réussie · le compteur d'échecs et le verrou tombent.
       // `> 0` et non `!== 0` · le compteur vaut 0 par défaut en base, mais
@@ -612,7 +707,123 @@ export class AuthService {
     // Mot de passe, et code s'il est actif · une connexion complète. Plusieurs
     // dossiers · l'écran montre la liste avant l'écran des logiciels.
     const plusieursDossiers = actives > 1;
-    return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };
+    return {
+      ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }),
+      plusieursDossiers,
+      // L'appareil est reconnu pour la limite par adresse (`limite-par-adresse.ts`).
+      appareil: jetonAppareil(user.id, secretDeSession(), maintenant),
+    };
+  }
+
+  /** Dernière purge de la limite par adresse, sur cette instance. */
+  private dernierePurgeEssais = 0;
+
+  /**
+   * L'essai est compté sur l'adresse, et la réponse dit si elle est freinée.
+   * La purge des fenêtres passées part au plus toutes les dix minutes, après
+   * la réponse.
+   */
+  private async adresseFreinee(adresse: string, maintenant: Date): Promise<boolean> {
+    const n = await horsCloisonnement('connexion · limite d’essais par adresse, avant de connaître le dossier', () =>
+      compterEssaiSurLAdresse(this.prisma, empreinteAdresse(adresse, secretDeSession()), maintenant),
+    );
+    if (maintenant.getTime() - this.dernierePurgeEssais >= FENETRE_ESSAIS_PAR_ADRESSE_MINUTES * 60_000) {
+      this.dernierePurgeEssais = maintenant.getTime();
+      apresLaReponse(this.logger, 'purge de la limite par adresse', () =>
+        horsCloisonnement('connexion · purge des essais échus, hors dossier', () => purgerLesEssaisEchus(this.prisma, maintenant)),
+      );
+    }
+    return auDelaDeLaLimite(n);
+  }
+
+  /** Un échec compté sur un compte que personne n'a encore identifié · le chemin de la connexion. */
+  private compterEchecHorsSession(user: { id: string; tenantId: string }, maintenant: Date) {
+    return horsCloisonnement('connexion · décompte des échecs sur un compte non encore identifié', () =>
+      transactionJournalisee(this.prisma, async (tx) => {
+        await prendreLeVerrouDuDossier(tx, user.tenantId);
+        const lignes = await tx.$queryRaw<{ tentativesEchouees: number; dernierEchecLe: Date | null }[]>`
+          SELECT "tentativesEchouees", "dernierEchecLe" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`;
+        if (lignes.length === 0) return;
+        await tx.user.update({ where: { id: user.id }, data: decompteApresEchec(lignes[0], maintenant) });
+      }),
+    );
+  }
+
+  /**
+   * LE LIEN DE DÉVERROUILLAGE (`deverrouillage.ts`) · au seul courriel du
+   * compte, directement, une fois par période de verrou. La place se RÉSERVE
+   * d'abord par une mise à jour conditionnelle (verrou inchangé, pas encore
+   * envoyé pour lui) · deux connexions simultanées n'envoient pas deux liens.
+   * Un envoi manqué libère la place · la connexion suivante réessaie. Sans
+   * messagerie, rien ne part (sur site, l'administrateur déverrouille).
+   */
+  private async envoyerLienDeDeverrouillage(user: { id: string; tenantId: string; email: string }, verrou: Date): Promise<void> {
+    if (!this.courrier?.etatDuTransport().configure) return;
+    const jeton = jetonDeverrouillage();
+    const maintenant = new Date();
+    const reserve = await horsCloisonnement('connexion · lien de déverrouillage réservé pour ce verrou', () =>
+      this.prisma.user.updateMany({
+        where: { id: user.id, tenantId: user.tenantId, verrouilleJusqua: verrou, OR: [{ deverrouillageEnvoyePour: null }, { deverrouillageEnvoyePour: { not: verrou } }] },
+        data: {
+          empreinteDeverrouillage: empreinteDuJeton(jeton),
+          deverrouillageExpireLe: echeanceLienDeverrouillage(maintenant),
+          deverrouillageEnvoyePour: verrou,
+        },
+      }),
+    );
+    if (reserve.count !== 1) return;
+    const avis = avisDeverrouillage(jeton);
+    try {
+      await horsCloisonnement('connexion · lien de déverrouillage remis au seul titulaire', () =>
+        this.courrier!.envoyerUnSecret(
+          user.tenantId,
+          { destinataire: user.email, sujet: avis.sujet, corps: avis.corps, origine: ORIGINE_DEVERROUILLAGE_COMPTE, origineId: user.id },
+          avis.corpsGarde,
+        ),
+      );
+    } catch (erreur) {
+      // L'adresse n'est jamais écrite au journal du serveur · la catégorie seule.
+      this.logger.warn(`Lien de déverrouillage non parti (${user.id}) · ${causeDeLException(erreur)}`);
+      await horsCloisonnement('connexion · place du lien de déverrouillage libérée après un envoi manqué', () =>
+        this.prisma.user.updateMany({
+          where: { id: user.id, tenantId: user.tenantId, empreinteDeverrouillage: empreinteDuJeton(jeton) },
+          data: { empreinteDeverrouillage: null, deverrouillageExpireLe: null, deverrouillageEnvoyePour: null },
+        }),
+      );
+    }
+  }
+
+  /**
+   * LE LIEN OUVERT · un jeton reçu au courriel du compte, sans session. Il
+   * lève le verrou et remet le compteur à zéro, au journal d'audit sous la
+   * personne elle-même, puis l'écran ramène à la connexion. Introuvable,
+   * consommé ou échu · la même phrase, 404.
+   */
+  async deverrouillerParLien(jeton: string, maintenant = new Date()): Promise<{ deverrouille: true }> {
+    const empreinte = empreinteDuJeton(jeton);
+    const compte = await horsCloisonnement('déverrouillage · le compte que désigne un lien reçu par courriel', () =>
+      this.prisma.user.findUnique({ where: { empreinteDeverrouillage: empreinte } }),
+    );
+    if (!compte || !compte.deverrouillageExpireLe || compte.deverrouillageExpireLe <= maintenant) {
+      throw new NotFoundException(MOTIF_LIEN_DEVERROUILLAGE_INVALIDE);
+    }
+    const fait = await horsCloisonnement('déverrouillage · acte du titulaire par son lien', () =>
+      dansContexteActeur(acteurDuCompte(compte), () =>
+        transactionJournalisee(this.prisma, async (tx) => {
+          await verrouillerLeCompte(tx, compte);
+          const r = await tx.user.updateMany({
+            where: { id: compte.id, tenantId: compte.tenantId, empreinteDeverrouillage: empreinte, deverrouillageExpireLe: { gt: maintenant } },
+            data: { ...DECOMPTE_REMIS_A_ZERO, empreinteDeverrouillage: null, deverrouillageExpireLe: null, deverrouillageEnvoyePour: null },
+          });
+          return r.count === 1;
+        }),
+      ),
+    );
+    if (!fait) throw new NotFoundException(MOTIF_LIEN_DEVERROUILLAGE_INVALIDE);
+    await horsCloisonnement('déverrouillage · la limite par adresse repart à zéro', () =>
+      oublierLesEssaisDeLAdresse(this.prisma, empreinteAdresse(compte.email, secretDeSession())),
+    );
+    return { deverrouille: true };
   }
 
   /**

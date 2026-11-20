@@ -343,4 +343,6 @@ export const MODELES_HORS_DOSSIER: Record<string, string> = {
     'suivi de l’éditeur sur un dossier d’essai échu (rappel de suppression), cabinetId et non tenantId comme l’abonnement · il part avec le dossier (cascade), ce n’est pas une donnée du client',
   DossierEssaiSupprime:
     'trace durable d’un dossier d’essai supprimé, sans clé étrangère · dates et nombres seulement, aucune donnée du client',
+  EssaiConnexionAdresse:
+    'limite d’essais de connexion par adresse e-mail (audit de sécurité du 2026-11-19) · comptée AVANT que le dossier ne soit connu, la même pour une adresse inconnue ; l’adresse n’y est qu’en HMAC, des instants seulement, purgés après dix minutes',
 };

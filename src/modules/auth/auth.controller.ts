@@ -13,6 +13,7 @@ import { ActiverDoubleAuthDto, DesactiverDoubleAuthDto, RegenererCodesSecoursDto
 import { DeconnecterAutresAppareilsDto } from './dto/deconnecter-autres-appareils.dto';
 import { ChangerDossierDto } from './dto/changer-dossier.dto';
 import { CreerCompteParInvitationDto, JetonInvitationDto } from './dto/invitation.dto';
+import { JetonDeverrouillageDto } from './dto/jeton-deverrouillage.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { extraireJetonDuCookie } from './jwt.strategy';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -170,6 +171,19 @@ export class AuthController {
     // Mot de passe juste, code attendu · AUCUNE session n'est posée.
     if ('deuxiemeFacteurRequis' in r) return r;
     return this.poserSession(res, r);
+  }
+
+  /**
+   * LE LIEN DE DÉVERROUILLAGE reçu par courriel (audit de sécurité du
+   * 2026-11-19, `deverrouillage.ts`) · sans session (le compte est fermé),
+   * le jeton seul, en JSON comme la connexion. Il lève le verrou, l'écran
+   * ramène ensuite à la connexion.
+   */
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('deverrouiller')
+  deverrouiller(@Body() dto: JetonDeverrouillageDto, @Req() req?: Request) {
+    if (typeof req?.is === 'function' && !req.is('application/json')) throw new UnsupportedMediaTypeException(MOTIF_CONNEXION_EN_JSON);
+    return this.authService.deverrouillerParLien(dto.jeton);
   }
 
   // Sans garde : effacer un cookie est inoffensif et doit marcher même avec

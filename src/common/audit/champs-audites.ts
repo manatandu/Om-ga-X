@@ -511,6 +511,8 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  EssaiConnexionAdresse:
+    "Limite d'essais de connexion par adresse e-mail (audit de sécurité du 2026-11-19) · hors dossier, un HMAC et des instants, réécrite à chaque essai ; le verrou et sa levée s'écrivent au journal par la mise à jour du compte.",
   ConfirmationAdresse:
     "Demande de changement d'adresse de connexion en attente de son code (ligne multi-dossiers, second tour, MAJEUR 2) · elle ne change rien tant qu'elle n'est pas confirmée ; l'adresse posée s'écrit au journal par la mise à jour du compte, qui y figure.",
   PreferenceUtilisateur:
@@ -655,6 +657,10 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
     'sessionsFermees',
     'compteDeConnexionId',
     'courrielDeConnexion',
+    // L'empreinte du lien de déverrouillage (audit de sécurité du 2026-11-19) ·
+    // elle seule ne rouvre rien, mais un journal lu par tout le dossier n'a pas
+    // à la porter, pas plus que celle d'une invitation.
+    'empreinteDeverrouillage',
   ],
 
   // LE FICHIER LUI-MÊME · jusqu'à 5 Mo recopiés dans chaque événement, et un
@@ -846,6 +852,7 @@ export const COLONNES_JAMAIS_RESTITUEES: Readonly<Record<string, readonly string
     'codesSecoursDoubleAuth',
     'compteDeConnexionId',
     'courrielDeConnexion',
+    'empreinteDeverrouillage',
   ],
   // L'empreinte du jeton d'une invitation · un moyen d'entrer, pas une donnée.
   InvitationDossier: ['empreinteJeton'],

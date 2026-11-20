@@ -103,7 +103,7 @@ describe('AuthService · jeton CSRF apparié au jeton de session', () => {
     let payload: Record<string, unknown> | undefined;
     const hash = await bcrypt.hash('mot-de-passe-correct', 4);
     const s = new AuthService(
-      { user: { findMany: async () => [({ id: 'u1', motDePasse: hash, estActif: true })], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => ({ id: 'u1', motDePasse: hash, estActif: true }) } } as never,
+      { user: { findMany: async () => [({ id: 'u1', motDePasse: hash, estActif: true })], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => ({ id: 'u1', motDePasse: hash, estActif: true }) }, $queryRaw: async () => [{ n: 1 }] } as never,
       { sign: (p: Record<string, unknown>) => ((payload = p), 'jwt-signe') } as never,
       undefined as never,
       undefined as never,

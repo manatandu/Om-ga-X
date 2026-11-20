@@ -45,6 +45,8 @@ export const MODELES_EXCLUS_DE_LA_PURGE: Readonly<Record<string, string>> = {
   RappelSuppressionEssai:
     'suivi de l’éditeur, porté par le dossier (clé étrangère en cascade) · il part avec lui, et la trace durable est DossierEssaiSupprime',
   DossierEssaiSupprime: 'la trace de la suppression, hors dossier et sans clé étrangère · elle survit au dossier par construction',
+  EssaiConnexionAdresse:
+    'limite d’essais de connexion par adresse, hors dossier · un HMAC de l’adresse et des instants, effacés d’eux-mêmes après dix minutes (limite-par-adresse.ts)',
 };
 
 /**

@@ -98,8 +98,9 @@ export const DECOMPTE_REMIS_A_ZERO = { tentativesEchouees: 0, verrouilleJusqua: 
  * verrou (auth.service.ts, `login`).
  */
 export const MOTIF_IDENTIFIANTS_INVALIDES =
-  "Identifiants invalides · après plusieurs essais manqués, un compte reste fermé quelques minutes, ou jusqu'à ce que " +
-  "l'administrateur du dossier réinitialise son mot de passe.";
+  "Identifiants invalides · après plusieurs essais manqués, un compte reste fermé quelques minutes. Son titulaire " +
+  "peut entrer avec le code de sa double authentification, ou ouvrir le lien de déverrouillage reçu par courriel " +
+  "s'il a donné le bon mot de passe ; à défaut, l'administrateur du dossier le déverrouille.";
 
 /**
  * LE MOT DE PASSE ACTUEL D'UN GESTE AUTHENTIFIÉ COMPTE SES ÉCHECS (audit de

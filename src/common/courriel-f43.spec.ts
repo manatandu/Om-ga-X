@@ -72,7 +72,8 @@ describe('F43 · les services normalisent aussi', () => {
   it('la connexion cherche l’adresse normalisée', async () => {
     const recherches: unknown[] = [];
     const s = new AuthService(
-      { user: { findUnique: async (a: unknown) => (recherches.push(a), null) } } as never,
+      // La limite par adresse compte l'essai en base avant tout (audit de sécurité du 2026-11-19).
+      { user: { findUnique: async (a: unknown) => (recherches.push(a), null) }, $queryRaw: async () => [{ n: 1 }] } as never,
       {} as never,
       {} as never,
       {} as never,

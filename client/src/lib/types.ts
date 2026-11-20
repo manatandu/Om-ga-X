@@ -814,6 +814,11 @@ export interface AuthResponse {
   csrfToken: string;
   /** Session « Rester connecté » ouverte (audit final F270). */
   sessionLongue?: boolean;
+  /**
+   * Le jeton d'appareil (audit de sécurité du 2026-11-19) · cet appareil
+   * passera la limite d'essais par adresse (`lib/appareil-reconnu.ts`).
+   */
+  appareil?: string;
 }
 
 // Types de tiers HÉRITÉS DU SYCEBNL, dont le compte 41 « Adhérents,

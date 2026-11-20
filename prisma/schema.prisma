@@ -1402,6 +1402,16 @@ model User {
   /// minute), il s'oublie douze heures après le dernier échec
   /// (src/modules/auth/verrouillage.ts, DELAI_OUBLI_ECHECS_HEURES).
   dernierEchecLe     DateTime?
+  /// DÉVERROUILLAGE PAR LE TITULAIRE (audit de sécurité du 2026-11-19,
+  /// src/modules/auth/deverrouillage.ts) · le BON mot de passe présenté
+  /// pendant le verrou fait partir un lien à usage unique au seul courriel du
+  /// compte. Le jeton n'est gardé qu'en EMPREINTE, il échoit
+  /// (`deverrouillageExpireLe`), et `deverrouillageEnvoyePour` retient le
+  /// verrou pour lequel il est parti · un seul envoi par période de verrou.
+  /// Hors du journal d'audit pour l'empreinte, hors de la restitution.
+  empreinteDeverrouillage  String?   @unique
+  deverrouillageExpireLe   DateTime?
+  deverrouillageEnvoyePour DateTime?
 
   // DOUBLE AUTHENTIFICATION (src/modules/auth/double-authentification.ts) ·
   // TOTP, RFC 6238. Le secret est posé à l'initiation et ne vaut qu'une fois
@@ -14294,4 +14304,23 @@ model ConfirmationAdresse {
   @@index([tenantId])
   @@index([userId])
   @@map("confirmations_adresse")
+}
+
+/// LIMITE D'ESSAIS DE CONNEXION PAR ADRESSE (audit de sécurité du 2026-11-19,
+/// src/modules/auth/limite-par-adresse.ts). La limite par adresse IP
+/// (`@Throttle`, en mémoire, par instance) se contourne en appelant le service
+/// en direct avec un X-Forwarded-For choisi · celle-ci compte par ADRESSE
+/// E-MAIL visée, en base, donc PARTAGÉE entre les instances, et vaut aussi
+/// pour une adresse inconnue. HORS DOSSIER · à la connexion, le dossier n'est
+/// pas encore connu, et l'adresse inconnue n'en a aucun. L'adresse n'y est
+/// jamais en clair · `empreinte` est un HMAC dont la clé dérive du secret de
+/// session. `instants` garde au plus la limite plus un instant, dans la
+/// fenêtre glissante ; une ligne dont la fenêtre est passée est purgée.
+model EssaiConnexionAdresse {
+  empreinte String     @id
+  instants  DateTime[]
+  majLe     DateTime
+
+  @@index([majLe])
+  @@map("essais_connexion_adresse")
 }

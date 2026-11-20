@@ -21,12 +21,15 @@ export function corpsConnexion(s: {
   resterConnecte: boolean;
   codeRequis: boolean;
   code: string;
+  /** Le jeton d'appareil (`appareil-reconnu.ts`) · la limite par adresse ne freine pas cet appareil. */
+  appareil?: string;
 }) {
   return {
     email: s.email,
     motDePasse: s.motDePasse,
     resterConnecte: s.resterConnecte,
     ...(s.codeRequis && s.code.trim() ? { code: s.code.trim() } : {}),
+    ...(s.appareil ? { appareil: s.appareil } : {}),
   };
 }
 
@@ -37,9 +40,9 @@ export function corpsConnexion(s: {
  * qui redemande le mot de passe et le code après huit heures. L'avis « session
  * courte » qui s'affichait ici avant d'entrer n'a plus d'objet.
  */
-export type IssueConnexion = { etape: 'CODE_REQUIS' } | { etape: 'OUVERTE'; csrfToken: string };
+export type IssueConnexion = { etape: 'CODE_REQUIS' } | { etape: 'OUVERTE'; csrfToken: string; appareil?: string };
 
 export function issueConnexion(res: ReponseConnexion): IssueConnexion {
   if ('deuxiemeFacteurRequis' in res) return { etape: 'CODE_REQUIS' };
-  return { etape: 'OUVERTE', csrfToken: res.csrfToken };
+  return { etape: 'OUVERTE', csrfToken: res.csrfToken, ...(res.appareil ? { appareil: res.appareil } : {}) };
 }

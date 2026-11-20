@@ -41,6 +41,8 @@ async function service(user: Record<string, unknown>, clientNu: unknown) {
   return new AuthService(
     {
       user: { findMany: async () => [user], count: async () => 1, updateMany: async () => ({ count: 0 }), findUnique: async () => user, update: async () => ({}) },
+      // La limite par adresse (audit de sécurité du 2026-11-19) · un essai compté.
+      $queryRaw: async () => [{ n: 1 }],
       clientNu,
     } as never,
     { sign: () => 'jeton' } as never,

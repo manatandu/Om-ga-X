@@ -42,7 +42,9 @@ describe('ce que la réponse demande à l’écran', () => {
     const service = readFileSync(join(__dirname, '..', '..', '..', 'src', 'modules', 'auth', 'auth.service.ts'), 'utf8');
     // Ligne multi-dossiers · la session s'ouvre sur l'appartenance d'entrée, et
     // la réponse dit seulement s'il y a plusieurs dossiers.
-    expect(service).toContain("return { ...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }), plusieursDossiers };");
+    expect(service).toContain("...emettreSession(this.jwt, entree.id, { longue, connexionComplete: 'maintenant', plusieursDossiers }),\n      plusieursDossiers,");
+    // Audit de sécurité du 2026-11-19 · la session ouverte rend aussi le jeton d'appareil.
+    expect(service).toContain('appareil: jetonAppareil(user.id, secretDeSession(), maintenant),');
   });
 });
 
@@ -51,8 +53,23 @@ describe('l’écran d’ouverture entre dès que la session est ouverte', () =>
 
   it('la réponse passe par issueConnexion, puis l’entrée', () => {
     const envoi = page.slice(page.indexOf('const onSubmit = async'), page.indexOf('const champClasse'));
-    expect(envoi).toContain('corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code })');
+    expect(envoi).toContain('corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code, appareil: jetonDeLAppareil(email) })');
+    // Le jeton d'appareil rendu par la session ouverte se garde, avant l'entrée.
+    expect(envoi).toContain('garderJetonDeLAppareil(email, issue.appareil);');
     expect(envoi).toContain('const issue = issueConnexion(res);');
     expect(envoi).toContain("await seConnecter(issue.csrfToken);\n      navigate('/');");
   });
 });
+
+describe('le jeton d’appareil voyage avec la connexion (audit de sécurité du 2026-11-19)', () => {
+  it('part dans le corps s’il est connu, jamais vide', () => {
+    const base = { email: 'a@b.cd', motDePasse: 'x', resterConnecte: false, codeRequis: false, code: '' };
+    expect(corpsConnexion({ ...base, appareil: 'c1.1.sig' })).toMatchObject({ appareil: 'c1.1.sig' });
+    expect(corpsConnexion({ ...base, appareil: undefined })).not.toHaveProperty('appareil');
+  });
+
+  it('revient de la session ouverte', () => {
+    expect(issueConnexion({ csrfToken: 'j', appareil: 'c1.1.sig' })).toEqual({ etape: 'OUVERTE', csrfToken: 'j', appareil: 'c1.1.sig' });
+  });
+});
+

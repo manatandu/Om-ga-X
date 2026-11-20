@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useId, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { essaiOuvert } from '../lib/essai';
 import { LienPreferencesMesure } from '../components/BandeauConsentementMesure';
 import { api } from '../lib/api';
@@ -10,6 +10,7 @@ import { creationPremierDossierProposee, type EtatSurSite } from '../lib/sur-sit
 import { LogotypeOmegaX, SymboleOmegaX } from '../components/chrome/Logo';
 import { lireDossiersRecents } from '../lib/dossiersRecents';
 import { corpsConnexion, issueConnexion, type ReponseConnexion } from '../lib/connexion';
+import { garderJetonDeLAppareil, jetonDeLAppareil } from '../lib/appareil-reconnu';
 import { apresDeconnexion } from '../lib/deconnexion';
 import { useMedia } from '../lib/media';
 import { messageConnexion } from '../lib/message-connexion';
@@ -105,6 +106,8 @@ export function AuthPage() {
   const [envoi, setEnvoi] = useState(false);
   const { seConnecter, motifDeconnexion } = useAuth();
   const navigate = useNavigate();
+  // Le retour du lien de déverrouillage (`DeverrouillagePage`) · dit une fois.
+  const avisRetour = (useLocation().state as { avis?: string } | null)?.avis ?? null;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -118,13 +121,14 @@ export function AuthPage() {
       // le serveur ne garde aucun état entre les deux appels.
       const res = await api.post<ReponseConnexion>(
         '/auth/login',
-        corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code }),
+        corpsConnexion({ email, motDePasse, resterConnecte, codeRequis, code, appareil: jetonDeLAppareil(email) }),
       );
       const issue = issueConnexion(res);
       if (issue.etape === 'CODE_REQUIS') {
         setCodeRequis(true);
         return;
       }
+      garderJetonDeLAppareil(email, issue.appareil);
       // Le dossier est ajouté aux dossiers récents par `chargerUtilisateur`
       // (lib/auth.tsx), qui lit /auth/me · la réponse de /auth/login ne porte
       // que le jeton, elle ne connaît pas le nom du dossier.
@@ -311,6 +315,24 @@ export function AuthPage() {
             />
           </div>
 
+          {/* UN COMPTE FERMÉ S'OUVRE AU SECOND FACTEUR (audit de sécurité du
+              2026-11-19) · pendant le verrou, le serveur ne demande pas le code
+              (la demande dirait le mot de passe juste) ; le titulaire le donne
+              d'emblée. Offert après tout refus, à toute adresse. */}
+          {erreur && !codeRequis && (
+            <button
+              type="button"
+              onClick={() => setCodeRequis(true)}
+              className="self-start text-[11.5px] text-sel underline underline-offset-2"
+            >
+              Ajouter le code de la double authentification
+            </button>
+          )}
+          {!erreur && !motifDeconnexion && avisRetour && (
+            <div role="status" className="anim-alerte text-[11.5px] text-text bg-sel-soft border border-sel/30 rounded-[4px] px-3 py-2">
+              {avisRetour}
+            </div>
+          )}
           {!erreur && motifDeconnexion && (
             <div role="status" className="anim-alerte text-[11.5px] text-text bg-sel-soft border border-sel/30 rounded-[4px] px-3 py-2">
               {motifDeconnexion}

@@ -59,6 +59,11 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // Délai d'oubli du verrou (verrouillage.ts) · ADMIS comme ses deux
     // voisines : un décompte d'échecs remis à zéro à la main se relit.
     'dernierEchecLe',
+    // Le lien de déverrouillage (audit de sécurité du 2026-11-19) · son
+    // ÉCHÉANCE et le verrou pour lequel il est parti se relisent ; son
+    // empreinte est EXCLUE.
+    'deverrouillageExpireLe',
+    'deverrouillageEnvoyePour',
     'createdAt',
     // Profil de fonctions (point 15) · ADMIS : qui a ouvert ou fermé quelle
     // fonction à qui est exactement ce qu'un journal d'audit doit rendre.
