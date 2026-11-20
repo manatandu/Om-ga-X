@@ -54,10 +54,18 @@ rejeu `scripts/rejouer-attaques-connexion.cjs`. Rien d'autre.
   (constats sur site 6 et 7, TOTP en clair, écart de durée, limites).
   CLAUDE.md § 8 tenu à jour.
 
+- Relecture (grilles de `silent-failure-hunter`, `typescript-reviewer`,
+  `react-reviewer`, appliquées par la session faute d'outil de délégation)
+  · deux corrections · la place du lien ne se libère que si rien n'est parti
+  (503 ou 409 d'`envoyerUnSecret`), sans quoi un échec d'écriture de la file
+  APRÈS l'envoi effaçait le lien reçu ; le déverrouillage fait ne rend plus
+  d'erreur si la remise à zéro de la limite échoue (consignée). Rejeu
+  relancé · 72 prouvées.
+
 ## Reste
 
-- Relecture `silent-failure-hunter`, `typescript-reviewer`, `react-reviewer`
-  (deux tours au plus), corrections majeures.
+- Intégration sur `main` par le coordinateur (bloc § 3, tests navigateur,
+  relire le déploiement). Rien d'autre dans cette ligne.
 
 ## Décisions
 

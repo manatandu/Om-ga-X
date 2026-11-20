@@ -260,3 +260,29 @@ describe('limite-par-adresse · règles pures', () => {
     expect(appareilReconnu('a.b', 'c1', S, T)).toBe(false);
   });
 });
+
+describe('relecture « échecs silencieux » · le lien de déverrouillage', () => {
+  it('un échec APRÈS l’envoi (trace en file) ne libère pas la place · le lien reçu reste valable', async () => {
+    const m = await monde(FERME());
+    m.courrier.envoyerUnSecret.mockImplementationOnce(async () => {
+      throw new Error('écriture de la file impossible');
+    });
+    await expect(m.s.login(connexion('bon-mot-de-passe'))).rejects.toThrow(MOTIF_IDENTIFIANTS_INVALIDES);
+    await enAttente();
+    expect(m.u.empreinteDeverrouillage).not.toBeNull();
+  });
+
+  it('un transport qui refuse (503) libère la place · la connexion suivante réessaie', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
+    const m = await monde(FERME());
+    m.courrier.envoyerUnSecret.mockImplementationOnce(async () => {
+      throw new ServiceUnavailableException('transport');
+    });
+    await expect(m.s.login(connexion('bon-mot-de-passe'))).rejects.toThrow();
+    await enAttente();
+    expect(m.u.empreinteDeverrouillage).toBeNull();
+    await expect(m.s.login(connexion('bon-mot-de-passe'))).rejects.toThrow();
+    await enAttente();
+    expect(m.envoyes).toHaveLength(1);
+  });
+});

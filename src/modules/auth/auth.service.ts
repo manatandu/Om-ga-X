@@ -784,6 +784,12 @@ export class AuthService {
     } catch (erreur) {
       // L'adresse n'est jamais écrite au journal du serveur · la catégorie seule.
       this.logger.warn(`Lien de déverrouillage non parti (${user.id}) · ${causeDeLException(erreur)}`);
+      // LA PLACE NE SE LIBÈRE QUE SI RIEN N'EST PARTI (relecture « échecs
+      // silencieux ») · `envoyerUnSecret` lève 503 quand le transport refuse,
+      // 409 sans messagerie. Une autre erreur peut suivre un envoi RÉUSSI
+      // (l'écriture de la trace dans la file) · libérer la place effacerait
+      // alors l'empreinte du lien déjà reçu, qui ne rouvrirait plus rien.
+      if (!(erreur instanceof ServiceUnavailableException || erreur instanceof ConflictException)) return;
       await horsCloisonnement('connexion · place du lien de déverrouillage libérée après un envoi manqué', () =>
         this.prisma.user.updateMany({
           where: { id: user.id, tenantId: user.tenantId, empreinteDeverrouillage: empreinteDuJeton(jeton) },
@@ -820,9 +826,16 @@ export class AuthService {
       ),
     );
     if (!fait) throw new NotFoundException(MOTIF_LIEN_DEVERROUILLAGE_INVALIDE);
-    await horsCloisonnement('déverrouillage · la limite par adresse repart à zéro', () =>
-      oublierLesEssaisDeLAdresse(this.prisma, empreinteAdresse(compte.email, secretDeSession())),
-    );
+    // Le compte EST rouvert · un échec ici ne doit pas rendre une erreur qui
+    // dirait le contraire. La fenêtre de la limite s'efface d'elle-même en dix
+    // minutes ; l'échec est consigné.
+    try {
+      await horsCloisonnement('déverrouillage · la limite par adresse repart à zéro', () =>
+        oublierLesEssaisDeLAdresse(this.prisma, empreinteAdresse(compte.email, secretDeSession())),
+      );
+    } catch (e) {
+      this.logger.warn(`Déverrouillage fait, limite par adresse non remise à zéro (${compte.id}) · ${(e as Error)?.name ?? 'erreur'}`);
+    }
     return { deverrouille: true };
   }
 

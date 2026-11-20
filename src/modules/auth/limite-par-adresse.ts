@@ -120,12 +120,9 @@ export function appareilReconnu(jeton: unknown, compteId: string, secret: string
   const [id, emis, signature] = morceaux;
   if (id !== compteId || !/^\d{1,12}$/.test(emis)) return false;
   const attendue = createHmac('sha256', cle('appareil-reconnu', secret)).update(`${id}.${emis}`, 'utf8').digest();
-  let recue: Buffer;
-  try {
-    recue = Buffer.from(signature, 'base64url');
-  } catch {
-    return false;
-  }
+  // `Buffer.from` ne lève pas sur un base64url mal formé, il en lit ce qu'il peut ·
+  // la longueur et la comparaison à temps constant tranchent.
+  const recue = Buffer.from(signature, 'base64url');
   if (recue.length !== attendue.length || !timingSafeEqual(recue, attendue)) return false;
   const age = maintenant.getTime() / 1000 - Number(emis);
   return age >= -60 && age <= JOURS_JETON_APPAREIL * 86_400;
