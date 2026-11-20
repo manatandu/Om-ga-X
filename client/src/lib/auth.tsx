@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // reste valide pour le dossier · un rechargement serait rentré sans mot
         // de passe, l'écran disant « reconnectez-vous ». La connexion suivante
         // attend cette réponse (`apresDeconnexion`).
-        void deconnecterServeur(() => api.post('/auth/logout'));
+        void deconnecterServeur(() => api.post('/auth/logout', {}));
         oublierPrechargement();
         oublierLEcranVu();
         oublierLeDossierChoisi();
@@ -333,7 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // un cookie qui expirera de lui-même (à la fermeture du navigateur, ou à
     // l'échéance d'une session « Rester connecté »).
     return fermerLaSession(
-      () => api.post('/auth/logout'),
+      () => api.post('/auth/logout', {}),
       () => {
         ouverte.current = false;
         // La connexion suivante, dans cet onglet, remontre l'écran des logiciels.

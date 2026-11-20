@@ -154,7 +154,7 @@ export async function creerDossier(
       { compteId: produit.id, libelle, debit: 0, credit: options.montant },
     ],
   });
-  await appelApi(page, 'POST', '/auth/logout');
+  await appelApi(page, 'POST', '/auth/logout', {});
   await page.evaluate(() => localStorage.clear());
   return { email, exerciceId: exercice.id, libelle };
 }

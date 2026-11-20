@@ -9,7 +9,7 @@ import {
   PLAFOND_SESSIONS_FERMEES,
 } from './sessions-fermees';
 import { DUREE_MAXIMALE_SESSION_LONGUE_S } from './session-longue';
-import { AuthController } from './auth.controller';
+import { AuthController, enTeteJson, MOTIF_DECONNEXION_EN_JSON } from './auth.controller';
 import { COOKIE_SESSION } from './session.constants';
 
 /**
@@ -80,7 +80,7 @@ describe('la déconnexion appelle la fermeture, et dit son échec', () => {
       { get: () => undefined } as never,
     );
     const { appels, res } = reponse();
-    const r = await controleur.logout(res, { cookies: { [COOKIE_SESSION]: 'jeton-du-poste' }, headers: {} } as never);
+    const r = await controleur.logout(res, { cookies: { [COOKIE_SESSION]: 'jeton-du-poste' }, headers: { 'content-type': 'application/json' } } as never);
     expect(jetonRecu).toBe('jeton-du-poste');
     expect(r).toEqual({ deconnecte: true, sessionFermee: true });
     expect(appels).toContain(COOKIE_SESSION);
@@ -96,9 +96,39 @@ describe('la déconnexion appelle la fermeture, et dit son échec', () => {
       { get: () => undefined } as never,
     );
     const { appels, res } = reponse();
-    const r = await controleur.logout(res, { cookies: { [COOKIE_SESSION]: 'j' }, headers: {} } as never);
+    const r = await controleur.logout(res, { cookies: { [COOKIE_SESSION]: 'j' }, headers: { 'content-type': 'application/json' } } as never);
     expect(r).toEqual({ deconnecte: true, sessionFermee: false });
     expect(appels).toContain(COOKIE_SESSION);
+  });
+});
+
+describe('la déconnexion n’admet que JSON (audit de sécurité du 2026-11-19, déconnexion forcée depuis un autre site)', () => {
+  const controleur = (ferme: () => void) =>
+    new AuthController({ fermerLaSession: async () => (ferme(), { fermee: true }) } as never, { get: () => undefined } as never);
+  const res = { cookie: () => undefined, clearCookie: () => undefined } as never;
+
+  it.each([
+    ['un formulaire', 'application/x-www-form-urlencoded'],
+    ['un envoi multipart', 'multipart/form-data; boundary=x'],
+    ['du texte', 'text/plain'],
+    ['aucun type', undefined],
+  ])('refuse %s en 415, sans fermer la session ni effacer le cookie', async (_cas, type) => {
+    let fermee = false;
+    const efface: string[] = [];
+    const r = { cookie: () => undefined, clearCookie: (n: string) => efface.push(n) } as never;
+    await expect(
+      controleur(() => (fermee = true)).logout(r, { cookies: { [COOKIE_SESSION]: 'j' }, headers: type ? { 'content-type': type } : {} } as never),
+    ).rejects.toMatchObject({ status: 415, message: MOTIF_DECONNEXION_EN_JSON });
+    expect(fermee).toBe(false);
+    expect(efface).toEqual([]);
+  });
+
+  it('admet JSON sans corps (une session échue efface son cookie)', async () => {
+    let fermee = false;
+    const r = await controleur(() => (fermee = true)).logout(res, { cookies: {}, headers: { 'content-type': 'application/json; charset=utf-8' } } as never);
+    expect(r.deconnecte).toBe(true);
+    expect(fermee).toBe(true);
+    expect(enTeteJson({ headers: { 'content-type': 'Application/JSON' } } as never)).toBe(true);
   });
 });
 

@@ -28,6 +28,21 @@ export const MOTIF_LICENCE_A_L_INSCRIPTION =
 
 export const MOTIF_CONNEXION_EN_JSON = 'La connexion se fait en JSON (Content-Type: application/json) · un formulaire posté depuis un autre site est refusé.';
 
+export const MOTIF_DECONNEXION_EN_JSON =
+  'La déconnexion se fait en JSON (Content-Type: application/json) · un formulaire posté depuis un autre site est refusé.';
+
+/**
+ * Le type déclaré par l'EN-TÊTE, sans le corps · `req.is` rend null sur une
+ * requête sans corps, et la déconnexion n'en a pas besoin. Seul
+ * `application/json` (paramètres admis) passe ; `text/plain` et les types de
+ * formulaire, les seuls qu'un autre site poste sans contrôle préalable, non.
+ */
+export function enTeteJson(req: Pick<Request, 'headers'>): boolean {
+  const brut = req.headers?.['content-type'];
+  const type = String(Array.isArray(brut) ? brut[0] : brut ?? '').split(';')[0].trim().toLowerCase();
+  return type === 'application/json';
+}
+
 @Controller('auth')
 export class AuthController {
   private readonly journal = new Logger('Authentification');
@@ -161,6 +176,16 @@ export class AuthController {
   // une session déjà expirée (sinon impossible de « fermer » proprement).
   @Post('logout')
   async logout(@Res({ passthrough: true }) res: Response, @Req() req?: Request) {
+    // LA DÉCONNEXION NE SE DÉCLENCHE PLUS DEPUIS UN AUTRE SITE (audit de
+    // sécurité du 2026-11-19, constat `omegax-auth-deconnexion-forcee-intersite`).
+    // La route n'a ni garde ni jeton CSRF (une session échue doit pouvoir
+    // effacer son cookie) · un formulaire auto-soumis par n'importe quel site
+    // fermait la session de la victime et lui faisait perdre son travail non
+    // enregistré. Comme la connexion, elle n'admet que JSON · un formulaire
+    // d'un autre site ne pose pas ce type sans un contrôle CORS préalable, que
+    // la liste des origines refuse. L'EN-TÊTE est lu, pas le corps · une
+    // déconnexion légitime peut partir sans corps (`req.is` rend null alors).
+    if (req && !enTeteJson(req)) throw new UnsupportedMediaTypeException(MOTIF_DECONNEXION_EN_JSON);
     // LA SESSION SE FERME AUSSI SUR LE SERVEUR (relevé de sécurité du
     // 2026-10-23) · effacer le cookie ne retirait rien à une copie prise
     // avant. Un échec de la base n'empêche pas d'effacer le cookie, mais il se

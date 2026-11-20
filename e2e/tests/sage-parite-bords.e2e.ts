@@ -85,7 +85,7 @@ test("SYSCOHADA · l'objet d'un dossier ne se lit ni ne se touche depuis un autr
   const bienA = await appelApi<{ id: string }>(page, 'POST', '/immobilisations/depuis-ecriture', { ligneId: ligneA.ligneId });
   const impressionA = await appelApi<{ id?: string; numero: number | null }>(page, 'POST', '/impressions-journal', { exerciceId: exA.id, journalId: odA.id });
   expect(impressionA.numero).toBe(1);
-  await appelApi(page, 'POST', '/auth/logout');
+  await appelApi(page, 'POST', '/auth/logout', {});
 
   // DOSSIER B · chaque geste sur un objet de A est refusé, jamais servi, jamais en panne.
   // Au repos avant de quitter la fenêtre · WebKit rend une lecture coupée en exception.
@@ -115,7 +115,7 @@ test("SYSCOHADA · l'objet d'un dossier ne se lit ni ne se touche depuis un autr
   expect(sequencesB.map((s) => s.id)).not.toContain(sequenceA.id);
   const { lignes: aTransformerB } = await appelApi<{ lignes: Array<{ ligneId: string }> }>(page, 'GET', '/immobilisations/ecritures-a-transformer');
   expect(aTransformerB.map((l) => l.ligneId)).not.toContain(ligneA.ligneId);
-  await appelApi(page, 'POST', '/auth/logout');
+  await appelApi(page, 'POST', '/auth/logout', {});
 
   // DOSSIER A · rien n'a bougé.
   await page.waitForLoadState('networkidle');

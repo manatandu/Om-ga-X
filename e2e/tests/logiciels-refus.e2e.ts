@@ -59,7 +59,7 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     await autre.goto('/');
     await appelApi(autre, 'POST', '/auth/login', { email, motDePasse: MOT_DE_PASSE });
     await appelApi(autre, 'POST', '/auth/changer-mot-de-passe', { motDePasseActuel: MOT_DE_PASSE, nouveauMotDePasse: motDePasse });
-    await appelApi(autre, 'POST', '/auth/logout');
+    await appelApi(autre, 'POST', '/auth/logout', {});
     const pannesAutre = surveiller(autre);
 
     const refus: string[] = [];

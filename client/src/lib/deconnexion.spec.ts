@@ -143,8 +143,24 @@ describe('les portes qui posent une session passent par l’attente', () => {
 
   it('seDeconnecter rend la promesse qui attend le serveur, et ferme localement quoi qu’il arrive', () => {
     const sortie = corps(lire('lib/auth.tsx'), 'const seDeconnecter', 'return (\n    <AuthContext.Provider');
-    expect(sortie).toContain("return fermerLaSession(\n      () => api.post('/auth/logout'),");
+    expect(sortie).toContain("return fermerLaSession(\n      () => api.post('/auth/logout', {}),");
     expect(sortie).toContain('setUtilisateur(null);');
     expect(sortie).toContain('setCsrf(null);');
   });
 });
+
+/**
+ * LA DÉCONNEXION PART EN JSON (audit de sécurité du 2026-11-19) · le serveur
+ * refuse en 415 une déconnexion qui ne se déclare pas `application/json`, pour
+ * qu'un formulaire d'un autre site ne puisse plus fermer la session. Chaque
+ * appel de l'écran porte un corps JSON, et la requête un en-tête JSON.
+ */
+describe('la déconnexion part en JSON', () => {
+  it('chaque appel de /auth/logout porte un corps JSON', () => {
+    const source = readFileSync(join(__dirname, 'auth.tsx'), 'utf8');
+    const appels = source.match(/api\.post\('\/auth\/logout'[^)]*\)/g) ?? [];
+    expect(appels.length).toBeGreaterThan(0);
+    for (const a of appels) expect(a).toBe("api.post('/auth/logout', {})");
+  });
+});
+
